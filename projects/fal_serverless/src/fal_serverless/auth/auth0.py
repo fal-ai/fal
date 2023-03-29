@@ -58,7 +58,7 @@ def login() -> dict:
         )
         Confirm.get_input(
             console=console,
-            prompt="[bold]Press Enter[/] to open the login page in your browser...",
+            prompt="A browser will open with the login page when you [bold]Press Enter...[/]",
             password=True,
         )
         # This is needed to suppress the ResourceWarning emitted

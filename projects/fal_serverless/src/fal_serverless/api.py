@@ -15,11 +15,11 @@ import yaml
 from fal_serverless.flags import bool_envvar
 from fal_serverless.logging.isolate import IsolateLogPrinter
 from fal_serverless.sdk import (
-    KOLDSTART_DEFAULT_KEEP_ALIVE,
+    FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
     Credentials,
+    FalServerlessClient,
+    FalServerlessConnection,
     HostedRunState,
-    KoldstartClient,
-    KoldstartConnection,
     MachineRequirements,
     _get_agent_credentials,
     get_default_credentials,
@@ -36,12 +36,12 @@ _UNSET = object()
 
 
 @dataclass
-class KoldstartError(Exception):
+class FalServerlessError(Exception):
     message: str
 
 
 @dataclass
-class InternalKoldstartError(Exception):
+class InternalFalServerlessError(Exception):
     ...
 
 
@@ -55,8 +55,7 @@ class Host:
     @classmethod
     def parse_key(cls, key: str, value: Any) -> tuple[Any, Any]:
         if key == "env_yml":
-            # Conda environment definition should be parsed before sending
-            # to koldstart
+            # Conda environment definition should be parsed before sending to serverless
             with open(value) as f:
                 return "env_dict", yaml.safe_load(f)
         else:
@@ -162,8 +161,8 @@ class LocalHost(Host):
             return connection.run(executable)
 
 
-KOLDSTART_DEFAULT_URL = os.getenv("KOLDSTART_HOST", "api.alpha.fal.ai:443")
-KOLDSTART_DEFAULT_MACHINE_TYPE = "XS"
+FAL_SERVERLESS_DEFAULT_URL = os.getenv("FAL_HOST", "api.alpha.fal.ai:443")
+FAL_SERVERLESS_DEFAULT_MACHINE_TYPE = "XS"
 
 
 import threading
@@ -174,7 +173,7 @@ def _handle_grpc_error():
         @wraps(fn)
         def handler(*args, **kwargs):
             """
-            Wraps grpc errors as Koldstart Errors.
+            Wraps grpc errors as fal Serverless Errors.
             """
             max_retries = 3
             max_wait_time = 1
@@ -183,24 +182,24 @@ def _handle_grpc_error():
                     return fn(*args, **kwargs)
                 except grpc.RpcError as e:
                     if e.code() == grpc.StatusCode.UNAVAILABLE:
-                        print("Could not reach Koldstart host. Trying again.")
+                        print("Could not reach fal Serverless host. Trying again.")
                         time.sleep(max_wait_time)
 
                         # Reached max retries
                         if i + 1 == max_retries:
-                            raise KoldstartError(
-                                "Could not reach koldstart host. "
+                            raise FalServerlessError(
+                                "Could not reach fal Serverless host. "
                                 "This is most likely a transient problem. "
                                 "Please, try again."
                             )
                     elif e.details().endswith("died with <Signals.SIGKILL: 9>.`."):
-                        raise KoldstartError(
+                        raise FalServerlessError(
                             "Isolated function crashed. "
                             "This is likely due to resource overflow. "
                             "You can try again by setting a bigger `machine_type`"
                         )
                     else:
-                        raise KoldstartError(e.details())
+                        raise FalServerlessError(e.details())
 
         return handler
 
@@ -209,10 +208,10 @@ def _handle_grpc_error():
 
 # TODO: Should we build all these in fal/dbt-fal packages instead?
 @dataclass
-class KoldstartHost(Host):
+class FalServerlessHost(Host):
     _SUPPORTED_KEYS = frozenset({"machine_type", "keep_alive", "setup_function"})
 
-    url: str = KOLDSTART_DEFAULT_URL
+    url: str = FAL_SERVERLESS_DEFAULT_URL
     credentials: Credentials = field(default_factory=get_default_credentials)
     _lock: threading.Lock = field(default_factory=threading.Lock)
 
@@ -223,9 +222,9 @@ class KoldstartHost(Host):
         self.credentials = _get_agent_credentials(self.credentials)
 
     @property
-    def _connection(self) -> KoldstartConnection:
+    def _connection(self) -> FalServerlessConnection:
         with self._lock:
-            client = KoldstartClient(self.url, self.credentials)
+            client = FalServerlessClient(self.url, self.credentials)
             return client.connect()
 
     @_handle_grpc_error()
@@ -234,8 +233,10 @@ class KoldstartHost(Host):
         environment_options.setdefault("python_version", active_python())
         environments = [self._connection.define_environment(**environment_options)]
 
-        machine_type = options.host.get("machine_type", KOLDSTART_DEFAULT_MACHINE_TYPE)
-        keep_alive = options.host.get("keep_alive", KOLDSTART_DEFAULT_KEEP_ALIVE)
+        machine_type = options.host.get(
+            "machine_type", FAL_SERVERLESS_DEFAULT_MACHINE_TYPE
+        )
+        keep_alive = options.host.get("keep_alive", FAL_SERVERLESS_DEFAULT_KEEP_ALIVE)
 
         machine_requirements = MachineRequirements(
             machine_type=machine_type, keep_alive=keep_alive
@@ -267,8 +268,10 @@ class KoldstartHost(Host):
         environment_options.setdefault("python_version", active_python())
         environments = [self._connection.define_environment(**environment_options)]
 
-        machine_type = options.host.get("machine_type", KOLDSTART_DEFAULT_MACHINE_TYPE)
-        keep_alive = options.host.get("keep_alive", KOLDSTART_DEFAULT_KEEP_ALIVE)
+        machine_type = options.host.get(
+            "machine_type", FAL_SERVERLESS_DEFAULT_MACHINE_TYPE
+        )
+        keep_alive = options.host.get("keep_alive", FAL_SERVERLESS_DEFAULT_KEEP_ALIVE)
         setup_function = options.host.get("setup_function", None)
 
         machine_requirements = MachineRequirements(
@@ -291,7 +294,7 @@ class KoldstartHost(Host):
             if partial_result.status.state is not HostedRunState.IN_PROGRESS:
                 state = partial_result.status.state
                 if state is HostedRunState.INTERNAL_FAILURE:
-                    raise InternalKoldstartError(
+                    raise InternalFalServerlessError(
                         "An internal failure occurred while performing this run."
                     )
                 elif state is HostedRunState.SUCCESS:
@@ -300,7 +303,9 @@ class KoldstartHost(Host):
                     raise NotImplementedError("Unknown state: ", state)
 
         if return_value is _UNSET:
-            raise InternalKoldstartError("The input function did not return any value.")
+            raise InternalFalServerlessError(
+                "The input function did not return any value."
+            )
 
         return cast(ReturnT, return_value)
 
@@ -311,7 +316,7 @@ class Options:
     environment: BasicConfig = field(default_factory=dict)
 
 
-_DEFAULT_HOST = KoldstartHost()
+_DEFAULT_HOST = FalServerlessHost()
 
 
 def isolated(

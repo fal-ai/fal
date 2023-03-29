@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from fal_serverless import isolated
-from fal_serverless.api import KoldstartHost
+from fal_serverless.api import FalServerlessHost
 
-host = KoldstartHost(url="localhost:6005")
+host = FalServerlessHost(url="localhost:6005")
 
 
 @isolated("virtualenv", requirements=["pyjokes==0.5.0"], host=host)

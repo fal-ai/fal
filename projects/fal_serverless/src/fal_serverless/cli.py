@@ -15,10 +15,10 @@ from .logging import get_logger, set_debug_logging
 from .logging.trace import get_tracer
 
 DEFAULT_HOST = "api.alpha.fal.ai"
-HOST_ENVVAR = "KOLDSTART_HOST"
+HOST_ENVVAR = "FAL_HOST"
 
 DEFAULT_PORT = "443"
-PORT_ENVVAR = "KOLDSTART_PORT"
+PORT_ENVVAR = "FAL_PORT"
 
 DEBUG_ENABLED = False
 
@@ -116,12 +116,12 @@ def auth_test():
 @click.option("--port", default=DEFAULT_PORT, envvar=PORT_ENVVAR, hidden=True)
 @click.pass_context
 def key_cli(ctx, host: str, port: str):
-    ctx.obj = sdk.KoldstartClient(f"{host}:{port}")
+    ctx.obj = sdk.FalServerlessClient(f"{host}:{port}")
 
 
 @key_cli.command(name="generate")
 @click.pass_obj
-def key_generate(client: sdk.KoldstartClient):
+def key_generate(client: sdk.FalServerlessClient):
     with client.connect() as connection:
         result = connection.create_user_key()
         print(
@@ -134,7 +134,7 @@ def key_generate(client: sdk.KoldstartClient):
 
 @key_cli.command(name="list")
 @click.pass_obj
-def key_list(client: sdk.KoldstartClient):
+def key_list(client: sdk.FalServerlessClient):
     table = Table(title="Keys")
     table.add_column("Key ID")
     table.add_column("Created At")
@@ -149,7 +149,7 @@ def key_list(client: sdk.KoldstartClient):
 @key_cli.command(name="revoke")
 @click.argument("key-id", required=True)
 @click.pass_obj
-def key_revoke(client: sdk.KoldstartClient, key_id: str):
+def key_revoke(client: sdk.FalServerlessClient, key_id: str):
     with client.connect() as connection:
         connection.revoke_user_key(key_id)
 
@@ -160,12 +160,12 @@ def key_revoke(client: sdk.KoldstartClient, key_id: str):
 @click.option("--port", default=DEFAULT_PORT, envvar=PORT_ENVVAR, hidden=True)
 @click.pass_context
 def scheduled_cli(ctx, host: str, port: str):
-    ctx.obj = sdk.KoldstartClient(f"{host}:{port}")
+    ctx.obj = sdk.FalServerlessClient(f"{host}:{port}")
 
 
 @scheduled_cli.command(name="list")
 @click.pass_obj
-def list_scheduled(client: sdk.KoldstartClient):
+def list_scheduled(client: sdk.FalServerlessClient):
     table = Table(title="Scheduled jobs")
     table.add_column("Job ID")
     table.add_column("State")
@@ -182,7 +182,7 @@ def list_scheduled(client: sdk.KoldstartClient):
 @click.argument("job-id", required=True)
 @click.argument("limit", default=15)
 @click.pass_obj
-def list_activations(client: sdk.KoldstartClient, job_id: str, limit: int = 15):
+def list_activations(client: sdk.FalServerlessClient, job_id: str, limit: int = 15):
     table = Table(title="Job activations")
     table.add_column("Job ID")
     table.add_column("Activation ID")
@@ -203,7 +203,7 @@ def list_activations(client: sdk.KoldstartClient, job_id: str, limit: int = 15):
 @click.argument("job-id", required=True)
 @click.argument("activation-id", required=True)
 @click.pass_obj
-def print_logs(client: sdk.KoldstartClient, job_id: str, activation_id: str):
+def print_logs(client: sdk.FalServerlessClient, job_id: str, activation_id: str):
     with client.connect() as connection:
         raw_logs = connection.get_activation_logs(
             sdk.ScheduledRunActivation(job_id, activation_id)
@@ -214,7 +214,7 @@ def print_logs(client: sdk.KoldstartClient, job_id: str, activation_id: str):
 @scheduled_cli.command("cancel")
 @click.argument("job-id", required=True)
 @click.pass_obj
-def cancel_scheduled(client: sdk.KoldstartClient, job_id: str):
+def cancel_scheduled(client: sdk.FalServerlessClient, job_id: str):
     with client.connect() as connection:
         connection.cancel_scheduled_run(job_id)
         console.print("Cancelled", repr(job_id))
@@ -226,13 +226,13 @@ def cancel_scheduled(client: sdk.KoldstartClient, job_id: str):
 @click.option("--port", default=DEFAULT_PORT, envvar=PORT_ENVVAR, hidden=True)
 @click.pass_context
 def usage_cli(ctx, host: str, port: str):
-    ctx.obj = sdk.KoldstartClient(f"{host}:{port}")
+    ctx.obj = sdk.FalServerlessClient(f"{host}:{port}")
 
 
 @usage_cli.command(name="workers")
 @click.option("--user", hidden=True, default=None)
 @click.pass_obj
-def usage_worker_status(client: sdk.KoldstartClient, user: str | None):
+def usage_worker_status(client: sdk.FalServerlessClient, user: str | None):
     table = Table(title="Worker status")
     table.add_column("Worker ID")
     table.add_column("User ID")
@@ -265,7 +265,7 @@ def register_application(host: str, port: str, file_path: str, function_name: st
 
     module = runpy.run_path(file_path)
     isolated_function = module[function_name]
-    id = api.KoldstartHost(f"{host}:{port}").register(
+    id = api.FalServerlessHost(f"{host}:{port}").register(
         func=isolated_function.func, options=isolated_function.options
     )
     if id:

@@ -49,6 +49,7 @@ def submit_to_datadog(
         message=str(event),
         level=method_name,
         hostname="client",
+        # TODO: leaving koldstart-cli to keep logs in the same place for now
         service="koldstart-cli",
         # TODO: how to set these properly?
         # env="dev",

@@ -5,7 +5,9 @@ from contextlib import suppress
 
 import fal_serverless
 import pytest
-from fal_serverless.api import KoldstartError
+from fal_serverless.api import FalServerlessError
+
+PACKAGE_NAME = "fal_serverless"
 
 
 def test_regular_function(isolated_client):
@@ -35,14 +37,14 @@ def test_function_pipelining(isolated_client):
 
 
 # TODO: remove the mark
-@pytest.mark.xfail(reason="It will fix itself after the new koldstart is released")
+@pytest.mark.xfail(reason="It will fix itself after the new serverless is released")
 def test_function_calling_other_function(isolated_client):
     try:
         import importlib.metadata as importlib_metadata
     except ImportError:
         import importlib_metadata
 
-    koldstart_version = importlib_metadata.version("koldstart")
+    fal_serverless_version = importlib_metadata.version(PACKAGE_NAME)
 
     @isolated_client("virtualenv")
     def regular_function():
@@ -51,14 +53,14 @@ def test_function_calling_other_function(isolated_client):
     @isolated_client(
         "virtualenv",
         requirements=[
-            f"koldstart>=0.6.19,<={koldstart_version}",
+            f"{PACKAGE_NAME}>=0.6.19,<={fal_serverless_version}",
         ],
     )
     def calling_function(recurse):
         import os
 
         for name in os.environ:
-            if name.startswith("KOLDSTART_"):
+            if name.startswith("FAL_"):
                 print(os.environ[name])
 
         if recurse:
@@ -74,7 +76,7 @@ def test_function_calling_other_function(isolated_client):
 
 
 @pytest.mark.xfail
-def test_koldstart_dependency_inference(isolated_client):
+def test_dependency_inference(isolated_client):
     @isolated_client("virtualenv")
     def regular_function():
         return 42
@@ -106,7 +108,7 @@ def test_process_crash(isolated_client):
 
         os._exit(0)
 
-    with pytest.raises(KoldstartError, match="..."):
+    with pytest.raises(FalServerlessError, match="..."):
         process_crash_without_catching()
 
 
@@ -119,7 +121,7 @@ def test_unserializable_input_function(isolated_client):
     def unpicklable_input_function_client(default=__import__("sys")._getframe(0)):
         return default
 
-    with pytest.raises(KoldstartError, match="..."):
+    with pytest.raises(FalServerlessError, match="..."):
         unpicklable_input_function_client()
 
 
@@ -133,7 +135,7 @@ def test_unserializable_return(isolated_client):
 
         return sys._getframe(0)
 
-    with pytest.raises(KoldstartError, match="..."):
+    with pytest.raises(FalServerlessError, match="..."):
         unpicklable_return()
 
 
@@ -151,7 +153,7 @@ def test_missing_dependencies_on_server(isolated_client):
     def unpicklable_input_function_server(default=mock_module):
         return default
 
-    with pytest.raises(KoldstartError, match="..."):
+    with pytest.raises(FalServerlessError, match="..."):
         unpicklable_input_function_server()
 
 
@@ -166,7 +168,7 @@ def test_missing_dependencies_on_client(isolated_client):
 
         return refactor.BaseAction()
 
-    with pytest.raises(KoldstartError, match="..."):
+    with pytest.raises(FalServerlessError, match="..."):
         unpicklable_input_function_client()
 
 
@@ -182,7 +184,7 @@ def test_when_exception_can_not_be_deserialized(isolated_client):
 
         raise T()
 
-    with pytest.raises(KoldstartError, match="..."):
+    with pytest.raises(FalServerlessError, match="..."):
         unpicklable_input_function_client()
 
 
@@ -201,7 +203,7 @@ def test_client_superseeding_dependencies_crash(isolated_client):
 
     # This should crash at the build stage
     with pytest.raises(
-        KoldstartError, match="package versions have conflicting dependencies."
+        FalServerlessError, match="package versions have conflicting dependencies."
     ):
         conflicting_environment()
 

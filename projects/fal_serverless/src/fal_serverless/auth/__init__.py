@@ -20,7 +20,7 @@ def logout():
         raise click.ClickException(message="You're not logged in")
     auth0.revoke(refresh_token)
     local.delete_token()
-    console.print(f"{CHECK_ICON} Logged out of [cyan bold]koldstart[/]. Bye!")
+    console.print(f"{CHECK_ICON} Logged out of [cyan bold]fal Serverless[/]. Bye!")
 
 
 def _fetch_access_token() -> str:

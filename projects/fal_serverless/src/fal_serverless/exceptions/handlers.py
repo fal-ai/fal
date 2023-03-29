@@ -7,7 +7,7 @@ from fal_serverless.console.icons import CROSS_ICON
 from grpc import Call as RpcCall
 from rich.markdown import Markdown
 
-from ._base import KoldstartException
+from ._base import FalServerlessException
 
 ExceptionType = TypeVar("ExceptionType")
 
@@ -22,13 +22,13 @@ class BaseExceptionHandler(Generic[ExceptionType]):
         console.print(str(exception))
 
 
-class KoldstartExceptionHandler(BaseExceptionHandler[KoldstartException]):
-    """Handle Koldstart exceptions"""
+class FalServerlessExceptionHandler(BaseExceptionHandler[FalServerlessException]):
+    """Handle fal Serverless exceptions"""
 
     def should_handle(self, exception: Exception) -> bool:
-        return isinstance(exception, KoldstartException)
+        return isinstance(exception, FalServerlessException)
 
-    def handle(self, exception: KoldstartException):
+    def handle(self, exception: FalServerlessException):
         console.print(f"{CROSS_ICON} {exception.message}")
         if exception.hint is not None:
             console.print(Markdown(f"**Hint:** {exception.hint}"))

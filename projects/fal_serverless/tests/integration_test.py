@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import pytest
-from fal_serverless import CloudKeyCredentials, KoldstartHost, local
-from fal_serverless.api import KoldstartError
+from fal_serverless import FalServerlessHost, FalServerlessKeyCredentials, local
+from fal_serverless.api import FalServerlessError
 
 
 def test_isolated(isolated_client):
@@ -82,12 +82,12 @@ def test_isolate_error_handling(isolated_client):
     with pytest.raises(ValueError):
         raises_value_error()
 
-    creds = CloudKeyCredentials(key_id="fake", key_secret="fake")
-    host = KoldstartHost(url="not.there", credentials=creds)
+    creds = FalServerlessKeyCredentials(key_id="fake", key_secret="fake")
+    host = FalServerlessHost(url="not.there", credentials=creds)
 
     @isolated_client(host=host)
     def raises_grpc_error():
         return True
 
-    with pytest.raises(KoldstartError):
+    with pytest.raises(FalServerlessError):
         raises_grpc_error()

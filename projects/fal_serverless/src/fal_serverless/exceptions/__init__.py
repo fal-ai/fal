@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from .handlers import (
     BaseExceptionHandler,
+    FalServerlessExceptionHandler,
     GrpcExceptionHandler,
-    KoldstartExceptionHandler,
 )
 
 
@@ -19,7 +19,7 @@ class ApplicationExceptionHandler:
 
     _handlers: list[BaseExceptionHandler] = [
         GrpcExceptionHandler(),
-        KoldstartExceptionHandler(),
+        FalServerlessExceptionHandler(),
     ]
 
     def handle(self, exception):

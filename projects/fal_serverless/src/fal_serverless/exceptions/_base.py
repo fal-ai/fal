@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 
-class KoldstartException(Exception):
-    """Base exception type for koldstart related flows and APIs."""
+class FalServerlessException(Exception):
+    """Base exception type for fal Serverless related flows and APIs."""
 
     message: str
 

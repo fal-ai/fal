@@ -22,7 +22,7 @@ InputT = TypeVar("InputT")
 UNSET = object()
 
 _DEFAULT_SERIALIZATION_METHOD = "dill"
-KOLDSTART_DEFAULT_KEEP_ALIVE = 10
+FAL_SERVERLESS_DEFAULT_KEEP_ALIVE = 10
 
 
 class Credentials:
@@ -55,7 +55,7 @@ class _GRPCMetadata(grpc.AuthMetadataPlugin):
 
 
 @dataclass
-class CloudKeyCredentials(Credentials):
+class FalServerlessKeyCredentials(Credentials):
     key_id: str
     key_secret: str
 
@@ -78,22 +78,22 @@ class AuthenticatedCredentials(Credentials):
         )
 
 
-def _key_credentials() -> CloudKeyCredentials | None:
+def _key_credentials() -> FalServerlessKeyCredentials | None:
     # Ignore key credentials when the user forces auth by user.
-    if os.environ.get("KOLDSTART_FORCE_AUTH_BY_USER") == "1":
+    if os.environ.get("FAL_FORCE_AUTH_BY_USER") == "1":
         return None
 
-    if "KOLDSTART_KEY_ID" in os.environ and "KOLDSTART_KEY_SECRET" in os.environ:
-        return CloudKeyCredentials(
-            os.environ["KOLDSTART_KEY_ID"],
-            os.environ["KOLDSTART_KEY_SECRET"],
+    if "FAL_KEY_ID" in os.environ and "FAL_KEY_SECRET" in os.environ:
+        return FalServerlessKeyCredentials(
+            os.environ["FAL_KEY_ID"],
+            os.environ["FAL_KEY_SECRET"],
         )
     else:
         return None
 
 
 def _get_agent_credentials(original_credentials: Credentials) -> Credentials:
-    """If running inside an koldstart box, use the preconfigured credentials
+    """If running inside a fal Serverless box, use the preconfigured credentials
     instead of the user provided ones."""
 
     key_creds = _key_credentials()
@@ -115,12 +115,12 @@ def get_default_credentials() -> Credentials:
 
 
 @dataclass
-class KoldstartClient:
+class FalServerlessClient:
     hostname: str
     credentials: Credentials = field(default_factory=get_default_credentials)
 
-    def connect(self) -> KoldstartConnection:
-        return KoldstartConnection(self.hostname, self.credentials)
+    def connect(self) -> FalServerlessConnection:
+        return FalServerlessConnection(self.hostname, self.credentials)
 
 
 class ScheduledRunState(Enum):
@@ -234,11 +234,11 @@ def _get_run_id(run: ScheduledRun | str) -> str:
 @dataclass
 class MachineRequirements:
     machine_type: str
-    keep_alive: int = KOLDSTART_DEFAULT_KEEP_ALIVE
+    keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE
 
 
 @dataclass
-class KoldstartConnection:
+class FalServerlessConnection:
     hostname: str
     credentials: Credentials
 
