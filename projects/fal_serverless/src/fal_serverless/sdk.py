@@ -25,7 +25,7 @@ _DEFAULT_SERIALIZATION_METHOD = "dill"
 FAL_SERVERLESS_DEFAULT_KEEP_ALIVE = 10
 
 
-class Credentials:
+class ServerCredentials:
     def to_grpc(self) -> grpc.ChannelCredentials:
         raise NotImplementedError
 
@@ -34,9 +34,14 @@ class Credentials:
         return GRPC_OPTIONS
 
 
-class LocalCredentials(Credentials):
+class LocalCredentials(ServerCredentials):
     def to_grpc(self) -> grpc.ChannelCredentials:
         return grpc.local_channel_credentials()
+
+
+class RemoteCredentials(ServerCredentials):
+    def to_grpc(self) -> grpc.ChannelCredentials:
+        return grpc.ssl_channel_credentials()
 
 
 @dataclass
@@ -54,6 +59,21 @@ class _GRPCMetadata(grpc.AuthMetadataPlugin):
         callback(((self._key, self._value),), None)
 
 
+def get_default_server_credentials() -> ServerCredentials:
+    if flags.TEST_MODE:
+        return LocalCredentials()
+    else:
+        return RemoteCredentials()
+
+
+class Credentials:
+    # Cannot use `field` because child classes don't have default for all properties.
+    server_credentials: ServerCredentials = get_default_server_credentials()
+
+    def to_grpc(self) -> grpc.ChannelCredentials:
+        return self.server_credentials.to_grpc()
+
+
 @dataclass
 class FalServerlessKeyCredentials(Credentials):
     key_id: str
@@ -61,7 +81,7 @@ class FalServerlessKeyCredentials(Credentials):
 
     def to_grpc(self) -> grpc.ChannelCredentials:
         return grpc.composite_channel_credentials(
-            grpc.ssl_channel_credentials(),
+            self.server_credentials.to_grpc(),
             grpc.metadata_call_credentials(_GRPCMetadata("auth-key", self.key_secret)),
             grpc.metadata_call_credentials(_GRPCMetadata("auth-key-id", self.key_id)),
         )
@@ -73,7 +93,7 @@ class AuthenticatedCredentials(Credentials):
 
     def to_grpc(self) -> grpc.ChannelCredentials:
         return grpc.composite_channel_credentials(
-            grpc.ssl_channel_credentials(),
+            self.server_credentials.to_grpc(),
             grpc.access_token_call_credentials(USER.access_token),
         )
 
@@ -104,14 +124,14 @@ def _get_agent_credentials(original_credentials: Credentials) -> Credentials:
 
 
 def get_default_credentials() -> Credentials:
-    if flags.TEST_MODE:
-        return LocalCredentials()
+    if flags.AUTH_DISABLED:
+        return Credentials()
+
+    key_creds = _key_credentials()
+    if key_creds:
+        return key_creds
     else:
-        key_creds = _key_credentials()
-        if key_creds:
-            return key_creds
-        else:
-            return AuthenticatedCredentials()
+        return AuthenticatedCredentials()
 
 
 @dataclass
@@ -259,7 +279,7 @@ class FalServerlessConnection:
         if self._stub:
             return self._stub
 
-        options = self.credentials.extra_options
+        options = self.credentials.server_credentials.extra_options
         channel_creds = self.credentials.to_grpc()
         channel = self._stack.enter_context(
             grpc.secure_channel(self.hostname, channel_creds, options)
@@ -321,7 +341,6 @@ class FalServerlessConnection:
         serialization_method: str = _DEFAULT_SERIALIZATION_METHOD,
         machine_requirements: MachineRequirements | None = None,
     ) -> Iterator[isolate_proto.RegisterApplicationResult]:
-
         wrapped_function = to_serialized_object(function, serialization_method)
         if machine_requirements:
             wrapped_requirements = isolate_proto.MachineRequirements(

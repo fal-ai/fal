@@ -11,3 +11,4 @@ def bool_envvar(name: str):
 
 
 TEST_MODE = bool_envvar("ISOLATE_TEST_MODE")
+AUTH_DISABLED = bool_envvar("ISOLATE_AUTH_DISABLED")
