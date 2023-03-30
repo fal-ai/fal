@@ -265,6 +265,12 @@ def register_application(host: str, port: str, file_path: str, function_name: st
 
     module = runpy.run_path(file_path)
     isolated_function = module[function_name]
+    if not isolated_function.options.gateway.get(
+        "serve"
+    ) and not isolated_function.options.gateway.get("exposed_port"):
+        raise api.FalServerlessError(
+            "One of `serve` or `exposed-port` options needs to be specified in the isolated annotation to register a function"
+        )
     id = api.FalServerlessHost(f"{host}:{port}").register(
         func=isolated_function.func, options=isolated_function.options
     )

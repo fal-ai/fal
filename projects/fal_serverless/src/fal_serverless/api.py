@@ -71,8 +71,14 @@ class Host:
             key, value = cls.parse_key(key, value)
             if key in cls._SUPPORTED_KEYS:
                 options.host[key] = value
+            elif key == "serve" or key == "exposed_port":
+                options.gateway[key] = value
             else:
                 options.environment[key] = value
+
+        if options.gateway.get("serve"):
+            options.add_requirements(["flask", "flask-cors"])
+
         return options
 
     def run(
@@ -314,6 +320,19 @@ class FalServerlessHost(Host):
 class Options:
     host: BasicConfig = field(default_factory=dict)
     environment: BasicConfig = field(default_factory=dict)
+    gateway: BasicConfig = field(default_factory=dict)
+
+    def add_requirements(self, requirements: list[str]):
+        kind = self.environment["kind"]
+        if kind == "virtualenv":
+            pip_requirements = self.environment.setdefault("requirements", [])
+        elif kind == "conda":
+            pip_requirements = self.environment.setdefault("pip", [])
+        else:
+            raise FalServerlessError(
+                "Only conda and virtualenv is supported as environment options"
+            )
+        pip_requirements.extend(requirements)
 
 
 _DEFAULT_HOST = FalServerlessHost()
@@ -325,9 +344,12 @@ def isolated(
     host: Host = _DEFAULT_HOST,
     **config: Any,
 ) -> Callable[[Callable[..., ReturnT]], IsolatedFunction[ReturnT]]:
+
     options = host.parse_options(kind=kind, **config)
 
     def wrapper(func: Callable[..., ReturnT]) -> IsolatedFunction[ReturnT]:
+        # wrap it with flask if the serve option is set
+        func = templated_flask(func) if options.gateway.get("serve") else func
         proxy = IsolatedFunction(
             host=host,
             func=func,
@@ -336,6 +358,26 @@ def isolated(
         return wraps(func)(proxy)
 
     return wrapper
+
+
+def templated_flask(func: Callable[..., ReturnT]) -> Callable[..., ReturnT]:
+    param_names = inspect.signature(func).parameters.keys()
+
+    def templated_flask_wrapper() -> Any:
+        from flask import Flask, jsonify, request
+        from flask_cors import CORS
+
+        app = Flask("fal")
+        cors = CORS(app, resources={r"/*": {"origins": "*"}})
+
+        @app.route("/", methods=["POST"])
+        def flask():
+            params = [request.get_json().get(param) for param in param_names]
+            return jsonify({"result": func(*params)})
+
+        app.run(host="0.0.0.0", port=8080)
+
+    return templated_flask_wrapper
 
 
 @dataclass
