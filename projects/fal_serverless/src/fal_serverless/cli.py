@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime
 from sys import argv
 from uuid import uuid4
 
@@ -155,69 +154,87 @@ def key_revoke(client: sdk.FalServerlessClient, key_id: str):
 
 
 ###### Scheduled group ######
-@cli.group("scheduled")
+@cli.group("scheduled", hidden=True)
 @click.option("--host", default=DEFAULT_HOST, envvar=HOST_ENVVAR)
 @click.option("--port", default=DEFAULT_PORT, envvar=PORT_ENVVAR, hidden=True)
 @click.pass_context
 def scheduled_cli(ctx, host: str, port: str):
-    ctx.obj = sdk.FalServerlessClient(f"{host}:{port}")
+    ctx.obj = api.FalServerlessHost(f"{host}:{port}")
+
+
+@scheduled_cli.command("register")
+@click.argument("cron_string", required=True)
+@click.argument("file_path", required=True)
+@click.argument("function_name", required=True)
+@click.pass_obj
+def register_schedulded(
+    client: api.FalServerlessHost, cron_string: str, file_path: str, function_name: str
+):
+    import runpy
+
+    module = runpy.run_path(file_path)
+    isolated_function = module[function_name]
+
+    cron_id = client.schedule(
+        func=isolated_function.func, cron=cron_string, options=isolated_function.options
+    )
+    if cron_id:
+        console.print(cron_id)
 
 
 @scheduled_cli.command(name="list")
 @click.pass_obj
-def list_scheduled(client: sdk.FalServerlessClient):
-    table = Table(title="Scheduled jobs")
-    table.add_column("Job ID")
-    table.add_column("State")
+def list_scheduled(client: api.FalServerlessHost):
+    table = Table(title="Cronjobs")
+    table.add_column("Cron ID")
     table.add_column("Cron")
+    table.add_column("ETA next run")
+    table.add_column("State")
 
-    with client.connect() as connection:
-        for cron in connection.list_scheduled_runs():
-            table.add_row(cron.run_id, cron.state.name, cron.cron)
+    for cron in client._connection.list_scheduled_runs():
+        state_string = ["Not Active", "Active"][cron.active]
+        table.add_row(cron.cron_id, cron.cron_string, str(cron.next_run), state_string)
 
     console.print(table)
 
 
 @scheduled_cli.command(name="activations")
-@click.argument("job-id", required=True)
+@click.argument("cron-id", required=True)
 @click.argument("limit", default=15)
 @click.pass_obj
-def list_activations(client: sdk.FalServerlessClient, job_id: str, limit: int = 15):
-    table = Table(title="Job activations")
-    table.add_column("Job ID")
+def list_activations(client: api.FalServerlessHost, cron_id: str, limit: int = 15):
+    table = Table(title="Cron activations")
+    table.add_column("Cron ID")
     table.add_column("Activation ID")
-    table.add_column("Activation Date")
+    table.add_column("Activation Start Date")
+    table.add_column("Activation Finish Date")
 
-    with client.connect() as connection:
-        for cron in connection.list_run_activations(job_id)[-limit:]:
-            table.add_row(
-                cron.run_id,
-                cron.activation_id,
-                str(datetime.fromtimestamp(int(cron.activation_id))),
-            )
+    for activation in client._connection.list_run_activations(cron_id)[-limit:]:
+        table.add_row(
+            cron_id,
+            str(activation.activation_id),
+            str(activation.started_at),
+            str(activation.finished_at),
+        )
 
     console.print(table)
 
 
 @scheduled_cli.command(name="logs")
-@click.argument("job-id", required=True)
+@click.argument("cron_id", required=True)
 @click.argument("activation-id", required=True)
 @click.pass_obj
-def print_logs(client: sdk.FalServerlessClient, job_id: str, activation_id: str):
-    with client.connect() as connection:
-        raw_logs = connection.get_activation_logs(
-            sdk.ScheduledRunActivation(job_id, activation_id)
-        )
-        console.print(raw_logs.decode(errors="ignore"), highlight=False)
+def print_logs(client: api.FalServerlessHost, cron_id: str, activation_id: str):
+    raw_logs = client._connection.get_activation_logs(activation_id)
+    console.print(raw_logs.decode(errors="ignore"), highlight=False)
 
 
 @scheduled_cli.command("cancel")
-@click.argument("job-id", required=True)
+@click.argument("cron_id", required=True)
 @click.pass_obj
-def cancel_scheduled(client: sdk.FalServerlessClient, job_id: str):
-    with client.connect() as connection:
-        connection.cancel_scheduled_run(job_id)
-        console.print("Cancelled", repr(job_id))
+def cancel_scheduled(client: api.FalServerlessHost, cron_id: str):
+    client._connection.cancel_scheduled_run(cron_id)
+    console.print("Cancelled", repr(cron_id))
 
 
 ###### Usage group ######

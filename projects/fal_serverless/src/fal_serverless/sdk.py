@@ -143,12 +143,6 @@ class FalServerlessClient:
         return FalServerlessConnection(self.hostname, self.credentials)
 
 
-class ScheduledRunState(Enum):
-    SCHEDULED = 0
-    INTERNAL_FAILURE = 1
-    USER_FAILURE = 2
-
-
 class HostedRunState(Enum):
     IN_PROGRESS = 0
     SUCCESS = 1
@@ -160,17 +154,20 @@ class HostedRunStatus:
     state: HostedRunState
 
 
-@dataclass
-class ScheduledRun:
-    run_id: str
-    state: ScheduledRunState
-    cron: str
+@dataclass(frozen=True)
+class Cron:
+    cron_id: str
+    cron_string: str
+    next_run: datetime
+    active: bool
 
 
-@dataclass
+@dataclass(frozen=True)
 class ScheduledRunActivation:
-    run_id: str
+    cron_id: str
     activation_id: str
+    started_at: datetime
+    finished_at: datetime
 
 
 @dataclass
@@ -185,6 +182,16 @@ class HostedRunResult(Generic[ResultT]):
 class RegisterApplicationResult:
     result: RegisterApplicationResultType | None
     logs: list[Log] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class RegisterCronResultType:
+    cron_id: str
+
+
+@dataclass(frozen=True)
+class RegisterCronResult:
+    result: RegisterCronResultType
 
 
 @dataclass
@@ -206,6 +213,27 @@ class WorkerStatus:
     duration: timedelta
     user_id: str
     machine_type: str
+
+
+@from_grpc.register(isolate_proto.RegisterCronResult)
+def _from_grpc_register_cron_result(
+    message: isolate_proto.RegisterCronResult,
+) -> RegisterCronResult:
+    return RegisterCronResult(
+        result=RegisterCronResultType(message.result.cron_id),
+    )
+
+
+@from_grpc.register(isolate_proto.CronResultType)
+def _from_grpc_cron_result_type(
+    message: isolate_proto.CronResultType,
+) -> Cron:
+    return Cron(
+        cron_id=message.cron_id,
+        cron_string=message.cron_string,
+        next_run=message.next_run.ToDatetime(),
+        active=message.is_active,
+    )
 
 
 @from_grpc.register(isolate_proto.RegisterApplicationResult)
@@ -244,9 +272,9 @@ def _from_grpc_hosted_run_result(
     )
 
 
-def _get_run_id(run: ScheduledRun | str) -> str:
-    if isinstance(run, ScheduledRun):
-        return run.run_id
+def _get_cron_id(run: Cron | str) -> str:
+    if isinstance(run, Cron):
+        return run.cron_id
     else:
         return run
 
@@ -388,74 +416,46 @@ class FalServerlessConnection:
         for partial_result in self.stub.Run(request):
             yield from_grpc(partial_result)
 
-    def schedule_run(
+    def schedule_cronjob(
         self,
-        function: Callable[[], ResultT],
-        environments: list[isolate_proto.EnvironmentDefinition],
+        application_id: str,
         cron: str,
-        *,
-        serialization_method: str = _DEFAULT_SERIALIZATION_METHOD,
-        machine_requirements: MachineRequirements | None = None,
-    ) -> ScheduledRun:
-        wrapped_function = to_serialized_object(function, serialization_method)
-        if machine_requirements:
-            wrapped_requirements = isolate_proto.MachineRequirements(
-                machine_type=machine_requirements.machine_type
-            )
-        else:
-            wrapped_requirements = None
-
-        request = isolate_proto.HostedRunCron(
-            function=wrapped_function,
-            environments=environments,
-            cron=cron,
-            machine_requirements=wrapped_requirements,
+    ) -> isolate_proto.RegisterCronResult:
+        request = isolate_proto.RegisterCronRequest(
+            application_id=application_id, cron=cron
         )
-        response = self.stub.Schedule(request)
-        return ScheduledRun(
-            response.run_id,
-            state=ScheduledRunState(response.state),
-            cron=cron,
+        response: isolate_proto.RegisterApplicationResultType = self.stub.RegisterCron(
+            request
         )
+        return response
 
-    def list_scheduled_runs(self) -> list[ScheduledRun]:
-        request = isolate_proto.ListScheduledRunsRequest()
-        response = self.stub.ListScheduledRuns(request)
-        return [
-            ScheduledRun(
-                run.run_id,
-                state=ScheduledRunState(run.state),
-                cron=run.cron,
-            )
-            for run in response.scheduled_runs
-        ]
+    def list_scheduled_runs(self) -> list[Cron]:
+        request = isolate_proto.ListCronsRequest()
+        response: isolate_proto.ListCronsResult = self.stub.ListCrons(request)
+        return [from_grpc(cron) for cron in response.crons]
 
-    def cancel_scheduled_run(self, run: ScheduledRun | str) -> None:
-        request = isolate_proto.CancelScheduledRunRequest(run_id=_get_run_id(run))
-        self.stub.CancelScheduledRun(request)
-
-    def list_run_activations(
-        self, run: ScheduledRun | str
-    ) -> list[ScheduledRunActivation]:
-        request = isolate_proto.ListScheduledRunActivationsRequest(
-            run_id=_get_run_id(run)
+    def list_run_activations(self, run: str | Cron) -> list[ScheduledRunActivation]:
+        request = isolate_proto.ListActivationsRequest(cron_id=_get_cron_id(run))
+        response: isolate_proto.ListActivationsResult = self.stub.ListActivations(
+            request
         )
-        response = self.stub.ListScheduledRunActivations(request)
         return [
             ScheduledRunActivation(
-                run_id=_get_run_id(run),
-                activation_id=activation_id,
+                cron_id=_get_cron_id(run),
+                activation_id=activation.activation_id,
+                started_at=activation.started_at.ToDatetime(),
+                finished_at=activation.finished_at.ToDatetime(),
             )
-            for activation_id in response.activation_ids
+            for activation in response.activations
         ]
 
-    def get_activation_logs(self, activation: ScheduledRunActivation) -> bytes:
-        request = isolate_proto.GetScheduledActivationLogsRequest(
-            run_id=activation.run_id,
-            activation_id=activation.activation_id,
-        )
-        response = self.stub.GetScheduledActivationLogs(request)
-        return response.raw_logs
+    def cancel_scheduled_run(self, cron_id: str) -> None:
+        request = isolate_proto.CancelCronRequest(cron_id=cron_id)
+        response: isolate_proto.CancelCronResult = self.stub.CancelCron(request)
+        return
+
+    def get_activation_logs(self, activation_id: str) -> bytes:
+        raise NotImplementedError
 
     def list_worker_status(self, user_id: str | None = None) -> list[WorkerStatus]:
         request = isolate_proto.WorkerStatusListRequest(user_id=user_id)

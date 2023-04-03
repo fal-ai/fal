@@ -255,12 +255,19 @@ class FalServerlessHost(Host):
             environments,
             machine_requirements=machine_requirements,
         ):
-
             for log in partial_result.logs:
                 self._log_printer.print(log)
 
             if partial_result.result:
                 return partial_result.result.application_id
+
+    @_handle_grpc_error()
+    def schedule(
+        self, func: Callable[..., ReturnT], cron: str, options: Options
+    ) -> str | None:
+        application_id = self.register(func, options)
+        cron_id = self._connection.schedule_cronjob(application_id, cron)
+        return cron_id
 
     @_handle_grpc_error()
     def run(
