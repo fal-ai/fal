@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from sys import argv
+from urllib.parse import quote as urlquote
 from uuid import uuid4
 
 import click
@@ -282,9 +283,8 @@ def register_application(host: str, port: str, file_path: str, function_name: st
 
     module = runpy.run_path(file_path)
     isolated_function = module[function_name]
-    if not isolated_function.options.gateway.get(
-        "serve"
-    ) and not isolated_function.options.gateway.get("exposed_port"):
+    gateway_options = isolated_function.options.gateway
+    if "serve" not in gateway_options and "exposed_port" not in gateway_options:
         raise api.FalServerlessError(
             "One of `serve` or `exposed-port` options needs to be specified in the isolated annotation to register a function"
         )
@@ -292,7 +292,14 @@ def register_application(host: str, port: str, file_path: str, function_name: st
         func=isolated_function.func, options=isolated_function.options
     )
     if id:
-        console.print("application id: " + id)
+        console.print(f"Registered function {id}")
+
+        # TODO: should we centralize this URL format?
+        gateway_host = host.replace("api.", "gateway.")
+        user_id = auth.USER.info["sub"]
+        app_url = f"http://{gateway_host}/trigger/{user_id}/{id}/"
+        # Encode since user_id can contain special characters
+        console.print(f"Function URL: {urlquote(app_url)}")
 
 
 cli.add_command(auth_cli, name="auth")
