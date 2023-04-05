@@ -58,9 +58,8 @@ class MainGroup(click.Group):
         ):
             try:
                 log.debug(
-                    f"Executing command",
+                    f"Executing command: {qualified_name}",
                     command=qualified_name,
-                    invocation_id=invocation_id,
                 )
                 return super().invoke(ctx)
             except Exception as exception:

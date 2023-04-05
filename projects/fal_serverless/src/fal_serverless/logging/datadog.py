@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import os
+import sys
 import traceback
 import warnings
 
@@ -8,14 +8,19 @@ from datadog_api_client import Configuration, ThreadedApiClient
 from datadog_api_client.v2.api.logs_api import LogsApi
 from datadog_api_client.v2.model.http_log import HTTPLog
 from datadog_api_client.v2.model.http_log_item import HTTPLogItem
+from fal_serverless.env import CLI_ENV, DATADOG_API_KEY, DATADOG_APP_KEY
+from fal_serverless.logging.trace import get_current_span_context
 from structlog.typing import EventDict, WrappedLogger
 
-from .trace import get_current_span_context
+if sys.version_info >= (3, 10):
+    import importlib.metadata as importlib_metadata
+else:
+    import importlib_metadata
 
-# TODO decide on how to inject datadog keys when publishing the package
+
 configuration = Configuration()
-configuration.api_key["apiKeyAuth"] = os.getenv("DATADOG_API_KEY")
-configuration.api_key["appKeyAuth"] = os.getenv("DATADOG_APP_KEY")
+configuration.api_key["apiKeyAuth"] = DATADOG_API_KEY
+configuration.api_key["appKeyAuth"] = DATADOG_APP_KEY
 
 
 def _is_error_level(level: str) -> bool:
@@ -28,10 +33,12 @@ def submit_to_datadog(
     if configuration.api_key["apiKeyAuth"] is None:
         return event_dict
 
-    event = event_dict["event"]
+    log_data = dict(event_dict)
+    event = log_data.pop("event")
+    level = log_data.pop("level")
 
     current_span = get_current_span_context()
-    attributes: dict[str, str] = {}
+    attributes = log_data.copy()
     tags: dict[str, str] = {}
     if current_span is not None:
         tags["invocation_id"] = current_span.invocation_id
@@ -47,13 +54,11 @@ def submit_to_datadog(
     ddtags = ",".join([f"{key}:{value}" for (key, value) in tags.items()])
     log_item = HTTPLogItem(
         message=str(event),
-        level=method_name,
+        level=level,
         hostname="client",
-        # TODO: leaving koldstart-cli to keep logs in the same place for now
-        service="koldstart-cli",
-        # TODO: how to set these properly?
-        # env="dev",
-        # version="0.6.18a0",
+        service="fal-serverless-cli",
+        env=CLI_ENV,
+        version=importlib_metadata.version("fal_serverless"),
         ddsource="python",
         ddtags=ddtags,
         traceback=stack,
