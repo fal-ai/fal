@@ -234,7 +234,12 @@ class FalServerlessHost(Host):
             return client.connect()
 
     @_handle_grpc_error()
-    def register(self, func: Callable[..., ReturnT], options: Options) -> str | None:
+    def register(
+        self,
+        func: Callable[..., ReturnT],
+        options: Options,
+        application_name: str | None = None,
+    ) -> str | None:
         environment_options = options.environment.copy()
         environment_options.setdefault("python_version", active_python())
         environments = [self._connection.define_environment(**environment_options)]
@@ -253,6 +258,7 @@ class FalServerlessHost(Host):
         for partial_result in self._connection.register(
             partial_func,
             environments,
+            application_name=application_name,
             machine_requirements=machine_requirements,
         ):
             for log in partial_result.logs:
@@ -351,7 +357,6 @@ def isolated(
     host: Host = _DEFAULT_HOST,
     **config: Any,
 ) -> Callable[[Callable[..., ReturnT]], IsolatedFunction[ReturnT]]:
-
     options = host.parse_options(kind=kind, **config)
 
     def wrapper(func: Callable[..., ReturnT]) -> IsolatedFunction[ReturnT]:

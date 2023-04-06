@@ -365,6 +365,7 @@ class FalServerlessConnection:
         self,
         function: Callable[..., ResultT],
         environments: list[isolate_proto.EnvironmentDefinition],
+        application_name: str | None = None,
         *,
         serialization_method: str = _DEFAULT_SERIALIZATION_METHOD,
         machine_requirements: MachineRequirements | None = None,
@@ -382,6 +383,7 @@ class FalServerlessConnection:
             function=wrapped_function,
             environments=environments,
             machine_requirements=wrapped_requirements,
+            application_name=application_name,
         )
         for partial_result in self.stub.RegisterApplication(request):
             yield from_grpc(partial_result)

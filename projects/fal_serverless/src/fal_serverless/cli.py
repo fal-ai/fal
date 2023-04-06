@@ -275,9 +275,16 @@ def usage_worker_status(client: sdk.FalServerlessClient, user: str | None):
 @cli.command("register")
 @click.option("--host", default=DEFAULT_HOST, envvar=HOST_ENVVAR)
 @click.option("--port", default=DEFAULT_PORT, envvar=PORT_ENVVAR, hidden=True)
+@click.option("--alias", default=None)
 @click.argument("file_path", required=True)
 @click.argument("function_name", required=True)
-def register_application(host: str, port: str, file_path: str, function_name: str):
+def register_application(
+    host: str,
+    port: str,
+    file_path: str,
+    function_name: str,
+    alias: str | None = None,
+):
     import runpy
 
     module = runpy.run_path(file_path)
@@ -288,17 +295,26 @@ def register_application(host: str, port: str, file_path: str, function_name: st
             "One of `serve` or `exposed-port` options needs to be specified in the isolated annotation to register a function"
         )
     id = api.FalServerlessHost(f"{host}:{port}").register(
-        func=isolated_function.func, options=isolated_function.options
+        func=isolated_function.func,
+        options=isolated_function.options,
+        application_name=alias,
     )
     if id:
-        console.print(f"Registered function {id}")
-
         # TODO: should we centralize this URL format?
         gateway_host = host.replace("api.", "gateway.")
-        user_id = auth.USER.info["sub"]
-        app_url = f"http://{gateway_host}/trigger/{user_id}/{id}/"
+
         # Encode since user_id can contain special characters
-        console.print(f"Function URL: {urlquote(app_url)}")
+        user_id = auth.USER.info["sub"]
+        base_trigger_url = "https://" + urlquote(f"{gateway_host}/trigger/{user_id}")
+        if alias:
+            console.print(
+                f"Registered a new revision for application '{alias}' (revision='{id}')."
+            )
+            console.print(f"App Access URL: {base_trigger_url}/{urlquote(alias)}")
+            console.print(f"Revision Access URL: {base_trigger_url}/{urlquote(id)}")
+        else:
+            console.print(f"Registered anonymous application '{id}'.")
+            console.print(f"Access URL: {base_trigger_url}/{urlquote(id)}")
 
 
 cli.add_command(auth_cli, name="auth")
