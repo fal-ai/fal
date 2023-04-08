@@ -5,7 +5,7 @@ import warnings
 
 import click
 import requests
-from auth0.v3.authentication.token_verifier import (
+from auth0.authentication.token_verifier import (
     AsymmetricSignatureVerifier,
     TokenVerifier,
 )
