@@ -317,6 +317,47 @@ def register_application(
             console.print(f"Access URL: {base_trigger_url}/{urlquote(id)}")
 
 
+@cli.group("secrets")
+@click.option("--host", default=DEFAULT_HOST, envvar=HOST_ENVVAR)
+@click.option("--port", default=DEFAULT_PORT, envvar=PORT_ENVVAR, hidden=True)
+@click.pass_context
+def secrets_cli(ctx, host: str, port: str):
+    ctx.obj = sdk.FalServerlessClient(f"{host}:{port}")
+
+
+@secrets_cli.command("list")
+@click.pass_obj
+def list_secrets(client: api.FalServerlessClient):
+    table = Table(title="Secrets")
+    table.add_column("Secret Name")
+    table.add_column("Created At")
+
+    with client.connect() as connection:
+        for secret in connection.list_secrets():
+            table.add_row(secret.name, str(secret.created_at))
+
+    console.print(table)
+
+
+@secrets_cli.command("set")
+@click.argument("secret_name", required=True)
+@click.argument("secret_value", required=True)
+@click.pass_obj
+def set_secret(client: api.FalServerlessClient, secret_name: str, secret_value: str):
+    with client.connect() as connection:
+        connection.set_secret(secret_name, secret_value)
+        console.print(f"Secret '{secret_name}' has set")
+
+
+@secrets_cli.command("delete")
+@click.argument("secret_name", required=True)
+@click.pass_obj
+def delete_secret(client: api.FalServerlessClient, secret_name: str):
+    with client.connect() as connection:
+        connection.delete_secret(secret_name)
+        console.print(f"Secret '{secret_name}' has deleted")
+
+
 cli.add_command(auth_cli, name="auth")
 cli.add_command(key_cli, name="key")
 cli.add_command(scheduled_cli, name="scheduled")

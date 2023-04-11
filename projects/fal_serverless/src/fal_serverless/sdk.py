@@ -98,6 +98,12 @@ class AuthenticatedCredentials(Credentials):
         )
 
 
+@dataclass
+class ServerlessSecret:
+    name: str
+    created_at: datetime
+
+
 def _key_credentials() -> FalServerlessKeyCredentials | None:
     # Ignore key credentials when the user forces auth by user.
     if os.environ.get("FAL_FORCE_AUTH_BY_USER") == "1":
@@ -472,4 +478,23 @@ class FalServerlessConnection:
                 ws.machine_type,
             )
             for ws in response.worker_status
+        ]
+
+    async def set_secret(self, key: str, value: str) -> None:
+        request = isolate_proto.SetSecretRequest(key=key, value=value)
+        await self.stub.SetSecret(request)
+
+    async def delete_secret(self, key: str) -> None:
+        request = isolate_proto.SetSecretRequest(key=key, value=None)
+        await self.stub.SetSecret(request)
+
+    async def list_secrets(self) -> list[ServerlessSecret]:
+        request = isolate_proto.ListSecretsRequest()
+        response = await self.stub.ListSecrets(request)
+        return [
+            ServerlessSecret(
+                name=secret.key,
+                created_at=isolate_proto.datetime_from_timestamp(secret.created_at),
+            )
+            for secret in response.secrets
         ]
