@@ -146,95 +146,11 @@ def key_list(client: sdk.FalServerlessClient):
 
 
 @key_cli.command(name="revoke")
-@click.argument("key-id", required=True)
+@click.argument("key_id", required=True)
 @click.pass_obj
 def key_revoke(client: sdk.FalServerlessClient, key_id: str):
     with client.connect() as connection:
         connection.revoke_user_key(key_id)
-
-
-###### Scheduled group ######
-@cli.group("scheduled", hidden=True)
-@click.option("--host", default=DEFAULT_HOST, envvar=HOST_ENVVAR)
-@click.option("--port", default=DEFAULT_PORT, envvar=PORT_ENVVAR, hidden=True)
-@click.pass_context
-def scheduled_cli(ctx, host: str, port: str):
-    ctx.obj = api.FalServerlessHost(f"{host}:{port}")
-
-
-@scheduled_cli.command("register")
-@click.argument("cron_string", required=True)
-@click.argument("file_path", required=True)
-@click.argument("function_name", required=True)
-@click.pass_obj
-def register_schedulded(
-    client: api.FalServerlessHost, cron_string: str, file_path: str, function_name: str
-):
-    import runpy
-
-    module = runpy.run_path(file_path)
-    isolated_function = module[function_name]
-
-    cron_id = client.schedule(
-        func=isolated_function.func, cron=cron_string, options=isolated_function.options
-    )
-    if cron_id:
-        console.print(cron_id)
-
-
-@scheduled_cli.command(name="list")
-@click.pass_obj
-def list_scheduled(client: api.FalServerlessHost):
-    table = Table(title="Cronjobs")
-    table.add_column("Cron ID")
-    table.add_column("Cron")
-    table.add_column("ETA next run")
-    table.add_column("State")
-
-    for cron in client._connection.list_scheduled_runs():
-        state_string = ["Not Active", "Active"][cron.active]
-        table.add_row(cron.cron_id, cron.cron_string, str(cron.next_run), state_string)
-
-    console.print(table)
-
-
-@scheduled_cli.command(name="activations")
-@click.argument("cron-id", required=True)
-@click.argument("limit", default=15)
-@click.pass_obj
-def list_activations(client: api.FalServerlessHost, cron_id: str, limit: int = 15):
-    table = Table(title="Cron activations")
-    table.add_column("Cron ID")
-    table.add_column("Activation ID")
-    table.add_column("Activation Start Date")
-    table.add_column("Activation Finish Date")
-
-    for activation in client._connection.list_run_activations(cron_id)[-limit:]:
-        table.add_row(
-            cron_id,
-            str(activation.activation_id),
-            str(activation.started_at),
-            str(activation.finished_at),
-        )
-
-    console.print(table)
-
-
-@scheduled_cli.command(name="logs")
-@click.argument("cron_id", required=True)
-@click.argument("activation-id", required=True)
-@click.pass_obj
-def print_logs(client: api.FalServerlessHost, cron_id: str, activation_id: str):
-    raw_logs = client._connection.get_activation_logs(activation_id)
-    console.print(raw_logs.decode(errors="ignore"), highlight=False)
-
-
-@scheduled_cli.command("cancel")
-@click.argument("cron_id", required=True)
-@click.pass_obj
-def cancel_scheduled(client: api.FalServerlessHost, cron_id: str):
-    client._connection.cancel_scheduled_run(cron_id)
-    console.print("Cancelled", repr(cron_id))
 
 
 ###### Usage group ######
@@ -272,15 +188,22 @@ def usage_worker_status(client: sdk.FalServerlessClient, user: str | None):
     console.print(table)
 
 
-@cli.command("register")
+##### Function group #####
+@cli.group("function")
 @click.option("--host", default=DEFAULT_HOST, envvar=HOST_ENVVAR)
 @click.option("--port", default=DEFAULT_PORT, envvar=PORT_ENVVAR, hidden=True)
+@click.pass_context
+def function_cli(ctx, host: str, port: str):
+    ctx.obj = api.FalServerlessHost(f"{host}:{port}")
+
+
+@function_cli.command("serve")
 @click.option("--alias", default=None)
 @click.argument("file_path", required=True)
 @click.argument("function_name", required=True)
+@click.pass_obj
 def register_application(
-    host: str,
-    port: str,
+    host: api.FalServerlessHost,
     file_path: str,
     function_name: str,
     alias: str | None = None,
@@ -294,14 +217,14 @@ def register_application(
         raise api.FalServerlessError(
             "One of `serve` or `exposed-port` options needs to be specified in the isolated annotation to register a function"
         )
-    id = api.FalServerlessHost(f"{host}:{port}").register(
+    id = host.register(
         func=isolated_function.func,
         options=isolated_function.options,
         application_name=alias,
     )
     if id:
         # TODO: should we centralize this URL format?
-        gateway_host = host.replace("api.", "gateway.")
+        gateway_host = host.url.replace("api.", "gateway.")
 
         # Encode since user_id can contain special characters
         user_id = auth.USER.info["sub"]
@@ -315,6 +238,90 @@ def register_application(
         else:
             console.print(f"Registered anonymous application '{id}'.")
             console.print(f"Access URL: {base_trigger_url}/{urlquote(id)}")
+
+
+@function_cli.command("schedule")
+@click.argument("cron_string", required=True)
+@click.argument("file_path", required=True)
+@click.argument("function_name", required=True)
+@click.pass_obj
+def register_schedulded(
+    client: api.FalServerlessHost, cron_string: str, file_path: str, function_name: str
+):
+    import runpy
+
+    module = runpy.run_path(file_path)
+    isolated_function = module[function_name]
+
+    cron_id = client.schedule(
+        func=isolated_function.func, cron=cron_string, options=isolated_function.options
+    )
+    if cron_id:
+        console.print(cron_id)
+
+
+##### Crons group #####
+@cli.group("crons")
+@click.option("--host", default=DEFAULT_HOST, envvar=HOST_ENVVAR)
+@click.option("--port", default=DEFAULT_PORT, envvar=PORT_ENVVAR, hidden=True)
+@click.pass_context
+def crons_cli(ctx, host: str, port: str):
+    ctx.obj = api.FalServerlessHost(f"{host}:{port}")
+
+
+@crons_cli.command(name="list")
+@click.pass_obj
+def list_scheduled(client: api.FalServerlessHost):
+    table = Table(title="Cronjobs")
+    table.add_column("Cron ID")
+    table.add_column("Cron")
+    table.add_column("ETA next run")
+    table.add_column("State")
+
+    for cron in client._connection.list_scheduled_runs():
+        state_string = ["Not Active", "Active"][cron.active]
+        table.add_row(cron.cron_id, cron.cron_string, str(cron.next_run), state_string)
+
+    console.print(table)
+
+
+@crons_cli.command(name="activations")
+@click.argument("cron_id", required=True)
+@click.argument("limit", default=15)
+@click.pass_obj
+def list_activations(client: api.FalServerlessHost, cron_id: str, limit: int = 15):
+    table = Table(title="Cron activations")
+    table.add_column("Cron ID")
+    table.add_column("Activation ID")
+    table.add_column("Activation Start Date")
+    table.add_column("Activation Finish Date")
+
+    for activation in client._connection.list_run_activations(cron_id)[-limit:]:
+        table.add_row(
+            cron_id,
+            str(activation.activation_id),
+            str(activation.started_at),
+            str(activation.finished_at),
+        )
+
+    console.print(table)
+
+
+@crons_cli.command(name="logs")
+@click.argument("cron_id", required=True)
+@click.argument("activation-id", required=True)
+@click.pass_obj
+def print_logs(client: api.FalServerlessHost, cron_id: str, activation_id: str):
+    raw_logs = client._connection.get_activation_logs(activation_id)
+    console.print(raw_logs.decode(errors="ignore"), highlight=False)
+
+
+@crons_cli.command("cancel")
+@click.argument("cron_id", required=True)
+@click.pass_obj
+def cancel_scheduled(client: api.FalServerlessHost, cron_id: str):
+    client._connection.cancel_scheduled_run(cron_id)
+    console.print("Cancelled", repr(cron_id))
 
 
 @cli.group("secrets")
@@ -360,9 +367,9 @@ def delete_secret(client: api.FalServerlessClient, secret_name: str):
 
 cli.add_command(auth_cli, name="auth")
 cli.add_command(key_cli, name="key")
-cli.add_command(scheduled_cli, name="scheduled")
+cli.add_command(function_cli, name="function")
+cli.add_command(crons_cli, name="crons")
 cli.add_command(usage_cli, name="usage")
-cli.add_command(register_application, name="register")
 
 
 if __name__ == "__main__":
