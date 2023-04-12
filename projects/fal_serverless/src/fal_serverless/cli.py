@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from sys import argv
-from urllib.parse import quote as urlquote
 from uuid import uuid4
 
 import click
@@ -227,17 +226,15 @@ def register_application(
         gateway_host = host.url.replace("api.", "gateway.")
 
         # Encode since user_id can contain special characters
-        user_id = auth.USER.info["sub"]
-        base_trigger_url = "https://" + urlquote(f"{gateway_host}/trigger/{user_id}")
+        user_id = auth.USER.info["sub"].split("|")[1]
         if alias:
             console.print(
-                f"Registered a new revision for application '{alias}' (revision='{id}')."
+                f"Registered a new revision for function '{alias}' (revision='{id}')."
             )
-            console.print(f"App Access URL: {base_trigger_url}/{urlquote(alias)}")
-            console.print(f"Revision Access URL: {base_trigger_url}/{urlquote(id)}")
+            console.print(f"URL: https://{user_id}-{alias}.{gateway_host}")
         else:
-            console.print(f"Registered anonymous application '{id}'.")
-            console.print(f"Access URL: {base_trigger_url}/{urlquote(id)}")
+            console.print(f"Registered anonymous function '{id}'.")
+            console.print(f"URL: https://{user_id}-{id}.{gateway_host}")
 
 
 @function_cli.command("schedule")
