@@ -480,21 +480,21 @@ class FalServerlessConnection:
             for ws in response.worker_status
         ]
 
-    async def set_secret(self, key: str, value: str) -> None:
-        request = isolate_proto.SetSecretRequest(key=key, value=value)
-        await self.stub.SetSecret(request)
+    def set_secret(self, name: str, value: str) -> None:
+        request = isolate_proto.SetSecretRequest(name=name, value=value)
+        self.stub.SetSecret(request)
 
-    async def delete_secret(self, key: str) -> None:
-        request = isolate_proto.SetSecretRequest(key=key, value=None)
-        await self.stub.SetSecret(request)
+    def delete_secret(self, name: str) -> None:
+        request = isolate_proto.SetSecretRequest(name=name, value=None)
+        self.stub.SetSecret(request)
 
-    async def list_secrets(self) -> list[ServerlessSecret]:
+    def list_secrets(self) -> list[ServerlessSecret]:
         request = isolate_proto.ListSecretsRequest()
-        response = await self.stub.ListSecrets(request)
+        response = self.stub.ListSecrets(request)
         return [
             ServerlessSecret(
-                name=secret.key,
-                created_at=isolate_proto.datetime_from_timestamp(secret.created_at),
+                name=secret.name,
+                created_at=isolate_proto.datetime_from_timestamp(secret.created_time),
             )
             for secret in response.secrets
         ]
