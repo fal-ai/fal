@@ -1,7 +1,12 @@
 from __future__ import annotations
 
 import pytest
-from fal_serverless import FalServerlessHost, FalServerlessKeyCredentials, local
+from fal_serverless import (
+    FalServerlessHost,
+    FalServerlessKeyCredentials,
+    local,
+    sync_dir,
+)
 from fal_serverless.api import FalServerlessError
 
 
@@ -91,3 +96,53 @@ def test_isolate_error_handling(isolated_client):
 
     with pytest.raises(FalServerlessError):
         raises_grpc_error()
+
+
+def test_sync(isolated_client):
+    import os
+    import random
+    import string
+    import tempfile
+
+    def create_random_file(file_path, size):
+        with open(file_path, "wb") as f:
+            f.write(os.urandom(size))
+
+    def create_test_directory():
+        temp_dir = tempfile.mkdtemp()
+        for i in range(3):
+            file_name = "".join(random.choices(string.ascii_letters, k=10)) + ".txt"
+            file_path = os.path.join(temp_dir, file_name)
+            create_random_file(file_path, 1024)
+        return temp_dir
+
+    @isolated_client()
+    def list_remote_directory():
+        import os
+
+        contents = os.listdir(f"/data/sync/{remote_dir_name}")
+        return contents
+
+    @isolated_client()
+    def remove_remote_directory():
+        import shutil
+
+        shutil.rmtree(f"/data/sync/{remote_dir_name}")
+
+    local_dir = create_test_directory()
+    remote_dir_name = os.path.basename(local_dir)
+    sync_dir(local_dir, remote_dir_name)
+
+    remote_contents = list_remote_directory()
+    local_contents = os.listdir(local_dir)
+
+    local_contents.sort()
+    remote_contents.sort()
+
+    assert (
+        local_contents == remote_contents
+    ), "Local and remote directory contents do not match"
+
+    print("Test passed: Local and remote directory contents match")
+
+    remove_remote_directory()
