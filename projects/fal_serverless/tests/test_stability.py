@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sys
 from contextlib import suppress
 
 import fal_serverless
@@ -8,6 +7,22 @@ import pytest
 from fal_serverless.api import FalServerlessError
 
 PACKAGE_NAME = "fal_serverless"
+
+
+def test_missing_dependencies_nested_server_error(isolated_client):
+    @isolated_client()
+    def test1():
+        return "hello"
+
+    @isolated_client()
+    def test2():
+        test1()
+
+    with pytest.raises(
+        FalServerlessError,
+        match=r"fal_serverless \(as referred by test1\)",
+    ):
+        test2()
 
 
 def test_regular_function(isolated_client):
@@ -137,24 +152,6 @@ def test_unserializable_return(isolated_client):
 
     with pytest.raises(FalServerlessError, match="..."):
         unpicklable_return()
-
-
-@pytest.mark.xfail
-def test_missing_dependencies_on_server(isolated_client):
-    # When the function can't be deserialized on the server side due to
-    # incomplete/missing dependencies.
-
-    class FakeModule:
-        pass
-
-    sys.modules["mock_module"] = mock_module = FakeModule()
-
-    @isolated_client("virtualenv")
-    def unpicklable_input_function_server(default=mock_module):
-        return default
-
-    with pytest.raises(FalServerlessError, match="..."):
-        unpicklable_input_function_server()
 
 
 @pytest.mark.xfail

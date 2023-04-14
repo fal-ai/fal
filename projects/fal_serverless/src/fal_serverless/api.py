@@ -3,12 +3,14 @@ from __future__ import annotations
 import inspect
 import os
 import time
+from collections import defaultdict
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
 from functools import partial, wraps
-from typing import Any, Callable, ClassVar, Dict, Generic, TypeVar, cast
+from typing import Any, Callable, ClassVar, Dict, Generic, Iterator, TypeVar, cast
 
 import dill
+import dill.detect
 import grpc
 import isolate
 import yaml
@@ -27,6 +29,8 @@ from fal_serverless.sdk import (
 from isolate.backends.common import active_python
 from isolate.backends.settings import DEFAULT_SETTINGS
 from isolate.connections import PythonIPC
+from packaging.requirements import Requirement
+from packaging.utils import canonicalize_name
 
 dill.settings["recurse"] = True
 
@@ -42,6 +46,11 @@ class FalServerlessError(Exception):
 
 @dataclass
 class InternalFalServerlessError(Exception):
+    ...
+
+
+@dataclass
+class FalMissingDependencyError(FalServerlessError):
     ...
 
 
@@ -204,12 +213,53 @@ def _handle_grpc_error():
                             "This is likely due to resource overflow. "
                             "You can try again by setting a bigger `machine_type`"
                         )
+
+                    elif e.code() == grpc.StatusCode.INVALID_ARGUMENT and (
+                        "The function function could not be deserialized" in e.details()
+                    ):
+                        raise FalMissingDependencyError(e.details())
                     else:
                         raise FalServerlessError(e.details())
 
         return handler
 
     return decorator
+
+
+def find_missing_dependencies(
+    func: Callable[..., Any], env: dict
+) -> Iterator[tuple[str, list[str]]]:
+
+    if env["kind"] != "virtualenv":
+        return
+
+    used_modules = defaultdict(list)
+    scope = {**dill.detect.globalvars(func, recurse=True), **dill.detect.freevars(func)}  # type: ignore
+
+    for name, obj in scope.items():
+        if isinstance(obj, IsolatedFunction):
+            used_modules["fal_serverless"].append(name)
+            continue
+
+        module = inspect.getmodule(obj)
+        possible_package = getattr(module, "__package__", None)
+        if possible_package:
+            pkg_name, *_ = possible_package.split(".")  # type: ignore
+        else:
+            pkg_name = module.__name__  # type: ignore
+
+        used_modules[canonicalize_name(pkg_name)].append(name)  # type: ignore
+
+    raw_requirements = env.get("requirements", [])
+    specified_requirements = set()
+    for raw_requirement in raw_requirements:
+        requirement = Requirement(raw_requirement)
+        specified_requirements.add(canonicalize_name(requirement.name))
+
+    for module_name, used_names in used_modules.items():
+        if module_name in specified_requirements:
+            continue
+        yield module_name, used_names
 
 
 # TODO: Should we build all these in fal/dbt-fal packages instead?
@@ -425,12 +475,31 @@ class IsolatedFunction(Generic[ReturnT]):
         return cast(Future[ReturnT], future)
 
     def __call__(self, *args, **kwargs) -> ReturnT:
-        return self.host.run(
-            self.func,
-            self.options,
-            args=args,
-            kwargs=kwargs,
-        )
+        try:
+            return self.host.run(
+                self.func,
+                self.options,
+                args=args,
+                kwargs=kwargs,
+            )
+        except FalMissingDependencyError as e:
+            pairs = list(find_missing_dependencies(self.func, self.options.environment))
+            if not pairs:
+                raise e
+            else:
+                lines = []
+                for used_modules, references in pairs:
+                    lines.append(
+                        f"    - {used_modules} (as referred by {', '.join(references)})"
+                    )
+
+                raise FalServerlessError(
+                    "A deserialization error regarding your function has occurred. \nHint: This might be "
+                    " because the following modules are referenced but not required as part of your environment "
+                    "declaration:\n"
+                    + "\n".join(lines)
+                    + "\ntry adding them to the requirements of your isolated function"
+                )
 
     def on(self, host: Host | None = None, **config: Any) -> IsolatedFunction[ReturnT]:
         host = host or self.host
