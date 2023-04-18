@@ -117,23 +117,24 @@ def test_sync(isolated_client):
         return temp_dir
 
     @isolated_client()
-    def list_remote_directory():
+    def list_remote_directory(remote_dir):
         import os
 
-        contents = os.listdir(f"/data/sync/{remote_dir_name}")
+        contents = os.listdir(remote_dir)
         return contents
 
     @isolated_client()
-    def remove_remote_directory():
+    def remove_remote_directory(remote_dir):
         import shutil
 
-        shutil.rmtree(f"/data/sync/{remote_dir_name}")
+        shutil.rmtree(remote_dir)
 
     local_dir = create_test_directory()
-    remote_dir_name = os.path.basename(local_dir)
-    sync_dir(local_dir, remote_dir_name)
+    # Copy the basename of the local directory to keep it unique
+    remote_dir_name = "/data/" + os.path.basename(local_dir)
+    remote_dir_ref = sync_dir(local_dir, remote_dir_name)
 
-    remote_contents = list_remote_directory()
+    remote_contents = list_remote_directory(remote_dir_ref)
     local_contents = os.listdir(local_dir)
 
     local_contents.sort()
@@ -145,4 +146,4 @@ def test_sync(isolated_client):
 
     print("Test passed: Local and remote directory contents match")
 
-    remove_remote_directory()
+    remove_remote_directory(remote_dir_ref)

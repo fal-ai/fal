@@ -76,17 +76,20 @@ def _zip_directory(dir_path: str, zip_path: str) -> None:
                 zipf.write(file_path, arcname)
 
 
-def sync_dir(local_dir: str, remote_dir: str, force_upload=False) -> None:
+def sync_dir(local_dir: str, remote_dir: str, force_upload=False) -> str:
+    if not os.path.isabs(remote_dir) or not remote_dir.startswith("/data"):
+        raise ValueError(
+            "'remote_dir' must be an absolute path starting with `/data`, e.g. '/data/sync/my_dir'"
+        )
+
     # Compute the local directory hash
     local_hash = _compute_directory_hash(local_dir)
 
-    full_remote_dir = os.path.join("/data/sync", remote_dir)
+    print(f"Syncing {local_dir} with {remote_dir}...")
 
-    print(f"Syncing {local_dir} with {full_remote_dir}...")
-
-    if _check_hash(full_remote_dir, local_hash) and not force_upload:
+    if _check_hash(remote_dir, local_hash) and not force_upload:
         print(f"{remote_dir} already uploaded and matches {local_dir}")
-        return
+        return remote_dir
 
     with open(os.path.join(local_dir, ".fal_hash"), "w") as f:
         f.write(local_hash)
@@ -99,8 +102,11 @@ def sync_dir(local_dir: str, remote_dir: str, force_upload=False) -> None:
     # Upload the zipped directory to the serverless environment
     zip_remote_path = os.path.join("/data/sync", os.path.basename(zip_path))
     _upload_file(zip_path, zip_remote_path)
-    _unzip_target_directory(zip_remote_path, full_remote_dir)
+    _unzip_target_directory(zip_remote_path, remote_dir)
 
     # Remove the zipped directory
     os.remove(zip_path)
     print("Done")
+
+    # Return the full path to the remote directory
+    return remote_dir
