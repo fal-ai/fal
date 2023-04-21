@@ -462,8 +462,12 @@ class FalServerlessConnection:
         response: isolate_proto.CancelCronResult = self.stub.CancelCron(request)
         return
 
-    def get_activation_logs(self, activation_id: str) -> bytes:
-        raise NotImplementedError
+    def get_activation_logs(self, cron_id: str, activation_id: str) -> list[Log]:
+        request = isolate_proto.GetActivationLogsRequest(
+            cron_id=cron_id, activation_id=activation_id
+        )
+        response = self.stub.GetActivationLogs(request)
+        return [from_grpc(log) for log in response.logs]
 
     def list_worker_status(self, user_id: str | None = None) -> list[WorkerStatus]:
         request = isolate_proto.WorkerStatusListRequest(user_id=user_id)

@@ -8,10 +8,10 @@ import fal_serverless.auth as auth
 from fal_serverless import api, sdk
 from fal_serverless.console import console
 from fal_serverless.exceptions import ApplicationExceptionHandler
+from fal_serverless.logging import get_logger, set_debug_logging
+from fal_serverless.logging.isolate import IsolateLogPrinter
+from fal_serverless.logging.trace import get_tracer
 from rich.table import Table
-
-from .logging import get_logger, set_debug_logging
-from .logging.trace import get_tracer
 
 DEFAULT_HOST = "api.alpha.fal.ai"
 HOST_ENVVAR = "FAL_HOST"
@@ -274,7 +274,6 @@ def list_scheduled(client: api.FalServerlessHost):
     table.add_column("Cron")
     table.add_column("ETA next run")
     table.add_column("State")
-
     for cron in client._connection.list_scheduled_runs():
         state_string = ["Not Active", "Active"][cron.active]
         table.add_row(cron.cron_id, cron.cron_string, str(cron.next_run), state_string)
@@ -288,14 +287,12 @@ def list_scheduled(client: api.FalServerlessHost):
 @click.pass_obj
 def list_activations(client: api.FalServerlessHost, cron_id: str, limit: int = 15):
     table = Table(title="Cron activations")
-    table.add_column("Cron ID")
     table.add_column("Activation ID")
-    table.add_column("Activation Start Date")
-    table.add_column("Activation Finish Date")
+    table.add_column("Start Date")
+    table.add_column("Finish Date")
 
-    for activation in client._connection.list_run_activations(cron_id)[-limit:]:
+    for activation in client._connection.list_run_activations(cron_id)[:limit]:
         table.add_row(
-            cron_id,
             str(activation.activation_id),
             str(activation.started_at),
             str(activation.finished_at),
@@ -306,11 +303,16 @@ def list_activations(client: api.FalServerlessHost, cron_id: str, limit: int = 1
 
 @crons_cli.command(name="logs")
 @click.argument("cron_id", required=True)
-@click.argument("activation-id", required=True)
+@click.argument("activation_id", required=True)
 @click.pass_obj
 def print_logs(client: api.FalServerlessHost, cron_id: str, activation_id: str):
-    raw_logs = client._connection.get_activation_logs(activation_id)
-    console.print(raw_logs.decode(errors="ignore"), highlight=False)
+    logs = client._connection.get_activation_logs(cron_id, activation_id)
+    if not logs:
+        console.print(f"No logs found for activation {activation_id}")
+        return
+    log_printer = IsolateLogPrinter(debug=True)
+    for log in logs:
+        log_printer.print(log)
 
 
 @crons_cli.command("cancel")

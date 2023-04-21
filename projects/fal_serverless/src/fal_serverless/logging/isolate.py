@@ -2,14 +2,11 @@ from __future__ import annotations
 
 from isolate.logs import Log, LogLevel
 from structlog.dev import ConsoleRenderer
-from structlog.processors import TimeStamper
 from structlog.typing import EventDict
 
 from .style import LEVEL_STYLES
 
 _renderer = ConsoleRenderer(level_styles=LEVEL_STYLES)
-
-_timestamper = TimeStamper(fmt="%Y-%m-%d %H:%M:%S", utc=False)
 
 
 class IsolateLogPrinter:
@@ -26,12 +23,11 @@ class IsolateLogPrinter:
         event: EventDict = {
             "event": log.message,
             "level": level,
+            "timestamp": log.timestamp.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
         }
-        if self.debug:
-            bound_env = log.bound_env.key if log.bound_env is not None else "global"
-            event["bound_env"] = bound_env
+        if self.debug and log.bound_env and log.bound_env.key != "global":
+            event["bound_env"] = log.bound_env.key
 
         # Use structlog processors to get consistent output with local logs
-        event = _timestamper.__call__(logger={}, name=level, event_dict=event)
         message = _renderer.__call__(logger={}, name=level, event_dict=event)
         print(message)
