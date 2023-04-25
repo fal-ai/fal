@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from isolate.logs import Log, LogLevel
 from structlog.dev import ConsoleRenderer
 from structlog.typing import EventDict
@@ -20,10 +22,21 @@ class IsolateLogPrinter:
         if log.level < LogLevel.INFO and not self.debug:
             return
         level = str(log.level)
+
+        if hasattr(log, "timestamp"):
+            timestamp = log.timestamp
+        else:
+            # Default value for timestamp if user has old `isolate` version.
+            # Even if the controller version is controller by us, which means that the timestamp
+            # is being sent in the gRPC message.
+            # The `isolate` version users interpret that message with is out of our control.
+            # So we need to handle this case.
+            timestamp = datetime.now(timezone.utc)
+
         event: EventDict = {
             "event": log.message,
             "level": level,
-            "timestamp": log.timestamp.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
+            "timestamp": timestamp.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
         }
         if self.debug and log.bound_env and log.bound_env.key != "global":
             event["bound_env"] = log.bound_env.key
