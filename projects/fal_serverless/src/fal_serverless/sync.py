@@ -5,6 +5,8 @@ import os
 import shutil
 import zipfile
 
+from pathspec import PathSpec
+
 from .api import isolated
 
 CHUNK_SIZE = 1024 * 1024 * 10  # 10 MB
@@ -67,13 +69,34 @@ def _compute_directory_hash(dir_path: str) -> str:
     return hash.hexdigest()
 
 
+def _load_gitignore_patterns(dir_path: str) -> list:
+    # TODO: consider looking at .gitignore files in child directories
+    gitignore_path = os.path.join(dir_path, ".gitignore")
+    if os.path.exists(gitignore_path):
+        with open(gitignore_path) as f:
+            gitignore_patterns = f.read().splitlines()
+    else:
+        gitignore_patterns = []
+    return gitignore_patterns
+
+
+def _is_ignored(file_path: str, gitignore_patterns: list[str]) -> bool:
+    pathspec = PathSpec.from_lines("gitwildmatch", gitignore_patterns)
+    return pathspec.match_file(file_path)
+
+
 def _zip_directory(dir_path: str, zip_path: str) -> None:
+    gitignore_patterns = _load_gitignore_patterns(dir_path)
+
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
         for root, _, files in os.walk(dir_path):
             for file in files:
                 file_path = os.path.join(root, file)
-                arcname = file_path[len(dir_path) :]
-                zipf.write(file_path, arcname)
+                relative_path = os.path.relpath(file_path, dir_path)
+
+                if not _is_ignored(relative_path, gitignore_patterns):
+                    arcname = relative_path
+                    zipf.write(file_path, arcname)
 
 
 def sync_dir(local_dir: str, remote_dir: str, force_upload=False) -> str:

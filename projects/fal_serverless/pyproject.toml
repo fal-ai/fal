@@ -27,6 +27,7 @@ rich = "^13.3.2"
 # For 3.10 and later, importlib-metadata's newer versions are included in the standard library.
 importlib-metadata = { version = ">=4.4", python = "<3.10" }
 packaging = ">=21.3"
+pathspec = "^0.11.1"
 
 [build-system]
 requires = ["poetry-core"]
