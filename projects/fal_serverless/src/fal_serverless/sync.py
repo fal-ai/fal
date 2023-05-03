@@ -64,8 +64,9 @@ def _compute_directory_hash(dir_path: str) -> str:
     for root, _, files in os.walk(dir_path):
         for file in files:
             file_path = os.path.join(root, file)
-            with open(file_path, "rb") as f:
-                hash.update(f.read())
+            if file != ".fal_hash":
+                with open(file_path, "rb") as f:
+                    hash.update(f.read())
     return hash.hexdigest()
 
 
