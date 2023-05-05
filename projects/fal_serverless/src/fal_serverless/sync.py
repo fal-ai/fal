@@ -4,6 +4,7 @@ import hashlib
 import os
 import shutil
 import zipfile
+from typing import Any
 
 from pathspec import PathSpec
 
@@ -46,6 +47,43 @@ def _clear_destination_file(destination_path):
     os.makedirs("/data/sync", exist_ok=True)
     with open(destination_path, "wb") as f:
         f.truncate(0)
+
+
+@isolated()
+def list_children(parent_directory: str) -> list[dict]:
+    items: list[dict] = []
+
+    if not os.path.exists(parent_directory):
+        return items
+
+    for file_name in os.listdir(parent_directory):
+        file_path = os.path.join(parent_directory, file_name)
+
+        created_time = os.path.getctime(file_path)
+        updated_time = os.path.getmtime(file_path)
+
+        items.append(
+            {
+                "name": file_name,
+                "created_time": created_time,
+                "updated_time": updated_time,
+                "is_file": os.path.isfile(file_path),
+            }
+        )
+
+    return items
+
+
+@isolated()
+def parse_logs(file_path: str) -> Any:
+    import json
+
+    if os.path.exists(file_path):
+        with open(file_path) as f:
+            lines = f.readlines()
+            parsed = [json.loads(line) for line in lines]
+            return [log for sub in parsed for log in sub]
+    return []
 
 
 def _upload_file(source_path: str, destination_path: str) -> None:
