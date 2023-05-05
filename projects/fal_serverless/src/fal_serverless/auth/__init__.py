@@ -23,7 +23,12 @@ def logout():
     console.print(f"{CHECK_ICON} Logged out of [cyan bold]fal Serverless[/]. Bye!")
 
 
-def _fetch_access_token() -> str:
+def refresh():
+    _fetch_access_token(refresh=True)
+    console.print(f"{CHECK_ICON} Refreshed access token")
+
+
+def _fetch_access_token(refresh=False) -> str:
     """
     Load the refresh token, request a new access_token (refreshing the refresh token)
     and return the access_token.
@@ -35,7 +40,7 @@ def _fetch_access_token() -> str:
         if refresh_token is None:
             raise UnauthenticatedException()
 
-        if access_token is not None:
+        if access_token is not None and not refresh:
             try:
                 auth0.validate_access_token(access_token)
                 return access_token

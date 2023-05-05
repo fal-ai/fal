@@ -12,7 +12,6 @@ from auth0.authentication.token_verifier import (
 from fal_serverless.console import console
 from fal_serverless.console.icons import CHECK_ICON
 from fal_serverless.console.ux import get_browser
-from rich.prompt import Confirm
 
 AUTH0_DOMAIN = "auth.fal.ai"
 AUTH0_JWKS_URL = f"https://{AUTH0_DOMAIN}/.well-known/jwks.json"
@@ -45,26 +44,22 @@ def login() -> dict:
 
     browser = get_browser()
     console.print()
-    if browser is None:
+
+    if browser is not None and click.confirm(
+        "Open browser automatically ('no' to show URL)?", default=True, err=True
+    ):
+        browser.open_new_tab(device_confirmation_url)
+    else:
         console.print(
             f"1. On your computer or mobile device navigate to: {device_confirmation_url}"
         )
         console.print(
-            f"2. Confirm it shows the following code: [markdown.code]{device_user_code}[/]\n"
+            f"2. Confirm it shows the following code: [markdown.code]{device_user_code}[/]"
         )
-    else:
-        console.print(
-            f"Once the page loads, confirm it shows the following code: [markdown.code]{device_user_code}[/]"
-        )
-        Confirm.get_input(
-            console=console,
-            prompt="A browser will open with the login page when you [bold]Press Enter...[/]",
-            password=True,
-        )
-        # This is needed to suppress the ResourceWarning emitted
-        # when the process is waiting for user confirmation
-        warnings.filterwarnings("ignore", category=ResourceWarning)
-        browser.open_new_tab(device_confirmation_url)
+
+    # This is needed to suppress the ResourceWarning emitted
+    # when the process is waiting for user confirmation
+    warnings.filterwarnings("ignore", category=ResourceWarning)
 
     token_payload = {
         "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
