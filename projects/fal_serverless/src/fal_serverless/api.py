@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import inspect
 import os
-import time
 from collections import defaultdict
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
@@ -190,36 +189,28 @@ def _handle_grpc_error():
             """
             Wraps grpc errors as fal Serverless Errors.
             """
-            max_retries = 3
-            max_wait_time = 1
-            for i in range(max_retries):
-                try:
-                    return fn(*args, **kwargs)
-                except grpc.RpcError as e:
-                    if e.code() == grpc.StatusCode.UNAVAILABLE:
-                        print("Could not reach fal Serverless host. Trying again.")
-                        time.sleep(max_wait_time)
+            try:
+                return fn(*args, **kwargs)
+            except grpc.RpcError as e:
+                if e.code() == grpc.StatusCode.UNAVAILABLE:
+                    raise FalServerlessError(
+                        "Could not reach fal Serverless host. "
+                        "This is most likely a transient problem. "
+                        "Please, try again."
+                    )
+                elif e.details().endswith("died with <Signals.SIGKILL: 9>.`."):
+                    raise FalServerlessError(
+                        "Isolated function crashed. "
+                        "This is likely due to resource overflow. "
+                        "You can try again by setting a bigger `machine_type`"
+                    )
 
-                        # Reached max retries
-                        if i + 1 == max_retries:
-                            raise FalServerlessError(
-                                "Could not reach fal Serverless host. "
-                                "This is most likely a transient problem. "
-                                "Please, try again."
-                            )
-                    elif e.details().endswith("died with <Signals.SIGKILL: 9>.`."):
-                        raise FalServerlessError(
-                            "Isolated function crashed. "
-                            "This is likely due to resource overflow. "
-                            "You can try again by setting a bigger `machine_type`"
-                        )
-
-                    elif e.code() == grpc.StatusCode.INVALID_ARGUMENT and (
-                        "The function function could not be deserialized" in e.details()
-                    ):
-                        raise FalMissingDependencyError(e.details())
-                    else:
-                        raise FalServerlessError(e.details())
+                elif e.code() == grpc.StatusCode.INVALID_ARGUMENT and (
+                    "The function function could not be deserialized" in e.details()
+                ):
+                    raise FalMissingDependencyError(e.details())
+                else:
+                    raise FalServerlessError(e.details())
 
         return handler
 
@@ -229,7 +220,6 @@ def _handle_grpc_error():
 def find_missing_dependencies(
     func: Callable[..., Any], env: dict
 ) -> Iterator[tuple[str, list[str]]]:
-
     if env["kind"] != "virtualenv":
         return
 
