@@ -77,6 +77,48 @@ class MainGroup(click.Group):
                 else:
                     self._exception_handler.handle(exception)
 
+    def add_command(
+        self,
+        cmd: click.Command,
+        name: str | None = None,
+        aliases: list[str] | None = None,
+    ) -> None:
+
+        name = name or cmd.name
+        assert name, "Command must have a name"
+
+        if not aliases:
+            aliases = []
+
+        if aliases:
+            # Add aliases to the help text
+            aliases_str = "Alias: " + ", ".join([name, *aliases])
+            cmd.help = (cmd.help or "") + "\n\nAlias: " + ", ".join([name, *aliases])
+            cmd.short_help = (
+                (cmd.short_help or "") + "(Alias: " + ", ".join(aliases) + ")"
+            )
+
+        super().add_command(cmd, name)
+        alias_cmd = AliasCommand(cmd)
+
+        for alias in aliases:
+            self.add_command(alias_cmd, alias)
+
+
+class AliasCommand(click.Command):
+    def __init__(self, wrapped):
+        self._wrapped = wrapped
+
+    def __getattribute__(self, __name: str):
+        if __name == "_wrapped":
+            # To be able to call `self._wrapped` below
+            return super().__getattribute__(__name)
+
+        if __name == "hidden":
+            return True
+
+        return self._wrapped.__getattribute__(__name)
+
 
 @click.group(cls=MainGroup)
 @click.option(
@@ -88,7 +130,7 @@ def cli(debug):
 
 
 ###### Auth group ######
-@cli.group("auth")
+@click.group
 def auth_cli():
     pass
 
@@ -117,7 +159,7 @@ def auth_test():
 
 
 ###### Key group ######
-@cli.group("key")
+@click.group
 @click.option("--host", default=DEFAULT_HOST, envvar=HOST_ENVVAR)
 @click.option("--port", default=DEFAULT_PORT, envvar=PORT_ENVVAR, hidden=True)
 @click.pass_context
@@ -161,7 +203,7 @@ def key_revoke(client: sdk.FalServerlessClient, key_id: str):
 
 
 ###### Usage group ######
-@cli.group("usage")
+@click.group
 @click.option("--host", default=DEFAULT_HOST, envvar=HOST_ENVVAR)
 @click.option("--port", default=DEFAULT_PORT, envvar=PORT_ENVVAR, hidden=True)
 @click.pass_context
@@ -196,7 +238,7 @@ def usage_worker_status(client: sdk.FalServerlessClient, user: str | None):
 
 
 ##### Function group #####
-@cli.group("function")
+@click.group
 @click.option("--host", default=DEFAULT_HOST, envvar=HOST_ENVVAR)
 @click.option("--port", default=DEFAULT_PORT, envvar=PORT_ENVVAR, hidden=True)
 @click.pass_context
@@ -291,7 +333,7 @@ def get_function_call_ids(client: api.FalServerlessHost, url: str):
 
 
 ##### Crons group #####
-@cli.group("crons")
+@click.group
 @click.option("--host", default=DEFAULT_HOST, envvar=HOST_ENVVAR)
 @click.option("--port", default=DEFAULT_PORT, envvar=PORT_ENVVAR, hidden=True)
 @click.pass_context
@@ -356,7 +398,7 @@ def cancel_scheduled(client: api.FalServerlessHost, cron_id: str):
     console.print("Cancelled", repr(cron_id))
 
 
-@cli.group("secrets")
+@click.group
 @click.option("--host", default=DEFAULT_HOST, envvar=HOST_ENVVAR)
 @click.option("--port", default=DEFAULT_PORT, envvar=PORT_ENVVAR, hidden=True)
 @click.pass_context
@@ -398,9 +440,9 @@ def delete_secret(client: api.FalServerlessClient, secret_name: str):
 
 
 cli.add_command(auth_cli, name="auth")
-cli.add_command(key_cli, name="key")
-cli.add_command(function_cli, name="function")
-cli.add_command(crons_cli, name="crons")
+cli.add_command(key_cli, name="key", aliases=["keys"])
+cli.add_command(function_cli, name="function", aliases=["fn"])
+cli.add_command(crons_cli, name="cron", aliases=["crons"])
 cli.add_command(usage_cli, name="usage")
 
 
