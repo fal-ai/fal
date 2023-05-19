@@ -160,6 +160,13 @@ class HostedRunStatus:
     state: HostedRunState
 
 
+@dataclass
+class AliasInfo:
+    alias: str
+    revision: str
+    public: bool
+
+
 @dataclass(frozen=True)
 class Cron:
     cron_id: str
@@ -239,6 +246,15 @@ def _from_grpc_cron_result_type(
         cron_string=message.cron_string,
         next_run=message.next_run.ToDatetime(),
         active=message.is_active,
+    )
+
+
+@from_grpc.register(isolate_proto.AliasInfo)
+def _from_grpc_alias_info(message: isolate_proto.AliasInfo) -> AliasInfo:
+    return AliasInfo(
+        alias=message.alias,
+        revision=message.revision,
+        public=message.is_public,
     )
 
 
@@ -436,6 +452,11 @@ class FalServerlessConnection:
             request
         )
         return response
+
+    def list_aliases(self) -> list[AliasInfo]:
+        request = isolate_proto.ListAliasesRequest()
+        response: isolate_proto.ListAliasesResult = self.stub.ListAliases(request)
+        return [from_grpc(alias) for alias in response.aliases]
 
     def list_scheduled_runs(self) -> list[Cron]:
         request = isolate_proto.ListCronsRequest()

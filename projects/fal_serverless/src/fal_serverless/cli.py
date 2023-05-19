@@ -83,7 +83,6 @@ class MainGroup(click.Group):
         name: str | None = None,
         aliases: list[str] | None = None,
     ) -> None:
-
         name = name or cmd.name
         assert name, "Command must have a name"
 
@@ -293,14 +292,14 @@ def register_application(
 @click.argument("function_name", required=True)
 @click.pass_obj
 def register_schedulded(
-    client: api.FalServerlessHost, cron_string: str, file_path: str, function_name: str
+    host: api.FalServerlessHost, cron_string: str, file_path: str, function_name: str
 ):
     import runpy
 
     module = runpy.run_path(file_path)
     isolated_function = module[function_name]
 
-    cron_id = client.schedule(
+    cron_id = host.schedule(
         func=isolated_function.func, cron=cron_string, options=isolated_function.options
     )
     if cron_id:
@@ -311,7 +310,7 @@ def register_schedulded(
 @click.argument("url", required=True)
 @click.argument("call_id", required=True)
 @click.pass_obj
-def get_logs(client: api.FalServerlessHost, url: str, call_id: str):
+def get_logs(host: api.FalServerlessHost, url: str, call_id: str):
     logs = parse_logs(f"/data/logs/gateway/{url}/{call_id}")
     log_printer = IsolateLogPrinter(debug=True)
     for log in logs:
@@ -321,7 +320,7 @@ def get_logs(client: api.FalServerlessHost, url: str, call_id: str):
 @function_cli.command("calls")
 @click.argument("url", required=True)
 @click.pass_obj
-def get_function_call_ids(client: api.FalServerlessHost, url: str):
+def get_function_call_ids(host: api.FalServerlessHost, url: str):
     # This will only return a list calls that we have logs for.
     calls = list_children(f"/data/logs/gateway/{url}")
     calls.sort(key=operator.itemgetter("updated_time"))
@@ -330,6 +329,32 @@ def get_function_call_ids(client: api.FalServerlessHost, url: str):
         timestamp = datetime.datetime.fromtimestamp(call["updated_time"])
         timestamp_str = timestamp.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
         console.print(f"{timestamp_str}: {name}")
+
+
+##### Alias group #####
+@click.group
+@click.option("--host", default=DEFAULT_HOST, envvar=HOST_ENVVAR)
+@click.option("--port", default=DEFAULT_PORT, envvar=PORT_ENVVAR, hidden=True)
+@click.pass_context
+def alias_cli(ctx, host: str, port: str):
+    ctx.obj = api.FalServerlessClient(f"{host}:{port}")
+
+
+@alias_cli.command("list")
+@click.pass_obj
+def alias_list(client: api.FalServerlessClient):
+    with client.connect() as connection:
+        table = Table(title="Function Aliases")
+        table.add_column("Alias")
+        table.add_column("Revision")
+        table.add_column("Public")
+
+        for app_alias in connection.list_aliases():
+            table.add_row(
+                app_alias.alias, app_alias.revision, "Yes" if app_alias.public else "No"
+            )
+
+    console.print(table)
 
 
 ##### Crons group #####
@@ -343,13 +368,13 @@ def crons_cli(ctx, host: str, port: str):
 
 @crons_cli.command(name="list")
 @click.pass_obj
-def list_scheduled(client: api.FalServerlessHost):
+def list_scheduled(host: api.FalServerlessHost):
     table = Table(title="Cronjobs")
     table.add_column("Cron ID")
     table.add_column("Cron")
     table.add_column("ETA next run")
     table.add_column("State")
-    for cron in client._connection.list_scheduled_runs():
+    for cron in host._connection.list_scheduled_runs():
         state_string = ["Not Active", "Active"][cron.active]
         table.add_row(cron.cron_id, cron.cron_string, str(cron.next_run), state_string)
 
@@ -360,13 +385,13 @@ def list_scheduled(client: api.FalServerlessHost):
 @click.argument("cron_id", required=True)
 @click.argument("limit", default=15)
 @click.pass_obj
-def list_activations(client: api.FalServerlessHost, cron_id: str, limit: int = 15):
+def list_activations(host: api.FalServerlessHost, cron_id: str, limit: int = 15):
     table = Table(title="Cron activations")
     table.add_column("Activation ID")
     table.add_column("Start Date")
     table.add_column("Finish Date")
 
-    for activation in client._connection.list_run_activations(cron_id)[:limit]:
+    for activation in host._connection.list_run_activations(cron_id)[:limit]:
         table.add_row(
             str(activation.activation_id),
             str(activation.started_at),
@@ -380,8 +405,8 @@ def list_activations(client: api.FalServerlessHost, cron_id: str, limit: int = 1
 @click.argument("cron_id", required=True)
 @click.argument("activation_id", required=True)
 @click.pass_obj
-def print_logs(client: api.FalServerlessHost, cron_id: str, activation_id: str):
-    logs = client._connection.get_activation_logs(cron_id, activation_id)
+def print_logs(host: api.FalServerlessHost, cron_id: str, activation_id: str):
+    logs = host._connection.get_activation_logs(cron_id, activation_id)
     if not logs:
         console.print(f"No logs found for activation {activation_id}")
         return
@@ -393,8 +418,8 @@ def print_logs(client: api.FalServerlessHost, cron_id: str, activation_id: str):
 @crons_cli.command("cancel")
 @click.argument("cron_id", required=True)
 @click.pass_obj
-def cancel_scheduled(client: api.FalServerlessHost, cron_id: str):
-    client._connection.cancel_scheduled_run(cron_id)
+def cancel_scheduled(host: api.FalServerlessHost, cron_id: str):
+    host._connection.cancel_scheduled_run(cron_id)
     console.print("Cancelled", repr(cron_id))
 
 
@@ -442,6 +467,7 @@ def delete_secret(client: api.FalServerlessClient, secret_name: str):
 cli.add_command(auth_cli, name="auth")
 cli.add_command(key_cli, name="key", aliases=["keys"])
 cli.add_command(function_cli, name="function", aliases=["fn"])
+cli.add_command(alias_cli, name="alias")
 cli.add_command(crons_cli, name="cron", aliases=["crons"])
 cli.add_command(usage_cli, name="usage")
 
