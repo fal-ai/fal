@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime
 import operator
 from sys import argv
+from typing import Literal
 from uuid import uuid4
 
 import click
@@ -247,6 +248,13 @@ def function_cli(ctx, host: str, port: str):
 
 @function_cli.command("serve")
 @click.option("--alias", default=None)
+@click.option(
+    "--auth",
+    "auth_mode",
+    # TODO: handle shared auth mode
+    type=click.Choice(["public", "private"]),
+    default="private",
+)
 @click.argument("file_path", required=True)
 @click.argument("function_name", required=True)
 @click.pass_obj
@@ -254,6 +262,7 @@ def register_application(
     host: api.FalServerlessHost,
     file_path: str,
     function_name: str,
+    auth_mode: Literal["public", "private"],
     alias: str | None = None,
 ):
     import runpy
@@ -269,6 +278,7 @@ def register_application(
         func=isolated_function.func,
         options=isolated_function.options,
         application_name=alias,
+        application_is_public=auth_mode == "public",
     )
     if id:
         # TODO: should we centralize this URL format?
@@ -347,11 +357,13 @@ def alias_list(client: api.FalServerlessClient):
         table = Table(title="Function Aliases")
         table.add_column("Alias")
         table.add_column("Revision")
-        table.add_column("Public")
+        table.add_column("Auth")
 
         for app_alias in connection.list_aliases():
             table.add_row(
-                app_alias.alias, app_alias.revision, "Yes" if app_alias.public else "No"
+                app_alias.alias,
+                app_alias.revision,
+                "public" if app_alias.public else "private",
             )
 
     console.print(table)

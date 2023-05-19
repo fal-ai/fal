@@ -279,6 +279,7 @@ class FalServerlessHost(Host):
         func: Callable[..., ReturnT],
         options: Options,
         application_name: str | None = None,
+        application_is_public: bool = False,
     ) -> str | None:
         environment_options = options.environment.copy()
         environment_options.setdefault("python_version", active_python())
@@ -299,6 +300,7 @@ class FalServerlessHost(Host):
             partial_func,
             environments,
             application_name=application_name,
+            application_is_public=application_is_public,
             machine_requirements=machine_requirements,
         ):
             for log in partial_result.logs:
