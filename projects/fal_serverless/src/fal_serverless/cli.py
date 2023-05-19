@@ -482,6 +482,7 @@ cli.add_command(function_cli, name="function", aliases=["fn"])
 cli.add_command(alias_cli, name="alias")
 cli.add_command(crons_cli, name="cron", aliases=["crons"])
 cli.add_command(usage_cli, name="usage")
+cli.add_command(secrets_cli, name="secret", aliases=["secrets"])
 
 
 if __name__ == "__main__":
