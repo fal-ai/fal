@@ -8,6 +8,7 @@ from uuid import uuid4
 
 import click
 import fal_serverless.auth as auth
+import grpc
 from fal_serverless import api, sdk
 from fal_serverless.console import console
 from fal_serverless.exceptions import ApplicationExceptionHandler
@@ -138,6 +139,15 @@ def auth_cli():
 @auth_cli.command(name="login")
 def auth_login():
     auth.login()
+    try:
+        client = sdk.FalServerlessClient(f"{DEFAULT_HOST}:{DEFAULT_PORT}")
+        with client.connect() as connection:
+            connection.list_worker_status()
+    except grpc.RpcError as e:
+        if "Insufficient permissions" in e.details():
+            console.print(e.details())
+        else:
+            raise e
 
 
 @auth_cli.command(name="logout")
