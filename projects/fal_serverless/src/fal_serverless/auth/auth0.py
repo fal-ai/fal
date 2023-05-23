@@ -13,6 +13,8 @@ from fal_serverless.console import console
 from fal_serverless.console.icons import CHECK_ICON
 from fal_serverless.console.ux import get_browser
 
+WEBSITE_URL = "https://fal.ai"
+
 AUTH0_DOMAIN = "auth.fal.ai"
 AUTH0_JWKS_URL = f"https://{AUTH0_DOMAIN}/.well-known/jwks.json"
 AUTH0_ALGORITHMS = ["RS256"]
@@ -22,7 +24,27 @@ AUTH0_CLIENT_ID = "TwXR51Vz8JbY8GUUMy6EyuVR0fTO7N4N"
 AUTH0_SCOPE = "openid profile email offline_access"
 
 
-def login() -> dict:
+def logout_url(return_url: str):
+    return f"https://{AUTH0_DOMAIN}/v2/logout?client_id={AUTH0_CLIENT_ID}&returnTo={return_url}"
+
+
+def _open_browser(url: str, code: str | None) -> None:
+    browser = get_browser()
+    console.print()
+
+    if browser is not None and click.confirm(
+        "Open browser automatically ('no' to show URL)?", default=True, err=True
+    ):
+        browser.open_new_tab(url)
+    else:
+        console.print(f"On your computer or mobile device navigate to: {url}")
+        if code:
+            console.print(
+                f"Confirm it shows the following code: [markdown.code]{code}[/]"
+            )
+
+
+def login(logout_first: bool) -> dict:
     """
     Runs the device authorization flow and stores the user object in memory
     """
@@ -42,20 +64,12 @@ def login() -> dict:
     device_user_code = device_code_data["user_code"]
     device_confirmation_url = device_code_data["verification_uri_complete"]
 
-    browser = get_browser()
-    console.print()
-
-    if browser is not None and click.confirm(
-        "Open browser automatically ('no' to show URL)?", default=True, err=True
-    ):
-        browser.open_new_tab(device_confirmation_url)
+    if logout_first:
+        url = logout_url(device_confirmation_url)
     else:
-        console.print(
-            f"1. On your computer or mobile device navigate to: {device_confirmation_url}"
-        )
-        console.print(
-            f"2. Confirm it shows the following code: [markdown.code]{device_user_code}[/]"
-        )
+        url = device_confirmation_url
+
+    _open_browser(url, device_user_code)
 
     # This is needed to suppress the ResourceWarning emitted
     # when the process is waiting for user confirmation
@@ -125,6 +139,8 @@ def revoke(token: str):
     if token_response.status_code != 200:
         token_data = token_response.json()
         raise click.ClickException(token_data["error_description"])
+
+    _open_browser(logout_url(WEBSITE_URL), None)
 
 
 def get_user_info(bearer_token: str) -> dict:
