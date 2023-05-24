@@ -282,8 +282,16 @@ def register_application(
     gateway_options = isolated_function.options.gateway
     if "serve" not in gateway_options and "exposed_port" not in gateway_options:
         raise api.FalServerlessError(
-            "One of `serve` or `exposed-port` options needs to be specified in the isolated annotation to register a function"
+            "One of `serve` or `exposed_port` options needs to be specified in the isolated annotation to register a function"
         )
+    elif (
+        "exposed_port" in gateway_options
+        and str(gateway_options.get("exposed_port")) != "8080"
+    ):
+        raise api.FalServerlessError(
+            "Must expose port 8080 for now. This will be configurable in the future."
+        )
+
     id = host.register(
         func=isolated_function.func,
         options=isolated_function.options,

@@ -426,8 +426,18 @@ def templated_flask(func: Callable[..., ReturnT]) -> Callable[..., ReturnT]:
 
         @app.route("/", methods=["POST"])
         def flask():
-            params = [request.get_json().get(param) for param in param_names]
-            return jsonify({"result": func(*params)})
+            try:
+                body = request.get_json()
+                if not isinstance(body, dict):
+                    raise TypeError("Body must be a JSON object")
+
+                res = func(**body)
+            except TypeError as e:
+                return jsonify({"error": str(e)}), 400
+            except Exception as e:
+                return jsonify({"error": str(e)}), 500
+
+            return jsonify({"result": res})
 
         app.run(host="0.0.0.0", port=8080)
 
