@@ -255,7 +255,9 @@ def find_missing_dependencies(
 # TODO: Should we build all these in fal/dbt-fal packages instead?
 @dataclass
 class FalServerlessHost(Host):
-    _SUPPORTED_KEYS = frozenset({"machine_type", "keep_alive", "setup_function"})
+    _SUPPORTED_KEYS = frozenset(
+        {"machine_type", "keep_alive", "setup_function", "_base_image"}
+    )
 
     url: str = FAL_SERVERLESS_DEFAULT_URL
     credentials: Credentials = field(default_factory=get_default_credentials)
@@ -289,9 +291,12 @@ class FalServerlessHost(Host):
             "machine_type", FAL_SERVERLESS_DEFAULT_MACHINE_TYPE
         )
         keep_alive = options.host.get("keep_alive", FAL_SERVERLESS_DEFAULT_KEEP_ALIVE)
+        base_image = options.host.get("_base_image", None)
 
         machine_requirements = MachineRequirements(
-            machine_type=machine_type, keep_alive=keep_alive
+            machine_type=machine_type,
+            keep_alive=keep_alive,
+            base_image=base_image,
         )
 
         partial_func = _execution_controller(func, tuple(), {})
@@ -333,10 +338,13 @@ class FalServerlessHost(Host):
             "machine_type", FAL_SERVERLESS_DEFAULT_MACHINE_TYPE
         )
         keep_alive = options.host.get("keep_alive", FAL_SERVERLESS_DEFAULT_KEEP_ALIVE)
+        base_image = options.host.get("_base_image", None)
         setup_function = options.host.get("setup_function", None)
 
         machine_requirements = MachineRequirements(
-            machine_type=machine_type, keep_alive=keep_alive
+            machine_type=machine_type,
+            keep_alive=keep_alive,
+            base_image=base_image,
         )
 
         return_value = _UNSET

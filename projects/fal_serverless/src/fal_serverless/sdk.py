@@ -305,6 +305,7 @@ def _get_cron_id(run: Cron | str) -> str:
 class MachineRequirements:
     machine_type: str
     keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE
+    base_image: str | None = None
 
 
 @dataclass
@@ -398,6 +399,7 @@ class FalServerlessConnection:
             wrapped_requirements = isolate_proto.MachineRequirements(
                 machine_type=machine_requirements.machine_type,
                 keep_alive=machine_requirements.keep_alive,
+                base_image=machine_requirements.base_image,
             )
         else:
             wrapped_requirements = None
@@ -426,6 +428,7 @@ class FalServerlessConnection:
             wrapped_requirements = isolate_proto.MachineRequirements(
                 machine_type=machine_requirements.machine_type,
                 keep_alive=machine_requirements.keep_alive,
+                base_image=machine_requirements.base_image,
             )
         else:
             wrapped_requirements = None
