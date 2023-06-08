@@ -337,10 +337,20 @@ def register_schedulded(
 
 @function_cli.command("logs")
 @click.argument("url", required=True)
-@click.argument("call_id", required=True)
+@click.argument("call_id", required=False)
 @click.pass_obj
-def get_logs(host: api.FalServerlessHost, url: str, call_id: str):
+def get_logs(host: api.FalServerlessHost, url: str, call_id: str | None):
     url = remove_http_and_port_from_url(url)
+    if call_id is None:
+        calls = list_children(f"/data/logs/gateway/{url}")
+        if not calls:
+            console.print(
+                f"Web endpoint {url} has not been called yet. Logs are not available."
+            )
+            return
+        else:
+            sorted_calls = sorted(calls, key=lambda x: x["updated_time"], reverse=True)
+            call_id = sorted_calls[0].get("name")
     logs = parse_logs(f"/data/logs/gateway/{url}/{call_id}")
     log_printer = IsolateLogPrinter(debug=True)
     for log in logs:
