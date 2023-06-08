@@ -301,6 +301,7 @@ def register_application(
     if id:
         # TODO: should we centralize this URL format?
         gateway_host = host.url.replace("api.", "gateway.")
+        gateway_host = remove_http_and_port_from_url(gateway_host)
 
         # Encode since user_id can contain special characters
         user_id = auth.USER.info["sub"].split("|")[1]
@@ -339,6 +340,7 @@ def register_schedulded(
 @click.argument("call_id", required=True)
 @click.pass_obj
 def get_logs(host: api.FalServerlessHost, url: str, call_id: str):
+    url = remove_http_and_port_from_url(url)
     logs = parse_logs(f"/data/logs/gateway/{url}/{call_id}")
     log_printer = IsolateLogPrinter(debug=True)
     for log in logs:
@@ -350,6 +352,7 @@ def get_logs(host: api.FalServerlessHost, url: str, call_id: str):
 @click.pass_obj
 def get_function_call_ids(host: api.FalServerlessHost, url: str):
     # This will only return a list calls that we have logs for.
+    url = remove_http_and_port_from_url(url)
     calls = list_children(f"/data/logs/gateway/{url}")
     calls.sort(key=operator.itemgetter("updated_time"))
     for call in calls:
@@ -501,6 +504,23 @@ cli.add_command(alias_cli, name="alias")
 cli.add_command(crons_cli, name="cron", aliases=["crons"])
 cli.add_command(usage_cli, name="usage")
 cli.add_command(secrets_cli, name="secret", aliases=["secrets"])
+
+
+def remove_http_and_port_from_url(url):
+    # Remove http://
+    if "http://" in url:
+        url = url.replace("http://", "")
+
+    # Remove https://
+    if "https://" in url:
+        url = url.replace("https://", "")
+
+    # Remove port information
+    url_parts = url.split(":")
+    if len(url_parts) > 1:
+        url = url_parts[0]
+
+    return url
 
 
 if __name__ == "__main__":
