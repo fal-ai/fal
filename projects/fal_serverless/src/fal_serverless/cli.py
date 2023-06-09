@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import datetime
-import operator
 from sys import argv
 from typing import Literal
 from uuid import uuid4
@@ -15,7 +13,7 @@ from fal_serverless.exceptions import ApplicationExceptionHandler
 from fal_serverless.logging import get_logger, set_debug_logging
 from fal_serverless.logging.isolate import IsolateLogPrinter
 from fal_serverless.logging.trace import get_tracer
-from fal_serverless.sync import list_children, parse_logs
+from fal_serverless.sync import get_latest_logs
 from rich.table import Table
 
 DEFAULT_HOST = "api.alpha.fal.ai"
@@ -336,40 +334,17 @@ def register_schedulded(
 
 
 @function_cli.command("logs")
-@click.argument("url", required=True)
-@click.argument("call_id", required=False)
+@click.option("--lines", default=100)
+@click.option("--url", default=None)
 @click.pass_obj
-def get_logs(host: api.FalServerlessHost, url: str, call_id: str | None):
-    url = remove_http_and_port_from_url(url)
-    if call_id is None:
-        calls = list_children(f"/data/logs/gateway/{url}")
-        if not calls:
-            console.print(
-                f"Web endpoint {url} has not been called yet. Logs are not available."
-            )
-            return
-        else:
-            sorted_calls = sorted(calls, key=lambda x: x["updated_time"], reverse=True)
-            call_id = sorted_calls[0].get("name")
-    logs = parse_logs(f"/data/logs/gateway/{url}/{call_id}")
+def get_logs(host: api.FalServerlessHost, lines: int | None, url: str | None):
+    if url:
+        url = remove_http_and_port_from_url(url)
+    latest_logs = get_latest_logs(lines, url)
+    latest_logs.reverse()
     log_printer = IsolateLogPrinter(debug=True)
-    for log in logs:
+    for log in latest_logs:
         log_printer.print_dict(log)
-
-
-@function_cli.command("calls")
-@click.argument("url", required=True)
-@click.pass_obj
-def get_function_call_ids(host: api.FalServerlessHost, url: str):
-    # This will only return a list calls that we have logs for.
-    url = remove_http_and_port_from_url(url)
-    calls = list_children(f"/data/logs/gateway/{url}")
-    calls.sort(key=operator.itemgetter("updated_time"))
-    for call in calls:
-        name = call["name"].split(".")[0]
-        timestamp = datetime.datetime.fromtimestamp(call["updated_time"])
-        timestamp_str = timestamp.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-        console.print(f"{timestamp_str}: {name}")
 
 
 ##### Alias group #####

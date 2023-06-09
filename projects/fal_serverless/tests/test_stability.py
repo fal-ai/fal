@@ -327,7 +327,9 @@ def test_futures(isolated_client):
 
 
 def test_conda_environment(isolated_client):
-    @isolated_client("conda", packages=["pyjokes=0.6.0"], machine_type="M")
+    @isolated_client(
+        "conda", packages=["pyjokes=0.6.0"], machine_type="M", resolver="conda"
+    )
     def regular_function():
         import pyjokes
 

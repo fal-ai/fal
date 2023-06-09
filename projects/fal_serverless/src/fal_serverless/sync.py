@@ -50,40 +50,74 @@ def _clear_destination_file(destination_path):
 
 
 @isolated()
-def list_children(parent_directory: str) -> list[dict]:
-    items: list[dict] = []
+def get_latest_logs(n: int = 100, endpoint_url: str | None = None) -> Any:
+    import os
 
-    if not os.path.exists(parent_directory):
+    def list_children(parent_directory: str) -> list[dict]:
+        items: list[dict] = []
+
+        if not os.path.exists(parent_directory):
+            return items
+
+        for file_name in os.listdir(parent_directory):
+            file_path = os.path.join(parent_directory, file_name)
+
+            created_time = os.path.getctime(file_path)
+            updated_time = os.path.getmtime(file_path)
+
+            items.append(
+                {
+                    "name": file_name,
+                    "created_time": created_time,
+                    "updated_time": updated_time,
+                    "is_file": os.path.isfile(file_path),
+                }
+            )
+
         return items
 
-    for file_name in os.listdir(parent_directory):
-        file_path = os.path.join(parent_directory, file_name)
+    def parse_logs(file_path: str) -> Any:
+        import json
 
-        created_time = os.path.getctime(file_path)
-        updated_time = os.path.getmtime(file_path)
+        if os.path.exists(file_path):
+            with open(file_path) as f:
+                lines = f.readlines()
+                parsed = [json.loads(line) for line in lines]
+                return [log for sub in parsed for log in sub]
+        return []
 
-        items.append(
-            {
-                "name": file_name,
-                "created_time": created_time,
-                "updated_time": updated_time,
-                "is_file": os.path.isfile(file_path),
-            }
-        )
+    # Get all the URLs as directory names inside /data/logs/gateway/
+    urls = list_children("/data/logs/gateway/")
 
-    return items
+    all_logs = []
 
+    for url in urls:
+        url_name = url["name"]
+        if endpoint_url and url_name != endpoint_url:
+            continue
 
-@isolated()
-def parse_logs(file_path: str) -> Any:
-    import json
+        # Get all function call_ids for each URL
+        calls = list_children(f"/data/logs/gateway/{url_name}")
 
-    if os.path.exists(file_path):
-        with open(file_path) as f:
-            lines = f.readlines()
-            parsed = [json.loads(line) for line in lines]
-            return [log for sub in parsed for log in sub]
-    return []
+        for call in calls:
+            call_id = call["name"].split(".")[0]
+
+            # Get logs associated with each call_id
+            logs = parse_logs(f"/data/logs/gateway/{url_name}/{call_id}")
+
+            # Add timestamp and URL name to logs for formatting
+            for log in logs:
+                log["message"] = f"[{url_name}] {log['message']}"
+
+            all_logs.extend(logs)
+
+    # Sort logs based on timestamp
+    sorted_logs = sorted(all_logs, key=lambda x: x["timestamp"], reverse=True)
+
+    # Limit the logs by the specified number of lines (default: 100)
+    latest_logs = sorted_logs[:n]
+
+    return latest_logs
 
 
 def _upload_file(source_path: str, destination_path: str) -> None:
