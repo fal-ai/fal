@@ -208,7 +208,7 @@ def _handle_grpc_error():
                 elif e.code() == grpc.StatusCode.INVALID_ARGUMENT and (
                     "The function function could not be deserialized" in e.details()
                 ):
-                    raise FalMissingDependencyError(e.details())
+                    raise FalMissingDependencyError(e.details()) from None
                 else:
                     raise FalServerlessError(e.details())
 
@@ -500,16 +500,15 @@ class IsolatedFunction(Generic[ReturnT]):
                 lines = []
                 for used_modules, references in pairs:
                     lines.append(
-                        f"    - {used_modules} (as referred by {', '.join(references)})"
+                        f"\t- {used_modules!r} (accessed through {', '.join(map(repr, references))})"
                     )
 
+                function_name = self.func.__name__
                 raise FalServerlessError(
-                    "A deserialization error regarding your function has occurred. \nHint: This might be "
-                    " because the following modules are referenced but not required as part of your environment "
-                    "declaration:\n"
+                    f"Couldn't deserialize your function on the remote server. \n\n[Hint] {function_name!r} "
+                    f"function uses the following modules which weren't present in the environment definition:\n"
                     + "\n".join(lines)
-                    + "\ntry adding them to the requirements of your isolated function"
-                )
+                ) from None
 
     def on(self, host: Host | None = None, **config: Any) -> IsolatedFunction[ReturnT]:
         host = host or self.host
