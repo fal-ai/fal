@@ -13,7 +13,6 @@ from fal_serverless.exceptions import ApplicationExceptionHandler
 from fal_serverless.logging import get_logger, set_debug_logging
 from fal_serverless.logging.isolate import IsolateLogPrinter
 from fal_serverless.logging.trace import get_tracer
-from fal_serverless.sync import get_latest_logs
 from rich.table import Table
 
 DEFAULT_HOST = "api.alpha.fal.ai"
@@ -337,14 +336,18 @@ def register_schedulded(
 @click.option("--lines", default=100)
 @click.option("--url", default=None)
 @click.pass_obj
-def get_logs(host: api.FalServerlessHost, lines: int | None, url: str | None):
+def get_logs(
+    host: api.FalServerlessHost, lines: int | None = 100, url: str | None = None
+):
     if url:
         url = remove_http_and_port_from_url(url)
-    latest_logs = get_latest_logs(lines, url)
-    latest_logs.reverse()
+    logs = host._connection.get_logs(lines=lines, url=url)
+    if not logs:
+        console.print("No logs found")
+        return
     log_printer = IsolateLogPrinter(debug=True)
-    for log in latest_logs:
-        log_printer.print_dict(log)
+    for log in logs:
+        log_printer.print(log)
 
 
 ##### Alias group #####

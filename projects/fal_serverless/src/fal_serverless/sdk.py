@@ -495,6 +495,15 @@ class FalServerlessConnection:
         response = self.stub.GetActivationLogs(request)
         return [from_grpc(log) for log in response.logs]
 
+    def get_logs(
+        self, lines: int | None = None, url: str | None = None
+    ) -> Iterator[Log]:
+
+        filter = isolate_proto.LogsFilter(lines=lines, url=url)
+        request = isolate_proto.GetLogsRequest(filter=filter)
+        for partial_result in self.stub.GetLogs(request):
+            yield from_grpc(partial_result.log_entry)
+
     def list_worker_status(self, user_id: str | None = None) -> list[WorkerStatus]:
         request = isolate_proto.WorkerStatusListRequest(user_id=user_id)
         response = self.stub.WorkerStatusList(request)
