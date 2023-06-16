@@ -20,7 +20,7 @@ def test_missing_dependencies_nested_server_error(isolated_client):
 
     with pytest.raises(
         FalServerlessError,
-        match=r"fal_serverless \(as referred by test1\)",
+        match=r"accessed through 'test1'",
     ):
         test2()
 
