@@ -6,7 +6,19 @@ from collections import defaultdict
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
 from functools import partial, wraps
-from typing import Any, Callable, ClassVar, Dict, Generic, Iterator, TypeVar, cast
+from os import PathLike
+from typing import (
+    Any,
+    Callable,
+    ClassVar,
+    Dict,
+    Generic,
+    Iterator,
+    Literal,
+    TypeVar,
+    cast,
+    overload,
+)
 
 import dill
 import dill.detect
@@ -399,6 +411,87 @@ class Options:
 
 
 _DEFAULT_HOST = FalServerlessHost()
+
+
+# Overload @isolated to help users identify the correct signature.
+# NOTE: This is both in sync with host options and with environment configs from `isolate` package.
+
+## virtualenv
+@overload
+def isolated(
+    kind: Literal["virtualenv"] = "virtualenv",
+    *,
+    python_version: str | None = None,
+    requirements: list[str] | None = None,
+    # Common options
+    host: LocalHost,
+    serve: bool = False,
+    exposed_port: int | None = None,
+) -> Callable[[Callable[..., ReturnT]], IsolatedFunction[ReturnT]]:
+    ...
+
+
+@overload
+def isolated(
+    kind: Literal["virtualenv"] = "virtualenv",
+    *,
+    python_version: str | None = None,
+    requirements: list[str] | None = None,
+    # Common options
+    host: FalServerlessHost = _DEFAULT_HOST,
+    serve: bool = False,
+    exposed_port: int | None = None,
+    # FalServerlessHost options
+    machine_type: str = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
+    keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
+    _base_image: str | None = None,
+    setup_function: Callable[..., None] | None = None,
+) -> Callable[[Callable[..., ReturnT]], IsolatedFunction[ReturnT]]:
+    ...
+
+
+## conda
+@overload
+def isolated(
+    kind: Literal["conda"],
+    *,
+    python_version: str | None = None,
+    env_dict: dict[str, str] | None = None,
+    env_yml: PathLike | str | None = None,
+    env_yml_str: str | None = None,
+    packages: list[str] | None = None,
+    pip: list[str] | None = None,
+    channels: list[str] | None = None,
+    # Common options
+    host: LocalHost,
+    serve: bool = False,
+    exposed_port: int | None = None,
+) -> Callable[[Callable[..., ReturnT]], IsolatedFunction[ReturnT]]:
+    ...
+
+
+@overload
+def isolated(
+    kind: Literal["conda"],
+    *,
+    python_version: str | None = None,
+    env_dict: dict[str, str] | None = None,
+    env_yml: PathLike | str | None = None,
+    env_yml_str: str | None = None,
+    packages: list[str] | None = None,
+    pip: list[str] | None = None,
+    channels: list[str] | None = None,
+    # Common options
+    host: FalServerlessHost = _DEFAULT_HOST,
+    serve: bool = False,
+    exposed_port: int | None = None,
+    # FalServerlessHost options
+    machine_type: str = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
+    keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
+    _base_image: str | None = None,
+    setup_function: Callable[..., None] | None = None,
+) -> Callable[[Callable[..., ReturnT]], IsolatedFunction[ReturnT]]:
+    ...
 
 
 def isolated(
