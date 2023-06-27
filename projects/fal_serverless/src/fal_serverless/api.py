@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 import os
+import sys
 from collections import defaultdict
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
@@ -43,9 +44,22 @@ from isolate.connections import PythonIPC
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 
+if sys.version_info >= (3, 11):
+    from typing import Concatenate
+else:
+    from typing_extensions import Concatenate
+
+if sys.version_info >= (3, 10):
+    from typing import ParamSpec
+else:
+    from typing_extensions import ParamSpec
+
+
 dill.settings["recurse"] = True
 
-ReturnT = TypeVar("ReturnT")
+ArgsT = ParamSpec("ArgsT")
+ReturnT = TypeVar("ReturnT", covariant=True)
+
 BasicConfig = Dict[str, Any]
 _UNSET = object()
 
@@ -57,7 +71,7 @@ class FalServerlessError(Exception):
 
 @dataclass
 class InternalFalServerlessError(Exception):
-    ...
+    message: str
 
 
 @dataclass
@@ -112,7 +126,7 @@ class Host:
         raise NotImplementedError
 
 
-def cached(func: Callable[..., ReturnT]) -> Callable[..., ReturnT]:
+def cached(func: Callable[ArgsT, ReturnT]) -> Callable[ArgsT, ReturnT]:
     """Cache the result of the given function in-memory."""
     import hashlib
 
@@ -127,9 +141,13 @@ def cached(func: Callable[..., ReturnT]) -> Callable[..., ReturnT]:
     cache_key = hashlib.sha256(source_code).hexdigest()
 
     @wraps(func)
-    def wrapper(*args, **kwargs) -> ReturnT:
+    def wrapper(
+        *args: ArgsT.args,
+        **kwargs: ArgsT.kwargs,
+    ) -> ReturnT:
         from functools import lru_cache
 
+        # HACK: Using the isolate module as a global cache.
         import isolate
 
         if not hasattr(isolate, "__cached_functions__"):
@@ -144,14 +162,14 @@ def cached(func: Callable[..., ReturnT]) -> Callable[..., ReturnT]:
 
 
 def _execution_controller(
-    func: Callable[..., ReturnT],
-    args: tuple[Any, ...],
-    kwargs: dict[str, Any],
-) -> Callable[..., ReturnT]:
+    func: Callable[ArgsT, ReturnT],
+    *args: ArgsT.args,
+    **kwargs: ArgsT.kwargs,
+) -> Callable[ArgsT, ReturnT]:
     """Handle the execution of the given user function."""
 
     @wraps(func)
-    def wrapper(*remote_args: Any, **remote_kwargs: Any) -> ReturnT:
+    def wrapper(*remote_args: ArgsT.args, **remote_kwargs: ArgsT.kwargs) -> ReturnT:
         return func(*remote_args, *args, **remote_kwargs, **kwargs)
 
     return wrapper
@@ -230,7 +248,7 @@ def _handle_grpc_error():
 
 
 def find_missing_dependencies(
-    func: Callable[..., Any], env: dict
+    func: Callable, env: dict
 ) -> Iterator[tuple[str, list[str]]]:
     if env["kind"] != "virtualenv":
         return
@@ -290,7 +308,7 @@ class FalServerlessHost(Host):
     @_handle_grpc_error()
     def register(
         self,
-        func: Callable[..., ReturnT],
+        func: Callable[ArgsT, ReturnT],
         options: Options,
         application_name: str | None = None,
         application_is_public: bool = False,
@@ -311,7 +329,7 @@ class FalServerlessHost(Host):
             base_image=base_image,
         )
 
-        partial_func = _execution_controller(func, tuple(), {})
+        partial_func = _execution_controller(func)
 
         for partial_result in self._connection.register(
             partial_func,
@@ -328,11 +346,15 @@ class FalServerlessHost(Host):
 
     @_handle_grpc_error()
     def schedule(
-        self, func: Callable[..., ReturnT], cron: str, options: Options
+        self,
+        func: Callable[ArgsT, ReturnT],
+        cron: str,
+        options: Options,
     ) -> str | None:
         application_id = self.register(func, options)
-        cron_id = self._connection.schedule_cronjob(application_id, cron)
-        return cron_id
+        if application_id is None:
+            return None
+        return self._connection.schedule_cronjob(application_id, cron)
 
     @_handle_grpc_error()
     def run(
@@ -362,7 +384,7 @@ class FalServerlessHost(Host):
         return_value = _UNSET
         # Allow isolate provided arguments (such as setup function) to take
         # precedence over the ones provided by the user.
-        partial_func = _execution_controller(func, args, kwargs)
+        partial_func = _execution_controller(func, *args, **kwargs)
         for partial_result in self._connection.run(
             partial_func,
             environments,
@@ -416,7 +438,9 @@ _DEFAULT_HOST = FalServerlessHost()
 # Overload @isolated to help users identify the correct signature.
 # NOTE: This is both in sync with host options and with environment configs from `isolate` package.
 
+
 ## virtualenv
+### LocalHost
 @overload
 def isolated(
     kind: Literal["virtualenv"] = "virtualenv",
@@ -425,9 +449,47 @@ def isolated(
     requirements: list[str] | None = None,
     # Common options
     host: LocalHost,
-    serve: bool = False,
+    serve: Literal[False] = False,
     exposed_port: int | None = None,
-) -> Callable[[Callable[..., ReturnT]], IsolatedFunction[ReturnT]]:
+) -> Callable[
+    [Callable[Concatenate[ArgsT], ReturnT]], IsolatedFunction[ArgsT, ReturnT]
+]:
+    ...
+
+
+@overload
+def isolated(
+    kind: Literal["virtualenv"] = "virtualenv",
+    *,
+    python_version: str | None = None,
+    requirements: list[str] | None = None,
+    # Common options
+    host: LocalHost,
+    serve: Literal[True],
+    exposed_port: int | None = None,
+) -> Callable[[Callable[Concatenate[ArgsT], ReturnT]], IsolatedFunction[[], None]]:
+    ...
+
+
+### FalServerlessHost
+@overload
+def isolated(
+    kind: Literal["virtualenv"] = "virtualenv",
+    *,
+    python_version: str | None = None,
+    requirements: list[str] | None = None,
+    # Common options
+    host: FalServerlessHost = _DEFAULT_HOST,
+    serve: Literal[False] = False,
+    exposed_port: int | None = None,
+    # FalServerlessHost options
+    machine_type: str = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
+    keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
+    _base_image: str | None = None,
+    setup_function: Callable[..., None] | None = None,
+) -> Callable[
+    [Callable[Concatenate[ArgsT], ReturnT]], IsolatedFunction[ArgsT, ReturnT]
+]:
     ...
 
 
@@ -439,18 +501,19 @@ def isolated(
     requirements: list[str] | None = None,
     # Common options
     host: FalServerlessHost = _DEFAULT_HOST,
-    serve: bool = False,
+    serve: Literal[True],
     exposed_port: int | None = None,
     # FalServerlessHost options
     machine_type: str = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
     keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
     _base_image: str | None = None,
     setup_function: Callable[..., None] | None = None,
-) -> Callable[[Callable[..., ReturnT]], IsolatedFunction[ReturnT]]:
+) -> Callable[[Callable[Concatenate[ArgsT], ReturnT]], IsolatedFunction[[], None]]:
     ...
 
 
 ## conda
+### LocalHost
 @overload
 def isolated(
     kind: Literal["conda"],
@@ -464,9 +527,57 @@ def isolated(
     channels: list[str] | None = None,
     # Common options
     host: LocalHost,
-    serve: bool = False,
+    serve: Literal[False] = False,
     exposed_port: int | None = None,
-) -> Callable[[Callable[..., ReturnT]], IsolatedFunction[ReturnT]]:
+) -> Callable[
+    [Callable[Concatenate[ArgsT], ReturnT]], IsolatedFunction[ArgsT, ReturnT]
+]:
+    ...
+
+
+@overload
+def isolated(
+    kind: Literal["conda"],
+    *,
+    python_version: str | None = None,
+    env_dict: dict[str, str] | None = None,
+    env_yml: PathLike | str | None = None,
+    env_yml_str: str | None = None,
+    packages: list[str] | None = None,
+    pip: list[str] | None = None,
+    channels: list[str] | None = None,
+    # Common options
+    host: LocalHost,
+    serve: Literal[True],
+    exposed_port: int | None = None,
+) -> Callable[[Callable[Concatenate[ArgsT], ReturnT]], IsolatedFunction[[], None]]:
+    ...
+
+
+### FalServerlessHost
+@overload
+def isolated(
+    kind: Literal["conda"],
+    *,
+    python_version: str | None = None,
+    env_dict: dict[str, str] | None = None,
+    env_yml: PathLike | str | None = None,
+    env_yml_str: str | None = None,
+    packages: list[str] | None = None,
+    pip: list[str] | None = None,
+    channels: list[str] | None = None,
+    # Common options
+    host: FalServerlessHost = _DEFAULT_HOST,
+    serve: Literal[False] = False,
+    exposed_port: int | None = None,
+    # FalServerlessHost options
+    machine_type: str = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
+    keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
+    _base_image: str | None = None,
+    setup_function: Callable[..., None] | None = None,
+) -> Callable[
+    [Callable[Concatenate[ArgsT], ReturnT]], IsolatedFunction[ArgsT, ReturnT]
+]:
     ...
 
 
@@ -483,42 +594,43 @@ def isolated(
     channels: list[str] | None = None,
     # Common options
     host: FalServerlessHost = _DEFAULT_HOST,
-    serve: bool = False,
+    serve: Literal[True],
     exposed_port: int | None = None,
     # FalServerlessHost options
     machine_type: str = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
     keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
     _base_image: str | None = None,
     setup_function: Callable[..., None] | None = None,
-) -> Callable[[Callable[..., ReturnT]], IsolatedFunction[ReturnT]]:
+) -> Callable[[Callable[Concatenate[ArgsT], ReturnT]], IsolatedFunction[[], None]]:
     ...
 
 
-def isolated(
+# implementation
+def isolated(  # type: ignore
     kind: str = "virtualenv",
     *,
     host: Host = _DEFAULT_HOST,
     **config: Any,
-) -> Callable[[Callable[..., ReturnT]], IsolatedFunction[ReturnT]]:
+):
     options = host.parse_options(kind=kind, **config)
 
-    def wrapper(func: Callable[..., ReturnT]) -> IsolatedFunction[ReturnT]:
+    def wrapper(func: Callable[ArgsT, ReturnT]):
         # wrap it with flask if the serve option is set
-        func = templated_flask(func) if options.gateway.get("serve") else func
+        res = templated_flask(func) if options.gateway.get("serve") else func
         proxy = IsolatedFunction(
             host=host,
-            func=func,
+            func=res,  # type: ignore
             options=options,
         )
-        return wraps(func)(proxy)
+        return wraps(res)(proxy)  # type: ignore
 
     return wrapper
 
 
-def templated_flask(func: Callable[..., ReturnT]) -> Callable[..., ReturnT]:
+def templated_flask(func: Callable[ArgsT, ReturnT]) -> Callable[[], None]:
     param_names = inspect.signature(func).parameters.keys()
 
-    def templated_flask_wrapper() -> Any:
+    def templated_flask_wrapper():
         from flask import Flask, jsonify, request
         from flask_cors import CORS
 
@@ -532,7 +644,7 @@ def templated_flask(func: Callable[..., ReturnT]) -> Callable[..., ReturnT]:
                 if not isinstance(body, dict):
                     raise TypeError("Body must be a JSON object")
 
-                res = func(**body)
+                res: ReturnT = func(**body)  # type: ignore
             except TypeError as e:
                 return jsonify({"error": str(e)}), 400
             except Exception as e:
@@ -546,9 +658,9 @@ def templated_flask(func: Callable[..., ReturnT]) -> Callable[..., ReturnT]:
 
 
 @dataclass
-class IsolatedFunction(Generic[ReturnT]):
+class IsolatedFunction(Generic[ArgsT, ReturnT]):
     host: Host
-    func: Callable[..., ReturnT]
+    func: Callable[ArgsT, ReturnT]
     options: Options
     executor: ThreadPoolExecutor = field(default_factory=ThreadPoolExecutor)
 
@@ -563,7 +675,7 @@ class IsolatedFunction(Generic[ReturnT]):
         if not hasattr(self, "executor"):
             self.executor = ThreadPoolExecutor()
 
-    def submit(self, *args: Any, **kwargs: Any) -> Future[ReturnT]:
+    def submit(self, *args: ArgsT.args, **kwargs: ArgsT.kwargs) -> Future[ReturnT]:
         # TODO: This should probably live inside each host since they can
         # have more optimized Future implementations (e.g. instead of real
         # threads, they can use state observers and detached runs).
@@ -575,9 +687,9 @@ class IsolatedFunction(Generic[ReturnT]):
             args=args,
             kwargs=kwargs,
         )
-        return cast(Future[ReturnT], future)
+        return future  # type: ignore
 
-    def __call__(self, *args, **kwargs) -> ReturnT:
+    def __call__(self, *args: ArgsT.args, **kwargs: ArgsT.kwargs) -> ReturnT:
         try:
             return self.host.run(
                 self.func,
@@ -603,7 +715,9 @@ class IsolatedFunction(Generic[ReturnT]):
                     + "\n".join(lines)
                 ) from None
 
-    def on(self, host: Host | None = None, **config: Any) -> IsolatedFunction[ReturnT]:
+    def on(
+        self, host: Host | None = None, **config: Any
+    ) -> IsolatedFunction[ArgsT, ReturnT]:
         host = host or self.host
         if isinstance(host, type(self.host)):
             previous_host_options = self.options.host

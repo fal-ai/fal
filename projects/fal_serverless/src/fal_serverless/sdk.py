@@ -449,14 +449,12 @@ class FalServerlessConnection:
         self,
         application_id: str,
         cron: str,
-    ) -> isolate_proto.RegisterCronResult:
+    ) -> str:
         request = isolate_proto.RegisterCronRequest(
             application_id=application_id, cron=cron
         )
-        response: isolate_proto.RegisterApplicationResultType = self.stub.RegisterCron(
-            request
-        )
-        return response
+        response: isolate_proto.RegisterCronResult = self.stub.RegisterCron(request)
+        return response.result.cron_id
 
     def list_aliases(self) -> list[AliasInfo]:
         request = isolate_proto.ListAliasesRequest()
