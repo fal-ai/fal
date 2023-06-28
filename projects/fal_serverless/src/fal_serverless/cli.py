@@ -258,8 +258,7 @@ def function_cli(ctx, host: str, port: str):
 @click.option(
     "--auth",
     "auth_mode",
-    # TODO: handle shared auth mode
-    type=click.Choice(["public", "private"]),
+    type=click.Choice(["public", "private", "shared"]),
     default="private",
 )
 @click.argument("file_path", required=True)
@@ -269,7 +268,7 @@ def register_application(
     host: api.FalServerlessHost,
     file_path: str,
     function_name: str,
-    auth_mode: Literal["public", "private"],
+    auth_mode: Literal["public", "private", "shared"],
     alias: str | None = None,
 ):
     import runpy
@@ -293,7 +292,7 @@ def register_application(
         func=isolated_function.func,
         options=isolated_function.options,
         application_name=alias,
-        application_is_public=auth_mode == "public",
+        application_auth_mode=auth_mode,
     )
     if id:
         # TODO: should we centralize this URL format?
@@ -369,11 +368,7 @@ def alias_list(client: api.FalServerlessClient):
         table.add_column("Auth")
 
         for app_alias in connection.list_aliases():
-            table.add_row(
-                app_alias.alias,
-                app_alias.revision,
-                "public" if app_alias.public else "private",
-            )
+            table.add_row(app_alias.alias, app_alias.revision, app_alias.auth_mode)
 
     console.print(table)
 
@@ -488,7 +483,7 @@ def delete_secret(client: api.FalServerlessClient, secret_name: str):
 cli.add_command(auth_cli, name="auth")
 cli.add_command(key_cli, name="key", aliases=["keys"])
 cli.add_command(function_cli, name="function", aliases=["fn"])
-cli.add_command(alias_cli, name="alias")
+cli.add_command(alias_cli, name="alias", aliases=["aliases"])
 cli.add_command(crons_cli, name="cron", aliases=["crons"])
 cli.add_command(usage_cli, name="usage")
 cli.add_command(secrets_cli, name="secret", aliases=["secrets"])

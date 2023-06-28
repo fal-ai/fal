@@ -5,7 +5,7 @@ from contextlib import ExitStack
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Any, Callable, Generic, Iterator, TypeVar
+from typing import Any, Callable, Generic, Iterator, Literal, TypeVar
 
 import grpc
 import isolate_proto
@@ -164,7 +164,7 @@ class HostedRunStatus:
 class AliasInfo:
     alias: str
     revision: str
-    public: bool
+    auth_mode: str
 
 
 @dataclass(frozen=True)
@@ -251,10 +251,19 @@ def _from_grpc_cron_result_type(
 
 @from_grpc.register(isolate_proto.AliasInfo)
 def _from_grpc_alias_info(message: isolate_proto.AliasInfo) -> AliasInfo:
+    if message.auth_mode is isolate_proto.ApplicationAuthMode.PUBLIC:
+        auth_mode = "public"
+    elif message.auth_mode is isolate_proto.ApplicationAuthMode.PRIVATE:
+        auth_mode = "private"
+    elif message.auth_mode is isolate_proto.ApplicationAuthMode.SHARED:
+        auth_mode = "shared"
+    else:
+        raise ValueError(f"Unknown auth mode: {message.auth_mode}")
+
     return AliasInfo(
         alias=message.alias,
         revision=message.revision,
-        public=message.is_public,
+        auth_mode=auth_mode,
     )
 
 
@@ -389,7 +398,7 @@ class FalServerlessConnection:
         function: Callable[..., ResultT],
         environments: list[isolate_proto.EnvironmentDefinition],
         application_name: str | None = None,
-        application_is_public: bool = False,
+        application_auth_mode: Literal["public", "private", "shared"] | None = None,
         *,
         serialization_method: str = _DEFAULT_SERIALIZATION_METHOD,
         machine_requirements: MachineRequirements | None = None,
@@ -404,12 +413,19 @@ class FalServerlessConnection:
         else:
             wrapped_requirements = None
 
+        if application_auth_mode == "public":
+            auth_mode = isolate_proto.ApplicationAuthMode.PUBLIC
+        elif application_auth_mode == "shared":
+            auth_mode = isolate_proto.ApplicationAuthMode.SHARED
+        else:
+            auth_mode = isolate_proto.ApplicationAuthMode.PRIVATE
+
         request = isolate_proto.RegisterApplicationRequest(
             function=wrapped_function,
             environments=environments,
             machine_requirements=wrapped_requirements,
             application_name=application_name,
-            is_public=application_is_public,
+            auth_mode=auth_mode,
         )
         for partial_result in self.stub.RegisterApplication(request):
             yield from_grpc(partial_result)
