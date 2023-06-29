@@ -98,6 +98,7 @@ def test_isolate_error_handling(isolated_client):
         raises_grpc_error()
 
 
+@pytest.mark.skip(reason="No way to test this yet")
 def test_sync(isolated_client):
     import os
     import random

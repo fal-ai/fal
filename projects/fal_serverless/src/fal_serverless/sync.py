@@ -2,133 +2,41 @@ from __future__ import annotations
 
 import hashlib
 import os
-import shutil
 import zipfile
-from typing import Any
 
+import requests
+from fal_serverless.api import FAL_SERVERLESS_DEFAULT_URL
+from fal_serverless.auth import USER
 from pathspec import PathSpec
-
-from .api import isolated
 
 CHUNK_SIZE = 1024 * 1024 * 10  # 10 MB
 
 
-def _read_file_chunk(file_path: str, chunk_number: int) -> bytes:
-    with open(file_path, "rb") as file:
-        file.seek(chunk_number * CHUNK_SIZE)
-        return file.read(CHUNK_SIZE)
+def _check_hash(target_path: str, hash_string: str, token: str) -> bool:
+    url = f"{REST_URL}/files/dir/check_hash/{target_path}"
+    headers = {"Authorization": token, "Content-Type": "application/json"}
+    result = requests.post(url=url, headers=headers, json={"hash": hash_string})
+    return result.status_code == 200 and result.json() is True
 
 
-@isolated()
-def _write_file_chunk(destination_path: str, chunk_data: bytes) -> None:
-    with open(destination_path, "ab") as file:
-        file.write(chunk_data)
+def _upload_file(
+    source_path: str, target_path: str, token: str, unzip: bool = False
+) -> None:
 
+    url = f"{REST_URL}/files/file/local/{target_path}"
+    headers = {"Authorization": token}
 
-@isolated()
-def _unzip_target_directory(zip_file_path: str, target_direcroty: str) -> None:
-    shutil.rmtree(target_direcroty, ignore_errors=True)
-    with zipfile.ZipFile(zip_file_path, "r") as zip_ref:
-        zip_ref.extractall(target_direcroty)
-    os.remove(zip_file_path)
+    with open(source_path, "rb") as file_to_upload:
+        files = {"file_upload": file_to_upload}
+        params = {"unzip": unzip}
+        response = requests.post(url, headers=headers, files=files, params=params)
 
-
-@isolated()
-def _check_hash(target_path: str, hash_string: str) -> bool:
-    try:
-        with open(os.path.join(target_path, ".fal_hash")) as f:
-            return hash_string == f.read()
-    except FileNotFoundError:
-        return False
-
-
-@isolated()
-def _clear_destination_file(destination_path):
-    os.makedirs("/data/sync", exist_ok=True)
-    with open(destination_path, "wb") as f:
-        f.truncate(0)
-
-
-@isolated()
-def get_latest_logs(n: int = 100, endpoint_url: str | None = None) -> Any:
-    import os
-
-    def list_children(parent_directory: str) -> list[dict]:
-        items: list[dict] = []
-
-        if not os.path.exists(parent_directory):
-            return items
-
-        for file_name in os.listdir(parent_directory):
-            file_path = os.path.join(parent_directory, file_name)
-
-            created_time = os.path.getctime(file_path)
-            updated_time = os.path.getmtime(file_path)
-
-            items.append(
-                {
-                    "name": file_name,
-                    "created_time": created_time,
-                    "updated_time": updated_time,
-                    "is_file": os.path.isfile(file_path),
-                }
-            )
-
-        return items
-
-    def parse_logs(file_path: str) -> Any:
-        import json
-
-        if os.path.exists(file_path):
-            with open(file_path) as f:
-                lines = f.readlines()
-                parsed = [json.loads(line) for line in lines]
-                return [log for sub in parsed for log in sub]
-        return []
-
-    # Get all the URLs as directory names inside /data/logs/gateway/
-    urls = list_children("/data/logs/gateway/")
-
-    all_logs = []
-
-    for url in urls:
-        url_name = url["name"]
-        if endpoint_url and url_name != endpoint_url:
-            continue
-
-        # Get all function call_ids for each URL
-        calls = list_children(f"/data/logs/gateway/{url_name}")
-
-        for call in calls:
-            call_id = call["name"].split(".")[0]
-
-            # Get logs associated with each call_id
-            logs = parse_logs(f"/data/logs/gateway/{url_name}/{call_id}")
-
-            # Add timestamp and URL name to logs for formatting
-            for log in logs:
-                log["message"] = f"[{url_name}] {log['message']}"
-
-            all_logs.extend(logs)
-
-    # Sort logs based on timestamp
-    sorted_logs = sorted(all_logs, key=lambda x: x["timestamp"], reverse=True)
-
-    # Limit the logs by the specified number of lines (default: 100)
-    latest_logs = sorted_logs[:n]
-
-    return latest_logs
-
-
-def _upload_file(source_path: str, destination_path: str) -> None:
-    file_size = os.path.getsize(source_path)
-    total_chunks = (file_size // CHUNK_SIZE) + (1 if file_size % CHUNK_SIZE else 0)
-
-    # Clear the destination file
-    _clear_destination_file(destination_path)
-    for chunk_number in range(total_chunks):
-        chunk_data = _read_file_chunk(source_path, chunk_number)
-        _write_file_chunk(destination_path, chunk_data)
+    if response.status_code == 200:
+        return response.json()
+    else:
+        raise Exception(
+            f"Failed to upload file. Server returned status code {response.status_code} and message {response.text}"
+        )
 
 
 def _compute_directory_hash(dir_path: str) -> str:
@@ -173,36 +81,47 @@ def _zip_directory(dir_path: str, zip_path: str) -> None:
 
 
 def sync_dir(local_dir: str, remote_dir: str, force_upload=False) -> str:
+    local_dir_abs = os.path.expanduser(local_dir)
     if not os.path.isabs(remote_dir) or not remote_dir.startswith("/data"):
         raise ValueError(
             "'remote_dir' must be an absolute path starting with `/data`, e.g. '/data/sync/my_dir'"
         )
 
+    remote_dir = remote_dir.replace("/data/", "", 1)
+
     # Compute the local directory hash
-    local_hash = _compute_directory_hash(local_dir)
+    local_hash = _compute_directory_hash(local_dir_abs)
+
+    token = USER.bearer_token
 
     print(f"Syncing {local_dir} with {remote_dir}...")
 
-    if _check_hash(remote_dir, local_hash) and not force_upload:
+    if _check_hash(remote_dir, local_hash, token) and not force_upload:
         print(f"{remote_dir} already uploaded and matches {local_dir}")
         return remote_dir
 
-    with open(os.path.join(local_dir, ".fal_hash"), "w") as f:
+    with open(os.path.join(local_dir_abs, ".fal_hash"), "w") as f:
         f.write(local_hash)
 
     # Zip the local directory
-    zip_path = f"{local_dir}.zip"
+    zip_path = f"{local_dir_abs}.zip"
 
-    _zip_directory(local_dir, zip_path)
+    _zip_directory(local_dir_abs, zip_path)
 
     # Upload the zipped directory to the serverless environment
-    zip_remote_path = os.path.join("/data/sync", os.path.basename(zip_path))
-    _upload_file(zip_path, zip_remote_path)
-    _unzip_target_directory(zip_remote_path, remote_dir)
+    _upload_file(zip_path, remote_dir, token, unzip=True)
 
-    # Remove the zipped directory
     os.remove(zip_path)
+
     print("Done")
 
     # Return the full path to the remote directory
     return remote_dir
+
+
+def _get_rest_host_url(url: str) -> str:
+    assert url.startswith("api."), "Expected FAL_HOST format to be `api.<env>.fal.ai`"
+    return "https://" + url.replace("api", "rest", 1)  # to replace just once
+
+
+REST_URL = _get_rest_host_url(FAL_SERVERLESS_DEFAULT_URL)
