@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import inspect
-import os
 import sys
 from collections import defaultdict
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -23,10 +22,10 @@ from typing import (
 
 import dill
 import dill.detect
+import fal_serverless.flags as flags
 import grpc
 import isolate
 import yaml
-from fal_serverless.flags import bool_envvar
 from fal_serverless.logging.isolate import IsolateLogPrinter
 from fal_serverless.sdk import (
     FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
@@ -205,7 +204,7 @@ class LocalHost(Host):
             return connection.run(executable)
 
 
-FAL_SERVERLESS_DEFAULT_URL = os.getenv("FAL_HOST", "api.alpha.fal.ai:443")
+FAL_SERVERLESS_DEFAULT_URL = flags.GRPC_HOST
 FAL_SERVERLESS_DEFAULT_MACHINE_TYPE = "XS"
 
 
@@ -236,7 +235,7 @@ def _handle_grpc_error():
                     )
 
                 elif e.code() == grpc.StatusCode.INVALID_ARGUMENT and (
-                    "The function function could not be deserialized" in e.details()
+                    "The isolated function could not be deserialized" in e.details()
                 ):
                     raise FalMissingDependencyError(e.details()) from None
                 else:
@@ -293,7 +292,7 @@ class FalServerlessHost(Host):
     credentials: Credentials = field(default_factory=get_default_credentials)
     _lock: threading.Lock = field(default_factory=threading.Lock)
 
-    _log_printer = IsolateLogPrinter(debug=bool_envvar("DEBUG"))
+    _log_printer = IsolateLogPrinter(debug=flags.DEBUG)
 
     def __setstate__(self, state: dict[str, Any]) -> None:
         self.__dict__.update(state)

@@ -10,5 +10,13 @@ def bool_envvar(name: str):
     return False
 
 
+DEBUG = bool_envvar("DEBUG")
 TEST_MODE = bool_envvar("ISOLATE_TEST_MODE")
 AUTH_DISABLED = bool_envvar("ISOLATE_AUTH_DISABLED")
+
+GRPC_HOST = os.getenv("FAL_HOST", "api.alpha.fal.ai:443")
+assert GRPC_HOST.startswith("api"), "FAL_HOST must start with 'api'"
+
+REST_HOST = GRPC_HOST.replace("api", "rest", 1)
+
+FORCE_SETUP = bool_envvar("FAL_FORCE_SETUP")
