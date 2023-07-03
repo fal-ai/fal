@@ -85,7 +85,7 @@ def setup(
         ) -> FileSpec:
             checksum = bool(checksum_sha256 or checksum_md5)
 
-            file = file_exists(file_path, calculate_checksum=True)
+            file = file_exists(file_path, calculate_checksum=checksum)
 
             if not file or force or flags.FORCE_SETUP:
                 config = {
@@ -94,7 +94,7 @@ def setup(
                 }
                 isolated(**config)(func)(*args, **kwargs)  # type: ignore
 
-                file = file_exists(file_path, calculate_checksum=True)
+                file = file_exists(file_path, calculate_checksum=checksum)
 
             if not file:
                 raise FalServerlessError(
