@@ -235,7 +235,7 @@ def _handle_grpc_error():
                     )
 
                 elif e.code() == grpc.StatusCode.INVALID_ARGUMENT and (
-                    "The isolated function could not be deserialized" in e.details()
+                    "The function function could not be deserialized" in e.details()
                 ):
                     raise FalMissingDependencyError(e.details()) from None
                 else:
