@@ -6,26 +6,24 @@ import zipfile
 
 import requests
 from fal_serverless.api import FAL_SERVERLESS_DEFAULT_URL
-from fal_serverless.auth import USER
+from fal_serverless.sdk import Credentials, get_default_credentials
 from pathspec import PathSpec
 
-CHUNK_SIZE = 1024 * 1024 * 10  # 10 MB
 
-
-def _check_hash(target_path: str, hash_string: str, token: str) -> bool:
+def _check_hash(target_path: str, hash_string: str, creds: Credentials) -> bool:
     url = f"{REST_URL}/files/dir/check_hash/{target_path}"
-    headers = {"Authorization": token, "Content-Type": "application/json"}
+    headers = creds.to_headers()
+    headers["Content-Type"] = "application/json"
     result = requests.post(url=url, headers=headers, json={"hash": hash_string})
     return result.status_code == 200 and result.json() is True
 
 
 def _upload_file(
-    source_path: str, target_path: str, token: str, unzip: bool = False
+    source_path: str, target_path: str, creds: Credentials, unzip: bool = False
 ) -> None:
 
     url = f"{REST_URL}/files/file/local/{target_path}"
-    headers = {"Authorization": token}
-
+    headers = creds.to_headers()
     with open(source_path, "rb") as file_to_upload:
         files = {"file_upload": file_to_upload}
         params = {"unzip": unzip}
@@ -92,11 +90,11 @@ def sync_dir(local_dir: str, remote_dir: str, force_upload=False) -> str:
     # Compute the local directory hash
     local_hash = _compute_directory_hash(local_dir_abs)
 
-    token = USER.bearer_token
+    creds = get_default_credentials()
 
     print(f"Syncing {local_dir} with {remote_dir}...")
 
-    if _check_hash(remote_dir, local_hash, token) and not force_upload:
+    if _check_hash(remote_dir, local_hash, creds) and not force_upload:
         print(f"{remote_dir} already uploaded and matches {local_dir}")
         return remote_dir
 
@@ -109,7 +107,7 @@ def sync_dir(local_dir: str, remote_dir: str, force_upload=False) -> str:
     _zip_directory(local_dir_abs, zip_path)
 
     # Upload the zipped directory to the serverless environment
-    _upload_file(zip_path, remote_dir, token, unzip=True)
+    _upload_file(zip_path, remote_dir, creds, unzip=True)
 
     os.remove(zip_path)
 

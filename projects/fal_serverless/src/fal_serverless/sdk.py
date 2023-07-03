@@ -73,6 +73,9 @@ class Credentials:
     def to_grpc(self) -> grpc.ChannelCredentials:
         return self.server_credentials.to_grpc()
 
+    def to_headers(self) -> dict[str, str]:
+        raise NotImplementedError
+
 
 @dataclass
 class FalServerlessKeyCredentials(Credentials):
@@ -86,6 +89,9 @@ class FalServerlessKeyCredentials(Credentials):
             grpc.metadata_call_credentials(_GRPCMetadata("auth-key-id", self.key_id)),
         )
 
+    def to_headers(self) -> dict[str, str]:
+        return {"X-Fal-Key-Id": self.key_id, "X-Fal-Key-Secret": self.key_secret}
+
 
 @dataclass
 class AuthenticatedCredentials(Credentials):
@@ -97,6 +103,10 @@ class AuthenticatedCredentials(Credentials):
             grpc.access_token_call_credentials(USER.access_token),
         )
 
+    def to_headers(self) -> dict[str, str]:
+        token = USER.bearer_token
+        return {"Authorization": token}
+
 
 @dataclass
 class ServerlessSecret:
@@ -104,7 +114,7 @@ class ServerlessSecret:
     created_at: datetime
 
 
-def _key_credentials() -> FalServerlessKeyCredentials | None:
+def key_credentials() -> FalServerlessKeyCredentials | None:
     # Ignore key credentials when the user forces auth by user.
     if os.environ.get("FAL_FORCE_AUTH_BY_USER") == "1":
         return None
@@ -122,7 +132,7 @@ def _get_agent_credentials(original_credentials: Credentials) -> Credentials:
     """If running inside a fal Serverless box, use the preconfigured credentials
     instead of the user provided ones."""
 
-    key_creds = _key_credentials()
+    key_creds = key_credentials()
     if is_agent() and key_creds:
         return key_creds
     else:
@@ -133,7 +143,7 @@ def get_default_credentials() -> Credentials:
     if flags.AUTH_DISABLED:
         return Credentials()
 
-    key_creds = _key_credentials()
+    key_creds = key_credentials()
     if key_creds:
         return key_creds
     else:
