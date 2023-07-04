@@ -6,7 +6,7 @@ authors = ["Features & Labels <hello@fal.ai>"]
 readme = "README.md"
 packages = [
     { include = "fal_serverless", from = "src" },
-    { include = "fast_api_client", from = "fast-api-client" },
+    { include = "openapi_fal_rest", from = "openapi-fal-rest" },
 ]
 
 [tool.poetry.dependencies]
@@ -34,6 +34,7 @@ pathspec = "^0.11.1"
 httpx = ">=0.15.4,<0.25.0"
 attrs = ">=21.3.0"
 python-dateutil = "^2.8.0"
+types-python-dateutil = "^2.8.0"
 
 # For 3.9 and earlier, importlib-metadata's newer versions are included in the standard library.
 importlib-metadata = { version = ">=4.4", python = "<3.10" }

@@ -5,11 +5,11 @@ import os
 import zipfile
 from pathlib import Path
 
-import fast_api_client.api.files.check_dir_hash as check_dir_hash_api
-import fast_api_client.api.files.upload_local_file as upload_local_file_api
-import fast_api_client.models.body_upload_local_file as upload_file_model
-import fast_api_client.models.hash_check as hash_check_model
-import fast_api_client.types as rest_types
+import openapi_fal_rest.api.files.check_dir_hash as check_dir_hash_api
+import openapi_fal_rest.api.files.upload_local_file as upload_local_file_api
+import openapi_fal_rest.models.body_upload_local_file as upload_file_model
+import openapi_fal_rest.models.hash_check as hash_check_model
+import openapi_fal_rest.types as rest_types
 from fal_serverless.rest_client import REST_CLIENT
 from pathspec import PathSpec
 

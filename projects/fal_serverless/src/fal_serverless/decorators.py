@@ -6,8 +6,8 @@ from functools import wraps
 from pathlib import Path
 from typing import Any, Callable, TypeVar
 
-import fast_api_client.api.files.file_exists as file_exists_api
-import fast_api_client.models.file_spec as file_spec_model
+import openapi_fal_rest.api.files.file_exists as file_exists_api
+import openapi_fal_rest.models.file_spec as file_spec_model
 from fal_serverless.rest_client import REST_CLIENT
 
 if sys.version_info >= (3, 11):

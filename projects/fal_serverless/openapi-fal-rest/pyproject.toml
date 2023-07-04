@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "fast-api-client"
+name = "openapi-fal-rest"
 version = "0.1.0"
 description = "A client library for accessing FastAPI"
 
@@ -7,9 +7,9 @@ authors = []
 
 readme = "README.md"
 packages = [
-    {include = "fast_api_client"},
+    {include = "openapi_fal_rest"},
 ]
-include = ["CHANGELOG.md", "fast_api_client/py.typed"]
+include = ["CHANGELOG.md", "openapi_fal_rest/py.typed"]
 
 [tool.poetry.dependencies]
 python = "^3.8"

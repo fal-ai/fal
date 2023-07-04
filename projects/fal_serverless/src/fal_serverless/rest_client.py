@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import fal_serverless.flags as flags
 from fal_serverless.sdk import get_default_credentials
-from fast_api_client import AuthenticatedClient
+from openapi_fal_rest.client import AuthenticatedClient
 
 
 class CredentialsClient(AuthenticatedClient):
@@ -10,7 +10,7 @@ class CredentialsClient(AuthenticatedClient):
         self,
         base_url: str,
         *,
-        # defaults come from fast_api_client.Client
+        # defaults come from openapi_fal_rest.Client
         timeout: float = 5,
         verify_ssl: bool = True,
         raise_on_unexpected_status: bool = False,
@@ -27,7 +27,6 @@ class CredentialsClient(AuthenticatedClient):
 
     def get_headers(self) -> dict[str, str]:
         creds = get_default_credentials()
-        print(creds)
         return {
             **creds.to_headers(),
             **self.headers,
