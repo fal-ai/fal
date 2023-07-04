@@ -341,12 +341,17 @@ def get_logs(
     if url:
         url = remove_http_and_port_from_url(url)
     logs = host._connection.get_logs(lines=lines, url=url)
-    if not logs:
-        console.print("No logs found")
-        return
     log_printer = IsolateLogPrinter(debug=True)
-    for log in logs:
-        log_printer.print(log)
+    first_log = next(logs, None)
+    if not first_log:
+        if url:
+            console.print("No logs found, make sure you have the correct URL")
+        else:
+            console.print("No logs found")
+    else:
+        log_printer.print(first_log)
+        for log in logs:
+            log_printer.print(log)
 
 
 ##### Alias group #####
