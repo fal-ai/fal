@@ -3,37 +3,48 @@ from __future__ import annotations
 import hashlib
 import os
 import zipfile
+from pathlib import Path
 
-import requests
-from fal_serverless.api import FAL_SERVERLESS_DEFAULT_URL
-from fal_serverless.sdk import Credentials, get_default_credentials
+import fast_api_client.api.files.check_dir_hash as check_dir_hash_api
+import fast_api_client.api.files.upload_local_file as upload_local_file_api
+import fast_api_client.models.body_upload_local_file as upload_file_model
+import fast_api_client.models.hash_check as hash_check_model
+import fast_api_client.types as rest_types
+from fal_serverless.rest_client import REST_CLIENT
 from pathspec import PathSpec
 
 
-def _check_hash(target_path: str, hash_string: str, creds: Credentials) -> bool:
-    url = f"{REST_URL}/files/dir/check_hash/{target_path}"
-    headers = creds.to_headers()
-    headers["Content-Type"] = "application/json"
-    result = requests.post(url=url, headers=headers, json={"hash": hash_string})
-    return result.status_code == 200 and result.json() is True
+def _check_hash(target_path: str, hash_string: str) -> bool:
+    response = check_dir_hash_api.sync_detailed(
+        target_path,
+        client=REST_CLIENT,
+        json_body=hash_check_model.HashCheck(hash_string),
+    )
+
+    res: bool = response.parsed  # type: ignore
+    return response.status_code == 200 and res
 
 
-def _upload_file(
-    source_path: str, target_path: str, creds: Credentials, unzip: bool = False
-) -> None:
-
-    url = f"{REST_URL}/files/file/local/{target_path}"
-    headers = creds.to_headers()
+def _upload_file(source_path: str, target_path: str, unzip: bool = False):
     with open(source_path, "rb") as file_to_upload:
-        files = {"file_upload": file_to_upload}
-        params = {"unzip": unzip}
-        response = requests.post(url, headers=headers, files=files, params=params)
+        body = upload_file_model.BodyUploadLocalFile(
+            rest_types.File(
+                payload=file_to_upload,
+                # We need to set a file_name, otherwise the server errors processing the file
+                file_name=os.path.basename(source_path),
+            )
+        )
 
-    if response.status_code == 200:
-        return response.json()
-    else:
+        response = upload_local_file_api.sync_detailed(
+            target_path,
+            client=REST_CLIENT,
+            unzip=unzip,
+            multipart_data=body,
+        )
+
+    if response.status_code != 200:
         raise Exception(
-            f"Failed to upload file. Server returned status code {response.status_code} and message {response.text}"
+            f"Failed to upload file. Server returned status code {response.status_code} and message {response.parsed}"
         )
 
 
@@ -78,7 +89,7 @@ def _zip_directory(dir_path: str, zip_path: str) -> None:
                     zipf.write(file_path, arcname)
 
 
-def sync_dir(local_dir: str, remote_dir: str, force_upload=False) -> str:
+def sync_dir(local_dir: str | Path, remote_dir: str, force_upload=False) -> str:
     local_dir_abs = os.path.expanduser(local_dir)
     if not os.path.isabs(remote_dir) or not remote_dir.startswith("/data"):
         raise ValueError(
@@ -90,11 +101,9 @@ def sync_dir(local_dir: str, remote_dir: str, force_upload=False) -> str:
     # Compute the local directory hash
     local_hash = _compute_directory_hash(local_dir_abs)
 
-    creds = get_default_credentials()
-
     print(f"Syncing {local_dir} with {remote_dir}...")
 
-    if _check_hash(remote_dir, local_hash, creds) and not force_upload:
+    if _check_hash(remote_dir, local_hash) and not force_upload:
         print(f"{remote_dir} already uploaded and matches {local_dir}")
         return remote_dir
 
@@ -107,7 +116,7 @@ def sync_dir(local_dir: str, remote_dir: str, force_upload=False) -> str:
     _zip_directory(local_dir_abs, zip_path)
 
     # Upload the zipped directory to the serverless environment
-    _upload_file(zip_path, remote_dir, creds, unzip=True)
+    _upload_file(zip_path, remote_dir, unzip=True)
 
     os.remove(zip_path)
 
@@ -115,11 +124,3 @@ def sync_dir(local_dir: str, remote_dir: str, force_upload=False) -> str:
 
     # Return the full path to the remote directory
     return remote_dir
-
-
-def _get_rest_host_url(url: str) -> str:
-    assert url.startswith("api."), "Expected FAL_HOST format to be `api.<env>.fal.ai`"
-    return "https://" + url.replace("api", "rest", 1)  # to replace just once
-
-
-REST_URL = _get_rest_host_url(FAL_SERVERLESS_DEFAULT_URL)

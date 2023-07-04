@@ -6,8 +6,9 @@ from functools import wraps
 from pathlib import Path
 from typing import Any, Callable, TypeVar
 
-import requests
-from fal_serverless.auth import USER
+import fast_api_client.api.files.file_exists as file_exists_api
+import fast_api_client.models.file_spec as file_spec_model
+from fal_serverless.rest_client import REST_CLIENT
 
 if sys.version_info >= (3, 11):
     from typing import Concatenate
@@ -26,24 +27,27 @@ ArgsT = ParamSpec("ArgsT")
 ReturnT = TypeVar("ReturnT")
 
 
-# TODO: this should be a client method from the client generated from the OpenAPI server
-def file_exists(file_path: Path | str, calculate_checksum: bool) -> FileSpec | None:
+def file_exists(
+    file_path: Path | str, calculate_checksum: bool
+) -> file_spec_model.FileSpec | None:
     file_str = str(file_path)
-    url = f"https://{flags.REST_HOST}/files/file/exists/{file_str}?calculate_checksum={calculate_checksum}"
-    response = requests.post(url, headers={"Authorization": USER.bearer_token})
+    response = file_exists_api.sync_detailed(
+        file_str,
+        client=REST_CLIENT,
+        calculate_checksum=calculate_checksum,
+    )
 
     if response.status_code == 200:
-        return FileSpec(**response.json())
+        return response.parsed  # type: ignore
     elif response.status_code == 404:
         return None
     else:
         raise InternalFalServerlessError(
-            f"Failed to check if file exists: {response.status_code} {response.text}"
+            f"Failed to check if file exists: {response.status_code} {response.parsed}"
         )
 
 
-# TODO: We will be able to do init=True when we get the client generated from the OpenAPI server
-@dataclass(init=False)
+@dataclass
 class FileSpec:
     path: Path
     size: int
@@ -51,21 +55,17 @@ class FileSpec:
     checksum_sha256: str | None = None
     checksum_md5: str | None = None
 
-    def __init__(
-        self,
-        path: str,
-        size: int,
-        is_file: bool,
-        checksum_sha256: str | None,
-        checksum_md5: str | None,
-        # ignore any other fields passed
-        **_others: Any,
-    ):
-        self.path = Path(path)
-        self.size = size
-        self.is_file = is_file
-        self.checksum_sha256 = checksum_sha256
-        self.checksum_md5 = checksum_md5
+    @classmethod
+    def from_model(cls, file_spec: file_spec_model.FileSpec) -> FileSpec:
+        return cls(
+            path=Path(file_spec.path),
+            size=file_spec.size,
+            is_file=file_spec.is_file,
+            checksum_sha256=file_spec.checksum_sha256
+            if file_spec.checksum_sha256
+            else None,
+            checksum_md5=file_spec.checksum_md5 if file_spec.checksum_md5 else None,
+        )
 
 
 def setup(
@@ -119,7 +119,7 @@ def setup(
                         f"Expected {checksum_md5} but got {file.checksum_md5}"
                     )
 
-            return file
+            return FileSpec.from_model(file)
 
         return internal_wrapper
 
