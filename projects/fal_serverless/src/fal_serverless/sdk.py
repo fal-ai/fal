@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import enum
 import os
 from contextlib import ExitStack
 from dataclasses import dataclass, field
@@ -238,6 +239,11 @@ class WorkerStatus:
     machine_type: str
 
 
+class KeyScope(enum.Enum):
+    ADMIN = "ADMIN"
+    API = "API"
+
+
 @from_grpc.register(isolate_proto.RegisterCronResult)
 def _from_grpc_register_cron_result(
     message: isolate_proto.RegisterCronResult,
@@ -358,8 +364,14 @@ class FalServerlessConnection:
         self._stub = isolate_proto.IsolateControllerStub(channel)
         return self._stub
 
-    def create_user_key(self) -> tuple[str, str]:
-        request = isolate_proto.CreateUserKeyRequest()
+    def create_user_key(self, scope: KeyScope) -> tuple[str, str]:
+        scope_proto = (
+            isolate_proto.CreateUserKeyRequest.Scope.ADMIN
+            if scope is KeyScope.ADMIN
+            else isolate_proto.CreateUserKeyRequest.Scope.API
+        )
+
+        request = isolate_proto.CreateUserKeyRequest(scope=scope_proto)
         response = self.stub.CreateUserKey(request)
         return response.key_secret, response.key_id
 
@@ -522,7 +534,6 @@ class FalServerlessConnection:
     def get_logs(
         self, lines: int | None = None, url: str | None = None
     ) -> Iterator[Log]:
-
         filter = isolate_proto.LogsFilter(lines=lines, url=url)
         request = isolate_proto.GetLogsRequest(filter=filter)
         for partial_result in self.stub.GetLogs(request):

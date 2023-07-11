@@ -13,6 +13,7 @@ from fal_serverless.exceptions import ApplicationExceptionHandler
 from fal_serverless.logging import get_logger, set_debug_logging
 from fal_serverless.logging.isolate import IsolateLogPrinter
 from fal_serverless.logging.trace import get_tracer
+from fal_serverless.sdk import KeyScope
 from rich.table import Table
 
 DEFAULT_HOST = "api.alpha.fal.ai"
@@ -175,12 +176,19 @@ def key_cli(ctx, host: str, port: str):
 
 
 @key_cli.command(name="generate")
+@click.option(
+    "--scope",
+    default=None,
+    required=True,
+    type=click.Choice([KeyScope.ADMIN.value, KeyScope.API.value]),
+    help="The privilage scope of the key.",
+)
 @click.pass_obj
-def key_generate(client: sdk.FalServerlessClient):
+def key_generate(client: sdk.FalServerlessClient, scope: KeyScope):
     with client.connect() as connection:
-        result = connection.create_user_key()
+        result = connection.create_user_key(scope)
         print(
-            "Generated key id and key secret.\n"
+            f"Generated key id and key secret, with the scope `{scope}`.\n"
             "This is the only time the secret will be visible.\n"
             "You will need to generate a new key pair if you lose access to this secret."
         )
