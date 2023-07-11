@@ -144,7 +144,8 @@ def download_file(
         requirements=["urllib3"],
     )
     def download():
-        from urllib.request import urlretrieve
+        from shutil import copyfileobj
+        from urllib.request import Request, urlopen
 
         print(f"Downloading {url} to {check_path}")
 
@@ -152,7 +153,12 @@ def download_file(
         check_path.parent.mkdir(parents=True, exist_ok=True)
 
         try:
-            urlretrieve(url, check_path)
+            # TODO: how can we randomize the user agent to avoid being blocked?
+            user_agent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.8; rv:21.0) Gecko/20100101 Firefox/21.0"
+
+            req = Request(url, headers={"User-Agent": user_agent})
+            with urlopen(req) as response, check_path.open("wb") as f:
+                copyfileobj(response, f)
         except Exception as e:
             # raise exception in generally-available class
             raise FileNotFoundError(
