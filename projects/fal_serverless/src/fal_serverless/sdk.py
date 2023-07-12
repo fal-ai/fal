@@ -227,6 +227,7 @@ class RegisterApplicationResultType:
 class UserKeyInfo:
     key_id: str
     created_at: datetime
+    scope: KeyScope
 
 
 @dataclass
@@ -242,6 +243,20 @@ class WorkerStatus:
 class KeyScope(enum.Enum):
     ADMIN = "ADMIN"
     API = "API"
+
+    @staticmethod
+    def from_proto(
+        proto: isolate_proto.CreateUserKeyRequest.Scope.ValueType | None,
+    ) -> KeyScope:
+        if proto is None:
+            return KeyScope.API
+
+        if proto is isolate_proto.CreateUserKeyRequest.Scope.ADMIN:
+            return KeyScope.ADMIN
+        elif proto is isolate_proto.CreateUserKeyRequest.Scope.API:
+            return KeyScope.API
+        else:
+            raise ValueError(f"Unknown KeyScope: {proto}")
 
 
 @from_grpc.register(isolate_proto.RegisterCronResult)
@@ -382,6 +397,7 @@ class FalServerlessConnection:
             UserKeyInfo(
                 key.key_id,
                 isolate_proto.datetime_from_timestamp(key.created_at),
+                KeyScope.from_proto(key.scope),
             )
             for key in response.user_keys
         ]

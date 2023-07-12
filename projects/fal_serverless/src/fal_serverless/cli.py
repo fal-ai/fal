@@ -201,10 +201,12 @@ def key_list(client: sdk.FalServerlessClient):
     table = Table(title="Keys")
     table.add_column("Key ID")
     table.add_column("Created At")
+    table.add_column("Scope")
+
     with client.connect() as connection:
         keys = connection.list_user_keys()
         for key in keys:
-            table.add_row(key.key_id, str(key.created_at))
+            table.add_row(key.key_id, str(key.created_at), str(key.scope.value))
 
     console.print(table)
 
