@@ -372,12 +372,14 @@ class FalServerlessHost(Host):
         )
         keep_alive = options.host.get("keep_alive", FAL_SERVERLESS_DEFAULT_KEEP_ALIVE)
         base_image = options.host.get("_base_image", None)
+        exposed_port = options.gateway.get("exposed_port", None)
         setup_function = options.host.get("setup_function", None)
 
         machine_requirements = MachineRequirements(
             machine_type=machine_type,
             keep_alive=keep_alive,
             base_image=base_image,
+            exposed_port=exposed_port,
         )
 
         return_value = _UNSET
@@ -615,13 +617,16 @@ def isolated(  # type: ignore
 
     def wrapper(func: Callable[ArgsT, ReturnT]):
         # wrap it with flask if the serve option is set
-        res = templated_flask(func) if options.gateway.get("serve") else func
+        if options.gateway.pop("serve", False):
+            options.gateway["exposed_port"] = 8080
+            func = templated_flask(func)  # type: ignore
+
         proxy = IsolatedFunction(
             host=host,
-            func=res,  # type: ignore
+            func=func,  # type: ignore
             options=options,
         )
-        return wraps(res)(proxy)  # type: ignore
+        return wraps(func)(proxy)  # type: ignore
 
     return wrapper
 
