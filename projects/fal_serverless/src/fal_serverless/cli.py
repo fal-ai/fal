@@ -521,5 +521,29 @@ def remove_http_and_port_from_url(url):
     return url
 
 
+# dbt-fal commands to be errored out
+DBT_FAL_COMMAND_NOTICE = """
+The dbt tool `fal` and `dbt-fal` adapter have been merged into a single tool.
+Please use the new `dbt-fal` command line tool instead.
+Running `pip install dbt-fal` will install the new tool and the adapter alongside.
+Then run your command like
+
+    dbt-fal <command>
+
+"""
+
+
+@cli.command("run", context_settings={"ignore_unknown_options": True})
+@click.argument("any", nargs=-1, type=click.UNPROCESSED)
+def dbt_run(any):
+    raise click.BadArgumentUsage(DBT_FAL_COMMAND_NOTICE)
+
+
+@cli.command("flow", context_settings={"ignore_unknown_options": True})
+@click.argument("any", nargs=-1, type=click.UNPROCESSED)
+def dbt_flow(any):
+    raise click.BadArgumentUsage(DBT_FAL_COMMAND_NOTICE)
+
+
 if __name__ == "__main__":
     cli()
