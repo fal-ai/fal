@@ -228,6 +228,7 @@ class UserKeyInfo:
     key_id: str
     created_at: datetime
     scope: KeyScope
+    alias: str
 
 
 @dataclass
@@ -380,14 +381,14 @@ class FalServerlessConnection:
         self._stub = isolate_proto.IsolateControllerStub(channel)
         return self._stub
 
-    def create_user_key(self, scope: KeyScope) -> tuple[str, str]:
+    def create_user_key(self, scope: KeyScope, alias: str | None) -> tuple[str, str]:
         scope_proto = (
             isolate_proto.CreateUserKeyRequest.Scope.ADMIN
             if scope is KeyScope.ADMIN
             else isolate_proto.CreateUserKeyRequest.Scope.API
         )
 
-        request = isolate_proto.CreateUserKeyRequest(scope=scope_proto)
+        request = isolate_proto.CreateUserKeyRequest(scope=scope_proto, alias=alias)
         response = self.stub.CreateUserKey(request)
         return response.key_secret, response.key_id
 
@@ -399,6 +400,7 @@ class FalServerlessConnection:
                 key.key_id,
                 isolate_proto.datetime_from_timestamp(key.created_at),
                 KeyScope.from_proto(key.scope),
+                key.alias,
             )
             for key in response.user_keys
         ]

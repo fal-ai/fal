@@ -183,10 +183,15 @@ def key_cli(ctx, host: str, port: str):
     type=click.Choice([KeyScope.ADMIN.value, KeyScope.API.value]),
     help="The privilage scope of the key.",
 )
+@click.option(
+    "--alias",
+    default=None,
+    help="An alias for the key.",
+)
 @click.pass_obj
-def key_generate(client: sdk.FalServerlessClient, scope: KeyScope):
+def key_generate(client: sdk.FalServerlessClient, scope: KeyScope, alias: str | None):
     with client.connect() as connection:
-        result = connection.create_user_key(scope)
+        result = connection.create_user_key(scope, alias)
         print(
             f"Generated key id and key secret, with the scope `{scope}`.\n"
             "This is the only time the secret will be visible.\n"
@@ -202,11 +207,14 @@ def key_list(client: sdk.FalServerlessClient):
     table.add_column("Key ID")
     table.add_column("Created At")
     table.add_column("Scope")
+    table.add_column("Alias")
 
     with client.connect() as connection:
         keys = connection.list_user_keys()
         for key in keys:
-            table.add_row(key.key_id, str(key.created_at), str(key.scope.value))
+            table.add_row(
+                key.key_id, str(key.created_at), str(key.scope.value), key.alias
+            )
 
     console.print(table)
 
