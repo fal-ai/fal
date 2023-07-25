@@ -261,11 +261,14 @@ def find_missing_dependencies(
             continue
 
         module = inspect.getmodule(obj)
+        if module is None:
+            continue
+
         possible_package = getattr(module, "__package__", None)
         if possible_package:
             pkg_name, *_ = possible_package.split(".")  # type: ignore
         else:
-            pkg_name = module.__name__  # type: ignore
+            pkg_name = module.__name__
 
         used_modules[canonicalize_name(pkg_name)].append(name)  # type: ignore
 
