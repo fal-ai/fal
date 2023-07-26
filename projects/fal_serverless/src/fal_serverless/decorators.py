@@ -9,6 +9,7 @@ from typing import Any, Callable, TypeVar
 import openapi_fal_rest.api.files.file_exists as file_exists_api
 import openapi_fal_rest.models.file_spec as file_spec_model
 from fal_serverless.rest_client import REST_CLIENT
+from fal_serverless.toolkit import mainify
 
 if sys.version_info >= (3, 11):
     from typing import Concatenate
@@ -47,6 +48,7 @@ def file_exists(
         )
 
 
+@mainify
 @dataclass
 class FileSpec:
     path: Path
