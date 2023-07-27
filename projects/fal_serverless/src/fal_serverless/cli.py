@@ -189,9 +189,10 @@ def key_cli(ctx, host: str, port: str):
     help="An alias for the key.",
 )
 @click.pass_obj
-def key_generate(client: sdk.FalServerlessClient, scope: KeyScope, alias: str | None):
+def key_generate(client: sdk.FalServerlessClient, scope: str, alias: str | None):
     with client.connect() as connection:
-        result = connection.create_user_key(scope, alias)
+        parsed_scope = KeyScope(scope)
+        result = connection.create_user_key(parsed_scope, alias)
         print(
             f"Generated key id and key secret, with the scope `{scope}`.\n"
             "This is the only time the secret will be visible.\n"
