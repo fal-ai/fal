@@ -110,7 +110,7 @@ class Host:
                 options.environment[key] = value
 
         if options.gateway.get("serve"):
-            options.add_requirements(["flask", "flask-cors"])
+            options.add_requirements(["fastapi==0.99.1", "uvicorn"])
 
         return options
 
@@ -619,10 +619,10 @@ def isolated(  # type: ignore
     options = host.parse_options(kind=kind, **config)
 
     def wrapper(func: Callable[ArgsT, ReturnT]):
-        # wrap it with flask if the serve option is set
+        # wrap it within a webapp if the serve option is set
         if options.gateway.pop("serve", False):
             options.gateway["exposed_port"] = 8080
-            func = templated_flask(func)  # type: ignore
+            func = create_webapp(func)  # type: ignore
 
         proxy = IsolatedFunction(
             host=host,
@@ -634,34 +634,28 @@ def isolated(  # type: ignore
     return wrapper
 
 
-def templated_flask(func: Callable[ArgsT, ReturnT]) -> Callable[[], None]:
-    param_names = inspect.signature(func).parameters.keys()
+def create_webapp(func: Callable[ArgsT, ReturnT]) -> Callable[[], None]:
+    @wraps(func)
+    def wrapper():
+        from fastapi import FastAPI
+        from fastapi.middleware.cors import CORSMiddleware
+        from uvicorn import run
 
-    def templated_flask_wrapper():
-        from flask import Flask, jsonify, request
-        from flask_cors import CORS
+        app = FastAPI()
 
-        app = Flask("fal")
-        cors = CORS(app, resources={r"/*": {"origins": "*"}})
+        app.add_middleware(
+            CORSMiddleware,
+            allow_credentials=True,
+            allow_headers=("*"),
+            allow_methods=("*"),
+            allow_origins=("*"),
+        )
 
-        @app.route("/", methods=["POST"])
-        def flask():
-            try:
-                body = request.get_json()
-                if not isinstance(body, dict):
-                    raise TypeError("Body must be a JSON object")
+        app.add_api_route("/", func, name=func.__name__, methods=["POST"])
 
-                res: ReturnT = func(**body)  # type: ignore
-            except TypeError as e:
-                return jsonify({"error": str(e)}), 400
-            except Exception as e:
-                return jsonify({"error": str(e)}), 500
+        run(app, host="0.0.0.0", port=8080)
 
-            return jsonify({"result": res})
-
-        app.run(host="0.0.0.0", port=8080)
-
-    return templated_flask_wrapper
+    return wrapper
 
 
 @dataclass
