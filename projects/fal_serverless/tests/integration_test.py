@@ -33,7 +33,7 @@ def test_isolated(isolated_client):
     second = get_hostname_local()
     assert not second.startswith("worker-")
 
-    get_hostname_m = get_hostname.on(machine_type="M")
+    get_hostname_m = get_hostname.on(machine_type="L")
     third = get_hostname_m()
     assert third.startswith("worker")
     assert third != first

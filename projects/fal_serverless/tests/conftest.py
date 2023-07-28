@@ -8,4 +8,4 @@ from fal_serverless import isolated
 
 @pytest.fixture(scope="function")
 def isolated_client():
-    return partial(isolated, keep_alive=0)
+    return partial(isolated, machine_type="M", keep_alive=0)
