@@ -369,7 +369,8 @@ def test_cached_function(isolated_client, capsys, monkeypatch):
         time.sleep(1)  # slow CPU
         return math.factorial(n)
 
-    @isolated_client("virtualenv", keep_alive=30)
+    # HACK: make this machine is not shared with others by using a unique requirements
+    @isolated_client("virtualenv", keep_alive=30, requirements=["pyjokes     "])
     def regular_function(n):
         if get_pipe() == "pipe":
             return factorial(n)
