@@ -12,7 +12,10 @@ from fal_serverless.exceptions.auth import UnauthenticatedException
 def login():
     refresh_token, _ = local.load_token()
     token_data = auth0.login(bool(refresh_token))
-    local.save_token(token_data["refresh_token"])
+    with local.lock_token():
+        local.save_token(token_data["refresh_token"])
+
+    USER.invalidate()
 
 
 def logout():
@@ -20,16 +23,14 @@ def logout():
     if refresh_token is None:
         raise click.ClickException(message="You're not logged in")
     auth0.revoke(refresh_token)
-    local.delete_token()
+    with local.lock_token():
+        local.delete_token()
+
+    USER.invalidate()
     console.print(f"{CHECK_ICON} Logged out of [cyan bold]fal Serverless[/]. Bye!")
 
 
-def refresh():
-    _fetch_access_token(refresh=True)
-    console.print(f"{CHECK_ICON} Refreshed access token")
-
-
-def _fetch_access_token(refresh=False) -> str:
+def _fetch_access_token() -> str:
     """
     Load the refresh token, request a new access_token (refreshing the refresh token)
     and return the access_token.
@@ -41,7 +42,7 @@ def _fetch_access_token(refresh=False) -> str:
         if refresh_token is None:
             raise UnauthenticatedException()
 
-        if access_token is not None and not refresh:
+        if access_token is not None:
             try:
                 auth0.validate_access_token(access_token)
                 return access_token
@@ -66,6 +67,10 @@ def _fetch_access_token(refresh=False) -> str:
 class UserAccess:
     _access_token: str | None = field(repr=False, default=None)
     _user_info: dict | None = field(repr=False, default=None)
+
+    def invalidate(self) -> None:
+        self._access_token = None
+        self._user_info = None
 
     @property
     def info(self) -> dict:

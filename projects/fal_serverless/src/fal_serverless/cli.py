@@ -153,11 +153,6 @@ def auth_logout():
     auth.logout()
 
 
-@auth_cli.command(name="refresh")
-def auth_refresh():
-    auth.refresh()
-
-
 @auth_cli.command(name="hello", hidden=True)
 def auth_test():
     """
