@@ -91,7 +91,7 @@ class FalServerlessKeyCredentials(Credentials):
         )
 
     def to_headers(self) -> dict[str, str]:
-        return {"X-Fal-Key-Id": self.key_id, "X-Fal-Key-Secret": self.key_secret}
+        return {"Authorization": f"Basic {self.key_id}:{self.key_secret}"}
 
 
 @dataclass
