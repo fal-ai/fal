@@ -282,12 +282,15 @@ def register_application(
     host: api.FalServerlessHost,
     file_path: str,
     function_name: str,
+    alias: str | None,
     auth_mode: Literal["public", "private", "shared"],
-    alias: str | None = None,
 ):
     import runpy
 
     module = runpy.run_path(file_path)
+    if function_name not in module:
+        raise api.FalServerlessError(f"Function '{function_name}' not found in module")
+
     isolated_function = module[function_name]
     gateway_options = isolated_function.options.gateway
     if "serve" not in gateway_options and "exposed_port" not in gateway_options:
@@ -302,11 +305,13 @@ def register_application(
             "Must expose port 8080 for now. This will be configurable in the future."
         )
 
+    max_concurrency = gateway_options.get("max_concurrency")
     id = host.register(
         func=isolated_function.func,
         options=isolated_function.options,
         application_name=alias,
         application_auth_mode=auth_mode,
+        max_concurrency=max_concurrency,
     )
     if id:
         # TODO: should we centralize this URL format?
@@ -385,9 +390,15 @@ def alias_list(client: api.FalServerlessClient):
         table.add_column("Alias")
         table.add_column("Revision")
         table.add_column("Auth")
+        table.add_column("Max Concurrency")
 
         for app_alias in connection.list_aliases():
-            table.add_row(app_alias.alias, app_alias.revision, app_alias.auth_mode)
+            table.add_row(
+                app_alias.alias,
+                app_alias.revision,
+                app_alias.auth_mode,
+                str(app_alias.max_concurrency),
+            )
 
     console.print(table)
 

@@ -176,6 +176,7 @@ class AliasInfo:
     alias: str
     revision: str
     auth_mode: str
+    max_concurrency: int
 
 
 @dataclass(frozen=True)
@@ -296,6 +297,7 @@ def _from_grpc_alias_info(message: isolate_proto.AliasInfo) -> AliasInfo:
         alias=message.alias,
         revision=message.revision,
         auth_mode=auth_mode,
+        max_concurrency=message.max_concurrency,
     )
 
 
@@ -441,6 +443,7 @@ class FalServerlessConnection:
         application_name: str | None = None,
         application_auth_mode: Literal["public", "private", "shared"] | None = None,
         *,
+        max_concurrency: int | None = None,
         serialization_method: str = _DEFAULT_SERIALIZATION_METHOD,
         machine_requirements: MachineRequirements | None = None,
     ) -> Iterator[isolate_proto.RegisterApplicationResult]:
@@ -466,6 +469,7 @@ class FalServerlessConnection:
             function=wrapped_function,
             environments=environments,
             machine_requirements=wrapped_requirements,
+            max_concurrency=max_concurrency,
             application_name=application_name,
             auth_mode=auth_mode,
         )

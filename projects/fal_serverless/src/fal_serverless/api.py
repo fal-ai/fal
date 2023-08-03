@@ -84,6 +84,14 @@ class Host:
     is executed."""
 
     _SUPPORTED_KEYS: ClassVar[frozenset[str]] = frozenset()
+    _GATEWAY_KEYS: ClassVar[frozenset[str]] = frozenset(
+        {"serve", "exposed_port", "max_concurrency"}
+    )
+
+    def __post_init__(self):
+        assert not self._SUPPORTED_KEYS.intersection(
+            self._GATEWAY_KEYS
+        ), "Gateway keys and host keys should not overlap"
 
     @classmethod
     def parse_key(cls, key: str, value: Any) -> tuple[Any, Any]:
@@ -104,7 +112,7 @@ class Host:
             key, value = cls.parse_key(key, value)
             if key in cls._SUPPORTED_KEYS:
                 options.host[key] = value
-            elif key == "serve" or key == "exposed_port":
+            elif key in cls._GATEWAY_KEYS:
                 options.gateway[key] = value
             else:
                 options.environment[key] = value
@@ -312,6 +320,7 @@ class FalServerlessHost(Host):
         self,
         func: Callable[ArgsT, ReturnT],
         options: Options,
+        max_concurrency: int | None = None,
         application_name: str | None = None,
         application_auth_mode: Literal["public", "shared", "private"] | None = None,
     ) -> str | None:
@@ -339,6 +348,7 @@ class FalServerlessHost(Host):
             application_name=application_name,
             application_auth_mode=application_auth_mode,
             machine_requirements=machine_requirements,
+            max_concurrency=max_concurrency,
         ):
             for log in partial_result.logs:
                 self._log_printer.print(log)
@@ -471,6 +481,7 @@ def isolated(
     host: LocalHost,
     serve: Literal[True],
     exposed_port: int | None = None,
+    max_concurrency: int | None = None,
 ) -> Callable[[Callable[Concatenate[ArgsT], ReturnT]], IsolatedFunction[[], None]]:
     ...
 
@@ -507,6 +518,7 @@ def isolated(
     host: FalServerlessHost = _DEFAULT_HOST,
     serve: Literal[True],
     exposed_port: int | None = None,
+    max_concurrency: int | None = None,
     # FalServerlessHost options
     machine_type: str = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
     keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
@@ -554,6 +566,7 @@ def isolated(
     host: LocalHost,
     serve: Literal[True],
     exposed_port: int | None = None,
+    max_concurrency: int | None = None,
 ) -> Callable[[Callable[Concatenate[ArgsT], ReturnT]], IsolatedFunction[[], None]]:
     ...
 
@@ -600,6 +613,7 @@ def isolated(
     host: FalServerlessHost = _DEFAULT_HOST,
     serve: Literal[True],
     exposed_port: int | None = None,
+    max_concurrency: int | None = None,
     # FalServerlessHost options
     machine_type: str = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
     keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
