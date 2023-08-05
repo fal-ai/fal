@@ -1,46 +1,44 @@
-import datetime
 from typing import Any, Dict, List, Type, TypeVar
 
 import attr
-from dateutil.parser import isoparse
 
-from ..models.key_scope import KeyScope
-
-T = TypeVar("T", bound="UserKeyInfo")
+T = TypeVar("T", bound="PaymentMethod")
 
 
 @attr.s(auto_attribs=True)
-class UserKeyInfo:
+class PaymentMethod:
     """
     Attributes:
-        key_id (str):
-        created_at (datetime.datetime):
-        scope (KeyScope): An enumeration.
-        alias (str):
+        type (str):
+        brand (str):
+        last4 (str):
+        exp_month (int):
+        exp_year (int):
     """
 
-    key_id: str
-    created_at: datetime.datetime
-    scope: KeyScope
-    alias: str
+    type: str
+    brand: str
+    last4: str
+    exp_month: int
+    exp_year: int
     additional_properties: Dict[str, Any] = attr.ib(init=False, factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
-        key_id = self.key_id
-        created_at = self.created_at.isoformat()
-
-        scope = self.scope.value
-
-        alias = self.alias
+        type = self.type
+        brand = self.brand
+        last4 = self.last4
+        exp_month = self.exp_month
+        exp_year = self.exp_year
 
         field_dict: Dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
             {
-                "key_id": key_id,
-                "created_at": created_at,
-                "scope": scope,
-                "alias": alias,
+                "type": type,
+                "brand": brand,
+                "last4": last4,
+                "exp_month": exp_month,
+                "exp_year": exp_year,
             }
         )
 
@@ -49,23 +47,26 @@ class UserKeyInfo:
     @classmethod
     def from_dict(cls: Type[T], src_dict: Dict[str, Any]) -> T:
         d = src_dict.copy()
-        key_id = d.pop("key_id")
+        type = d.pop("type")
 
-        created_at = isoparse(d.pop("created_at"))
+        brand = d.pop("brand")
 
-        scope = KeyScope(d.pop("scope"))
+        last4 = d.pop("last4")
 
-        alias = d.pop("alias")
+        exp_month = d.pop("exp_month")
 
-        user_key_info = cls(
-            key_id=key_id,
-            created_at=created_at,
-            scope=scope,
-            alias=alias,
+        exp_year = d.pop("exp_year")
+
+        payment_method = cls(
+            type=type,
+            brand=brand,
+            last4=last4,
+            exp_month=exp_month,
+            exp_year=exp_year,
         )
 
-        user_key_info.additional_properties = d
-        return user_key_info
+        payment_method.additional_properties = d
+        return payment_method
 
     @property
     def additional_keys(self) -> List[str]:

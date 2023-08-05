@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from http import HTTPStatus
 from sys import argv
 from typing import Literal
 from uuid import uuid4
@@ -7,12 +8,14 @@ from uuid import uuid4
 import click
 import fal_serverless.auth as auth
 import grpc
+import openapi_fal_rest.api.billing.get_user_details as get_user_details
 from fal_serverless import api, sdk
 from fal_serverless.console import console
 from fal_serverless.exceptions import ApplicationExceptionHandler
 from fal_serverless.logging import get_logger, set_debug_logging
 from fal_serverless.logging.isolate import IsolateLogPrinter
 from fal_serverless.logging.trace import get_tracer
+from fal_serverless.rest_client import REST_CLIENT
 from fal_serverless.sdk import KeyScope
 from rich.table import Table
 
@@ -285,7 +288,24 @@ def register_application(
     alias: str | None,
     auth_mode: Literal["public", "private", "shared"],
 ):
+    import json
     import runpy
+
+    user_details_response = get_user_details.sync_detailed(
+        client=REST_CLIENT,
+    )
+
+    if user_details_response.status_code != HTTPStatus.OK:
+        try:
+            content = json.loads(user_details_response.content.decode("utf8"))
+        except:
+            raise api.FalServerlessError(
+                f"Error fetching user details: {user_details_response}"
+            )
+        else:
+            raise api.FalServerlessError(content["detail"])
+
+    user_id = user_details_response.parsed.user_id.split("|")[1]
 
     module = runpy.run_path(file_path)
     if function_name not in module:
@@ -318,8 +338,6 @@ def register_application(
         gateway_host = host.url.replace("api.", "gateway.")
         gateway_host = remove_http_and_port_from_url(gateway_host)
 
-        # Encode since user_id can contain special characters
-        user_id = auth.USER.info["sub"].split("|")[1]
         if alias:
             console.print(
                 f"Registered a new revision for function '{alias}' (revision='{id}')."

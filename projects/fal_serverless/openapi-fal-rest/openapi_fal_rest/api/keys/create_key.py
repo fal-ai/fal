@@ -6,18 +6,30 @@ import httpx
 from ... import errors
 from ...client import AuthenticatedClient, Client
 from ...models.http_validation_error import HTTPValidationError
+from ...models.key_scope import KeyScope
 from ...models.new_user_key import NewUserKey
-from ...types import Response
+from ...types import UNSET, Response, Unset
 
 
 def _get_kwargs(
     *,
     client: AuthenticatedClient,
+    scope: KeyScope,
+    alias: Union[Unset, None, str] = "",
 ) -> Dict[str, Any]:
     url = "{}/keys/".format(client.base_url)
 
     headers: Dict[str, str] = client.get_headers()
     cookies: Dict[str, Any] = client.get_cookies()
+
+    params: Dict[str, Any] = {}
+    json_scope = scope.value
+
+    params["scope"] = json_scope
+
+    params["alias"] = alias
+
+    params = {k: v for k, v in params.items() if v is not UNSET and v is not None}
 
     return {
         "method": "post",
@@ -26,6 +38,7 @@ def _get_kwargs(
         "cookies": cookies,
         "timeout": client.get_timeout(),
         "follow_redirects": client.follow_redirects,
+        "params": params,
     }
 
 
@@ -56,8 +69,14 @@ def _build_response(*, client: Client, response: httpx.Response) -> Response[Uni
 def sync_detailed(
     *,
     client: AuthenticatedClient,
+    scope: KeyScope,
+    alias: Union[Unset, None, str] = "",
 ) -> Response[Union[HTTPValidationError, NewUserKey]]:
     """Create
+
+    Args:
+        scope (KeyScope): An enumeration.
+        alias (Union[Unset, None, str]):  Default: ''.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -69,6 +88,8 @@ def sync_detailed(
 
     kwargs = _get_kwargs(
         client=client,
+        scope=scope,
+        alias=alias,
     )
 
     response = httpx.request(
@@ -82,8 +103,14 @@ def sync_detailed(
 def sync(
     *,
     client: AuthenticatedClient,
+    scope: KeyScope,
+    alias: Union[Unset, None, str] = "",
 ) -> Optional[Union[HTTPValidationError, NewUserKey]]:
     """Create
+
+    Args:
+        scope (KeyScope): An enumeration.
+        alias (Union[Unset, None, str]):  Default: ''.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -95,14 +122,22 @@ def sync(
 
     return sync_detailed(
         client=client,
+        scope=scope,
+        alias=alias,
     ).parsed
 
 
 async def asyncio_detailed(
     *,
     client: AuthenticatedClient,
+    scope: KeyScope,
+    alias: Union[Unset, None, str] = "",
 ) -> Response[Union[HTTPValidationError, NewUserKey]]:
     """Create
+
+    Args:
+        scope (KeyScope): An enumeration.
+        alias (Union[Unset, None, str]):  Default: ''.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -114,6 +149,8 @@ async def asyncio_detailed(
 
     kwargs = _get_kwargs(
         client=client,
+        scope=scope,
+        alias=alias,
     )
 
     async with httpx.AsyncClient(verify=client.verify_ssl) as _client:
@@ -125,8 +162,14 @@ async def asyncio_detailed(
 async def asyncio(
     *,
     client: AuthenticatedClient,
+    scope: KeyScope,
+    alias: Union[Unset, None, str] = "",
 ) -> Optional[Union[HTTPValidationError, NewUserKey]]:
     """Create
+
+    Args:
+        scope (KeyScope): An enumeration.
+        alias (Union[Unset, None, str]):  Default: ''.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -139,5 +182,7 @@ async def asyncio(
     return (
         await asyncio_detailed(
             client=client,
+            scope=scope,
+            alias=alias,
         )
     ).parsed

@@ -1,46 +1,44 @@
-import datetime
 from typing import Any, Dict, List, Type, TypeVar
 
 import attr
-from dateutil.parser import isoparse
 
-from ..models.key_scope import KeyScope
-
-T = TypeVar("T", bound="UserKeyInfo")
+T = TypeVar("T", bound="InvoiceItem")
 
 
 @attr.s(auto_attribs=True)
-class UserKeyInfo:
+class InvoiceItem:
     """
     Attributes:
-        key_id (str):
-        created_at (datetime.datetime):
-        scope (KeyScope): An enumeration.
-        alias (str):
+        name (str):
+        amount (int):
+        quantity (int):
+        machine_type (str):
+        run_type (str):
     """
 
-    key_id: str
-    created_at: datetime.datetime
-    scope: KeyScope
-    alias: str
+    name: str
+    amount: int
+    quantity: int
+    machine_type: str
+    run_type: str
     additional_properties: Dict[str, Any] = attr.ib(init=False, factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
-        key_id = self.key_id
-        created_at = self.created_at.isoformat()
-
-        scope = self.scope.value
-
-        alias = self.alias
+        name = self.name
+        amount = self.amount
+        quantity = self.quantity
+        machine_type = self.machine_type
+        run_type = self.run_type
 
         field_dict: Dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
             {
-                "key_id": key_id,
-                "created_at": created_at,
-                "scope": scope,
-                "alias": alias,
+                "name": name,
+                "amount": amount,
+                "quantity": quantity,
+                "machine_type": machine_type,
+                "run_type": run_type,
             }
         )
 
@@ -49,23 +47,26 @@ class UserKeyInfo:
     @classmethod
     def from_dict(cls: Type[T], src_dict: Dict[str, Any]) -> T:
         d = src_dict.copy()
-        key_id = d.pop("key_id")
+        name = d.pop("name")
 
-        created_at = isoparse(d.pop("created_at"))
+        amount = d.pop("amount")
 
-        scope = KeyScope(d.pop("scope"))
+        quantity = d.pop("quantity")
 
-        alias = d.pop("alias")
+        machine_type = d.pop("machine_type")
 
-        user_key_info = cls(
-            key_id=key_id,
-            created_at=created_at,
-            scope=scope,
-            alias=alias,
+        run_type = d.pop("run_type")
+
+        invoice_item = cls(
+            name=name,
+            amount=amount,
+            quantity=quantity,
+            machine_type=machine_type,
+            run_type=run_type,
         )
 
-        user_key_info.additional_properties = d
-        return user_key_info
+        invoice_item.additional_properties = d
+        return invoice_item
 
     @property
     def additional_keys(self) -> List[str]:
