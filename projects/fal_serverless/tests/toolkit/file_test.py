@@ -10,37 +10,41 @@ from fal_serverless.toolkit.file import File, GoogleStorageRepository
 def test_binary_content_matches():
     content = b"Hello World"
     content_base64 = b64encode(content).decode("utf-8")
-    file = File.from_bytes(content)
+    file = File.from_bytes(content, repository="in_memory")
     assert file.as_base64() == content_base64
 
 
 def test_default_content_type():
-    file = File.from_bytes(b"Hello World")
+    file = File.from_bytes(b"Hello World", repository="in_memory")
     assert file.content_type == "application/octet-stream"
     assert file.file_name.endswith(".bin")
 
 
 def test_file_name_from_content_type():
-    file = File.from_bytes(b"Hello World", content_type="text/plain")
+    file = File.from_bytes(
+        b"Hello World", content_type="text/plain", repository="in_memory"
+    )
     assert file.content_type == "text/plain"
     assert file.file_name.endswith(".txt")
 
 
 def test_content_type_from_file_name():
-    file = File.from_bytes(b"Hello World", file_name="hello.txt")
+    file = File.from_bytes(
+        b"Hello World", file_name="hello.txt", repository="in_memory"
+    )
     assert file.content_type == "text/plain"
     assert file.file_name == "hello.txt"
 
 
 def test_file_size():
     content = b"Hello World"
-    file = File.from_bytes(content)
+    file = File.from_bytes(content, repository="in_memory")
     assert file.file_size == len(content)
 
 
 def test_in_memory_repository_url():
     content = b"Hello World"
-    file = File.from_bytes(content)
+    file = File.from_bytes(content, repository="in_memory")
     assert file.url.startswith("data:application/octet-stream;base64,")
     assert file.url.endswith(b64encode(content).decode("utf-8"))
 
