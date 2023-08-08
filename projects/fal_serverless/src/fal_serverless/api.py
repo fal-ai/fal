@@ -54,6 +54,39 @@ else:
     from typing_extensions import ParamSpec
 
 
+try:
+    import pydantic.fields
+except ImportError:
+    pass
+else:
+    from fal_serverless.toolkit import mainify
+
+    @mainify
+    def _make_field(kwargs):
+        return pydantic.fields.ModelField(**kwargs)
+
+    @dill.register(pydantic.fields.ModelField)
+    def _pickle_model_field(
+        pickler: dill.Pickler,
+        field: pydantic.fields.ModelField,
+    ) -> None:
+        args = {
+            "name": field.name,
+            # outer_type_ is the original type for ModelFields,
+            # while type_ can be updated later with the nested type
+            # like int for List[int].
+            "type_": field.outer_type_,
+            "class_validators": field.class_validators,
+            "model_config": field.model_config,
+            "default": field.default,
+            "default_factory": field.default_factory,
+            "required": field.required,
+            "alias": field.alias,
+            "field_info": field.field_info,
+        }
+        pickler.save_reduce(_make_field, (args,), obj=field)
+
+
 dill.settings["recurse"] = True
 
 ArgsT = ParamSpec("ArgsT")
