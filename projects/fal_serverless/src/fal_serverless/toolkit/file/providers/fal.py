@@ -4,6 +4,7 @@ import os
 from base64 import b64encode
 from dataclasses import dataclass
 
+from fal_serverless.sdk import get_default_credentials
 from fal_serverless.toolkit import mainify
 from fal_serverless.toolkit.file.types import FileData, FileRepository
 
@@ -27,11 +28,10 @@ class FalFileRepository(FileRepository):
         if hostname is None:
             raise Exception("FAL_STORAGE_ENDPOINT must be a valid URL")
 
-        key_id = os.environ.get("FAL_KEY_ID")
-        key_secret = os.environ.get("FAL_KEY_SECRET")
+        creds = get_default_credentials()
         boundary = f"----FormBoundary-{uuid4().hex}"
         headers = {
-            "Authorization": f"Basic {key_id}:{key_secret}",
+            **creds.to_headers(),
             "Accept": "application/json",
             "Content-Type": f"multipart/form-data; boundary={boundary}",
         }

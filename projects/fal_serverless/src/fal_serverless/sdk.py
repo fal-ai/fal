@@ -75,7 +75,7 @@ class Credentials:
         return self.server_credentials.to_grpc()
 
     def to_headers(self) -> dict[str, str]:
-        raise NotImplementedError
+        return {}
 
 
 @dataclass
@@ -91,7 +91,7 @@ class FalServerlessKeyCredentials(Credentials):
         )
 
     def to_headers(self) -> dict[str, str]:
-        return {"Authorization": f"Basic {self.key_id}:{self.key_secret}"}
+        return {"Authorization": f"Key {self.key_id}:{self.key_secret}"}
 
 
 @dataclass
