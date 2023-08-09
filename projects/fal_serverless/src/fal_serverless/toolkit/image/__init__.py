@@ -1,12 +1,17 @@
 from __future__ import annotations
 
-from typing import Literal, Union
+import io
+from typing import TYPE_CHECKING, Literal, Optional, Union
 
 from fal_serverless.toolkit import mainify
 from fal_serverless.toolkit.file import DEFAULT_REPOSITORY, File
 from fal_serverless.toolkit.file.types import FileData, FileRepository, RepositoryId
 from pydantic import Field
 from pydantic.dataclasses import dataclass
+
+if TYPE_CHECKING:
+    from PIL import Image as PILImage
+
 
 ImageSizePreset = Literal[
     "square_hd",
@@ -21,7 +26,6 @@ ImageSizePreset = Literal[
 @dataclass
 @mainify
 class ImageSize:
-
     width: int = Field(
         default=512, description="The width of the generated image.", gt=0, le=4096
     )
@@ -68,8 +72,8 @@ class Image(File):
     Represents an image file.
     """
 
-    width: int | None = Field(description="The width of the image in pixels.")
-    height: int | None = Field(description="The height of the image in pixels.")
+    width: int = Field(description="The width of the image in pixels.")
+    height: int = Field(description="The height of the image in pixels.")
 
     def __init__(
         self,
@@ -96,3 +100,23 @@ class Image(File):
             size,
             repository,
         )
+
+    @classmethod
+    def from_pil(
+        cls,
+        pil_image: PILImage.Image,
+        format: ImageFormat | None = None,
+        size: ImageSize | None = None,
+        file_name: str | None = None,
+        repository: FileRepository | RepositoryId = DEFAULT_REPOSITORY,
+    ) -> Image:
+        if size is None:
+            size = ImageSize(pil_image.size[0], pil_image.size[1])
+        if format is None:
+            format = pil_image.format
+
+        with io.BytesIO() as f:
+            pil_image.save(f, format=format or "png")
+            raw_image = f.getvalue()
+
+        return cls.from_bytes(raw_image, format, size, file_name, repository)
