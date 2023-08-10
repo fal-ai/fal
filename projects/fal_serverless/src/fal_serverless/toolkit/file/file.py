@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from base64 import b64encode
 from pathlib import Path
 from typing import Callable, Literal
 
@@ -11,8 +10,7 @@ from fal_serverless.toolkit.file.providers.fal import (
 )
 from fal_serverless.toolkit.file.providers.gcp import GoogleStorageRepository
 from fal_serverless.toolkit.file.types import FileData, FileRepository, RepositoryId
-from pydantic import Field
-from pydantic.dataclasses import dataclass
+from pydantic import BaseModel, Field
 
 BuiltInRepositoryId = Literal["fal", "in_memory", "gcp_storage"]
 FileRepositoryFactory = Callable[[], FileRepository]
@@ -36,12 +34,7 @@ DEFAULT_REPOSITORY: FileRepository | BuiltInRepositoryId = "fal"
 
 
 @mainify
-@dataclass
-class File:
-
-    # internal properties
-    # _file_data: FileData = Field(exclude=True)
-
+class File(BaseModel):
     # public properties
     url: str = Field(
         description="The URL where the file can be downloaded from.",
@@ -54,20 +47,6 @@ class File:
         description="The size of the file in bytes.",
     )
 
-    def __init__(self, data: FileData, repository: FileRepository | RepositoryId):
-        self._file_data = data
-
-        repo = (
-            repository
-            if isinstance(repository, FileRepository)
-            else get_builtin_repository(repository)
-        )
-        self.url = repo.save(data)
-
-        self.content_type = data.content_type
-        self.file_name = data.file_name
-        self.file_size = len(data.data)
-
     @classmethod
     def from_bytes(
         cls,
@@ -76,7 +55,18 @@ class File:
         file_name: str | None = None,
         repository: FileRepository | RepositoryId = DEFAULT_REPOSITORY,
     ) -> File:
-        return cls(FileData(data, content_type, file_name), repository)
+        repo = (
+            repository
+            if isinstance(repository, FileRepository)
+            else get_builtin_repository(repository)
+        )
+        filedata = FileData(data, content_type, file_name)
+        return cls(
+            url=repo.save(filedata),
+            content_type=filedata.content_type,
+            file_name=filedata.file_name,
+            file_size=len(filedata.data),
+        )
 
     @classmethod
     def from_path(
@@ -93,9 +83,3 @@ class File:
         return File.from_bytes(
             data, content_type, file_name=file_path.name, repository=repository
         )
-
-    def as_bytes(self) -> bytes:
-        return self._file_data.data
-
-    def as_base64(self) -> str:
-        return b64encode(self.as_bytes()).decode("utf-8")

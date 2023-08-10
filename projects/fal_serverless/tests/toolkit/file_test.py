@@ -4,14 +4,14 @@ import os
 from base64 import b64encode
 
 import pytest
-from fal_serverless.toolkit.file import File, GoogleStorageRepository
+from fal_serverless.toolkit.file.file import File, GoogleStorageRepository
 
 
 def test_binary_content_matches():
     content = b"Hello World"
     content_base64 = b64encode(content).decode("utf-8")
     file = File.from_bytes(content, repository="in_memory")
-    assert file.as_base64() == content_base64
+    assert file.url.endswith(content_base64)
 
 
 def test_default_content_type():

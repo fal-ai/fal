@@ -4,10 +4,13 @@ import io
 from typing import TYPE_CHECKING, Literal, Optional, Union
 
 from fal_serverless.toolkit import mainify
-from fal_serverless.toolkit.file import DEFAULT_REPOSITORY, File
+from fal_serverless.toolkit.file.file import (
+    DEFAULT_REPOSITORY,
+    File,
+    get_builtin_repository,
+)
 from fal_serverless.toolkit.file.types import FileData, FileRepository, RepositoryId
-from pydantic import Field
-from pydantic.dataclasses import dataclass
+from pydantic import BaseModel, Field
 
 if TYPE_CHECKING:
     from PIL import Image as PILImage
@@ -23,20 +26,14 @@ ImageSizePreset = Literal[
 ]
 
 
-@dataclass
 @mainify
-class ImageSize:
+class ImageSize(BaseModel):
     width: int = Field(
         default=512, description="The width of the generated image.", gt=0, le=4096
     )
     height: int = Field(
         default=512, description="The height of the generated image.", gt=0, le=4096
     )
-
-    # NOTE: This is a workaround for incompatibility between pydantic and mypy
-    def __init__(self, width: int, height: int):
-        self.width = width
-        self.height = height
 
 
 IMAGE_SIZE_PRESETS: dict[ImageSizePreset, ImageSize] = {
@@ -66,25 +63,13 @@ ImageFormat = Literal["png", "jpeg", "jpg", "webp", "gif"]
 
 
 @mainify
-@dataclass
 class Image(File):
     """
     Represents an image file.
     """
 
-    width: int = Field(description="The width of the image in pixels.")
-    height: int = Field(description="The height of the image in pixels.")
-
-    def __init__(
-        self,
-        data: FileData,
-        image_size: ImageSize | None,
-        repository: FileRepository | RepositoryId,
-    ):
-        if image_size is not None:
-            self.width = image_size.width
-            self.height = image_size.height
-        super().__init__(data, repository)
+    width: Optional[int] = Field(description="The width of the image in pixels.")
+    height: Optional[int] = Field(description="The height of the image in pixels.")
 
     @classmethod
     def from_bytes(  # type: ignore[override]
@@ -95,10 +80,22 @@ class Image(File):
         file_name: str | None = None,
         repository: FileRepository | RepositoryId = DEFAULT_REPOSITORY,
     ) -> Image:
+        repo = (
+            repository
+            if isinstance(repository, FileRepository)
+            else get_builtin_repository(repository)
+        )
+        filedata = FileData(
+            data=data, content_type=f"image/{format}", file_name=file_name
+        )
+
         return cls(
-            FileData(data=data, content_type=f"image/{format}", file_name=file_name),
-            size,
-            repository,
+            width=size.width if size else None,
+            height=size.height if size else None,
+            url=repo.save(filedata),
+            content_type=filedata.content_type,
+            file_name=filedata.file_name,
+            file_size=len(filedata.data),
         )
 
     @classmethod
@@ -111,12 +108,12 @@ class Image(File):
         repository: FileRepository | RepositoryId = DEFAULT_REPOSITORY,
     ) -> Image:
         if size is None:
-            size = ImageSize(pil_image.size[0], pil_image.size[1])
+            size = ImageSize(width=pil_image.size[0], height=pil_image.size[1])
         if format is None:
-            format = pil_image.format
+            format = pil_image.format or "png"
 
         with io.BytesIO() as f:
-            pil_image.save(f, format=format or "png")
+            pil_image.save(f, format=format)
             raw_image = f.getvalue()
 
-        return cls.from_bytes(raw_image, format, size, file_name, repository)
+        return cls.from_bytes(raw_image, format or "png", size, file_name, repository)
