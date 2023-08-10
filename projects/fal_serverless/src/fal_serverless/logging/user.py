@@ -16,5 +16,5 @@ def add_user_id(
         # this is expected to happen only when user is logged out
         # or there's no internet connection
         pass
-    event_dict["user.id"] = user_id
+    event_dict["usr.id"] = user_id
     return event_dict

@@ -498,6 +498,7 @@ def isolated(
     host: LocalHost,
     serve: Literal[False] = False,
     exposed_port: int | None = None,
+    max_concurrency: int | None = None,
 ) -> Callable[
     [Callable[Concatenate[ArgsT], ReturnT]], IsolatedFunction[ArgsT, ReturnT]
 ]:
@@ -530,6 +531,7 @@ def isolated(
     host: FalServerlessHost = _DEFAULT_HOST,
     serve: Literal[False] = False,
     exposed_port: int | None = None,
+    max_concurrency: int | None = None,
     # FalServerlessHost options
     machine_type: str = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
     keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
@@ -578,6 +580,7 @@ def isolated(
     host: LocalHost,
     serve: Literal[False] = False,
     exposed_port: int | None = None,
+    max_concurrency: int | None = None,
 ) -> Callable[
     [Callable[Concatenate[ArgsT], ReturnT]], IsolatedFunction[ArgsT, ReturnT]
 ]:
@@ -620,6 +623,7 @@ def isolated(
     host: FalServerlessHost = _DEFAULT_HOST,
     serve: Literal[False] = False,
     exposed_port: int | None = None,
+    max_concurrency: int | None = None,
     # FalServerlessHost options
     machine_type: str = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
     keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
