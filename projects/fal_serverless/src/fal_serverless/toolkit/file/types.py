@@ -5,7 +5,7 @@ from mimetypes import guess_extension, guess_type
 from typing import Literal
 from uuid import uuid4
 
-from fal_serverless.toolkit import mainify
+from fal_serverless.toolkit.mainify import mainify
 
 
 @mainify

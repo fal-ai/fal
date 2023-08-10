@@ -3,8 +3,8 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 
-from fal_serverless.toolkit import mainify
 from fal_serverless.toolkit.file.types import FileData, FileRepository
+from fal_serverless.toolkit.mainify import mainify
 
 DEFAULT_URL_TIMEOUT = 60 * 15  # 15 minutes
 
@@ -12,7 +12,6 @@ DEFAULT_URL_TIMEOUT = 60 * 15  # 15 minutes
 @mainify
 @dataclass
 class GoogleStorageRepository(FileRepository):
-
     url_expiration: int | None = field(default_factory=lambda: DEFAULT_URL_TIMEOUT)
     bucket_name: str | None = field(default="fal_file_storage")
     gcp_account_json: str | None = None

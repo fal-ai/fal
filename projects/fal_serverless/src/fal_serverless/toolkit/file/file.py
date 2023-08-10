@@ -3,13 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable, Literal
 
-from fal_serverless.toolkit import mainify
 from fal_serverless.toolkit.file.providers.fal import (
     FalFileRepository,
     InMemoryRepository,
 )
 from fal_serverless.toolkit.file.providers.gcp import GoogleStorageRepository
 from fal_serverless.toolkit.file.types import FileData, FileRepository, RepositoryId
+from fal_serverless.toolkit.mainify import mainify
 from pydantic import BaseModel, Field
 
 BuiltInRepositoryId = Literal["fal", "in_memory", "gcp_storage"]
