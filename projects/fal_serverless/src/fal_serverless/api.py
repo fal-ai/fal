@@ -4,6 +4,7 @@ import inspect
 import sys
 from collections import defaultdict
 from concurrent.futures import Future, ThreadPoolExecutor
+from contextlib import suppress
 from dataclasses import dataclass, field, replace
 from functools import partial, wraps
 from os import PathLike
@@ -26,6 +27,7 @@ import fal_serverless.flags as flags
 import grpc
 import isolate
 import yaml
+from fal_serverless._serialization import patch_dill
 from fal_serverless.logging.isolate import IsolateLogPrinter
 from fal_serverless.sdk import (
     FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
@@ -53,41 +55,6 @@ if sys.version_info >= (3, 10):
 else:
     from typing_extensions import ParamSpec
 
-
-try:
-    import pydantic.fields
-except ImportError:
-    pass
-else:
-    from fal_serverless.toolkit import mainify
-
-    @mainify
-    def _make_field(kwargs):
-        return pydantic.fields.ModelField(**kwargs)
-
-    @dill.register(pydantic.fields.ModelField)
-    def _pickle_model_field(
-        pickler: dill.Pickler,
-        field: pydantic.fields.ModelField,
-    ) -> None:
-        args = {
-            "name": field.name,
-            # outer_type_ is the original type for ModelFields,
-            # while type_ can be updated later with the nested type
-            # like int for List[int].
-            "type_": field.outer_type_,
-            "class_validators": field.class_validators,
-            "model_config": field.model_config,
-            "default": field.default,
-            "default_factory": field.default_factory,
-            "required": field.required,
-            "alias": field.alias,
-            "field_info": field.field_info,
-        }
-        pickler.save_reduce(_make_field, (args,), obj=field)
-
-
-dill.settings["recurse"] = True
 
 ArgsT = ParamSpec("ArgsT")
 ReturnT = TypeVar("ReturnT", covariant=True)
@@ -201,16 +168,19 @@ def cached(func: Callable[ArgsT, ReturnT]) -> Callable[ArgsT, ReturnT]:
     return wrapper
 
 
-def _execution_controller(
+def _prepare_partial_func(
     func: Callable[ArgsT, ReturnT],
     *args: ArgsT.args,
     **kwargs: ArgsT.kwargs,
 ) -> Callable[ArgsT, ReturnT]:
-    """Handle the execution of the given user function."""
+    """Prepare the given function for execution on the remote isolate workers."""
 
     @wraps(func)
     def wrapper(*remote_args: ArgsT.args, **remote_kwargs: ArgsT.kwargs) -> ReturnT:
-        return func(*remote_args, *args, **remote_kwargs, **kwargs)
+        result = func(*remote_args, *args, **remote_kwargs, **kwargs)
+        with suppress(Exception):
+            patch_dill()
+        return result
 
     return wrapper
 
@@ -373,7 +343,7 @@ class FalServerlessHost(Host):
             base_image=base_image,
         )
 
-        partial_func = _execution_controller(func)
+        partial_func = _prepare_partial_func(func)
 
         for partial_result in self._connection.register(
             partial_func,
@@ -431,7 +401,7 @@ class FalServerlessHost(Host):
         return_value = _UNSET
         # Allow isolate provided arguments (such as setup function) to take
         # precedence over the ones provided by the user.
-        partial_func = _execution_controller(func, *args, **kwargs)
+        partial_func = _prepare_partial_func(func, *args, **kwargs)
         for partial_result in self._connection.run(
             partial_func,
             environments,

@@ -11,6 +11,7 @@ from typing import Any, Callable, Generic, Iterator, Literal, TypeVar
 import grpc
 import isolate_proto
 from fal_serverless import flags
+from fal_serverless._serialization import patch_dill
 from fal_serverless.auth import USER
 from fal_serverless.logging.trace import TraceContextInterceptor
 from isolate.connections.common import is_agent
@@ -24,6 +25,8 @@ UNSET = object()
 
 _DEFAULT_SERIALIZATION_METHOD = "dill"
 FAL_SERVERLESS_DEFAULT_KEEP_ALIVE = 10
+
+patch_dill()
 
 
 class ServerCredentials:

@@ -401,7 +401,6 @@ def test_cached_function(isolated_client, capsys, monkeypatch):
 
 
 def test_pydantic_serialization(isolated_client):
-    import json
 
     from fal_serverless.toolkit import mainify
     from pydantic import BaseModel, Field
@@ -416,8 +415,9 @@ def test_pydantic_serialization(isolated_client):
         result: int = Field(description="The result of the operation")
 
     @isolated_client("virtualenv", requirements=["pydantic<2"])
-    def add(query: MathQuery) -> dict[str, int]:
-        return MathResult(result=query.x + query.y).json()
+    def add(query: MathQuery) -> MathResult:
+        return MathResult(result=query.x + query.y)
 
-    raw_result = add(MathQuery(x=1, y=2))
-    assert json.loads(raw_result) == {"result": 3}
+    result = add(MathQuery(x=1, y=2))
+    assert result.result == 3
+    assert result == MathResult(result=3)
