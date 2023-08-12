@@ -11,6 +11,13 @@ def _pydantic_make_field(kwargs):
 
 
 @mainify
+def _pydantic_make_private_field(kwargs):
+    from pydantic.fields import ModelPrivateAttr
+
+    return ModelPrivateAttr(**kwargs)
+
+
+@mainify
 def patch_pydantic_field_serialization():
     # Cythonized pydantic fields can't be serialized automatically, so we are
     # have a special case handling for them that unpacks it to a dictionary
@@ -42,6 +49,17 @@ def patch_pydantic_field_serialization():
             "field_info": field.field_info,
         }
         pickler.save_reduce(_pydantic_make_field, (args,), obj=field)
+
+    @dill.register(pydantic.fields.ModelPrivateAttr)
+    def _pickle_model_private_attr(
+        pickler: dill.Pickler,
+        field: pydantic.fields.ModelPrivateAttr,
+    ) -> None:
+        args = {
+            "default": field.default,
+            "default_factory": field.default_factory,
+        }
+        pickler.save_reduce(_pydantic_make_private_field, (args,), obj=field)
 
 
 @mainify

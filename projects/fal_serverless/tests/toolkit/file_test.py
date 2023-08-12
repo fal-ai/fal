@@ -12,6 +12,7 @@ def test_binary_content_matches():
     content_base64 = b64encode(content).decode("utf-8")
     file = File.from_bytes(content, repository="in_memory")
     assert file.url.endswith(content_base64)
+    assert file.as_bytes() == content
 
 
 def test_default_content_type():

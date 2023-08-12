@@ -3,7 +3,6 @@ from __future__ import annotations
 import base64
 import io
 
-import pytest
 from fal_serverless.toolkit.image.image import Image
 from PIL import Image as PILImage
 
@@ -23,7 +22,6 @@ def images_are_equal(img1: PILImage.Image, img2: PILImage.Image) -> bool:
     return True
 
 
-@pytest.mark.skip(reason="can't store private data in pydantic class")
 def test_image_matches():
     # 1x1 white png image
     base64_image = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx5QAAAABJRU5ErkJggg=="

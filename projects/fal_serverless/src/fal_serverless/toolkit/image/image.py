@@ -3,11 +3,7 @@ from __future__ import annotations
 import io
 from typing import TYPE_CHECKING, Literal, Optional, Union
 
-from fal_serverless.toolkit.file.file import (
-    DEFAULT_REPOSITORY,
-    File,
-    get_builtin_repository,
-)
+from fal_serverless.toolkit.file.file import DEFAULT_REPOSITORY, File
 from fal_serverless.toolkit.file.types import FileData, FileRepository, RepositoryId
 from fal_serverless.toolkit.mainify import mainify
 from pydantic import BaseModel, Field
@@ -80,22 +76,14 @@ class Image(File):
         file_name: str | None = None,
         repository: FileRepository | RepositoryId = DEFAULT_REPOSITORY,
     ) -> Image:
-        repo = (
-            repository
-            if isinstance(repository, FileRepository)
-            else get_builtin_repository(repository)
-        )
-        filedata = FileData(
+        file_data = FileData(
             data=data, content_type=f"image/{format}", file_name=file_name
         )
-
         return cls(
+            file_data=file_data,
+            repository=repository,
             width=size.width if size else None,
             height=size.height if size else None,
-            url=repo.save(filedata),
-            content_type=filedata.content_type,
-            file_name=filedata.file_name,
-            file_size=len(filedata.data),
         )
 
     @classmethod

@@ -10,7 +10,7 @@ from fal_serverless.toolkit.file.providers.fal import (
 from fal_serverless.toolkit.file.providers.gcp import GoogleStorageRepository
 from fal_serverless.toolkit.file.types import FileData, FileRepository, RepositoryId
 from fal_serverless.toolkit.mainify import mainify
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr
 
 BuiltInRepositoryId = Literal["fal", "in_memory", "gcp_storage"]
 FileRepositoryFactory = Callable[[], FileRepository]
@@ -36,6 +36,7 @@ DEFAULT_REPOSITORY: FileRepository | BuiltInRepositoryId = "fal"
 @mainify
 class File(BaseModel):
     # public properties
+    _file_data: FileData = PrivateAttr()
     url: str = Field(
         description="The URL where the file can be downloaded from.",
     )
@@ -47,6 +48,29 @@ class File(BaseModel):
         description="The size of the file in bytes.",
     )
 
+    def __init__(self, **kwargs):
+        if "file_data" in kwargs:
+            data = kwargs.pop("file_data")
+            repository = kwargs.pop("repository", None)
+
+            repo = (
+                repository
+                if isinstance(repository, FileRepository)
+                else get_builtin_repository(repository)
+            )
+            self._file_data = data
+
+            kwargs.update(
+                {
+                    "url": repo.save(data),
+                    "content_type": data.content_type,
+                    "file_name": data.file_name,
+                    "file_size": len(data.data),
+                }
+            )
+
+        super().__init__(**kwargs)
+
     @classmethod
     def from_bytes(
         cls,
@@ -55,17 +79,9 @@ class File(BaseModel):
         file_name: str | None = None,
         repository: FileRepository | RepositoryId = DEFAULT_REPOSITORY,
     ) -> File:
-        repo = (
-            repository
-            if isinstance(repository, FileRepository)
-            else get_builtin_repository(repository)
-        )
-        filedata = FileData(data, content_type, file_name)
         return cls(
-            url=repo.save(filedata),
-            content_type=filedata.content_type,
-            file_name=filedata.file_name,
-            file_size=len(filedata.data),
+            file_data=FileData(data, content_type, file_name),
+            repository=repository,
         )
 
     @classmethod
@@ -83,3 +99,6 @@ class File(BaseModel):
         return File.from_bytes(
             data, content_type, file_name=file_path.name, repository=repository
         )
+
+    def as_bytes(self) -> bytes:
+        return self._file_data.data
