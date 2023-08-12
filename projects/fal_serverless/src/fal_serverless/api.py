@@ -336,11 +336,13 @@ class FalServerlessHost(Host):
         )
         keep_alive = options.host.get("keep_alive", FAL_SERVERLESS_DEFAULT_KEEP_ALIVE)
         base_image = options.host.get("_base_image", None)
+        exposed_port = options.get_exposed_port()
 
         machine_requirements = MachineRequirements(
             machine_type=machine_type,
             keep_alive=keep_alive,
             base_image=base_image,
+            exposed_port=exposed_port,
         )
 
         partial_func = _prepare_partial_func(func)
@@ -388,7 +390,7 @@ class FalServerlessHost(Host):
         )
         keep_alive = options.host.get("keep_alive", FAL_SERVERLESS_DEFAULT_KEEP_ALIVE)
         base_image = options.host.get("_base_image", None)
-        exposed_port = options.gateway.get("exposed_port", None)
+        exposed_port = options.get_exposed_port()
         setup_function = options.host.get("setup_function", None)
 
         machine_requirements = MachineRequirements(
@@ -446,11 +448,22 @@ class Options:
             raise FalServerlessError(
                 "Only conda and virtualenv is supported as environment options"
             )
+
+        # Already has these.
+        if set(pip_requirements).issuperset(set(requirements)):
+            return None
+
         pip_requirements.extend(requirements)
+
+    def get_exposed_port(self) -> int | None:
+        if self.gateway.get("serve"):
+            return _SERVE_PORT
+        else:
+            return self.gateway.get("exposed_port")
 
 
 _DEFAULT_HOST = FalServerlessHost()
-
+_SERVE_PORT = 8080
 
 # Overload @isolated to help users identify the correct signature.
 # NOTE: This is both in sync with host options and with environment configs from `isolate` package.
@@ -640,14 +653,9 @@ def isolated(  # type: ignore
     options = host.parse_options(kind=kind, **config)
 
     def wrapper(func: Callable[ArgsT, ReturnT]):
-        # wrap it within a webapp if the serve option is set
-        if options.gateway.pop("serve", False):
-            options.gateway["exposed_port"] = 8080
-            func = create_webapp(func)  # type: ignore
-
         proxy = IsolatedFunction(
             host=host,
-            func=func,  # type: ignore
+            raw_func=func,  # type: ignore
             options=options,
         )
         return wraps(func)(proxy)  # type: ignore
@@ -682,7 +690,7 @@ def create_webapp(func: Callable[ArgsT, ReturnT]) -> Callable[[], None]:
 @dataclass
 class IsolatedFunction(Generic[ArgsT, ReturnT]):
     host: Host
-    func: Callable[ArgsT, ReturnT]
+    raw_func: Callable[ArgsT, ReturnT]
     options: Options
     executor: ThreadPoolExecutor = field(default_factory=ThreadPoolExecutor)
 
@@ -755,3 +763,11 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
             host=host,
             options=new_options,
         )
+
+    @property
+    def func(self) -> Callable[..., Any]:
+        serve_mode = self.options.gateway.get("serve")
+        if serve_mode:
+            return create_webapp(self.raw_func)
+        else:
+            return self.raw_func
