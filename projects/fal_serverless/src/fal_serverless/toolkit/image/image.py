@@ -91,17 +91,16 @@ class Image(File):
         cls,
         pil_image: PILImage.Image,
         format: ImageFormat | None = None,
-        size: ImageSize | None = None,
         file_name: str | None = None,
         repository: FileRepository | RepositoryId = DEFAULT_REPOSITORY,
     ) -> Image:
-        if size is None:
-            size = ImageSize(width=pil_image.size[0], height=pil_image.size[1])
+        size = ImageSize(width=pil_image.width, height=pil_image.height)
         if format is None:
-            format = pil_image.format or "png"
+            format = pil_image.format or "png"  # type: ignore[assignment]
+            assert format  # for type checker
 
         with io.BytesIO() as f:
             pil_image.save(f, format=format)
             raw_image = f.getvalue()
 
-        return cls.from_bytes(raw_image, format or "png", size, file_name, repository)
+        return cls.from_bytes(raw_image, format, size, file_name, repository)
