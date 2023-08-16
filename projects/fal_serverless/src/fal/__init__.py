@@ -37,3 +37,13 @@ def __getattr__(name: str):
         raise ImportError(DBT_FAL_IMPORT_NOTICE.format(name=name))
 
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+# NOTE: taken from dbt-core: https://github.com/dbt-labs/dbt-core/blob/ac539fd5cf325cfb5315339077d03399d575f570/core/dbt/adapters/__init__.py#L1-L7
+# N.B.
+# This will add to the package’s __path__ all subdirectories of directories on sys.path named after the package which effectively combines both modules into a single namespace (dbt.adapters)
+# The matching statement is in plugins/postgres/dbt/adapters/__init__.py
+
+from pkgutil import extend_path
+
+__path__ = extend_path(__path__, __name__)
