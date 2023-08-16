@@ -64,8 +64,14 @@ class Image(File):
     Represents an image file.
     """
 
-    width: Optional[int] = Field(description="The width of the image in pixels.")
-    height: Optional[int] = Field(description="The height of the image in pixels.")
+    width: Optional[int] = Field(
+        description="The width of the image in pixels.",
+        examples=[1024],
+    )
+    height: Optional[int] = Field(
+        description="The height of the image in pixels.",
+        examples=[1024]
+    )
 
     @classmethod
     def from_bytes(  # type: ignore[override]

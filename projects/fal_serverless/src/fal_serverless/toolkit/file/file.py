@@ -39,13 +39,18 @@ class File(BaseModel):
     _file_data: FileData = PrivateAttr()
     url: str = Field(
         description="The URL where the file can be downloaded from.",
+        examples=["https://url.to/generated/file/z9RV14K95DvU.png"],
     )
-    content_type: str = Field(description="The mime type of the file.")
+    content_type: str = Field(
+        description="The mime type of the file.",
+        examples=["image/png"],
+    )
     file_name: str = Field(
-        description="The name of the file. It will be auto-generated if not provided."
+        description="The name of the file. It will be auto-generated if not provided.",
+        examples=["z9RV14K95DvU.png"],
     )
     file_size: int = Field(
-        description="The size of the file in bytes.",
+        description="The size of the file in bytes.", examples=[4404019]
     )
 
     def __init__(self, **kwargs):
