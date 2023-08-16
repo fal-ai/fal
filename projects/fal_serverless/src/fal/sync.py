@@ -10,7 +10,7 @@ import openapi_fal_rest.api.files.upload_local_file as upload_local_file_api
 import openapi_fal_rest.models.body_upload_local_file as upload_file_model
 import openapi_fal_rest.models.hash_check as hash_check_model
 import openapi_fal_rest.types as rest_types
-from fal_serverless.rest_client import REST_CLIENT
+from fal.rest_client import REST_CLIENT
 from pathspec import PathSpec
 
 

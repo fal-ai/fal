@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fal_serverless.toolkit import mainify
+from fal.toolkit import mainify
 
 
 @mainify

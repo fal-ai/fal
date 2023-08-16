@@ -6,17 +6,17 @@ from typing import Literal
 from uuid import uuid4
 
 import click
-import fal_serverless.auth as auth
+import fal.auth as auth
 import grpc
 import openapi_fal_rest.api.billing.get_user_details as get_user_details
-from fal_serverless import api, sdk
-from fal_serverless.console import console
-from fal_serverless.exceptions import ApplicationExceptionHandler
-from fal_serverless.logging import get_logger, set_debug_logging
-from fal_serverless.logging.isolate import IsolateLogPrinter
-from fal_serverless.logging.trace import get_tracer
-from fal_serverless.rest_client import REST_CLIENT
-from fal_serverless.sdk import KeyScope
+from fal import api, sdk
+from fal.console import console
+from fal.exceptions import ApplicationExceptionHandler
+from fal.logging import get_logger, set_debug_logging
+from fal.logging.isolate import IsolateLogPrinter
+from fal.logging.trace import get_tracer
+from fal.rest_client import REST_CLIENT
+from fal.sdk import KeyScope
 from rich.table import Table
 
 DEFAULT_HOST = "api.alpha.fal.ai"

@@ -9,9 +9,9 @@ from auth0.authentication.token_verifier import (
     AsymmetricSignatureVerifier,
     TokenVerifier,
 )
-from fal_serverless.console import console
-from fal_serverless.console.icons import CHECK_ICON
-from fal_serverless.console.ux import get_browser
+from fal.console import console
+from fal.console.icons import CHECK_ICON
+from fal.console.ux import get_browser
 
 WEBSITE_URL = "https://fal.ai"
 

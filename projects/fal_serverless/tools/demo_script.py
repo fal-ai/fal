@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from fal_serverless import isolated
-from fal_serverless.api import FalServerlessHost
+from fal import isolated
+from fal.api import FalServerlessHost
 
 host = FalServerlessHost(url="localhost:6005")
 

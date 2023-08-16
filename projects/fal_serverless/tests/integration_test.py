@@ -1,13 +1,8 @@
 from __future__ import annotations
 
 import pytest
-from fal_serverless import (
-    FalServerlessHost,
-    FalServerlessKeyCredentials,
-    local,
-    sync_dir,
-)
-from fal_serverless.api import FalServerlessError
+from fal import FalServerlessHost, FalServerlessKeyCredentials, local, sync_dir
+from fal.api import FalServerlessError
 
 
 def test_isolated(isolated_client):

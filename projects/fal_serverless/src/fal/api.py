@@ -23,13 +23,13 @@ from typing import (
 
 import dill
 import dill.detect
-import fal_serverless.flags as flags
+import fal.flags as flags
 import grpc
 import isolate
 import yaml
-from fal_serverless._serialization import patch_dill
-from fal_serverless.logging.isolate import IsolateLogPrinter
-from fal_serverless.sdk import (
+from fal._serialization import patch_dill
+from fal.logging.isolate import IsolateLogPrinter
+from fal.sdk import (
     FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
     Credentials,
     FalServerlessClient,
@@ -268,7 +268,7 @@ def find_missing_dependencies(
 
     for name, obj in scope.items():
         if isinstance(obj, IsolatedFunction):
-            used_modules["fal_serverless"].append(name)
+            used_modules["fal"].append(name)
             continue
 
         module = inspect.getmodule(obj)

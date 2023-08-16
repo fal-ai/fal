@@ -3,7 +3,7 @@ from __future__ import annotations
 import base64
 import io
 
-from fal_serverless.toolkit.image.image import Image
+from fal.toolkit.image.image import Image
 from PIL import Image as PILImage
 
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fal_serverless.auth import USER
+from fal.auth import USER
 from structlog.typing import EventDict, WrappedLogger
 
 

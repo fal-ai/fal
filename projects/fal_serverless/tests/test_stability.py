@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from contextlib import suppress
 
-import fal_serverless
+import fal
 import pytest
-from fal_serverless.api import FalServerlessError
+from fal.api import FalServerlessError
 
-PACKAGE_NAME = "fal_serverless"
+PACKAGE_NAME = "fal"
 
 
 def test_missing_dependencies_nested_server_error(isolated_client):
@@ -59,7 +59,7 @@ def test_function_calling_other_function(isolated_client):
     except ImportError:
         import importlib_metadata
 
-    fal_serverless_version = importlib_metadata.version(PACKAGE_NAME)
+    package_version = importlib_metadata.version(PACKAGE_NAME)
 
     @isolated_client("virtualenv")
     def regular_function():
@@ -68,7 +68,7 @@ def test_function_calling_other_function(isolated_client):
     @isolated_client(
         "virtualenv",
         requirements=[
-            f"{PACKAGE_NAME}>=0.6.19,<={fal_serverless_version}",
+            f"{PACKAGE_NAME}>=0.6.19,<={package_version}",
         ],
     )
     def calling_function(recurse):
@@ -352,7 +352,7 @@ def test_cached_function(isolated_client, capsys, monkeypatch):
 
     monkeypatch.setattr(inspect, "getsource", add_timestamp_to_source)
 
-    @fal_serverless.cached
+    @fal.cached
     def get_pipe():
         import time
 
@@ -360,7 +360,7 @@ def test_cached_function(isolated_client, capsys, monkeypatch):
         time.sleep(1)  # slow IO
         return "pipe"
 
-    @fal_serverless.cached
+    @fal.cached
     def factorial(n: int) -> int:
         import math
         import time
@@ -401,7 +401,7 @@ def test_cached_function(isolated_client, capsys, monkeypatch):
 
 
 def test_pydantic_serialization(isolated_client):
-    from fal_serverless.toolkit import mainify
+    from fal.toolkit import mainify
     from pydantic import BaseModel, Field
 
     @mainify
@@ -423,7 +423,7 @@ def test_pydantic_serialization(isolated_client):
 
 
 def test_serve_on_off(isolated_client):
-    from fal_serverless.toolkit import mainify
+    from fal.toolkit import mainify
     from pydantic import BaseModel, Field
 
     @mainify

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Generic, TypeVar
 
-from fal_serverless.console import console
-from fal_serverless.console.icons import CROSS_ICON
+from fal.console import console
+from fal.console.icons import CROSS_ICON
 from grpc import Call as RpcCall
 from rich.markdown import Markdown
 

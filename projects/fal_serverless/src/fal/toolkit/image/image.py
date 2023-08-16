@@ -3,9 +3,9 @@ from __future__ import annotations
 import io
 from typing import TYPE_CHECKING, Literal, Optional, Union
 
-from fal_serverless.toolkit.file.file import DEFAULT_REPOSITORY, File
-from fal_serverless.toolkit.file.types import FileData, FileRepository, RepositoryId
-from fal_serverless.toolkit.mainify import mainify
+from fal.toolkit.file.file import DEFAULT_REPOSITORY, File
+from fal.toolkit.file.types import FileData, FileRepository, RepositoryId
+from fal.toolkit.mainify import mainify
 from pydantic import BaseModel, Field
 
 if TYPE_CHECKING:

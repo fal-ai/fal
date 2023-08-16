@@ -4,8 +4,8 @@ import os
 from base64 import b64encode
 from dataclasses import dataclass
 
-from fal_serverless.toolkit.file.types import FileData, FileRepository
-from fal_serverless.toolkit.mainify import mainify
+from fal.toolkit.file.types import FileData, FileRepository
+from fal.toolkit.mainify import mainify
 
 FAL_STORAGE_ENDPOINT = os.environ.get(
     "FAL_STORAGE_ENDPOINT", "https://rest.alpha.fal.ai/storage/upload"

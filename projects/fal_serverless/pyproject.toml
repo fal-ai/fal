@@ -1,11 +1,11 @@
 [tool.poetry]
-name = "fal_serverless"
+name = "fal"
 version = "0.6.42a0"
 description = "fal Serverless is an easy-to-use Serverless Python Framework"
 authors = ["Features & Labels <hello@fal.ai>"]
 readme = "README.md"
 packages = [
-    { include = "fal_serverless", from = "src" },
+    { include = "fal", from = "src" },
     { include = "openapi_fal_rest", from = "openapi-fal-rest" },
 ]
 
@@ -51,4 +51,6 @@ requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
-fal-serverless = "fal_serverless.cli:cli"
+# TODO: deprecated fal-serverless CLI
+fal-serverless = "fal.cli:cli"
+fal = "fal.cli:cli"

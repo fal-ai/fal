@@ -3,8 +3,8 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 
-from fal_serverless.toolkit.file.types import FileData, FileRepository
-from fal_serverless.toolkit.mainify import mainify
+from fal.toolkit.file.types import FileData, FileRepository
+from fal.toolkit.mainify import mainify
 
 DEFAULT_URL_TIMEOUT = 60 * 15  # 15 minutes
 

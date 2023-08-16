@@ -3,10 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 import click
-from fal_serverless.auth import auth0, local
-from fal_serverless.console import console
-from fal_serverless.console.icons import CHECK_ICON
-from fal_serverless.exceptions.auth import UnauthenticatedException
+from fal.auth import auth0, local
+from fal.console import console
+from fal.console.icons import CHECK_ICON
+from fal.exceptions.auth import UnauthenticatedException
 
 
 def login():

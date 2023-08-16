@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import fal_serverless.flags as flags
-from fal_serverless.sdk import get_default_credentials
+import fal.flags as flags
+from fal.sdk import get_default_credentials
 from openapi_fal_rest.client import AuthenticatedClient
 
 

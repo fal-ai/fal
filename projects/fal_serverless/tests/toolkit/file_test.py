@@ -4,7 +4,7 @@ import os
 from base64 import b64encode
 
 import pytest
-from fal_serverless.toolkit.file.file import File, GoogleStorageRepository
+from fal.toolkit.file.file import File, GoogleStorageRepository
 
 
 def test_binary_content_matches():

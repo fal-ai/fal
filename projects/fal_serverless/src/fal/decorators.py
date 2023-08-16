@@ -8,8 +8,8 @@ from typing import Any, Callable, TypeVar
 
 import openapi_fal_rest.api.files.file_exists as file_exists_api
 import openapi_fal_rest.models.file_spec as file_spec_model
-from fal_serverless.rest_client import REST_CLIENT
-from fal_serverless.toolkit import mainify
+from fal.rest_client import REST_CLIENT
+from fal.toolkit import mainify
 
 if sys.version_info >= (3, 11):
     from typing import Concatenate
@@ -21,8 +21,8 @@ if sys.version_info >= (3, 10):
 else:
     from typing_extensions import ParamSpec
 
-import fal_serverless.flags as flags
-from fal_serverless.api import FalServerlessError, InternalFalServerlessError, isolated
+import fal.flags as flags
+from fal.api import FalServerlessError, InternalFalServerlessError, isolated
 
 ArgsT = ParamSpec("ArgsT")
 ReturnT = TypeVar("ReturnT")

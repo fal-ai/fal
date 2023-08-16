@@ -10,10 +10,10 @@ from typing import Any, Callable, Generic, Iterator, Literal, TypeVar
 
 import grpc
 import isolate_proto
-from fal_serverless import flags
-from fal_serverless._serialization import patch_dill
-from fal_serverless.auth import USER
-from fal_serverless.logging.trace import TraceContextInterceptor
+from fal import flags
+from fal._serialization import patch_dill
+from fal.auth import USER
+from fal.logging.trace import TraceContextInterceptor
 from isolate.connections.common import is_agent
 from isolate.logs import Log
 from isolate.server.interface import from_grpc, to_serialized_object
