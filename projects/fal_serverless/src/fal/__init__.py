@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from fal.api import FalServerlessHost, LocalHost, cached, isolated
+# TODO: DEPRECATED - use function instead
+from fal.api import FalServerlessHost, LocalHost, cached
+from fal.api import function
+from fal.api import function as isolated
 from fal.decorators import download_file, download_weights
 from fal.sdk import FalServerlessKeyCredentials
 from fal.sync import sync_dir
@@ -20,6 +23,7 @@ Then import from the `fal.dbt` module like
     from fal.dbt import {name}
 
 """
+
 
 # Avoid printing on non-direct imports
 def __getattr__(name: str):

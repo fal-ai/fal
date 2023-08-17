@@ -465,14 +465,14 @@ class Options:
 _DEFAULT_HOST = FalServerlessHost()
 _SERVE_PORT = 8080
 
-# Overload @isolated to help users identify the correct signature.
+# Overload @function to help users identify the correct signature.
 # NOTE: This is both in sync with host options and with environment configs from `isolate` package.
 
 
 ## virtualenv
 ### LocalHost
 @overload
-def isolated(
+def function(
     kind: Literal["virtualenv"] = "virtualenv",
     *,
     python_version: str | None = None,
@@ -489,7 +489,7 @@ def isolated(
 
 
 @overload
-def isolated(
+def function(
     kind: Literal["virtualenv"] = "virtualenv",
     *,
     python_version: str | None = None,
@@ -505,7 +505,7 @@ def isolated(
 
 ### FalServerlessHost
 @overload
-def isolated(
+def function(
     kind: Literal["virtualenv"] = "virtualenv",
     *,
     python_version: str | None = None,
@@ -527,7 +527,7 @@ def isolated(
 
 
 @overload
-def isolated(
+def function(
     kind: Literal["virtualenv"] = "virtualenv",
     *,
     python_version: str | None = None,
@@ -549,7 +549,7 @@ def isolated(
 ## conda
 ### LocalHost
 @overload
-def isolated(
+def function(
     kind: Literal["conda"],
     *,
     python_version: str | None = None,
@@ -571,7 +571,7 @@ def isolated(
 
 
 @overload
-def isolated(
+def function(
     kind: Literal["conda"],
     *,
     python_version: str | None = None,
@@ -592,7 +592,7 @@ def isolated(
 
 ### FalServerlessHost
 @overload
-def isolated(
+def function(
     kind: Literal["conda"],
     *,
     python_version: str | None = None,
@@ -619,7 +619,7 @@ def isolated(
 
 
 @overload
-def isolated(
+def function(
     kind: Literal["conda"],
     *,
     python_version: str | None = None,
@@ -644,7 +644,7 @@ def isolated(
 
 
 # implementation
-def isolated(  # type: ignore
+def function(  # type: ignore
     kind: str = "virtualenv",
     *,
     host: Host = _DEFAULT_HOST,

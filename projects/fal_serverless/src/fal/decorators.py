@@ -22,7 +22,7 @@ else:
     from typing_extensions import ParamSpec
 
 import fal.flags as flags
-from fal.api import FalServerlessError, InternalFalServerlessError, isolated
+from fal.api import FalServerlessError, InternalFalServerlessError, function
 
 ArgsT = ParamSpec("ArgsT")
 ReturnT = TypeVar("ReturnT")
@@ -94,7 +94,7 @@ def setup(
                     "machine_type": "S",
                     **isolated_config,
                 }
-                isolated(**config)(func)(*args, **kwargs)  # type: ignore
+                function(**config)(func)(*args, **kwargs)  # type: ignore
 
                 file = file_exists(file_path, calculate_checksum=checksum)
 
