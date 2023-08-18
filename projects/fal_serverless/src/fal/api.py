@@ -3,7 +3,7 @@ from __future__ import annotations
 import inspect
 import sys
 from collections import defaultdict
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import suppress
 from dataclasses import dataclass, field, replace
 from functools import partial, wraps
@@ -44,17 +44,7 @@ from isolate.backends.settings import DEFAULT_SETTINGS
 from isolate.connections import PythonIPC
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
-
-if sys.version_info >= (3, 11):
-    from typing import Concatenate
-else:
-    from typing_extensions import Concatenate
-
-if sys.version_info >= (3, 10):
-    from typing import ParamSpec
-else:
-    from typing_extensions import ParamSpec
-
+from typing_extensions import Concatenate, ParamSpec
 
 ArgsT = ParamSpec("ArgsT")
 ReturnT = TypeVar("ReturnT", covariant=True)
@@ -79,7 +69,7 @@ class FalMissingDependencyError(FalServerlessError):
 
 
 @dataclass
-class Host:
+class Host(Generic[ArgsT, ReturnT]):
     """The physical environment where the isolated code
     is executed."""
 
@@ -124,7 +114,7 @@ class Host:
 
     def run(
         self,
-        func: Callable[..., ReturnT],
+        func: Callable[ArgsT, ReturnT],
         options: Options,
         args: tuple[Any, ...],
         kwargs: dict[str, Any],
@@ -499,7 +489,9 @@ def function(
     serve: Literal[True],
     exposed_port: int | None = None,
     max_concurrency: int | None = None,
-) -> Callable[[Callable[Concatenate[ArgsT], ReturnT]], IsolatedFunction[[], None]]:
+) -> Callable[
+    [Callable[Concatenate[ArgsT], ReturnT]], ServedIsolatedFunction[ArgsT, ReturnT]
+]:
     ...
 
 
@@ -542,7 +534,9 @@ def function(
     keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
     _base_image: str | None = None,
     setup_function: Callable[..., None] | None = None,
-) -> Callable[[Callable[Concatenate[ArgsT], ReturnT]], IsolatedFunction[[], None]]:
+) -> Callable[
+    [Callable[Concatenate[ArgsT], ReturnT]], ServedIsolatedFunction[ArgsT, ReturnT]
+]:
     ...
 
 
@@ -586,7 +580,9 @@ def function(
     serve: Literal[True],
     exposed_port: int | None = None,
     max_concurrency: int | None = None,
-) -> Callable[[Callable[Concatenate[ArgsT], ReturnT]], IsolatedFunction[[], None]]:
+) -> Callable[
+    [Callable[Concatenate[ArgsT], ReturnT]], ServedIsolatedFunction[ArgsT, ReturnT]
+]:
     ...
 
 
@@ -639,7 +635,9 @@ def function(
     keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
     _base_image: str | None = None,
     setup_function: Callable[..., None] | None = None,
-) -> Callable[[Callable[Concatenate[ArgsT], ReturnT]], IsolatedFunction[[], None]]:
+) -> Callable[
+    [Callable[Concatenate[ArgsT], ReturnT]], ServedIsolatedFunction[ArgsT, ReturnT]
+]:
     ...
 
 
@@ -663,8 +661,7 @@ def function(  # type: ignore
     return wrapper
 
 
-def create_webapp(func: Callable[ArgsT, ReturnT]) -> Callable[[], None]:
-    @wraps(func)
+def create_webapp(func: Callable[ArgsT, ReturnT]):
     def wrapper():
         from fastapi import FastAPI
         from fastapi.middleware.cors import CORSMiddleware
@@ -689,7 +686,7 @@ def create_webapp(func: Callable[ArgsT, ReturnT]) -> Callable[[], None]:
 
 @dataclass
 class IsolatedFunction(Generic[ArgsT, ReturnT]):
-    host: Host
+    host: Host[ArgsT, ReturnT]
     raw_func: Callable[ArgsT, ReturnT]
     options: Options
     executor: ThreadPoolExecutor = field(default_factory=ThreadPoolExecutor)
@@ -705,19 +702,19 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
         if not hasattr(self, "executor"):
             self.executor = ThreadPoolExecutor()
 
-    def submit(self, *args: ArgsT.args, **kwargs: ArgsT.kwargs) -> Future[ReturnT]:
+    def submit(self, *args: ArgsT.args, **kwargs: ArgsT.kwargs):
         # TODO: This should probably live inside each host since they can
         # have more optimized Future implementations (e.g. instead of real
         # threads, they can use state observers and detached runs).
 
         future = self.executor.submit(
             self.host.run,
-            func=self.func,  # type: ignore
+            func=self.func,
             options=self.options,
             args=args,
             kwargs=kwargs,
         )
-        return future  # type: ignore
+        return future
 
     def __call__(self, *args: ArgsT.args, **kwargs: ArgsT.kwargs) -> ReturnT:
         try:
@@ -745,9 +742,19 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
                     + "\n".join(lines)
                 ) from None
 
+    @overload
     def on(
-        self, host: Host | None = None, **config: Any
+        self, host: Host | None = None, *, serve: Literal[False] = False, **config: Any
     ) -> IsolatedFunction[ArgsT, ReturnT]:
+        ...
+
+    @overload
+    def on(
+        self, host: Host | None = None, *, serve: Literal[True], **config: Any
+    ) -> ServedIsolatedFunction[ArgsT, ReturnT]:
+        ...
+
+    def on(self, host: Host | None = None, **config: Any):  # type: ignore
         host = host or self.host
         if isinstance(host, type(self.host)):
             previous_host_options = self.options.host
@@ -765,9 +772,35 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
         )
 
     @property
-    def func(self) -> Callable[..., Any]:
+    def func(self) -> Callable[ArgsT, ReturnT]:
         serve_mode = self.options.gateway.get("serve")
         if serve_mode:
-            return create_webapp(self.raw_func)
+            # This type can be safely ignored because this case only happens when it is a ServedIsolatedFunction, which correctly
+            # has ArgsT = [] and ReturnT = None
+            return create_webapp(self.raw_func)  # type: ignore
         else:
             return self.raw_func
+
+
+if sys.version_info <= (3, 10):
+    compatible_class = IsolatedFunction[Literal[None], None]  # type: ignore
+else:
+    compatible_class = IsolatedFunction[[], None]
+
+
+class ServedIsolatedFunction(
+    Generic[ArgsT, ReturnT],
+    compatible_class,  # type: ignore
+):
+    # Class for type hinting purposes only.
+    @overload  # type: ignore[override,no-overload-impl]
+    def on(  # type: ignore[no-overload-impl]
+        self, host: Host | None = None, *, serve: Literal[True] = True, **config: Any
+    ) -> ServedIsolatedFunction[ArgsT, ReturnT]:
+        ...
+
+    @overload
+    def on(
+        self, host: Host | None = None, *, serve: Literal[False], **config: Any
+    ) -> IsolatedFunction[ArgsT, ReturnT]:
+        ...
