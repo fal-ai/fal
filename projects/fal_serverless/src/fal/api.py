@@ -27,7 +27,7 @@ import fal.flags as flags
 import grpc
 import isolate
 import yaml
-from fal._serialization import patch_dill
+from fal._serialization import _MODULES, patch_dill
 from fal.logging.isolate import IsolateLogPrinter
 from fal.sdk import (
     FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
@@ -651,6 +651,7 @@ def function(  # type: ignore
     options = host.parse_options(kind=kind, **config)
 
     def wrapper(func: Callable[ArgsT, ReturnT]):
+        _MODULES.add(func.__module__)
         proxy = IsolatedFunction(
             host=host,
             raw_func=func,  # type: ignore

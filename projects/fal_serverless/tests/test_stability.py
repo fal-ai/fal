@@ -444,3 +444,9 @@ def test_serve_on_off(isolated_client):
 
     local_first_add_2 = local_first_add.on(serve=True).on(serve=False)
     assert local_first_add_2(MathQuery(x=1, y=2)) == MathResult(result=3)
+
+
+def test_mainify():
+    from tests.mainify_target import mainified
+
+    assert mainified() == "123"

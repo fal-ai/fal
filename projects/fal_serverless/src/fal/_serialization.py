@@ -1,6 +1,14 @@
 from __future__ import annotations
 
+from functools import wraps
+
+import dill
+from dill import _dill
 from fal.toolkit import mainify
+
+# each @fal.function gets added to this set so that we can
+# mainify the module this function is in
+_MODULES: set[str] = set()
 
 
 @mainify
@@ -15,6 +23,21 @@ def _pydantic_make_private_field(kwargs):
     from pydantic.fields import ModelPrivateAttr
 
     return ModelPrivateAttr(**kwargs)
+
+
+# this allows us to record all the "isolated" function and then mainify everything in
+# module they exist
+@wraps(_dill._locate_function)
+def by_value_locator(obj, pickler=None, og_locator=_dill._locate_function):
+    module_name = getattr(obj, "__module__", None)
+    if module_name in _MODULES:
+        return False
+
+    og_result = og_locator(obj, pickler)
+    return og_result
+
+
+_dill._locate_function = by_value_locator
 
 
 @mainify
