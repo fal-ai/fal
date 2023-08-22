@@ -1,11 +1,7 @@
-# fal-serverless
+# fal
 
-Library to run, serve or schedule your Python functions in the cloud with any machine type you may need.
+fal is a serverless Python runtime that lets you run and scale code in the cloud with no infra management.
 
-Check out to the [docs](https://docs.fal.ai/fal-serverless/quickstart) for more details.
+With fal, you can build pipelines, serve ML models and scale them up to many users. You scale down to 0 when you don't use any resources.
 
-## Generate OpenAPI client for the REST API
-
-```sh
-bop openapi {python|node}
-```
+Check out to the [docs](https://serverless.fal.ai/docs) for more details.

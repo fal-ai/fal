@@ -173,7 +173,7 @@ def key_cli(ctx, host: str, port: str):
     ctx.obj = sdk.FalServerlessClient(f"{host}:{port}")
 
 
-@key_cli.command(name="generate")
+@key_cli.command(name="generate", no_args_is_help=True)
 @click.option(
     "--scope",
     default=None,
