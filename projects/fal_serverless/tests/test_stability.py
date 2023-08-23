@@ -5,6 +5,7 @@ from contextlib import suppress
 import fal
 import pytest
 from fal.api import FalServerlessError
+from fal.toolkit.file.file import File
 
 PACKAGE_NAME = "fal"
 
@@ -450,3 +451,42 @@ def test_mainify():
     from tests.mainify_target import mainified
 
     assert mainified() == "123"
+
+
+def test_worker_env_vars(isolated_client):
+    @isolated_client("virtualenv", keep_alive=5)
+    def get_env_var(name: str) -> str | None:
+        import os
+
+        return os.getenv(name, None)
+
+    fal_host = get_env_var("FAL_HOST")
+    assert fal_host, "FAL_HOST is not set"
+    assert fal_host.startswith("api.")
+    assert fal_host.endswith(".shark.fal.ai")
+
+    fal_key_id = get_env_var("FAL_KEY_ID")
+    assert fal_key_id, "FAL_KEY_ID is not set"
+
+    fal_key_secret = get_env_var("FAL_KEY_SECRET")
+    assert fal_key_secret, "FAL_KEY_SECRET is not set"
+
+
+def test_fal_storage(isolated_client):
+    file = File.from_bytes(b"Hello fal storage from local", repository="fal")
+    assert file.url.startswith(
+        "https://storage.googleapis.com/isolate-dev-smiling-shark_toolkit_bucket/"
+    )
+    assert file.as_bytes().decode().endswith("local")
+
+    @isolated_client()
+    def hello_file():
+        # Run in the isolated environment
+        return File.from_bytes(b"Hello fal storage from isolated", repository="fal")
+
+    # TODO: not correctly mainified
+    # file = hello_file()
+    # assert file.url.startswith(
+    #     "https://storage.googleapis.com/isolate-dev-smiling-shark_toolkit_bucket/"
+    # )
+    # assert file.as_bytes().decode().endswith("isolated")

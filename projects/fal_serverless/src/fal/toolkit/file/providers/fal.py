@@ -4,14 +4,8 @@ import os
 from base64 import b64encode
 from dataclasses import dataclass
 
-from fal import flags
 from fal.toolkit.file.types import FileData, FileRepository
 from fal.toolkit.mainify import mainify
-
-# TODO: does this handle every case?
-# Would it break for `@isolated(host=FalServerlessHost("api.swine.fal.ai:443"))`
-# Since `flags.REST_URL` still points to alpha?
-FAL_STORAGE_ENDPOINT = flags.REST_URL + "/storage/upload"
 
 
 @mainify
@@ -43,7 +37,7 @@ class FalFileRepository(FileRepository):
 
         try:
             req = Request(
-                FAL_STORAGE_ENDPOINT, data=body, headers=headers, method="POST"
+                self._storage_url(), data=body, headers=headers, method="POST"
             )
             with urlopen(req) as response:
                 result = load_json(response)
@@ -53,6 +47,19 @@ class FalFileRepository(FileRepository):
             raise Exception(f"Error uploading file. Status {e.status}: {e.reason}")
 
         return result["url"]
+
+    @staticmethod
+    def _storage_url():
+        """
+        Get the storage URL from the environment inside the worker.
+        """
+
+        import os
+
+        grpc_host = os.environ.get("FAL_HOST", "api.alpha.fal.ai")
+        rest_host = grpc_host.replace("api", "rest", 1)
+
+        return f"https://{rest_host}/storage/upload"
 
 
 @mainify

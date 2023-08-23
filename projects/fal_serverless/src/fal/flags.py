@@ -14,7 +14,7 @@ DEBUG = bool_envvar("DEBUG")
 TEST_MODE = bool_envvar("ISOLATE_TEST_MODE")
 AUTH_DISABLED = bool_envvar("ISOLATE_AUTH_DISABLED")
 
-GRPC_HOST = os.getenv("FAL_HOST", "api.alpha.fal.ai:443")
+GRPC_HOST = os.getenv("FAL_HOST", "api.alpha.fal.ai")
 if not TEST_MODE:
     assert GRPC_HOST.startswith("api"), "FAL_HOST must start with 'api'"
 
