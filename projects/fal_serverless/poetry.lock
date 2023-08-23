@@ -889,7 +889,7 @@ build = ["PyYAML (>=6.0)", "virtualenv (>=20.4)"]
 
 [[package]]
 name = "isolate-proto"
-version = "0.0.38a0"
+version = "0.0.41a0"
 description = "(internal) gRPC definitions for Isolate Cloud"
 category = "main"
 optional = false
