@@ -289,7 +289,13 @@ def find_missing_dependencies(
 @dataclass
 class FalServerlessHost(Host):
     _SUPPORTED_KEYS = frozenset(
-        {"machine_type", "keep_alive", "setup_function", "_base_image"}
+        {
+            "machine_type",
+            "keep_alive",
+            "setup_function",
+            "_base_image",
+            "_scheduler",
+        }
     )
 
     url: str = FAL_SERVERLESS_DEFAULT_URL
@@ -326,6 +332,7 @@ class FalServerlessHost(Host):
         )
         keep_alive = options.host.get("keep_alive", FAL_SERVERLESS_DEFAULT_KEEP_ALIVE)
         base_image = options.host.get("_base_image", None)
+        scheduler = options.host.get("_scheduler", None)
         exposed_port = options.get_exposed_port()
 
         machine_requirements = MachineRequirements(
@@ -333,6 +340,7 @@ class FalServerlessHost(Host):
             keep_alive=keep_alive,
             base_image=base_image,
             exposed_port=exposed_port,
+            scheduler=scheduler,
         )
 
         partial_func = _prepare_partial_func(func)
@@ -380,6 +388,7 @@ class FalServerlessHost(Host):
         )
         keep_alive = options.host.get("keep_alive", FAL_SERVERLESS_DEFAULT_KEEP_ALIVE)
         base_image = options.host.get("_base_image", None)
+        scheduler = options.host.get("_scheduler", None)
         exposed_port = options.get_exposed_port()
         setup_function = options.host.get("setup_function", None)
 
@@ -388,6 +397,7 @@ class FalServerlessHost(Host):
             keep_alive=keep_alive,
             base_image=base_image,
             exposed_port=exposed_port,
+            scheduler=scheduler,
         )
 
         return_value = _UNSET

@@ -353,6 +353,7 @@ class MachineRequirements:
     keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE
     base_image: str | None = None
     exposed_port: int | None = None
+    scheduler: str | None = None
 
 
 @dataclass
@@ -457,6 +458,7 @@ class FalServerlessConnection:
                 keep_alive=machine_requirements.keep_alive,
                 base_image=machine_requirements.base_image,
                 exposed_port=machine_requirements.exposed_port,
+                scheduler=machine_requirements.scheduler,
             )
         else:
             wrapped_requirements = None
@@ -495,6 +497,7 @@ class FalServerlessConnection:
                 keep_alive=machine_requirements.keep_alive,
                 base_image=machine_requirements.base_image,
                 exposed_port=machine_requirements.exposed_port,
+                scheduler=machine_requirements.scheduler,
             )
         else:
             wrapped_requirements = None

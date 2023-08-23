@@ -15,7 +15,8 @@ TEST_MODE = bool_envvar("ISOLATE_TEST_MODE")
 AUTH_DISABLED = bool_envvar("ISOLATE_AUTH_DISABLED")
 
 GRPC_HOST = os.getenv("FAL_HOST", "api.alpha.fal.ai:443")
-assert GRPC_HOST.startswith("api"), "FAL_HOST must start with 'api'"
+if not TEST_MODE:
+    assert GRPC_HOST.startswith("api"), "FAL_HOST must start with 'api'"
 
 REST_HOST = GRPC_HOST.replace("api", "rest", 1)
 REST_SCHEME = "http" if TEST_MODE or AUTH_DISABLED else "https"
