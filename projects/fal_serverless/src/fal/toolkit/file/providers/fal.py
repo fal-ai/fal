@@ -4,12 +4,14 @@ import os
 from base64 import b64encode
 from dataclasses import dataclass
 
+from fal import flags
 from fal.toolkit.file.types import FileData, FileRepository
 from fal.toolkit.mainify import mainify
 
-FAL_STORAGE_ENDPOINT = os.environ.get(
-    "FAL_STORAGE_ENDPOINT", "https://rest.alpha.fal.ai/storage/upload"
-)
+# TODO: does this handle every case?
+# Would it break for `@isolated(host=FalServerlessHost("api.swine.fal.ai:443"))`
+# Since `flags.REST_URL` still points to alpha?
+FAL_STORAGE_ENDPOINT = flags.REST_URL + "/storage/upload"
 
 
 @mainify
@@ -18,14 +20,8 @@ class FalFileRepository(FileRepository):
     def save(self, file: FileData) -> str:
         from json import load as load_json
         from urllib.error import HTTPError
-        from urllib.parse import urlparse
         from urllib.request import Request, urlopen
         from uuid import uuid4
-
-        url = urlparse(FAL_STORAGE_ENDPOINT)
-        hostname = url.hostname
-        if hostname is None:
-            raise Exception("FAL_STORAGE_ENDPOINT must be a valid URL")
 
         key_id = os.environ.get("FAL_KEY_ID")
         key_secret = os.environ.get("FAL_KEY_SECRET")
