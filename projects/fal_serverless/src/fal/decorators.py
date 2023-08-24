@@ -4,7 +4,7 @@ import sys
 from dataclasses import dataclass
 from functools import wraps
 from pathlib import Path
-from typing import Any, Callable, TypeVar
+from typing import Any, Callable, Literal, TypeVar
 
 import openapi_fal_rest.api.files.file_exists as file_exists_api
 import openapi_fal_rest.models.file_spec as file_spec_model
@@ -77,17 +77,20 @@ def setup(
     force: bool = False,
     **isolated_config: Any,
 ):
+    file_path = Path(file_path)
+    check_path = file_path.relative_to("/data")
+
     def wrapper(
         func: Callable[Concatenate[ArgsT], ReturnT]
-    ) -> Callable[Concatenate[ArgsT], FileSpec]:
+    ) -> Callable[Concatenate[ArgsT], Path]:
         @wraps(func)
         def internal_wrapper(
             *args: ArgsT.args,
             **kwargs: ArgsT.kwargs,
-        ) -> FileSpec:
+        ) -> Path:
             checksum = bool(checksum_sha256 or checksum_md5)
 
-            file = file_exists(file_path, calculate_checksum=checksum)
+            file = file_exists(check_path, calculate_checksum=checksum)
 
             if not file or force or flags.FORCE_SETUP:
                 config = {
@@ -96,7 +99,7 @@ def setup(
                 }
                 function(**config)(func)(*args, **kwargs)  # type: ignore
 
-                file = file_exists(file_path, calculate_checksum=checksum)
+                file = file_exists(check_path, calculate_checksum=checksum)
 
             if not file:
                 raise FalServerlessError(
@@ -121,20 +124,25 @@ def setup(
                         f"Expected {checksum_md5} but got {file.checksum_md5}"
                     )
 
-            return FileSpec.from_model(file)
+            return Path(file.path)
 
         return internal_wrapper
 
     return wrapper
 
 
+DownloadType = Literal["python", "wget", "curl"]
+
+
 def download_file(
     url: str,
     check_location: str | Path,
+    *,
     checksum_sha256: str | None = None,
     checksum_md5: str | None = None,
     force: bool = False,
-) -> FileSpec:
+    tool: DownloadType = "python",
+):
     check_path = Path(check_location)
 
     @setup(
@@ -145,7 +153,8 @@ def download_file(
         # isolated configs
         requirements=["urllib3"],
     )
-    def download():
+    def download(force: bool):
+        import os
         from shutil import copyfileobj
         from urllib.request import Request, urlopen
 
@@ -159,27 +168,64 @@ def download_file(
             user_agent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.8; rv:21.0) Gecko/20100101 Firefox/21.0"
 
             req = Request(url, headers={"User-Agent": user_agent})
-            with urlopen(req) as response, check_path.open("wb") as f:
-                copyfileobj(response, f)
-        except Exception as e:
-            # raise exception in generally-available class
-            raise FileNotFoundError(
-                f"Failed to download {url} to {check_path}\n{e}"
-            ) from None
 
-    return download()
+            if check_path.exists() and not force:
+                print(f"File {check_path} already exists, skipping download")
+                return
+
+            if tool == "python":
+                with urlopen(req) as response, check_path.open("wb") as f:
+                    copyfileobj(response, f)
+            elif tool == "curl":
+                command = f"curl {req.full_url} -o {check_path}"
+
+                print(command)
+                res = os.system(command)
+
+                if res != 0:
+                    raise Exception(f"curl failed with exit code {res}")
+            elif tool == "wget":
+                command = f"wget {req.full_url} -O {check_path}"
+
+                print(command)
+                res = os.system(command)
+
+                if res != 0:
+                    raise Exception(f"wget failed with exit code {res}")
+            else:
+                raise Exception(f"Unknown download tool {tool}")
+
+        except Exception as e:
+            msg = f"Failed to download {url} to {check_path}\n{e}"
+            print(msg)
+
+            os.system(f"rm -rf {check_path}")
+
+            # raise exception in generally-available class
+            raise FileNotFoundError(msg) from None
+
+    return download(force)
 
 
 def download_weights(
     url: str,
+    *,
     checksum_sha256: str | None = None,
     checksum_md5: str | None = None,
     force: bool = False,
-) -> FileSpec:
+    tool: DownloadType = "python",
+):
     import hashlib
 
     url_id = hashlib.sha256(url.encode("utf-8")).hexdigest()
     # This is not a protected path, so the user may change stuff internally
     url_path = Path(f"/data/.fal/downloads/{url_id}")
 
-    return download_file(url, url_path, checksum_sha256, checksum_md5, force)
+    return download_file(
+        url,
+        url_path,
+        checksum_sha256=checksum_sha256,
+        checksum_md5=checksum_md5,
+        force=force,
+        tool=tool,
+    )

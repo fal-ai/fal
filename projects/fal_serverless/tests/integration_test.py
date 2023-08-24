@@ -143,3 +143,14 @@ def test_sync(isolated_client):
     print("Test passed: Local and remote directory contents match")
 
     remove_remote_directory(remote_dir_ref)
+
+
+def test_download_weights():
+    from fal import download_weights
+
+    EXAMPLE_URL = "https://raw.githubusercontent.com/fal-ai/isolate/d553f927348206530208442556f481f39b161732/README.md"
+    EXAMPLE_PATH = download_weights(
+        EXAMPLE_URL,
+        checksum_sha256="81ff101c9f6f5b4af6868a3004d43d55fc546716d40ca12c678684a77e76c67c",
+    )
+    assert EXAMPLE_PATH
