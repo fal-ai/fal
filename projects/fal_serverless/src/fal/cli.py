@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from http import HTTPStatus
 from sys import argv
 from typing import Literal
@@ -288,24 +289,9 @@ def register_application(
     alias: str | None,
     auth_mode: Literal["public", "private", "shared"],
 ):
-    import json
     import runpy
 
-    user_details_response = get_user_details.sync_detailed(
-        client=REST_CLIENT,
-    )
-
-    if user_details_response.status_code != HTTPStatus.OK:
-        try:
-            content = json.loads(user_details_response.content.decode("utf8"))
-        except:
-            raise api.FalServerlessError(
-                f"Error fetching user details: {user_details_response}"
-            )
-        else:
-            raise api.FalServerlessError(content["detail"])
-
-    user_id = user_details_response.parsed.user_id.split("|")[1]
+    user_id = _get_user_id()
 
     module = runpy.run_path(file_path)
     if function_name not in module:
@@ -333,6 +319,7 @@ def register_application(
         application_auth_mode=auth_mode,
         max_concurrency=max_concurrency,
     )
+
     if id:
         # TODO: should we centralize this URL format?
         gateway_host = host.url.replace("api.", "gateway.")
@@ -576,6 +563,31 @@ def dbt_run(any):
 @click.argument("any", nargs=-1, type=click.UNPROCESSED)
 def dbt_flow(any):
     raise click.BadArgumentUsage(DBT_FAL_COMMAND_NOTICE)
+
+
+def _get_user_id() -> str:
+    try:
+        user_details_response = get_user_details.sync_detailed(
+            client=REST_CLIENT,
+        )
+    except Exception as e:
+        raise api.FalServerlessError(f"Error fetching user details: {str(e)}")
+
+    if user_details_response.status_code != HTTPStatus.OK:
+        try:
+            content = json.loads(user_details_response.content.decode("utf8"))
+        except:
+            raise api.FalServerlessError(
+                f"Error fetching user details: {user_details_response}"
+            )
+        else:
+            raise api.FalServerlessError(content["detail"])
+    try:
+        full_user_id = user_details_response.parsed.user_id
+        user_id = full_user_id.split("|")[1]
+        return user_id
+    except Exception as e:
+        raise api.FalServerlessError(f"Could not parse the user data: {e}")
 
 
 if __name__ == "__main__":
