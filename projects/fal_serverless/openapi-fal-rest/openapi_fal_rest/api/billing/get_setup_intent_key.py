@@ -4,14 +4,14 @@ from typing import Any, Dict, Optional, Union, cast
 import httpx
 
 from ... import errors
-from ...client import AuthenticatedClient, Client
+from ...client import Client
 from ...models.http_validation_error import HTTPValidationError
 from ...types import Response
 
 
 def _get_kwargs(
     *,
-    client: AuthenticatedClient,
+    client: Client,
 ) -> Dict[str, Any]:
     url = "{}/billing/setup_intent_key".format(client.base_url)
 
@@ -53,7 +53,7 @@ def _build_response(*, client: Client, response: httpx.Response) -> Response[Uni
 
 def sync_detailed(
     *,
-    client: AuthenticatedClient,
+    client: Client,
 ) -> Response[Union[HTTPValidationError, str]]:
     """Get Setup Intent Key
 
@@ -79,7 +79,7 @@ def sync_detailed(
 
 def sync(
     *,
-    client: AuthenticatedClient,
+    client: Client,
 ) -> Optional[Union[HTTPValidationError, str]]:
     """Get Setup Intent Key
 
@@ -98,7 +98,7 @@ def sync(
 
 async def asyncio_detailed(
     *,
-    client: AuthenticatedClient,
+    client: Client,
 ) -> Response[Union[HTTPValidationError, str]]:
     """Get Setup Intent Key
 
@@ -122,7 +122,7 @@ async def asyncio_detailed(
 
 async def asyncio(
     *,
-    client: AuthenticatedClient,
+    client: Client,
 ) -> Optional[Union[HTTPValidationError, str]]:
     """Get Setup Intent Key
 

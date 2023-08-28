@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional, Union
 import httpx
 
 from ... import errors
-from ...client import AuthenticatedClient, Client
+from ...client import Client
 from ...models.http_validation_error import HTTPValidationError
 from ...models.payment_method import PaymentMethod
 from ...types import Response
@@ -12,7 +12,7 @@ from ...types import Response
 
 def _get_kwargs(
     *,
-    client: AuthenticatedClient,
+    client: Client,
 ) -> Dict[str, Any]:
     url = "{}/billing/payment_methods".format(client.base_url)
 
@@ -64,7 +64,7 @@ def _build_response(
 
 def sync_detailed(
     *,
-    client: AuthenticatedClient,
+    client: Client,
 ) -> Response[Union[HTTPValidationError, List["PaymentMethod"]]]:
     """Get Payment Methods
 
@@ -90,7 +90,7 @@ def sync_detailed(
 
 def sync(
     *,
-    client: AuthenticatedClient,
+    client: Client,
 ) -> Optional[Union[HTTPValidationError, List["PaymentMethod"]]]:
     """Get Payment Methods
 
@@ -109,7 +109,7 @@ def sync(
 
 async def asyncio_detailed(
     *,
-    client: AuthenticatedClient,
+    client: Client,
 ) -> Response[Union[HTTPValidationError, List["PaymentMethod"]]]:
     """Get Payment Methods
 
@@ -133,7 +133,7 @@ async def asyncio_detailed(
 
 async def asyncio(
     *,
-    client: AuthenticatedClient,
+    client: Client,
 ) -> Optional[Union[HTTPValidationError, List["PaymentMethod"]]]:
     """Get Payment Methods
 

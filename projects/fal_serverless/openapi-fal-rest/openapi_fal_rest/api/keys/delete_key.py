@@ -4,7 +4,7 @@ from typing import Any, Dict, Optional, Union, cast
 import httpx
 
 from ... import errors
-from ...client import AuthenticatedClient, Client
+from ...client import Client
 from ...models.http_validation_error import HTTPValidationError
 from ...types import Response
 
@@ -12,7 +12,7 @@ from ...types import Response
 def _get_kwargs(
     id: str,
     *,
-    client: AuthenticatedClient,
+    client: Client,
 ) -> Dict[str, Any]:
     url = "{}/keys/{id}".format(client.base_url, id=id)
 
@@ -55,7 +55,7 @@ def _build_response(*, client: Client, response: httpx.Response) -> Response[Uni
 def sync_detailed(
     id: str,
     *,
-    client: AuthenticatedClient,
+    client: Client,
 ) -> Response[Union[Any, HTTPValidationError]]:
     """Delete
 
@@ -86,7 +86,7 @@ def sync_detailed(
 def sync(
     id: str,
     *,
-    client: AuthenticatedClient,
+    client: Client,
 ) -> Optional[Union[Any, HTTPValidationError]]:
     """Delete
 
@@ -110,7 +110,7 @@ def sync(
 async def asyncio_detailed(
     id: str,
     *,
-    client: AuthenticatedClient,
+    client: Client,
 ) -> Response[Union[Any, HTTPValidationError]]:
     """Delete
 
@@ -139,7 +139,7 @@ async def asyncio_detailed(
 async def asyncio(
     id: str,
     *,
-    client: AuthenticatedClient,
+    client: Client,
 ) -> Optional[Union[Any, HTTPValidationError]]:
     """Delete
 

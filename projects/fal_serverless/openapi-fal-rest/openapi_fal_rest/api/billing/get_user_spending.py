@@ -5,14 +5,14 @@ from typing import Any, Dict, Optional, Union, cast
 import httpx
 
 from ... import errors
-from ...client import AuthenticatedClient, Client
+from ...client import Client
 from ...models.http_validation_error import HTTPValidationError
 from ...types import UNSET, Response, Unset
 
 
 def _get_kwargs(
     *,
-    client: AuthenticatedClient,
+    client: Client,
     start_date: Union[Unset, None, datetime.date] = UNSET,
     end_date: Union[Unset, None, datetime.date] = UNSET,
 ) -> Dict[str, Any]:
@@ -72,7 +72,7 @@ def _build_response(*, client: Client, response: httpx.Response) -> Response[Uni
 
 def sync_detailed(
     *,
-    client: AuthenticatedClient,
+    client: Client,
     start_date: Union[Unset, None, datetime.date] = UNSET,
     end_date: Union[Unset, None, datetime.date] = UNSET,
 ) -> Response[Union[HTTPValidationError, float]]:
@@ -106,7 +106,7 @@ def sync_detailed(
 
 def sync(
     *,
-    client: AuthenticatedClient,
+    client: Client,
     start_date: Union[Unset, None, datetime.date] = UNSET,
     end_date: Union[Unset, None, datetime.date] = UNSET,
 ) -> Optional[Union[HTTPValidationError, float]]:
@@ -133,7 +133,7 @@ def sync(
 
 async def asyncio_detailed(
     *,
-    client: AuthenticatedClient,
+    client: Client,
     start_date: Union[Unset, None, datetime.date] = UNSET,
     end_date: Union[Unset, None, datetime.date] = UNSET,
 ) -> Response[Union[HTTPValidationError, float]]:
@@ -165,7 +165,7 @@ async def asyncio_detailed(
 
 async def asyncio(
     *,
-    client: AuthenticatedClient,
+    client: Client,
     start_date: Union[Unset, None, datetime.date] = UNSET,
     end_date: Union[Unset, None, datetime.date] = UNSET,
 ) -> Optional[Union[HTTPValidationError, float]]:

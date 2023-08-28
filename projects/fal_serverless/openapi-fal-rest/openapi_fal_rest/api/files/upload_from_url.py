@@ -4,7 +4,7 @@ from typing import Any, Dict, Optional, Union, cast
 import httpx
 
 from ... import errors
-from ...client import AuthenticatedClient, Client
+from ...client import Client
 from ...models.http_validation_error import HTTPValidationError
 from ...models.url_file_upload import UrlFileUpload
 from ...types import Response
@@ -13,7 +13,7 @@ from ...types import Response
 def _get_kwargs(
     file: str,
     *,
-    client: AuthenticatedClient,
+    client: Client,
     json_body: UrlFileUpload,
 ) -> Dict[str, Any]:
     url = "{}/files/file/url/{file}".format(client.base_url, file=file)
@@ -60,7 +60,7 @@ def _build_response(*, client: Client, response: httpx.Response) -> Response[Uni
 def sync_detailed(
     file: str,
     *,
-    client: AuthenticatedClient,
+    client: Client,
     json_body: UrlFileUpload,
 ) -> Response[Union[HTTPValidationError, bool]]:
     """Upload Url File
@@ -94,7 +94,7 @@ def sync_detailed(
 def sync(
     file: str,
     *,
-    client: AuthenticatedClient,
+    client: Client,
     json_body: UrlFileUpload,
 ) -> Optional[Union[HTTPValidationError, bool]]:
     """Upload Url File
@@ -121,7 +121,7 @@ def sync(
 async def asyncio_detailed(
     file: str,
     *,
-    client: AuthenticatedClient,
+    client: Client,
     json_body: UrlFileUpload,
 ) -> Response[Union[HTTPValidationError, bool]]:
     """Upload Url File
@@ -153,7 +153,7 @@ async def asyncio_detailed(
 async def asyncio(
     file: str,
     *,
-    client: AuthenticatedClient,
+    client: Client,
     json_body: UrlFileUpload,
 ) -> Optional[Union[HTTPValidationError, bool]]:
     """Upload Url File

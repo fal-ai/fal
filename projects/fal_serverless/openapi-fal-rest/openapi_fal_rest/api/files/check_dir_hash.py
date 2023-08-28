@@ -4,7 +4,7 @@ from typing import Any, Dict, Optional, Union, cast
 import httpx
 
 from ... import errors
-from ...client import AuthenticatedClient, Client
+from ...client import Client
 from ...models.hash_check import HashCheck
 from ...models.http_validation_error import HTTPValidationError
 from ...types import Response
@@ -13,7 +13,7 @@ from ...types import Response
 def _get_kwargs(
     target_path: str,
     *,
-    client: AuthenticatedClient,
+    client: Client,
     json_body: HashCheck,
 ) -> Dict[str, Any]:
     url = "{}/files/dir/check_hash/{target_path}".format(client.base_url, target_path=target_path)
@@ -60,7 +60,7 @@ def _build_response(*, client: Client, response: httpx.Response) -> Response[Uni
 def sync_detailed(
     target_path: str,
     *,
-    client: AuthenticatedClient,
+    client: Client,
     json_body: HashCheck,
 ) -> Response[Union[HTTPValidationError, bool]]:
     """Check Dir Hash
@@ -94,7 +94,7 @@ def sync_detailed(
 def sync(
     target_path: str,
     *,
-    client: AuthenticatedClient,
+    client: Client,
     json_body: HashCheck,
 ) -> Optional[Union[HTTPValidationError, bool]]:
     """Check Dir Hash
@@ -121,7 +121,7 @@ def sync(
 async def asyncio_detailed(
     target_path: str,
     *,
-    client: AuthenticatedClient,
+    client: Client,
     json_body: HashCheck,
 ) -> Response[Union[HTTPValidationError, bool]]:
     """Check Dir Hash
@@ -153,7 +153,7 @@ async def asyncio_detailed(
 async def asyncio(
     target_path: str,
     *,
-    client: AuthenticatedClient,
+    client: Client,
     json_body: HashCheck,
 ) -> Optional[Union[HTTPValidationError, bool]]:
     """Check Dir Hash

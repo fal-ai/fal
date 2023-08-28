@@ -4,7 +4,7 @@ from typing import Any, Dict, Optional, Union
 import httpx
 
 from ... import errors
-from ...client import AuthenticatedClient, Client
+from ...client import Client
 from ...models.file_spec import FileSpec
 from ...models.http_validation_error import HTTPValidationError
 from ...types import UNSET, Response, Unset
@@ -13,7 +13,7 @@ from ...types import UNSET, Response, Unset
 def _get_kwargs(
     file: str,
     *,
-    client: AuthenticatedClient,
+    client: Client,
     calculate_checksum: Union[Unset, None, bool] = False,
 ) -> Dict[str, Any]:
     url = "{}/files/file/exists/{file}".format(client.base_url, file=file)
@@ -64,7 +64,7 @@ def _build_response(*, client: Client, response: httpx.Response) -> Response[Uni
 def sync_detailed(
     file: str,
     *,
-    client: AuthenticatedClient,
+    client: Client,
     calculate_checksum: Union[Unset, None, bool] = False,
 ) -> Response[Union[FileSpec, HTTPValidationError]]:
     """File Exists
@@ -98,7 +98,7 @@ def sync_detailed(
 def sync(
     file: str,
     *,
-    client: AuthenticatedClient,
+    client: Client,
     calculate_checksum: Union[Unset, None, bool] = False,
 ) -> Optional[Union[FileSpec, HTTPValidationError]]:
     """File Exists
@@ -125,7 +125,7 @@ def sync(
 async def asyncio_detailed(
     file: str,
     *,
-    client: AuthenticatedClient,
+    client: Client,
     calculate_checksum: Union[Unset, None, bool] = False,
 ) -> Response[Union[FileSpec, HTTPValidationError]]:
     """File Exists
@@ -157,7 +157,7 @@ async def asyncio_detailed(
 async def asyncio(
     file: str,
     *,
-    client: AuthenticatedClient,
+    client: Client,
     calculate_checksum: Union[Unset, None, bool] = False,
 ) -> Optional[Union[FileSpec, HTTPValidationError]]:
     """File Exists

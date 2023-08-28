@@ -4,7 +4,7 @@ from typing import Any, Dict, Optional, Union
 import httpx
 
 from ... import errors
-from ...client import AuthenticatedClient, Client
+from ...client import Client
 from ...models.http_validation_error import HTTPValidationError
 from ...models.key_scope import KeyScope
 from ...models.new_user_key import NewUserKey
@@ -13,7 +13,7 @@ from ...types import UNSET, Response, Unset
 
 def _get_kwargs(
     *,
-    client: AuthenticatedClient,
+    client: Client,
     scope: KeyScope,
     alias: Union[Unset, None, str] = "",
 ) -> Dict[str, Any]:
@@ -68,7 +68,7 @@ def _build_response(*, client: Client, response: httpx.Response) -> Response[Uni
 
 def sync_detailed(
     *,
-    client: AuthenticatedClient,
+    client: Client,
     scope: KeyScope,
     alias: Union[Unset, None, str] = "",
 ) -> Response[Union[HTTPValidationError, NewUserKey]]:
@@ -102,7 +102,7 @@ def sync_detailed(
 
 def sync(
     *,
-    client: AuthenticatedClient,
+    client: Client,
     scope: KeyScope,
     alias: Union[Unset, None, str] = "",
 ) -> Optional[Union[HTTPValidationError, NewUserKey]]:
@@ -129,7 +129,7 @@ def sync(
 
 async def asyncio_detailed(
     *,
-    client: AuthenticatedClient,
+    client: Client,
     scope: KeyScope,
     alias: Union[Unset, None, str] = "",
 ) -> Response[Union[HTTPValidationError, NewUserKey]]:
@@ -161,7 +161,7 @@ async def asyncio_detailed(
 
 async def asyncio(
     *,
-    client: AuthenticatedClient,
+    client: Client,
     scope: KeyScope,
     alias: Union[Unset, None, str] = "",
 ) -> Optional[Union[HTTPValidationError, NewUserKey]]:

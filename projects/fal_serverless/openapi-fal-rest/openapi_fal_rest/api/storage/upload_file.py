@@ -1,37 +1,45 @@
 from http import HTTPStatus
-from typing import Any, Dict, Optional, Union, cast
+from typing import Any, Dict, Optional, Union
 
 import httpx
 
 from ... import errors
 from ...client import Client
+from ...models.body_upload_file import BodyUploadFile
 from ...models.http_validation_error import HTTPValidationError
+from ...models.uploaded_file_result import UploadedFileResult
 from ...types import Response
 
 
 def _get_kwargs(
-    file: str,
     *,
     client: Client,
+    multipart_data: BodyUploadFile,
 ) -> Dict[str, Any]:
-    url = "{}/files/file/{file}".format(client.base_url, file=file)
+    url = "{}/storage/upload".format(client.base_url)
 
     headers: Dict[str, str] = client.get_headers()
     cookies: Dict[str, Any] = client.get_cookies()
 
+    multipart_multipart_data = multipart_data.to_multipart()
+
     return {
-        "method": "get",
+        "method": "post",
         "url": url,
         "headers": headers,
         "cookies": cookies,
         "timeout": client.get_timeout(),
         "follow_redirects": client.follow_redirects,
+        "files": multipart_multipart_data,
     }
 
 
-def _parse_response(*, client: Client, response: httpx.Response) -> Optional[Union[Any, HTTPValidationError]]:
+def _parse_response(
+    *, client: Client, response: httpx.Response
+) -> Optional[Union[HTTPValidationError, UploadedFileResult]]:
     if response.status_code == HTTPStatus.OK:
-        response_200 = cast(Any, response.json())
+        response_200 = UploadedFileResult.from_dict(response.json())
+
         return response_200
     if response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY:
         response_422 = HTTPValidationError.from_dict(response.json())
@@ -43,7 +51,9 @@ def _parse_response(*, client: Client, response: httpx.Response) -> Optional[Uni
         return None
 
 
-def _build_response(*, client: Client, response: httpx.Response) -> Response[Union[Any, HTTPValidationError]]:
+def _build_response(
+    *, client: Client, response: httpx.Response
+) -> Response[Union[HTTPValidationError, UploadedFileResult]]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -53,26 +63,26 @@ def _build_response(*, client: Client, response: httpx.Response) -> Response[Uni
 
 
 def sync_detailed(
-    file: str,
     *,
     client: Client,
-) -> Response[Union[Any, HTTPValidationError]]:
-    """Download File
+    multipart_data: BodyUploadFile,
+) -> Response[Union[HTTPValidationError, UploadedFileResult]]:
+    """Upload To Shared Storage
 
     Args:
-        file (str):
+        multipart_data (BodyUploadFile):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Union[Any, HTTPValidationError]]
+        Response[Union[HTTPValidationError, UploadedFileResult]]
     """
 
     kwargs = _get_kwargs(
-        file=file,
         client=client,
+        multipart_data=multipart_data,
     )
 
     response = httpx.request(
@@ -84,50 +94,50 @@ def sync_detailed(
 
 
 def sync(
-    file: str,
     *,
     client: Client,
-) -> Optional[Union[Any, HTTPValidationError]]:
-    """Download File
+    multipart_data: BodyUploadFile,
+) -> Optional[Union[HTTPValidationError, UploadedFileResult]]:
+    """Upload To Shared Storage
 
     Args:
-        file (str):
+        multipart_data (BodyUploadFile):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Union[Any, HTTPValidationError]
+        Union[HTTPValidationError, UploadedFileResult]
     """
 
     return sync_detailed(
-        file=file,
         client=client,
+        multipart_data=multipart_data,
     ).parsed
 
 
 async def asyncio_detailed(
-    file: str,
     *,
     client: Client,
-) -> Response[Union[Any, HTTPValidationError]]:
-    """Download File
+    multipart_data: BodyUploadFile,
+) -> Response[Union[HTTPValidationError, UploadedFileResult]]:
+    """Upload To Shared Storage
 
     Args:
-        file (str):
+        multipart_data (BodyUploadFile):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Union[Any, HTTPValidationError]]
+        Response[Union[HTTPValidationError, UploadedFileResult]]
     """
 
     kwargs = _get_kwargs(
-        file=file,
         client=client,
+        multipart_data=multipart_data,
     )
 
     async with httpx.AsyncClient(verify=client.verify_ssl) as _client:
@@ -137,26 +147,26 @@ async def asyncio_detailed(
 
 
 async def asyncio(
-    file: str,
     *,
     client: Client,
-) -> Optional[Union[Any, HTTPValidationError]]:
-    """Download File
+    multipart_data: BodyUploadFile,
+) -> Optional[Union[HTTPValidationError, UploadedFileResult]]:
+    """Upload To Shared Storage
 
     Args:
-        file (str):
+        multipart_data (BodyUploadFile):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Union[Any, HTTPValidationError]
+        Union[HTTPValidationError, UploadedFileResult]
     """
 
     return (
         await asyncio_detailed(
-            file=file,
             client=client,
+            multipart_data=multipart_data,
         )
     ).parsed

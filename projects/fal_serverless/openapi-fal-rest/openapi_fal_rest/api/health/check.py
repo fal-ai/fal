@@ -1,20 +1,18 @@
 from http import HTTPStatus
-from typing import Any, Dict, Optional, Union, cast
+from typing import Any, Dict, Optional, cast
 
 import httpx
 
 from ... import errors
 from ...client import Client
-from ...models.http_validation_error import HTTPValidationError
 from ...types import Response
 
 
 def _get_kwargs(
-    file: str,
     *,
     client: Client,
 ) -> Dict[str, Any]:
-    url = "{}/files/file/{file}".format(client.base_url, file=file)
+    url = "{}/health/".format(client.base_url)
 
     headers: Dict[str, str] = client.get_headers()
     cookies: Dict[str, Any] = client.get_cookies()
@@ -29,21 +27,17 @@ def _get_kwargs(
     }
 
 
-def _parse_response(*, client: Client, response: httpx.Response) -> Optional[Union[Any, HTTPValidationError]]:
+def _parse_response(*, client: Client, response: httpx.Response) -> Optional[str]:
     if response.status_code == HTTPStatus.OK:
-        response_200 = cast(Any, response.json())
+        response_200 = cast(str, response.json())
         return response_200
-    if response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY:
-        response_422 = HTTPValidationError.from_dict(response.json())
-
-        return response_422
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
     else:
         return None
 
 
-def _build_response(*, client: Client, response: httpx.Response) -> Response[Union[Any, HTTPValidationError]]:
+def _build_response(*, client: Client, response: httpx.Response) -> Response[str]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -53,25 +47,20 @@ def _build_response(*, client: Client, response: httpx.Response) -> Response[Uni
 
 
 def sync_detailed(
-    file: str,
     *,
     client: Client,
-) -> Response[Union[Any, HTTPValidationError]]:
-    """Download File
-
-    Args:
-        file (str):
+) -> Response[str]:
+    """Check
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Union[Any, HTTPValidationError]]
+        Response[str]
     """
 
     kwargs = _get_kwargs(
-        file=file,
         client=client,
     )
 
@@ -84,49 +73,39 @@ def sync_detailed(
 
 
 def sync(
-    file: str,
     *,
     client: Client,
-) -> Optional[Union[Any, HTTPValidationError]]:
-    """Download File
-
-    Args:
-        file (str):
+) -> Optional[str]:
+    """Check
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Union[Any, HTTPValidationError]
+        str
     """
 
     return sync_detailed(
-        file=file,
         client=client,
     ).parsed
 
 
 async def asyncio_detailed(
-    file: str,
     *,
     client: Client,
-) -> Response[Union[Any, HTTPValidationError]]:
-    """Download File
-
-    Args:
-        file (str):
+) -> Response[str]:
+    """Check
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Union[Any, HTTPValidationError]]
+        Response[str]
     """
 
     kwargs = _get_kwargs(
-        file=file,
         client=client,
     )
 
@@ -137,26 +116,21 @@ async def asyncio_detailed(
 
 
 async def asyncio(
-    file: str,
     *,
     client: Client,
-) -> Optional[Union[Any, HTTPValidationError]]:
-    """Download File
-
-    Args:
-        file (str):
+) -> Optional[str]:
+    """Check
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Union[Any, HTTPValidationError]
+        str
     """
 
     return (
         await asyncio_detailed(
-            file=file,
             client=client,
         )
     ).parsed

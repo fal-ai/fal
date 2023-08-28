@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional, Union
 import httpx
 
 from ... import errors
-from ...client import AuthenticatedClient, Client
+from ...client import Client
 from ...models.file_spec import FileSpec
 from ...models.http_validation_error import HTTPValidationError
 from ...types import Response
@@ -13,7 +13,7 @@ from ...types import Response
 def _get_kwargs(
     dir_: str,
     *,
-    client: AuthenticatedClient,
+    client: Client,
 ) -> Dict[str, Any]:
     url = "{}/files/list/{dir}".format(client.base_url, dir=dir_)
 
@@ -66,7 +66,7 @@ def _build_response(
 def sync_detailed(
     dir_: str,
     *,
-    client: AuthenticatedClient,
+    client: Client,
 ) -> Response[Union[HTTPValidationError, List["FileSpec"]]]:
     """List Dir Files
 
@@ -97,7 +97,7 @@ def sync_detailed(
 def sync(
     dir_: str,
     *,
-    client: AuthenticatedClient,
+    client: Client,
 ) -> Optional[Union[HTTPValidationError, List["FileSpec"]]]:
     """List Dir Files
 
@@ -121,7 +121,7 @@ def sync(
 async def asyncio_detailed(
     dir_: str,
     *,
-    client: AuthenticatedClient,
+    client: Client,
 ) -> Response[Union[HTTPValidationError, List["FileSpec"]]]:
     """List Dir Files
 
@@ -150,7 +150,7 @@ async def asyncio_detailed(
 async def asyncio(
     dir_: str,
     *,
-    client: AuthenticatedClient,
+    client: Client,
 ) -> Optional[Union[HTTPValidationError, List["FileSpec"]]]:
     """List Dir Files
 

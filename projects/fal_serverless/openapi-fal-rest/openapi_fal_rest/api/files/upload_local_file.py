@@ -4,7 +4,7 @@ from typing import Any, Dict, Optional, Union, cast
 import httpx
 
 from ... import errors
-from ...client import AuthenticatedClient, Client
+from ...client import Client
 from ...models.body_upload_local_file import BodyUploadLocalFile
 from ...models.http_validation_error import HTTPValidationError
 from ...types import UNSET, Response, Unset
@@ -13,7 +13,7 @@ from ...types import UNSET, Response, Unset
 def _get_kwargs(
     target_path: str,
     *,
-    client: AuthenticatedClient,
+    client: Client,
     multipart_data: BodyUploadLocalFile,
     unzip: Union[Unset, None, bool] = False,
 ) -> Dict[str, Any]:
@@ -67,7 +67,7 @@ def _build_response(*, client: Client, response: httpx.Response) -> Response[Uni
 def sync_detailed(
     target_path: str,
     *,
-    client: AuthenticatedClient,
+    client: Client,
     multipart_data: BodyUploadLocalFile,
     unzip: Union[Unset, None, bool] = False,
 ) -> Response[Union[HTTPValidationError, bool]]:
@@ -104,7 +104,7 @@ def sync_detailed(
 def sync(
     target_path: str,
     *,
-    client: AuthenticatedClient,
+    client: Client,
     multipart_data: BodyUploadLocalFile,
     unzip: Union[Unset, None, bool] = False,
 ) -> Optional[Union[HTTPValidationError, bool]]:
@@ -134,7 +134,7 @@ def sync(
 async def asyncio_detailed(
     target_path: str,
     *,
-    client: AuthenticatedClient,
+    client: Client,
     multipart_data: BodyUploadLocalFile,
     unzip: Union[Unset, None, bool] = False,
 ) -> Response[Union[HTTPValidationError, bool]]:
@@ -169,7 +169,7 @@ async def asyncio_detailed(
 async def asyncio(
     target_path: str,
     *,
-    client: AuthenticatedClient,
+    client: Client,
     multipart_data: BodyUploadLocalFile,
     unzip: Union[Unset, None, bool] = False,
 ) -> Optional[Union[HTTPValidationError, bool]]:

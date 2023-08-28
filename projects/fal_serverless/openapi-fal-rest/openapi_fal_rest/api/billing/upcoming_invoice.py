@@ -4,7 +4,7 @@ from typing import Any, Dict, Optional, Union
 import httpx
 
 from ... import errors
-from ...client import AuthenticatedClient, Client
+from ...client import Client
 from ...models.http_validation_error import HTTPValidationError
 from ...models.invoice import Invoice
 from ...types import Response
@@ -12,7 +12,7 @@ from ...types import Response
 
 def _get_kwargs(
     *,
-    client: AuthenticatedClient,
+    client: Client,
 ) -> Dict[str, Any]:
     url = "{}/billing/upcoming_invoice".format(client.base_url)
 
@@ -55,7 +55,7 @@ def _build_response(*, client: Client, response: httpx.Response) -> Response[Uni
 
 def sync_detailed(
     *,
-    client: AuthenticatedClient,
+    client: Client,
 ) -> Response[Union[HTTPValidationError, Invoice]]:
     """Get Upcoming Fal Invoice
 
@@ -81,7 +81,7 @@ def sync_detailed(
 
 def sync(
     *,
-    client: AuthenticatedClient,
+    client: Client,
 ) -> Optional[Union[HTTPValidationError, Invoice]]:
     """Get Upcoming Fal Invoice
 
@@ -100,7 +100,7 @@ def sync(
 
 async def asyncio_detailed(
     *,
-    client: AuthenticatedClient,
+    client: Client,
 ) -> Response[Union[HTTPValidationError, Invoice]]:
     """Get Upcoming Fal Invoice
 
@@ -124,7 +124,7 @@ async def asyncio_detailed(
 
 async def asyncio(
     *,
-    client: AuthenticatedClient,
+    client: Client,
 ) -> Optional[Union[HTTPValidationError, Invoice]]:
     """Get Upcoming Fal Invoice
 

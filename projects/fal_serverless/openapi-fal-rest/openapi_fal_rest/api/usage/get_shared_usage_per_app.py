@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional, Union
 import httpx
 
 from ... import errors
-from ...client import AuthenticatedClient, Client
+from ...client import Client
 from ...models.grouped_usage_detail import GroupedUsageDetail
 from ...models.http_validation_error import HTTPValidationError
 from ...types import UNSET, Response, Unset
@@ -13,7 +13,7 @@ from ...types import UNSET, Response, Unset
 
 def _get_kwargs(
     *,
-    client: AuthenticatedClient,
+    client: Client,
     start_date: Union[Unset, None, datetime.date] = UNSET,
     end_date: Union[Unset, None, datetime.date] = UNSET,
 ) -> Dict[str, Any]:
@@ -83,7 +83,7 @@ def _build_response(
 
 def sync_detailed(
     *,
-    client: AuthenticatedClient,
+    client: Client,
     start_date: Union[Unset, None, datetime.date] = UNSET,
     end_date: Union[Unset, None, datetime.date] = UNSET,
 ) -> Response[Union[HTTPValidationError, List["GroupedUsageDetail"]]]:
@@ -117,7 +117,7 @@ def sync_detailed(
 
 def sync(
     *,
-    client: AuthenticatedClient,
+    client: Client,
     start_date: Union[Unset, None, datetime.date] = UNSET,
     end_date: Union[Unset, None, datetime.date] = UNSET,
 ) -> Optional[Union[HTTPValidationError, List["GroupedUsageDetail"]]]:
@@ -144,7 +144,7 @@ def sync(
 
 async def asyncio_detailed(
     *,
-    client: AuthenticatedClient,
+    client: Client,
     start_date: Union[Unset, None, datetime.date] = UNSET,
     end_date: Union[Unset, None, datetime.date] = UNSET,
 ) -> Response[Union[HTTPValidationError, List["GroupedUsageDetail"]]]:
@@ -176,7 +176,7 @@ async def asyncio_detailed(
 
 async def asyncio(
     *,
-    client: AuthenticatedClient,
+    client: Client,
     start_date: Union[Unset, None, datetime.date] = UNSET,
     end_date: Union[Unset, None, datetime.date] = UNSET,
 ) -> Optional[Union[HTTPValidationError, List["GroupedUsageDetail"]]]:

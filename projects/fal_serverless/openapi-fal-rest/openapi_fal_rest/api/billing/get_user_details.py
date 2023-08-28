@@ -4,7 +4,7 @@ from typing import Any, Dict, Optional, Union
 import httpx
 
 from ... import errors
-from ...client import AuthenticatedClient, Client
+from ...client import Client
 from ...models.customer_details import CustomerDetails
 from ...models.http_validation_error import HTTPValidationError
 from ...types import Response
@@ -12,7 +12,7 @@ from ...types import Response
 
 def _get_kwargs(
     *,
-    client: AuthenticatedClient,
+    client: Client,
 ) -> Dict[str, Any]:
     url = "{}/billing/user_details".format(client.base_url)
 
@@ -59,7 +59,7 @@ def _build_response(
 
 def sync_detailed(
     *,
-    client: AuthenticatedClient,
+    client: Client,
 ) -> Response[Union[CustomerDetails, HTTPValidationError]]:
     """Get User Details
 
@@ -85,7 +85,7 @@ def sync_detailed(
 
 def sync(
     *,
-    client: AuthenticatedClient,
+    client: Client,
 ) -> Optional[Union[CustomerDetails, HTTPValidationError]]:
     """Get User Details
 
@@ -104,7 +104,7 @@ def sync(
 
 async def asyncio_detailed(
     *,
-    client: AuthenticatedClient,
+    client: Client,
 ) -> Response[Union[CustomerDetails, HTTPValidationError]]:
     """Get User Details
 
@@ -128,7 +128,7 @@ async def asyncio_detailed(
 
 async def asyncio(
     *,
-    client: AuthenticatedClient,
+    client: Client,
 ) -> Optional[Union[CustomerDetails, HTTPValidationError]]:
     """Get User Details
 

@@ -4,14 +4,14 @@ from typing import Any, Dict, Optional, Union, cast
 import httpx
 
 from ... import errors
-from ...client import AuthenticatedClient, Client
+from ...client import Client
 from ...models.http_validation_error import HTTPValidationError
 from ...types import UNSET, Response
 
 
 def _get_kwargs(
     *,
-    client: AuthenticatedClient,
+    client: Client,
     soft_monthly_budget: int,
     hard_monthly_budget: int,
 ) -> Dict[str, Any]:
@@ -63,7 +63,7 @@ def _build_response(*, client: Client, response: httpx.Response) -> Response[Uni
 
 def sync_detailed(
     *,
-    client: AuthenticatedClient,
+    client: Client,
     soft_monthly_budget: int,
     hard_monthly_budget: int,
 ) -> Response[Union[Any, HTTPValidationError]]:
@@ -97,7 +97,7 @@ def sync_detailed(
 
 def sync(
     *,
-    client: AuthenticatedClient,
+    client: Client,
     soft_monthly_budget: int,
     hard_monthly_budget: int,
 ) -> Optional[Union[Any, HTTPValidationError]]:
@@ -124,7 +124,7 @@ def sync(
 
 async def asyncio_detailed(
     *,
-    client: AuthenticatedClient,
+    client: Client,
     soft_monthly_budget: int,
     hard_monthly_budget: int,
 ) -> Response[Union[Any, HTTPValidationError]]:
@@ -156,7 +156,7 @@ async def asyncio_detailed(
 
 async def asyncio(
     *,
-    client: AuthenticatedClient,
+    client: Client,
     soft_monthly_budget: int,
     hard_monthly_budget: int,
 ) -> Optional[Union[Any, HTTPValidationError]]:
