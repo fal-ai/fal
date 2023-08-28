@@ -479,14 +479,14 @@ def test_fal_storage(isolated_client):
     )
     assert file.as_bytes().decode().endswith("local")
 
-    @isolated_client()
+    @isolated_client(serve=True)
     def hello_file():
         # Run in the isolated environment
         return File.from_bytes(b"Hello fal storage from isolated", repository="fal")
 
-    # TODO: not correctly mainified
-    # file = hello_file()
-    # assert file.url.startswith(
-    #     "https://storage.googleapis.com/isolate-dev-smiling-shark_toolkit_bucket/"
-    # )
-    # assert file.as_bytes().decode().endswith("isolated")
+    local_fn = hello_file.on(serve=False)
+    file = local_fn()
+    assert file.url.startswith(
+        "https://storage.googleapis.com/isolate-dev-smiling-shark_toolkit_bucket/"
+    )
+    assert file.as_bytes().decode().endswith("isolated")

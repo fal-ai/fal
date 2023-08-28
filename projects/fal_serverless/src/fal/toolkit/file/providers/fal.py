@@ -27,6 +27,10 @@ class FalFileRepository(FileRepository):
             "Content-Type": f"multipart/form-data; boundary={boundary}",
         }
 
+        grpc_host = os.environ.get("FAL_HOST", "api.alpha.fal.ai")
+        rest_host = grpc_host.replace("api", "rest", 1)
+        storage_url = f"https://{rest_host}/storage/upload"
+
         body = (
             f"--{boundary}\r\n"
             f'Content-Disposition: file; name="file"; filename="{file.file_name}"\r\n'
@@ -36,9 +40,7 @@ class FalFileRepository(FileRepository):
         )
 
         try:
-            req = Request(
-                self._storage_url(), data=body, headers=headers, method="POST"
-            )
+            req = Request(storage_url, data=body, headers=headers, method="POST")
             with urlopen(req) as response:
                 result = load_json(response)
         except HTTPError as e:
@@ -47,19 +49,6 @@ class FalFileRepository(FileRepository):
             raise Exception(f"Error uploading file. Status {e.status}: {e.reason}")
 
         return result["url"]
-
-    @staticmethod
-    def _storage_url():
-        """
-        Get the storage URL from the environment inside the worker.
-        """
-
-        import os
-
-        grpc_host = os.environ.get("FAL_HOST", "api.alpha.fal.ai")
-        rest_host = grpc_host.replace("api", "rest", 1)
-
-        return f"https://{rest_host}/storage/upload"
 
 
 @mainify
