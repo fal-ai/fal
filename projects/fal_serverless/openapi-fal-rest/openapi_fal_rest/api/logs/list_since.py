@@ -16,6 +16,7 @@ def _get_kwargs(
     limit: Union[Unset, None, int] = 100,
     offset: Union[Unset, None, int] = 0,
     since: Union[Unset, None, str] = UNSET,
+    url_query: Union[Unset, None, str] = UNSET,
 ) -> Dict[str, Any]:
     url = "{}/logs/".format(client.base_url)
 
@@ -28,6 +29,8 @@ def _get_kwargs(
     params["offset"] = offset
 
     params["since"] = since
+
+    params["url"] = url_query
 
     params = {k: v for k, v in params.items() if v is not UNSET and v is not None}
 
@@ -81,6 +84,7 @@ def sync_detailed(
     limit: Union[Unset, None, int] = 100,
     offset: Union[Unset, None, int] = 0,
     since: Union[Unset, None, str] = UNSET,
+    url_query: Union[Unset, None, str] = UNSET,
 ) -> Response[Union[HTTPValidationError, List["LogEntry"]]]:
     """List Logs Since
 
@@ -88,6 +92,7 @@ def sync_detailed(
         limit (Union[Unset, None, int]):  Default: 100.
         offset (Union[Unset, None, int]):
         since (Union[Unset, None, str]):
+        url_query (Union[Unset, None, str]):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -102,6 +107,7 @@ def sync_detailed(
         limit=limit,
         offset=offset,
         since=since,
+        url_query=url_query,
     )
 
     response = httpx.request(
@@ -118,6 +124,7 @@ def sync(
     limit: Union[Unset, None, int] = 100,
     offset: Union[Unset, None, int] = 0,
     since: Union[Unset, None, str] = UNSET,
+    url_query: Union[Unset, None, str] = UNSET,
 ) -> Optional[Union[HTTPValidationError, List["LogEntry"]]]:
     """List Logs Since
 
@@ -125,6 +132,7 @@ def sync(
         limit (Union[Unset, None, int]):  Default: 100.
         offset (Union[Unset, None, int]):
         since (Union[Unset, None, str]):
+        url_query (Union[Unset, None, str]):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -139,6 +147,7 @@ def sync(
         limit=limit,
         offset=offset,
         since=since,
+        url_query=url_query,
     ).parsed
 
 
@@ -148,6 +157,7 @@ async def asyncio_detailed(
     limit: Union[Unset, None, int] = 100,
     offset: Union[Unset, None, int] = 0,
     since: Union[Unset, None, str] = UNSET,
+    url_query: Union[Unset, None, str] = UNSET,
 ) -> Response[Union[HTTPValidationError, List["LogEntry"]]]:
     """List Logs Since
 
@@ -155,6 +165,7 @@ async def asyncio_detailed(
         limit (Union[Unset, None, int]):  Default: 100.
         offset (Union[Unset, None, int]):
         since (Union[Unset, None, str]):
+        url_query (Union[Unset, None, str]):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -169,6 +180,7 @@ async def asyncio_detailed(
         limit=limit,
         offset=offset,
         since=since,
+        url_query=url_query,
     )
 
     async with httpx.AsyncClient(verify=client.verify_ssl) as _client:
@@ -183,6 +195,7 @@ async def asyncio(
     limit: Union[Unset, None, int] = 100,
     offset: Union[Unset, None, int] = 0,
     since: Union[Unset, None, str] = UNSET,
+    url_query: Union[Unset, None, str] = UNSET,
 ) -> Optional[Union[HTTPValidationError, List["LogEntry"]]]:
     """List Logs Since
 
@@ -190,6 +203,7 @@ async def asyncio(
         limit (Union[Unset, None, int]):  Default: 100.
         offset (Union[Unset, None, int]):
         since (Union[Unset, None, str]):
+        url_query (Union[Unset, None, str]):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -205,5 +219,6 @@ async def asyncio(
             limit=limit,
             offset=offset,
             since=since,
+            url_query=url_query,
         )
     ).parsed

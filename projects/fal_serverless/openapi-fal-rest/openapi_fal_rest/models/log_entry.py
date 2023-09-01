@@ -12,17 +12,20 @@ class LogEntry:
         timestamp (str):
         level (str):
         message (str):
+        app (str):
     """
 
     timestamp: str
     level: str
     message: str
+    app: str
     additional_properties: Dict[str, Any] = attr.ib(init=False, factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         timestamp = self.timestamp
         level = self.level
         message = self.message
+        app = self.app
 
         field_dict: Dict[str, Any] = {}
         field_dict.update(self.additional_properties)
@@ -31,6 +34,7 @@ class LogEntry:
                 "timestamp": timestamp,
                 "level": level,
                 "message": message,
+                "app": app,
             }
         )
 
@@ -45,10 +49,13 @@ class LogEntry:
 
         message = d.pop("message")
 
+        app = d.pop("app")
+
         log_entry = cls(
             timestamp=timestamp,
             level=level,
             message=message,
+            app=app,
         )
 
         log_entry.additional_properties = d

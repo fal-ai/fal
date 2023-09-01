@@ -12,14 +12,14 @@ class CustomerDetails:
     """
     Attributes:
         user_id (str):
-        soft_monthly_budget (Union[Unset, int]):  Default: 2500.
-        hard_monthly_budget (Union[Unset, int]):  Default: 3000.
+        soft_monthly_budget (Union[Unset, int]):
+        hard_monthly_budget (Union[Unset, int]):
         current_balance (Union[Unset, int]):
     """
 
     user_id: str
-    soft_monthly_budget: Union[Unset, int] = 2500
-    hard_monthly_budget: Union[Unset, int] = 3000
+    soft_monthly_budget: Union[Unset, int] = UNSET
+    hard_monthly_budget: Union[Unset, int] = UNSET
     current_balance: Union[Unset, int] = 0
     additional_properties: Dict[str, Any] = attr.ib(init=False, factory=dict)
 

@@ -10,6 +10,7 @@ import click
 import fal.auth as auth
 import grpc
 import openapi_fal_rest.api.billing.get_user_details as get_user_details
+import openapi_fal_rest.api.logs.list_since as list_logs
 from fal import api, sdk
 from fal.console import console
 from fal.exceptions import ApplicationExceptionHandler
@@ -18,6 +19,7 @@ from fal.logging.isolate import IsolateLogPrinter
 from fal.logging.trace import get_tracer
 from fal.rest_client import REST_CLIENT
 from fal.sdk import KeyScope
+from isolate.logs import Log, LogLevel, LogSource
 from rich.table import Table
 
 DEFAULT_HOST = "api.alpha.fal.ai"
@@ -362,20 +364,24 @@ def register_schedulded(
 def get_logs(
     host: api.FalServerlessHost, lines: int | None = 100, url: str | None = None
 ):
-    if url:
-        url = remove_http_and_port_from_url(url)
-    logs = host._connection.get_logs(lines=lines, url=url)
     log_printer = IsolateLogPrinter(debug=True)
-    first_log = next(logs, None)
-    if not first_log:
-        if url:
-            console.print("No logs found, make sure you have the correct URL")
-        else:
-            console.print("No logs found")
-    else:
-        log_printer.print(first_log)
-        for log in logs:
-            log_printer.print(log)
+    logs_response = list_logs.sync_detailed(
+        client=REST_CLIENT, limit=lines, url_query=url
+    )
+    if not logs_response.status_code == 200 or type(logs_response.parsed) != list:
+        raise api.FalServerlessError(str(logs_response.parsed))
+    if len(logs_response.parsed) == 0:
+        console.print("No logs found")
+    for log in logs_response.parsed:
+        app = log.app or "fal"
+
+        log_printer.print(
+            Log(
+                message=f"{app}: {log.message}",
+                source=LogSource.USER,
+                level=LogLevel[log.level],
+            )
+        )
 
 
 ##### Alias group #####
