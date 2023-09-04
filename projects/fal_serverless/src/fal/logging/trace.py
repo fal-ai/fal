@@ -45,9 +45,9 @@ class TraceContextInterceptor(ClientInterceptor):
             new_details = call_details._replace(
                 metadata=(
                     *(call_details.metadata or []),
-                    ("x-invocation-id", current_span.invocation_id),
-                    ("x-trace-id", current_span.trace_id),
-                    ("x-span-id", current_span.span_id),
+                    ("x-datadog-trace-id", current_span.trace_id),
+                    ("x-datadog-parent-id", current_span.span_id),
+                    ("x-fal-invocation-id", current_span.invocation_id),
                 )
             )
             return method(request_or_iterator, new_details)
