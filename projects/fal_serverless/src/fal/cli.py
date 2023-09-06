@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from http import HTTPStatus
 from sys import argv
 from typing import Literal
@@ -380,6 +381,7 @@ def get_logs(
                 message=f"{app}: {log.message}",
                 source=LogSource.USER,
                 level=LogLevel[log.level],
+                timestamp=datetime.fromisoformat(log.timestamp),
             )
         )
 
