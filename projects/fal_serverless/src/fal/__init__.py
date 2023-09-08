@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from fal import apps
+
 # TODO: DEPRECATED - use function instead
 from fal.api import FalServerlessHost, LocalHost, cached
 from fal.api import function
