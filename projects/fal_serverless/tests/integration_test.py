@@ -153,4 +153,8 @@ def test_download_weights():
         EXAMPLE_URL,
         checksum_sha256="81ff101c9f6f5b4af6868a3004d43d55fc546716d40ca12c678684a77e76c67c",
     )
-    assert EXAMPLE_PATH
+    EXAMPLE_PATH_STR = str(EXAMPLE_PATH)
+    empty, data, *other = EXAMPLE_PATH_STR.split("/")
+    assert empty == "", "Path should start with a slash"
+    assert data == "data", "Path should start with the data directory"
+    assert other, "Path should contain the rest of the path"
