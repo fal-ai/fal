@@ -4,7 +4,7 @@ from contextlib import suppress
 
 import fal
 import pytest
-from fal.api import FalServerlessError
+from fal.api import FalServerlessError, Options
 from fal.toolkit.file.file import File
 
 PACKAGE_NAME = "fal"
@@ -490,3 +490,43 @@ def test_fal_storage(isolated_client):
         "https://storage.googleapis.com/isolate-dev-smiling-shark_toolkit_bucket/"
     )
     assert file.as_bytes().decode().endswith("isolated")
+
+
+def test_on_changes():
+    def fastapi_in(op: Options):
+        return any("fastapi" in req for req in op.environment["requirements"])
+
+    @fal.function(
+        requirements=["pyjokes"],
+        serve=True,
+        keep_alive=10,
+        machine_type="M",
+        max_concurrency=8,
+    )
+    def served(name: str):
+        return File.from_bytes(f"Hello {name} from isolated".encode(), repository="fal")
+
+    op = served.options
+    assert fastapi_in(op), "fastapi not in served environment"
+    assert op.gateway["serve"], "serve not in served gateway"
+    assert op.gateway["max_concurrency"] == 8, "max_concurrency not in served gateway"
+    assert op.host["keep_alive"] == 10, "keep_alive not in served host"
+    assert op.host["machine_type"] == "M", "machine_type not in served host"
+
+    unserved = served.on(serve=False)
+    # should only change serve value
+    op = unserved.options
+    assert fastapi_in(op), "fastapi MUST stay after removing serve"
+    assert not op.gateway["serve"], "serve STILL set in unserved gateway"
+    assert op.gateway["max_concurrency"] == 8, "max_concurrency not in unserved gateway"
+    assert op.host["keep_alive"] == 10, "keep_alive not in unserved host"
+    assert op.host["machine_type"] == "M", "machine_type not in unserved host"
+
+    local = served.on(host=fal.local)
+    # should remove all host values
+    op = local.options
+    assert fastapi_in(op), "fastapi not in local environment"
+    assert op.gateway["serve"], "serve not in local gateway"
+    assert op.gateway["max_concurrency"] == 8, "max_concurrency not in local gateway"
+    assert "keep_alive" not in op.host, "keep_alive set in local host"
+    assert "machine_type" not in op.host, "machine_type set in local host"

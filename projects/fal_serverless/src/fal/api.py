@@ -767,15 +767,24 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
 
     def on(self, host: Host | None = None, **config: Any):  # type: ignore
         host = host or self.host
-        if isinstance(host, type(self.host)):
-            previous_host_options = self.options.host
-        else:
-            previous_host_options = {}
+        previous_host_options = {
+            # Only keep the options that are supported by the new host.
+            key: self.options.host.get(key)
+            for key in host._SUPPORTED_KEYS
+            if self.options.host.get(key) is not None
+        }
 
         # The order of the options is important here (the latter
         # options override the former ones).
-        host_options = {**previous_host_options, **config}
-        new_options = host.parse_options(**self.options.environment, **host_options)
+        host_options = {
+            # All the previous options
+            **previous_host_options,
+            **self.options.environment,
+            **self.options.gateway,
+            # The new options
+            **config,
+        }
+        new_options = host.parse_options(**host_options)
         return replace(
             self,
             host=host,
