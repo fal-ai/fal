@@ -75,6 +75,8 @@ def setup(
     checksum_sha256: str | None = None,
     checksum_md5: str | None = None,
     force: bool = False,
+    *,
+    _func_name: str | None = None,
     **isolated_config: Any,
 ):
     file_path = Path(file_path)
@@ -83,6 +85,8 @@ def setup(
     def wrapper(
         func: Callable[Concatenate[ArgsT], ReturnT]
     ) -> Callable[Concatenate[ArgsT], Path]:
+        name = _func_name or func.__name__
+
         @wraps(func)
         def internal_wrapper(
             *args: ArgsT.args,
@@ -103,24 +107,24 @@ def setup(
 
             if not file:
                 raise FalServerlessError(
-                    f"Setup function {func.__name__} did not create expected path."
+                    f"Setup function {name} did not create expected path."
                 )
 
             if checksum:
                 if not file.is_file:
                     raise FalServerlessError(
-                        f"Setup function {func.__name__} created a directory instead of a file."
+                        f"Setup function {name} created a directory instead of a file."
                     )
 
                 if checksum_sha256 and file.checksum_sha256 != checksum_sha256:
                     raise FalServerlessError(
-                        f"Setup function {func.__name__} created file with unexpected SHA256 checksum.\n"
+                        f"Setup function {name} created file with unexpected SHA256 checksum.\n"
                         f"Expected {checksum_sha256} but got {file.checksum_sha256}"
                     )
 
                 if checksum_md5 and file.checksum_md5 != checksum_md5:
                     raise FalServerlessError(
-                        f"Setup function {func.__name__} created file with unexpected MD5 checksum.\n"
+                        f"Setup function {name} created file with unexpected MD5 checksum.\n"
                         f"Expected {checksum_md5} but got {file.checksum_md5}"
                     )
 
@@ -136,32 +140,34 @@ DownloadType = Literal["python", "wget", "curl"]
 
 def download_file(
     url: str,
-    check_location: str | Path,
+    target_location: str | Path,
     *,
     checksum_sha256: str | None = None,
     checksum_md5: str | None = None,
     force: bool = False,
     tool: DownloadType = "python",
+    _func_name: str = "download_file",
 ):
-    check_path = Path(check_location)
+    target_path = Path(target_location)
 
     @setup(
-        check_path,
+        target_path,
         checksum_sha256,
         checksum_md5,
         force=force,
         # isolated configs
         requirements=["urllib3"],
+        _func_name=_func_name,
     )
     def download(force: bool):
         import os
         from shutil import copyfileobj
         from urllib.request import Request, urlopen
 
-        print(f"Downloading {url} to {check_path}")
+        print(f"Downloading {url} to {target_path}")
 
         # Make sure the directory exists
-        check_path.parent.mkdir(parents=True, exist_ok=True)
+        target_path.parent.mkdir(parents=True, exist_ok=True)
 
         try:
             # TODO: how can we randomize the user agent to avoid being blocked?
@@ -169,15 +175,15 @@ def download_file(
 
             req = Request(url, headers={"User-Agent": user_agent})
 
-            if check_path.exists() and not force:
-                print(f"File {check_path} already exists, skipping download")
+            if target_path.exists() and not force:
+                print(f"File {target_path} already exists, skipping download")
                 return
 
             if tool == "python":
-                with urlopen(req) as response, check_path.open("wb") as f:
+                with urlopen(req) as response, target_path.open("wb") as f:
                     copyfileobj(response, f)
             elif tool == "curl":
-                command = f"curl {req.full_url} -o {check_path}"
+                command = f"curl {req.full_url} -o {target_path}"
 
                 print(command)
                 res = os.system(command)
@@ -185,7 +191,7 @@ def download_file(
                 if res != 0:
                     raise Exception(f"curl failed with exit code {res}")
             elif tool == "wget":
-                command = f"wget {req.full_url} -O {check_path}"
+                command = f"wget {req.full_url} -O {target_path}"
 
                 print(command)
                 res = os.system(command)
@@ -196,10 +202,10 @@ def download_file(
                 raise Exception(f"Unknown download tool {tool}")
 
         except Exception as e:
-            msg = f"Failed to download {url} to {check_path}\n{e}"
+            msg = f"Failed to download {url} to {target_path}\n{e}"
             print(msg)
 
-            os.system(f"rm -rf {check_path}")
+            os.system(f"rm -rf {target_path}")
 
             # raise exception in generally-available class
             raise FileNotFoundError(msg) from None
@@ -228,4 +234,5 @@ def download_weights(
         checksum_md5=checksum_md5,
         force=force,
         tool=tool,
+        _func_name="download_weights",
     )
