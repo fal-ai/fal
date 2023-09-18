@@ -13,6 +13,7 @@ import isolate_proto
 from fal import flags
 from fal._serialization import patch_dill
 from fal.auth import USER
+from fal.logging import get_logger
 from fal.logging.trace import TraceContextInterceptor
 from isolate.connections.common import is_agent
 from isolate.logs import Log
@@ -25,6 +26,8 @@ UNSET = object()
 
 _DEFAULT_SERIALIZATION_METHOD = "dill"
 FAL_SERVERLESS_DEFAULT_KEEP_ALIVE = 10
+
+log = get_logger(__name__)
 
 patch_dill()
 
@@ -149,6 +152,7 @@ def get_default_credentials() -> Credentials:
 
     key_creds = key_credentials()
     if key_creds:
+        log.debug("Using key credentials")
         return key_creds
     else:
         return AuthenticatedCredentials()
