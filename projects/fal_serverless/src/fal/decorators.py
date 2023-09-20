@@ -4,7 +4,7 @@ import sys
 from dataclasses import dataclass
 from functools import wraps
 from pathlib import Path
-from typing import Any, Callable, Literal, TypeVar
+from typing import Any, Callable, TypeVar
 
 import openapi_fal_rest.api.files.file_exists as file_exists_api
 import openapi_fal_rest.models.file_spec as file_spec_model
@@ -26,6 +26,10 @@ from fal.api import FalServerlessError, InternalFalServerlessError, function
 
 ArgsT = ParamSpec("ArgsT")
 ReturnT = TypeVar("ReturnT")
+
+
+class DownloadError(Exception):
+    pass
 
 
 def file_exists(
@@ -80,7 +84,7 @@ def setup(
     **isolated_config: Any,
 ):
     file_path = Path(file_path)
-    check_path = file_path.relative_to("/data")
+    target_path = file_path.relative_to("/data")
 
     def wrapper(
         func: Callable[Concatenate[ArgsT], ReturnT]
@@ -94,7 +98,7 @@ def setup(
         ) -> Path:
             checksum = bool(checksum_sha256 or checksum_md5)
 
-            file = file_exists(check_path, calculate_checksum=checksum)
+            file = file_exists(target_path, calculate_checksum=checksum)
 
             if not file or force or flags.FORCE_SETUP:
                 config = {
@@ -103,7 +107,7 @@ def setup(
                 }
                 function(**config)(func)(*args, **kwargs)  # type: ignore
 
-                file = file_exists(check_path, calculate_checksum=checksum)
+                file = file_exists(target_path, calculate_checksum=checksum)
 
             if not file:
                 raise FalServerlessError(
@@ -135,9 +139,6 @@ def setup(
     return wrapper
 
 
-DownloadType = Literal["python", "wget", "curl"]
-
-
 def download_file(
     url: str,
     target_location: str | Path,
@@ -145,9 +146,32 @@ def download_file(
     checksum_sha256: str | None = None,
     checksum_md5: str | None = None,
     force: bool = False,
-    tool: DownloadType = "python",
     _func_name: str = "download_file",
 ):
+    """
+    Download a file from a given URL using specified download tool.
+
+    Args:
+        url: The URL of the file to be downloaded.
+        check_location: The location to save the downloaded file, either as a
+            string path or a Path object.
+        checksum_sha256: SHA-256 checksum value to verify the downloaded file's
+            integrity. Defaults to None.
+        checksum_md5: MD5 checksum value to verify the downloaded file's
+            integrity. Defaults to None.
+        force: If True, force re-download even if the file already exists.
+            Defaults to False.
+        _func_name: Name of the function to use for debugging purposes.
+            Defaults to 'download_file'.
+
+    Raises:
+        ValueError: If an unsupported download tool is specified.
+        Exception: If any error occurs during the download process,
+            including checksum validation failure.
+
+    Returns:
+        The path where the downloaded file has been saved.
+    """
     target_path = Path(target_location)
 
     @setup(
@@ -159,58 +183,113 @@ def download_file(
         requirements=["urllib3"],
         _func_name=_func_name,
     )
-    def download(force: bool):
-        import os
-        from shutil import copyfileobj
-        from urllib.request import Request, urlopen
-
+    def download():
         print(f"Downloading {url} to {target_path}")
 
         # Make sure the directory exists
         target_path.parent.mkdir(parents=True, exist_ok=True)
 
         try:
-            # TODO: how can we randomize the user agent to avoid being blocked?
-            user_agent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.8; rv:21.0) Gecko/20100101 Firefox/21.0"
-
-            req = Request(url, headers={"User-Agent": user_agent})
-
-            if target_path.exists() and not force:
-                print(f"File {target_path} already exists, skipping download")
-                return
-
-            if tool == "python":
-                with urlopen(req) as response, target_path.open("wb") as f:
-                    copyfileobj(response, f)
-            elif tool == "curl":
-                command = f"curl {req.full_url} -o {target_path}"
-
-                print(command)
-                res = os.system(command)
-
-                if res != 0:
-                    raise Exception(f"curl failed with exit code {res}")
-            elif tool == "wget":
-                command = f"wget {req.full_url} -O {target_path}"
-
-                print(command)
-                res = os.system(command)
-
-                if res != 0:
-                    raise Exception(f"wget failed with exit code {res}")
-            else:
-                raise Exception(f"Unknown download tool {tool}")
-
+            _download_file_python(url=url, download_path=target_path)
         except Exception as e:
-            msg = f"Failed to download {url} to {target_path}\n{e}"
-            print(msg)
+            msg = f"Failed to download {url} to {target_path}"
 
-            os.system(f"rm -rf {target_path}")
+            target_path.unlink(missing_ok=True)
 
-            # raise exception in generally-available class
-            raise FileNotFoundError(msg) from None
+            raise DownloadError(msg) from e
 
-    return download(force)
+    return download()
+
+
+def _download_file_python(url: str, download_path: Path) -> Path:
+    """Download a file from a given URL and save it to a specified path using a
+    Python interface.
+
+    Args:
+        url: The URL of the file to be downloaded.
+        download_path: The path where the downloaded file will be saved.
+
+    Returns:
+        The path where the downloaded file has been saved.
+    """
+    import shutil
+    import tempfile
+
+    with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+        try:
+            file_path = temp_file.name
+
+            for (progress, total_size) in _stream_url_data_to_file(url, temp_file.name):
+                if total_size:
+                    progress_msg = f"Downloading {url}... {progress:.2%}"
+                else:
+                    progress_msg = f"Downloading {url}... {progress:.2f} MB"
+                print(progress_msg, end="\r\n")
+
+            # Move the file when the file is downloaded completely. Since the
+            # file used is temporary, in a case of an interruption, the downloaded
+            # content will be lost. So, it is safe to redownload the file in such cases.
+            shutil.move(file_path, download_path)
+
+        except:
+            Path(temp_file.name).unlink(missing_ok=True)
+            raise
+
+    return download_path
+
+
+def _stream_url_data_to_file(url: str, file_path: str, chunk_size_in_mb: int = 64):
+    """Download data from a URL and stream it to a file.
+
+    Note:
+        - This function sets a User-Agent header to mimic a web browser to
+            prevent issues with some websites.
+        - It downloads the file in chunks to save memory and ensures the file
+            is only moved when the download is complete.
+
+    Args:
+        request: The Request object representing the URL to download from.
+        file_path: The path to the file where the downloaded data will be saved.
+        chunk_size_in_mb: The size of each download chunk in megabytes.
+            Defaults to 64.
+
+    Yields:
+        A tuple containing two elements:
+        - float: The progress of the download as a percentage (0.0 to 1.0) if
+            the total size is known. Else, equals to the downloaded size in MB.
+        - int: The total size of the downloaded content in bytes. If the total
+            size is not known (e.g., the server doesn't provide a
+            'content-length' header), the second element is 0.
+    """
+    from urllib.request import Request, urlopen
+
+    # TODO: how can we randomize the user agent to avoid being blocked?
+    TEMP_HEADERS = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.8; rv:21.0) Gecko/20100101 Firefox/21.0"
+    }
+    ONE_MB = 1024**2
+
+    request = Request(url, headers=TEMP_HEADERS)
+
+    received_size = 0
+    total_size = 0
+
+    with urlopen(request) as response, open(file_path, "wb") as f_stream:
+        total_size = int(response.headers.get("content-length", total_size))
+        while data := response.read(chunk_size_in_mb * ONE_MB):
+            f_stream.write(data)
+
+            received_size = f_stream.tell()
+
+            if total_size:
+                progress = received_size / total_size
+            else:
+                progress = received_size / ONE_MB
+            yield progress, total_size
+
+    # Check if received size matches the expected total size
+    if total_size and received_size < total_size:
+        raise DownloadError("Received less data than expected from the server.")
 
 
 def download_weights(
@@ -219,8 +298,23 @@ def download_weights(
     checksum_sha256: str | None = None,
     checksum_md5: str | None = None,
     force: bool = False,
-    tool: DownloadType = "python",
 ):
+    """Download model weights from a given URL using a specified download tool
+    and store them in a predefined persistent directory.
+
+    Args:
+        url: The URL from which to download the model weights.
+        checksum_sha256: SHA-256 checksum value to verify the downloaded file's
+            integrity. Defaults to None.
+        checksum_md5: MD5 checksum value to verify the downloaded file's
+            integrity. Defaults to None.
+        force: If True, force re-download even if the file already exists.
+            Defaults to False.
+
+    Returns:
+        The path to the downloaded model weights file in the temporary directory.
+
+    """
     import hashlib
 
     url_id = hashlib.sha256(url.encode("utf-8")).hexdigest()
@@ -233,6 +327,5 @@ def download_weights(
         checksum_sha256=checksum_sha256,
         checksum_md5=checksum_md5,
         force=force,
-        tool=tool,
         _func_name="download_weights",
     )
