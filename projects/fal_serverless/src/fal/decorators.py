@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 import sys
 from dataclasses import dataclass
 from functools import wraps
@@ -329,3 +330,81 @@ def download_weights(
         force=force,
         _func_name="download_weights",
     )
+
+
+def download_repo(
+    https_url: str,
+    *,
+    commit_hash: str | None = None,
+    local_repo_location: str | Path | None = None,
+    checksum_sha256: str | None = None,
+    checksum_md5: str | None = None,
+    force: bool = False,
+):
+    """
+    Download a repository from a given HTTPS URL and optionally a specific
+    commit hash.
+
+    Args:
+        https_url: The HTTPS URL of the repository to be downloaded.
+        commit_hash: Optional commit hash or reference to checkout after
+            download. Defaults to None, which means the latest commit will be
+            used.
+        local_repo_location: The local directory where the repository will be
+            cloned or saved. This can be specified as a string path or a Path
+            object. Defaults to None, which will use the current working
+            directory.
+        checksum_sha256: SHA-256 checksum value to verify the integrity of the
+            downloaded repository. Defaults to None, skipping checksum
+            validation.
+        checksum_md5: MD5 checksum value to verify the integrity of the
+            downloaded repository. Defaults to None, skipping checksum
+            validation.
+        force: If True, force re-download or re-clone even if the repository
+            already exists in the specified local directory. Defaults to False.
+
+    Returns:
+        The path where the downloaded repository has been cloned or saved.
+    """
+
+    if local_repo_location is None:
+        repo_name = Path(https_url).stem
+        local_repos_dir = Path("/data/repos")
+        local_repo_location = local_repos_dir / repo_name
+
+    local_repo_path = Path(local_repo_location)
+    local_repo_path_str = str(local_repo_path)
+
+    @setup(
+        local_repo_path,
+        checksum_sha256,
+        checksum_md5,
+        force=force,
+        _func_name="download_repo",
+    )
+    def download():
+        try:
+            if local_repo_path.exists():
+                print("Removing existing repository.")
+                remove_command = ["rm", "-rf", local_repo_path_str]
+                subprocess.run(remove_command, check=True)
+
+            print(f"Downloading repository '{https_url}' to {local_repo_path}")
+            clone_command = ["git", "clone", https_url, local_repo_path_str]
+            subprocess.run(clone_command, check=True)
+
+            if commit_hash:
+                checkout_command = ["git", "checkout", commit_hash]
+                subprocess.run(checkout_command, cwd=local_repo_path, check=True)
+
+        except Exception as e:
+            print(
+                f"Failed to download repository '{https_url}' to '{local_repo_path}' .",
+                e,
+                sep="\n",
+            )
+
+            subprocess.run(["rm", "-rf", local_repo_path_str])
+
+    output_path = download()
+    return output_path

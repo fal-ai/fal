@@ -158,3 +158,16 @@ def test_download_weights():
     assert empty == "", "Path should start with a slash"
     assert data == "data", "Path should start with the data directory"
     assert other, "Path should contain the rest of the path"
+
+
+def test_download_repo():
+    from fal import download_repo
+
+    EXAMPLE_REPO_URL = "https://github.com/comfyanonymous/ComfyUI.git"
+    EXAMPLE_PATH = download_repo(EXAMPLE_REPO_URL)
+    EXAMPLE_PATH_STR = str(EXAMPLE_PATH)
+    empty, data, repo, *other = EXAMPLE_PATH_STR.split("/")
+    assert empty == "", "Path should start with a slash"
+    assert data == "data", "Path should start with the data directory"
+    assert repo == "repos", "Path should start with the repos directory"
+    assert other, "Path should contain the rest of the path"
