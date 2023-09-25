@@ -27,7 +27,7 @@ import fal.flags as flags
 import grpc
 import isolate
 import yaml
-from fal._serialization import _MODULES, patch_dill
+from fal._serialization import add_serialization_listeners_for, patch_dill
 from fal.logging.isolate import IsolateLogPrinter
 from fal.sdk import (
     FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
@@ -276,7 +276,12 @@ def find_missing_dependencies(
     raw_requirements = env.get("requirements", [])
     specified_requirements = set()
     for raw_requirement in raw_requirements:
-        requirement = Requirement(raw_requirement)
+        try:
+            requirement = Requirement(raw_requirement)
+        except ValueError:
+            # For git+ dependencies, we can't parse the canonical name
+            # so we'll just skip them.
+            continue
         specified_requirements.add(canonicalize_name(requirement.name))
 
     for module_name, used_names in used_modules.items():
@@ -661,7 +666,7 @@ def function(  # type: ignore
     options = host.parse_options(kind=kind, **config)
 
     def wrapper(func: Callable[ArgsT, ReturnT]):
-        _MODULES.add(func.__module__)
+        add_serialization_listeners_for(func)
         proxy = IsolatedFunction(
             host=host,
             raw_func=func,  # type: ignore

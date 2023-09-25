@@ -17,6 +17,6 @@ def dep3():
     return "3"
 
 
-@function("virtualenv")
+@function("virtualenv", keep_alive=0, machine_type="XS")
 def mainified():
     return DepCass().dep1() + dep2() + dep3()

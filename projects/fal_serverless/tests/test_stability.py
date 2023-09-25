@@ -453,6 +453,12 @@ def test_mainify():
     assert mainified() == "123"
 
 
+def test_mainify_package():
+    from tests.mainify_package import my_function
+
+    assert my_function() == 3
+
+
 def test_worker_env_vars(isolated_client):
     @isolated_client("virtualenv", keep_alive=5)
     def get_env_var(name: str) -> str | None:
