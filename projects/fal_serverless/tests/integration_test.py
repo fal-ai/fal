@@ -166,8 +166,11 @@ def test_download_repo():
     EXAMPLE_REPO_URL = "https://github.com/comfyanonymous/ComfyUI.git"
     EXAMPLE_PATH = download_repo(EXAMPLE_REPO_URL)
     EXAMPLE_PATH_STR = str(EXAMPLE_PATH)
-    empty, data, repo, *other = EXAMPLE_PATH_STR.split("/")
+
+    empty, data, fal_prefix, repos_dir, *other = EXAMPLE_PATH_STR.split("/")
+
     assert empty == "", "Path should start with a slash"
     assert data == "data", "Path should start with the data directory"
-    assert repo == "repos", "Path should start with the repos directory"
+    assert fal_prefix == ".fal", "Path should start with '.fal'"
+    assert repos_dir == "repos", "Path should start with the repos directory"
     assert other, "Path should contain the rest of the path"

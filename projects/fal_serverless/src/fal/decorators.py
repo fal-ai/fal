@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import hashlib
 import subprocess
 import sys
 from dataclasses import dataclass
 from functools import wraps
 from pathlib import Path
 from typing import Any, Callable, TypeVar
+from urllib.parse import urlparse
 
 import openapi_fal_rest.api.files.file_exists as file_exists_api
 import openapi_fal_rest.models.file_spec as file_spec_model
@@ -22,8 +24,15 @@ if sys.version_info >= (3, 10):
 else:
     from typing_extensions import ParamSpec
 
+from urllib.request import Request, urlopen
+
 import fal.flags as flags
 from fal.api import FalServerlessError, InternalFalServerlessError, function
+
+# TODO: how can we randomize the user agent to avoid being blocked?
+TEMP_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.8; rv:21.0) Gecko/20100101 Firefox/21.0"
+}
 
 ArgsT = ParamSpec("ArgsT")
 ReturnT = TypeVar("ReturnT")
@@ -140,10 +149,28 @@ def setup(
     return wrapper
 
 
+def _get_file_name_from_url(url: str):
+    # TODO: Reduce number of requests to one for downloading a file
+    request = Request(url, headers=TEMP_HEADERS)
+    response = urlopen(request)
+
+    file_name = str(response.headers.get_filename())
+    if not file_name:
+        url_path = urlparse(url).path
+        file_name = Path(url_path).stem
+
+    # URL without path
+    if not file_name:
+        file_name = hashlib.sha256(url.encode("utf-8")).hexdigest()
+
+    return file_name
+
+
 def download_file(
     url: str,
-    target_location: str | Path,
+    target_dir: str | Path,
     *,
+    file_name: str | None = None,
     checksum_sha256: str | None = None,
     checksum_md5: str | None = None,
     force: bool = False,
@@ -154,8 +181,10 @@ def download_file(
 
     Args:
         url: The URL of the file to be downloaded.
-        check_location: The location to save the downloaded file, either as a
+        target_dir: The directory to save the downloaded file, either as a
             string path or a Path object.
+        file_name: The name to be used for the downloaded file. If None, the
+            name will be retrieved from the server. Defaults to None.
         checksum_sha256: SHA-256 checksum value to verify the downloaded file's
             integrity. Defaults to None.
         checksum_md5: MD5 checksum value to verify the downloaded file's
@@ -173,7 +202,11 @@ def download_file(
     Returns:
         The path where the downloaded file has been saved.
     """
-    target_path = Path(target_location)
+    file_name = file_name or _get_file_name_from_url(url)
+    if "/" in file_name:
+        raise ValueError("file name can not contain a slash.")
+
+    target_path = Path(target_dir) / file_name
 
     @setup(
         target_path,
@@ -191,7 +224,7 @@ def download_file(
         target_path.parent.mkdir(parents=True, exist_ok=True)
 
         try:
-            _download_file_python(url=url, download_path=target_path)
+            _download_file_python(url=url, target_path=target_path)
         except Exception as e:
             msg = f"Failed to download {url} to {target_path}"
 
@@ -202,13 +235,13 @@ def download_file(
     return download()
 
 
-def _download_file_python(url: str, download_path: Path) -> Path:
+def _download_file_python(url: str, target_path: Path) -> Path:
     """Download a file from a given URL and save it to a specified path using a
     Python interface.
 
     Args:
         url: The URL of the file to be downloaded.
-        download_path: The path where the downloaded file will be saved.
+        target_path: The path where the downloaded file will be saved.
 
     Returns:
         The path where the downloaded file has been saved.
@@ -230,13 +263,13 @@ def _download_file_python(url: str, download_path: Path) -> Path:
             # Move the file when the file is downloaded completely. Since the
             # file used is temporary, in a case of an interruption, the downloaded
             # content will be lost. So, it is safe to redownload the file in such cases.
-            shutil.move(file_path, download_path)
+            shutil.move(file_path, target_path)
 
         except:
             Path(temp_file.name).unlink(missing_ok=True)
             raise
 
-    return download_path
+    return target_path
 
 
 def _stream_url_data_to_file(url: str, file_path: str, chunk_size_in_mb: int = 64):
@@ -262,12 +295,6 @@ def _stream_url_data_to_file(url: str, file_path: str, chunk_size_in_mb: int = 6
             size is not known (e.g., the server doesn't provide a
             'content-length' header), the second element is 0.
     """
-    from urllib.request import Request, urlopen
-
-    # TODO: how can we randomize the user agent to avoid being blocked?
-    TEMP_HEADERS = {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.8; rv:21.0) Gecko/20100101 Firefox/21.0"
-    }
     ONE_MB = 1024**2
 
     request = Request(url, headers=TEMP_HEADERS)
@@ -300,11 +327,14 @@ def download_weights(
     checksum_md5: str | None = None,
     force: bool = False,
 ):
-    """Download model weights from a given URL using a specified download tool
-    and store them in a predefined persistent directory.
+    """Download pre-trained weights from a given URL and save them to a
+    specified location.
+
+    This function is a convenient wrapper around the 'download_file' function,
+    specialized for downloading pre-trained model weights.
 
     Args:
-        url: The URL from which to download the model weights.
+        url: The URL of the pre-trained weights file to download.
         checksum_sha256: SHA-256 checksum value to verify the downloaded file's
             integrity. Defaults to None.
         checksum_md5: MD5 checksum value to verify the downloaded file's
@@ -313,18 +343,17 @@ def download_weights(
             Defaults to False.
 
     Returns:
-        The path to the downloaded model weights file in the temporary directory.
+        The path to the downloaded model weights file.
 
     """
-    import hashlib
-
-    url_id = hashlib.sha256(url.encode("utf-8")).hexdigest()
     # This is not a protected path, so the user may change stuff internally
-    url_path = Path(f"/data/.fal/downloads/{url_id}")
+    weights_location = Path(f"/data/.fal/weights")
+    weights_name = hashlib.sha256(url.encode("utf-8")).hexdigest()
 
     return download_file(
         url,
-        url_path,
+        target_dir=weights_location,
+        file_name=weights_name,
         checksum_sha256=checksum_sha256,
         checksum_md5=checksum_md5,
         force=force,
@@ -336,7 +365,8 @@ def download_repo(
     https_url: str,
     *,
     commit_hash: str | None = None,
-    local_repo_location: str | Path | None = None,
+    target_dir: str | Path | None = None,
+    repo_name: str | None = None,
     checksum_sha256: str | None = None,
     checksum_md5: str | None = None,
     force: bool = False,
@@ -350,10 +380,12 @@ def download_repo(
         commit_hash: Optional commit hash or reference to checkout after
             download. Defaults to None, which means the latest commit will be
             used.
-        local_repo_location: The local directory where the repository will be
+        target_dir: The local directory where the repository will be
             cloned or saved. This can be specified as a string path or a Path
-            object. Defaults to None, which will use the current working
-            directory.
+            object. Defaults to None, which will use a predefined directory.
+        repo_name: The name to be used for the cloned repository directory.
+            If None, the default name of the repository will be used.
+            Defaults to None.
         checksum_sha256: SHA-256 checksum value to verify the integrity of the
             downloaded repository. Defaults to None, skipping checksum
             validation.
@@ -366,13 +398,13 @@ def download_repo(
     Returns:
         The path where the downloaded repository has been cloned or saved.
     """
-
-    if local_repo_location is None:
+    if not repo_name:
         repo_name = Path(https_url).stem
-        local_repos_dir = Path("/data/repos")
-        local_repo_location = local_repos_dir / repo_name
 
-    local_repo_path = Path(local_repo_location)
+    if not target_dir:
+        target_dir = Path("/data/.fal/repos")
+
+    local_repo_path = Path(target_dir) / repo_name
     local_repo_path_str = str(local_repo_path)
 
     @setup(
