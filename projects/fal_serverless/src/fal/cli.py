@@ -416,6 +416,28 @@ def alias_list(client: api.FalServerlessClient):
     console.print(table)
 
 
+@alias_cli.command("scale")
+@click.argument("alias", required=True)
+@click.argument("max_concurrency", required=True, type=int)
+@click.pass_obj
+def alias_scale(client: api.FalServerlessClient, alias: str, max_concurrency: int):
+    with client.connect() as connection:
+        connection.scale(application_name=alias, max_concurrency=max_concurrency)
+
+
+@alias_cli.command("update")
+@click.argument("alias", required=True)
+@click.option("--keep-alive", type=int)
+@click.pass_obj
+def alias_update(client: api.FalServerlessClient, alias: str, keep_alive: int | None):
+    with client.connect() as connection:
+        if not keep_alive:
+            console.log("No parameters for update were provided, ignoring.")
+            return
+
+        connection.update_application(application_name=alias, keep_alive=keep_alive)
+
+
 ##### Crons group #####
 @click.group
 @click.option("--host", default=DEFAULT_HOST, envvar=HOST_ENVVAR)

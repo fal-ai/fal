@@ -485,6 +485,22 @@ class FalServerlessConnection:
         for partial_result in self.stub.RegisterApplication(request):
             yield from_grpc(partial_result)
 
+    def scale(self, application_name: str, max_concurrency: int | None = None) -> None:
+        request = isolate_proto.ScaleApplicationRequest(
+            application_name=application_name,
+            max_concurrency=max_concurrency,
+        )
+        self.stub.ScaleApplication(request)
+
+    def update_application(
+        self, application_name: str, keep_alive: int | None = None
+    ) -> None:
+        request = isolate_proto.UpdateApplicationRequest(
+            application_name=application_name,
+            keep_alive=keep_alive,
+        )
+        self.stub.UpdateApplication(request)
+
     def run(
         self,
         function: Callable[..., ResultT],
