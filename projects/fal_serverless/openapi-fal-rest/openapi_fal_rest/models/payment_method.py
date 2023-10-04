@@ -1,6 +1,8 @@
-from typing import Any, Dict, List, Type, TypeVar
+from typing import Any, Dict, List, Type, TypeVar, Union
 
 import attr
+
+from ..types import UNSET, Unset
 
 T = TypeVar("T", bound="PaymentMethod")
 
@@ -9,24 +11,27 @@ T = TypeVar("T", bound="PaymentMethod")
 class PaymentMethod:
     """
     Attributes:
+        id (str):
         type (str):
-        brand (str):
         last4 (str):
-        exp_month (int):
-        exp_year (int):
+        brand (str):
+        exp_month (Union[Unset, int]):
+        exp_year (Union[Unset, int]):
     """
 
+    id: str
     type: str
-    brand: str
     last4: str
-    exp_month: int
-    exp_year: int
+    brand: str
+    exp_month: Union[Unset, int] = UNSET
+    exp_year: Union[Unset, int] = UNSET
     additional_properties: Dict[str, Any] = attr.ib(init=False, factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
+        id = self.id
         type = self.type
-        brand = self.brand
         last4 = self.last4
+        brand = self.brand
         exp_month = self.exp_month
         exp_year = self.exp_year
 
@@ -34,33 +39,39 @@ class PaymentMethod:
         field_dict.update(self.additional_properties)
         field_dict.update(
             {
+                "id": id,
                 "type": type,
-                "brand": brand,
                 "last4": last4,
-                "exp_month": exp_month,
-                "exp_year": exp_year,
+                "brand": brand,
             }
         )
+        if exp_month is not UNSET:
+            field_dict["exp_month"] = exp_month
+        if exp_year is not UNSET:
+            field_dict["exp_year"] = exp_year
 
         return field_dict
 
     @classmethod
     def from_dict(cls: Type[T], src_dict: Dict[str, Any]) -> T:
         d = src_dict.copy()
-        type = d.pop("type")
+        id = d.pop("id")
 
-        brand = d.pop("brand")
+        type = d.pop("type")
 
         last4 = d.pop("last4")
 
-        exp_month = d.pop("exp_month")
+        brand = d.pop("brand")
 
-        exp_year = d.pop("exp_year")
+        exp_month = d.pop("exp_month", UNSET)
+
+        exp_year = d.pop("exp_year", UNSET)
 
         payment_method = cls(
+            id=id,
             type=type,
-            brand=brand,
             last4=last4,
+            brand=brand,
             exp_month=exp_month,
             exp_year=exp_year,
         )

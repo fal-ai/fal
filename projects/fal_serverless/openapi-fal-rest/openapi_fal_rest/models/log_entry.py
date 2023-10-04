@@ -1,6 +1,14 @@
-from typing import Any, Dict, List, Type, TypeVar
+import datetime
+from typing import TYPE_CHECKING, Any, Dict, List, Type, TypeVar, Union
 
 import attr
+from dateutil.parser import isoparse
+
+from ..types import UNSET, Unset
+
+if TYPE_CHECKING:
+    from ..models.log_entry_labels import LogEntryLabels
+
 
 T = TypeVar("T", bound="LogEntry")
 
@@ -9,23 +17,29 @@ T = TypeVar("T", bound="LogEntry")
 class LogEntry:
     """
     Attributes:
-        timestamp (str):
+        timestamp (datetime.datetime):
         level (str):
         message (str):
         app (str):
+        labels (Union[Unset, LogEntryLabels]):
     """
 
-    timestamp: str
+    timestamp: datetime.datetime
     level: str
     message: str
     app: str
+    labels: Union[Unset, "LogEntryLabels"] = UNSET
     additional_properties: Dict[str, Any] = attr.ib(init=False, factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
-        timestamp = self.timestamp
+        timestamp = self.timestamp.isoformat()
+
         level = self.level
         message = self.message
         app = self.app
+        labels: Union[Unset, Dict[str, Any]] = UNSET
+        if not isinstance(self.labels, Unset):
+            labels = self.labels.to_dict()
 
         field_dict: Dict[str, Any] = {}
         field_dict.update(self.additional_properties)
@@ -37,13 +51,17 @@ class LogEntry:
                 "app": app,
             }
         )
+        if labels is not UNSET:
+            field_dict["labels"] = labels
 
         return field_dict
 
     @classmethod
     def from_dict(cls: Type[T], src_dict: Dict[str, Any]) -> T:
+        from ..models.log_entry_labels import LogEntryLabels
+
         d = src_dict.copy()
-        timestamp = d.pop("timestamp")
+        timestamp = isoparse(d.pop("timestamp"))
 
         level = d.pop("level")
 
@@ -51,11 +69,19 @@ class LogEntry:
 
         app = d.pop("app")
 
+        _labels = d.pop("labels", UNSET)
+        labels: Union[Unset, LogEntryLabels]
+        if isinstance(_labels, Unset):
+            labels = UNSET
+        else:
+            labels = LogEntryLabels.from_dict(_labels)
+
         log_entry = cls(
             timestamp=timestamp,
             level=level,
             message=message,
             app=app,
+            labels=labels,
         )
 
         log_entry.additional_properties = d
