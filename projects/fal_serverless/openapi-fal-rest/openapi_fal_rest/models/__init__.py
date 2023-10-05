@@ -4,6 +4,7 @@ from .body_upload_file import BodyUploadFile
 from .body_upload_local_file import BodyUploadLocalFile
 from .customer_details import CustomerDetails
 from .file_spec import FileSpec
+from .gateway_usage_stats import GatewayUsageStats
 from .grouped_usage_detail import GroupedUsageDetail
 from .handle_stripe_webhook_response_handle_stripe_webhook import HandleStripeWebhookResponseHandleStripeWebhook
 from .hash_check import HashCheck
@@ -30,6 +31,7 @@ __all__ = (
     "BodyUploadLocalFile",
     "CustomerDetails",
     "FileSpec",
+    "GatewayUsageStats",
     "GroupedUsageDetail",
     "HandleStripeWebhookResponseHandleStripeWebhook",
     "HashCheck",
