@@ -525,8 +525,9 @@ def function(
     # FalServerlessHost options
     machine_type: str = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
     keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
-    _base_image: str | None = None,
     setup_function: Callable[..., None] | None = None,
+    _base_image: str | None = None,
+    _scheduler: str | None = None,
 ) -> Callable[
     [Callable[Concatenate[ArgsT], ReturnT]], IsolatedFunction[ArgsT, ReturnT]
 ]:
@@ -547,8 +548,9 @@ def function(
     # FalServerlessHost options
     machine_type: str = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
     keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
-    _base_image: str | None = None,
     setup_function: Callable[..., None] | None = None,
+    _base_image: str | None = None,
+    _scheduler: str | None = None,
 ) -> Callable[
     [Callable[Concatenate[ArgsT], ReturnT]], ServedIsolatedFunction[ArgsT, ReturnT]
 ]:
@@ -621,8 +623,9 @@ def function(
     # FalServerlessHost options
     machine_type: str = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
     keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
-    _base_image: str | None = None,
     setup_function: Callable[..., None] | None = None,
+    _base_image: str | None = None,
+    _scheduler: str | None = None,
 ) -> Callable[
     [Callable[Concatenate[ArgsT], ReturnT]], IsolatedFunction[ArgsT, ReturnT]
 ]:
@@ -648,8 +651,9 @@ def function(
     # FalServerlessHost options
     machine_type: str = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
     keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
-    _base_image: str | None = None,
     setup_function: Callable[..., None] | None = None,
+    _base_image: str | None = None,
+    _scheduler: str | None = None,
 ) -> Callable[
     [Callable[Concatenate[ArgsT], ReturnT]], ServedIsolatedFunction[ArgsT, ReturnT]
 ]:
