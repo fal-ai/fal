@@ -18,6 +18,8 @@ class GatewayUsageStats:
         p25_duration (float):
         p50_duration (float):
         p75_duration (float):
+        p90_duration (float):
+        price (float):
     """
 
     application_id: str
@@ -29,6 +31,8 @@ class GatewayUsageStats:
     p25_duration: float
     p50_duration: float
     p75_duration: float
+    p90_duration: float
+    price: float
     additional_properties: Dict[str, Any] = attr.ib(init=False, factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -41,6 +45,8 @@ class GatewayUsageStats:
         p25_duration = self.p25_duration
         p50_duration = self.p50_duration
         p75_duration = self.p75_duration
+        p90_duration = self.p90_duration
+        price = self.price
 
         field_dict: Dict[str, Any] = {}
         field_dict.update(self.additional_properties)
@@ -55,6 +61,8 @@ class GatewayUsageStats:
                 "p25_duration": p25_duration,
                 "p50_duration": p50_duration,
                 "p75_duration": p75_duration,
+                "p90_duration": p90_duration,
+                "price": price,
             }
         )
 
@@ -81,6 +89,10 @@ class GatewayUsageStats:
 
         p75_duration = d.pop("p75_duration")
 
+        p90_duration = d.pop("p90_duration")
+
+        price = d.pop("price")
+
         gateway_usage_stats = cls(
             application_id=application_id,
             application_alias=application_alias,
@@ -91,6 +103,8 @@ class GatewayUsageStats:
             p25_duration=p25_duration,
             p50_duration=p50_duration,
             p75_duration=p75_duration,
+            p90_duration=p90_duration,
+            price=price,
         )
 
         gateway_usage_stats.additional_properties = d

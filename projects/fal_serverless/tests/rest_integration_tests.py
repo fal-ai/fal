@@ -66,8 +66,8 @@ def test_gateway_stats():
     )
     assert res.status_code == HTTPStatus.OK
 
-    # Not allowed to request time frames longer than 24 hours
-    earlier_start_time = end_time - timedelta(hours=25)
+    # Not allowed to request time frames longer than 5 weeks
+    earlier_start_time = end_time - timedelta(weeks=6)
     res2 = get_stats.sync_detailed(
         client=REST_CLIENT, start_time=earlier_start_time, end_time=end_time
     )

@@ -19,6 +19,8 @@ from .payment_method import PaymentMethod
 from .persisted_usage_record import PersistedUsageRecord
 from .persisted_usage_record_meta import PersistedUsageRecordMeta
 from .run_type import RunType
+from .status import Status
+from .status_health import StatusHealth
 from .uploaded_file_result import UploadedFileResult
 from .url_file_upload import UrlFileUpload
 from .usage_per_machine_type import UsagePerMachineType
@@ -46,6 +48,8 @@ __all__ = (
     "PersistedUsageRecord",
     "PersistedUsageRecordMeta",
     "RunType",
+    "Status",
+    "StatusHealth",
     "UploadedFileResult",
     "UrlFileUpload",
     "UsagePerMachineType",
