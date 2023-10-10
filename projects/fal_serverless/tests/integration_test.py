@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from uuid import uuid4
+
 import pytest
 from fal import FalServerlessHost, FalServerlessKeyCredentials, local, sync_dir
 from fal.api import FalServerlessError
@@ -145,6 +147,52 @@ def test_sync(isolated_client):
     remove_remote_directory(remote_dir_ref)
 
 
+def test_download_file_invalid_location():
+    from fal import download_file
+
+    EXAMPLE_URL = "https://raw.githubusercontent.com/fal-ai/isolate/d553f927348206530208442556f481f39b161732/README.md"
+    try:
+        download_file(
+            EXAMPLE_URL,
+            target_dir="/some",
+            checksum_sha256="81ff101c9f6f5b4af6868a3004d43d55fc546716d40ca12c678684a77e76c67c",
+        )
+        assert False, "Should have raised an exception"
+    except Exception as e:
+        msg = "Should have raised an exception about an invalid directory: " + str(e)
+        assert "invalid dir" in str(e).lower(), msg
+
+
+def test_download_file():
+    from fal import download_file
+
+    file_name = uuid4().hex + ".md"
+
+    EXAMPLE_URL = "https://raw.githubusercontent.com/fal-ai/isolate/d553f927348206530208442556f481f39b161732/README.md"
+    EXAMPLE_PATH = download_file(
+        EXAMPLE_URL,
+        target_dir="/data/test",
+        file_name=file_name,
+        checksum_sha256="81ff101c9f6f5b4af6868a3004d43d55fc546716d40ca12c678684a77e76c67c",
+    )
+    EXAMPLE_PATH_STR = str(EXAMPLE_PATH)
+    assert (
+        EXAMPLE_PATH_STR == f"/data/test/{file_name}"
+    ), f"Path should be the target location sent '{EXAMPLE_PATH!r}'"
+
+    EXAMPLE_URL = "https://raw.githubusercontent.com/fal-ai/isolate/d553f927348206530208442556f481f39b161732/README.md"
+    EXAMPLE_PATH = download_file(
+        EXAMPLE_URL,
+        target_dir="test",
+        file_name=file_name,
+        checksum_sha256="81ff101c9f6f5b4af6868a3004d43d55fc546716d40ca12c678684a77e76c67c",
+    )
+    EXAMPLE_PATH_STR = str(EXAMPLE_PATH)
+    assert (
+        EXAMPLE_PATH_STR == f"/data/test/{file_name}"
+    ), f"Path should be the target location sent '{EXAMPLE_PATH!r}'"
+
+
 def test_download_weights():
     from fal import download_weights
 
@@ -174,3 +222,10 @@ def test_download_repo():
     assert fal_prefix == ".fal", "Path should start with '.fal'"
     assert repos_dir == "repos", "Path should start with the repos directory"
     assert other, "Path should contain the rest of the path"
+
+    EXAMPLE_PATH = download_repo(
+        EXAMPLE_REPO_URL,
+        # https://github.com/comfyanonymous/ComfyUI/tree/0793eb926933034997cc2383adc414d080643e77
+        commit_hash="0793eb926933034997cc2383adc414d080643e77",
+    )
+    assert EXAMPLE_PATH, "Should have returned a path"

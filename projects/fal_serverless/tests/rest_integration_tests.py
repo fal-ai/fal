@@ -53,6 +53,39 @@ def test_get_user_invoices():
     assert res.status_code == HTTPStatus.OK
 
 
+# Files
+def test_relative_path_vs_absolute():
+    import openapi_fal_rest.api.files.list_directory as list_dir
+    import openapi_fal_rest.api.files.upload_from_url as upload_file
+    import openapi_fal_rest.models.url_file_upload as url_file_upload
+
+    res = upload_file.sync_detailed(
+        client=REST_CLIENT,
+        file="test/google.png",
+        json_body=url_file_upload.UrlFileUpload(
+            url="https://www.google.com/images/branding/googlelogo/1x/googlelogo_color_272x92dp.png"
+        ),
+    )
+    assert res.status_code == HTTPStatus.OK
+
+    for dir_test in ["test", "/data/test"]:
+        res = list_dir.sync_detailed(client=REST_CLIENT, dir_=dir_test)
+        assert res.status_code == HTTPStatus.OK
+        assert isinstance(res.parsed, list), "Expected a list of files"
+        # Maybe more files are present
+        found = next(filter(lambda x: x.name == "google.png", res.parsed), None)
+        assert (
+            found
+        ), f"Could not find file 'google.png' in directory '{dir_test}' (found {res.parsed}))"
+
+        assert (
+            found.is_file
+        ), f"Expected 'google.png' to be a file, but it is a directory"
+        assert (
+            found.path == f"/data/test/google.png"
+        ), f"Expected path to be '/data/test/google.png', but got '{found.path}'"
+
+
 # Gateway stats
 def test_gateway_stats():
     from datetime import datetime, timedelta

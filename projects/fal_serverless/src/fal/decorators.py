@@ -58,7 +58,7 @@ def file_exists(
         return None
     else:
         raise InternalFalServerlessError(
-            f"Failed to check if file exists: {response.status_code} {response.parsed}"
+            f"Failed to check if file exists: {response.status_code} {response.content.decode()}"
         )
 
 
@@ -94,7 +94,6 @@ def setup(
     **isolated_config: Any,
 ):
     file_path = Path(file_path)
-    target_path = file_path.relative_to("/data")
 
     def wrapper(
         func: Callable[Concatenate[ArgsT], ReturnT]
@@ -108,16 +107,17 @@ def setup(
         ) -> Path:
             checksum = bool(checksum_sha256 or checksum_md5)
 
-            file = file_exists(target_path, calculate_checksum=checksum)
+            file = file_exists(file_path, calculate_checksum=checksum)
 
             if not file or force or flags.FORCE_SETUP:
                 config = {
                     "machine_type": "S",
+                    "keep_alive": 10,
                     **isolated_config,
                 }
                 function(**config)(func)(*args, **kwargs)  # type: ignore
 
-                file = file_exists(target_path, calculate_checksum=checksum)
+                file = file_exists(file_path, calculate_checksum=checksum)
 
             if not file:
                 raise FalServerlessError(
@@ -154,7 +154,10 @@ def _get_file_name_from_url(url: str):
     request = Request(url, headers=TEMP_HEADERS)
     response = urlopen(request)
 
-    file_name = str(response.headers.get_filename())
+    file_name = response.headers.get_filename()
+
+    file_name = str(file_name or "")
+
     if not file_name:
         url_path = urlparse(url).path
         file_name = Path(url_path).stem
