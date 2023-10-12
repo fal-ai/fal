@@ -91,6 +91,7 @@ def test_gateway_stats():
     from datetime import datetime, timedelta
 
     import openapi_fal_rest.api.usage.get_gateway_request_stats as get_stats
+    import openapi_fal_rest.api.usage.get_request_stats_by_time as get_stats_by_time
 
     end_time = datetime.now()
     start_time = end_time - timedelta(hours=3)
@@ -105,3 +106,23 @@ def test_gateway_stats():
         client=REST_CLIENT, start_time=earlier_start_time, end_time=end_time
     )
     assert res2.status_code == HTTPStatus.BAD_REQUEST
+
+    daily_res = get_stats_by_time.sync_detailed(
+        client=REST_CLIENT,
+        start_time=earlier_start_time,
+        end_time=end_time,
+        timeframe="day",
+        app_alias="test",
+    )
+
+    assert daily_res.status_code == HTTPStatus.OK
+
+    daily_res_error = get_stats_by_time.sync_detailed(
+        client=REST_CLIENT,
+        start_time=earlier_start_time,
+        end_time=end_time,
+        timeframe="minute",
+        app_alias="test",
+    )
+
+    assert daily_res_error.status_code == HTTPStatus.UNPROCESSABLE_ENTITY

@@ -1,12 +1,14 @@
+import datetime
 from typing import Any, Dict, List, Type, TypeVar
 
 import attr
+from dateutil.parser import isoparse
 
-T = TypeVar("T", bound="GatewayUsageStats")
+T = TypeVar("T", bound="GatewayStatsByTime")
 
 
 @attr.s(auto_attribs=True)
-class GatewayUsageStats:
+class GatewayStatsByTime:
     """
     Attributes:
         request_count (int):
@@ -17,8 +19,7 @@ class GatewayUsageStats:
         p50_duration (float):
         p75_duration (float):
         p90_duration (float):
-        application_id (str):
-        application_alias (str):
+        datetime_ (datetime.datetime):
     """
 
     request_count: int
@@ -29,8 +30,7 @@ class GatewayUsageStats:
     p50_duration: float
     p75_duration: float
     p90_duration: float
-    application_id: str
-    application_alias: str
+    datetime_: datetime.datetime
     additional_properties: Dict[str, Any] = attr.ib(init=False, factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -42,8 +42,7 @@ class GatewayUsageStats:
         p50_duration = self.p50_duration
         p75_duration = self.p75_duration
         p90_duration = self.p90_duration
-        application_id = self.application_id
-        application_alias = self.application_alias
+        datetime_ = self.datetime_.isoformat()
 
         field_dict: Dict[str, Any] = {}
         field_dict.update(self.additional_properties)
@@ -57,8 +56,7 @@ class GatewayUsageStats:
                 "p50_duration": p50_duration,
                 "p75_duration": p75_duration,
                 "p90_duration": p90_duration,
-                "application_id": application_id,
-                "application_alias": application_alias,
+                "datetime": datetime_,
             }
         )
 
@@ -83,11 +81,9 @@ class GatewayUsageStats:
 
         p90_duration = d.pop("p90_duration")
 
-        application_id = d.pop("application_id")
+        datetime_ = isoparse(d.pop("datetime"))
 
-        application_alias = d.pop("application_alias")
-
-        gateway_usage_stats = cls(
+        gateway_stats_by_time = cls(
             request_count=request_count,
             success_count=success_count,
             error_count=error_count,
@@ -96,12 +92,11 @@ class GatewayUsageStats:
             p50_duration=p50_duration,
             p75_duration=p75_duration,
             p90_duration=p90_duration,
-            application_id=application_id,
-            application_alias=application_alias,
+            datetime_=datetime_,
         )
 
-        gateway_usage_stats.additional_properties = d
-        return gateway_usage_stats
+        gateway_stats_by_time.additional_properties = d
+        return gateway_stats_by_time
 
     @property
     def additional_keys(self) -> List[str]:

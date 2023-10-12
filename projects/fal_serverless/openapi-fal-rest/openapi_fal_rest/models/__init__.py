@@ -4,6 +4,7 @@ from .body_upload_file import BodyUploadFile
 from .body_upload_local_file import BodyUploadLocalFile
 from .customer_details import CustomerDetails
 from .file_spec import FileSpec
+from .gateway_stats_by_time import GatewayStatsByTime
 from .gateway_usage_stats import GatewayUsageStats
 from .grouped_usage_detail import GroupedUsageDetail
 from .handle_stripe_webhook_response_handle_stripe_webhook import HandleStripeWebhookResponseHandleStripeWebhook
@@ -19,6 +20,7 @@ from .payment_method import PaymentMethod
 from .persisted_usage_record import PersistedUsageRecord
 from .persisted_usage_record_meta import PersistedUsageRecordMeta
 from .run_type import RunType
+from .stats_timeframe import StatsTimeframe
 from .status import Status
 from .status_health import StatusHealth
 from .uploaded_file_result import UploadedFileResult
@@ -33,6 +35,7 @@ __all__ = (
     "BodyUploadLocalFile",
     "CustomerDetails",
     "FileSpec",
+    "GatewayStatsByTime",
     "GatewayUsageStats",
     "GroupedUsageDetail",
     "HandleStripeWebhookResponseHandleStripeWebhook",
@@ -48,6 +51,7 @@ __all__ = (
     "PersistedUsageRecord",
     "PersistedUsageRecordMeta",
     "RunType",
+    "StatsTimeframe",
     "Status",
     "StatusHealth",
     "UploadedFileResult",
