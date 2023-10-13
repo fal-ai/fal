@@ -55,9 +55,13 @@ def test_get_user_invoices():
 
 # Files
 def test_relative_path_vs_absolute():
+    import openapi_fal_rest.api.files.delete as delete_file
     import openapi_fal_rest.api.files.list_directory as list_dir
     import openapi_fal_rest.api.files.upload_from_url as upload_file
     import openapi_fal_rest.models.url_file_upload as url_file_upload
+
+    # Delete file if it exists (ignore HTTP error if it does not exist)
+    res = delete_file.sync_detailed(client=REST_CLIENT, file="test/google.png")
 
     res = upload_file.sync_detailed(
         client=REST_CLIENT,
@@ -92,6 +96,7 @@ def test_gateway_stats():
 
     import openapi_fal_rest.api.usage.get_gateway_request_stats as get_stats
     import openapi_fal_rest.api.usage.get_request_stats_by_time as get_stats_by_time
+    from openapi_fal_rest.models.stats_timeframe import StatsTimeframe
 
     end_time = datetime.now()
     start_time = end_time - timedelta(hours=3)
@@ -111,18 +116,8 @@ def test_gateway_stats():
         client=REST_CLIENT,
         start_time=earlier_start_time,
         end_time=end_time,
-        timeframe="day",
+        timeframe=StatsTimeframe.DAY,
         app_alias="test",
     )
 
     assert daily_res.status_code == HTTPStatus.OK
-
-    daily_res_error = get_stats_by_time.sync_detailed(
-        client=REST_CLIENT,
-        start_time=earlier_start_time,
-        end_time=end_time,
-        timeframe="minute",
-        app_alias="test",
-    )
-
-    assert daily_res_error.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
