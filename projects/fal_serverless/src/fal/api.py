@@ -39,6 +39,7 @@ from fal.sdk import (
     _get_agent_credentials,
     get_default_credentials,
 )
+from fal.toolkit import mainify
 from isolate.backends.common import active_python
 from isolate.backends.settings import DEFAULT_SETTINGS
 from isolate.connections import PythonIPC
@@ -111,6 +112,18 @@ class Host(Generic[ArgsT, ReturnT]):
             options.add_requirements(["fastapi==0.99.1", "uvicorn"])
 
         return options
+
+    def register(
+        self,
+        func: Callable[ArgsT, ReturnT],
+        options: Options,
+        max_concurrency: int | None = None,
+        application_name: str | None = None,
+        application_auth_mode: Literal["public", "shared", "private"] | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> str | None:
+        """Register the given function on the host for API call execution."""
+        raise NotImplementedError
 
     def run(
         self,
@@ -298,6 +311,7 @@ class FalServerlessHost(Host):
             "machine_type",
             "keep_alive",
             "setup_function",
+            "metadata",
             "_base_image",
             "_scheduler",
         }
@@ -327,6 +341,7 @@ class FalServerlessHost(Host):
         max_concurrency: int | None = None,
         application_name: str | None = None,
         application_auth_mode: Literal["public", "shared", "private"] | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> str | None:
         environment_options = options.environment.copy()
         environment_options.setdefault("python_version", active_python())
@@ -350,6 +365,20 @@ class FalServerlessHost(Host):
 
         partial_func = _prepare_partial_func(func)
 
+        if metadata is None:
+            metadata = {}
+
+        # TODO: let the user send more metadata than just openapi
+        if isinstance(func, ServeWrapper):
+            # Assigning in a separate property leaving a place for the user
+            # to add more metadata in the future
+            try:
+                metadata["openapi"] = func.openapi()
+            except Exception as e:
+                print(
+                    f"[warning] Failed to generate OpenAPI metadata for function: {e}"
+                )
+
         for partial_result in self._connection.register(
             partial_func,
             environments,
@@ -357,6 +386,7 @@ class FalServerlessHost(Host):
             application_auth_mode=application_auth_mode,
             machine_requirements=machine_requirements,
             max_concurrency=max_concurrency,
+            metadata=metadata,
         ):
             for log in partial_result.logs:
                 self._log_printer.print(log)
@@ -681,15 +711,20 @@ def function(  # type: ignore
     return wrapper
 
 
-def create_webapp(func: Callable[ArgsT, ReturnT]):
-    def wrapper():
+@mainify
+class ServeWrapper:
+    _func: Callable
+
+    def __init__(self, func: Callable):
+        self._func = func
+
+    def build_app(self):
         from fastapi import FastAPI
         from fastapi.middleware.cors import CORSMiddleware
-        from uvicorn import run
 
-        app = FastAPI()
+        _app = FastAPI()
 
-        app.add_middleware(
+        _app.add_middleware(
             CORSMiddleware,
             allow_credentials=True,
             allow_headers=("*"),
@@ -697,11 +732,24 @@ def create_webapp(func: Callable[ArgsT, ReturnT]):
             allow_origins=("*"),
         )
 
-        app.add_api_route("/", func, name=func.__name__, methods=["POST"])
+        _app.add_api_route(
+            "/",
+            self._func,  # type: ignore
+            name=self._func.__name__,
+            methods=["POST"],
+        )
 
+        return _app
+
+    def __call__(self) -> None:
+        from uvicorn import run
+
+        app = self.build_app()
         run(app, host="0.0.0.0", port=8080)
 
-    return wrapper
+    def openapi(self) -> dict[str, Any]:
+        app = self.build_app()
+        return app.openapi()
 
 
 @dataclass
@@ -804,9 +852,9 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
     def func(self) -> Callable[ArgsT, ReturnT]:
         serve_mode = self.options.gateway.get("serve")
         if serve_mode:
-            # This type can be safely ignored because this case only happens when it is a ServedIsolatedFunction, which correctly
-            # has ArgsT = [] and ReturnT = None
-            return create_webapp(self.raw_func)  # type: ignore
+            # This type can be safely ignored because this case only happens when it is a ServedIsolatedFunction
+            serve_func: Callable[[], None] = ServeWrapper(self.raw_func)
+            return serve_func  # type: ignore
         else:
             return self.raw_func
 

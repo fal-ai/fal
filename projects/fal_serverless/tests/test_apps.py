@@ -1,11 +1,15 @@
+from typing import Generator
+
 import fal
 import pytest
 from fal import apps
+from fal.rest_client import REST_CLIENT
+from openapi_fal_rest.api.applications import app_metadata
 from pydantic import BaseModel
 
 
 @pytest.fixture(scope="module")
-def test_app() -> str:
+def test_app() -> Generator[str, None, None]:
     # Create a temporary app, register it, and return the ID of it.
 
     import time
@@ -75,3 +79,19 @@ def test_app_client_async(test_app: str):
     result_alternative = request_handle.get()
     assert result == result_alternative
     assert result == {"result": 5}
+
+
+def test_app_openapi_spec_metadata(test_app: str):
+    user_id, _, app_id = test_app.partition("-")
+    res = app_metadata.sync_detailed(
+        app_alias_or_id=app_id, app_user_id=user_id, client=REST_CLIENT
+    )
+
+    assert res.status_code == 200, f"Failed to fetch metadata for app {test_app}"
+    assert res.parsed, f"Failed to parse metadata for app {test_app}"
+
+    metadata = res.parsed.to_dict()
+    assert "openapi" in metadata, f"openapi key missing from metadata {metadata}"
+    openapi_spec: dict = metadata["openapi"]
+    for key in ["openapi", "info", "paths", "components"]:
+        assert key in openapi_spec, f"{key} key missing from openapi {openapi_spec}"

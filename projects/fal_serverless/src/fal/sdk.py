@@ -454,6 +454,7 @@ class FalServerlessConnection:
         max_concurrency: int | None = None,
         serialization_method: str = _DEFAULT_SERIALIZATION_METHOD,
         machine_requirements: MachineRequirements | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> Iterator[isolate_proto.RegisterApplicationResult]:
         wrapped_function = to_serialized_object(function, serialization_method)
         if machine_requirements:
@@ -474,6 +475,11 @@ class FalServerlessConnection:
         else:
             auth_mode = isolate_proto.ApplicationAuthMode.PRIVATE
 
+        struct_metadata = None
+        if metadata:
+            struct_metadata = isolate_proto.Struct()
+            struct_metadata.update(metadata)
+
         request = isolate_proto.RegisterApplicationRequest(
             function=wrapped_function,
             environments=environments,
@@ -481,6 +487,7 @@ class FalServerlessConnection:
             max_concurrency=max_concurrency,
             application_name=application_name,
             auth_mode=auth_mode,
+            metadata=struct_metadata,
         )
         for partial_result in self.stub.RegisterApplication(request):
             yield from_grpc(partial_result)

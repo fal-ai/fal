@@ -31,6 +31,9 @@ packaging = ">=21.3"
 pathspec = "^0.11.1"
 pydantic = "<2.0"
 
+# serve=True dependencies
+fastapi = "0.99.1"
+
 # rest-api-client dependencies
 httpx = ">=0.15.4,<0.25.0"
 attrs = ">=21.3.0"
@@ -42,9 +45,6 @@ importlib-metadata = { version = ">=4.4", python = "<3.10" }
 
 [tool.poetry.group.dev.dependencies]
 openapi-python-client = "^0.14.1"
-
-[tool.poetry.group.serve.dependencies]
-fastapi = "0.99.1"
 
 [build-system]
 requires = ["poetry-core"]

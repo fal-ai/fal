@@ -300,7 +300,7 @@ def register_application(
     if function_name not in module:
         raise api.FalServerlessError(f"Function '{function_name}' not found in module")
 
-    isolated_function = module[function_name]
+    isolated_function: api.IsolatedFunction = module[function_name]
     gateway_options = isolated_function.options.gateway
     if "serve" not in gateway_options and "exposed_port" not in gateway_options:
         raise api.FalServerlessError(
@@ -321,6 +321,7 @@ def register_application(
         application_name=alias,
         application_auth_mode=auth_mode,
         max_concurrency=max_concurrency,
+        metadata={},
     )
 
     if id:
