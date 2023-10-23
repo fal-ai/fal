@@ -314,6 +314,7 @@ class FalServerlessHost(Host):
             "metadata",
             "_base_image",
             "_scheduler",
+            "_scheduler_options",
         }
     )
 
@@ -353,6 +354,7 @@ class FalServerlessHost(Host):
         keep_alive = options.host.get("keep_alive", FAL_SERVERLESS_DEFAULT_KEEP_ALIVE)
         base_image = options.host.get("_base_image", None)
         scheduler = options.host.get("_scheduler", None)
+        scheduler_options = options.host.get("_scheduler_options", None)
         exposed_port = options.get_exposed_port()
 
         machine_requirements = MachineRequirements(
@@ -361,6 +363,7 @@ class FalServerlessHost(Host):
             base_image=base_image,
             exposed_port=exposed_port,
             scheduler=scheduler,
+            scheduler_options=scheduler_options,
         )
 
         partial_func = _prepare_partial_func(func)
@@ -424,6 +427,7 @@ class FalServerlessHost(Host):
         keep_alive = options.host.get("keep_alive", FAL_SERVERLESS_DEFAULT_KEEP_ALIVE)
         base_image = options.host.get("_base_image", None)
         scheduler = options.host.get("_scheduler", None)
+        scheduler_options = options.host.get("_scheduler_options", None)
         exposed_port = options.get_exposed_port()
         setup_function = options.host.get("setup_function", None)
 
@@ -433,6 +437,7 @@ class FalServerlessHost(Host):
             base_image=base_image,
             exposed_port=exposed_port,
             scheduler=scheduler,
+            scheduler_options=scheduler_options,
         )
 
         return_value = _UNSET

@@ -17,7 +17,7 @@ from fal.logging import get_logger
 from fal.logging.trace import TraceContextInterceptor
 from isolate.connections.common import is_agent
 from isolate.logs import Log
-from isolate.server.interface import from_grpc, to_serialized_object
+from isolate.server.interface import from_grpc, to_serialized_object, to_struct
 from isolate_proto.configuration import GRPC_OPTIONS
 
 ResultT = TypeVar("ResultT")
@@ -358,6 +358,7 @@ class MachineRequirements:
     base_image: str | None = None
     exposed_port: int | None = None
     scheduler: str | None = None
+    scheduler_options: dict[str, Any] | None = None
 
 
 @dataclass
@@ -464,6 +465,9 @@ class FalServerlessConnection:
                 base_image=machine_requirements.base_image,
                 exposed_port=machine_requirements.exposed_port,
                 scheduler=machine_requirements.scheduler,
+                scheduler_options=to_struct(
+                    machine_requirements.scheduler_options or {}
+                ),
             )
         else:
             wrapped_requirements = None
@@ -525,6 +529,9 @@ class FalServerlessConnection:
                 base_image=machine_requirements.base_image,
                 exposed_port=machine_requirements.exposed_port,
                 scheduler=machine_requirements.scheduler,
+                scheduler_options=to_struct(
+                    machine_requirements.scheduler_options or {}
+                ),
             )
         else:
             wrapped_requirements = None
