@@ -147,7 +147,7 @@ def auth_login():
     try:
         client = sdk.FalServerlessClient(f"{DEFAULT_HOST}:{DEFAULT_PORT}")
         with client.connect() as connection:
-            connection.list_worker_status()
+            connection.list_aliases()
     except grpc.RpcError as e:
         if "Insufficient permissions" in e.details():
             console.print(e.details())
@@ -228,41 +228,6 @@ def key_list(client: sdk.FalServerlessClient):
 def key_revoke(client: sdk.FalServerlessClient, key_id: str):
     with client.connect() as connection:
         connection.revoke_user_key(key_id)
-
-
-###### Usage group ######
-@click.group
-@click.option("--host", default=DEFAULT_HOST, envvar=HOST_ENVVAR)
-@click.option("--port", default=DEFAULT_PORT, envvar=PORT_ENVVAR, hidden=True)
-@click.pass_context
-def usage_cli(ctx, host: str, port: str):
-    ctx.obj = sdk.FalServerlessClient(f"{host}:{port}")
-
-
-@usage_cli.command(name="workers")
-@click.option("--user", hidden=True, default=None)
-@click.pass_obj
-def usage_worker_status(client: sdk.FalServerlessClient, user: str | None):
-    table = Table(title="Worker status")
-    table.add_column("Worker ID")
-    table.add_column("User ID")
-    table.add_column("Machine type")
-    table.add_column("Start time")
-    table.add_column("End time")
-    table.add_column("Duration")
-
-    with client.connect() as connection:
-        for ws in connection.list_worker_status(user_id=user):
-            table.add_row(
-                ws.worker_id,
-                ws.user_id,
-                ws.machine_type,
-                str(ws.start_time),
-                str(ws.end_time),
-                str(ws.duration),
-            )
-
-    console.print(table)
 
 
 ##### Function group #####
@@ -551,7 +516,6 @@ cli.add_command(key_cli, name="key", aliases=["keys"])
 cli.add_command(function_cli, name="function", aliases=["fn"])
 cli.add_command(alias_cli, name="alias", aliases=["aliases"])
 cli.add_command(crons_cli, name="cron", aliases=["crons"])
-cli.add_command(usage_cli, name="usage")
 cli.add_command(secrets_cli, name="secret", aliases=["secrets"])
 
 

@@ -604,21 +604,6 @@ class FalServerlessConnection:
         for partial_result in self.stub.GetLogs(request):
             yield from_grpc(partial_result.log_entry)
 
-    def list_worker_status(self, user_id: str | None = None) -> list[WorkerStatus]:
-        request = isolate_proto.WorkerStatusListRequest(user_id=user_id)
-        response = self.stub.WorkerStatusList(request)
-        return [
-            WorkerStatus(
-                ws.worker_id,
-                isolate_proto.datetime_from_timestamp(ws.start_time),
-                isolate_proto.datetime_from_timestamp(ws.end_time),
-                isolate_proto.timedelta_from_duration(ws.duration),
-                ws.user_id,
-                ws.machine_type,
-            )
-            for ws in response.worker_status
-        ]
-
     def set_secret(self, name: str, value: str) -> None:
         request = isolate_proto.SetSecretRequest(name=name, value=value)
         self.stub.SetSecret(request)
