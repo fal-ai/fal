@@ -29,13 +29,15 @@ class InProgress(_Status):
     """Indicates the request is now being actively processed, and provides runtime
     logs for the inference task."""
 
-    logs: list[dict[str, Any]] = field(default_factory=list)
+    logs: list[dict[str, Any]] | None = field()
 
 
 @dataclass
 class Completed(_Status):
     """Indicates the request has been completed successfully and the result is
     ready to be retrieved."""
+
+    logs: list[dict[str, Any]] | None = field()
 
 
 @dataclass
@@ -48,20 +50,25 @@ class RequestHandle:
     # Use the credentials that were used to submit the request by default.
     _creds: Credentials = field(default_factory=get_default_credentials, repr=False)
 
-    def status(self) -> _Status:
+    def status(self, *, logs: bool = False) -> _Status:
         """Check the status of an async inference request."""
 
         url = (
             _URL_FORMAT.format(app_id=self.app_id)
             + f"/requests/{self.request_id}/status/"
         )
-        response = _HTTP_CLIENT.get(url, headers=self._creds.to_headers())
+        response = _HTTP_CLIENT.get(
+            url,
+            headers=self._creds.to_headers(),
+            params={"logs": int(logs)},
+        )
         response.raise_for_status()
 
-        if response.status_code == 200:
-            return Completed()
-
         data = response.json()
+
+        if response.status_code == 200:
+            return Completed(logs=data["logs"])
+
         if data["status"] == "IN_QUEUE":
             return Queued(position=data["queue_position"])
         elif data["status"] == "IN_PROGRESS":
@@ -72,12 +79,13 @@ class RequestHandle:
     def iter_events(
         self,
         *,
+        logs: bool = False,
         __poll_delay: float = 0.2,
     ) -> Iterator[_Status]:
         """Yield all events regarding the given task till its completed."""
 
         while True:
-            status = self.status()
+            status = self.status(logs=logs)
 
             if isinstance(status, Completed):
                 return
@@ -102,7 +110,7 @@ class RequestHandle:
         """Retrieve the result of an async inference request, polling the status
         of the request until it is completed."""
 
-        for event in self.iter_events():
+        for event in self.iter_events(logs=False):
             continue
 
         return self.fetch_result()

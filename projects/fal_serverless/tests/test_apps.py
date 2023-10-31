@@ -61,7 +61,8 @@ def test_app_client_async(test_app: str):
     request_handle = apps.submit(
         test_app, arguments={"lhs": 2, "rhs": 3, "wait_time": 5}
     )
-    for event in request_handle.iter_events():
+
+    for event in request_handle.iter_events(logs=True):
         assert isinstance(event, (apps.Queued, apps.InProgress))
         if isinstance(event, apps.InProgress) and event.logs:
             logs = [log["message"] for log in event.logs]
@@ -69,7 +70,9 @@ def test_app_client_async(test_app: str):
         elif isinstance(event, apps.Queued):
             assert event.position == 0
 
-    assert isinstance(request_handle.status(), apps.Completed)
+    status = request_handle.status(logs=True)
+    assert isinstance(status, apps.Completed)
+    assert status.logs, "Logs missing from Completed status"
 
     # It is safe to use fetch_result when we know for a fact the request itself
     # is completed.
