@@ -69,8 +69,7 @@ class Image(File):
         examples=[1024],
     )
     height: Optional[int] = Field(
-        description="The height of the image in pixels.",
-        examples=[1024]
+        description="The height of the image in pixels.", examples=[1024]
     )
 
     @classmethod
@@ -105,8 +104,16 @@ class Image(File):
             format = pil_image.format or "png"  # type: ignore[assignment]
             assert format  # for type checker
 
+        saving_options = {}
+        if format == "png":
+            # PNG compression is an extremely slow process, and for the
+            # purposes of our client applications we want to get a good
+            # enough result quickly to utilize the underlying resources
+            # efficiently.
+            saving_options["compress_level"] = 1
+
         with io.BytesIO() as f:
-            pil_image.save(f, format=format)
+            pil_image.save(f, format=format, **saving_options)
             raw_image = f.getvalue()
 
         return cls.from_bytes(raw_image, format, size, file_name, repository)
