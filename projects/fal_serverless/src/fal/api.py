@@ -237,7 +237,7 @@ def _handle_grpc_error():
             except grpc.RpcError as e:
                 if e.code() == grpc.StatusCode.UNAVAILABLE:
                     raise FalServerlessError(
-                        "Could not reach fal Serverless host. "
+                        "Could not reach fal host. "
                         "This is most likely a transient problem. "
                         "Please, try again."
                     )

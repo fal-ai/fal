@@ -27,7 +27,7 @@ def logout():
         local.delete_token()
 
     USER.invalidate()
-    console.print(f"{CHECK_ICON} Logged out of [cyan bold]fal Serverless[/]. Bye!")
+    console.print(f"{CHECK_ICON} Logged out of [cyan bold]fal[/]. Bye!")
 
 
 def _fetch_access_token() -> str:
