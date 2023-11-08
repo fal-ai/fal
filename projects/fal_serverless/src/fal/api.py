@@ -746,7 +746,12 @@ class ServeWrapper:
 
         return _app
 
-    def __call__(self) -> None:
+    def __call__(self, *args, **kwargs) -> None:
+        if len(args) != 0 or len(kwargs) != 0:
+            print(
+                f"[warning] {self._func.__name__} function is served with no arguments."
+            )
+
         from uvicorn import run
 
         app = self.build_app()
