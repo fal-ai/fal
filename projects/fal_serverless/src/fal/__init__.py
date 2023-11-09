@@ -6,7 +6,6 @@ from fal import apps
 from fal.api import FalServerlessHost, LocalHost, cached
 from fal.api import function
 from fal.api import function as isolated
-from fal.decorators import download_file, download_repo, download_weights
 from fal.sdk import FalServerlessKeyCredentials
 from fal.sync import sync_dir
 

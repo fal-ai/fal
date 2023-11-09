@@ -1,18 +1,20 @@
 from __future__ import annotations
 
-from uuid import uuid4
+import shutil
+from pathlib import Path
 
 import pytest
-from fal import (
-    FalServerlessHost,
-    FalServerlessKeyCredentials,
-    download_file,
-    download_repo,
-    download_weights,
-    local,
-    sync_dir,
-)
+from fal import FalServerlessHost, FalServerlessKeyCredentials, local, sync_dir
 from fal.api import FalServerlessError
+from fal.toolkit import (
+    FAL_MODEL_WEIGHTS_DIR,
+    FAL_PERSISTENT_DIR,
+    FAL_REPOSITORY_DIR,
+    clone_repository,
+    download_file,
+    download_model_weights,
+)
+from fal.toolkit.utils.download_utils import _get_git_revision_hash, _hash_url
 
 
 def test_isolated(isolated_client):
@@ -155,84 +157,177 @@ def test_sync(isolated_client):
     remove_remote_directory(remote_dir_ref)
 
 
-EXAMPLE_FILE_URL = "https://raw.githubusercontent.com/fal-ai/isolate/d553f927348206530208442556f481f39b161732/README.md"
-EXAMPLE_FILE_CHECKSUM = (
-    "81ff101c9f6f5b4af6868a3004d43d55fc546716d40ca12c678684a77e76c67c"
-)
+def test_download_file(isolated_client):
+    EXAMPLE_FILE_URL = "https://raw.githubusercontent.com/fal-ai/isolate/d553f927348206530208442556f481f39b161732/README.md"
 
-EXAMPLE_REPO_URL = "https://github.com/comfyanonymous/ComfyUI.git"
-EXAMPLE_REPO_COMMIT = "0793eb926933034997cc2383adc414d080643e77"  # https://github.com/comfyanonymous/ComfyUI/tree/0793eb926933034997cc2383adc414d080643e77
+    output_directory = FAL_PERSISTENT_DIR / "test"
 
-
-def test_download_file_invalid_location():
-    try:
-        download_file(
+    @isolated_client()
+    def absolute_path_persistent_dir():
+        downloaded_path = download_file(
             EXAMPLE_FILE_URL,
-            target_dir="/some",
-            checksum_sha256=EXAMPLE_FILE_CHECKSUM,
+            target_dir=output_directory,
         )
-        assert False, "Should have raised an exception"
-    except Exception as e:
-        msg = "Should have raised an exception about an invalid directory: " + str(e)
-        assert "invalid dir" in str(e).lower(), msg
 
+        downloaded_path.unlink()
+        return downloaded_path
 
-@pytest.mark.skip(
-    "Generates 'Error while serializing the given object' in test 'projects/fal_serverless/tests/test_stability.py::test_missing_dependencies_nested_server_error'"
-)
-def test_download_file():
-    file_name = uuid4().hex + ".md"
+    expected_path = output_directory / "README.md"
+    assert str(expected_path) == str(
+        absolute_path_persistent_dir()
+    ), f"Path should be the target location sent '{expected_path!r}'"
 
-    example_path = download_file(
-        EXAMPLE_FILE_URL,
-        target_dir="/data/test",
-        file_name=file_name,
-        checksum_sha256=EXAMPLE_FILE_CHECKSUM,
-    )
-    example_path_str = str(example_path)
+    output_directory = Path("/test")
+
+    @isolated_client()
+    def absolute_path_non_persistent_dir():
+        downloaded_path = download_file(
+            EXAMPLE_FILE_URL,
+            target_dir=output_directory,
+        )
+
+        downloaded_path.unlink()
+        return downloaded_path
+
+    expected_path = output_directory / "README.md"
+    assert str(expected_path) == str(
+        absolute_path_non_persistent_dir()
+    ), f"Path should be the target location sent '{expected_path!r}'"
+
+    output_directory = Path("test")
+
+    @isolated_client()
+    def relative_path():
+        downloaded_path = download_file(
+            EXAMPLE_FILE_URL,
+            target_dir=output_directory,
+        )
+
+        downloaded_path.unlink()
+        return downloaded_path
+
+    expected_path = FAL_PERSISTENT_DIR / output_directory / "README.md"
+    assert str(expected_path) == str(
+        relative_path()
+    ), f"Path should be the target location sent '{expected_path!r}'"
+
+    @isolated_client
+    def remove_downloaded_file(path: Path):
+        path.unlink()
+
+    @isolated_client()
+    def test_with_force(force: bool = False):
+        downloaded_path = download_file(
+            EXAMPLE_FILE_URL,
+            target_dir=output_directory,
+            force=force,
+        )
+
+        return downloaded_path, downloaded_path.stat()
+
+    initial_path, initial_stat = test_with_force(force=False)
+    second_path, second_stat = test_with_force(force=True)
+
+    assert initial_path == second_path, "The path should be the same"
     assert (
-        example_path_str == f"/data/test/{file_name}"
-    ), f"Path should be the target location sent '{example_path!r}'"
+        initial_stat.st_mtime < second_stat.st_mtime
+    ), "The file should be redownloaded"
 
-    example_path = download_file(
-        EXAMPLE_FILE_URL,
-        target_dir="test",
-        file_name=file_name,
-        checksum_sha256=EXAMPLE_FILE_CHECKSUM,
-    )
-    example_path_str = str(example_path)
+    # Remove the downloaded file before the `force=True` test
+    remove_downloaded_file(expected_path)
+
+
+def test_download_model_weights(isolated_client):
+    EXAMPLE_FILE_URL = "https://raw.githubusercontent.com/fal-ai/isolate/d553f927348206530208442556f481f39b161732/README.md"
+    expected_path = FAL_MODEL_WEIGHTS_DIR / _hash_url(EXAMPLE_FILE_URL) / "README.md"
+
+    @isolated_client()
+    def download_weights(force: bool = False):
+        model_weights_path = download_model_weights(EXAMPLE_FILE_URL, force=force)
+
+        return model_weights_path, model_weights_path.stat()
+
+    @isolated_client()
+    def remove_model_weights(path: Path):
+        path.unlink()
+
+    initial_weights_path, initial_weights_stat = download_weights(force=False)
+    assert str(initial_weights_path) == str(
+        expected_path
+    ), "Path should be the target location"
+
+    second_weights_path, second_weights_stat = download_weights(force=True)
+    assert str(initial_weights_path) == str(
+        second_weights_path
+    ), "The path should be the same"
+
+    # Check for file last modified time, the weights should be re-downloaded
+    # (and thus, modified) since `force` parameter is set to `True`.
     assert (
-        example_path_str == f"/data/test/{file_name}"
-    ), f"Path should be the target location sent '{example_path!r}'"
+        initial_weights_stat.st_mtime < second_weights_stat.st_mtime
+    ), "The weights should be redownloaded"
+
+    remove_model_weights(initial_weights_path)
 
 
-def test_download_weights():
-    example_path = download_weights(
-        EXAMPLE_FILE_URL,
-        checksum_sha256=EXAMPLE_FILE_CHECKSUM,
-    )
-    example_path_str = str(example_path)
-    empty, data, *other = example_path_str.split("/")
-    assert empty == "", "Path should start with a slash"
-    assert data == "data", "Path should start with the data directory"
-    assert other, "Path should contain the rest of the path"
+def test_clone_repository(isolated_client):
+    # https://github.com/comfyanonymous/ComfyUI/tree/0793eb926933034997cc2383adc414d080643e77
+    EXAMPLE_REPO_URL = "https://github.com/comfyanonymous/ComfyUI.git"
+    EXAMPLE_REPO_COMMIT = "0793eb926933034997cc2383adc414d080643e77"
+    expected_path = FAL_REPOSITORY_DIR / "ComfyUI"
 
+    @isolated_client()
+    def remove_repo(repo_path: Path):
+        shutil.rmtree(repo_path)
 
-def test_download_repo():
-    example_path = download_repo(EXAMPLE_REPO_URL)
-    example_path_str = str(example_path)
+    @isolated_client()
+    def clone_without_commit_hash():
+        repo_path = clone_repository(EXAMPLE_REPO_URL)
 
-    empty, data, fal_prefix, repos_dir, *other = example_path_str.split("/")
+        return repo_path
 
-    assert empty == "", "Path should start with a slash"
-    assert data == "data", "Path should start with the data directory"
-    assert fal_prefix == ".fal", "Path should start with '.fal'"
-    assert repos_dir == "repos", "Path should start with the repos directory"
-    assert other, "Path should contain the rest of the path"
+    repo_path = clone_without_commit_hash()
 
-    example_path = download_repo(
-        EXAMPLE_REPO_URL,
-        commit_hash=EXAMPLE_REPO_COMMIT,
-    )
-    assert example_path, "Should have returned a path"
-    # TODO: check that the commit hash is correct
+    assert str(repo_path) == str(expected_path), "Path should be the target location"
+
+    @isolated_client()
+    def clone_with_commit_hash(force: bool = False):
+        repo_path = clone_repository(
+            EXAMPLE_REPO_URL, commit_hash=EXAMPLE_REPO_COMMIT, force=force
+        )
+        repo_commit_hash = _get_git_revision_hash(repo_path)
+
+        return repo_path, repo_commit_hash, repo_path.stat()
+
+    (
+        initial_repo_path,
+        initial_repo_commit_hash,
+        initial_repo_stat,
+    ) = clone_with_commit_hash(force=False)
+
+    assert str(initial_repo_path) == str(
+        expected_path
+    ), "Path should be the target location"
+    assert (
+        initial_repo_commit_hash == EXAMPLE_REPO_COMMIT
+    ), "The commit hash of the cloned repository must match the provided commit hash argument."
+
+    (
+        second_repo_path,
+        second_repo_commit_hash,
+        second_repo_stat,
+    ) = clone_with_commit_hash(force=True)
+    assert str(initial_repo_path) == str(
+        second_repo_path
+    ), "The path should be the same"
+    assert (
+        initial_repo_commit_hash == second_repo_commit_hash
+    ), "The commit hash should be the same"
+
+    # Check for repository last modified time, the repository should be re-downloaded
+    # (and thus, modified) since `force` parameter is set to `True`.
+    assert (
+        initial_repo_stat.st_mtime < second_repo_stat.st_mtime
+    ), "The repository should be redownloaded"
+
+    remove_repo(initial_repo_path)
