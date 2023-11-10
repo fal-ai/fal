@@ -329,7 +329,7 @@ def test_futures(isolated_client):
 
 def test_conda_environment(isolated_client):
     @isolated_client(
-        "conda", packages=["pyjokes=0.6.0"], machine_type="M", resolver="conda"
+        "conda", packages=["pyjokes=0.6.0"], machine_type="L", resolver="conda"
     )
     def regular_function():
         import pyjokes
