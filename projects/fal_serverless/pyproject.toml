@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "fal"
-version = "0.10.12a0"
+version = "0.11.1a0"
 description = "fal is an easy-to-use Serverless Python Framework"
 authors = ["Features & Labels <hello@fal.ai>"]
 readme = "README.md"
