@@ -44,7 +44,7 @@ def _open_browser(url: str, code: str | None) -> None:
             )
 
 
-def login(logout_first: bool) -> dict:
+def login() -> dict:
     """
     Runs the device authorization flow and stores the user object in memory
     """
@@ -64,10 +64,7 @@ def login(logout_first: bool) -> dict:
     device_user_code = device_code_data["user_code"]
     device_confirmation_url = device_code_data["verification_uri_complete"]
 
-    if logout_first:
-        url = logout_url(device_confirmation_url)
-    else:
-        url = device_confirmation_url
+    url = logout_url(device_confirmation_url)
 
     _open_browser(url, device_user_code)
 

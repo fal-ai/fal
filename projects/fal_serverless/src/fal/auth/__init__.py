@@ -10,8 +10,7 @@ from fal.exceptions.auth import UnauthenticatedException
 
 
 def login():
-    refresh_token, _ = local.load_token()
-    token_data = auth0.login(bool(refresh_token))
+    token_data = auth0.login()
     with local.lock_token():
         local.save_token(token_data["refresh_token"])
 
