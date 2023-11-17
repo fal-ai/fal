@@ -17,6 +17,7 @@ class GoogleStorageRepository(FileRepository):
     bucket_name: str = "fal_file_storage"
     url_expiration: int | None = DEFAULT_URL_TIMEOUT
     gcp_account_json: str | None = None
+    folder: str = ""
 
     _storage_client = None
     _bucket = None
@@ -50,7 +51,9 @@ class GoogleStorageRepository(FileRepository):
         return self._bucket
 
     def save(self, data: FileData) -> str:
-        gcp_blob = self.bucket.blob(data.file_name)
+        destination_path = os.path.join(self.folder, data.file_name)
+
+        gcp_blob = self.bucket.blob(destination_path)
         gcp_blob.upload_from_string(data.data, content_type=data.content_type)
 
         if self.url_expiration is None:
