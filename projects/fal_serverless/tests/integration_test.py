@@ -1,19 +1,13 @@
 from __future__ import annotations
 
-import shutil
 from pathlib import Path
+from uuid import uuid4
 
+import fal
 import pytest
 from fal import FalServerlessHost, FalServerlessKeyCredentials, local, sync_dir
 from fal.api import FalServerlessError
-from fal.toolkit import (
-    FAL_MODEL_WEIGHTS_DIR,
-    FAL_PERSISTENT_DIR,
-    FAL_REPOSITORY_DIR,
-    clone_repository,
-    download_file,
-    download_model_weights,
-)
+from fal.toolkit import clone_repository, download_file, download_model_weights
 from fal.toolkit.utils.download_utils import _get_git_revision_hash, _hash_url
 
 
@@ -154,13 +148,47 @@ def test_sync(isolated_client):
 
     print("Test passed: Local and remote directory contents match")
 
-    remove_remote_directory(remote_dir_ref)
+    # Clean the directory after tests finished
+    remove_remote_directory(isolated_client, remote_dir_ref)
 
 
-def test_download_file(isolated_client):
+@pytest.fixture
+def mock_fal_persistent_dirs(monkeypatch):
+    """Mock fal persistent directories.
+    It is NOT enough to mock only `FAL_PERSISTENT_DIR`, since the other two are
+    might already be evaluated based on the `FAL_PERSISTENT_DIR` during imports.
+    """
+    temp_data_dir = Path(f"/tmp/data/fal-tests-{uuid4().hex}")
+    temp_repository_dir = temp_data_dir / ".fal" / "repos"
+    temp_model_weights_dir = temp_data_dir / ".fal" / "model_weights"
+
+    monkeypatch.setattr(
+        fal.toolkit.utils.download_utils,
+        "FAL_PERSISTENT_DIR",
+        temp_data_dir,
+    )
+
+    monkeypatch.setattr(
+        fal.toolkit.utils.download_utils,
+        "FAL_REPOSITORY_DIR",
+        temp_repository_dir,
+    )
+
+    monkeypatch.setattr(
+        fal.toolkit.utils.download_utils,
+        "FAL_MODEL_WEIGHTS_DIR",
+        temp_model_weights_dir,
+    )
+
+
+def test_download_file(isolated_client, mock_fal_persistent_dirs):
+    from fal.toolkit.utils.download_utils import FAL_PERSISTENT_DIR
+
     EXAMPLE_FILE_URL = "https://raw.githubusercontent.com/fal-ai/isolate/d553f927348206530208442556f481f39b161732/README.md"
 
-    output_directory = FAL_PERSISTENT_DIR / "test"
+    relative_directory = "test"
+    output_directory = FAL_PERSISTENT_DIR / relative_directory
+    expected_path = output_directory / "README.md"
 
     @isolated_client()
     def absolute_path_persistent_dir():
@@ -169,15 +197,11 @@ def test_download_file(isolated_client):
             target_dir=output_directory,
         )
 
-        downloaded_path.unlink()
         return downloaded_path
 
-    expected_path = output_directory / "README.md"
     assert str(expected_path) == str(
         absolute_path_persistent_dir()
     ), f"Path should be the target location sent '{expected_path!r}'"
-
-    output_directory = Path("/test")
 
     @isolated_client()
     def absolute_path_non_persistent_dir():
@@ -186,99 +210,137 @@ def test_download_file(isolated_client):
             target_dir=output_directory,
         )
 
-        downloaded_path.unlink()
         return downloaded_path
 
-    expected_path = output_directory / "README.md"
     assert str(expected_path) == str(
         absolute_path_non_persistent_dir()
     ), f"Path should be the target location sent '{expected_path!r}'"
-
-    output_directory = Path("test")
 
     @isolated_client()
     def relative_path():
         downloaded_path = download_file(
             EXAMPLE_FILE_URL,
-            target_dir=output_directory,
+            target_dir=relative_directory,
         )
 
-        downloaded_path.unlink()
         return downloaded_path
 
-    expected_path = FAL_PERSISTENT_DIR / output_directory / "README.md"
     assert str(expected_path) == str(
         relative_path()
     ), f"Path should be the target location sent '{expected_path!r}'"
 
-    @isolated_client
-    def remove_downloaded_file(path: Path):
-        path.unlink()
-
     @isolated_client()
-    def test_with_force(force: bool = False):
-        downloaded_path = download_file(
+    def test_with_force():
+        first_path = download_file(
             EXAMPLE_FILE_URL,
             target_dir=output_directory,
-            force=force,
+            force=False,
+        )
+        first_path_stat = first_path.stat()
+
+        second_path = download_file(
+            EXAMPLE_FILE_URL,
+            target_dir=output_directory,
+            force=False,
+        )
+        second_path_stat = second_path.stat()
+
+        third_path = download_file(
+            EXAMPLE_FILE_URL,
+            target_dir=output_directory,
+            force=True,
+        )
+        third_path_stat = third_path.stat()
+
+        return (
+            first_path,
+            first_path_stat,
+            second_path,
+            second_path_stat,
+            third_path,
+            third_path_stat,
         )
 
-        return downloaded_path, downloaded_path.stat()
+    (
+        first_path,
+        first_path_stat,
+        second_path,
+        second_path_stat,
+        third_path,
+        third_path_stat,
+    ) = test_with_force()
 
-    initial_path, initial_stat = test_with_force(force=False)
-    second_path, second_stat = test_with_force(force=True)
+    assert str(expected_path) == str(first_path), "Path should be the target location"
+    assert str(expected_path) == str(second_path), "Path should be the target location"
+    assert str(expected_path) == str(third_path), "Path should be the target location"
 
-    assert initial_path == second_path, "The path should be the same"
     assert (
-        initial_stat.st_mtime < second_stat.st_mtime
-    ), "The file should be redownloaded"
+        first_path_stat.st_mtime == second_path_stat.st_mtime
+    ), "The file should not be redownloaded"
 
-    # Remove the downloaded file before the `force=True` test
-    remove_downloaded_file(expected_path)
+    assert (
+        second_path_stat.st_mtime < third_path_stat.st_mtime
+    ), "The file should be redownloaded with force=True"
 
 
-def test_download_model_weights(isolated_client):
+def test_download_model_weights(isolated_client, mock_fal_persistent_dirs):
+    from fal.toolkit.utils.download_utils import FAL_MODEL_WEIGHTS_DIR
+
+    print(FAL_MODEL_WEIGHTS_DIR)
+
     EXAMPLE_FILE_URL = "https://raw.githubusercontent.com/fal-ai/isolate/d553f927348206530208442556f481f39b161732/README.md"
     expected_path = FAL_MODEL_WEIGHTS_DIR / _hash_url(EXAMPLE_FILE_URL) / "README.md"
 
     @isolated_client()
-    def download_weights(force: bool = False):
-        model_weights_path = download_model_weights(EXAMPLE_FILE_URL, force=force)
+    def download_weights():
+        first_path = download_model_weights(EXAMPLE_FILE_URL, force=False)
+        first_path_stat = first_path.stat()
 
-        return model_weights_path, model_weights_path.stat()
+        second_path = download_model_weights(EXAMPLE_FILE_URL, force=False)
+        second_path_stat = second_path.stat()
 
-    @isolated_client()
-    def remove_model_weights(path: Path):
-        path.unlink()
+        third_path = download_model_weights(EXAMPLE_FILE_URL, force=True)
+        third_path_stat = third_path.stat()
 
-    initial_weights_path, initial_weights_stat = download_weights(force=False)
-    assert str(initial_weights_path) == str(
-        expected_path
-    ), "Path should be the target location"
+        return (
+            first_path,
+            first_path_stat,
+            second_path,
+            second_path_stat,
+            third_path,
+            third_path_stat,
+        )
 
-    second_weights_path, second_weights_stat = download_weights(force=True)
-    assert str(initial_weights_path) == str(
-        second_weights_path
-    ), "The path should be the same"
+    (
+        first_path,
+        first_path_stat,
+        second_path,
+        second_path_stat,
+        third_path,
+        third_path_stat,
+    ) = download_weights()
 
-    # Check for file last modified time, the weights should be re-downloaded
-    # (and thus, modified) since `force` parameter is set to `True`.
+    assert str(expected_path) == str(first_path), "Path should be the target location"
+    assert str(expected_path) == str(second_path), "Path should be the target location"
+    assert str(expected_path) == str(third_path), "Path should be the target location"
+
     assert (
-        initial_weights_stat.st_mtime < second_weights_stat.st_mtime
-    ), "The weights should be redownloaded"
+        first_path_stat.st_mtime == second_path_stat.st_mtime
+    ), "The model weights should not be redownloaded"
 
-    remove_model_weights(initial_weights_path)
+    assert (
+        second_path_stat.st_mtime < third_path_stat.st_mtime
+    ), "The model weights should be redownloaded with force=True"
 
 
-def test_clone_repository(isolated_client):
-    # https://github.com/comfyanonymous/ComfyUI/tree/0793eb926933034997cc2383adc414d080643e77
-    EXAMPLE_REPO_URL = "https://github.com/comfyanonymous/ComfyUI.git"
-    EXAMPLE_REPO_COMMIT = "0793eb926933034997cc2383adc414d080643e77"
-    expected_path = FAL_REPOSITORY_DIR / "ComfyUI"
+def test_clone_repository(isolated_client, mock_fal_persistent_dirs):
+    from fal.toolkit.utils.download_utils import FAL_REPOSITORY_DIR
 
-    @isolated_client()
-    def remove_repo(repo_path: Path):
-        shutil.rmtree(repo_path)
+    # https://github.com/fal-ai/isolate/tree/64b0a89c8391bd2cb3ca23cdeae01779e11aee05
+    EXAMPLE_REPO_URL = "https://github.com/fal-ai/isolate.git"
+    EXAMPLE_REPO_FIRST_COMMIT = "64b0a89c8391bd2cb3ca23cdeae01779e11aee05"
+    EXAMPLE_REPO_SECOND_COMMIT = "34ecbca8cc7b64719d2a5c40dd3272f8d13bc1d2"
+    expected_path = FAL_REPOSITORY_DIR / "isolate"
 
     @isolated_client()
     def clone_without_commit_hash():
@@ -287,47 +349,83 @@ def test_clone_repository(isolated_client):
         return repo_path
 
     repo_path = clone_without_commit_hash()
-
     assert str(repo_path) == str(expected_path), "Path should be the target location"
 
     @isolated_client()
-    def clone_with_commit_hash(force: bool = False):
-        repo_path = clone_repository(
-            EXAMPLE_REPO_URL, commit_hash=EXAMPLE_REPO_COMMIT, force=force
+    def clone_with_commit_hash():
+        first_path = clone_repository(
+            EXAMPLE_REPO_URL, commit_hash=EXAMPLE_REPO_FIRST_COMMIT
         )
-        repo_commit_hash = _get_git_revision_hash(repo_path)
+        first_repo_hash = _get_git_revision_hash(first_path)
 
-        return repo_path, repo_commit_hash, repo_path.stat()
+        second_path = clone_repository(
+            EXAMPLE_REPO_URL, commit_hash=EXAMPLE_REPO_SECOND_COMMIT
+        )
 
-    (
-        initial_repo_path,
-        initial_repo_commit_hash,
-        initial_repo_stat,
-    ) = clone_with_commit_hash(force=False)
+        second_repo_hash = _get_git_revision_hash(repo_path)
 
-    assert str(initial_repo_path) == str(
-        expected_path
-    ), "Path should be the target location"
-    assert (
-        initial_repo_commit_hash == EXAMPLE_REPO_COMMIT
-    ), "The commit hash of the cloned repository must match the provided commit hash argument."
+        return first_path, first_repo_hash, second_path, second_repo_hash
 
     (
-        second_repo_path,
-        second_repo_commit_hash,
-        second_repo_stat,
-    ) = clone_with_commit_hash(force=True)
-    assert str(initial_repo_path) == str(
-        second_repo_path
-    ), "The path should be the same"
+        first_path,
+        first_repo_hash,
+        second_path,
+        second_repo_hash,
+    ) = clone_with_commit_hash()
+
+    assert str(expected_path) == str(first_path), "Path should be the target location"
+    assert str(expected_path) == str(second_path), "Path should be the target location"
+
     assert (
-        initial_repo_commit_hash == second_repo_commit_hash
+        first_repo_hash == EXAMPLE_REPO_FIRST_COMMIT
+    ), "The commit hash should be the same"
+    assert (
+        second_repo_hash == EXAMPLE_REPO_SECOND_COMMIT
     ), "The commit hash should be the same"
 
-    # Check for repository last modified time, the repository should be re-downloaded
-    # (and thus, modified) since `force` parameter is set to `True`.
-    assert (
-        initial_repo_stat.st_mtime < second_repo_stat.st_mtime
-    ), "The repository should be redownloaded"
+    @isolated_client()
+    def clone_with_force():
+        first_path = clone_repository(
+            EXAMPLE_REPO_URL, commit_hash=EXAMPLE_REPO_FIRST_COMMIT, force=False
+        )
+        first_repo_stat = first_path.stat()
 
-    remove_repo(initial_repo_path)
+        second_path = clone_repository(
+            EXAMPLE_REPO_URL, commit_hash=EXAMPLE_REPO_FIRST_COMMIT, force=False
+        )
+        second_repo_stat = second_path.stat()
+
+        third_path = clone_repository(
+            EXAMPLE_REPO_URL, commit_hash=EXAMPLE_REPO_FIRST_COMMIT, force=True
+        )
+        third_repo_stat = third_path.stat()
+
+        return (
+            first_path,
+            first_repo_stat,
+            second_path,
+            second_repo_stat,
+            third_path,
+            third_repo_stat,
+        )
+
+    (
+        first_path,
+        first_repo_stat,
+        second_path,
+        second_repo_stat,
+        third_path,
+        third_repo_stat,
+    ) = clone_with_force()
+
+    assert str(expected_path) == str(first_path), "Path should be the target location"
+    assert str(expected_path) == str(second_path), "Path should be the target location"
+    assert str(expected_path) == str(third_path), "Path should be the target location"
+
+    assert (
+        first_repo_stat.st_mtime == second_repo_stat.st_mtime
+    ), "The repository should not be cloned again"
+
+    assert (
+        first_repo_stat.st_mtime < third_repo_stat.st_mtime
+    ), "The repository should be cloned again with force=True"
