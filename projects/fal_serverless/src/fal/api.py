@@ -31,6 +31,7 @@ from fal._serialization import add_serialization_listeners_for, patch_dill
 from fal.logging.isolate import IsolateLogPrinter
 from fal.sdk import (
     FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
+    FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING,
     Credentials,
     FalServerlessClient,
     FalServerlessConnection,
@@ -310,6 +311,7 @@ class FalServerlessHost(Host):
         {
             "machine_type",
             "keep_alive",
+            "max_multiplexing",
             "setup_function",
             "metadata",
             "_base_image",
@@ -352,6 +354,9 @@ class FalServerlessHost(Host):
             "machine_type", FAL_SERVERLESS_DEFAULT_MACHINE_TYPE
         )
         keep_alive = options.host.get("keep_alive", FAL_SERVERLESS_DEFAULT_KEEP_ALIVE)
+        max_multiplexing = options.host.get(
+            "max_multiplexing", FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING
+        )
         base_image = options.host.get("_base_image", None)
         scheduler = options.host.get("_scheduler", None)
         scheduler_options = options.host.get("_scheduler_options", None)
@@ -364,6 +369,7 @@ class FalServerlessHost(Host):
             exposed_port=exposed_port,
             scheduler=scheduler,
             scheduler_options=scheduler_options,
+            max_multiplexing=max_multiplexing,
         )
 
         partial_func = _prepare_partial_func(func)
@@ -425,6 +431,9 @@ class FalServerlessHost(Host):
             "machine_type", FAL_SERVERLESS_DEFAULT_MACHINE_TYPE
         )
         keep_alive = options.host.get("keep_alive", FAL_SERVERLESS_DEFAULT_KEEP_ALIVE)
+        max_multiplexing = options.host.get(
+            "max_multiplexing", FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING
+        )
         base_image = options.host.get("_base_image", None)
         scheduler = options.host.get("_scheduler", None)
         scheduler_options = options.host.get("_scheduler_options", None)
@@ -438,6 +447,7 @@ class FalServerlessHost(Host):
             exposed_port=exposed_port,
             scheduler=scheduler,
             scheduler_options=scheduler_options,
+            max_multiplexing=max_multiplexing,
         )
 
         return_value = _UNSET
@@ -560,6 +570,7 @@ def function(
     # FalServerlessHost options
     machine_type: str = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
     keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
+    max_multiplexing: int = FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING,
     setup_function: Callable[..., None] | None = None,
     _base_image: str | None = None,
     _scheduler: str | None = None,
@@ -583,6 +594,7 @@ def function(
     # FalServerlessHost options
     machine_type: str = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
     keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
+    max_multiplexing: int = FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING,
     setup_function: Callable[..., None] | None = None,
     _base_image: str | None = None,
     _scheduler: str | None = None,
@@ -658,6 +670,7 @@ def function(
     # FalServerlessHost options
     machine_type: str = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
     keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
+    max_multiplexing: int = FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING,
     setup_function: Callable[..., None] | None = None,
     _base_image: str | None = None,
     _scheduler: str | None = None,
@@ -686,6 +699,7 @@ def function(
     # FalServerlessHost options
     machine_type: str = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
     keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
+    max_multiplexing: int = FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING,
     setup_function: Callable[..., None] | None = None,
     _base_image: str | None = None,
     _scheduler: str | None = None,

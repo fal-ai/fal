@@ -394,14 +394,24 @@ def alias_scale(client: api.FalServerlessClient, alias: str, max_concurrency: in
 @alias_cli.command("update")
 @click.argument("alias", required=True)
 @click.option("--keep-alive", type=int)
+@click.option("--max-multiplexing", type=int)
 @click.pass_obj
-def alias_update(client: api.FalServerlessClient, alias: str, keep_alive: int | None):
+def alias_update(
+    client: api.FalServerlessClient,
+    alias: str,
+    keep_alive: int | None,
+    max_multiplexing: int | None,
+):
     with client.connect() as connection:
-        if not keep_alive:
+        if not (keep_alive or max_multiplexing):
             console.log("No parameters for update were provided, ignoring.")
             return
 
-        connection.update_application(application_name=alias, keep_alive=keep_alive)
+        connection.update_application(
+            application_name=alias,
+            keep_alive=keep_alive,
+            max_multiplexing=max_multiplexing,
+        )
 
 
 ##### Crons group #####

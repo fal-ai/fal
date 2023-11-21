@@ -26,6 +26,7 @@ UNSET = object()
 
 _DEFAULT_SERIALIZATION_METHOD = "dill"
 FAL_SERVERLESS_DEFAULT_KEEP_ALIVE = 10
+FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING = 1
 
 log = get_logger(__name__)
 
@@ -359,6 +360,7 @@ class MachineRequirements:
     exposed_port: int | None = None
     scheduler: str | None = None
     scheduler_options: dict[str, Any] | None = None
+    max_multiplexing: int = FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING
 
 
 @dataclass
@@ -468,6 +470,7 @@ class FalServerlessConnection:
                 scheduler_options=to_struct(
                     machine_requirements.scheduler_options or {}
                 ),
+                max_multiplexing=machine_requirements.max_multiplexing,
             )
         else:
             wrapped_requirements = None
@@ -504,11 +507,15 @@ class FalServerlessConnection:
         self.stub.ScaleApplication(request)
 
     def update_application(
-        self, application_name: str, keep_alive: int | None = None
+        self,
+        application_name: str,
+        keep_alive: int | None = None,
+        max_multiplexing: int | None = None,
     ) -> None:
         request = isolate_proto.UpdateApplicationRequest(
             application_name=application_name,
             keep_alive=keep_alive,
+            max_multiplexing=max_multiplexing,
         )
         self.stub.UpdateApplication(request)
 
@@ -532,6 +539,7 @@ class FalServerlessConnection:
                 scheduler_options=to_struct(
                     machine_requirements.scheduler_options or {}
                 ),
+                max_multiplexing=machine_requirements.max_multiplexing,
             )
         else:
             wrapped_requirements = None
