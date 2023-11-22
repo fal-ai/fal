@@ -11,6 +11,7 @@ from .grouped_usage_detail import GroupedUsageDetail
 from .handle_stripe_webhook_response_handle_stripe_webhook import HandleStripeWebhookResponseHandleStripeWebhook
 from .hash_check import HashCheck
 from .http_validation_error import HTTPValidationError
+from .initiate_upload_info import InitiateUploadInfo
 from .invoice import Invoice
 from .invoice_item import InvoiceItem
 from .key_scope import KeyScope
@@ -20,6 +21,10 @@ from .new_user_key import NewUserKey
 from .payment_method import PaymentMethod
 from .persisted_usage_record import PersistedUsageRecord
 from .persisted_usage_record_meta import PersistedUsageRecordMeta
+from .presigned_upload_url import PresignedUploadUrl
+from .request_io import RequestIO
+from .request_io_json_input import RequestIOJsonInput
+from .request_io_json_output import RequestIOJsonOutput
 from .run_type import RunType
 from .stats_timeframe import StatsTimeframe
 from .status import Status
@@ -27,6 +32,7 @@ from .status_health import StatusHealth
 from .uploaded_file_result import UploadedFileResult
 from .url_file_upload import UrlFileUpload
 from .usage_per_machine_type import UsagePerMachineType
+from .usage_per_user import UsagePerUser
 from .usage_run_detail import UsageRunDetail
 from .user_key_info import UserKeyInfo
 from .validation_error import ValidationError
@@ -43,6 +49,7 @@ __all__ = (
     "HandleStripeWebhookResponseHandleStripeWebhook",
     "HashCheck",
     "HTTPValidationError",
+    "InitiateUploadInfo",
     "Invoice",
     "InvoiceItem",
     "KeyScope",
@@ -52,6 +59,10 @@ __all__ = (
     "PaymentMethod",
     "PersistedUsageRecord",
     "PersistedUsageRecordMeta",
+    "PresignedUploadUrl",
+    "RequestIO",
+    "RequestIOJsonInput",
+    "RequestIOJsonOutput",
     "RunType",
     "StatsTimeframe",
     "Status",
@@ -59,6 +70,7 @@ __all__ = (
     "UploadedFileResult",
     "UrlFileUpload",
     "UsagePerMachineType",
+    "UsagePerUser",
     "UsageRunDetail",
     "UserKeyInfo",
     "ValidationError",

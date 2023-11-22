@@ -6,9 +6,8 @@ import httpx
 
 from ... import errors
 from ...client import Client
-from ...models.gateway_stats_by_time import GatewayStatsByTime
 from ...models.http_validation_error import HTTPValidationError
-from ...models.stats_timeframe import StatsTimeframe
+from ...models.usage_per_user import UsagePerUser
 from ...types import UNSET, Response
 
 
@@ -17,10 +16,8 @@ def _get_kwargs(
     client: Client,
     start_time: datetime.datetime,
     end_time: datetime.datetime,
-    app_alias: str,
-    timeframe: StatsTimeframe,
 ) -> Dict[str, Any]:
-    url = "{}/usage/stats/by_time".format(client.base_url)
+    url = "{}/admin/users/usage".format(client.base_url)
 
     headers: Dict[str, str] = client.get_headers()
     cookies: Dict[str, Any] = client.get_cookies()
@@ -33,12 +30,6 @@ def _get_kwargs(
     json_end_time = end_time.isoformat()
 
     params["end_time"] = json_end_time
-
-    params["app_alias"] = app_alias
-
-    json_timeframe = timeframe.value
-
-    params["timeframe"] = json_timeframe
 
     params = {k: v for k, v in params.items() if v is not UNSET and v is not None}
 
@@ -55,12 +46,12 @@ def _get_kwargs(
 
 def _parse_response(
     *, client: Client, response: httpx.Response
-) -> Optional[Union[HTTPValidationError, List["GatewayStatsByTime"]]]:
+) -> Optional[Union[HTTPValidationError, List["UsagePerUser"]]]:
     if response.status_code == HTTPStatus.OK:
         response_200 = []
         _response_200 = response.json()
         for response_200_item_data in _response_200:
-            response_200_item = GatewayStatsByTime.from_dict(response_200_item_data)
+            response_200_item = UsagePerUser.from_dict(response_200_item_data)
 
             response_200.append(response_200_item)
 
@@ -77,7 +68,7 @@ def _parse_response(
 
 def _build_response(
     *, client: Client, response: httpx.Response
-) -> Response[Union[HTTPValidationError, List["GatewayStatsByTime"]]]:
+) -> Response[Union[HTTPValidationError, List["UsagePerUser"]]]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -91,31 +82,25 @@ def sync_detailed(
     client: Client,
     start_time: datetime.datetime,
     end_time: datetime.datetime,
-    app_alias: str,
-    timeframe: StatsTimeframe,
-) -> Response[Union[HTTPValidationError, List["GatewayStatsByTime"]]]:
-    """Get Request Stats By Time
+) -> Response[Union[HTTPValidationError, List["UsagePerUser"]]]:
+    """Get Usage Per User
 
     Args:
         start_time (datetime.datetime):
         end_time (datetime.datetime):
-        app_alias (str):
-        timeframe (StatsTimeframe): An enumeration.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Union[HTTPValidationError, List['GatewayStatsByTime']]]
+        Response[Union[HTTPValidationError, List['UsagePerUser']]]
     """
 
     kwargs = _get_kwargs(
         client=client,
         start_time=start_time,
         end_time=end_time,
-        app_alias=app_alias,
-        timeframe=timeframe,
     )
 
     response = httpx.request(
@@ -131,31 +116,25 @@ def sync(
     client: Client,
     start_time: datetime.datetime,
     end_time: datetime.datetime,
-    app_alias: str,
-    timeframe: StatsTimeframe,
-) -> Optional[Union[HTTPValidationError, List["GatewayStatsByTime"]]]:
-    """Get Request Stats By Time
+) -> Optional[Union[HTTPValidationError, List["UsagePerUser"]]]:
+    """Get Usage Per User
 
     Args:
         start_time (datetime.datetime):
         end_time (datetime.datetime):
-        app_alias (str):
-        timeframe (StatsTimeframe): An enumeration.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Union[HTTPValidationError, List['GatewayStatsByTime']]
+        Union[HTTPValidationError, List['UsagePerUser']]
     """
 
     return sync_detailed(
         client=client,
         start_time=start_time,
         end_time=end_time,
-        app_alias=app_alias,
-        timeframe=timeframe,
     ).parsed
 
 
@@ -164,31 +143,25 @@ async def asyncio_detailed(
     client: Client,
     start_time: datetime.datetime,
     end_time: datetime.datetime,
-    app_alias: str,
-    timeframe: StatsTimeframe,
-) -> Response[Union[HTTPValidationError, List["GatewayStatsByTime"]]]:
-    """Get Request Stats By Time
+) -> Response[Union[HTTPValidationError, List["UsagePerUser"]]]:
+    """Get Usage Per User
 
     Args:
         start_time (datetime.datetime):
         end_time (datetime.datetime):
-        app_alias (str):
-        timeframe (StatsTimeframe): An enumeration.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Union[HTTPValidationError, List['GatewayStatsByTime']]]
+        Response[Union[HTTPValidationError, List['UsagePerUser']]]
     """
 
     kwargs = _get_kwargs(
         client=client,
         start_time=start_time,
         end_time=end_time,
-        app_alias=app_alias,
-        timeframe=timeframe,
     )
 
     async with httpx.AsyncClient(verify=client.verify_ssl) as _client:
@@ -202,23 +175,19 @@ async def asyncio(
     client: Client,
     start_time: datetime.datetime,
     end_time: datetime.datetime,
-    app_alias: str,
-    timeframe: StatsTimeframe,
-) -> Optional[Union[HTTPValidationError, List["GatewayStatsByTime"]]]:
-    """Get Request Stats By Time
+) -> Optional[Union[HTTPValidationError, List["UsagePerUser"]]]:
+    """Get Usage Per User
 
     Args:
         start_time (datetime.datetime):
         end_time (datetime.datetime):
-        app_alias (str):
-        timeframe (StatsTimeframe): An enumeration.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Union[HTTPValidationError, List['GatewayStatsByTime']]
+        Union[HTTPValidationError, List['UsagePerUser']]
     """
 
     return (
@@ -226,7 +195,5 @@ async def asyncio(
             client=client,
             start_time=start_time,
             end_time=end_time,
-            app_alias=app_alias,
-            timeframe=timeframe,
         )
     ).parsed

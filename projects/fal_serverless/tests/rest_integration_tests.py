@@ -95,29 +95,35 @@ def test_gateway_stats():
     from datetime import datetime, timedelta
 
     import openapi_fal_rest.api.usage.get_gateway_request_stats as get_stats
-    import openapi_fal_rest.api.usage.get_request_stats_by_time as get_stats_by_time
     from openapi_fal_rest.models.stats_timeframe import StatsTimeframe
 
     end_time = datetime.now()
     start_time = end_time - timedelta(hours=3)
     res = get_stats.sync_detailed(
-        client=REST_CLIENT, start_time=start_time, end_time=end_time
+        client=REST_CLIENT,
+        start_time=start_time,
+        end_time=end_time,
+        timeframe=StatsTimeframe.DAY,
     )
     assert res.status_code == HTTPStatus.OK
 
-    # Not allowed to request time frames longer than 5 weeks
-    earlier_start_time = end_time - timedelta(weeks=6)
-    res2 = get_stats.sync_detailed(
-        client=REST_CLIENT, start_time=earlier_start_time, end_time=end_time
-    )
-    assert res2.status_code == HTTPStatus.BAD_REQUEST
-
-    daily_res = get_stats_by_time.sync_detailed(
+    end_time = datetime.now()
+    start_time = end_time - timedelta(hours=3)
+    res = get_stats.sync_detailed(
         client=REST_CLIENT,
-        start_time=earlier_start_time,
+        start_time=start_time,
         end_time=end_time,
         timeframe=StatsTimeframe.DAY,
         app_alias="test",
     )
+    assert res.status_code == HTTPStatus.OK
 
-    assert daily_res.status_code == HTTPStatus.OK
+    # Not allowed to request time frames longer than 24 weeks
+    earlier_start_time = end_time - timedelta(weeks=30)
+    res2 = get_stats.sync_detailed(
+        client=REST_CLIENT,
+        start_time=earlier_start_time,
+        end_time=end_time,
+        timeframe=StatsTimeframe.MONTH,
+    )
+    assert res2.status_code == HTTPStatus.BAD_REQUEST

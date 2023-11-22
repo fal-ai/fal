@@ -6,34 +6,39 @@ import httpx
 from ... import errors
 from ...client import Client
 from ...models.http_validation_error import HTTPValidationError
-from ...models.status import Status
+from ...models.initiate_upload_info import InitiateUploadInfo
+from ...models.presigned_upload_url import PresignedUploadUrl
 from ...types import Response
 
 
 def _get_kwargs(
-    user_id: str,
-    alias: str,
     *,
     client: Client,
+    json_body: InitiateUploadInfo,
 ) -> Dict[str, Any]:
-    url = "{}/application/status/{user_id}/{alias}".format(client.base_url, user_id=user_id, alias=alias)
+    url = "{}/storage/upload/initiate".format(client.base_url)
 
     headers: Dict[str, str] = client.get_headers()
     cookies: Dict[str, Any] = client.get_cookies()
 
+    json_json_body = json_body.to_dict()
+
     return {
-        "method": "get",
+        "method": "post",
         "url": url,
         "headers": headers,
         "cookies": cookies,
         "timeout": client.get_timeout(),
         "follow_redirects": client.follow_redirects,
+        "json": json_json_body,
     }
 
 
-def _parse_response(*, client: Client, response: httpx.Response) -> Optional[Union[HTTPValidationError, Status]]:
+def _parse_response(
+    *, client: Client, response: httpx.Response
+) -> Optional[Union[HTTPValidationError, PresignedUploadUrl]]:
     if response.status_code == HTTPStatus.OK:
-        response_200 = Status.from_dict(response.json())
+        response_200 = PresignedUploadUrl.from_dict(response.json())
 
         return response_200
     if response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY:
@@ -46,7 +51,9 @@ def _parse_response(*, client: Client, response: httpx.Response) -> Optional[Uni
         return None
 
 
-def _build_response(*, client: Client, response: httpx.Response) -> Response[Union[HTTPValidationError, Status]]:
+def _build_response(
+    *, client: Client, response: httpx.Response
+) -> Response[Union[HTTPValidationError, PresignedUploadUrl]]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -56,29 +63,26 @@ def _build_response(*, client: Client, response: httpx.Response) -> Response[Uni
 
 
 def sync_detailed(
-    user_id: str,
-    alias: str,
     *,
     client: Client,
-) -> Response[Union[HTTPValidationError, Status]]:
-    """Get Status
+    json_body: InitiateUploadInfo,
+) -> Response[Union[HTTPValidationError, PresignedUploadUrl]]:
+    """Initiate Upload
 
     Args:
-        user_id (str):
-        alias (str):
+        json_body (InitiateUploadInfo):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Union[HTTPValidationError, Status]]
+        Response[Union[HTTPValidationError, PresignedUploadUrl]]
     """
 
     kwargs = _get_kwargs(
-        user_id=user_id,
-        alias=alias,
         client=client,
+        json_body=json_body,
     )
 
     response = httpx.request(
@@ -90,56 +94,50 @@ def sync_detailed(
 
 
 def sync(
-    user_id: str,
-    alias: str,
     *,
     client: Client,
-) -> Optional[Union[HTTPValidationError, Status]]:
-    """Get Status
+    json_body: InitiateUploadInfo,
+) -> Optional[Union[HTTPValidationError, PresignedUploadUrl]]:
+    """Initiate Upload
 
     Args:
-        user_id (str):
-        alias (str):
+        json_body (InitiateUploadInfo):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Union[HTTPValidationError, Status]
+        Union[HTTPValidationError, PresignedUploadUrl]
     """
 
     return sync_detailed(
-        user_id=user_id,
-        alias=alias,
         client=client,
+        json_body=json_body,
     ).parsed
 
 
 async def asyncio_detailed(
-    user_id: str,
-    alias: str,
     *,
     client: Client,
-) -> Response[Union[HTTPValidationError, Status]]:
-    """Get Status
+    json_body: InitiateUploadInfo,
+) -> Response[Union[HTTPValidationError, PresignedUploadUrl]]:
+    """Initiate Upload
 
     Args:
-        user_id (str):
-        alias (str):
+        json_body (InitiateUploadInfo):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Union[HTTPValidationError, Status]]
+        Response[Union[HTTPValidationError, PresignedUploadUrl]]
     """
 
     kwargs = _get_kwargs(
-        user_id=user_id,
-        alias=alias,
         client=client,
+        json_body=json_body,
     )
 
     async with httpx.AsyncClient(verify=client.verify_ssl) as _client:
@@ -149,29 +147,26 @@ async def asyncio_detailed(
 
 
 async def asyncio(
-    user_id: str,
-    alias: str,
     *,
     client: Client,
-) -> Optional[Union[HTTPValidationError, Status]]:
-    """Get Status
+    json_body: InitiateUploadInfo,
+) -> Optional[Union[HTTPValidationError, PresignedUploadUrl]]:
+    """Initiate Upload
 
     Args:
-        user_id (str):
-        alias (str):
+        json_body (InitiateUploadInfo):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Union[HTTPValidationError, Status]
+        Union[HTTPValidationError, PresignedUploadUrl]
     """
 
     return (
         await asyncio_detailed(
-            user_id=user_id,
-            alias=alias,
             client=client,
+            json_body=json_body,
         )
     ).parsed

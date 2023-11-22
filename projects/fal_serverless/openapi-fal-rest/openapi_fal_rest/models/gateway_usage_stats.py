@@ -1,6 +1,10 @@
-from typing import Any, Dict, List, Type, TypeVar
+from typing import TYPE_CHECKING, Any, Dict, List, Type, TypeVar
 
 import attr
+
+if TYPE_CHECKING:
+    from ..models.gateway_stats_by_time import GatewayStatsByTime
+
 
 T = TypeVar("T", bound="GatewayUsageStats")
 
@@ -17,8 +21,8 @@ class GatewayUsageStats:
         p50_duration (float):
         p75_duration (float):
         p90_duration (float):
-        application_id (str):
-        application_alias (str):
+        application_name (str):
+        time_stats (List['GatewayStatsByTime']):
     """
 
     request_count: int
@@ -29,8 +33,8 @@ class GatewayUsageStats:
     p50_duration: float
     p75_duration: float
     p90_duration: float
-    application_id: str
-    application_alias: str
+    application_name: str
+    time_stats: List["GatewayStatsByTime"]
     additional_properties: Dict[str, Any] = attr.ib(init=False, factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -42,8 +46,12 @@ class GatewayUsageStats:
         p50_duration = self.p50_duration
         p75_duration = self.p75_duration
         p90_duration = self.p90_duration
-        application_id = self.application_id
-        application_alias = self.application_alias
+        application_name = self.application_name
+        time_stats = []
+        for time_stats_item_data in self.time_stats:
+            time_stats_item = time_stats_item_data.to_dict()
+
+            time_stats.append(time_stats_item)
 
         field_dict: Dict[str, Any] = {}
         field_dict.update(self.additional_properties)
@@ -57,8 +65,8 @@ class GatewayUsageStats:
                 "p50_duration": p50_duration,
                 "p75_duration": p75_duration,
                 "p90_duration": p90_duration,
-                "application_id": application_id,
-                "application_alias": application_alias,
+                "application_name": application_name,
+                "time_stats": time_stats,
             }
         )
 
@@ -66,6 +74,8 @@ class GatewayUsageStats:
 
     @classmethod
     def from_dict(cls: Type[T], src_dict: Dict[str, Any]) -> T:
+        from ..models.gateway_stats_by_time import GatewayStatsByTime
+
         d = src_dict.copy()
         request_count = d.pop("request_count")
 
@@ -83,9 +93,14 @@ class GatewayUsageStats:
 
         p90_duration = d.pop("p90_duration")
 
-        application_id = d.pop("application_id")
+        application_name = d.pop("application_name")
 
-        application_alias = d.pop("application_alias")
+        time_stats = []
+        _time_stats = d.pop("time_stats")
+        for time_stats_item_data in _time_stats:
+            time_stats_item = GatewayStatsByTime.from_dict(time_stats_item_data)
+
+            time_stats.append(time_stats_item)
 
         gateway_usage_stats = cls(
             request_count=request_count,
@@ -96,8 +111,8 @@ class GatewayUsageStats:
             p50_duration=p50_duration,
             p75_duration=p75_duration,
             p90_duration=p90_duration,
-            application_id=application_id,
-            application_alias=application_alias,
+            application_name=application_name,
+            time_stats=time_stats,
         )
 
         gateway_usage_stats.additional_properties = d

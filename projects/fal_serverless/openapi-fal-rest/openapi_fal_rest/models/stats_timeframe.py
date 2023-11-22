@@ -4,6 +4,7 @@ from enum import Enum
 class StatsTimeframe(str, Enum):
     DAY = "day"
     HOUR = "hour"
+    MINUTE = "minute"
     MONTH = "month"
     WEEK = "week"
 
