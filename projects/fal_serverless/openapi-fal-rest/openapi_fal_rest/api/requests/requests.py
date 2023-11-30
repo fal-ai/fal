@@ -9,7 +9,7 @@ from ...client import Client
 from ...models.http_validation_error import HTTPValidationError
 from ...models.request_io import RequestIO
 from ...models.stats_timeframe import StatsTimeframe
-from ...types import UNSET, Response
+from ...types import UNSET, Response, Unset
 
 
 def _get_kwargs(
@@ -19,6 +19,7 @@ def _get_kwargs(
     end_time: datetime.datetime,
     app_alias: str,
     timeframe: StatsTimeframe,
+    limit: Union[Unset, None, int] = 100,
 ) -> Dict[str, Any]:
     url = "{}/requests/".format(client.base_url)
 
@@ -39,6 +40,8 @@ def _get_kwargs(
     json_timeframe = timeframe.value
 
     params["timeframe"] = json_timeframe
+
+    params["limit"] = limit
 
     params = {k: v for k, v in params.items() if v is not UNSET and v is not None}
 
@@ -93,6 +96,7 @@ def sync_detailed(
     end_time: datetime.datetime,
     app_alias: str,
     timeframe: StatsTimeframe,
+    limit: Union[Unset, None, int] = 100,
 ) -> Response[Union[HTTPValidationError, List["RequestIO"]]]:
     """Per Machine Usage
 
@@ -101,6 +105,7 @@ def sync_detailed(
         end_time (datetime.datetime):
         app_alias (str):
         timeframe (StatsTimeframe): An enumeration.
+        limit (Union[Unset, None, int]):  Default: 100.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -116,6 +121,7 @@ def sync_detailed(
         end_time=end_time,
         app_alias=app_alias,
         timeframe=timeframe,
+        limit=limit,
     )
 
     response = httpx.request(
@@ -133,6 +139,7 @@ def sync(
     end_time: datetime.datetime,
     app_alias: str,
     timeframe: StatsTimeframe,
+    limit: Union[Unset, None, int] = 100,
 ) -> Optional[Union[HTTPValidationError, List["RequestIO"]]]:
     """Per Machine Usage
 
@@ -141,6 +148,7 @@ def sync(
         end_time (datetime.datetime):
         app_alias (str):
         timeframe (StatsTimeframe): An enumeration.
+        limit (Union[Unset, None, int]):  Default: 100.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -156,6 +164,7 @@ def sync(
         end_time=end_time,
         app_alias=app_alias,
         timeframe=timeframe,
+        limit=limit,
     ).parsed
 
 
@@ -166,6 +175,7 @@ async def asyncio_detailed(
     end_time: datetime.datetime,
     app_alias: str,
     timeframe: StatsTimeframe,
+    limit: Union[Unset, None, int] = 100,
 ) -> Response[Union[HTTPValidationError, List["RequestIO"]]]:
     """Per Machine Usage
 
@@ -174,6 +184,7 @@ async def asyncio_detailed(
         end_time (datetime.datetime):
         app_alias (str):
         timeframe (StatsTimeframe): An enumeration.
+        limit (Union[Unset, None, int]):  Default: 100.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -189,6 +200,7 @@ async def asyncio_detailed(
         end_time=end_time,
         app_alias=app_alias,
         timeframe=timeframe,
+        limit=limit,
     )
 
     async with httpx.AsyncClient(verify=client.verify_ssl) as _client:
@@ -204,6 +216,7 @@ async def asyncio(
     end_time: datetime.datetime,
     app_alias: str,
     timeframe: StatsTimeframe,
+    limit: Union[Unset, None, int] = 100,
 ) -> Optional[Union[HTTPValidationError, List["RequestIO"]]]:
     """Per Machine Usage
 
@@ -212,6 +225,7 @@ async def asyncio(
         end_time (datetime.datetime):
         app_alias (str):
         timeframe (StatsTimeframe): An enumeration.
+        limit (Union[Unset, None, int]):  Default: 100.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -228,5 +242,6 @@ async def asyncio(
             end_time=end_time,
             app_alias=app_alias,
             timeframe=timeframe,
+            limit=limit,
         )
     ).parsed

@@ -16,32 +16,31 @@ class GatewayUsageStats:
         request_count (int):
         success_count (int):
         error_count (int):
-        total_billable_duration (int):
         p25_duration (float):
         p50_duration (float):
         p75_duration (float):
         p90_duration (float):
         application_name (str):
         time_stats (List['GatewayStatsByTime']):
+        total_billable_duration (int):
     """
 
     request_count: int
     success_count: int
     error_count: int
-    total_billable_duration: int
     p25_duration: float
     p50_duration: float
     p75_duration: float
     p90_duration: float
     application_name: str
     time_stats: List["GatewayStatsByTime"]
+    total_billable_duration: int
     additional_properties: Dict[str, Any] = attr.ib(init=False, factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         request_count = self.request_count
         success_count = self.success_count
         error_count = self.error_count
-        total_billable_duration = self.total_billable_duration
         p25_duration = self.p25_duration
         p50_duration = self.p50_duration
         p75_duration = self.p75_duration
@@ -53,6 +52,8 @@ class GatewayUsageStats:
 
             time_stats.append(time_stats_item)
 
+        total_billable_duration = self.total_billable_duration
+
         field_dict: Dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
@@ -60,13 +61,13 @@ class GatewayUsageStats:
                 "request_count": request_count,
                 "success_count": success_count,
                 "error_count": error_count,
-                "total_billable_duration": total_billable_duration,
                 "p25_duration": p25_duration,
                 "p50_duration": p50_duration,
                 "p75_duration": p75_duration,
                 "p90_duration": p90_duration,
                 "application_name": application_name,
                 "time_stats": time_stats,
+                "total_billable_duration": total_billable_duration,
             }
         )
 
@@ -82,8 +83,6 @@ class GatewayUsageStats:
         success_count = d.pop("success_count")
 
         error_count = d.pop("error_count")
-
-        total_billable_duration = d.pop("total_billable_duration")
 
         p25_duration = d.pop("p25_duration")
 
@@ -102,17 +101,19 @@ class GatewayUsageStats:
 
             time_stats.append(time_stats_item)
 
+        total_billable_duration = d.pop("total_billable_duration")
+
         gateway_usage_stats = cls(
             request_count=request_count,
             success_count=success_count,
             error_count=error_count,
-            total_billable_duration=total_billable_duration,
             p25_duration=p25_duration,
             p50_duration=p50_duration,
             p75_duration=p75_duration,
             p90_duration=p90_duration,
             application_name=application_name,
             time_stats=time_stats,
+            total_billable_duration=total_billable_duration,
         )
 
         gateway_usage_stats.additional_properties = d

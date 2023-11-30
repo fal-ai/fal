@@ -14,7 +14,6 @@ class GatewayStatsByTime:
         request_count (int):
         success_count (int):
         error_count (int):
-        total_billable_duration (int):
         p25_duration (float):
         p50_duration (float):
         p75_duration (float):
@@ -25,7 +24,6 @@ class GatewayStatsByTime:
     request_count: int
     success_count: int
     error_count: int
-    total_billable_duration: int
     p25_duration: float
     p50_duration: float
     p75_duration: float
@@ -37,7 +35,6 @@ class GatewayStatsByTime:
         request_count = self.request_count
         success_count = self.success_count
         error_count = self.error_count
-        total_billable_duration = self.total_billable_duration
         p25_duration = self.p25_duration
         p50_duration = self.p50_duration
         p75_duration = self.p75_duration
@@ -51,7 +48,6 @@ class GatewayStatsByTime:
                 "request_count": request_count,
                 "success_count": success_count,
                 "error_count": error_count,
-                "total_billable_duration": total_billable_duration,
                 "p25_duration": p25_duration,
                 "p50_duration": p50_duration,
                 "p75_duration": p75_duration,
@@ -71,8 +67,6 @@ class GatewayStatsByTime:
 
         error_count = d.pop("error_count")
 
-        total_billable_duration = d.pop("total_billable_duration")
-
         p25_duration = d.pop("p25_duration")
 
         p50_duration = d.pop("p50_duration")
@@ -87,7 +81,6 @@ class GatewayStatsByTime:
             request_count=request_count,
             success_count=success_count,
             error_count=error_count,
-            total_billable_duration=total_billable_duration,
             p25_duration=p25_duration,
             p50_duration=p50_duration,
             p75_duration=p75_duration,

@@ -6,7 +6,9 @@ import httpx
 
 from ... import errors
 from ...client import Client
-from ...models.gateway_usage_stats import GatewayUsageStats
+from ...models.get_gateway_request_stats_by_time_response_get_gateway_request_stats_by_time import (
+    GetGatewayRequestStatsByTimeResponseGetGatewayRequestStatsByTime,
+)
 from ...models.http_validation_error import HTTPValidationError
 from ...models.stats_timeframe import StatsTimeframe
 from ...types import UNSET, Response, Unset
@@ -18,10 +20,9 @@ def _get_kwargs(
     start_time: datetime.datetime,
     end_time: datetime.datetime,
     timeframe: StatsTimeframe,
-    get_stats_by_time: Union[Unset, None, bool] = True,
-    app_alias: Union[Unset, None, str] = UNSET,
+    app_aliases: Union[Unset, None, List[str]] = UNSET,
 ) -> Dict[str, Any]:
-    url = "{}/usage/stats/app".format(client.base_url)
+    url = "{}/usage/stats/app/time".format(client.base_url)
 
     headers: Dict[str, str] = client.get_headers()
     cookies: Dict[str, Any] = client.get_cookies()
@@ -39,9 +40,14 @@ def _get_kwargs(
 
     params["timeframe"] = json_timeframe
 
-    params["get_stats_by_time"] = get_stats_by_time
+    json_app_aliases: Union[Unset, None, List[str]] = UNSET
+    if not isinstance(app_aliases, Unset):
+        if app_aliases is None:
+            json_app_aliases = None
+        else:
+            json_app_aliases = app_aliases
 
-    params["app_alias"] = app_alias
+    params["app_aliases"] = json_app_aliases
 
     params = {k: v for k, v in params.items() if v is not UNSET and v is not None}
 
@@ -58,14 +64,9 @@ def _get_kwargs(
 
 def _parse_response(
     *, client: Client, response: httpx.Response
-) -> Optional[Union[HTTPValidationError, List["GatewayUsageStats"]]]:
+) -> Optional[Union[GetGatewayRequestStatsByTimeResponseGetGatewayRequestStatsByTime, HTTPValidationError]]:
     if response.status_code == HTTPStatus.OK:
-        response_200 = []
-        _response_200 = response.json()
-        for response_200_item_data in _response_200:
-            response_200_item = GatewayUsageStats.from_dict(response_200_item_data)
-
-            response_200.append(response_200_item)
+        response_200 = GetGatewayRequestStatsByTimeResponseGetGatewayRequestStatsByTime.from_dict(response.json())
 
         return response_200
     if response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY:
@@ -80,7 +81,7 @@ def _parse_response(
 
 def _build_response(
     *, client: Client, response: httpx.Response
-) -> Response[Union[HTTPValidationError, List["GatewayUsageStats"]]]:
+) -> Response[Union[GetGatewayRequestStatsByTimeResponseGetGatewayRequestStatsByTime, HTTPValidationError]]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -95,24 +96,22 @@ def sync_detailed(
     start_time: datetime.datetime,
     end_time: datetime.datetime,
     timeframe: StatsTimeframe,
-    get_stats_by_time: Union[Unset, None, bool] = True,
-    app_alias: Union[Unset, None, str] = UNSET,
-) -> Response[Union[HTTPValidationError, List["GatewayUsageStats"]]]:
-    """Get Gateway Request Stats
+    app_aliases: Union[Unset, None, List[str]] = UNSET,
+) -> Response[Union[GetGatewayRequestStatsByTimeResponseGetGatewayRequestStatsByTime, HTTPValidationError]]:
+    """Get Gateway Request Stats By Time
 
     Args:
         start_time (datetime.datetime):
         end_time (datetime.datetime):
         timeframe (StatsTimeframe): An enumeration.
-        get_stats_by_time (Union[Unset, None, bool]):  Default: True.
-        app_alias (Union[Unset, None, str]):
+        app_aliases (Union[Unset, None, List[str]]):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Union[HTTPValidationError, List['GatewayUsageStats']]]
+        Response[Union[GetGatewayRequestStatsByTimeResponseGetGatewayRequestStatsByTime, HTTPValidationError]]
     """
 
     kwargs = _get_kwargs(
@@ -120,8 +119,7 @@ def sync_detailed(
         start_time=start_time,
         end_time=end_time,
         timeframe=timeframe,
-        get_stats_by_time=get_stats_by_time,
-        app_alias=app_alias,
+        app_aliases=app_aliases,
     )
 
     response = httpx.request(
@@ -138,24 +136,22 @@ def sync(
     start_time: datetime.datetime,
     end_time: datetime.datetime,
     timeframe: StatsTimeframe,
-    get_stats_by_time: Union[Unset, None, bool] = True,
-    app_alias: Union[Unset, None, str] = UNSET,
-) -> Optional[Union[HTTPValidationError, List["GatewayUsageStats"]]]:
-    """Get Gateway Request Stats
+    app_aliases: Union[Unset, None, List[str]] = UNSET,
+) -> Optional[Union[GetGatewayRequestStatsByTimeResponseGetGatewayRequestStatsByTime, HTTPValidationError]]:
+    """Get Gateway Request Stats By Time
 
     Args:
         start_time (datetime.datetime):
         end_time (datetime.datetime):
         timeframe (StatsTimeframe): An enumeration.
-        get_stats_by_time (Union[Unset, None, bool]):  Default: True.
-        app_alias (Union[Unset, None, str]):
+        app_aliases (Union[Unset, None, List[str]]):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Union[HTTPValidationError, List['GatewayUsageStats']]
+        Union[GetGatewayRequestStatsByTimeResponseGetGatewayRequestStatsByTime, HTTPValidationError]
     """
 
     return sync_detailed(
@@ -163,8 +159,7 @@ def sync(
         start_time=start_time,
         end_time=end_time,
         timeframe=timeframe,
-        get_stats_by_time=get_stats_by_time,
-        app_alias=app_alias,
+        app_aliases=app_aliases,
     ).parsed
 
 
@@ -174,24 +169,22 @@ async def asyncio_detailed(
     start_time: datetime.datetime,
     end_time: datetime.datetime,
     timeframe: StatsTimeframe,
-    get_stats_by_time: Union[Unset, None, bool] = True,
-    app_alias: Union[Unset, None, str] = UNSET,
-) -> Response[Union[HTTPValidationError, List["GatewayUsageStats"]]]:
-    """Get Gateway Request Stats
+    app_aliases: Union[Unset, None, List[str]] = UNSET,
+) -> Response[Union[GetGatewayRequestStatsByTimeResponseGetGatewayRequestStatsByTime, HTTPValidationError]]:
+    """Get Gateway Request Stats By Time
 
     Args:
         start_time (datetime.datetime):
         end_time (datetime.datetime):
         timeframe (StatsTimeframe): An enumeration.
-        get_stats_by_time (Union[Unset, None, bool]):  Default: True.
-        app_alias (Union[Unset, None, str]):
+        app_aliases (Union[Unset, None, List[str]]):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Union[HTTPValidationError, List['GatewayUsageStats']]]
+        Response[Union[GetGatewayRequestStatsByTimeResponseGetGatewayRequestStatsByTime, HTTPValidationError]]
     """
 
     kwargs = _get_kwargs(
@@ -199,8 +192,7 @@ async def asyncio_detailed(
         start_time=start_time,
         end_time=end_time,
         timeframe=timeframe,
-        get_stats_by_time=get_stats_by_time,
-        app_alias=app_alias,
+        app_aliases=app_aliases,
     )
 
     async with httpx.AsyncClient(verify=client.verify_ssl) as _client:
@@ -215,24 +207,22 @@ async def asyncio(
     start_time: datetime.datetime,
     end_time: datetime.datetime,
     timeframe: StatsTimeframe,
-    get_stats_by_time: Union[Unset, None, bool] = True,
-    app_alias: Union[Unset, None, str] = UNSET,
-) -> Optional[Union[HTTPValidationError, List["GatewayUsageStats"]]]:
-    """Get Gateway Request Stats
+    app_aliases: Union[Unset, None, List[str]] = UNSET,
+) -> Optional[Union[GetGatewayRequestStatsByTimeResponseGetGatewayRequestStatsByTime, HTTPValidationError]]:
+    """Get Gateway Request Stats By Time
 
     Args:
         start_time (datetime.datetime):
         end_time (datetime.datetime):
         timeframe (StatsTimeframe): An enumeration.
-        get_stats_by_time (Union[Unset, None, bool]):  Default: True.
-        app_alias (Union[Unset, None, str]):
+        app_aliases (Union[Unset, None, List[str]]):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Union[HTTPValidationError, List['GatewayUsageStats']]
+        Union[GetGatewayRequestStatsByTimeResponseGetGatewayRequestStatsByTime, HTTPValidationError]
     """
 
     return (
@@ -241,7 +231,6 @@ async def asyncio(
             start_time=start_time,
             end_time=end_time,
             timeframe=timeframe,
-            get_stats_by_time=get_stats_by_time,
-            app_alias=app_alias,
+            app_aliases=app_aliases,
         )
     ).parsed
