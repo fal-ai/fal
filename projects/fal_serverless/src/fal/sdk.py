@@ -187,22 +187,6 @@ class AliasInfo:
     max_concurrency: int
 
 
-@dataclass(frozen=True)
-class Cron:
-    cron_id: str
-    cron_string: str
-    next_run: datetime
-    active: bool
-
-
-@dataclass(frozen=True)
-class ScheduledRunActivation:
-    cron_id: str
-    activation_id: str
-    started_at: datetime
-    finished_at: datetime
-
-
 @dataclass
 class HostedRunResult(Generic[ResultT]):
     run_id: str
@@ -215,16 +199,6 @@ class HostedRunResult(Generic[ResultT]):
 class RegisterApplicationResult:
     result: RegisterApplicationResultType | None
     logs: list[Log] = field(default_factory=list)
-
-
-@dataclass(frozen=True)
-class RegisterCronResultType:
-    cron_id: str
-
-
-@dataclass(frozen=True)
-class RegisterCronResult:
-    result: RegisterCronResultType
 
 
 @dataclass
@@ -267,27 +241,6 @@ class KeyScope(enum.Enum):
             return KeyScope.API
         else:
             raise ValueError(f"Unknown KeyScope: {proto}")
-
-
-@from_grpc.register(isolate_proto.RegisterCronResult)
-def _from_grpc_register_cron_result(
-    message: isolate_proto.RegisterCronResult,
-) -> RegisterCronResult:
-    return RegisterCronResult(
-        result=RegisterCronResultType(message.result.cron_id),
-    )
-
-
-@from_grpc.register(isolate_proto.CronResultType)
-def _from_grpc_cron_result_type(
-    message: isolate_proto.CronResultType,
-) -> Cron:
-    return Cron(
-        cron_id=message.cron_id,
-        cron_string=message.cron_string,
-        next_run=message.next_run.ToDatetime(),
-        active=message.is_active,
-    )
 
 
 @from_grpc.register(isolate_proto.AliasInfo)
@@ -343,13 +296,6 @@ def _from_grpc_hosted_run_result(
         logs=[from_grpc(log) for log in message.logs],
         result=return_value,
     )
-
-
-def _get_cron_id(run: Cron | str) -> str:
-    if isinstance(run, Cron):
-        return run.cron_id
-    else:
-        return run
 
 
 @dataclass
@@ -422,29 +368,15 @@ class FalServerlessConnection:
         request = isolate_proto.RevokeUserKeyRequest(key_id=key_id)
         self.stub.RevokeUserKey(request)
 
-    # TODO: get rid of this in favor of define_environment
-    def create_environment(
-        self,
-        kind: str,
-        configuration_options: dict[str, Any],
+    def define_environment(
+        self, kind: str, **options: Any
     ) -> isolate_proto.EnvironmentDefinition:
-        assert isinstance(
-            configuration_options, dict
-        ), "configuration_options must be a dict"
         struct = isolate_proto.Struct()
-        struct.update(configuration_options)
+        struct.update(options)
 
         return isolate_proto.EnvironmentDefinition(
             kind=kind,
             configuration=struct,
-        )
-
-    def define_environment(
-        self, kind: str, **options: Any
-    ) -> isolate_proto.EnvironmentDefinition:
-        return self.create_environment(
-            kind=kind,
-            configuration_options=options,
         )
 
     def register(
@@ -556,61 +488,10 @@ class FalServerlessConnection:
         for partial_result in self.stub.Run(request):
             yield from_grpc(partial_result)
 
-    def schedule_cronjob(
-        self,
-        application_id: str,
-        cron: str,
-    ) -> str:
-        request = isolate_proto.RegisterCronRequest(
-            application_id=application_id, cron=cron
-        )
-        response: isolate_proto.RegisterCronResult = self.stub.RegisterCron(request)
-        return response.result.cron_id
-
     def list_aliases(self) -> list[AliasInfo]:
         request = isolate_proto.ListAliasesRequest()
         response: isolate_proto.ListAliasesResult = self.stub.ListAliases(request)
         return [from_grpc(alias) for alias in response.aliases]
-
-    def list_scheduled_runs(self) -> list[Cron]:
-        request = isolate_proto.ListCronsRequest()
-        response: isolate_proto.ListCronsResult = self.stub.ListCrons(request)
-        return [from_grpc(cron) for cron in response.crons]
-
-    def list_run_activations(self, run: str | Cron) -> list[ScheduledRunActivation]:
-        request = isolate_proto.ListActivationsRequest(cron_id=_get_cron_id(run))
-        response: isolate_proto.ListActivationsResult = self.stub.ListActivations(
-            request
-        )
-        return [
-            ScheduledRunActivation(
-                cron_id=_get_cron_id(run),
-                activation_id=activation.activation_id,
-                started_at=activation.started_at.ToDatetime(),
-                finished_at=activation.finished_at.ToDatetime(),
-            )
-            for activation in response.activations
-        ]
-
-    def cancel_scheduled_run(self, cron_id: str) -> None:
-        request = isolate_proto.CancelCronRequest(cron_id=cron_id)
-        response: isolate_proto.CancelCronResult = self.stub.CancelCron(request)
-        return
-
-    def get_activation_logs(self, cron_id: str, activation_id: str) -> list[Log]:
-        request = isolate_proto.GetActivationLogsRequest(
-            cron_id=cron_id, activation_id=activation_id
-        )
-        response = self.stub.GetActivationLogs(request)
-        return [from_grpc(log) for log in response.logs]
-
-    def get_logs(
-        self, lines: int | None = None, url: str | None = None
-    ) -> Iterator[Log]:
-        filter = isolate_proto.LogsFilter(lines=lines, url=url)
-        request = isolate_proto.GetLogsRequest(filter=filter)
-        for partial_result in self.stub.GetLogs(request):
-            yield from_grpc(partial_result.log_entry)
 
     def set_secret(self, name: str, value: str) -> None:
         request = isolate_proto.SetSecretRequest(name=name, value=value)

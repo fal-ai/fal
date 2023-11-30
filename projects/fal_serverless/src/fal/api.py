@@ -404,18 +404,6 @@ class FalServerlessHost(Host):
                 return partial_result.result.application_id
 
     @_handle_grpc_error()
-    def schedule(
-        self,
-        func: Callable[ArgsT, ReturnT],
-        cron: str,
-        options: Options,
-    ) -> str | None:
-        application_id = self.register(func, options)
-        if application_id is None:
-            return None
-        return self._connection.schedule_cronjob(application_id, cron)
-
-    @_handle_grpc_error()
     def run(
         self,
         func: Callable[..., ReturnT],
