@@ -1,8 +1,10 @@
 import datetime
-from typing import Any, Dict, List, Type, TypeVar
+from typing import Any, Dict, List, Type, TypeVar, Union
 
 import attr
 from dateutil.parser import isoparse
+
+from ..types import UNSET, Unset
 
 T = TypeVar("T", bound="GatewayStatsByTime")
 
@@ -14,32 +16,33 @@ class GatewayStatsByTime:
         request_count (int):
         success_count (int):
         error_count (int):
-        p25_duration (float):
-        p50_duration (float):
-        p75_duration (float):
-        p90_duration (float):
         datetime_ (datetime.datetime):
+        p25_duration (Union[Unset, None, float]):
+        p50_duration (Union[Unset, None, float]):
+        p75_duration (Union[Unset, None, float]):
+        p90_duration (Union[Unset, None, float]):
     """
 
     request_count: int
     success_count: int
     error_count: int
-    p25_duration: float
-    p50_duration: float
-    p75_duration: float
-    p90_duration: float
     datetime_: datetime.datetime
+    p25_duration: Union[Unset, None, float] = UNSET
+    p50_duration: Union[Unset, None, float] = UNSET
+    p75_duration: Union[Unset, None, float] = UNSET
+    p90_duration: Union[Unset, None, float] = UNSET
     additional_properties: Dict[str, Any] = attr.ib(init=False, factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         request_count = self.request_count
         success_count = self.success_count
         error_count = self.error_count
+        datetime_ = self.datetime_.isoformat()
+
         p25_duration = self.p25_duration
         p50_duration = self.p50_duration
         p75_duration = self.p75_duration
         p90_duration = self.p90_duration
-        datetime_ = self.datetime_.isoformat()
 
         field_dict: Dict[str, Any] = {}
         field_dict.update(self.additional_properties)
@@ -48,13 +51,17 @@ class GatewayStatsByTime:
                 "request_count": request_count,
                 "success_count": success_count,
                 "error_count": error_count,
-                "p25_duration": p25_duration,
-                "p50_duration": p50_duration,
-                "p75_duration": p75_duration,
-                "p90_duration": p90_duration,
                 "datetime": datetime_,
             }
         )
+        if p25_duration is not UNSET:
+            field_dict["p25_duration"] = p25_duration
+        if p50_duration is not UNSET:
+            field_dict["p50_duration"] = p50_duration
+        if p75_duration is not UNSET:
+            field_dict["p75_duration"] = p75_duration
+        if p90_duration is not UNSET:
+            field_dict["p90_duration"] = p90_duration
 
         return field_dict
 
@@ -67,25 +74,25 @@ class GatewayStatsByTime:
 
         error_count = d.pop("error_count")
 
-        p25_duration = d.pop("p25_duration")
-
-        p50_duration = d.pop("p50_duration")
-
-        p75_duration = d.pop("p75_duration")
-
-        p90_duration = d.pop("p90_duration")
-
         datetime_ = isoparse(d.pop("datetime"))
+
+        p25_duration = d.pop("p25_duration", UNSET)
+
+        p50_duration = d.pop("p50_duration", UNSET)
+
+        p75_duration = d.pop("p75_duration", UNSET)
+
+        p90_duration = d.pop("p90_duration", UNSET)
 
         gateway_stats_by_time = cls(
             request_count=request_count,
             success_count=success_count,
             error_count=error_count,
+            datetime_=datetime_,
             p25_duration=p25_duration,
             p50_duration=p50_duration,
             p75_duration=p75_duration,
             p90_duration=p90_duration,
-            datetime_=datetime_,
         )
 
         gateway_stats_by_time.additional_properties = d
