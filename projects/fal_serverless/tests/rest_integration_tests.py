@@ -53,6 +53,17 @@ def test_get_user_invoices():
     assert res.status_code == HTTPStatus.OK
 
 
+def test_update_budget():
+    import openapi_fal_rest.api.billing.update_customer_budget as update_budget
+
+    # Not allowed without a payment method
+    res = update_budget.sync_detailed(
+        client=REST_CLIENT, hard_monthly_budget=100, soft_monthly_budget=90
+    )
+
+    assert res.status_code == HTTPStatus.BAD_REQUEST
+
+
 # Files
 def test_relative_path_vs_absolute():
     import openapi_fal_rest.api.files.delete as delete_file
