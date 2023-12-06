@@ -25,10 +25,10 @@ ImageSizePreset = Literal[
 @mainify
 class ImageSize(BaseModel):
     width: int = Field(
-        default=512, description="The width of the generated image.", gt=0, le=4096
+        default=512, description="The width of the generated image.", gt=0, le=14142
     )
     height: int = Field(
-        default=512, description="The height of the generated image.", gt=0, le=4096
+        default=512, description="The height of the generated image.", gt=0, le=14142
     )
 
 
