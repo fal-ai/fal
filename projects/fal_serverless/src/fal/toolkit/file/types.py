@@ -31,7 +31,7 @@ class FileData:
             self.file_name = file_name
 
 
-RepositoryId = Literal["fal", "in_memory", "gcp_storage"]
+RepositoryId = Literal["fal", "in_memory", "gcp_storage", "r2"]
 
 
 @mainify
