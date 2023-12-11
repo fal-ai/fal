@@ -1,0 +1,237 @@
+syntax = "proto3";
+
+import "common.proto";
+import "server.proto";
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/struct.proto";
+
+package controller;
+
+service IsolateController {
+    // Run the given function on the specified environment. Streams logs
+    // and the result originating from that function.
+    rpc Run (HostedRun) returns (stream HostedRunResult) {}
+    // Run the given function in parallel with the given inputs
+    rpc Map (HostedMap) returns (stream HostedRunResult) {}
+    // Creates an authentication key for a user
+    rpc CreateUserKey (CreateUserKeyRequest) returns (CreateUserKeyResponse) {}
+    // Lists the user's authentication keys
+    rpc ListUserKeys (ListUserKeysRequest) returns (ListUserKeysResponse) {}
+    // Revokes an authentication key for a user
+    rpc RevokeUserKey (RevokeUserKeyRequest) returns (RevokeUserKeyResponse) {}
+    // Register a funtion
+    rpc RegisterApplication (RegisterApplicationRequest) returns (stream RegisterApplicationResult) {};
+    // Horizontal scaling options an application
+    rpc ScaleApplication (ScaleApplicationRequest) returns (ScaleApplicationResult) {};
+    // Update configuration of an existing application.
+    rpc UpdateApplication (UpdateApplicationRequest) returns (UpdateApplicationResult) {};
+    // List aliased registered functions
+    rpc ListAliases (ListAliasesRequest) returns (ListAliasesResult) {};
+    // Sets a user secret.
+    rpc SetSecret (SetSecretRequest) returns (SetSecretResponse) {}
+    // Lists all secrets
+    rpc ListSecrets (ListSecretsRequest) returns (ListSecretsResponse) {}
+}
+
+message HostedMap {
+    // Environment definitions.
+    repeated EnvironmentDefinition environments = 1;
+    // Machine requirements
+    optional MachineRequirements machine_requirements = 2;
+    // Function to run.
+    SerializedObject function = 3;
+    // Inputs to the function
+    repeated SerializedObject inputs = 4;
+}
+
+message HostedRun {
+    // Environment definitions.
+    repeated EnvironmentDefinition environments = 1;
+    // Machine requirements
+    optional MachineRequirements machine_requirements = 2;
+    // Function to run.
+    SerializedObject function = 3;
+    // Optional setup function to pass as the first argument to the function.
+    optional SerializedObject setup_func = 4;
+}
+
+message CreateUserKeyRequest {
+    enum Scope {
+        ADMIN = 0;
+        API = 1;
+    }
+
+    // privilege scope of the key
+    Scope scope = 1;
+
+    // optional alias of the key
+    optional string alias = 2;
+}
+
+message CreateUserKeyResponse {
+    string key_secret = 1;
+    string key_id = 2;
+}
+
+message ListUserKeysRequest {
+    // Empty. For future use.
+}
+
+message ListUserKeysResponse {
+    repeated UserKeyInfo user_keys = 1;
+}
+
+message RevokeUserKeyRequest {
+    string key_id = 1;
+}
+
+message RevokeUserKeyResponse {
+    // Empty. For future use.
+}
+
+message UserKeyInfo {
+    string key_id = 1;
+    google.protobuf.Timestamp created_at = 2;
+    CreateUserKeyRequest.Scope scope = 3;
+    string alias = 4;
+}
+
+message HostedRunResult {
+    // Unique run id / token.
+    string run_id = 1;
+
+    // Optionally the status of the current run (in terms of
+    // fal cloud).
+    optional HostedRunStatus status = 2;
+
+    // The most recent logs from the run.
+    repeated Log logs = 3;
+
+    // The result of the run, if it is complete (indicated by
+    // status.is_complete).
+    optional SerializedObject return_value = 4;
+}
+
+message HostedRunStatus {
+    enum State {
+        // The run is in progress.
+        IN_PROGRESS = 0;
+        // The run has completed successfully.
+        SUCCESS = 1;
+        // The run has failed because of isolate.
+        INTERNAL_FAILURE = 2;
+        // TODO: probably QUEUED, etc.
+    }
+
+    // The state of the run.
+    State state = 1;
+
+    // TODO: probably a free form struct for more detailed
+    // information (how it crashed, position in queue, etc).
+}
+
+message MachineRequirements {
+    // Machine type. It is not an enum because we want to be able
+    // to dynamically add new machine types without regenerating
+    // both the client and the server. Validation is done at the
+    // server side.
+    string machine_type = 1;
+    optional int32 keep_alive = 2;
+    optional string base_image = 3;
+    optional int32 exposed_port = 4;
+    optional string scheduler = 5;
+    optional google.protobuf.Struct scheduler_options = 8;
+    optional int32 max_multiplexing = 6;
+}
+
+enum ApplicationAuthMode {
+    PRIVATE = 0;
+    PUBLIC = 1;
+    SHARED = 2;
+}
+
+message RegisterApplicationRequest {
+    // Environment definitions.
+    repeated EnvironmentDefinition environments = 1;
+    // Machine requirements
+    optional MachineRequirements machine_requirements = 2;
+    // Function to run.
+    SerializedObject function = 3;
+    // Optional setup function to pass as the first argument to the function.
+    optional SerializedObject setup_func = 4;
+    // Name of the application
+    optional string application_name = 5;
+    // If application has alias: auth mode to use
+    optional ApplicationAuthMode auth_mode = 6;
+    // Max concurrency in gateway
+    optional int32 max_concurrency = 7;
+    // metadata to store with the application
+    optional google.protobuf.Struct metadata = 8;
+}
+
+message RegisterApplicationResultType {
+    string application_id = 1;
+}
+
+message RegisterApplicationResult {
+    repeated Log logs = 1;
+    optional RegisterApplicationResultType result = 2;
+}
+
+message ScaleApplicationRequest {
+    string application_name = 1;
+    optional int32 max_concurrency = 2;
+}
+
+message ScaleApplicationResult {
+    // Empty. For future use.
+}
+
+message UpdateApplicationRequest {
+    string application_name = 1;
+    optional int32 keep_alive = 2;
+    optional int32 max_multiplexing = 3;
+}
+
+message UpdateApplicationResult {
+    // Empty. For future use.
+}
+
+message ListAliasesRequest {
+    // Empty. For future use.
+}
+
+message ListAliasesResult {
+    repeated AliasInfo aliases = 1;
+}
+
+message AliasInfo {
+    string alias = 1;
+    string revision = 2;
+    ApplicationAuthMode auth_mode = 3;
+    int32 max_concurrency = 4;
+}
+
+message SetSecretRequest {
+    string name = 1;
+    optional string value = 2;
+}
+
+message SetSecretResponse {
+    // Empty. For future use.
+}
+
+message ListSecretsRequest {
+    // Empty. For future use.
+}
+
+message Secret {
+    string name = 1;
+    optional google.protobuf.Timestamp created_time = 2;
+    // Could also include the value/scope of the secret in the future.
+}
+
+message ListSecretsResponse {
+    repeated Secret secrets = 1;
+}
