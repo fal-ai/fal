@@ -10,7 +10,7 @@ from pathlib import Path
 
 from refactor import Rule, Session, actions
 
-PROJECT_ROOT = (Path(__file__).parent.parent).resolve()
+PROJECT_ROOT = (Path(__file__).parent.parent / "projects").resolve()
 
 
 def _to_qualified_name(file: Path, project_root: Path) -> str:

@@ -1,0 +1,68 @@
+# See https://pre-commit.com for more information
+# See https://pre-commit.com/hooks.html for more hooks
+
+repos:
+  # Global hooks (these can be configured with global pyproject.toml)
+  - repo: https://github.com/hakancelikdev/unimport
+    rev: 1.0.0
+    hooks:
+      - id: unimport
+        args: ["--ignore-init", "-r"]
+        exclude: |
+          (?x)(
+            ^projects/isolate_proto/|
+            ^projects/fal/openapi-fal-rest/
+          )
+  - repo: https://github.com/psf/black
+    rev: 22.6.0
+    hooks:
+      - id: black
+        exclude: |
+          (?x)(
+            ^projects/fal/openapi-fal-rest/|
+            ^projects/fal/src/fal/toolkit/image/image.py
+          )
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.3.0
+    hooks:
+      - id: check-added-large-files
+      - id: check-merge-conflict
+      - id: check-vcs-permalinks
+      - id: debug-statements
+  - repo: https://github.com/asottile/pyupgrade
+    rev: v3.1.0
+    hooks:
+      - id: pyupgrade
+        args: ["--py37-plus"]
+        exclude: |
+          (?x)(
+            ^projects/fal/src/fal/toolkit/image/image.py
+          )
+        files: |
+          (?x)(
+            ^projects/fal/src/|
+            ^projects/fal/tests/
+          )
+  # - repo: https://github.com/pycqa/isort
+  #   rev: 5.13.1
+  #   hooks:
+  #     - id: isort
+  #       args: ["--profile", "black"]
+
+  # Monorepo Hooks (e.g. they need to be project specific)
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: "v1.3.0"
+    hooks:
+      - id: mypy
+        args:
+          [
+            "--ignore-missing-imports",
+            "--no-warn-no-return",
+            "--check-untyped-defs",
+          ]
+        additional_dependencies:
+          - types-protobuf
+          - types-requests
+          - types-redis
+          - types-pyyaml
+        files: "^projects/fal/src/"
