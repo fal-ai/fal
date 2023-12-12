@@ -22,8 +22,6 @@ service IsolateController {
     rpc RevokeUserKey (RevokeUserKeyRequest) returns (RevokeUserKeyResponse) {}
     // Register a funtion
     rpc RegisterApplication (RegisterApplicationRequest) returns (stream RegisterApplicationResult) {};
-    // Horizontal scaling options an application
-    rpc ScaleApplication (ScaleApplicationRequest) returns (ScaleApplicationResult) {};
     // Update configuration of an existing application.
     rpc UpdateApplication (UpdateApplicationRequest) returns (UpdateApplicationResult) {};
     // List aliased registered functions
@@ -143,6 +141,7 @@ message MachineRequirements {
     optional string scheduler = 5;
     optional google.protobuf.Struct scheduler_options = 8;
     optional int32 max_multiplexing = 6;
+    optional int32 max_concurrency = 9;
 }
 
 enum ApplicationAuthMode {
@@ -165,7 +164,7 @@ message RegisterApplicationRequest {
     // If application has alias: auth mode to use
     optional ApplicationAuthMode auth_mode = 6;
     // Max concurrency in gateway
-    optional int32 max_concurrency = 7;
+    optional int32 max_concurrency = 7 [deprecated = true];
     // metadata to store with the application
     optional google.protobuf.Struct metadata = 8;
 }
@@ -179,23 +178,15 @@ message RegisterApplicationResult {
     optional RegisterApplicationResultType result = 2;
 }
 
-message ScaleApplicationRequest {
-    string application_name = 1;
-    optional int32 max_concurrency = 2;
-}
-
-message ScaleApplicationResult {
-    // Empty. For future use.
-}
-
 message UpdateApplicationRequest {
     string application_name = 1;
     optional int32 keep_alive = 2;
     optional int32 max_multiplexing = 3;
+    optional int32 max_concurrency = 4;
 }
 
 message UpdateApplicationResult {
-    // Empty. For future use.
+    AliasInfo alias_info = 1;
 }
 
 message ListAliasesRequest {
@@ -211,6 +202,8 @@ message AliasInfo {
     string revision = 2;
     ApplicationAuthMode auth_mode = 3;
     int32 max_concurrency = 4;
+    int32 max_multiplexing = 5;
+    int32 keep_alive = 6;
 }
 
 message SetSecretRequest {
