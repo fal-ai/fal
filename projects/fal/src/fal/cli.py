@@ -17,7 +17,7 @@ from fal.logging import get_logger, set_debug_logging
 from fal.logging.isolate import IsolateLogPrinter
 from fal.logging.trace import get_tracer
 from fal.rest_client import REST_CLIENT
-from fal.sdk import KeyScope
+from fal.sdk import AliasInfo, KeyScope
 from isolate.logs import Log, LogLevel, LogSource
 from rich.table import Table
 
@@ -280,13 +280,11 @@ def register_application(
             "Must expose port 8080 for now. This will be configurable in the future."
         )
 
-    max_concurrency = gateway_options.get("max_concurrency")
     id = host.register(
         func=isolated_function.func,
         options=isolated_function.options,
         application_name=alias,
         application_auth_mode=auth_mode,
-        max_concurrency=max_concurrency,
         metadata={},
     )
 
@@ -342,23 +340,63 @@ def alias_cli(ctx, host: str, port: str):
     ctx.obj = api.FalServerlessClient(f"{host}:{port}")
 
 
+def _alias_table(aliases: list[AliasInfo]):
+    table = Table(title="Function Aliases")
+    table.add_column("Alias")
+    table.add_column("Revision")
+    table.add_column("Auth")
+    table.add_column("Max Concurrency")
+    table.add_column("Max Multiplexing")
+    table.add_column("Keep Alive")
+
+    for app_alias in aliases:
+        table.add_row(
+            app_alias.alias,
+            app_alias.revision,
+            app_alias.auth_mode,
+            str(app_alias.max_concurrency),
+            str(app_alias.max_multiplexing),
+            str(app_alias.keep_alive),
+        )
+
+    return table
+
+
 @alias_cli.command("list")
 @click.pass_obj
 def alias_list(client: api.FalServerlessClient):
     with client.connect() as connection:
-        table = Table(title="Function Aliases")
-        table.add_column("Alias")
-        table.add_column("Revision")
-        table.add_column("Auth")
-        table.add_column("Max Concurrency")
+        aliases = connection.list_aliases()
+        table = _alias_table(aliases)
 
-        for app_alias in connection.list_aliases():
-            table.add_row(
-                app_alias.alias,
-                app_alias.revision,
-                app_alias.auth_mode,
-                str(app_alias.max_concurrency),
-            )
+    console.print(table)
+
+
+@alias_cli.command("update")
+@click.argument("alias", required=True)
+@click.option("--keep-alive", "-k", type=int)
+@click.option("--max-multiplexing", "-m", type=int)
+@click.option("--max-concurrency", "-c", type=int)
+@click.pass_obj
+def alias_update(
+    client: api.FalServerlessClient,
+    alias: str,
+    keep_alive: int | None,
+    max_multiplexing: int | None,
+    max_concurrency: int | None,
+):
+    with client.connect() as connection:
+        if keep_alive is None and max_multiplexing is None and max_concurrency is None:
+            console.log("No parameters for update were provided, ignoring.")
+            return
+
+        alias_info = connection.update_application(
+            application_name=alias,
+            keep_alive=keep_alive,
+            max_multiplexing=max_multiplexing,
+            max_concurrency=max_concurrency,
+        )
+        table = _alias_table([alias_info])
 
     console.print(table)
 
@@ -366,33 +404,13 @@ def alias_list(client: api.FalServerlessClient):
 @alias_cli.command("scale")
 @click.argument("alias", required=True)
 @click.argument("max_concurrency", required=True, type=int)
-@click.pass_obj
-def alias_scale(client: api.FalServerlessClient, alias: str, max_concurrency: int):
-    with client.connect() as connection:
-        connection.scale(application_name=alias, max_concurrency=max_concurrency)
-
-
-@alias_cli.command("update")
-@click.argument("alias", required=True)
-@click.option("--keep-alive", type=int)
-@click.option("--max-multiplexing", type=int)
-@click.pass_obj
-def alias_update(
-    client: api.FalServerlessClient,
-    alias: str,
-    keep_alive: int | None,
-    max_multiplexing: int | None,
-):
-    with client.connect() as connection:
-        if not (keep_alive or max_multiplexing):
-            console.log("No parameters for update were provided, ignoring.")
-            return
-
-        connection.update_application(
-            application_name=alias,
-            keep_alive=keep_alive,
-            max_multiplexing=max_multiplexing,
-        )
+def alias_scale(alias: str, max_concurrency: int):
+    alias_update.callback(
+        alias=alias,
+        keep_alive=None,
+        max_multiplexing=None,
+        max_concurrency=max_concurrency,
+    )  # type: ignore
 
 
 ##### Secrets group #####

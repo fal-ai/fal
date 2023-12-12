@@ -184,7 +184,9 @@ class AliasInfo:
     alias: str
     revision: str
     auth_mode: str
+    keep_alive: int
     max_concurrency: int
+    max_multiplexing: int
 
 
 @dataclass
@@ -258,7 +260,9 @@ def _from_grpc_alias_info(message: isolate_proto.AliasInfo) -> AliasInfo:
         alias=message.alias,
         revision=message.revision,
         auth_mode=auth_mode,
+        keep_alive=message.keep_alive,
         max_concurrency=message.max_concurrency,
+        max_multiplexing=message.max_multiplexing,
     )
 
 
@@ -306,7 +310,8 @@ class MachineRequirements:
     exposed_port: int | None = None
     scheduler: str | None = None
     scheduler_options: dict[str, Any] | None = None
-    max_multiplexing: int = FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING
+    max_concurrency: int | None = None
+    max_multiplexing: int | None = None
 
 
 @dataclass
@@ -386,7 +391,6 @@ class FalServerlessConnection:
         application_name: str | None = None,
         application_auth_mode: Literal["public", "private", "shared"] | None = None,
         *,
-        max_concurrency: int | None = None,
         serialization_method: str = _DEFAULT_SERIALIZATION_METHOD,
         machine_requirements: MachineRequirements | None = None,
         metadata: dict[str, Any] | None = None,
@@ -402,6 +406,7 @@ class FalServerlessConnection:
                 scheduler_options=to_struct(
                     machine_requirements.scheduler_options or {}
                 ),
+                max_concurrency=machine_requirements.max_concurrency,
                 max_multiplexing=machine_requirements.max_multiplexing,
             )
         else:
@@ -423,7 +428,6 @@ class FalServerlessConnection:
             function=wrapped_function,
             environments=environments,
             machine_requirements=wrapped_requirements,
-            max_concurrency=max_concurrency,
             application_name=application_name,
             auth_mode=auth_mode,
             metadata=struct_metadata,
@@ -432,24 +436,25 @@ class FalServerlessConnection:
             yield from_grpc(partial_result)
 
     def scale(self, application_name: str, max_concurrency: int | None = None) -> None:
-        request = isolate_proto.ScaleApplicationRequest(
-            application_name=application_name,
-            max_concurrency=max_concurrency,
-        )
-        self.stub.ScaleApplication(request)
+        raise NotImplementedError
 
     def update_application(
         self,
         application_name: str,
         keep_alive: int | None = None,
         max_multiplexing: int | None = None,
-    ) -> None:
+        max_concurrency: int | None = None,
+    ) -> AliasInfo:
         request = isolate_proto.UpdateApplicationRequest(
             application_name=application_name,
             keep_alive=keep_alive,
             max_multiplexing=max_multiplexing,
+            max_concurrency=max_concurrency,
         )
-        self.stub.UpdateApplication(request)
+        res: isolate_proto.UpdateApplicationResult = self.stub.UpdateApplication(
+            request
+        )
+        return from_grpc(res.alias_info)
 
     def run(
         self,
@@ -471,6 +476,7 @@ class FalServerlessConnection:
                 scheduler_options=to_struct(
                     machine_requirements.scheduler_options or {}
                 ),
+                max_concurrency=machine_requirements.max_concurrency,
                 max_multiplexing=machine_requirements.max_multiplexing,
             )
         else:

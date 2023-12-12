@@ -29,6 +29,7 @@ def test_app() -> Generator[str, None, None]:
         keep_alive=60,
         machine_type="S",
         serve=True,
+        max_concurrency=1,
     )
     def addition_app(input: Input) -> Output:
         print("starting...")
@@ -41,7 +42,6 @@ def test_app() -> Generator[str, None, None]:
     app_alias = addition_app.host.register(
         func=addition_app.func,
         options=addition_app.options,
-        max_concurrency=1,
     )
     user_id = _get_user_id()
     yield f"{user_id}-{app_alias}"
