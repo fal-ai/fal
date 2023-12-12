@@ -3,25 +3,15 @@
 
 repos:
   # Global hooks (these can be configured with global pyproject.toml)
-  - repo: https://github.com/pre-commit/mirrors-isort
-    rev: v5.10.1
-    hooks:
-      - id: isort
-        exclude: |
-          (?x)(
-            ^projects/fal_serverless/openapi-fal-rest/
-          )
   - repo: https://github.com/hakancelikdev/unimport
     rev: 1.0.0
     hooks:
       - id: unimport
-        args:
-          - --ignore-init
-          - -r
+        args: ["--ignore-init", "-r"]
         exclude: |
           (?x)(
-            ^projects/isolate_proto/|
-            ^projects/fal_serverless/openapi-fal-rest/
+            ^isolate_proto/|
+            ^openapi-fal-rest/
           )
   - repo: https://github.com/psf/black
     rev: 22.6.0
@@ -29,9 +19,8 @@ repos:
       - id: black
         exclude: |
           (?x)(
-            ^projects/fal_serverless/openapi-fal-rest/|
-            ^projects/fal_serverless/src/fal/toolkit/image/image.py
-
+            ^openapi-fal-rest/|
+            ^src/fal/toolkit/image/image.py
           )
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.3.0
@@ -44,16 +33,21 @@ repos:
     rev: v3.1.0
     hooks:
       - id: pyupgrade
-        args:
-          - --py37-plus
+        args: ["--py37-plus"]
         exclude: |
           (?x)(
-            ^projects/isolate_proto/|
-            ^projects/fal_serverless/openapi-fal-rest/|
-            ^projects/isolate_controller/src/isolate_controller/rest/api/|
-            ^projects/isolate_controller/src/isolate_controller/database/models.py|
-            ^projects/fal_serverless/src/fal/toolkit/image/image.py
+            ^src/fal/toolkit/image/image.py
           )
+        files: |
+          (?x)(
+            ^src/|
+            ^tests/
+          )
+  - repo: https://github.com/pycqa/isort
+    rev: 5.13.1
+    hooks:
+      - id: isort
+        args: ["--profile", "black"]
 
   # Monorepo Hooks (e.g. they need to be project specific)
   - repo: https://github.com/pre-commit/mirrors-mypy
@@ -61,32 +55,14 @@ repos:
     hooks:
       - id: mypy
         args:
-          - --ignore-missing-imports
-          - --no-warn-no-return
-          - --check-untyped-defs
+          [
+            "--ignore-missing-imports",
+            "--no-warn-no-return",
+            "--check-untyped-defs",
+          ]
         additional_dependencies:
           - types-protobuf
           - types-requests
           - types-redis
           - types-pyyaml
-          - types-croniter
-          - types-python-dateutil
-          - pydantic
-        exclude: 'test_.*\.py$'
-        files: "^projects/isolate_controller"
-      - id: mypy
-        args:
-          - --ignore-missing-imports
-          - --no-warn-no-return
-          - --check-untyped-defs
-        additional_dependencies:
-          - types-protobuf
-          - types-requests
-          - types-redis
-          - types-pyyaml
-        exclude: |
-          (?x)(
-            test_.*\.py$|
-            ^projects/fal_serverless/openapi-fal-rest/
-          )
-        files: "^projects/fal_serverless"
+        files: "^src/"
