@@ -10,8 +10,8 @@ repos:
         args: ["--ignore-init", "-r"]
         exclude: |
           (?x)(
-            ^isolate_proto/|
-            ^openapi-fal-rest/
+            ^projects/isolate_proto/|
+            ^projects/fal/openapi-fal-rest/
           )
   - repo: https://github.com/psf/black
     rev: 22.6.0
@@ -19,8 +19,8 @@ repos:
       - id: black
         exclude: |
           (?x)(
-            ^openapi-fal-rest/|
-            ^src/fal/toolkit/image/image.py
+            ^projects/fal/openapi-fal-rest/|
+            ^projects/fal/src/fal/toolkit/image/image.py
           )
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.3.0
@@ -36,18 +36,18 @@ repos:
         args: ["--py37-plus"]
         exclude: |
           (?x)(
-            ^src/fal/toolkit/image/image.py
+            ^projects/fal/src/fal/toolkit/image/image.py
           )
         files: |
           (?x)(
-            ^src/|
-            ^tests/
+            ^projects/fal/src/|
+            ^projects/fal/tests/
           )
-  - repo: https://github.com/pycqa/isort
-    rev: 5.13.1
-    hooks:
-      - id: isort
-        args: ["--profile", "black"]
+  # - repo: https://github.com/pycqa/isort
+  #   rev: 5.13.1
+  #   hooks:
+  #     - id: isort
+  #       args: ["--profile", "black"]
 
   # Monorepo Hooks (e.g. they need to be project specific)
   - repo: https://github.com/pre-commit/mirrors-mypy
@@ -65,4 +65,4 @@ repos:
           - types-requests
           - types-redis
           - types-pyyaml
-        files: "^src/"
+        files: "^projects/fal/src/"
