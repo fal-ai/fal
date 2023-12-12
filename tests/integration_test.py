@@ -3,8 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 from uuid import uuid4
 
-import fal
 import pytest
+
+import fal
 from fal import FalServerlessHost, FalServerlessKeyCredentials, local, sync_dir
 from fal.api import FalServerlessError
 from fal.toolkit import clone_repository, download_file, download_model_weights

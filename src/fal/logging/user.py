@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from fal.auth import USER
 from structlog.typing import EventDict, WrappedLogger
+
+from fal.auth import USER
 
 
 def add_user_id(

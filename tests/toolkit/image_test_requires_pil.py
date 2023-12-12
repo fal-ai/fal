@@ -3,8 +3,9 @@ from __future__ import annotations
 import base64
 import io
 
-from fal.toolkit.image.image import Image
 from PIL import Image as PILImage
+
+from fal.toolkit.image.image import Image
 
 
 # taken from chatgpt

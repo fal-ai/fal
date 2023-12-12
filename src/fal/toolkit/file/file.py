@@ -3,12 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable
 
+from pydantic import BaseModel, Field, PrivateAttr
+
 from fal.toolkit.file.providers.fal import FalFileRepository, InMemoryRepository
 from fal.toolkit.file.providers.gcp import GoogleStorageRepository
 from fal.toolkit.file.providers.r2 import R2Repository
 from fal.toolkit.file.types import FileData, FileRepository, RepositoryId
 from fal.toolkit.mainify import mainify
-from pydantic import BaseModel, Field, PrivateAttr
 
 FileRepositoryFactory = Callable[[], FileRepository]
 

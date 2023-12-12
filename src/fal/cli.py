@@ -8,10 +8,13 @@ from typing import Literal
 from uuid import uuid4
 
 import click
-import fal.auth as auth
 import grpc
 import openapi_fal_rest.api.billing.get_user_details as get_user_details
 import openapi_fal_rest.api.logs.list_since as list_logs
+from isolate.logs import Log, LogLevel, LogSource
+from rich.table import Table
+
+import fal.auth as auth
 from fal import api, sdk
 from fal.console import console
 from fal.exceptions import ApplicationExceptionHandler
@@ -20,8 +23,6 @@ from fal.logging.isolate import IsolateLogPrinter
 from fal.logging.trace import get_tracer
 from fal.rest_client import REST_CLIENT
 from fal.sdk import KeyScope
-from isolate.logs import Log, LogLevel, LogSource
-from rich.table import Table
 
 DEFAULT_HOST = "api.alpha.fal.ai"
 HOST_ENVVAR = "FAL_HOST"

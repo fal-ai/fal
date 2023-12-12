@@ -1,11 +1,12 @@
 from typing import Generator
 
-import fal
 import pytest
-from fal import apps
-from fal.rest_client import REST_CLIENT
 from openapi_fal_rest.api.applications import app_metadata
 from pydantic import BaseModel
+
+import fal
+from fal import apps
+from fal.rest_client import REST_CLIENT
 
 
 @pytest.fixture(scope="module")

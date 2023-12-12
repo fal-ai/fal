@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import Any, Iterator
 
 import httpx
+
 from fal import flags
 from fal.sdk import Credentials, get_default_credentials
 

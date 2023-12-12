@@ -9,15 +9,16 @@ from enum import Enum
 from typing import Any, Callable, Generic, Iterator, Literal, TypeVar
 
 import grpc
+from isolate.connections.common import is_agent
+from isolate.logs import Log
+from isolate.server.interface import from_grpc, to_serialized_object, to_struct
+
 import isolate_proto
 from fal import flags
 from fal._serialization import patch_dill
 from fal.auth import USER
 from fal.logging import get_logger
 from fal.logging.trace import TraceContextInterceptor
-from isolate.connections.common import is_agent
-from isolate.logs import Log
-from isolate.server.interface import from_grpc, to_serialized_object, to_struct
 from isolate_proto.configuration import GRPC_OPTIONS
 
 ResultT = TypeVar("ResultT")
