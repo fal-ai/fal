@@ -232,6 +232,10 @@ def key_revoke(client: sdk.FalServerlessClient, key_id: str):
 
 
 ##### Function group #####
+ALIAS_AUTH_OPTIONS = ["public", "private", "shared"]
+ALIAS_AUTH_TYPE = Literal["public", "private", "shared"]
+
+
 @click.group
 @click.option("--host", default=DEFAULT_HOST, envvar=HOST_ENVVAR)
 @click.option("--port", default=DEFAULT_PORT, envvar=PORT_ENVVAR, hidden=True)
@@ -245,7 +249,7 @@ def function_cli(ctx, host: str, port: str):
 @click.option(
     "--auth",
     "auth_mode",
-    type=click.Choice(["public", "private", "shared"]),
+    type=click.Choice(ALIAS_AUTH_OPTIONS),
     default="private",
 )
 @click.argument("file_path", required=True)
@@ -256,7 +260,7 @@ def register_application(
     file_path: str,
     function_name: str,
     alias: str | None,
-    auth_mode: Literal["public", "private", "shared"],
+    auth_mode: ALIAS_AUTH_TYPE,
 ):
     import runpy
 
@@ -362,6 +366,36 @@ def _alias_table(aliases: list[AliasInfo]):
     return table
 
 
+@alias_cli.command("set")
+@click.argument("alias", required=True)
+@click.argument("revision", required=True)
+@click.option(
+    "--auth",
+    "auth_mode",
+    type=click.Choice(ALIAS_AUTH_OPTIONS),
+    default="private",
+)
+@click.pass_obj
+def alias_set(
+    client: api.FalServerlessClient,
+    alias: str,
+    revision: str,
+    auth_mode: ALIAS_AUTH_TYPE,
+):
+    with client.connect() as connection:
+        connection.create_alias(alias, revision, auth_mode)
+
+
+@alias_cli.command("delete")
+@click.argument("alias", required=True)
+@click.pass_obj
+def alias_delete(client: api.FalServerlessClient, alias: str):
+    with client.connect() as connection:
+        application_id = connection.delete_alias(alias)
+
+        console.print(f"Deleted alias '{alias}' for application '{application_id}'.")
+
+
 @alias_cli.command("list")
 @click.pass_obj
 def alias_list(client: api.FalServerlessClient):
@@ -377,6 +411,12 @@ def alias_list(client: api.FalServerlessClient):
 @click.option("--keep-alive", "-k", type=int)
 @click.option("--max-multiplexing", "-m", type=int)
 @click.option("--max-concurrency", "-c", type=int)
+# TODO: add auth_mode
+# @click.option(
+#     "--auth",
+#     "auth_mode",
+#     type=click.Choice(ALIAS_AUTH_OPTIONS),
+# )
 @click.pass_obj
 def alias_update(
     client: api.FalServerlessClient,

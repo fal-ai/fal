@@ -494,6 +494,31 @@ class FalServerlessConnection:
         for partial_result in self.stub.Run(request):
             yield from_grpc(partial_result)
 
+    def create_alias(
+        self,
+        alias: str,
+        revision: str,
+        auth_mode: Literal["public", "private", "shared"],
+    ):
+        if auth_mode == "public":
+            auth = isolate_proto.ApplicationAuthMode.PUBLIC
+        elif auth_mode == "shared":
+            auth = isolate_proto.ApplicationAuthMode.SHARED
+        else:
+            auth = isolate_proto.ApplicationAuthMode.PRIVATE
+
+        request = isolate_proto.SetAliasRequest(
+            alias=alias,
+            revision=revision,
+            auth_mode=auth,
+        )
+        self.stub.SetAlias(request)
+
+    def delete_alias(self, alias: str) -> str:
+        request = isolate_proto.DeleteAliasRequest(alias=alias)
+        res: isolate_proto.DeleteAliasResult = self.stub.DeleteAlias(request)
+        return res.revision
+
     def list_aliases(self) -> list[AliasInfo]:
         request = isolate_proto.ListAliasesRequest()
         response: isolate_proto.ListAliasesResult = self.stub.ListAliases(request)
