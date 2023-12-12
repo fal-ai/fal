@@ -7,12 +7,12 @@ With fal, you can build pipelines, serve ML models and scale them up to many use
 ## Quickstart
 
 First, you need to install the `fal` package. You can do so using pip:
-```
+```shell
 pip install fal
 ```
 
 Then you need to authenticate:
-```
+```shell
 fal auth login
 ```
 
@@ -20,7 +20,7 @@ You can also use fal keys that you can get from [our dashboard](https://fal.ai/d
 
 Now can use the fal package in your Python scripts as follows:
 
-```
+```py
 import fal
 
 @fal.function(
