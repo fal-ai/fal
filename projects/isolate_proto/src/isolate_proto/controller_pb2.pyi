@@ -941,6 +941,78 @@ class UpdateApplicationResult(google.protobuf.message.Message):
 global___UpdateApplicationResult = UpdateApplicationResult
 
 @typing_extensions.final
+class SetAliasRequest(google.protobuf.message.Message):
+    DESCRIPTOR: google.protobuf.descriptor.Descriptor
+
+    ALIAS_FIELD_NUMBER: builtins.int
+    REVISION_FIELD_NUMBER: builtins.int
+    AUTH_MODE_FIELD_NUMBER: builtins.int
+    alias: builtins.str
+    revision: builtins.str
+    auth_mode: global___ApplicationAuthMode.ValueType
+    def __init__(
+        self,
+        *,
+        alias: builtins.str = ...,
+        revision: builtins.str = ...,
+        auth_mode: global___ApplicationAuthMode.ValueType = ...,
+    ) -> None: ...
+    def ClearField(
+        self,
+        field_name: typing_extensions.Literal[
+            "alias", b"alias", "auth_mode", b"auth_mode", "revision", b"revision"
+        ],
+    ) -> None: ...
+
+global___SetAliasRequest = SetAliasRequest
+
+@typing_extensions.final
+class SetAliasResult(google.protobuf.message.Message):
+    """Empty. For future use."""
+
+    DESCRIPTOR: google.protobuf.descriptor.Descriptor
+
+    def __init__(
+        self,
+    ) -> None: ...
+
+global___SetAliasResult = SetAliasResult
+
+@typing_extensions.final
+class DeleteAliasRequest(google.protobuf.message.Message):
+    DESCRIPTOR: google.protobuf.descriptor.Descriptor
+
+    ALIAS_FIELD_NUMBER: builtins.int
+    alias: builtins.str
+    def __init__(
+        self,
+        *,
+        alias: builtins.str = ...,
+    ) -> None: ...
+    def ClearField(
+        self, field_name: typing_extensions.Literal["alias", b"alias"]
+    ) -> None: ...
+
+global___DeleteAliasRequest = DeleteAliasRequest
+
+@typing_extensions.final
+class DeleteAliasResult(google.protobuf.message.Message):
+    DESCRIPTOR: google.protobuf.descriptor.Descriptor
+
+    REVISION_FIELD_NUMBER: builtins.int
+    revision: builtins.str
+    def __init__(
+        self,
+        *,
+        revision: builtins.str = ...,
+    ) -> None: ...
+    def ClearField(
+        self, field_name: typing_extensions.Literal["revision", b"revision"]
+    ) -> None: ...
+
+global___DeleteAliasResult = DeleteAliasResult
+
+@typing_extensions.final
 class ListAliasesRequest(google.protobuf.message.Message):
     """Empty. For future use."""
 
