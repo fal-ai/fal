@@ -76,9 +76,7 @@ class Host(Generic[ArgsT, ReturnT]):
     is executed."""
 
     _SUPPORTED_KEYS: ClassVar[frozenset[str]] = frozenset()
-    _GATEWAY_KEYS: ClassVar[frozenset[str]] = frozenset(
-        {"serve", "exposed_port", "max_concurrency"}
-    )
+    _GATEWAY_KEYS: ClassVar[frozenset[str]] = frozenset({"serve", "exposed_port"})
 
     def __post_init__(self):
         assert not self._SUPPORTED_KEYS.intersection(
@@ -118,7 +116,6 @@ class Host(Generic[ArgsT, ReturnT]):
         self,
         func: Callable[ArgsT, ReturnT],
         options: Options,
-        max_concurrency: int | None = None,
         application_name: str | None = None,
         application_auth_mode: Literal["public", "shared", "private"] | None = None,
         metadata: dict[str, Any] | None = None,
@@ -311,6 +308,7 @@ class FalServerlessHost(Host):
         {
             "machine_type",
             "keep_alive",
+            "max_concurrency",
             "max_multiplexing",
             "setup_function",
             "metadata",
@@ -341,7 +339,6 @@ class FalServerlessHost(Host):
         self,
         func: Callable[ArgsT, ReturnT],
         options: Options,
-        max_concurrency: int | None = None,
         application_name: str | None = None,
         application_auth_mode: Literal["public", "shared", "private"] | None = None,
         metadata: dict[str, Any] | None = None,
@@ -354,9 +351,8 @@ class FalServerlessHost(Host):
             "machine_type", FAL_SERVERLESS_DEFAULT_MACHINE_TYPE
         )
         keep_alive = options.host.get("keep_alive", FAL_SERVERLESS_DEFAULT_KEEP_ALIVE)
-        max_multiplexing = options.host.get(
-            "max_multiplexing", FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING
-        )
+        max_concurrency = options.host.get("max_concurrency")
+        max_multiplexing = options.host.get("max_multiplexing")
         base_image = options.host.get("_base_image", None)
         scheduler = options.host.get("_scheduler", None)
         scheduler_options = options.host.get("_scheduler_options", None)
@@ -370,6 +366,7 @@ class FalServerlessHost(Host):
             scheduler=scheduler,
             scheduler_options=scheduler_options,
             max_multiplexing=max_multiplexing,
+            max_concurrency=max_concurrency,
         )
 
         partial_func = _prepare_partial_func(func)
@@ -394,7 +391,6 @@ class FalServerlessHost(Host):
             application_name=application_name,
             application_auth_mode=application_auth_mode,
             machine_requirements=machine_requirements,
-            max_concurrency=max_concurrency,
             metadata=metadata,
         ):
             for log in partial_result.logs:
@@ -419,9 +415,8 @@ class FalServerlessHost(Host):
             "machine_type", FAL_SERVERLESS_DEFAULT_MACHINE_TYPE
         )
         keep_alive = options.host.get("keep_alive", FAL_SERVERLESS_DEFAULT_KEEP_ALIVE)
-        max_multiplexing = options.host.get(
-            "max_multiplexing", FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING
-        )
+        max_concurrency = options.host.get("max_concurrency")
+        max_multiplexing = options.host.get("max_multiplexing")
         base_image = options.host.get("_base_image", None)
         scheduler = options.host.get("_scheduler", None)
         scheduler_options = options.host.get("_scheduler_options", None)
@@ -436,6 +431,7 @@ class FalServerlessHost(Host):
             scheduler=scheduler,
             scheduler_options=scheduler_options,
             max_multiplexing=max_multiplexing,
+            max_concurrency=max_concurrency,
         )
 
         return_value = _UNSET
