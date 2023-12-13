@@ -11,6 +11,11 @@ on:
         options:
           - patch
           - minor
+      proto_version:
+        description: Version of isolate-proto to use. Empty means latest.
+        required: true
+        default: ""
+        type: string
 
 jobs:
   release:
@@ -44,6 +49,27 @@ jobs:
           DATADOG_APP_KEY = "${{ env.DATADOG_APP_KEY }}"
 
           EOF
+
+      - name: Add the correct version of isolate-proto
+        working-directory: projects/fal_serverless
+        shell: bash
+        env:
+          ISOLATE_PROTO_VERSION: ${{ github.event.inputs.proto_version }}
+        run: |
+          echo "Adding isolate-proto version $ISOLATE_PROTO_VERSION"
+
+          tries=0
+          # until makes it retry until the command succeeds
+          until poetry add --lock "isolate-proto==$ISOLATE_PROTO_VERSION"
+          do
+            tries=$((tries+1))
+            if [ $tries -gt 3 ]; then
+              echo "Adding $PACKAGE failed too many times, aborting"
+              exit 1
+            fi
+            echo "Adding $PACKAGE failed, retrying"
+            sleep 5
+          done
 
       - name: Bump publishing version and build
         working-directory: projects/fal
