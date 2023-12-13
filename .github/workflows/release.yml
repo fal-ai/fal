@@ -1,0 +1,81 @@
+name: PyPI release fal
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version
+        required: false
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+  push:
+    branches:
+      # React to pushes to 'bump-proto-version-*' branch to release 'fal'
+      # whenever we have a new 'isolate-proto' version
+      - bump-proto-version-*
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v2
+        with:
+          python-version: "3.9"
+
+      - name: Install poetry
+        shell: bash
+        run: pip install poetry-core=="1.4.*" poetry=="1.3.1"
+
+      - name: Add Datadog APP and API keys
+        env:
+          DATADOG_API_KEY: ${{ secrets.FAL_SERVERLESS_CLI_DD_API_KEY }}
+          DATADOG_APP_KEY: ${{ secrets.FAL_SERVERLESS_CLI_DD_APP_KEY }}
+        run: |
+          cat << "EOF" > src/fal/env.py
+          from __future__ import annotations
+
+          CLI_ENV = "prod"
+
+          DATADOG_API_KEY = "${{ env.DATADOG_API_KEY }}"
+          DATADOG_APP_KEY = "${{ env.DATADOG_APP_KEY }}"
+
+          EOF
+
+      - name: Bump publishing version and build
+        env:
+          VERSION_TYPE: ${{ github.event.inputs.version }}
+        run: |
+          if [ -z "$VERSION_TYPE" ]; then
+            echo "Version is not set, defaulting to 'patch'"
+            VERSION_TYPE='patch'
+          fi
+
+          poetry version $VERSION_TYPE
+          poetry build
+
+      - name: Publish PyPI
+        env:
+          PYPI_USERNAME: ${{ secrets.PYPI_USER }}
+          PYPI_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
+        run: poetry publish -u $PYPI_USERNAME -p $PYPI_PASSWORD -v -n
+
+      - name: Bump repo version
+        run: |
+          poetry version prerelease
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v4
+        with:
+          branch: bump-fal-version
+          delete-branch: true
+          title: Bump the pyproject.toml version for fal
+          base: main
+          token: ${{ secrets.RELEASER_GITHUB_PAT }}
