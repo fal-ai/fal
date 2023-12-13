@@ -508,6 +508,7 @@ class MachineRequirements(google.protobuf.message.Message):
     SCHEDULER_FIELD_NUMBER: builtins.int
     SCHEDULER_OPTIONS_FIELD_NUMBER: builtins.int
     MAX_MULTIPLEXING_FIELD_NUMBER: builtins.int
+    MAX_CONCURRENCY_FIELD_NUMBER: builtins.int
     machine_type: builtins.str
     """Machine type. It is not an enum because we want to be able
     to dynamically add new machine types without regenerating
@@ -521,6 +522,7 @@ class MachineRequirements(google.protobuf.message.Message):
     @property
     def scheduler_options(self) -> google.protobuf.struct_pb2.Struct: ...
     max_multiplexing: builtins.int
+    max_concurrency: builtins.int
     def __init__(
         self,
         *,
@@ -531,6 +533,7 @@ class MachineRequirements(google.protobuf.message.Message):
         scheduler: builtins.str | None = ...,
         scheduler_options: google.protobuf.struct_pb2.Struct | None = ...,
         max_multiplexing: builtins.int | None = ...,
+        max_concurrency: builtins.int | None = ...,
     ) -> None: ...
     def HasField(
         self,
@@ -541,6 +544,8 @@ class MachineRequirements(google.protobuf.message.Message):
             b"_exposed_port",
             "_keep_alive",
             b"_keep_alive",
+            "_max_concurrency",
+            b"_max_concurrency",
             "_max_multiplexing",
             b"_max_multiplexing",
             "_scheduler",
@@ -553,6 +558,8 @@ class MachineRequirements(google.protobuf.message.Message):
             b"exposed_port",
             "keep_alive",
             b"keep_alive",
+            "max_concurrency",
+            b"max_concurrency",
             "max_multiplexing",
             b"max_multiplexing",
             "scheduler",
@@ -570,6 +577,8 @@ class MachineRequirements(google.protobuf.message.Message):
             b"_exposed_port",
             "_keep_alive",
             b"_keep_alive",
+            "_max_concurrency",
+            b"_max_concurrency",
             "_max_multiplexing",
             b"_max_multiplexing",
             "_scheduler",
@@ -584,6 +593,8 @@ class MachineRequirements(google.protobuf.message.Message):
             b"keep_alive",
             "machine_type",
             b"machine_type",
+            "max_concurrency",
+            b"max_concurrency",
             "max_multiplexing",
             b"max_multiplexing",
             "scheduler",
@@ -604,6 +615,11 @@ class MachineRequirements(google.protobuf.message.Message):
     def WhichOneof(
         self, oneof_group: typing_extensions.Literal["_keep_alive", b"_keep_alive"]
     ) -> typing_extensions.Literal["keep_alive"] | None: ...
+    @typing.overload
+    def WhichOneof(
+        self,
+        oneof_group: typing_extensions.Literal["_max_concurrency", b"_max_concurrency"],
+    ) -> typing_extensions.Literal["max_concurrency"] | None: ...
     @typing.overload
     def WhichOneof(
         self,
@@ -829,84 +845,38 @@ class RegisterApplicationResult(google.protobuf.message.Message):
 global___RegisterApplicationResult = RegisterApplicationResult
 
 @typing_extensions.final
-class ScaleApplicationRequest(google.protobuf.message.Message):
-    DESCRIPTOR: google.protobuf.descriptor.Descriptor
-
-    APPLICATION_NAME_FIELD_NUMBER: builtins.int
-    MAX_CONCURRENCY_FIELD_NUMBER: builtins.int
-    application_name: builtins.str
-    max_concurrency: builtins.int
-    def __init__(
-        self,
-        *,
-        application_name: builtins.str = ...,
-        max_concurrency: builtins.int | None = ...,
-    ) -> None: ...
-    def HasField(
-        self,
-        field_name: typing_extensions.Literal[
-            "_max_concurrency",
-            b"_max_concurrency",
-            "max_concurrency",
-            b"max_concurrency",
-        ],
-    ) -> builtins.bool: ...
-    def ClearField(
-        self,
-        field_name: typing_extensions.Literal[
-            "_max_concurrency",
-            b"_max_concurrency",
-            "application_name",
-            b"application_name",
-            "max_concurrency",
-            b"max_concurrency",
-        ],
-    ) -> None: ...
-    def WhichOneof(
-        self,
-        oneof_group: typing_extensions.Literal["_max_concurrency", b"_max_concurrency"],
-    ) -> typing_extensions.Literal["max_concurrency"] | None: ...
-
-global___ScaleApplicationRequest = ScaleApplicationRequest
-
-@typing_extensions.final
-class ScaleApplicationResult(google.protobuf.message.Message):
-    """Empty. For future use."""
-
-    DESCRIPTOR: google.protobuf.descriptor.Descriptor
-
-    def __init__(
-        self,
-    ) -> None: ...
-
-global___ScaleApplicationResult = ScaleApplicationResult
-
-@typing_extensions.final
 class UpdateApplicationRequest(google.protobuf.message.Message):
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
     APPLICATION_NAME_FIELD_NUMBER: builtins.int
     KEEP_ALIVE_FIELD_NUMBER: builtins.int
     MAX_MULTIPLEXING_FIELD_NUMBER: builtins.int
+    MAX_CONCURRENCY_FIELD_NUMBER: builtins.int
     application_name: builtins.str
     keep_alive: builtins.int
     max_multiplexing: builtins.int
+    max_concurrency: builtins.int
     def __init__(
         self,
         *,
         application_name: builtins.str = ...,
         keep_alive: builtins.int | None = ...,
         max_multiplexing: builtins.int | None = ...,
+        max_concurrency: builtins.int | None = ...,
     ) -> None: ...
     def HasField(
         self,
         field_name: typing_extensions.Literal[
             "_keep_alive",
             b"_keep_alive",
+            "_max_concurrency",
+            b"_max_concurrency",
             "_max_multiplexing",
             b"_max_multiplexing",
             "keep_alive",
             b"keep_alive",
+            "max_concurrency",
+            b"max_concurrency",
             "max_multiplexing",
             b"max_multiplexing",
         ],
@@ -916,12 +886,16 @@ class UpdateApplicationRequest(google.protobuf.message.Message):
         field_name: typing_extensions.Literal[
             "_keep_alive",
             b"_keep_alive",
+            "_max_concurrency",
+            b"_max_concurrency",
             "_max_multiplexing",
             b"_max_multiplexing",
             "application_name",
             b"application_name",
             "keep_alive",
             b"keep_alive",
+            "max_concurrency",
+            b"max_concurrency",
             "max_multiplexing",
             b"max_multiplexing",
         ],
@@ -930,6 +904,11 @@ class UpdateApplicationRequest(google.protobuf.message.Message):
     def WhichOneof(
         self, oneof_group: typing_extensions.Literal["_keep_alive", b"_keep_alive"]
     ) -> typing_extensions.Literal["keep_alive"] | None: ...
+    @typing.overload
+    def WhichOneof(
+        self,
+        oneof_group: typing_extensions.Literal["_max_concurrency", b"_max_concurrency"],
+    ) -> typing_extensions.Literal["max_concurrency"] | None: ...
     @typing.overload
     def WhichOneof(
         self,
@@ -942,12 +921,21 @@ global___UpdateApplicationRequest = UpdateApplicationRequest
 
 @typing_extensions.final
 class UpdateApplicationResult(google.protobuf.message.Message):
-    """Empty. For future use."""
-
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
+    ALIAS_INFO_FIELD_NUMBER: builtins.int
+    @property
+    def alias_info(self) -> global___AliasInfo: ...
     def __init__(
         self,
+        *,
+        alias_info: global___AliasInfo | None = ...,
+    ) -> None: ...
+    def HasField(
+        self, field_name: typing_extensions.Literal["alias_info", b"alias_info"]
+    ) -> builtins.bool: ...
+    def ClearField(
+        self, field_name: typing_extensions.Literal["alias_info", b"alias_info"]
     ) -> None: ...
 
 global___UpdateApplicationResult = UpdateApplicationResult
@@ -994,10 +982,14 @@ class AliasInfo(google.protobuf.message.Message):
     REVISION_FIELD_NUMBER: builtins.int
     AUTH_MODE_FIELD_NUMBER: builtins.int
     MAX_CONCURRENCY_FIELD_NUMBER: builtins.int
+    MAX_MULTIPLEXING_FIELD_NUMBER: builtins.int
+    KEEP_ALIVE_FIELD_NUMBER: builtins.int
     alias: builtins.str
     revision: builtins.str
     auth_mode: global___ApplicationAuthMode.ValueType
     max_concurrency: builtins.int
+    max_multiplexing: builtins.int
+    keep_alive: builtins.int
     def __init__(
         self,
         *,
@@ -1005,6 +997,8 @@ class AliasInfo(google.protobuf.message.Message):
         revision: builtins.str = ...,
         auth_mode: global___ApplicationAuthMode.ValueType = ...,
         max_concurrency: builtins.int = ...,
+        max_multiplexing: builtins.int = ...,
+        keep_alive: builtins.int = ...,
     ) -> None: ...
     def ClearField(
         self,
@@ -1013,8 +1007,12 @@ class AliasInfo(google.protobuf.message.Message):
             b"alias",
             "auth_mode",
             b"auth_mode",
+            "keep_alive",
+            b"keep_alive",
             "max_concurrency",
             b"max_concurrency",
+            "max_multiplexing",
+            b"max_multiplexing",
             "revision",
             b"revision",
         ],

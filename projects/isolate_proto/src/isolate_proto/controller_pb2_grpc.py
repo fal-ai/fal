@@ -44,11 +44,6 @@ class IsolateControllerStub(object):
             request_serializer=controller__pb2.RegisterApplicationRequest.SerializeToString,
             response_deserializer=controller__pb2.RegisterApplicationResult.FromString,
         )
-        self.ScaleApplication = channel.unary_unary(
-            "/controller.IsolateController/ScaleApplication",
-            request_serializer=controller__pb2.ScaleApplicationRequest.SerializeToString,
-            response_deserializer=controller__pb2.ScaleApplicationResult.FromString,
-        )
         self.UpdateApplication = channel.unary_unary(
             "/controller.IsolateController/UpdateApplication",
             request_serializer=controller__pb2.UpdateApplicationRequest.SerializeToString,
@@ -112,12 +107,6 @@ class IsolateControllerServicer(object):
         context.set_details("Method not implemented!")
         raise NotImplementedError("Method not implemented!")
 
-    def ScaleApplication(self, request, context):
-        """Horizontal scaling options an application"""
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details("Method not implemented!")
-        raise NotImplementedError("Method not implemented!")
-
     def UpdateApplication(self, request, context):
         """Update configuration of an existing application."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
@@ -174,11 +163,6 @@ def add_IsolateControllerServicer_to_server(servicer, server):
             servicer.RegisterApplication,
             request_deserializer=controller__pb2.RegisterApplicationRequest.FromString,
             response_serializer=controller__pb2.RegisterApplicationResult.SerializeToString,
-        ),
-        "ScaleApplication": grpc.unary_unary_rpc_method_handler(
-            servicer.ScaleApplication,
-            request_deserializer=controller__pb2.ScaleApplicationRequest.FromString,
-            response_serializer=controller__pb2.ScaleApplicationResult.SerializeToString,
         ),
         "UpdateApplication": grpc.unary_unary_rpc_method_handler(
             servicer.UpdateApplication,
@@ -375,35 +359,6 @@ class IsolateController(object):
             "/controller.IsolateController/RegisterApplication",
             controller__pb2.RegisterApplicationRequest.SerializeToString,
             controller__pb2.RegisterApplicationResult.FromString,
-            options,
-            channel_credentials,
-            insecure,
-            call_credentials,
-            compression,
-            wait_for_ready,
-            timeout,
-            metadata,
-        )
-
-    @staticmethod
-    def ScaleApplication(
-        request,
-        target,
-        options=(),
-        channel_credentials=None,
-        call_credentials=None,
-        insecure=False,
-        compression=None,
-        wait_for_ready=None,
-        timeout=None,
-        metadata=None,
-    ):
-        return grpc.experimental.unary_unary(
-            request,
-            target,
-            "/controller.IsolateController/ScaleApplication",
-            controller__pb2.ScaleApplicationRequest.SerializeToString,
-            controller__pb2.ScaleApplicationResult.FromString,
             options,
             channel_credentials,
             insecure,
