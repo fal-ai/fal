@@ -1,4 +1,4 @@
-name: PyPI Release isolate-proto
+name: PyPI release isolate-proto & trigger fal release
 
 on:
   workflow_dispatch:

@@ -1,4 +1,4 @@
-name: PyPI Release fal
+name: PyPI release fal
 
 on:
   workflow_dispatch:
