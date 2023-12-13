@@ -24,6 +24,10 @@ service IsolateController {
     rpc RegisterApplication (RegisterApplicationRequest) returns (stream RegisterApplicationResult) {};
     // Update configuration of an existing application.
     rpc UpdateApplication (UpdateApplicationRequest) returns (UpdateApplicationResult) {};
+    // Set alias to point to an existing application.
+    rpc SetAlias (SetAliasRequest) returns (SetAliasResult) {};
+    // Delete an alias.
+    rpc DeleteAlias (DeleteAliasRequest) returns (DeleteAliasResult) {};
     // List aliased registered functions
     rpc ListAliases (ListAliasesRequest) returns (ListAliasesResult) {};
     // Sets a user secret.
@@ -187,6 +191,24 @@ message UpdateApplicationRequest {
 
 message UpdateApplicationResult {
     AliasInfo alias_info = 1;
+}
+
+message SetAliasRequest {
+    string alias = 1;
+    string revision = 2;
+    ApplicationAuthMode auth_mode = 3;
+}
+
+message SetAliasResult {
+    // Empty. For future use.
+}
+
+message DeleteAliasRequest {
+    string alias = 1;
+}
+
+message DeleteAliasResult {
+    string revision = 1;
 }
 
 message ListAliasesRequest {

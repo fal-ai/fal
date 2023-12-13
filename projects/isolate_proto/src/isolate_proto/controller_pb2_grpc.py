@@ -49,6 +49,16 @@ class IsolateControllerStub(object):
             request_serializer=controller__pb2.UpdateApplicationRequest.SerializeToString,
             response_deserializer=controller__pb2.UpdateApplicationResult.FromString,
         )
+        self.SetAlias = channel.unary_unary(
+            "/controller.IsolateController/SetAlias",
+            request_serializer=controller__pb2.SetAliasRequest.SerializeToString,
+            response_deserializer=controller__pb2.SetAliasResult.FromString,
+        )
+        self.DeleteAlias = channel.unary_unary(
+            "/controller.IsolateController/DeleteAlias",
+            request_serializer=controller__pb2.DeleteAliasRequest.SerializeToString,
+            response_deserializer=controller__pb2.DeleteAliasResult.FromString,
+        )
         self.ListAliases = channel.unary_unary(
             "/controller.IsolateController/ListAliases",
             request_serializer=controller__pb2.ListAliasesRequest.SerializeToString,
@@ -113,6 +123,18 @@ class IsolateControllerServicer(object):
         context.set_details("Method not implemented!")
         raise NotImplementedError("Method not implemented!")
 
+    def SetAlias(self, request, context):
+        """Set alias to point to an existing application."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details("Method not implemented!")
+        raise NotImplementedError("Method not implemented!")
+
+    def DeleteAlias(self, request, context):
+        """Delete an alias."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details("Method not implemented!")
+        raise NotImplementedError("Method not implemented!")
+
     def ListAliases(self, request, context):
         """List aliased registered functions"""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
@@ -168,6 +190,16 @@ def add_IsolateControllerServicer_to_server(servicer, server):
             servicer.UpdateApplication,
             request_deserializer=controller__pb2.UpdateApplicationRequest.FromString,
             response_serializer=controller__pb2.UpdateApplicationResult.SerializeToString,
+        ),
+        "SetAlias": grpc.unary_unary_rpc_method_handler(
+            servicer.SetAlias,
+            request_deserializer=controller__pb2.SetAliasRequest.FromString,
+            response_serializer=controller__pb2.SetAliasResult.SerializeToString,
+        ),
+        "DeleteAlias": grpc.unary_unary_rpc_method_handler(
+            servicer.DeleteAlias,
+            request_deserializer=controller__pb2.DeleteAliasRequest.FromString,
+            response_serializer=controller__pb2.DeleteAliasResult.SerializeToString,
         ),
         "ListAliases": grpc.unary_unary_rpc_method_handler(
             servicer.ListAliases,
@@ -388,6 +420,64 @@ class IsolateController(object):
             "/controller.IsolateController/UpdateApplication",
             controller__pb2.UpdateApplicationRequest.SerializeToString,
             controller__pb2.UpdateApplicationResult.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+        )
+
+    @staticmethod
+    def SetAlias(
+        request,
+        target,
+        options=(),
+        channel_credentials=None,
+        call_credentials=None,
+        insecure=False,
+        compression=None,
+        wait_for_ready=None,
+        timeout=None,
+        metadata=None,
+    ):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            "/controller.IsolateController/SetAlias",
+            controller__pb2.SetAliasRequest.SerializeToString,
+            controller__pb2.SetAliasResult.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+        )
+
+    @staticmethod
+    def DeleteAlias(
+        request,
+        target,
+        options=(),
+        channel_credentials=None,
+        call_credentials=None,
+        insecure=False,
+        compression=None,
+        wait_for_ready=None,
+        timeout=None,
+        metadata=None,
+    ):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            "/controller.IsolateController/DeleteAlias",
+            controller__pb2.DeleteAliasRequest.SerializeToString,
+            controller__pb2.DeleteAliasResult.FromString,
             options,
             channel_credentials,
             insecure,
