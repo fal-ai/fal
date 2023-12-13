@@ -1,4 +1,4 @@
-name: PyPI release isolate-proto & trigger fal release
+name: PyPI release isolate-proto
 
 on:
   workflow_dispatch:
@@ -32,7 +32,7 @@ jobs:
         run: pip install poetry-core=="1.4.*" poetry=="1.3.1"
 
       - name: Bump publishing version and build
-        working-directory: isolate_proto
+        working-directory: projects/isolate_proto
         env:
           VERSION_TYPE: ${{ github.event.inputs.version }}
         run: |
@@ -53,11 +53,11 @@ jobs:
         env:
           PYPI_USERNAME: ${{ secrets.PYPI_USER }}
           PYPI_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
-        working-directory: isolate_proto
+        working-directory: projects/isolate_proto
         run: poetry publish -u $PYPI_USERNAME -p $PYPI_PASSWORD -v -n
 
       - name: Bump repo version
-        working-directory: isolate_proto
+        working-directory: projects/isolate_proto
         run: |
           poetry version prerelease
 
