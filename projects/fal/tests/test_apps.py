@@ -1,50 +1,69 @@
 from typing import Generator
 
 import fal
+import fal.api as api
 import pytest
 from fal import apps
 from fal.rest_client import REST_CLIENT
+import time
 from pydantic import BaseModel
 
 from openapi_fal_rest.api.applications import app_metadata
 
 
-@pytest.fixture(scope="module")
-def test_app() -> Generator[str, None, None]:
+class Input(BaseModel):
+    lhs: int
+    rhs: int
+    wait_time: int = 0
+
+
+class Output(BaseModel):
+    result: int
+
+
+@fal.function(
+    keep_alive=60,
+    machine_type="S",
+    serve=True,
+    max_concurrency=1,
+)
+def addition_app(input: Input) -> Output:
+    print("starting...")
+    for _ in range(input.wait_time):
+        print("sleeping...")
+        time.sleep(1)
+
+    return Output(result=input.lhs + input.rhs)
+
+
+@pytest.fixture(scope="function")
+def aliased_app() -> Generator[tuple[str, str], None, None]:
     # Create a temporary app, register it, and return the ID of it.
 
-    import time
+    import uuid
+
+    app_alias = str(uuid.uuid4()).replace("-", "")[:10]
+    app_revision = addition_app.host.register(
+        func=addition_app.func,
+        options=addition_app.options,
+        # random enough
+        application_name=app_alias,
+    )
+    yield app_revision, app_alias  # type: ignore
+
+
+@pytest.fixture(scope="module")
+def test_app():
+    # Create a temporary app, register it, and return the ID of it.
 
     from fal.cli import _get_user_id
 
-    class Input(BaseModel):
-        lhs: int
-        rhs: int
-        wait_time: int = 0
-
-    class Output(BaseModel):
-        result: int
-
-    @fal.function(
-        keep_alive=60,
-        machine_type="S",
-        serve=True,
-        max_concurrency=1,
-    )
-    def addition_app(input: Input) -> Output:
-        print("starting...")
-        for _ in range(input.wait_time):
-            print("sleeping...")
-            time.sleep(1)
-
-        return Output(result=input.lhs + input.rhs)
-
-    app_alias = addition_app.host.register(
+    app_revision = addition_app.host.register(
         func=addition_app.func,
         options=addition_app.options,
     )
     user_id = _get_user_id()
-    yield f"{user_id}-{app_alias}"
+    yield f"{user_id}-{app_revision}"
 
 
 def test_app_client(test_app: str):
@@ -99,3 +118,75 @@ def test_app_openapi_spec_metadata(test_app: str):
     openapi_spec: dict = metadata["openapi"]
     for key in ["openapi", "info", "paths", "components"]:
         assert key in openapi_spec, f"{key} key missing from openapi {openapi_spec}"
+
+
+def test_app_update_app(aliased_app: tuple[str, str]):
+    app_revision, app_alias = aliased_app
+
+    host: api.FalServerlessHost = addition_app.host  # type: ignore
+    with host._connection as client:
+        # Get the registered values
+        res = client.list_aliases()
+        found = next(filter(lambda alias: alias.alias == app_alias, res), None)
+        assert found, f"Could not find app {app_alias} in {res}"
+        assert found.revision == app_revision
+
+    with host._connection as client:
+        new_keep_alive = found.keep_alive + 1
+        new_max_concurrency = found.max_concurrency + 1
+        new_max_multiplexing = found.max_multiplexing + 1
+
+        res = client.update_application(
+            application_name=app_alias,
+            keep_alive=new_keep_alive,
+            max_concurrency=new_max_concurrency,
+            max_multiplexing=new_max_multiplexing,
+        )
+        assert res.alias == app_alias
+        assert res.keep_alive == new_keep_alive
+        assert res.max_concurrency == new_max_concurrency
+        assert res.max_multiplexing == new_max_multiplexing
+
+    with host._connection as client:
+        new_keep_alive = new_keep_alive + 1
+        res = client.update_application(
+            application_name=app_alias,
+            keep_alive=new_keep_alive,
+        )
+        assert res.alias == app_alias
+        assert res.keep_alive == new_keep_alive
+        assert res.max_concurrency == new_max_concurrency
+        assert res.max_multiplexing == new_max_multiplexing
+
+    with host._connection as client:
+        new_max_concurrency = new_max_concurrency + 1
+        res = client.update_application(
+            application_name=app_alias,
+            max_concurrency=new_max_concurrency,
+        )
+        assert res.alias == app_alias
+        assert res.keep_alive == new_keep_alive
+        assert res.max_concurrency == new_max_concurrency
+        assert res.max_multiplexing == new_max_multiplexing
+
+
+def test_app_delete_alias(aliased_app: tuple[str, str]):
+    app_revision, app_alias = aliased_app
+
+    host: api.FalServerlessHost = addition_app.host  # type: ignore
+    with host._connection as client:
+        # Get the registered values
+        res = client.list_aliases()
+        found = next(filter(lambda alias: alias.alias == app_alias, res), None)
+        assert found, f"Could not find app {app_alias} in {res}"
+        assert found.revision == app_revision
+
+    with host._connection as client:
+        res = client.delete_alias(alias=app_alias)
+        assert res == app_revision
+
+    with host._connection as client:
+        # Get the registered values
+        res = client.list_aliases()
+        found = next(filter(lambda alias: alias.alias == app_alias, res), None)
+        assert not found, f"Found app {app_alias} in {res} after deletion"
