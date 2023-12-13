@@ -36,7 +36,7 @@ def addition_app(input: Input) -> Output:
     return Output(result=input.lhs + input.rhs)
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture(scope="module")
 def aliased_app() -> Generator[tuple[str, str], None, None]:
     # Create a temporary app, register it, and return the ID of it.
 
@@ -48,6 +48,7 @@ def aliased_app() -> Generator[tuple[str, str], None, None]:
         options=addition_app.options,
         # random enough
         application_name=app_alias,
+        application_auth_mode="private",
     )
     yield app_revision, app_alias  # type: ignore
 
@@ -170,16 +171,31 @@ def test_app_update_app(aliased_app: tuple[str, str]):
         assert res.max_multiplexing == new_max_multiplexing
 
 
-def test_app_delete_alias(aliased_app: tuple[str, str]):
+def test_app_set_delete_alias(aliased_app: tuple[str, str]):
     app_revision, app_alias = aliased_app
 
     host: api.FalServerlessHost = addition_app.host  # type: ignore
+
     with host._connection as client:
         # Get the registered values
         res = client.list_aliases()
         found = next(filter(lambda alias: alias.alias == app_alias, res), None)
         assert found, f"Could not find app {app_alias} in {res}"
         assert found.revision == app_revision
+        assert found.auth_mode == "private"
+
+    new_app_alias = f"{app_alias}-new"
+    with host._connection as client:
+        # Get the registered values
+        res = client.create_alias(new_app_alias, app_revision, "public")
+
+    with host._connection as client:
+        # Get the registered values
+        res = client.list_aliases()
+        found = next(filter(lambda alias: alias.alias == new_app_alias, res), None)
+        assert found, f"Could not find app {app_alias} in {res}"
+        assert found.revision == app_revision
+        assert found.auth_mode == "public"
 
     with host._connection as client:
         res = client.delete_alias(alias=app_alias)
