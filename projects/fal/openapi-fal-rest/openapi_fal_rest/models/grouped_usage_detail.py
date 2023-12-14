@@ -12,14 +12,14 @@ class GroupedUsageDetail:
         model_id (str):
         machine_type (str):
         request_count (int):
-        avg_duration (float):
+        median_duration (float):
         total_duration (float):
     """
 
     model_id: str
     machine_type: str
     request_count: int
-    avg_duration: float
+    median_duration: float
     total_duration: float
     additional_properties: Dict[str, Any] = attr.ib(init=False, factory=dict)
 
@@ -27,7 +27,7 @@ class GroupedUsageDetail:
         model_id = self.model_id
         machine_type = self.machine_type
         request_count = self.request_count
-        avg_duration = self.avg_duration
+        median_duration = self.median_duration
         total_duration = self.total_duration
 
         field_dict: Dict[str, Any] = {}
@@ -37,7 +37,7 @@ class GroupedUsageDetail:
                 "model_id": model_id,
                 "machine_type": machine_type,
                 "request_count": request_count,
-                "avg_duration": avg_duration,
+                "median_duration": median_duration,
                 "total_duration": total_duration,
             }
         )
@@ -53,7 +53,7 @@ class GroupedUsageDetail:
 
         request_count = d.pop("request_count")
 
-        avg_duration = d.pop("avg_duration")
+        median_duration = d.pop("median_duration")
 
         total_duration = d.pop("total_duration")
 
@@ -61,7 +61,7 @@ class GroupedUsageDetail:
             model_id=model_id,
             machine_type=machine_type,
             request_count=request_count,
-            avg_duration=avg_duration,
+            median_duration=median_duration,
             total_duration=total_duration,
         )
 
