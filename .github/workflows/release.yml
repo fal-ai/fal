@@ -88,6 +88,7 @@ jobs:
         env:
           PYPI_USERNAME: ${{ secrets.PYPI_USER }}
           PYPI_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
+        working-directory: projects/fal
         run: poetry publish -u $PYPI_USERNAME -p $PYPI_PASSWORD -v -n
 
       - name: Bump repo version
