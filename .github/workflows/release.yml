@@ -92,6 +92,7 @@ jobs:
         run: poetry publish -u $PYPI_USERNAME -p $PYPI_PASSWORD -v -n
 
       - name: Bump repo version
+        working-directory: projects/fal
         run: |
           poetry version prerelease
 
