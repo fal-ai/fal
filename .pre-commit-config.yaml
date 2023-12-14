@@ -19,7 +19,6 @@ repos:
       - id: black
         exclude: |
           (?x)(
-            ^projects/fal/openapi-fal-rest/|
             ^projects/fal/src/fal/toolkit/image/image.py
           )
   - repo: https://github.com/pre-commit/pre-commit-hooks
