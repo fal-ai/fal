@@ -515,7 +515,7 @@ def test_on_changes():
     op = served.options
     assert fastapi_in(op), "fastapi not in served environment"
     assert op.gateway["serve"], "serve not in served gateway"
-    assert op.gateway["max_concurrency"] == 8, "max_concurrency not in served gateway"
+    assert op.host["max_concurrency"] == 8, "max_concurrency not in served gateway"
     assert op.host["keep_alive"] == 10, "keep_alive not in served host"
     assert op.host["machine_type"] == "M", "machine_type not in served host"
 
@@ -524,7 +524,7 @@ def test_on_changes():
     op = unserved.options
     assert fastapi_in(op), "fastapi MUST stay after removing serve"
     assert not op.gateway["serve"], "serve STILL set in unserved gateway"
-    assert op.gateway["max_concurrency"] == 8, "max_concurrency not in unserved gateway"
+    assert op.host["max_concurrency"] == 8, "max_concurrency not in unserved gateway"
     assert op.host["keep_alive"] == 10, "keep_alive not in unserved host"
     assert op.host["machine_type"] == "M", "machine_type not in unserved host"
 
@@ -533,6 +533,6 @@ def test_on_changes():
     op = local.options
     assert fastapi_in(op), "fastapi not in local environment"
     assert op.gateway["serve"], "serve not in local gateway"
-    assert op.gateway["max_concurrency"] == 8, "max_concurrency not in local gateway"
+    assert "max_concurrency" not in op.host, "max_concurrency set in local gateway"
     assert "keep_alive" not in op.host, "keep_alive set in local host"
     assert "machine_type" not in op.host, "machine_type set in local host"
