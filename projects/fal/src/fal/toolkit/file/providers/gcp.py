@@ -51,7 +51,8 @@ class GoogleStorageRepository(FileRepository):
         return self._bucket
 
     def save(self, data: FileData) -> str:
-        destination_path = os.path.join(self.folder, data.file_name)
+        file_name = data.file_name or ""
+        destination_path = os.path.join(self.folder, file_name)
 
         gcp_blob = self.bucket.blob(destination_path)
         gcp_blob.upload_from_string(data.data, content_type=data.content_type)
