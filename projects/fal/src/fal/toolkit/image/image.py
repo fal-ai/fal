@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+from io import BytesIO
 from typing import TYPE_CHECKING, Literal, Optional, Union
 
 from fal.toolkit.file.file import DEFAULT_REPOSITORY, File
@@ -82,7 +83,7 @@ class Image(File):
         repository: FileRepository | RepositoryId = DEFAULT_REPOSITORY,
     ) -> Image:
         file_data = FileData(
-            data=data, content_type=f"image/{format}", file_name=file_name
+            data=BytesIO(data), content_type=f"image/{format}", file_name=file_name
         )
         return cls(
             file_data=file_data,
