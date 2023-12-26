@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import io
 from io import BytesIO
 from typing import TYPE_CHECKING, Literal, Optional, Union
 
 from fal.toolkit.file.file import DEFAULT_REPOSITORY, File
-from fal.toolkit.file.types import FileData, FileRepository, RepositoryId
+from fal.toolkit.file.types import FileRepository, RepositoryId
 from fal.toolkit.mainify import mainify
 from pydantic import BaseModel, Field
 
@@ -44,7 +43,7 @@ IMAGE_SIZE_PRESETS: dict[ImageSizePreset, ImageSize] = {
 
 ImageSizeInput = Union[ImageSize, ImageSizePreset]
 
-
+@mainify
 def get_image_size(source: ImageSizeInput) -> ImageSize:
     if isinstance(source, ImageSize):
         return source
@@ -53,8 +52,6 @@ def get_image_size(source: ImageSizeInput) -> ImageSize:
         return size
     raise TypeError(f"Invalid value for ImageSize: {source}")
 
-
-get_image_size.__module__ = "__main__"
 
 ImageFormat = Literal["png", "jpeg", "jpg", "webp", "gif"]
 
@@ -77,20 +74,24 @@ class Image(File):
     def from_bytes(  # type: ignore[override]
         cls,
         data: bytes,
-        format: ImageFormat,
-        size: ImageSize | None = None,
+        format: ImageFormat | None = None,
         file_name: str | None = None,
         repository: FileRepository | RepositoryId = DEFAULT_REPOSITORY,
     ) -> Image:
-        file_data = FileData(
-            data=BytesIO(data), content_type=f"image/{format}", file_name=file_name
-        )
-        return cls(
-            file_data=file_data,
+        from PIL import Image as PILImage
+        
+        pil_image = PILImage.open(BytesIO(data))
+
+        return cls.from_pil(
+            pil_image=pil_image,
+            format=format,
+            file_name=file_name,
             repository=repository,
-            width=size.width if size else None,
-            height=size.height if size else None,
         )
+
+    @classmethod
+    def _from_url(cls, url: str):
+        return super()._from_url(url)
 
     @classmethod
     def from_pil(
@@ -101,9 +102,12 @@ class Image(File):
         repository: FileRepository | RepositoryId = DEFAULT_REPOSITORY,
     ) -> Image:
         size = ImageSize(width=pil_image.width, height=pil_image.height)
+        
         if format is None:
             format = pil_image.format or "png"  # type: ignore[assignment]
             assert format  # for type checker
+        
+        content_type = f"image/{format}"
 
         saving_options = {}
         if format == "png":
@@ -113,8 +117,18 @@ class Image(File):
             # efficiently.
             saving_options["compress_level"] = 1
 
-        with io.BytesIO() as f:
+        with BytesIO() as f:
             pil_image.save(f, format=format, **saving_options)
             raw_image = f.getvalue()
 
-        return cls.from_bytes(raw_image, format, size, file_name, repository)
+        return super().from_bytes(
+            data=raw_image,
+            repository=repository,
+            content_type=content_type,
+            file_name=file_name,
+        )
+
+    def to_pil(self) -> PILImage.Image:
+        from PIL import Image as PILImage
+        image_buffer = BytesIO(self.as_bytes())
+        return PILImage.open(image_buffer)
