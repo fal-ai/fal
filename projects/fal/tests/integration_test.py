@@ -3,13 +3,19 @@ from __future__ import annotations
 from pathlib import Path
 import tempfile
 from uuid import uuid4
-from fal.toolkit import File
 import fal
 import pytest
 from fal import FalServerlessHost, FalServerlessKeyCredentials, local, sync_dir
 from fal.api import FalServerlessError
-from fal.toolkit import clone_repository, download_file, download_model_weights
+from fal.toolkit import (
+    clone_repository,
+    download_file,
+    download_model_weights,
+    CompressedFile,
+    File,
+)
 from fal.toolkit.utils.download_utils import _get_git_revision_hash, _hash_url
+from pydantic import BaseModel
 
 
 def test_isolated(isolated_client):
@@ -523,3 +529,21 @@ def test_fal_file_input(isolated_client, file_url: str, expected_content: str):
     # File will be downloaded when content is accessed
     assert fal_file_content_matches(file, expected_content)
     assert fal_file_downloaded(file)
+
+
+def test_fal_compressed_file(isolated_client):
+    class TestInput(BaseModel):
+        files: CompressedFile
+
+    @isolated_client(requirements=["pydantic==1.10.12"])
+    def init_compressed_file_on_fal(input: TestInput) -> int:
+        extracted_file_paths = [file for file in input.files]
+        return extracted_file_paths
+
+    archive_url = "https://storage.googleapis.com/falserverless/sdk_tests/compressed_file_test.zip"
+    test_input = TestInput(files=archive_url)
+
+    extracted_file_paths = init_compressed_file_on_fal(test_input)
+
+    assert all(isinstance(file, Path) for file in extracted_file_paths)
+    assert len(extracted_file_paths) == 3

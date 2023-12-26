@@ -5,6 +5,7 @@ from io import BytesIO, FileIO
 from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import urlparse
+from zipfile import ZipFile
 
 from fal.toolkit.file.providers.fal import FalFileRepository, InMemoryRepository
 from fal.toolkit.file.providers.gcp import GoogleStorageRepository
@@ -13,6 +14,7 @@ from fal.toolkit.file.types import FileData, FileRepository, RepositoryId, Remot
 from fal.toolkit.mainify import mainify
 from pydantic import BaseModel, Field, PrivateAttr
 from pydantic.typing import Optional
+from tempfile import TemporaryDirectory
 
 FileRepositoryFactory = Callable[[], FileRepository]
 
@@ -152,3 +154,35 @@ class File(BaseModel):
     def save(self, path: str | Path):
         file_path = Path(path)
         file_path.write_bytes(self.as_bytes())
+
+
+@mainify
+class CompressedFile(File):
+    _extract_dir: Optional[TemporaryDirectory] = PrivateAttr(default=None)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._extract_dir = None
+
+    def __iter__(self):
+        if not self._extract_dir:
+            self._extract_files(self.as_bytes())
+
+        files = Path(self._extract_dir.name).iterdir()  # type: ignore
+        return iter(files)
+
+    def _extract_files(self, file_bytes: bytes):
+        self._extract_dir = TemporaryDirectory()
+
+        with ZipFile(BytesIO(file_bytes)) as zip_file:
+            zip_file.extractall(self._extract_dir.name)
+
+    def glob(self, pattern: str):
+        if not self._extract_dir:
+            self._extract_files(self.as_bytes())
+
+        return Path(self._extract_dir.name).glob(pattern)  # type: ignore
+
+    def __del__(self):
+        if self._extract_dir:
+            self._extract_dir.cleanup()

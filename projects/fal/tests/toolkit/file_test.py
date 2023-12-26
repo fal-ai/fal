@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import os
 from base64 import b64encode
+from pathlib import Path
 
 import pytest
 from fal.toolkit.file.file import File, GoogleStorageRepository
+from fal.toolkit import CompressedFile
+from pydantic import BaseModel
 
 
 def test_binary_content_matches():
@@ -62,3 +65,17 @@ def test_gcp_storage_if_available():
     assert file.url.startswith(
         "https://storage.googleapis.com/fal_registry_image_results/"
     )
+
+
+def test_compressed_file():
+    class TestInput(BaseModel):
+        files: CompressedFile
+
+    archive_url = "https://storage.googleapis.com/falserverless/sdk_tests/compressed_file_test.zip"
+
+    test_input = TestInput(files=archive_url)
+
+    extracted_file_paths = [file for file in test_input.files]
+
+    assert all(isinstance(file, Path) for file in extracted_file_paths)
+    assert len(extracted_file_paths) == 3
