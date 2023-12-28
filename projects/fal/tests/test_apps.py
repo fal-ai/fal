@@ -36,6 +36,48 @@ def addition_app(input: Input) -> Output:
     return Output(result=input.lhs + input.rhs)
 
 
+@fal.function(
+    keep_alive=60,
+    requirements=["fastapi", "uvicorn"],
+    machine_type="S",
+    serve=True,
+    max_concurrency=1,
+    exposed_port=8000,
+)
+def calculator_app():
+    from fastapi import FastAPI
+    from fastapi.middleware.cors import CORSMiddleware
+    from uvicorn import run
+
+    app = FastAPI()
+
+    def _wait(wait_time: int):
+        print("starting...")
+        for _ in range(wait_time):
+            print("sleeping...")
+            time.sleep(1)
+
+    @app.post("/add")
+    def add(input: Input) -> Output:
+        _wait(input.wait_time)
+        return Output(result=input.lhs + input.rhs)
+
+    @app.post("/subtract")
+    def subtract(input: Input) -> Output:
+        _wait(input.wait_time)
+        return Output(result=input.lhs - input.rhs)
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_credentials=True,
+        allow_headers=("*"),
+        allow_methods=("*"),
+        allow_origins=("*"),
+    )
+
+    run(app, host="0.0.0.0", port=8080)
+
+
 @pytest.fixture(scope="module")
 def aliased_app() -> Generator[tuple[str, str], None, None]:
     # Create a temporary app, register it, and return the ID of it.
@@ -62,6 +104,20 @@ def test_app():
     app_revision = addition_app.host.register(
         func=addition_app.func,
         options=addition_app.options,
+    )
+    user_id = _get_user_id()
+    yield f"{user_id}-{app_revision}"
+
+
+@pytest.fixture(scope="module")
+def test_fastapi_app():
+    # Create a temporary app, register it, and return the ID of it.
+
+    from fal.cli import _get_user_id
+
+    app_revision = calculator_app.host.register(
+        func=calculator_app.func,
+        options=calculator_app.options,
     )
     user_id = _get_user_id()
     yield f"{user_id}-{app_revision}"
@@ -105,14 +161,16 @@ def test_app_client_async(test_app: str):
     assert result == {"result": 5}
 
 
-def test_app_openapi_spec_metadata(test_app: str):
-    user_id, _, app_id = test_app.partition("-")
+@pytest.mark.parametrize("app_name", ["test_app", "test_fastapi_app"])
+def test_app_openapi_spec_metadata(app_name: str, request: pytest.FixtureRequest):
+    app: str = request.getfixturevalue(app_name)
+    user_id, _, app_id = app.partition("-")
     res = app_metadata.sync_detailed(
         app_alias_or_id=app_id, app_user_id=user_id, client=REST_CLIENT
     )
 
-    assert res.status_code == 200, f"Failed to fetch metadata for app {test_app}"
-    assert res.parsed, f"Failed to parse metadata for app {test_app}"
+    assert res.status_code == 200, f"Failed to fetch metadata for app {app}"
+    assert res.parsed, f"Failed to parse metadata for app {app}"
 
     metadata = res.parsed.to_dict()
     assert "openapi" in metadata, f"openapi key missing from metadata {metadata}"
