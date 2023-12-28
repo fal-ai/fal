@@ -160,22 +160,40 @@ def test_app_client_async(test_app: str):
     assert result == {"result": 5}
 
 
-@pytest.mark.parametrize("app_name", ["test_app", "test_fastapi_app"])
-def test_app_openapi_spec_metadata(app_name: str, request: pytest.FixtureRequest):
-    app: str = request.getfixturevalue(app_name)
-    user_id, _, app_id = app.partition("-")
+def test_app_openapi_spec_metadata(test_app: str, request: pytest.FixtureRequest):
+    user_id, _, app_id = test_app.partition("-")
     res = app_metadata.sync_detailed(
         app_alias_or_id=app_id, app_user_id=user_id, client=REST_CLIENT
     )
 
-    assert res.status_code == 200, f"Failed to fetch metadata for app {app}"
-    assert res.parsed, f"Failed to parse metadata for app {app}"
+    assert res.status_code == 200, f"Failed to fetch metadata for app {test_app}"
+    assert res.parsed, f"Failed to parse metadata for app {test_app}"
 
     metadata = res.parsed.to_dict()
     assert "openapi" in metadata, f"openapi key missing from metadata {metadata}"
     openapi_spec: dict = metadata["openapi"]
     for key in ["openapi", "info", "paths", "components"]:
         assert key in openapi_spec, f"{key} key missing from openapi {openapi_spec}"
+
+
+def test_app_no_serve_spec_metadata(
+    test_fastapi_app: str, request: pytest.FixtureRequest
+):
+    # We do not store the openapi spec for apps that do not use serve=True
+    user_id, _, app_id = test_fastapi_app.partition("-")
+    res = app_metadata.sync_detailed(
+        app_alias_or_id=app_id, app_user_id=user_id, client=REST_CLIENT
+    )
+
+    assert (
+        res.status_code == 200
+    ), f"Failed to fetch metadata for app {test_fastapi_app}"
+    assert res.parsed, f"Failed to parse metadata for app {test_fastapi_app}"
+
+    metadata = res.parsed.to_dict()
+    assert (
+        "openapi" not in metadata
+    ), f"openapi should not be present in metadata {metadata}"
 
 
 def test_app_update_app(aliased_app: tuple[str, str]):
