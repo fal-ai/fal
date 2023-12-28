@@ -38,7 +38,7 @@ def addition_app(input: Input) -> Output:
 
 @fal.function(
     keep_alive=0,
-    requirements=["fastapi", "uvicorn"],
+    requirements=["fastapi", "uvicorn", "pydantic==1.10.12"],
     machine_type="S",
     max_concurrency=1,
     exposed_port=8000,
