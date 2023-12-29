@@ -569,5 +569,12 @@ def _get_user_id() -> str:
         raise api.FalServerlessError(f"Could not parse the user data: {e}")
 
 
+@cli.command("create")
+def create_project():
+    from cookiecutter.main import cookiecutter
+
+    cookiecutter("git+ssh://git@github.com/fal-ai/cookiecutter-fal.git")
+
+
 if __name__ == "__main__":
     cli()
