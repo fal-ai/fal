@@ -71,8 +71,13 @@ def _get_remote_file_properties(url: str) -> tuple[str, int]:
         content_length = int(response.headers.get("Content-Length", -1))
 
     if not file_name:
-        url_path = urlparse(url).path
-        file_name = Path(url_path).name or _hash_url(url)
+        parsed_url = urlparse(url)
+
+        if parsed_url.scheme == "data":
+            file_name = _hash_url(url)
+        else:
+            url_path = parsed_url.path
+            file_name = Path(url_path).name or _hash_url(url)
 
     return file_name, content_length
 
