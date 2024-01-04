@@ -71,6 +71,13 @@ class Image(File):
     )
 
     @classmethod
+    def __bytes_to_pil(cls, data: bytes) -> PILImage.Image:
+        from PIL import Image as PILImage
+
+        image_buffer = BytesIO(data)
+        return PILImage.open(image_buffer)
+
+    @classmethod
     def from_bytes(  # type: ignore[override]
         cls,
         data: bytes,
@@ -78,9 +85,7 @@ class Image(File):
         file_name: str | None = None,
         repository: FileRepository | RepositoryId = DEFAULT_REPOSITORY,
     ) -> Image:
-        from PIL import Image as PILImage
-        
-        pil_image = PILImage.open(BytesIO(data))
+        pil_image = cls.__bytes_to_pil(data)
 
         return cls.from_pil(
             pil_image=pil_image,
@@ -101,8 +106,6 @@ class Image(File):
         file_name: str | None = None,
         repository: FileRepository | RepositoryId = DEFAULT_REPOSITORY,
     ) -> Image:
-        size = ImageSize(width=pil_image.width, height=pil_image.height)
-        
         if format is None:
             format = pil_image.format or "png"  # type: ignore[assignment]
             assert format  # for type checker
@@ -121,14 +124,18 @@ class Image(File):
             pil_image.save(f, format=format, **saving_options)
             raw_image = f.getvalue()
 
-        return super().from_bytes(
+        fal_image = super().from_bytes(
             data=raw_image,
             repository=repository,
             content_type=content_type,
             file_name=file_name,
         )
 
+        fal_image.width = pil_image.width
+        fal_image.height = pil_image.height
+
+
+        return fal_image
+
     def to_pil(self) -> PILImage.Image:
-        from PIL import Image as PILImage
-        image_buffer = BytesIO(self.as_bytes())
-        return PILImage.open(image_buffer)
+        return self.__bytes_to_pil(self.as_bytes())

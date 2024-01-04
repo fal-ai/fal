@@ -53,6 +53,8 @@ def images_are_equal(img1: PILImage.Image, img2: PILImage.Image) -> bool:
 
 
 def assert_fal_images_equal(fal_image_1: Image, fal_image_2: Image):
+    assert fal_image_content_matches(fal_image_1, fal_image_2.as_bytes())
+
     assert (
         fal_image_1.file_size == fal_image_2.file_size
     ), "Image file size should match"
@@ -103,7 +105,6 @@ def test_fal_image_from_bytes(isolated_client):
     local_image = fal_image_from_bytes()
     remote_image = fal_image_from_bytes_remote()
 
-    assert fal_image_content_matches(remote_image, image_bytes)
     assert_fal_images_equal(local_image, remote_image)
 
 
