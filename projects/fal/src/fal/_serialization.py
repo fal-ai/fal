@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from functools import wraps
 
 import dill
@@ -55,6 +56,16 @@ def add_serialization_listeners_for(obj):
         return None
 
     _MODULES.add(module_name)
+    if module_name == "__main__":
+        import __main__
+
+        path = Path(__main__.__file__)
+        parent = path
+        while (parent.parent / "__init__.py").exists():
+            parent = parent.parent
+
+        if parent != path:
+            _PACKAGES.add(parent.name)
 
     if "." in module_name:
         package_name, *_ = module_name.partition(".")
