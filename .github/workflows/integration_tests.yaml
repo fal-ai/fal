@@ -27,7 +27,7 @@ jobs:
           source .venv/bin/activate
           git clone --depth 1 https://github.com/fal-ai/fal
           pip install -e projects/fal
-          pip install pytest pytest-asyncio
+          pip install pytest pytest-asyncio pillow
 
       - name: Run integration tests
         env:
@@ -39,5 +39,4 @@ jobs:
 
       - name: Run integration tests with PIL
         run: |
-          pip install pillow
           pytest -v projects/fal_serverless/tests/toolkit/image_test_requires_pil.py
