@@ -1,0 +1,62 @@
+name: Container
+
+on:
+  push:
+    branches: [ main ]
+    tags:
+      - "*"
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      version:
+        description: Version
+        required: false
+        type: string
+
+jobs:
+
+  container:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v2
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+    - name: Build container
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+
+  push:
+    if: github.event_name != 'pull_request'
+    needs:
+    - container
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v2
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v2
+      with:
+        registry: ghcr.io
+        username: ${{ github.repository_owner }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    - name: Determine Version
+      id: version
+      run: echo "::set-output name=version::$(git describe --always --tags --dirty)"
+    - name: Build and push
+      id: push
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        push: true
+        platforms: linux/amd64, linux/arm64
+        tags: ghcr.io/fal-ai/fal:latest, ghcr.io/fal-ai/fal:${{ inputs.version || steps.version.outputs.version }}
+    - name: Determine digest
+      run: echo ${{ steps.push.outputs.digest }}
