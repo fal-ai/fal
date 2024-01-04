@@ -1,0 +1,43 @@
+name: Run Integration Tests
+
+on:
+  pull_request:
+    types: [assigned, opened, synchronize, reopened]
+  
+  workflow_dispatch:
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: "3.9"
+
+      - name: Setup python
+        run: python -m venv .venv
+
+      - name: Install package locally
+        run: |
+          source .venv/bin/activate
+          git clone --depth 1 https://github.com/fal-ai/fal
+          pip install -e projects/fal
+          pip install pytest pytest-asyncio
+
+      - name: Run integration tests
+        env:
+          FAL_KEY_ID: ${{ secrets.FAL_CLOUD_KEY_ID }}
+          FAL_KEY_SECRET: ${{ secrets.FAL_CLOUD_KEY_SECRET }}
+          FAL_HOST: api.${{ vars.FAL_CLOUD_INTEGRATION_TEST_HOST }}
+        run: |
+          pytest -v projects/fal/tests --ignore projects/fal/tests/toolkit/image_test_requires_pil.py
+
+      - name: Run integration tests with PIL
+        run: |
+          pip install pillow
+          pytest -v projects/fal_serverless/tests/toolkit/image_test_requires_pil.py
