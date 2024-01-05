@@ -22,9 +22,8 @@ jobs:
       - name: Setup python
         run: python -m venv .venv
 
-      - name: Install package locally
+      - name: Install dependencies
         run: |
-          source .venv/bin/activate
           git clone --depth 1 https://github.com/fal-ai/fal
           pip install -e projects/fal
           pip install pytest pytest-asyncio pillow
@@ -35,10 +34,8 @@ jobs:
           FAL_KEY_SECRET: ${{ secrets.FAL_CLOUD_KEY_SECRET }}
           FAL_HOST: api.${{ vars.FAL_CLOUD_INTEGRATION_TEST_HOST }}
         run: |
-          source .venv/bin/activate
           pytest -v projects/fal/tests --ignore projects/fal/tests/toolkit/image_test_requires_pil.py
 
       - name: Run integration tests with PIL
         run: |
-          source .venv/bin/activate
-          pytest -v projects/fal_serverless/tests/toolkit/image_test_requires_pil.py
+          pytest -v projects/fal/tests/toolkit/image_test_requires_pil.py
