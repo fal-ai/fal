@@ -21,9 +21,6 @@ jobs:
         with:
           python-version: "3.9"
 
-      - name: Setup python
-        run: python -m venv .venv
-
       - name: Install dependencies
         run: |
           git clone --depth 1 https://github.com/fal-ai/fal
