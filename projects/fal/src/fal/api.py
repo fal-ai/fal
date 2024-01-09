@@ -552,6 +552,7 @@ def function(
     exposed_port: int | None = None,
     max_concurrency: int | None = None,
     # FalServerlessHost options
+    metadata: dict[str, Any] | None = None,
     machine_type: str = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
     keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
     max_multiplexing: int = FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING,
@@ -576,6 +577,7 @@ def function(
     exposed_port: int | None = None,
     max_concurrency: int | None = None,
     # FalServerlessHost options
+    metadata: dict[str, Any] | None = None,
     machine_type: str = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
     keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
     max_multiplexing: int = FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING,
@@ -652,6 +654,7 @@ def function(
     exposed_port: int | None = None,
     max_concurrency: int | None = None,
     # FalServerlessHost options
+    metadata: dict[str, Any] | None = None,
     machine_type: str = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
     keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
     max_multiplexing: int = FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING,
@@ -681,6 +684,7 @@ def function(
     exposed_port: int | None = None,
     max_concurrency: int | None = None,
     # FalServerlessHost options
+    metadata: dict[str, Any] | None = None,
     machine_type: str = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
     keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
     max_multiplexing: int = FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING,
