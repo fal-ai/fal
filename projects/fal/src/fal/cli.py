@@ -10,6 +10,7 @@ from uuid import uuid4
 import click
 import fal.auth as auth
 import grpc
+import fal
 from fal import api, sdk
 from fal.console import console
 from fal.exceptions import ApplicationExceptionHandler
@@ -244,6 +245,28 @@ def function_cli(ctx, host: str, port: str):
     ctx.obj = api.FalServerlessHost(f"{host}:{port}")
 
 
+def load_function_from(
+    host: api.FalServerlessHost,
+    file_path: str,
+    function_name: str,
+) -> api.IsolatedFunction:
+    import runpy
+
+    module = runpy.run_path(file_path)
+    if function_name not in module:
+        raise api.FalServerlessError(f"Function '{function_name}' not found in module")
+
+    target = module[function_name]
+    if issubclass(target, fal.App):
+        target = fal.wrap_app(target, host=host)
+
+    if not isinstance(target, api.IsolatedFunction):
+        raise api.FalServerlessError(
+            f"Function '{function_name}' is not a fal.function or a fal.App"
+        )
+    return target
+
+
 @function_cli.command("serve")
 @click.option("--alias", default=None)
 @click.option(
@@ -262,15 +285,9 @@ def register_application(
     alias: str | None,
     auth_mode: ALIAS_AUTH_TYPE,
 ):
-    import runpy
-
     user_id = _get_user_id()
 
-    module = runpy.run_path(file_path)
-    if function_name not in module:
-        raise api.FalServerlessError(f"Function '{function_name}' not found in module")
-
-    isolated_function: api.IsolatedFunction = module[function_name]
+    isolated_function = load_function_from(host, file_path, function_name)
     gateway_options = isolated_function.options.gateway
     if "serve" not in gateway_options and "exposed_port" not in gateway_options:
         raise api.FalServerlessError(
@@ -305,6 +322,15 @@ def register_application(
         else:
             console.print(f"Registered anonymous function '{id}'.")
             console.print(f"URL: https://{user_id}-{id}.{gateway_host}")
+
+
+@function_cli.command("run")
+@click.argument("file_path", required=True)
+@click.argument("function_name", required=True)
+@click.pass_obj
+def run(host: api.FalServerlessHost, file_path: str, function_name: str):
+    isolated_function = load_function_from(host, file_path, function_name)
+    isolated_function()
 
 
 @function_cli.command("logs")
