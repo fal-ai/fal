@@ -58,7 +58,7 @@ class FalFileRepository(FileRepository):
             upload_url,
             method="PUT",
             data=file.data,
-            headers={"Content-Type": file.content_type},
+            headers={"Content-Type": file.content_type},  # type: ignore
         )
 
         with urlopen(req):
@@ -69,4 +69,7 @@ class FalFileRepository(FileRepository):
 @dataclass
 class InMemoryRepository(FileRepository):
     def save(self, file: FileData) -> str:
-        return f'data:{file.content_type};base64,{b64encode(file.data).decode("utf-8")}'
+        return (
+            f"data:{file.content_type};base64,"
+            f'{b64encode(file.as_bytes()).decode("utf-8")}'  # type: ignore
+        )
