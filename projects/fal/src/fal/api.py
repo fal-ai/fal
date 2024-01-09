@@ -792,7 +792,7 @@ class ServeWrapper:
             if "properties" in schema:
                 mark_order(schema, "properties")
 
-        for key in spec["components"].get("schemas") or {}:
+        for key in spec.get("components", {}).get("schemas") or {}:
             order_schema_object(spec["components"]["schemas"][key])
 
         return spec
