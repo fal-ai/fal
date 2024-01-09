@@ -289,7 +289,7 @@ def register_application(
         options=isolated_function.options,
         application_name=alias,
         application_auth_mode=auth_mode,
-        metadata={},
+        metadata=isolated_function.options.host.get("metadata", {}),
     )
 
     if id:
