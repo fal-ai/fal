@@ -11,6 +11,11 @@ PACKAGE_NAME = "fal"
 
 
 def test_missing_dependencies_nested_server_error(isolated_client):
+    from fal import _serialization
+
+    _serialization._PACKAGES.clear()
+    _serialization._MODULES.clear()
+
     @isolated_client()
     def test1():
         return "hello"
