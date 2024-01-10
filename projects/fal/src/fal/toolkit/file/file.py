@@ -4,7 +4,7 @@ from io import BytesIO, FileIO, IOBase
 
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 from urllib.parse import urlparse
 from zipfile import ZipFile
 
@@ -57,7 +57,7 @@ class File(BaseModel):
         description="The name of the file. It will be auto-generated if not provided.",
         examples=["z9RV14K95DvU.png"],
     )
-    file_size: int | None = Field(
+    file_size: Optional[int] = Field(
         description="The size of the file in bytes, when available.", examples=[4404019]
     )
 
