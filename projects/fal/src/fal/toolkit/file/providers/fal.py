@@ -47,6 +47,10 @@ class FalFileRepository(FileRepository):
             upload_url = result["upload_url"]
             self._upload_file(upload_url, file)
 
+            # Reset the file pointer to the beginning of the file
+            # so that it can be read again.
+            file.data.seek(0)
+
             return result["file_url"]
         except HTTPError as e:
             raise FileUploadException(
