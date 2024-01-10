@@ -20,7 +20,8 @@ on:
 jobs:
   release:
     runs-on: ubuntu-latest
-
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
     steps:
       - uses: actions/checkout@v3
         with:
@@ -72,6 +73,7 @@ jobs:
           done
 
       - name: Bump publishing version and build
+        id: bump
         working-directory: projects/fal
         env:
           VERSION_TYPE: ${{ github.event.inputs.version }}
@@ -83,6 +85,7 @@ jobs:
 
           poetry version $VERSION_TYPE
           poetry build
+          echo "version=$(poetry version --short)" >> "$GITHUB_OUTPUT"
 
       - name: Publish PyPI
         env:
@@ -104,3 +107,9 @@ jobs:
           title: Bump the pyproject.toml version for fal
           base: main
           token: ${{ secrets.RELEASER_GITHUB_PAT }}
+
+  release-container:
+    uses: ./.github/workflows/container.yml
+    needs: release
+    with:
+      version: ${{ needs.release.outputs.version }}

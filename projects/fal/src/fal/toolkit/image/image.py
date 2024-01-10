@@ -5,7 +5,7 @@ from io import BytesIO
 from typing import TYPE_CHECKING, Literal, Optional, Union
 
 from fal.toolkit.file.file import DEFAULT_REPOSITORY, File
-from fal.toolkit.file.types import FileData, FileRepository, RepositoryId
+from fal.toolkit.file.types import FileRepository, RepositoryId
 from fal.toolkit.mainify import mainify
 from pydantic import BaseModel, Field
 
@@ -82,14 +82,8 @@ class Image(File):
         file_name: str | None = None,
         repository: FileRepository | RepositoryId = DEFAULT_REPOSITORY,
     ) -> Image:
-        file_data = FileData(
-            data=BytesIO(data), content_type=f"image/{format}", file_name=file_name
-        )
-        return cls(
-            file_data=file_data,
-            repository=repository,
-            width=size.width if size else None,
-            height=size.height if size else None,
+        return cls.from_fileobj(
+            BytesIO(data), content_type=f"image/{format}", file_name=file_name, repository=repository
         )
 
     @classmethod

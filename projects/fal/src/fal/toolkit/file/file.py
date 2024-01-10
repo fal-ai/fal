@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from io import BytesIO, FileIO
+from io import BytesIO, FileIO, IOBase
 
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any, Callable
 from urllib.parse import urlparse
 from zipfile import ZipFile
@@ -13,8 +14,6 @@ from fal.toolkit.file.providers.r2 import R2Repository
 from fal.toolkit.file.types import FileData, FileRepository, RepositoryId, RemoteFileIO
 from fal.toolkit.mainify import mainify
 from pydantic import BaseModel, Field, PrivateAttr
-from pydantic.typing import Optional
-from tempfile import TemporaryDirectory
 
 FileRepositoryFactory = Callable[[], FileRepository]
 
@@ -58,7 +57,7 @@ class File(BaseModel):
         description="The name of the file. It will be auto-generated if not provided.",
         examples=["z9RV14K95DvU.png"],
     )
-    file_size: Optional[int] = Field(
+    file_size: int | None = Field(
         description="The size of the file in bytes, when available.", examples=[4404019]
     )
 
@@ -75,7 +74,22 @@ class File(BaseModel):
         file_name: str | None = None,
         repository: FileRepository | RepositoryId = DEFAULT_REPOSITORY,
     ) -> File:
-        file_data = FileData(BytesIO(data), content_type, file_name)
+        return cls.from_fileobj(
+            BytesIO(data),
+            content_type=content_type,
+            file_name=file_name,
+            repository=repository,
+        )
+
+    @classmethod
+    def from_fileobj(
+        cls,
+        fileobj: IOBase,
+        content_type: str | None = None,
+        file_name: str | None = None,
+        repository: FileRepository | RepositoryId = DEFAULT_REPOSITORY,
+    ) -> File:
+        file_data = FileData(fileobj, content_type, file_name)
 
         file_repository = get_repository(repository)
         url = file_repository.save(file_data)
@@ -158,7 +172,7 @@ class File(BaseModel):
 
 @mainify
 class CompressedFile(File):
-    _extract_dir: Optional[TemporaryDirectory] = PrivateAttr(default=None)
+    _extract_dir: TemporaryDirectory | None = PrivateAttr(default=None)
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
