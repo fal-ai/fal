@@ -63,7 +63,7 @@ class R2Repository(FileRepository):
     @property
     def bucket(self):
         if self._bucket is None:
-            raise Exception("S3 Bucket is not initialized")
+            raise Exception("S3 bucket is not initialized")
 
         return self._bucket
 
