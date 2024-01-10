@@ -485,13 +485,12 @@ def test_fal_storage(isolated_client):
     )
     assert file.as_bytes().decode().endswith("local")
 
-    @isolated_client(serve=True)
+    @isolated_client(requirements=["pydantic==1.10.12"])
     def hello_file():
         # Run in the isolated environment
         return File.from_bytes(b"Hello fal storage from isolated", repository="fal")
 
-    local_fn = hello_file.on(serve=False)
-    file = local_fn()
+    file = hello_file()
     assert file.url.startswith(
         "https://storage.googleapis.com/isolate-dev-smiling-shark_toolkit_bucket/"
     )

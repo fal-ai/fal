@@ -478,6 +478,115 @@ def test_fal_file_from_bytes(isolated_client):
     assert fal_file_content_matches(file, file_content)
 
 
+def test_fal_file_from_fileobj(isolated_client):
+    @isolated_client(requirements=["pydantic==1.10.12"])
+    def fal_file_from_fileobj(content: str):
+        temp_file = tempfile.NamedTemporaryFile(delete=False)
+        with open(temp_file.name, "w+") as fp:
+            fp.write(content)
+
+            fp.seek(0)
+            return File.from_fileobj(fp, repository="in_memory")
+
+    file_content = "file-test"
+    file = fal_file_from_fileobj(file_content)
+
+    assert fal_file_content_matches(file, file_content)
+
+
+def test_fal_file_save(isolated_client):
+    @isolated_client(requirements=["pydantic==1.10.12"])
+    def fal_file_to_local_file(content: str):
+        file = File.from_bytes(content.encode(), repository="in_memory")
+
+        with tempfile.NamedTemporaryFile() as temp_file:
+            file_name = temp_file.name
+            file.save(file_name)
+
+            with open(file_name) as fp:
+                file_content = fp.read()
+
+        return file_content
+
+    file_content = "file-test"
+    saved_file_content = fal_file_to_local_file(file_content)
+
+    assert file_content == saved_file_content
+
+
+@pytest.mark.parametrize(
+    "file_url, expected_content",
+    [
+        (
+            "https://raw.githubusercontent.com/fal-ai/fal/fe0e2a1aa4b46a42a93bad0fbd9aca4aefcb4296/README.md",
+            "projects/fal/README.md",
+        ),
+        ("data:text/plain;charset=UTF-8,fal", "fal"),
+    ],
+)
+def test_fal_file_input(isolated_client, file_url: str, expected_content: str):
+    from pydantic import BaseModel, Field
+
+    class TestInput(BaseModel):
+        file: File = Field()
+
+    @isolated_client(requirements=["pydantic==1.10.12"])
+    def init_file_on_fal(input: TestInput) -> File:
+        return input.file
+
+    test_input = TestInput(file=file_url)
+    file = init_file_on_fal(test_input)
+
+    # File is not downloaded until it is needed
+    assert not fal_file_downloaded(file)
+
+    assert fal_file_url_matches(file, file_url)
+
+    # File will be downloaded when content is accessed
+    assert fal_file_content_matches(file, expected_content)
+    assert fal_file_downloaded(file)
+
+
+def fal_file_downloaded(file: File):
+    return file.file_size != None
+
+
+def fal_file_url_matches(file: File, url: str):
+    return file.url == url
+
+
+def fal_file_content_matches(file: File, content: str):
+    return file.as_bytes().decode() == content
+
+
+def test_fal_file_from_path(isolated_client):
+    @isolated_client(requirements=["pydantic==1.10.12"])
+    def fal_file_from_temp(content: str):
+        with tempfile.NamedTemporaryFile() as temp_file:
+            file_path = temp_file.name
+
+            with open(file_path, "w") as fp:
+                fp.write(content)
+
+            return File.from_path(file_path, repository="in_memory")
+
+    file_content = "file-test"
+    file = fal_file_from_temp(file_content)
+
+    assert fal_file_content_matches(file, file_content)
+
+
+def test_fal_file_from_bytes(isolated_client):
+    @isolated_client(requirements=["pydantic==1.10.12"])
+    def fal_file_from_bytes(content: str):
+        return File.from_bytes(content.encode(), repository="in_memory")
+
+    file_content = "file-test"
+    file = fal_file_from_bytes(file_content)
+
+    assert fal_file_content_matches(file, file_content)
+
+
 def test_fal_file_save(isolated_client):
     @isolated_client(requirements=["pydantic==1.10.12"])
     def fal_file_to_local_file(content: str):

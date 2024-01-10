@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import os
 import shutil
 import subprocess
 import sys
@@ -73,7 +74,8 @@ def regen_grpc(
             sys.executable,
             "-m",
             "grpc_tools.protoc",
-            "--proto_path=.",
+            "-I=.",
+            f"-I={os.getenv('GOPATH')}/pkg/mod",
             "--python_out=.",
             "--grpc_python_out=.",
             "--mypy_out=.",

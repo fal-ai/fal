@@ -85,13 +85,8 @@ class Image(File):
         file_name: str | None = None,
         repository: FileRepository | RepositoryId = DEFAULT_REPOSITORY,
     ) -> Image:
-        pil_image = cls.__bytes_to_pil(data)
-
-        return cls.from_pil(
-            pil_image=pil_image,
-            format=format,
-            file_name=file_name,
-            repository=repository,
+        return cls.from_fileobj(
+            BytesIO(data), content_type=f"image/{format}", file_name=file_name, repository=repository
         )
 
     @classmethod

@@ -84,7 +84,10 @@ class FileData:
         if self._cached_content:
             return self._cached_content
 
-        content: bytes = self.data.read()
+        content: bytes | str = self.data.read()
+        # For files that open in text mode, convert to bytes
+        if isinstance(content, str):
+            content = content.encode()
 
         self._cached_content = content
 
