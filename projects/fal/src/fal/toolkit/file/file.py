@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from io import BytesIO, FileIO
+from io import BytesIO, FileIO, IOBase
 
 from pathlib import Path
 from typing import Any, Callable
@@ -73,7 +73,22 @@ class File(BaseModel):
         file_name: str | None = None,
         repository: FileRepository | RepositoryId = DEFAULT_REPOSITORY,
     ) -> File:
-        file_data = FileData(BytesIO(data), content_type, file_name)
+        return cls.from_fileobj(
+            BytesIO(data),
+            content_type=content_type,
+            file_name=file_name,
+            repository=repository,
+        )
+
+    @classmethod
+    def from_fileobj(
+        cls,
+        fileobj: IOBase,
+        content_type: str | None = None,
+        file_name: str | None = None,
+        repository: FileRepository | RepositoryId = DEFAULT_REPOSITORY,
+    ) -> File:
+        file_data = FileData(fileobj, content_type, file_name)
 
         file_repository = get_repository(repository)
         url = file_repository.save(file_data)

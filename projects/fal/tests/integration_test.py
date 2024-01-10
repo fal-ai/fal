@@ -472,6 +472,22 @@ def test_fal_file_from_bytes(isolated_client):
     assert fal_file_content_matches(file, file_content)
 
 
+def test_fal_file_from_fileobj(isolated_client):
+    @isolated_client(requirements=["pydantic==1.10.12"])
+    def fal_file_from_fileobj(content: str):
+        temp_file = tempfile.NamedTemporaryFile(delete=False)
+        with open(temp_file.name, "w+") as fp:
+            fp.write(content)
+
+            fp.seek(0)
+            return File.from_fileobj(fp, repository="in_memory")
+
+    file_content = "file-test"
+    file = fal_file_from_fileobj(file_content)
+
+    assert fal_file_content_matches(file, file_content)
+
+
 def test_fal_file_save(isolated_client):
     @isolated_client(requirements=["pydantic==1.10.12"])
     def fal_file_to_local_file(content: str):
