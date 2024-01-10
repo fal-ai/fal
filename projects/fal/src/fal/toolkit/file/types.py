@@ -84,6 +84,10 @@ class FileData:
         if self._cached_content:
             return self._cached_content
 
+        # Repositories might have already read the content, so we need to reset the
+        # file pointer before reading it again
+        self.data.seek(0)
+
         content: bytes = self.data.read()
 
         self._cached_content = content
