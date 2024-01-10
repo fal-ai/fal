@@ -479,7 +479,7 @@ def test_worker_env_vars(isolated_client):
 
 
 def test_fal_storage(isolated_client):
-    file = File.from_bytes(b"Hello fal storage from local", repository="in_memory")
+    file = File.from_bytes(b"Hello fal storage from local", repository="fal")
     assert file.url.startswith(
         "https://storage.googleapis.com/isolate-dev-smiling-shark_toolkit_bucket/"
     )
