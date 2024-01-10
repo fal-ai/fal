@@ -5,12 +5,17 @@ on:
     types: [assigned, opened, synchronize, reopened]
     paths-ignore:
       - "README.md"
-  
+ 
   workflow_dispatch:
 
 jobs:
   run:
     runs-on: ubuntu-latest
+
+    concurrency:
+      group: "${{ github.head_ref || github.run_id }}-${{ github.workflow }}"
+      cancel-in-progress: true
+
     strategy:
       fail-fast: false
 
