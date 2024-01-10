@@ -6,9 +6,10 @@ import fal.api
 from fal.toolkit import mainify
 from fastapi import FastAPI
 from typing import Any, NamedTuple, Callable, TypeVar, ClassVar
-
+from fal.logging import get_logger
 
 EndpointT = TypeVar("EndpointT", bound=Callable[..., Any])
+logger = get_logger(__name__)
 
 
 def wrap_app(cls: type[App], **kwargs) -> fal.api.IsolatedFunction:
@@ -16,12 +17,20 @@ def wrap_app(cls: type[App], **kwargs) -> fal.api.IsolatedFunction:
         app = cls()
         app.serve()
 
+    try:
+        app = cls(_allow_init=True)
+        metadata = app.openapi()
+    except Exception as exc:
+        logger.warning("Failed to build OpenAPI specification for %s", cls.__name__)
+        metadata = {}
+
     wrapper = fal.api.function(
         "virtualenv",
         requirements=cls.requirements,
         machine_type=cls.machine_type,
         **cls.host_kwargs,
         **kwargs,
+        metadata=metadata,
         serve=True,
     )
     return wrapper(initialize_and_serve).on(
@@ -44,8 +53,14 @@ class App:
     def __init_subclass__(cls, **kwargs):
         cls.host_kwargs = kwargs
 
-    def __init__(self):
-        if not os.getenv("IS_ISOLATE_AGENT"):
+        if cls.__init__ is not App.__init__:
+            raise ValueError(
+                "App classes should not override __init__ directly. "
+                "Use setup() instead."
+            )
+
+    def __init__(self, *, _allow_init: bool = False):
+        if not _allow_init and not os.getenv("IS_ISOLATE_AGENT"):
             raise NotImplementedError(
                 "Running apps through SDK is not implemented yet."
             )
