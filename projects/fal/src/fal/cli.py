@@ -257,7 +257,7 @@ def load_function_from(
         raise api.FalServerlessError(f"Function '{function_name}' not found in module")
 
     target = module[function_name]
-    if issubclass(target, fal.App):
+    if isinstance(target, type) and issubclass(target, fal.App):
         target = fal.wrap_app(target, host=host)
 
     if not isinstance(target, api.IsolatedFunction):
