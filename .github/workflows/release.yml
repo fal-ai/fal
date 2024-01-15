@@ -101,7 +101,11 @@ jobs:
         run: poetry publish -u $PYPI_USERNAME -p $PYPI_PASSWORD -v -n
 
       - name: Clean git changes
-        run: git checkout -- .
+        working-directory: projects/fal
+        run: |
+          git add poetry.lock
+          git checkout -- .
+          git reset
 
       - name: Bump repo version
         working-directory: projects/fal
