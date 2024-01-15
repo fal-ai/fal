@@ -85,7 +85,13 @@ jobs:
 
           poetry version $VERSION_TYPE
           poetry build
-          echo "version=$(poetry version --short)" >> "$GITHUB_OUTPUT"
+
+          # set in GITHUB_ENV
+          BUILT_VERSION=$(poetry version -s)
+          echo "BUILT_VERSION=$BUILT_VERSION"
+          echo "BUILT_VERSION=$BUILT_VERSION" >> $GITHUB_ENV
+
+          echo "version=$BUILT_VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Publish PyPI
         env:
@@ -94,15 +100,21 @@ jobs:
         working-directory: projects/fal
         run: poetry publish -u $PYPI_USERNAME -p $PYPI_PASSWORD -v -n
 
+      - name: Clean git changes
+        run: git checkout -- .
+
       - name: Bump repo version
         working-directory: projects/fal
         run: |
+          # Set the version in the pyproject.toml
+          poetry version ${{ env.BUILT_VERSION }}
+          # And bump it for development
           poetry version prerelease
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v4
         with:
-          branch: bump-fal-version
+          branch: bump-fal-version-${{ env.BUILT_VERSION }}
           delete-branch: true
           title: Bump the pyproject.toml version for fal
           base: main
