@@ -94,6 +94,11 @@ jobs:
         working-directory: projects/fal
         run: poetry publish -u $PYPI_USERNAME -p $PYPI_PASSWORD -v -n
 
+      - name: Clean changes
+        working-directory: projects/fal
+        run: |
+          git checkout src/fal/env.py
+
       - name: Bump repo version
         working-directory: projects/fal
         run: |
