@@ -45,9 +45,9 @@ jobs:
           poetry build
 
           # set in GITHUB_ENV
-          ISOLATE_PROTO_VERSION=$(poetry version -s)
-          echo "ISOLATE_PROTO_VERSION=$ISOLATE_PROTO_VERSION"
-          echo "ISOLATE_PROTO_VERSION=$ISOLATE_PROTO_VERSION" >> $GITHUB_ENV
+          BUILT_VERSION=$(poetry version -s)
+          echo "BUILT_VERSION=$BUILT_VERSION"
+          echo "BUILT_VERSION=$BUILT_VERSION" >> $GITHUB_ENV
 
       - name: Publish PyPI
         env:
@@ -56,15 +56,21 @@ jobs:
         working-directory: projects/isolate_proto
         run: poetry publish -u $PYPI_USERNAME -p $PYPI_PASSWORD -v -n
 
+      - name: Clean git changes
+        run: git checkout -- .
+
       - name: Bump repo version
         working-directory: projects/isolate_proto
         run: |
+          # Set the version in the pyproject.toml
+          poetry version ${{ env.BUILT_VERSION }}
+          # And bump it for development
           poetry version prerelease
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v4
         with:
-          branch: bump-proto-version-${{ env.ISOLATE_PROTO_VERSION }}
+          branch: bump-proto-version-${{ env.BUILT_VERSION }}
           delete-branch: true
           title: Bump the pyproject.toml version for isolate-proto
           base: main
