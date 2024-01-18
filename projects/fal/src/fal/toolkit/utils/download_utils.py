@@ -362,6 +362,7 @@ def clone_repository(
         clone_command = [
             "git",
             "clone",
+            "--recursive",
             https_url,
             temp_dir_path,
         ]
@@ -387,6 +388,18 @@ def clone_repository(
 def _get_git_revision_hash(repo_path: Path) -> str:
     import subprocess
 
-    return subprocess.check_output(
-        ["git", "rev-parse", "HEAD"], cwd=repo_path, text=True
-    ).strip()
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "HEAD"],
+            cwd=repo_path,
+            text=True,
+            stderr=subprocess.STDOUT,
+        ).strip()
+    except subprocess.CalledProcessError as error:
+        if "not a git repository" in error.output:
+            return ""
+
+        print(
+            f"{error}\nFailed to get the commit hash of the repository '{repo_path}' ."
+        )
+        raise error
