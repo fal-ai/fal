@@ -29,9 +29,7 @@ def _get_kwargs(
     }
 
 
-def _parse_response(
-    *, client: Client, response: httpx.Response
-) -> Optional[Union[HTTPValidationError, Invoice]]:
+def _parse_response(*, client: Client, response: httpx.Response) -> Optional[Union[HTTPValidationError, Invoice]]:
     if response.status_code == HTTPStatus.OK:
         response_200 = Invoice.from_dict(response.json())
 
@@ -46,9 +44,7 @@ def _parse_response(
         return None
 
 
-def _build_response(
-    *, client: Client, response: httpx.Response
-) -> Response[Union[HTTPValidationError, Invoice]]:
+def _build_response(*, client: Client, response: httpx.Response) -> Response[Union[HTTPValidationError, Invoice]]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,

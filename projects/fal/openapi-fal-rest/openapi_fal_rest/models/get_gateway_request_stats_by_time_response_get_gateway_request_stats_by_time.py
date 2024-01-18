@@ -6,18 +6,14 @@ if TYPE_CHECKING:
     from ..models.gateway_stats_by_time import GatewayStatsByTime
 
 
-T = TypeVar(
-    "T", bound="GetGatewayRequestStatsByTimeResponseGetGatewayRequestStatsByTime"
-)
+T = TypeVar("T", bound="GetGatewayRequestStatsByTimeResponseGetGatewayRequestStatsByTime")
 
 
 @attr.s(auto_attribs=True)
 class GetGatewayRequestStatsByTimeResponseGetGatewayRequestStatsByTime:
     """ """
 
-    additional_properties: Dict[str, List["GatewayStatsByTime"]] = attr.ib(
-        init=False, factory=dict
-    )
+    additional_properties: Dict[str, List["GatewayStatsByTime"]] = attr.ib(init=False, factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         pass
@@ -39,18 +35,14 @@ class GetGatewayRequestStatsByTimeResponseGetGatewayRequestStatsByTime:
         from ..models.gateway_stats_by_time import GatewayStatsByTime
 
         d = src_dict.copy()
-        get_gateway_request_stats_by_time_response_get_gateway_request_stats_by_time = (
-            cls()
-        )
+        get_gateway_request_stats_by_time_response_get_gateway_request_stats_by_time = cls()
 
         additional_properties = {}
         for prop_name, prop_dict in d.items():
             additional_property = []
             _additional_property = prop_dict
             for additional_property_item_data in _additional_property:
-                additional_property_item = GatewayStatsByTime.from_dict(
-                    additional_property_item_data
-                )
+                additional_property_item = GatewayStatsByTime.from_dict(additional_property_item_data)
 
                 additional_property.append(additional_property_item)
 
@@ -59,9 +51,7 @@ class GetGatewayRequestStatsByTimeResponseGetGatewayRequestStatsByTime:
         get_gateway_request_stats_by_time_response_get_gateway_request_stats_by_time.additional_properties = (
             additional_properties
         )
-        return (
-            get_gateway_request_stats_by_time_response_get_gateway_request_stats_by_time
-        )
+        return get_gateway_request_stats_by_time_response_get_gateway_request_stats_by_time
 
     @property
     def additional_keys(self) -> List[str]:
