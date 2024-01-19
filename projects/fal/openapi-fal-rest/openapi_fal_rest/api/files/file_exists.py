@@ -37,9 +37,7 @@ def _get_kwargs(
     }
 
 
-def _parse_response(
-    *, client: Client, response: httpx.Response
-) -> Optional[Union[FileSpec, HTTPValidationError]]:
+def _parse_response(*, client: Client, response: httpx.Response) -> Optional[Union[FileSpec, HTTPValidationError]]:
     if response.status_code == HTTPStatus.OK:
         response_200 = FileSpec.from_dict(response.json())
 
@@ -54,9 +52,7 @@ def _parse_response(
         return None
 
 
-def _build_response(
-    *, client: Client, response: httpx.Response
-) -> Response[Union[FileSpec, HTTPValidationError]]:
+def _build_response(*, client: Client, response: httpx.Response) -> Response[Union[FileSpec, HTTPValidationError]]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,

@@ -14,9 +14,7 @@ def _get_kwargs(
     *,
     client: Client,
 ) -> Dict[str, Any]:
-    url = "{}/billing/payment_methods/{payment_method_id}".format(
-        client.base_url, payment_method_id=payment_method_id
-    )
+    url = "{}/billing/payment_methods/{payment_method_id}".format(client.base_url, payment_method_id=payment_method_id)
 
     headers: Dict[str, str] = client.get_headers()
     cookies: Dict[str, Any] = client.get_cookies()
@@ -31,9 +29,7 @@ def _get_kwargs(
     }
 
 
-def _parse_response(
-    *, client: Client, response: httpx.Response
-) -> Optional[Union[HTTPValidationError, bool]]:
+def _parse_response(*, client: Client, response: httpx.Response) -> Optional[Union[HTTPValidationError, bool]]:
     if response.status_code == HTTPStatus.OK:
         response_200 = cast(bool, response.json())
         return response_200
@@ -47,9 +43,7 @@ def _parse_response(
         return None
 
 
-def _build_response(
-    *, client: Client, response: httpx.Response
-) -> Response[Union[HTTPValidationError, bool]]:
+def _build_response(*, client: Client, response: httpx.Response) -> Response[Union[HTTPValidationError, bool]]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
