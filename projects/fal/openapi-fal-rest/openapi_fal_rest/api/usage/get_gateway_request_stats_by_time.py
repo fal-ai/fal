@@ -64,18 +64,9 @@ def _get_kwargs(
 
 def _parse_response(
     *, client: Client, response: httpx.Response
-) -> Optional[
-    Union[
-        GetGatewayRequestStatsByTimeResponseGetGatewayRequestStatsByTime,
-        HTTPValidationError,
-    ]
-]:
+) -> Optional[Union[GetGatewayRequestStatsByTimeResponseGetGatewayRequestStatsByTime, HTTPValidationError]]:
     if response.status_code == HTTPStatus.OK:
-        response_200 = (
-            GetGatewayRequestStatsByTimeResponseGetGatewayRequestStatsByTime.from_dict(
-                response.json()
-            )
-        )
+        response_200 = GetGatewayRequestStatsByTimeResponseGetGatewayRequestStatsByTime.from_dict(response.json())
 
         return response_200
     if response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY:
@@ -90,12 +81,7 @@ def _parse_response(
 
 def _build_response(
     *, client: Client, response: httpx.Response
-) -> Response[
-    Union[
-        GetGatewayRequestStatsByTimeResponseGetGatewayRequestStatsByTime,
-        HTTPValidationError,
-    ]
-]:
+) -> Response[Union[GetGatewayRequestStatsByTimeResponseGetGatewayRequestStatsByTime, HTTPValidationError]]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -111,12 +97,7 @@ def sync_detailed(
     end_time: datetime.datetime,
     timeframe: StatsTimeframe,
     app_aliases: Union[Unset, None, List[str]] = UNSET,
-) -> Response[
-    Union[
-        GetGatewayRequestStatsByTimeResponseGetGatewayRequestStatsByTime,
-        HTTPValidationError,
-    ]
-]:
+) -> Response[Union[GetGatewayRequestStatsByTimeResponseGetGatewayRequestStatsByTime, HTTPValidationError]]:
     """Get Gateway Request Stats By Time
 
     Args:
@@ -156,12 +137,7 @@ def sync(
     end_time: datetime.datetime,
     timeframe: StatsTimeframe,
     app_aliases: Union[Unset, None, List[str]] = UNSET,
-) -> Optional[
-    Union[
-        GetGatewayRequestStatsByTimeResponseGetGatewayRequestStatsByTime,
-        HTTPValidationError,
-    ]
-]:
+) -> Optional[Union[GetGatewayRequestStatsByTimeResponseGetGatewayRequestStatsByTime, HTTPValidationError]]:
     """Get Gateway Request Stats By Time
 
     Args:
@@ -194,12 +170,7 @@ async def asyncio_detailed(
     end_time: datetime.datetime,
     timeframe: StatsTimeframe,
     app_aliases: Union[Unset, None, List[str]] = UNSET,
-) -> Response[
-    Union[
-        GetGatewayRequestStatsByTimeResponseGetGatewayRequestStatsByTime,
-        HTTPValidationError,
-    ]
-]:
+) -> Response[Union[GetGatewayRequestStatsByTimeResponseGetGatewayRequestStatsByTime, HTTPValidationError]]:
     """Get Gateway Request Stats By Time
 
     Args:
@@ -237,12 +208,7 @@ async def asyncio(
     end_time: datetime.datetime,
     timeframe: StatsTimeframe,
     app_aliases: Union[Unset, None, List[str]] = UNSET,
-) -> Optional[
-    Union[
-        GetGatewayRequestStatsByTimeResponseGetGatewayRequestStatsByTime,
-        HTTPValidationError,
-    ]
-]:
+) -> Optional[Union[GetGatewayRequestStatsByTimeResponseGetGatewayRequestStatsByTime, HTTPValidationError]]:
     """Get Gateway Request Stats By Time
 
     Args:

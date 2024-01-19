@@ -15,12 +15,14 @@ class CustomerDetails:
         soft_monthly_budget (Union[Unset, int]):
         hard_monthly_budget (Union[Unset, int]):
         current_balance (Union[Unset, int]):
+        is_paying (Union[Unset, bool]):
     """
 
     user_id: str
     soft_monthly_budget: Union[Unset, int] = UNSET
     hard_monthly_budget: Union[Unset, int] = UNSET
     current_balance: Union[Unset, int] = 0
+    is_paying: Union[Unset, bool] = False
     additional_properties: Dict[str, Any] = attr.ib(init=False, factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -28,6 +30,7 @@ class CustomerDetails:
         soft_monthly_budget = self.soft_monthly_budget
         hard_monthly_budget = self.hard_monthly_budget
         current_balance = self.current_balance
+        is_paying = self.is_paying
 
         field_dict: Dict[str, Any] = {}
         field_dict.update(self.additional_properties)
@@ -42,6 +45,8 @@ class CustomerDetails:
             field_dict["hard_monthly_budget"] = hard_monthly_budget
         if current_balance is not UNSET:
             field_dict["current_balance"] = current_balance
+        if is_paying is not UNSET:
+            field_dict["is_paying"] = is_paying
 
         return field_dict
 
@@ -56,11 +61,14 @@ class CustomerDetails:
 
         current_balance = d.pop("current_balance", UNSET)
 
+        is_paying = d.pop("is_paying", UNSET)
+
         customer_details = cls(
             user_id=user_id,
             soft_monthly_budget=soft_monthly_budget,
             hard_monthly_budget=hard_monthly_budget,
             current_balance=current_balance,
+            is_paying=is_paying,
         )
 
         customer_details.additional_properties = d

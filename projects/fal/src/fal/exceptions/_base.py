@@ -14,4 +14,4 @@ class FalServerlessException(Exception):
         super().__init__(message)
 
     def __str__(self) -> str:
-        return self.message
+        return self.message + (f"\nHint: {self.hint}" if self.hint else "")

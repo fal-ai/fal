@@ -9,7 +9,7 @@ from uuid import uuid4
 
 import click
 import fal.auth as auth
-import grpc
+import fal
 from fal import api, sdk
 from fal.console import console
 from fal.exceptions import ApplicationExceptionHandler
@@ -145,15 +145,6 @@ def auth_cli():
 @auth_cli.command(name="login")
 def auth_login():
     auth.login()
-    try:
-        client = sdk.FalServerlessClient(f"{DEFAULT_HOST}:{DEFAULT_PORT}")
-        with client.connect() as connection:
-            connection.list_aliases()
-    except grpc.RpcError as e:
-        if "Insufficient permissions" in e.details():
-            console.print(e.details())
-        else:
-            raise e
 
 
 @auth_cli.command(name="logout")
@@ -244,6 +235,28 @@ def function_cli(ctx, host: str, port: str):
     ctx.obj = api.FalServerlessHost(f"{host}:{port}")
 
 
+def load_function_from(
+    host: api.FalServerlessHost,
+    file_path: str,
+    function_name: str,
+) -> api.IsolatedFunction:
+    import runpy
+
+    module = runpy.run_path(file_path)
+    if function_name not in module:
+        raise api.FalServerlessError(f"Function '{function_name}' not found in module")
+
+    target = module[function_name]
+    if isinstance(target, type) and issubclass(target, fal.App):
+        target = fal.wrap_app(target, host=host)
+
+    if not isinstance(target, api.IsolatedFunction):
+        raise api.FalServerlessError(
+            f"Function '{function_name}' is not a fal.function or a fal.App"
+        )
+    return target
+
+
 @function_cli.command("serve")
 @click.option("--alias", default=None)
 @click.option(
@@ -262,15 +275,9 @@ def register_application(
     alias: str | None,
     auth_mode: ALIAS_AUTH_TYPE,
 ):
-    import runpy
-
     user_id = _get_user_id()
 
-    module = runpy.run_path(file_path)
-    if function_name not in module:
-        raise api.FalServerlessError(f"Function '{function_name}' not found in module")
-
-    isolated_function: api.IsolatedFunction = module[function_name]
+    isolated_function = load_function_from(host, file_path, function_name)
     gateway_options = isolated_function.options.gateway
     if "serve" not in gateway_options and "exposed_port" not in gateway_options:
         raise api.FalServerlessError(
@@ -289,7 +296,7 @@ def register_application(
         options=isolated_function.options,
         application_name=alias,
         application_auth_mode=auth_mode,
-        metadata={},
+        metadata=isolated_function.options.host.get("metadata", {}),
     )
 
     if id:
@@ -305,6 +312,15 @@ def register_application(
         else:
             console.print(f"Registered anonymous function '{id}'.")
             console.print(f"URL: https://{user_id}-{id}.{gateway_host}")
+
+
+@function_cli.command("run")
+@click.argument("file_path", required=True)
+@click.argument("function_name", required=True)
+@click.pass_obj
+def run(host: api.FalServerlessHost, file_path: str, function_name: str):
+    isolated_function = load_function_from(host, file_path, function_name)
+    isolated_function()
 
 
 @function_cli.command("logs")
@@ -518,30 +534,6 @@ def remove_http_and_port_from_url(url):
         url = url_parts[0]
 
     return url
-
-
-# dbt-fal commands to be errored out
-DBT_FAL_COMMAND_NOTICE = """
-The dbt tool `fal` and `dbt-fal` adapter have been merged into a single tool.
-Please use the new `dbt-fal` command line tool instead.
-Running `pip install dbt-fal` will install the new tool and the adapter alongside.
-Then run your command like
-
-    dbt-fal <command>
-
-"""
-
-
-@cli.command("run", context_settings={"ignore_unknown_options": True})
-@click.argument("any", nargs=-1, type=click.UNPROCESSED)
-def dbt_run(any):
-    raise click.BadArgumentUsage(DBT_FAL_COMMAND_NOTICE)
-
-
-@cli.command("flow", context_settings={"ignore_unknown_options": True})
-@click.argument("any", nargs=-1, type=click.UNPROCESSED)
-def dbt_flow(any):
-    raise click.BadArgumentUsage(DBT_FAL_COMMAND_NOTICE)
 
 
 def _get_user_id() -> str:
