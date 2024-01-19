@@ -4,7 +4,7 @@ from io import BytesIO, FileIO, IOBase
 
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 from urllib.parse import urlparse
 from zipfile import ZipFile
 
@@ -57,7 +57,7 @@ class File(BaseModel):
         description="The name of the file. It will be auto-generated if not provided.",
         examples=["z9RV14K95DvU.png"],
     )
-    file_size: Optional[int] = Field(
+    file_size: int | None = Field(
         description="The size of the file in bytes, when available.", examples=[4404019]
     )
 
@@ -172,7 +172,7 @@ class File(BaseModel):
 
 @mainify
 class CompressedFile(File):
-    _extract_dir: Optional[TemporaryDirectory] = PrivateAttr(default=None)
+    _extract_dir: TemporaryDirectory | None = PrivateAttr(default=None)
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
