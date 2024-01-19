@@ -34,6 +34,8 @@ service IsolateController {
     rpc SetSecret (SetSecretRequest) returns (SetSecretResponse) {}
     // Lists all secrets
     rpc ListSecrets (ListSecretsRequest) returns (ListSecretsResponse) {}
+    // List alias runners in detail
+    rpc ListAliasRunners (ListAliasRunnersRequest) returns (ListAliasRunnersResponse) {}
 }
 
 message HostedMap {
@@ -226,6 +228,7 @@ message AliasInfo {
     int32 max_concurrency = 4;
     int32 max_multiplexing = 5;
     int32 keep_alive = 6;
+    int32 active_runners = 7;
 }
 
 message SetSecretRequest {
@@ -249,4 +252,18 @@ message Secret {
 
 message ListSecretsResponse {
     repeated Secret secrets = 1;
+}
+
+message ListAliasRunnersRequest {
+    string alias = 1;
+}
+
+message ListAliasRunnersResponse {
+    repeated RunnerInfo runners = 1;
+}
+
+message RunnerInfo {
+    string runner_id = 1;
+    int32 in_flight_requests = 2;
+    int32 expiration_countdown = 3;
 }

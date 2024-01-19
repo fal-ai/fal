@@ -187,6 +187,14 @@ class AliasInfo:
     keep_alive: int
     max_concurrency: int
     max_multiplexing: int
+    active_runners: int
+
+
+@dataclass
+class RunnerInfo:
+    runner_id: str
+    in_flight_requests: int
+    expiration_countdown: int
 
 
 @dataclass
@@ -263,6 +271,16 @@ def _from_grpc_alias_info(message: isolate_proto.AliasInfo) -> AliasInfo:
         keep_alive=message.keep_alive,
         max_concurrency=message.max_concurrency,
         max_multiplexing=message.max_multiplexing,
+        active_runners=message.active_runners,
+    )
+
+
+@from_grpc.register(isolate_proto.RunnerInfo)
+def _from_grpc_runner_info(message: isolate_proto.RunnerInfo) -> RunnerInfo:
+    return RunnerInfo(
+        runner_id=message.runner_id,
+        in_flight_requests=message.in_flight_requests,
+        expiration_countdown=message.expiration_countdown,
     )
 
 
@@ -523,6 +541,11 @@ class FalServerlessConnection:
         request = isolate_proto.ListAliasesRequest()
         response: isolate_proto.ListAliasesResult = self.stub.ListAliases(request)
         return [from_grpc(alias) for alias in response.aliases]
+
+    def list_alias_runners(self, alias: str) -> list[RunnerInfo]:
+        request = isolate_proto.ListAliasRunnersRequest(alias=alias)
+        response = self.stub.ListAliasRunners(request)
+        return [from_grpc(runner) for runner in response.runners]
 
     def set_secret(self, name: str, value: str) -> None:
         request = isolate_proto.SetSecretRequest(name=name, value=value)
