@@ -368,6 +368,7 @@ def _alias_table(aliases: list[AliasInfo]):
     table.add_column("Max Concurrency")
     table.add_column("Max Multiplexing")
     table.add_column("Keep Alive")
+    table.add_column("Active Workers")
 
     for app_alias in aliases:
         table.add_row(
@@ -377,6 +378,7 @@ def _alias_table(aliases: list[AliasInfo]):
             str(app_alias.max_concurrency),
             str(app_alias.max_multiplexing),
             str(app_alias.keep_alive),
+            str(app_alias.active_runners),
         )
 
     return table
@@ -453,6 +455,33 @@ def alias_update(
             max_concurrency=max_concurrency,
         )
         table = _alias_table([alias_info])
+
+    console.print(table)
+
+
+@alias_cli.command("runners")
+@click.argument("alias", required=True)
+@click.pass_obj
+def alias_list_runners(
+    client: api.FalServerlessClient,
+    alias: str,
+):
+    with client.connect() as connection:
+        runners = connection.list_alias_runners(alias=alias)
+
+    table = Table(title="Application Runners")
+    table.add_column("Runner ID")
+    table.add_column("In Flight Requests")
+    table.add_column("Expires in")
+
+    for runner in runners:
+        table.add_row(
+            runner.runner_id,
+            str(runner.in_flight_requests),
+            "N/A (active)"
+            if not runner.expiration_countdown
+            else f"{runner.expiration_countdown}s",
+        )
 
     console.print(table)
 

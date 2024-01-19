@@ -1056,12 +1056,14 @@ class AliasInfo(google.protobuf.message.Message):
     MAX_CONCURRENCY_FIELD_NUMBER: builtins.int
     MAX_MULTIPLEXING_FIELD_NUMBER: builtins.int
     KEEP_ALIVE_FIELD_NUMBER: builtins.int
+    ACTIVE_RUNNERS_FIELD_NUMBER: builtins.int
     alias: builtins.str
     revision: builtins.str
     auth_mode: global___ApplicationAuthMode.ValueType
     max_concurrency: builtins.int
     max_multiplexing: builtins.int
     keep_alive: builtins.int
+    active_runners: builtins.int
     def __init__(
         self,
         *,
@@ -1071,10 +1073,13 @@ class AliasInfo(google.protobuf.message.Message):
         max_concurrency: builtins.int = ...,
         max_multiplexing: builtins.int = ...,
         keep_alive: builtins.int = ...,
+        active_runners: builtins.int = ...,
     ) -> None: ...
     def ClearField(
         self,
         field_name: typing_extensions.Literal[
+            "active_runners",
+            b"active_runners",
             "alias",
             b"alias",
             "auth_mode",
@@ -1206,3 +1211,73 @@ class ListSecretsResponse(google.protobuf.message.Message):
     ) -> None: ...
 
 global___ListSecretsResponse = ListSecretsResponse
+
+@typing_extensions.final
+class ListAliasRunnersRequest(google.protobuf.message.Message):
+    DESCRIPTOR: google.protobuf.descriptor.Descriptor
+
+    ALIAS_FIELD_NUMBER: builtins.int
+    alias: builtins.str
+    def __init__(
+        self,
+        *,
+        alias: builtins.str = ...,
+    ) -> None: ...
+    def ClearField(
+        self, field_name: typing_extensions.Literal["alias", b"alias"]
+    ) -> None: ...
+
+global___ListAliasRunnersRequest = ListAliasRunnersRequest
+
+@typing_extensions.final
+class ListAliasRunnersResponse(google.protobuf.message.Message):
+    DESCRIPTOR: google.protobuf.descriptor.Descriptor
+
+    RUNNERS_FIELD_NUMBER: builtins.int
+    @property
+    def runners(
+        self,
+    ) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[
+        global___RunnerInfo
+    ]: ...
+    def __init__(
+        self,
+        *,
+        runners: collections.abc.Iterable[global___RunnerInfo] | None = ...,
+    ) -> None: ...
+    def ClearField(
+        self, field_name: typing_extensions.Literal["runners", b"runners"]
+    ) -> None: ...
+
+global___ListAliasRunnersResponse = ListAliasRunnersResponse
+
+@typing_extensions.final
+class RunnerInfo(google.protobuf.message.Message):
+    DESCRIPTOR: google.protobuf.descriptor.Descriptor
+
+    RUNNER_ID_FIELD_NUMBER: builtins.int
+    IN_FLIGHT_REQUESTS_FIELD_NUMBER: builtins.int
+    EXPIRATION_COUNTDOWN_FIELD_NUMBER: builtins.int
+    runner_id: builtins.str
+    in_flight_requests: builtins.int
+    expiration_countdown: builtins.int
+    def __init__(
+        self,
+        *,
+        runner_id: builtins.str = ...,
+        in_flight_requests: builtins.int = ...,
+        expiration_countdown: builtins.int = ...,
+    ) -> None: ...
+    def ClearField(
+        self,
+        field_name: typing_extensions.Literal[
+            "expiration_countdown",
+            b"expiration_countdown",
+            "in_flight_requests",
+            b"in_flight_requests",
+            "runner_id",
+            b"runner_id",
+        ],
+    ) -> None: ...
+
+global___RunnerInfo = RunnerInfo

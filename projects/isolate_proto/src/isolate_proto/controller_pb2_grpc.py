@@ -74,6 +74,11 @@ class IsolateControllerStub(object):
             request_serializer=controller__pb2.ListSecretsRequest.SerializeToString,
             response_deserializer=controller__pb2.ListSecretsResponse.FromString,
         )
+        self.ListAliasRunners = channel.unary_unary(
+            "/controller.IsolateController/ListAliasRunners",
+            request_serializer=controller__pb2.ListAliasRunnersRequest.SerializeToString,
+            response_deserializer=controller__pb2.ListAliasRunnersResponse.FromString,
+        )
 
 
 class IsolateControllerServicer(object):
@@ -153,6 +158,12 @@ class IsolateControllerServicer(object):
         context.set_details("Method not implemented!")
         raise NotImplementedError("Method not implemented!")
 
+    def ListAliasRunners(self, request, context):
+        """List alias runners in detail"""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details("Method not implemented!")
+        raise NotImplementedError("Method not implemented!")
+
 
 def add_IsolateControllerServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -215,6 +226,11 @@ def add_IsolateControllerServicer_to_server(servicer, server):
             servicer.ListSecrets,
             request_deserializer=controller__pb2.ListSecretsRequest.FromString,
             response_serializer=controller__pb2.ListSecretsResponse.SerializeToString,
+        ),
+        "ListAliasRunners": grpc.unary_unary_rpc_method_handler(
+            servicer.ListAliasRunners,
+            request_deserializer=controller__pb2.ListAliasRunnersRequest.FromString,
+            response_serializer=controller__pb2.ListAliasRunnersResponse.SerializeToString,
         ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -565,6 +581,35 @@ class IsolateController(object):
             "/controller.IsolateController/ListSecrets",
             controller__pb2.ListSecretsRequest.SerializeToString,
             controller__pb2.ListSecretsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+        )
+
+    @staticmethod
+    def ListAliasRunners(
+        request,
+        target,
+        options=(),
+        channel_credentials=None,
+        call_credentials=None,
+        insecure=False,
+        compression=None,
+        wait_for_ready=None,
+        timeout=None,
+        metadata=None,
+    ):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            "/controller.IsolateController/ListAliasRunners",
+            controller__pb2.ListAliasRunnersRequest.SerializeToString,
+            controller__pb2.ListAliasRunnersResponse.FromString,
             options,
             channel_credentials,
             insecure,
