@@ -479,7 +479,7 @@ def alias_list_runners(
             runner.runner_id,
             str(runner.in_flight_requests),
             "N/A (active)"
-            if runner.expiration_countdown is None
+            if not runner.expiration_countdown
             else f"{runner.expiration_countdown}s",
         )
 
