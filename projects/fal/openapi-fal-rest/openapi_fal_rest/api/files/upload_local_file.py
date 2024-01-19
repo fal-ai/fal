@@ -17,9 +17,7 @@ def _get_kwargs(
     multipart_data: BodyUploadLocalFile,
     unzip: Union[Unset, None, bool] = False,
 ) -> Dict[str, Any]:
-    url = "{}/files/file/local/{target_path}".format(
-        client.base_url, target_path=target_path
-    )
+    url = "{}/files/file/local/{target_path}".format(client.base_url, target_path=target_path)
 
     headers: Dict[str, str] = client.get_headers()
     cookies: Dict[str, Any] = client.get_cookies()
@@ -43,9 +41,7 @@ def _get_kwargs(
     }
 
 
-def _parse_response(
-    *, client: Client, response: httpx.Response
-) -> Optional[Union[HTTPValidationError, bool]]:
+def _parse_response(*, client: Client, response: httpx.Response) -> Optional[Union[HTTPValidationError, bool]]:
     if response.status_code == HTTPStatus.OK:
         response_200 = cast(bool, response.json())
         return response_200
@@ -59,9 +55,7 @@ def _parse_response(
         return None
 
 
-def _build_response(
-    *, client: Client, response: httpx.Response
-) -> Response[Union[HTTPValidationError, bool]]:
+def _build_response(*, client: Client, response: httpx.Response) -> Response[Union[HTTPValidationError, bool]]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
