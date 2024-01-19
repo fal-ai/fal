@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import inspect
 import sys
 from collections import defaultdict
@@ -23,10 +24,17 @@ from typing import (
 
 import dill
 import dill.detect
-import fal.flags as flags
 import grpc
 import isolate
 import yaml
+from isolate.backends.common import active_python
+from isolate.backends.settings import DEFAULT_SETTINGS
+from isolate.connections import PythonIPC
+from packaging.requirements import Requirement
+from packaging.utils import canonicalize_name
+from typing_extensions import Concatenate, ParamSpec
+
+import fal.flags as flags
 from fal._serialization import add_serialization_listeners_for, patch_dill
 from fal.logging.isolate import IsolateLogPrinter
 from fal.sdk import (
@@ -41,12 +49,6 @@ from fal.sdk import (
     get_default_credentials,
 )
 from fal.toolkit import mainify
-from isolate.backends.common import active_python
-from isolate.backends.settings import DEFAULT_SETTINGS
-from isolate.connections import PythonIPC
-from packaging.requirements import Requirement
-from packaging.utils import canonicalize_name
-from typing_extensions import Concatenate, ParamSpec
 
 ArgsT = ParamSpec("ArgsT")
 ReturnT = TypeVar("ReturnT", covariant=True)
@@ -108,7 +110,9 @@ class Host(Generic[ArgsT, ReturnT]):
                 options.environment[key] = value
 
         if options.gateway.get("serve"):
-            options.add_requirements(["fastapi==0.99.1", "uvicorn"])
+            options.add_requirements(
+                ["fastapi==0.99.1", "uvicorn", "starlette_exporter==0.17.1"]
+            )
 
         return options
 
@@ -754,10 +758,20 @@ class ServeWrapper:
                 f"[warning] {self._func.__name__} function is served with no arguments."
             )
 
-        from uvicorn import run
+        from fastapi import FastAPI
+        from starlette_exporter import PrometheusMiddleware, handle_metrics
+        from uvicorn import Config, Server
 
         app = self.build_app()
-        run(app, host="0.0.0.0", port=8080)
+        app.add_middleware(PrometheusMiddleware, prefix="http")
+        metrics_app = FastAPI()
+        metrics_app.add_route("/metrics", handle_metrics)
+        asyncio.get_event_loop().run_until_complete(
+            asyncio.gather(
+                Server(config=Config(app, host="0.0.0.0", port=8080)).serve(),
+                Server(config=Config(metrics_app, host="0.0.0.0", port=9090)).serve(),
+            )
+        )
 
     def openapi(self) -> dict[str, Any]:
         """
