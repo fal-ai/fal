@@ -4,6 +4,7 @@ from functools import wraps
 
 import dill
 from dill import _dill
+
 from fal.toolkit import mainify
 
 # each @fal.function gets added to this set so that we can
@@ -124,5 +125,5 @@ def patch_dill():
     import dill
 
     dill.settings["recurse"] = True
-    patch_pydantic_class_attributes()
-    patch_pydantic_field_serialization()
+    # patch_pydantic_class_attributes()
+    # patch_pydantic_field_serialization()
