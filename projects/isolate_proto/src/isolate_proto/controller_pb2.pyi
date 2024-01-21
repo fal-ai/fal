@@ -509,6 +509,7 @@ class MachineRequirements(google.protobuf.message.Message):
     SCHEDULER_OPTIONS_FIELD_NUMBER: builtins.int
     MAX_MULTIPLEXING_FIELD_NUMBER: builtins.int
     MAX_CONCURRENCY_FIELD_NUMBER: builtins.int
+    MIN_CONCURRENCY_FIELD_NUMBER: builtins.int
     machine_type: builtins.str
     """Machine type. It is not an enum because we want to be able
     to dynamically add new machine types without regenerating
@@ -523,6 +524,7 @@ class MachineRequirements(google.protobuf.message.Message):
     def scheduler_options(self) -> google.protobuf.struct_pb2.Struct: ...
     max_multiplexing: builtins.int
     max_concurrency: builtins.int
+    min_concurrency: builtins.int
     def __init__(
         self,
         *,
@@ -534,6 +536,7 @@ class MachineRequirements(google.protobuf.message.Message):
         scheduler_options: google.protobuf.struct_pb2.Struct | None = ...,
         max_multiplexing: builtins.int | None = ...,
         max_concurrency: builtins.int | None = ...,
+        min_concurrency: builtins.int | None = ...,
     ) -> None: ...
     def HasField(
         self,
@@ -548,6 +551,8 @@ class MachineRequirements(google.protobuf.message.Message):
             b"_max_concurrency",
             "_max_multiplexing",
             b"_max_multiplexing",
+            "_min_concurrency",
+            b"_min_concurrency",
             "_scheduler",
             b"_scheduler",
             "_scheduler_options",
@@ -562,6 +567,8 @@ class MachineRequirements(google.protobuf.message.Message):
             b"max_concurrency",
             "max_multiplexing",
             b"max_multiplexing",
+            "min_concurrency",
+            b"min_concurrency",
             "scheduler",
             b"scheduler",
             "scheduler_options",
@@ -581,6 +588,8 @@ class MachineRequirements(google.protobuf.message.Message):
             b"_max_concurrency",
             "_max_multiplexing",
             b"_max_multiplexing",
+            "_min_concurrency",
+            b"_min_concurrency",
             "_scheduler",
             b"_scheduler",
             "_scheduler_options",
@@ -597,6 +606,8 @@ class MachineRequirements(google.protobuf.message.Message):
             b"max_concurrency",
             "max_multiplexing",
             b"max_multiplexing",
+            "min_concurrency",
+            b"min_concurrency",
             "scheduler",
             b"scheduler",
             "scheduler_options",
@@ -627,6 +638,11 @@ class MachineRequirements(google.protobuf.message.Message):
             "_max_multiplexing", b"_max_multiplexing"
         ],
     ) -> typing_extensions.Literal["max_multiplexing"] | None: ...
+    @typing.overload
+    def WhichOneof(
+        self,
+        oneof_group: typing_extensions.Literal["_min_concurrency", b"_min_concurrency"],
+    ) -> typing_extensions.Literal["min_concurrency"] | None: ...
     @typing.overload
     def WhichOneof(
         self, oneof_group: typing_extensions.Literal["_scheduler", b"_scheduler"]
@@ -852,10 +868,12 @@ class UpdateApplicationRequest(google.protobuf.message.Message):
     KEEP_ALIVE_FIELD_NUMBER: builtins.int
     MAX_MULTIPLEXING_FIELD_NUMBER: builtins.int
     MAX_CONCURRENCY_FIELD_NUMBER: builtins.int
+    MIN_CONCURRENCY_FIELD_NUMBER: builtins.int
     application_name: builtins.str
     keep_alive: builtins.int
     max_multiplexing: builtins.int
     max_concurrency: builtins.int
+    min_concurrency: builtins.int
     def __init__(
         self,
         *,
@@ -863,6 +881,7 @@ class UpdateApplicationRequest(google.protobuf.message.Message):
         keep_alive: builtins.int | None = ...,
         max_multiplexing: builtins.int | None = ...,
         max_concurrency: builtins.int | None = ...,
+        min_concurrency: builtins.int | None = ...,
     ) -> None: ...
     def HasField(
         self,
@@ -873,12 +892,16 @@ class UpdateApplicationRequest(google.protobuf.message.Message):
             b"_max_concurrency",
             "_max_multiplexing",
             b"_max_multiplexing",
+            "_min_concurrency",
+            b"_min_concurrency",
             "keep_alive",
             b"keep_alive",
             "max_concurrency",
             b"max_concurrency",
             "max_multiplexing",
             b"max_multiplexing",
+            "min_concurrency",
+            b"min_concurrency",
         ],
     ) -> builtins.bool: ...
     def ClearField(
@@ -890,6 +913,8 @@ class UpdateApplicationRequest(google.protobuf.message.Message):
             b"_max_concurrency",
             "_max_multiplexing",
             b"_max_multiplexing",
+            "_min_concurrency",
+            b"_min_concurrency",
             "application_name",
             b"application_name",
             "keep_alive",
@@ -898,6 +923,8 @@ class UpdateApplicationRequest(google.protobuf.message.Message):
             b"max_concurrency",
             "max_multiplexing",
             b"max_multiplexing",
+            "min_concurrency",
+            b"min_concurrency",
         ],
     ) -> None: ...
     @typing.overload
@@ -916,6 +943,11 @@ class UpdateApplicationRequest(google.protobuf.message.Message):
             "_max_multiplexing", b"_max_multiplexing"
         ],
     ) -> typing_extensions.Literal["max_multiplexing"] | None: ...
+    @typing.overload
+    def WhichOneof(
+        self,
+        oneof_group: typing_extensions.Literal["_min_concurrency", b"_min_concurrency"],
+    ) -> typing_extensions.Literal["min_concurrency"] | None: ...
 
 global___UpdateApplicationRequest = UpdateApplicationRequest
 
@@ -1057,6 +1089,7 @@ class AliasInfo(google.protobuf.message.Message):
     MAX_MULTIPLEXING_FIELD_NUMBER: builtins.int
     KEEP_ALIVE_FIELD_NUMBER: builtins.int
     ACTIVE_RUNNERS_FIELD_NUMBER: builtins.int
+    MIN_CONCURRENCY_FIELD_NUMBER: builtins.int
     alias: builtins.str
     revision: builtins.str
     auth_mode: global___ApplicationAuthMode.ValueType
@@ -1064,6 +1097,7 @@ class AliasInfo(google.protobuf.message.Message):
     max_multiplexing: builtins.int
     keep_alive: builtins.int
     active_runners: builtins.int
+    min_concurrency: builtins.int
     def __init__(
         self,
         *,
@@ -1074,6 +1108,7 @@ class AliasInfo(google.protobuf.message.Message):
         max_multiplexing: builtins.int = ...,
         keep_alive: builtins.int = ...,
         active_runners: builtins.int = ...,
+        min_concurrency: builtins.int = ...,
     ) -> None: ...
     def ClearField(
         self,
@@ -1090,6 +1125,8 @@ class AliasInfo(google.protobuf.message.Message):
             b"max_concurrency",
             "max_multiplexing",
             b"max_multiplexing",
+            "min_concurrency",
+            b"min_concurrency",
             "revision",
             b"revision",
         ],

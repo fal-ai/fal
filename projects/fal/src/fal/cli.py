@@ -365,6 +365,7 @@ def _alias_table(aliases: list[AliasInfo]):
     table.add_column("Alias")
     table.add_column("Revision")
     table.add_column("Auth")
+    table.add_column("Min Concurrency")
     table.add_column("Max Concurrency")
     table.add_column("Max Multiplexing")
     table.add_column("Keep Alive")
@@ -375,6 +376,7 @@ def _alias_table(aliases: list[AliasInfo]):
             app_alias.alias,
             app_alias.revision,
             app_alias.auth_mode,
+            str(app_alias.min_concurrency),
             str(app_alias.max_concurrency),
             str(app_alias.max_multiplexing),
             str(app_alias.keep_alive),
@@ -429,6 +431,7 @@ def alias_list(client: api.FalServerlessClient):
 @click.option("--keep-alive", "-k", type=int)
 @click.option("--max-multiplexing", "-m", type=int)
 @click.option("--max-concurrency", "-c", type=int)
+@click.option("--min-concurrency", type=int)
 # TODO: add auth_mode
 # @click.option(
 #     "--auth",
@@ -442,6 +445,7 @@ def alias_update(
     keep_alive: int | None,
     max_multiplexing: int | None,
     max_concurrency: int | None,
+    min_concurrency: int | None,
 ):
     with client.connect() as connection:
         if keep_alive is None and max_multiplexing is None and max_concurrency is None:
@@ -453,6 +457,7 @@ def alias_update(
             keep_alive=keep_alive,
             max_multiplexing=max_multiplexing,
             max_concurrency=max_concurrency,
+            min_concurrency=min_concurrency,
         )
         table = _alias_table([alias_info])
 
