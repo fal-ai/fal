@@ -148,6 +148,7 @@ message MachineRequirements {
     optional google.protobuf.Struct scheduler_options = 8;
     optional int32 max_multiplexing = 6;
     optional int32 max_concurrency = 9;
+    optional int32 min_concurrency = 10;
 }
 
 enum ApplicationAuthMode {
@@ -189,6 +190,7 @@ message UpdateApplicationRequest {
     optional int32 keep_alive = 2;
     optional int32 max_multiplexing = 3;
     optional int32 max_concurrency = 4;
+    optional int32 min_concurrency = 5;
 }
 
 message UpdateApplicationResult {
@@ -229,6 +231,7 @@ message AliasInfo {
     int32 max_multiplexing = 5;
     int32 keep_alive = 6;
     int32 active_runners = 7;
+    int32 min_concurrency = 8;
 }
 
 message SetSecretRequest {
