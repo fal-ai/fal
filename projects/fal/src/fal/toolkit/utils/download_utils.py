@@ -348,6 +348,16 @@ def clone_repository(
         if local_repo_commit_hash == commit_hash and not force:
             return local_repo_path
         else:
+            if local_repo_commit_hash != commit_hash:
+                print(
+                    f"Local repository '{local_repo_path}' has a different commit hash "
+                    f"({local_repo_commit_hash}) than the one provided ({commit_hash})."
+                )
+            elif force:
+                print(
+                    f"Local repository '{local_repo_path}' already exists. "
+                    f"Forcing re-download."
+                )
             print(f"Removing the existing repository: {local_repo_path} ")
             shutil.rmtree(local_repo_path)
 
