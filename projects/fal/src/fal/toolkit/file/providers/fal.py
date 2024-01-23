@@ -50,6 +50,7 @@ class FalFileRepository(FileRepository):
             # Reset the file pointer to the beginning of the file
             # so that it can be read again.
             file.data.seek(0)
+            file.file_size = file.data.tell()
 
             return result["file_url"]
         except HTTPError as e:

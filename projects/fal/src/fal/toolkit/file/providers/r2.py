@@ -68,13 +68,18 @@ class R2Repository(FileRepository):
         return self._bucket
 
     def save(self, data: FileData) -> str:
-        file_name = data.file_name or ""
+        if not data.file_name:
+            raise ValueError("File name is required")
+
+        file_name = data.file_name
+
         destination_path = os.path.join(self.key, file_name)
 
         s3_object = self.bucket.Object(destination_path)
         s3_object.upload_fileobj(
             BytesIO(data.data), ExtraArgs={"ContentType": data.content_type}  # type: ignore
         )
+        data.file_size = data.data.tell()
 
         public_url = self._s3_client.generate_presigned_url(
             ClientMethod="get_object",

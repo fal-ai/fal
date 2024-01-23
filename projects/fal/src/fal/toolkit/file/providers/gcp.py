@@ -51,13 +51,17 @@ class GoogleStorageRepository(FileRepository):
         return self._bucket
 
     def save(self, data: FileData) -> str:
-        file_name = data.file_name or ""
+        if not data.file_name:
+            raise ValueError("File name is required")
+
+        file_name = data.file_name
         destination_path = os.path.join(self.folder, file_name)
 
         gcp_blob = self.bucket.blob(destination_path)
 
         with data.data as file:
             gcp_blob.upload_from_file(file, content_type=data.content_type)
+            data.file_size = file.tell()
 
         if self.url_expiration is None:
             return gcp_blob.public_url
