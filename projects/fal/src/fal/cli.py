@@ -444,7 +444,12 @@ def alias_update(
     min_concurrency: int | None,
 ):
     with client.connect() as connection:
-        if keep_alive is None and max_multiplexing is None and max_concurrency is None:
+        if (
+            keep_alive is None
+            and max_multiplexing is None
+            and max_concurrency is None
+            and min_concurrency is None
+        ):
             console.log("No parameters for update were provided, ignoring.")
             return
 
