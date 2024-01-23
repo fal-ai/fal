@@ -407,6 +407,7 @@ def _get_git_revision_hash(repo_path: Path) -> str:
         ).strip()
     except subprocess.CalledProcessError as error:
         if "not a git repository" in error.output:
+            print(f"Repository '{repo_path}' is not a git repository.")
             return ""
 
         print(
