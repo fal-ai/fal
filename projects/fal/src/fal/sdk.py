@@ -27,6 +27,7 @@ UNSET = object()
 _DEFAULT_SERIALIZATION_METHOD = "dill"
 FAL_SERVERLESS_DEFAULT_KEEP_ALIVE = 10
 FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING = 1
+FAL_SERVERLESS_DEFAULT_MIN_CONCURRENCY = 0
 
 log = get_logger(__name__)
 
@@ -187,6 +188,15 @@ class AliasInfo:
     keep_alive: int
     max_concurrency: int
     max_multiplexing: int
+    active_runners: int
+    min_concurrency: int
+
+
+@dataclass
+class RunnerInfo:
+    runner_id: str
+    in_flight_requests: int
+    expiration_countdown: int
 
 
 @dataclass
@@ -263,6 +273,17 @@ def _from_grpc_alias_info(message: isolate_proto.AliasInfo) -> AliasInfo:
         keep_alive=message.keep_alive,
         max_concurrency=message.max_concurrency,
         max_multiplexing=message.max_multiplexing,
+        active_runners=message.active_runners,
+        min_concurrency=message.min_concurrency,
+    )
+
+
+@from_grpc.register(isolate_proto.RunnerInfo)
+def _from_grpc_runner_info(message: isolate_proto.RunnerInfo) -> RunnerInfo:
+    return RunnerInfo(
+        runner_id=message.runner_id,
+        in_flight_requests=message.in_flight_requests,
+        expiration_countdown=message.expiration_countdown,
     )
 
 
@@ -312,6 +333,7 @@ class MachineRequirements:
     scheduler_options: dict[str, Any] | None = None
     max_concurrency: int | None = None
     max_multiplexing: int | None = None
+    min_concurrency: int | None = None
 
 
 @dataclass
@@ -407,6 +429,7 @@ class FalServerlessConnection:
                     machine_requirements.scheduler_options or {}
                 ),
                 max_concurrency=machine_requirements.max_concurrency,
+                min_concurrency=machine_requirements.min_concurrency,
                 max_multiplexing=machine_requirements.max_multiplexing,
             )
         else:
@@ -444,12 +467,14 @@ class FalServerlessConnection:
         keep_alive: int | None = None,
         max_multiplexing: int | None = None,
         max_concurrency: int | None = None,
+        min_concurrency: int | None = None,
     ) -> AliasInfo:
         request = isolate_proto.UpdateApplicationRequest(
             application_name=application_name,
             keep_alive=keep_alive,
             max_multiplexing=max_multiplexing,
             max_concurrency=max_concurrency,
+            min_concurrency=min_concurrency,
         )
         res: isolate_proto.UpdateApplicationResult = self.stub.UpdateApplication(
             request
@@ -478,6 +503,7 @@ class FalServerlessConnection:
                 ),
                 max_concurrency=machine_requirements.max_concurrency,
                 max_multiplexing=machine_requirements.max_multiplexing,
+                min_concurrency=machine_requirements.min_concurrency,
             )
         else:
             wrapped_requirements = None
@@ -523,6 +549,11 @@ class FalServerlessConnection:
         request = isolate_proto.ListAliasesRequest()
         response: isolate_proto.ListAliasesResult = self.stub.ListAliases(request)
         return [from_grpc(alias) for alias in response.aliases]
+
+    def list_alias_runners(self, alias: str) -> list[RunnerInfo]:
+        request = isolate_proto.ListAliasRunnersRequest(alias=alias)
+        response = self.stub.ListAliasRunners(request)
+        return [from_grpc(runner) for runner in response.runners]
 
     def set_secret(self, name: str, value: str) -> None:
         request = isolate_proto.SetSecretRequest(name=name, value=value)

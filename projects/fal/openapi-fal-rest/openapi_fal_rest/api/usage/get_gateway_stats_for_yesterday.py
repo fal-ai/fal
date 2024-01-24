@@ -1,20 +1,20 @@
 from http import HTTPStatus
-from typing import Any, Dict, Optional, Union, cast
+from typing import Any, Dict, List, Optional, Union
 
 import httpx
 
 from ... import errors
 from ...client import Client
 from ...models.http_validation_error import HTTPValidationError
+from ...models.per_app_usage_detail import PerAppUsageDetail
 from ...types import Response
 
 
 def _get_kwargs(
-    file: str,
     *,
     client: Client,
 ) -> Dict[str, Any]:
-    url = "{}/files/file/{file}".format(client.base_url, file=file)
+    url = "{}/usage/stats/yesterday".format(client.base_url)
 
     headers: Dict[str, str] = client.get_headers()
     cookies: Dict[str, Any] = client.get_cookies()
@@ -29,9 +29,17 @@ def _get_kwargs(
     }
 
 
-def _parse_response(*, client: Client, response: httpx.Response) -> Optional[Union[Any, HTTPValidationError]]:
+def _parse_response(
+    *, client: Client, response: httpx.Response
+) -> Optional[Union[HTTPValidationError, List["PerAppUsageDetail"]]]:
     if response.status_code == HTTPStatus.OK:
-        response_200 = cast(Any, response.json())
+        response_200 = []
+        _response_200 = response.json()
+        for response_200_item_data in _response_200:
+            response_200_item = PerAppUsageDetail.from_dict(response_200_item_data)
+
+            response_200.append(response_200_item)
+
         return response_200
     if response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY:
         response_422 = HTTPValidationError.from_dict(response.json())
@@ -43,7 +51,9 @@ def _parse_response(*, client: Client, response: httpx.Response) -> Optional[Uni
         return None
 
 
-def _build_response(*, client: Client, response: httpx.Response) -> Response[Union[Any, HTTPValidationError]]:
+def _build_response(
+    *, client: Client, response: httpx.Response
+) -> Response[Union[HTTPValidationError, List["PerAppUsageDetail"]]]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -53,25 +63,20 @@ def _build_response(*, client: Client, response: httpx.Response) -> Response[Uni
 
 
 def sync_detailed(
-    file: str,
     *,
     client: Client,
-) -> Response[Union[Any, HTTPValidationError]]:
-    """Download File
-
-    Args:
-        file (str):
+) -> Response[Union[HTTPValidationError, List["PerAppUsageDetail"]]]:
+    """Get Gateway Stats For Yesterday
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Union[Any, HTTPValidationError]]
+        Response[Union[HTTPValidationError, List['PerAppUsageDetail']]]
     """
 
     kwargs = _get_kwargs(
-        file=file,
         client=client,
     )
 
@@ -84,49 +89,39 @@ def sync_detailed(
 
 
 def sync(
-    file: str,
     *,
     client: Client,
-) -> Optional[Union[Any, HTTPValidationError]]:
-    """Download File
-
-    Args:
-        file (str):
+) -> Optional[Union[HTTPValidationError, List["PerAppUsageDetail"]]]:
+    """Get Gateway Stats For Yesterday
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Union[Any, HTTPValidationError]
+        Union[HTTPValidationError, List['PerAppUsageDetail']]
     """
 
     return sync_detailed(
-        file=file,
         client=client,
     ).parsed
 
 
 async def asyncio_detailed(
-    file: str,
     *,
     client: Client,
-) -> Response[Union[Any, HTTPValidationError]]:
-    """Download File
-
-    Args:
-        file (str):
+) -> Response[Union[HTTPValidationError, List["PerAppUsageDetail"]]]:
+    """Get Gateway Stats For Yesterday
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Union[Any, HTTPValidationError]]
+        Response[Union[HTTPValidationError, List['PerAppUsageDetail']]]
     """
 
     kwargs = _get_kwargs(
-        file=file,
         client=client,
     )
 
@@ -137,26 +132,21 @@ async def asyncio_detailed(
 
 
 async def asyncio(
-    file: str,
     *,
     client: Client,
-) -> Optional[Union[Any, HTTPValidationError]]:
-    """Download File
-
-    Args:
-        file (str):
+) -> Optional[Union[HTTPValidationError, List["PerAppUsageDetail"]]]:
+    """Get Gateway Stats For Yesterday
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Union[Any, HTTPValidationError]
+        Union[HTTPValidationError, List['PerAppUsageDetail']]
     """
 
     return (
         await asyncio_detailed(
-            file=file,
             client=client,
         )
     ).parsed

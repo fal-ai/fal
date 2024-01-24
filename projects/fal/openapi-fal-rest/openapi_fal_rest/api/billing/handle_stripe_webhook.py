@@ -37,13 +37,9 @@ def _get_kwargs(
 
 def _parse_response(
     *, client: Client, response: httpx.Response
-) -> Optional[
-    Union[HTTPValidationError, HandleStripeWebhookResponseHandleStripeWebhook]
-]:
+) -> Optional[Union[HTTPValidationError, HandleStripeWebhookResponseHandleStripeWebhook]]:
     if response.status_code == HTTPStatus.OK:
-        response_200 = HandleStripeWebhookResponseHandleStripeWebhook.from_dict(
-            response.json()
-        )
+        response_200 = HandleStripeWebhookResponseHandleStripeWebhook.from_dict(response.json())
 
         return response_200
     if response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY:
@@ -58,9 +54,7 @@ def _parse_response(
 
 def _build_response(
     *, client: Client, response: httpx.Response
-) -> Response[
-    Union[HTTPValidationError, HandleStripeWebhookResponseHandleStripeWebhook]
-]:
+) -> Response[Union[HTTPValidationError, HandleStripeWebhookResponseHandleStripeWebhook]]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -73,9 +67,7 @@ def sync_detailed(
     *,
     client: Client,
     stripe_signature: Union[Unset, str] = UNSET,
-) -> Response[
-    Union[HTTPValidationError, HandleStripeWebhookResponseHandleStripeWebhook]
-]:
+) -> Response[Union[HTTPValidationError, HandleStripeWebhookResponseHandleStripeWebhook]]:
     """Handle Stripe Webhook
 
     Args:
@@ -106,9 +98,7 @@ def sync(
     *,
     client: Client,
     stripe_signature: Union[Unset, str] = UNSET,
-) -> Optional[
-    Union[HTTPValidationError, HandleStripeWebhookResponseHandleStripeWebhook]
-]:
+) -> Optional[Union[HTTPValidationError, HandleStripeWebhookResponseHandleStripeWebhook]]:
     """Handle Stripe Webhook
 
     Args:
@@ -132,9 +122,7 @@ async def asyncio_detailed(
     *,
     client: Client,
     stripe_signature: Union[Unset, str] = UNSET,
-) -> Response[
-    Union[HTTPValidationError, HandleStripeWebhookResponseHandleStripeWebhook]
-]:
+) -> Response[Union[HTTPValidationError, HandleStripeWebhookResponseHandleStripeWebhook]]:
     """Handle Stripe Webhook
 
     Args:
@@ -163,9 +151,7 @@ async def asyncio(
     *,
     client: Client,
     stripe_signature: Union[Unset, str] = UNSET,
-) -> Optional[
-    Union[HTTPValidationError, HandleStripeWebhookResponseHandleStripeWebhook]
-]:
+) -> Optional[Union[HTTPValidationError, HandleStripeWebhookResponseHandleStripeWebhook]]:
     """Handle Stripe Webhook
 
     Args:

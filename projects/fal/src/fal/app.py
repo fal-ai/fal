@@ -3,6 +3,8 @@ from __future__ import annotations
 import inspect
 import os
 import fal.api
+from fal._serialization import add_serialization_listeners_for
+from contextlib import asynccontextmanager
 from fal.toolkit import mainify
 from fastapi import FastAPI
 from typing import Any, NamedTuple, Callable, TypeVar, ClassVar
@@ -13,6 +15,8 @@ logger = get_logger(__name__)
 
 
 def wrap_app(cls: type[App], **kwargs) -> fal.api.IsolatedFunction:
+    add_serialization_listeners_for(cls)
+
     def initialize_and_serve():
         app = cls()
         app.serve()
@@ -72,14 +76,21 @@ class App:
         import uvicorn
 
         app = self._build_app()
-        self.setup()
         uvicorn.run(app, host="0.0.0.0", port=8080)
 
     def _build_app(self) -> FastAPI:
         from fastapi import FastAPI
         from fastapi.middleware.cors import CORSMiddleware
 
-        _app = FastAPI()
+        @asynccontextmanager
+        async def lifespan(app: FastAPI):
+            self.setup()
+            try:
+                yield
+            finally:
+                self.teardown()
+
+        _app = FastAPI(lifespan=lifespan)
 
         _app.add_middleware(
             CORSMiddleware,
@@ -144,6 +155,9 @@ class App:
             order_schema_object(spec["components"]["schemas"][key])
 
         return spec
+
+    def teardown(self):
+        """Teardown the application after serving."""
 
 
 @mainify
