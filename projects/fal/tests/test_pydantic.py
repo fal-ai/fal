@@ -1,16 +1,15 @@
 # demo_4_pytest_subprocess.py
 import subprocess
 import sys
-from pprint import pprint
 from typing import Callable
 
 import dill
 import dill._dill as dill_serialization
+import pydantic
 from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic._internal._decorators import (
     FieldValidatorDecoratorInfo,
     ModelValidatorDecoratorInfo,
-    ValidatorDecoratorInfo,
 )
 from pydantic.config import ConfigDict
 from pydantic.fields import FieldInfo
@@ -18,8 +17,10 @@ from pydantic.fields import FieldInfo
 
 def build_pydantic_model(
     name,
-    base_cls,
     model_config: ConfigDict,
+    model_doc: str | None,
+    base_cls,
+    model_module: str,
     model_fields: dict[str, FieldInfo],
     model_validators: dict[str, tuple[Callable, ModelValidatorDecoratorInfo]],
     field_validators: dict[str, tuple[Callable, FieldValidatorDecoratorInfo]],
@@ -29,8 +30,10 @@ def build_pydantic_model(
 
     Arguments:
         name: The name of the model.
+        model_config: The model's configuration settings. (UNUSED)
+        model_doc: The model's docstring.
         base_cls: The model's base class.
-        model_config: The model's configuration settings.
+        model_module: The name of the module the model belongs to.
         model_fields: The model's fields.
         model_validators: The model validators of the model.
         field_validators: The field validators of the model.
@@ -51,7 +54,10 @@ def build_pydantic_model(
 
     model_cls = pydantic.create_model(
         name,
+        # __config__=model_config, # UNUSED
+        __doc__=model_doc,
         __base__=base_cls,
+        __module__=model_module,
         __validators__=validators,
         **model_fields,
         **class_fields,
@@ -94,8 +100,10 @@ def _dill_hook_for_pydantic_models(pickler: dill.Pickler, pydantic_model) -> Non
 
     pickled_model = {
         "name": pydantic_model.__name__,
-        "base_cls": pydantic_model.__bases__[0],
         "model_config": pydantic_model.model_config,
+        "model_doc": pydantic_model.__doc__,
+        "base_cls": pydantic_model.__bases__[0],
+        "model_module": pydantic_model.__module__,
         "model_fields": pydantic_model.model_fields,
         "model_validators": model_validators,
         "field_validators": field_validators,
