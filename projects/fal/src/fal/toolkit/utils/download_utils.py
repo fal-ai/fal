@@ -4,14 +4,14 @@ import hashlib
 import shutil
 import subprocess
 from functools import lru_cache
-from pathlib import Path
+from pathlib import Path, PurePath
 from tempfile import TemporaryDirectory
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 from fal.toolkit.mainify import mainify
 
-FAL_PERSISTENT_DIR = Path("/data")
+FAL_PERSISTENT_DIR = PurePath("/data")
 FAL_REPOSITORY_DIR = FAL_PERSISTENT_DIR / ".fal" / "repos"
 FAL_MODEL_WEIGHTS_DIR = FAL_PERSISTENT_DIR / ".fal" / "model_weights"
 
@@ -148,7 +148,7 @@ def download_file(
 
     # If target_dir is not an absolute path, use "/data" as the relative directory
     if not target_dir_path.is_absolute():
-        target_dir_path = FAL_PERSISTENT_DIR / target_dir_path
+        target_dir_path = FAL_PERSISTENT_DIR / target_dir_path  # type: ignore[assignment]
 
     target_path = target_dir_path.resolve() / file_name
 
@@ -338,10 +338,10 @@ def clone_repository(
     Returns:
         A Path object representing the full path to the cloned Git repository.
     """
-    target_dir = target_dir or FAL_REPOSITORY_DIR
+    target_dir = target_dir or FAL_REPOSITORY_DIR  # type: ignore[assignment]
     repo_name = repo_name or Path(https_url).stem
 
-    local_repo_path = Path(target_dir) / repo_name
+    local_repo_path = Path(target_dir) / repo_name  # type: ignore[arg-type]
 
     if local_repo_path.exists():
         local_repo_commit_hash = _get_git_revision_hash(local_repo_path)
