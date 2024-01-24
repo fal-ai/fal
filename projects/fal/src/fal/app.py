@@ -3,6 +3,7 @@ from __future__ import annotations
 import inspect
 import os
 import fal.api
+from fal._serialization import add_serialization_listeners_for
 from contextlib import asynccontextmanager
 from fal.toolkit import mainify
 from fastapi import FastAPI
@@ -14,6 +15,8 @@ logger = get_logger(__name__)
 
 
 def wrap_app(cls: type[App], **kwargs) -> fal.api.IsolatedFunction:
+    add_serialization_listeners_for(cls)
+
     def initialize_and_serve():
         app = cls()
         app.serve()
