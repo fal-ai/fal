@@ -300,14 +300,19 @@ def register_application(
     )
 
     if id:
+        gateway_host = remove_http_and_port_from_url(host.url)
+        gateway_host = (
+            gateway_host.replace("api.", "").replace("alpha.", "").replace("fal.ai", "")
+        )
+
         if alias:
             console.print(
                 f"Registered a new revision for function '{alias}' (revision='{id}')."
             )
-            console.print(f"URL: https://fal.run/{user_id}/{alias}")
+            console.print(f"URL: https://{gateway_host}fal.run/{user_id}/{alias}")
         else:
             console.print(f"Registered anonymous function '{id}'.")
-            console.print(f"URL: https://fal.run/{user_id}/{id}")
+            console.print(f"URL: https://{gateway_host}fal.run/{user_id}/{id}")
 
 
 @function_cli.command("run")
