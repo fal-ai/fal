@@ -57,6 +57,8 @@ def add_serialization_listeners_for(obj):
 
     _MODULES.add(module_name)
     if module_name == "__main__":
+        # When the module is __main__, we need to recursively go up the
+        # tree to locate the actual package name.
         import __main__
 
         path = Path(__main__.__file__)
