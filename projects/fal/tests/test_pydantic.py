@@ -1,27 +1,58 @@
 # demo_4_pytest_subprocess.py
 import subprocess
 import sys
+from pprint import pprint
+from typing import Callable
 
 import dill
 import dill._dill as dill_serialization
 from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic._internal._decorators import (
+    FieldValidatorDecoratorInfo,
+    ModelValidatorDecoratorInfo,
+    ValidatorDecoratorInfo,
+)
+from pydantic.config import ConfigDict
+from pydantic.fields import FieldInfo
 
 
 def build_pydantic_model(
-    name, base_cls, model_config, model_fields, validators, class_fields
+    name,
+    base_cls,
+    model_config: ConfigDict,
+    model_fields: dict[str, FieldInfo],
+    model_validators: dict[str, tuple[Callable, ModelValidatorDecoratorInfo]],
+    field_validators: dict[str, tuple[Callable, FieldValidatorDecoratorInfo]],
+    class_fields: dict,
 ):
-    """Recreate the Pydantic model from the deserialised validator info."""
+    """Recreate the Pydantic model from the deserialised validator info.
+
+    Arguments:
+        name: The name of the model.
+        base_cls: The model's base class.
+        model_config: The model's configuration settings.
+        model_fields: The model's fields.
+        model_validators: The model validators of the model.
+        field_validators: The field validators of the model.
+        class_fields: Anything that is neither a field nor a validator.
+    """
     import pydantic
+
+    validators = {
+        **{
+            name: pydantic.model_validator(mode=info.mode)(func)
+            for name, (func, info) in model_validators.items()
+        },
+        **{
+            name: pydantic.field_validator(mode=info.mode)(func)
+            for name, (func, info) in field_validators.items()
+        },
+    }
 
     model_cls = pydantic.create_model(
         name,
         __base__=base_cls,
-        __validators__={
-            validator_name: pydantic.model_validator(mode=validator_info.mode)(
-                validator_func
-            )
-            for validator_name, (validator_func, validator_info) in validators.items()
-        },
+        __validators__=validators,
         **model_fields,
         **class_fields,
     )
@@ -34,10 +65,15 @@ def _dill_hook_for_pydantic_models(pickler: dill.Pickler, pydantic_model) -> Non
         dill_serialization.save_type(pickler, pydantic_model)
         return
 
-    validators = {}
     decorators = pydantic_model.__pydantic_decorators__
-    for validator_name, decorator in decorators.model_validators.items():
-        validators[validator_name] = (decorator.func, decorator.info)
+    model_validators = {
+        validator_name: (decorator.func, decorator.info)
+        for validator_name, decorator in decorators.model_validators.items()
+    }
+    field_validators = {
+        # validator_name: (decorator.func, decorator.info)
+        # for validator_name, decorator in decorators.field_validators.items()
+    }
 
     class_fields = {
         "__annotations__": pydantic_model.__annotations__,
@@ -49,22 +85,23 @@ def _dill_hook_for_pydantic_models(pickler: dill.Pickler, pydantic_model) -> Non
             continue
         elif class_field_name in pydantic_model.model_fields:
             continue
-        elif class_field_name in validators:
+        elif class_field_name in model_validators:
+            continue
+        elif class_field_name in field_validators:
             continue
 
         class_fields[class_field_name] = class_field_value
 
-    pickler.save_reduce(
-        build_pydantic_model,
-        (
-            pydantic_model.__name__,
-            pydantic_model.__bases__[0],
-            pydantic_model.model_config,
-            pydantic_model.model_fields,
-            validators,
-            class_fields,
-        ),
-    )
+    pickled_model = {
+        "name": pydantic_model.__name__,
+        "base_cls": pydantic_model.__bases__[0],
+        "model_config": pydantic_model.model_config,
+        "model_fields": pydantic_model.model_fields,
+        "model_validators": model_validators,
+        "field_validators": field_validators,
+        "class_fields": class_fields,
+    }
+    pickler.save_reduce(build_pydantic_model, tuple(pickled_model.values()))
 
 
 class Input(BaseModel):
