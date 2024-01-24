@@ -4,7 +4,6 @@ import sys
 
 import dill
 from pydantic import BaseModel, Field
-from pytest import raises
 
 
 class Input(BaseModel):
