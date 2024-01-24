@@ -1,5 +1,4 @@
 # demo_4_pytest_subprocess.py
-import dataclasses
 import subprocess
 import sys
 
