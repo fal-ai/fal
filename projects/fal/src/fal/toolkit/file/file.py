@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 from urllib.parse import urlparse
 
 from fal.toolkit.file.providers.fal import FalFileRepository, InMemoryRepository
@@ -10,7 +10,7 @@ from fal.toolkit.file.providers.r2 import R2Repository
 from fal.toolkit.file.types import FileData, FileRepository, RepositoryId
 from fal.toolkit.mainify import mainify
 from fal.toolkit.utils.download_utils import download_file
-from pydantic import BaseModel, Field, PrivateAttr
+from pydantic import BaseModel, Field, PrivateAttr, Optional
 
 
 FileRepositoryFactory = Callable[[], FileRepository]
