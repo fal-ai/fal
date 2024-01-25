@@ -1,6 +1,7 @@
 # demo_4_pytest_subprocess.py
 import subprocess
 import sys
+from pprint import pprint
 from typing import Callable
 
 import dill
@@ -181,6 +182,8 @@ def deserialise_pydantic_model():
     serialized_cls = dill.dumps(Input)
     print("===== DESERIALIZING =====")
     model_cls = dill.loads(serialized_cls)
+    deserialised_fvs = vars(model_cls)["__pydantic_decorators__"].field_validators
+    pprint(deserialised_fvs)
     print("===== INSTANTIATING =====")
     model = model_cls(prompt="a", num_steps=4, epochs=10)
     return model
@@ -215,5 +218,6 @@ def test_deserialise_pydantic_model():
 
 
 if __name__ == "__main__" and "--run-deserialisation-test" in sys.argv:
+    pprint(vars(Input)["__pydantic_decorators__"].field_validators)
     model = deserialise_pydantic_model()
     validate_deserialisation(model)
