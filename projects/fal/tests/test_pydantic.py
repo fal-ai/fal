@@ -62,6 +62,7 @@ def build_pydantic_model(
             }
         }
     )
+    model_fields.update({name: func for name, (func, _) in field_validators.items()})
 
     model_cls = pydantic.create_model(
         name,
@@ -181,7 +182,7 @@ def deserialise_pydantic_model():
     print("===== DESERIALIZING =====")
     model_cls = dill.loads(serialized_cls)
     print("===== INSTANTIATING =====")
-    model = model_cls(prompt="a", num_steps=4)
+    model = model_cls(prompt="a", num_steps=4, epochs=10)
     return model
 
 
