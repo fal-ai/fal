@@ -348,6 +348,16 @@ def clone_repository(
         if local_repo_commit_hash == commit_hash and not force:
             return local_repo_path
         else:
+            if local_repo_commit_hash != commit_hash:
+                print(
+                    f"Local repository '{local_repo_path}' has a different commit hash "
+                    f"({local_repo_commit_hash}) than the one provided ({commit_hash})."
+                )
+            elif force:
+                print(
+                    f"Local repository '{local_repo_path}' already exists. "
+                    f"Forcing re-download."
+                )
             print(f"Removing the existing repository: {local_repo_path} ")
             shutil.rmtree(local_repo_path)
 
@@ -362,6 +372,7 @@ def clone_repository(
         clone_command = [
             "git",
             "clone",
+            "--recursive",
             https_url,
             temp_dir_path,
         ]
@@ -387,6 +398,19 @@ def clone_repository(
 def _get_git_revision_hash(repo_path: Path) -> str:
     import subprocess
 
-    return subprocess.check_output(
-        ["git", "rev-parse", "HEAD"], cwd=repo_path, text=True
-    ).strip()
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "HEAD"],
+            cwd=repo_path,
+            text=True,
+            stderr=subprocess.STDOUT,
+        ).strip()
+    except subprocess.CalledProcessError as error:
+        if "not a git repository" in error.output:
+            print(f"Repository '{repo_path}' is not a git repository.")
+            return ""
+
+        print(
+            f"{error}\nFailed to get the commit hash of the repository '{repo_path}' ."
+        )
+        raise error
