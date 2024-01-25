@@ -10,7 +10,8 @@ from fal.toolkit.file.providers.r2 import R2Repository
 from fal.toolkit.file.types import FileData, FileRepository, RepositoryId
 from fal.toolkit.mainify import mainify
 from fal.toolkit.utils.download_utils import download_file
-from pydantic import BaseModel, Field, PrivateAttr, Optional
+from pydantic import BaseModel, Field, PrivateAttr
+from pydantic.typing import Optional
 
 
 FileRepositoryFactory = Callable[[], FileRepository]
