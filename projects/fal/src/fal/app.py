@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import typing
 import os
 import fal.api
 from fal._serialization import add_serialization_listeners_for
@@ -46,6 +47,7 @@ def wrap_app(cls: type[App], **kwargs) -> fal.api.IsolatedFunction:
 @mainify
 class RouteSignature(NamedTuple):
     path: str
+    is_websocket: bool = False
 
 
 @mainify
@@ -133,12 +135,19 @@ class App:
             raise ValueError("An application must have at least one route!")
 
         for signature, endpoint in routes.items():
-            _app.add_api_route(
-                signature.path,
-                endpoint,
-                name=endpoint.__name__,
-                methods=["POST"],
-            )
+            if signature.is_websocket:
+                _app.add_api_websocket_route(
+                    signature.path,
+                    endpoint,
+                    name=endpoint.__name__,
+                )
+            else:
+                _app.add_api_route(
+                    signature.path,
+                    endpoint,
+                    name=endpoint.__name__,
+                    methods=["POST"],
+                )
 
         return _app
 
@@ -157,7 +166,9 @@ class App:
 
 
 @mainify
-def endpoint(path: str) -> Callable[[EndpointT], EndpointT]:
+def endpoint(
+    path: str, *, is_websocket: bool = False
+) -> Callable[[EndpointT], EndpointT]:
     """Designate the decorated function as an application endpoint."""
 
     def marker_fn(callable: EndpointT) -> EndpointT:
@@ -166,7 +177,175 @@ def endpoint(path: str) -> Callable[[EndpointT], EndpointT]:
                 f"Can't set multiple routes for the same function: {callable.__name__}"
             )
 
-        callable.route_signature = RouteSignature(path=path)  # type: ignore
+        callable.route_signature = RouteSignature(path=path, is_websocket=is_websocket)  # type: ignore
+        return callable
+
+    return marker_fn
+
+
+def _fal_websocket_template(
+    func: EndpointT,
+    buffering: int | None = None,
+    session_timeout: float | None = None,
+    input_modal: Any | None = None,
+) -> EndpointT:
+    # A template for fal's realtime websocket endpoints to basically
+    # be a boilerplate for the user to fill in their inference function
+    # and start using it.
+
+    import msgpack
+    import asyncio
+    from collections import deque
+    from contextlib import suppress
+    from fastapi import WebSocket, WebSocketDisconnect
+
+    queue: deque[Any] = deque(maxlen=buffering)
+
+    async def mirror_input(websocket: WebSocket) -> None:
+        while True:
+            try:
+                raw_input = await asyncio.wait_for(
+                    websocket.receive_bytes(),
+                    timeout=session_timeout,
+                )
+            except asyncio.TimeoutError:
+                return
+
+            input = msgpack.unpackb(raw_input, raw=False)
+            if input_modal:
+                input = input_modal(**input)
+
+            queue.append(input)
+
+    async def mirror_output(self, websocket: WebSocket) -> None:
+        while True:
+            if not queue:
+                await asyncio.sleep(0.05)
+                continue
+
+            input = queue.popleft()
+            if input is None:
+                break
+
+            output = func(self, input)
+            if not isinstance(output, dict):
+                # Handle pydantic output modal
+                if hasattr(output, "dict"):
+                    output = output.dict()
+                else:
+                    raise TypeError(
+                        f"Expected a dict or pydantic model as output, got {type(output)}"
+                    )
+
+            message = msgpack.packb(output, use_bin_type=True)
+            await websocket.send_bytes(message)
+
+    async def websocket_template(self, websocket: WebSocket) -> None:
+        import asyncio
+
+        await websocket.accept()
+        input_task = asyncio.create_task(mirror_input(websocket))
+        input_task.add_done_callback(lambda _: queue.append(None))
+        output_task = asyncio.create_task(mirror_output(self, websocket))
+        try:
+            await asyncio.wait(
+                {
+                    input_task,
+                    output_task,
+                },
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if input_task.done():
+                # User didn't send any input within the timeout
+                # so we can just close the connection after the
+                # processing of the last input is done.
+                input_task.result()
+                await asyncio.wait_for(output_task, timeout=session_timeout)
+            else:
+                assert output_task.done()
+
+                # The execution of the inference function failed or exitted,
+                # so just propagate the result.
+                input_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await input_task
+
+                output_task.result()
+        except WebSocketDisconnect:
+            input_task.cancel()
+            output_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await input_task
+
+            with suppress(asyncio.CancelledError):
+                await output_task
+        except Exception as exc:
+            import traceback
+
+            traceback.print_exc()
+
+            await websocket.send_json(
+                {
+                    "type": "x-fal-error",
+                    "error": "INTERNAL_ERROR",
+                    "reason": str(exc),
+                }
+            )
+        else:
+            await websocket.send_json(
+                {
+                    "status": "error",
+                    "reason": "no inputs, reconnect when needed!",
+                }
+            )
+
+        await websocket.close()
+
+    # Seems like templating + stringified annotations don't play well,
+    # so we have to set them manually.
+    websocket_template.__annotations__ = {
+        "websocket": WebSocket,
+        "return": None,
+    }
+
+    return typing.cast(EndpointT, websocket_template)
+
+
+_SENTINEL = object()
+
+
+@mainify
+def realtime(
+    path: str,
+    *,
+    buffering: int | None = None,
+    session_timeout: float | None = None,
+    input_modal: Any | None = _SENTINEL,
+) -> Callable[[EndpointT], EndpointT]:
+    """Designate the decorated function as a realtime application endpoint."""
+
+    def marker_fn(callable: EndpointT) -> EndpointT:
+        nonlocal input_modal
+
+        if hasattr(callable, "route_signature"):
+            raise ValueError(
+                f"Can't set multiple routes for the same function: {callable.__name__}"
+            )
+
+        if input_modal is _SENTINEL:
+            type_hints = typing.get_type_hints(callable)
+            if len(type_hints) >= 1:
+                input_modal = type_hints[list(type_hints.keys())[0]]
+            else:
+                input_modal = None
+
+        callable = _fal_websocket_template(
+            callable,
+            buffering=buffering,
+            session_timeout=session_timeout,
+            input_modal=input_modal,
+        )
+        callable.route_signature = RouteSignature(path=path, is_websocket=True)  # type: ignore
         return callable
 
     return marker_fn
