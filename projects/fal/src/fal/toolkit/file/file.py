@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
+from urllib.parse import urlparse
 
 from fal.toolkit.file.providers.fal import FalFileRepository, InMemoryRepository
 from fal.toolkit.file.providers.gcp import GoogleStorageRepository
 from fal.toolkit.file.providers.r2 import R2Repository
 from fal.toolkit.file.types import FileData, FileRepository, RepositoryId
 from fal.toolkit.mainify import mainify
+from fal.toolkit.utils.download_utils import download_file
 from pydantic import BaseModel, Field, PrivateAttr
+
 
 FileRepositoryFactory = Callable[[], FileRepository]
 
@@ -39,21 +42,21 @@ class File(BaseModel):
         description="The URL where the file can be downloaded from.",
         examples=["https://url.to/generated/file/z9RV14K95DvU.png"],
     )
-    content_type: str = Field(
+    content_type: str | None = Field(
         description="The mime type of the file.",
         examples=["image/png"],
     )
-    file_name: str = Field(
+    file_name: str | None = Field(
         description="The name of the file. It will be auto-generated if not provided.",
         examples=["z9RV14K95DvU.png"],
     )
-    file_size: int = Field(
+    file_size: int | None = Field(
         description="The size of the file in bytes.", examples=[4404019]
     )
 
     def __init__(self, **kwargs):
         if "file_data" in kwargs:
-            data = kwargs.pop("file_data")
+            data: FileData = kwargs.pop("file_data")
             repository = kwargs.pop("repository", None)
 
             repo = (
@@ -73,6 +76,33 @@ class File(BaseModel):
             )
 
         super().__init__(**kwargs)
+
+    # Pydantic custom validator for input type conversion
+    @classmethod
+    def __get_validators__(cls):
+        yield cls.__convert_from_str
+
+    @classmethod
+    def __convert_from_str(cls, value: Any):
+        if isinstance(value, str):
+            parsed_url = urlparse(value)
+            if parsed_url.scheme not in ["http", "https", "data"]:
+                raise ValueError(f"value must be a valid URL")
+            return cls._from_url(parsed_url.geturl())
+
+        return value
+
+    @classmethod
+    def _from_url(
+        cls,
+        url: str,
+    ) -> File:
+        return cls(
+            url=url,
+            content_type=None,
+            file_name=None,
+            repository=DEFAULT_REPOSITORY,
+        )
 
     @classmethod
     def from_bytes(
@@ -104,4 +134,18 @@ class File(BaseModel):
         )
 
     def as_bytes(self) -> bytes:
+        if self._file_data is None:
+            raise ValueError("File has not been downloaded")
+
         return self._file_data.data
+
+    def save(self, path: str | Path) -> Path:
+        file_path = Path(path).resolve()
+
+        if file_path.exists():
+            raise FileExistsError(f"File {file_path} already exists")
+
+        downloaded_path = download_file(self.url, target_dir=file_path.parent)
+        downloaded_path.rename(file_path)
+
+        return file_path
