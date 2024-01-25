@@ -134,15 +134,15 @@ class File(BaseModel):
         )
 
     def as_bytes(self) -> bytes:
-        if self._file_data is None:
+        if getattr(self, "_file_data", None) is None:
             raise ValueError("File has not been downloaded")
 
         return self._file_data.data
 
-    def save(self, path: str | Path) -> Path:
+    def save(self, path: str | Path, overwrite: bool = False) -> Path:
         file_path = Path(path).resolve()
 
-        if file_path.exists():
+        if file_path.exists() and not overwrite:
             raise FileExistsError(f"File {file_path} already exists")
 
         downloaded_path = download_file(self.url, target_dir=file_path.parent)
