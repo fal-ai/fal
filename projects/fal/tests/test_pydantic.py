@@ -24,7 +24,8 @@ def build_pydantic_model(
     model_fields: dict[str, FieldInfo],
     model_validators: dict[str, tuple[Callable, ModelValidatorDecoratorInfo]],
     field_validators: dict[str, tuple[Callable, FieldValidatorDecoratorInfo]],
-    class_fields: dict,
+    methods: dict,
+    # class_fields: dict,
 ):
     """Recreate the Pydantic model from the deserialised validator info.
 
@@ -37,7 +38,10 @@ def build_pydantic_model(
         model_fields: The model's fields.
         model_validators: The model validators of the model.
         field_validators: The field validators of the model.
-        class_fields: Anything that is neither a field nor a validator.
+        methods: The methods of the model.
+
+    Deprecated:
+        class_fields: Anything that is neither a field nor a validator (unclear).
     """
     import pydantic
 
@@ -47,10 +51,17 @@ def build_pydantic_model(
             for name, (func, info) in model_validators.items()
         },
         **{
-            name: pydantic.field_validator(mode=info.mode)(func)
+            name: pydantic.field_validator(*info.fields, mode=info.mode)(func)
             for name, (func, info) in field_validators.items()
         },
     }
+    model_fields.update(
+        {
+            "__annotations__": {
+                name: field.annotation for name, field in model_fields.items()
+            }
+        }
+    )
 
     model_cls = pydantic.create_model(
         name,
@@ -60,8 +71,9 @@ def build_pydantic_model(
         __module__=model_module,
         __validators__=validators,
         **model_fields,
-        **class_fields,
     )
+    for method_name, method_funcdef in methods.items():
+        setattr(model_cls, method_name, method_funcdef)
     return model_cls
 
 
@@ -77,26 +89,30 @@ def _dill_hook_for_pydantic_models(pickler: dill.Pickler, pydantic_model) -> Non
         for validator_name, decorator in decorators.model_validators.items()
     }
     field_validators = {
-        # validator_name: (decorator.func, decorator.info)
-        # for validator_name, decorator in decorators.field_validators.items()
+        validator_name: (decorator.func.__func__, decorator.info)
+        for validator_name, decorator in decorators.field_validators.items()
     }
 
-    class_fields = {
-        "__annotations__": pydantic_model.__annotations__,
+    # class_fields = {"__annotations__": annotations}
+    annotations = pydantic_model.__annotations__
+    methods = {
+        field_name: field_value
+        for field_name, field_value in pydantic_model.__dict__.items()
+        if field_name in ["steps_x2"]
     }
-    for class_field_name, class_field_value in pydantic_model.__dict__.items():
-        if class_field_name.startswith("_"):
-            continue
-        elif class_field_name in ("model_fields", "model_config"):
-            continue
-        elif class_field_name in pydantic_model.model_fields:
-            continue
-        elif class_field_name in model_validators:
-            continue
-        elif class_field_name in field_validators:
-            continue
+    # for class_field_name, class_field_value in pydantic_model.__dict__.items():
+    #     if class_field_name.startswith("_"):
+    #         continue
+    #     elif class_field_name in ("model_fields", "model_config"):
+    #         continue
+    #     elif class_field_name in pydantic_model.model_fields:
+    #         continue
+    #     elif class_field_name in model_validators:
+    #         continue
+    #     elif class_field_name in field_validators:
+    #         continue
 
-        class_fields[class_field_name] = class_field_value
+    #     class_fields[class_field_name] = class_field_value
 
     pickled_model = {
         "name": pydantic_model.__name__,
@@ -107,7 +123,8 @@ def _dill_hook_for_pydantic_models(pickler: dill.Pickler, pydantic_model) -> Non
         "model_fields": pydantic_model.model_fields,
         "model_validators": model_validators,
         "field_validators": field_validators,
-        "class_fields": class_fields,
+        "methods": methods,
+        # "class_fields": class_fields,
     }
     pickler.save_reduce(build_pydantic_model, tuple(pickled_model.values()))
 
@@ -137,6 +154,7 @@ class Input(BaseModel):
     @classmethod
     def triple_epochs(cls, v: int) -> int:
         """A field validator that multiplies the validated field value by 10."""
+        raise ValueError("FIELD VALIDATOR RAN")
         return v * 3
 
     @model_validator(mode="after")
@@ -163,7 +181,7 @@ def deserialise_pydantic_model():
     print("===== DESERIALIZING =====")
     model_cls = dill.loads(serialized_cls)
     print("===== INSTANTIATING =====")
-    model = model_cls(prompt="a")
+    model = model_cls(prompt="a", num_steps=4)
     return model
 
 
@@ -172,8 +190,8 @@ def validate_deserialisation(model: Input) -> None:
     steps = model.num_steps
     steps_x2 = model.steps_x2()
     assert prompt == "a", f"Prompt not retrieved: expected 'a' got {prompt!r}"
-    assert steps == 2, f"Steps not retrieved: expected 2 got {steps!r}"
-    assert steps_x2 == 4, f"Incorrect `steps_x2()`: expected 4 got {steps_x2}"
+    assert steps == 4, f"Steps not retrieved: expected 4 got {steps!r}"
+    assert steps_x2 == 8, f"Incorrect `steps_x2()`: expected 8 got {steps_x2}"
     assert model.epochs == 30, "The `validate_epochs` field validator didn't run"
     assert model.validation_counter == 100, "The `increment` model validator didn't run"
     return
