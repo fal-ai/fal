@@ -155,7 +155,7 @@ class File(BaseModel):
 
 @mainify
 class CompressedFile(File):
-    _extract_dir: TemporaryDirectory | None = PrivateAttr(default=None)
+    _extract_dir: Optional[TemporaryDirectory] = PrivateAttr(default=None)
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
