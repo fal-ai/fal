@@ -294,7 +294,8 @@ def _fal_websocket_template(
         else:
             await websocket.send_json(
                 {
-                    "status": "error",
+                    "type": "x-fal-error",
+                    "error": "TIMEOUT",
                     "reason": "no inputs, reconnect when needed!",
                 }
             )
