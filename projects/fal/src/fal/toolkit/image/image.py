@@ -118,9 +118,9 @@ class Image(File):
 
         return cls.from_bytes(raw_image, format, size, file_name, repository)
 
-    def to_pil(self) -> PILImage.Image:
+    def to_pil(self, mode: str = "RGB") -> PILImage.Image:
         try:
-            from PIL import Image as PILImage
+            from PIL import Image as PILImage, ImageOps
         except ImportError:
             raise ImportError(
                 "The PIL package is required to use Image.to_pil()."
@@ -131,4 +131,9 @@ class Image(File):
             temp_file_path = temp_file.name
 
             _download_file_python(self.url, temp_file_path)
-            return PILImage.open(temp_file_path)
+
+            img = PILImage.open(temp_file_path).convert(mode)
+            img = ImageOps.exif_transpose(img)
+
+            return img
+
