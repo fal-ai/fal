@@ -51,7 +51,7 @@ _dill._locate_function = by_value_locator
 
 
 def include_packages_from_path(raw_path: str):
-    path = Path(raw_path)
+    path = Path(raw_path).resolve()
     parent = path
     while (parent.parent / "__init__.py").exists():
         parent = parent.parent
