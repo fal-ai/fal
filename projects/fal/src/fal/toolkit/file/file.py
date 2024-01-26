@@ -41,7 +41,6 @@ class File(BaseModel):
     _file_data: FileData = PrivateAttr()
     url: str = Field(
         description="The URL where the file can be downloaded from.",
-        examples=["https://url.to/generated/file/z9RV14K95DvU.png"],
     )
     content_type: Optional[str] = Field(
         description="The mime type of the file.",
