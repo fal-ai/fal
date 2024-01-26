@@ -21,9 +21,10 @@ def wrap_app(cls: type[App], **kwargs) -> fal.api.IsolatedFunction:
         app = cls()
         app.serve()
 
+    metadata = {}
     try:
         app = cls(_allow_init=True)
-        metadata = app.openapi()
+        metadata["openapi"] = app.openapi()
     except Exception as exc:
         logger.warning("Failed to build OpenAPI specification for %s", cls.__name__)
         metadata = {}
