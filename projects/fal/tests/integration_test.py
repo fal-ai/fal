@@ -4,6 +4,8 @@ from pathlib import Path
 from uuid import uuid4
 
 import fal
+from fal.toolkit.file.file import CompressedFile
+from pydantic import BaseModel, Field
 import pytest
 from fal import FalServerlessHost, FalServerlessKeyCredentials, local, sync_dir
 from fal.api import FalServerlessError
@@ -506,8 +508,6 @@ def test_fal_file_save(isolated_client):
     ],
 )
 def test_fal_file_input(isolated_client, file_url: str, expected_content: str):
-    from pydantic import BaseModel, Field
-
     class TestInput(BaseModel):
         file: File = Field()
 
@@ -526,3 +526,21 @@ def test_fal_file_input(isolated_client, file_url: str, expected_content: str):
     # Expect value error if we try to access the file content for input file
     with pytest.raises(ValueError):
         fal_file_content_matches(file, expected_content)
+
+
+def test_fal_compressed_file(isolated_client):
+    class TestInput(BaseModel):
+        files: CompressedFile
+
+    @isolated_client(requirements=["pydantic==1.10.12"])
+    def init_compressed_file_on_fal(input: TestInput) -> int:
+        extracted_file_paths = [file for file in input.files]
+        return extracted_file_paths
+
+    archive_url = "https://storage.googleapis.com/falserverless/sdk_tests/compressed_file_test.zip"
+    test_input = TestInput(files=archive_url)
+
+    extracted_file_paths = init_compressed_file_on_fal(test_input)
+
+    assert all(isinstance(file, Path) for file in extracted_file_paths)
+    assert len(extracted_file_paths) == 3
