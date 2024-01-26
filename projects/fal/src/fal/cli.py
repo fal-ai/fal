@@ -10,7 +10,7 @@ from uuid import uuid4
 import click
 import fal.auth as auth
 import fal
-from fal import api, sdk
+from fal import api, sdk, _serialization
 from fal.console import console
 from fal.exceptions import ApplicationExceptionHandler
 from fal.logging import get_logger, set_debug_logging
@@ -245,6 +245,10 @@ def load_function_from(
     module = runpy.run_path(file_path)
     if function_name not in module:
         raise api.FalServerlessError(f"Function '{function_name}' not found in module")
+
+    # The module for the function is set to <run_path> when runpy is used, in which
+    # case we want to manually include the packages it is defined in.
+    _serialization.include_packages_from_path(file_path)
 
     target = module[function_name]
     if isinstance(target, type) and issubclass(target, fal.App):

@@ -50,6 +50,16 @@ def by_value_locator(obj, pickler=None, og_locator=_dill._locate_function):
 _dill._locate_function = by_value_locator
 
 
+def include_packages_from_path(raw_path: str):
+    path = Path(raw_path)
+    parent = path
+    while (parent.parent / "__init__.py").exists():
+        parent = parent.parent
+
+    if parent != path:
+        _PACKAGES.add(parent.name)
+
+
 def add_serialization_listeners_for(obj):
     module_name = getattr(obj, "__module__", None)
     if not module_name:
@@ -61,13 +71,7 @@ def add_serialization_listeners_for(obj):
         # tree to locate the actual package name.
         import __main__
 
-        path = Path(__main__.__file__)
-        parent = path
-        while (parent.parent / "__init__.py").exists():
-            parent = parent.parent
-
-        if parent != path:
-            _PACKAGES.add(parent.name)
+        include_packages_from_path(__main__.__file__)
 
     if "." in module_name:
         package_name, *_ = module_name.partition(".")
