@@ -125,35 +125,7 @@ class App:
         """
         app = self._build_app()
         spec = app.openapi()
-        self._mark_order_openapi(spec)
-        return spec
-
-    def _mark_order_openapi(self, spec: dict[str, Any]):
-        """
-        Add x-fal-order-* keys to the OpenAPI specification to help the rendering of UI.
-
-        NOTE: We rely on the fact that fastapi and Python dicts keep the order of properties.
-        """
-
-        def mark_order(obj: dict[str, Any], key: str):
-            obj[f"x-fal-order-{key}"] = list(obj[key].keys())
-
-        mark_order(spec, "paths")
-
-        def order_schema_object(schema: dict[str, Any]):
-            """
-            Mark the order of properties in the schema object.
-            They can have 'allOf', 'properties' or '$ref' key.
-            """
-            if "allOf" in schema:
-                for sub_schema in schema["allOf"]:
-                    order_schema_object(sub_schema)
-            if "properties" in schema:
-                mark_order(schema, "properties")
-
-        for key in spec["components"].get("schemas") or {}:
-            order_schema_object(spec["components"]["schemas"][key])
-
+        _mark_order_openapi(spec)
         return spec
 
     def teardown(self):
@@ -174,3 +146,32 @@ def endpoint(path: str) -> Callable[[EndpointT], EndpointT]:
         return callable
 
     return marker_fn
+
+
+def _mark_order_openapi(spec: dict[str, Any]):
+    """
+    Add x-fal-order-* keys to the OpenAPI specification to help the rendering of UI.
+
+    NOTE: We rely on the fact that fastapi and Python dicts keep the order of properties.
+    """
+
+    def mark_order(obj: dict[str, Any], key: str):
+        obj[f"x-fal-order-{key}"] = list(obj[key].keys())
+
+    mark_order(spec, "paths")
+
+    def order_schema_object(schema: dict[str, Any]):
+        """
+        Mark the order of properties in the schema object.
+        They can have 'allOf', 'properties' or '$ref' key.
+        """
+        if "allOf" in schema:
+            for sub_schema in schema["allOf"]:
+                order_schema_object(sub_schema)
+        if "properties" in schema:
+            mark_order(schema, "properties")
+
+    for key in spec["components"].get("schemas") or {}:
+        order_schema_object(spec["components"]["schemas"][key])
+
+    return spec
