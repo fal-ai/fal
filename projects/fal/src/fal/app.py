@@ -75,7 +75,7 @@ class App:
 
     def provide_hints(self) -> list[str]:
         """Provide hints for routing the application."""
-        return []
+        raise NotImplementedError
 
     def serve(self) -> None:
         import uvicorn
@@ -102,6 +102,10 @@ class App:
             response = await call_next(request)
             try:
                 response.headers["X-Fal-Runner-Hints"] = ",".join(self.provide_hints())
+            except NotImplementedError:
+                # This lets us differentiate between apps that don't provide hints
+                # and apps that provide empty hints.
+                pass
             except Exception as exc:
                 from fastapi.logger import logger
 
