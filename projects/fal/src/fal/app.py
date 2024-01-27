@@ -73,6 +73,10 @@ class App:
     def setup(self):
         """Setup the application before serving."""
 
+    def provide_hints(self) -> list[str]:
+        """Provide hints for routing the application."""
+        return []
+
     def serve(self) -> None:
         import uvicorn
 
@@ -92,6 +96,16 @@ class App:
                 self.teardown()
 
         _app = FastAPI(lifespan=lifespan)
+
+        @_app.middleware("http")
+        async def provide_hints(request, call_next):
+            response = await call_next(request)
+            try:
+                response.headers["X-Fal-Runner-Hints"] = ",".join(self.provide_hints())
+            except Exception as exc:
+                logger.warning("Failed to provide hints: %s", exc)
+
+            return response
 
         _app.add_middleware(
             CORSMiddleware,
