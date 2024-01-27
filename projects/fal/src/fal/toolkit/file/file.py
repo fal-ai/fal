@@ -9,11 +9,13 @@ from fal.toolkit.file.providers.gcp import GoogleStorageRepository
 from fal.toolkit.file.providers.r2 import R2Repository
 from fal.toolkit.file.types import FileData, FileRepository, RepositoryId
 from fal.toolkit.mainify import mainify
+from fal.toolkit.utils.cache import cached
 from fal.toolkit.utils.download_utils import download_file
 from pydantic import BaseModel, Field, PrivateAttr
 from pydantic.typing import Optional
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 from zipfile import ZipFile
+
 
 FileRepositoryFactory = Callable[[], FileRepository]
 
@@ -25,6 +27,7 @@ BUILT_IN_REPOSITORIES: dict[RepositoryId, FileRepositoryFactory] = {
 }
 
 
+@cached
 def get_builtin_repository(id: RepositoryId) -> FileRepository:
     if id not in BUILT_IN_REPOSITORIES.keys():
         raise ValueError(f'"{id}" is not a valid built-in file repository')

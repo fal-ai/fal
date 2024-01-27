@@ -10,4 +10,5 @@ from fal.toolkit.utils import (
     clone_repository,
     download_file,
     download_model_weights,
+    cached,
 )

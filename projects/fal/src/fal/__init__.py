@@ -3,12 +3,13 @@ from __future__ import annotations
 from fal import apps
 
 # TODO: DEPRECATED - use function instead
-from fal.api import FalServerlessHost, LocalHost, cached
+from fal.api import FalServerlessHost, LocalHost
 from fal.api import function
 from fal.api import function as isolated
 from fal.app import App, endpoint, realtime, wrap_app
 from fal.sdk import FalServerlessKeyCredentials
 from fal.sync import sync_dir
+from fal.toolkit.utils import cached
 
 local = LocalHost()
 serverless = FalServerlessHost()
