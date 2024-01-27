@@ -55,7 +55,8 @@ class App:
     host_kwargs: ClassVar[dict[str, Any]] = {}
 
     def __init_subclass__(cls, **kwargs):
-        cls.host_kwargs = kwargs
+        parent_settings = getattr(cls, "host_kwargs", {})
+        cls.host_kwargs = {**parent_settings, **kwargs}
 
         if cls.__init__ is not App.__init__:
             raise ValueError(
