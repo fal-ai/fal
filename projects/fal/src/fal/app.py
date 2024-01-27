@@ -103,8 +103,13 @@ class App:
             try:
                 response.headers["X-Fal-Runner-Hints"] = ",".join(self.provide_hints())
             except Exception as exc:
-                logger.warning("Failed to provide hints: %s", exc)
+                from fastapi.logger import logger
 
+                logger.exception(
+                    "Failed to provide hints for %s",
+                    self.__class__.__name__,
+                    exc_info=exc,
+                )
             return response
 
         _app.add_middleware(
