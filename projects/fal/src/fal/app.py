@@ -73,6 +73,10 @@ class App:
     def setup(self):
         """Setup the application before serving."""
 
+    def provide_hints(self) -> list[str]:
+        """Provide hints for routing the application."""
+        raise NotImplementedError
+
     def serve(self) -> None:
         import uvicorn
 
@@ -92,6 +96,25 @@ class App:
                 self.teardown()
 
         _app = FastAPI(lifespan=lifespan)
+
+        @_app.middleware("http")
+        async def provide_hints(request, call_next):
+            response = await call_next(request)
+            try:
+                response.headers["X-Fal-Runner-Hints"] = ",".join(self.provide_hints())
+            except NotImplementedError:
+                # This lets us differentiate between apps that don't provide hints
+                # and apps that provide empty hints.
+                pass
+            except Exception as exc:
+                from fastapi.logger import logger
+
+                logger.exception(
+                    "Failed to provide hints for %s",
+                    self.__class__.__name__,
+                    exc_info=exc,
+                )
+            return response
 
         _app.add_middleware(
             CORSMiddleware,
