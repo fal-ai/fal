@@ -26,7 +26,6 @@ def build_pydantic_model(
     model_validators: dict[str, tuple[Callable, ModelValidatorDecoratorInfo]],
     field_validators: dict[str, tuple[Callable, FieldValidatorDecoratorInfo]],
     methods: dict,
-    # class_fields: dict,
 ):
     """Recreate the Pydantic model from the deserialised validator info.
 
@@ -40,9 +39,6 @@ def build_pydantic_model(
         model_validators: The model validators of the model.
         field_validators: The field validators of the model.
         methods: The methods of the model.
-
-    Deprecated:
-        class_fields: Anything that is neither a field nor a validator (unclear).
     """
     import pydantic
 
@@ -56,13 +52,9 @@ def build_pydantic_model(
             for name, (func, info) in field_validators.items()
         },
     }
-    model_fields.update(
-        {
-            "__annotations__": {
-                name: field.annotation for name, field in model_fields.items()
-            }
-        }
-    )
+    model_fields["__annotations__"] = {
+        name: field.annotation for name, field in model_fields.items()
+    }
     model_fields.update({name: func for name, (func, _) in field_validators.items()})
 
     model_cls = pydantic.create_model(
@@ -95,8 +87,6 @@ def _dill_hook_for_pydantic_models(pickler: dill.Pickler, pydantic_model) -> Non
         for validator_name, decorator in decorators.field_validators.items()
     }
 
-    # class_fields = {"__annotations__": annotations}
-    annotations = pydantic_model.__annotations__
     methods = {
         field_name: field_value
         for field_name, field_value in pydantic_model.__dict__.items()
@@ -126,7 +116,6 @@ def _dill_hook_for_pydantic_models(pickler: dill.Pickler, pydantic_model) -> Non
         "model_validators": model_validators,
         "field_validators": field_validators,
         "methods": methods,
-        # "class_fields": class_fields,
     }
     pickler.save_reduce(build_pydantic_model, tuple(pickled_model.values()))
 
