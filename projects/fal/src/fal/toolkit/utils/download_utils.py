@@ -185,7 +185,7 @@ def download_file(
 
 
 @mainify
-def _download_file_python(url: str, target_path: Path) -> Path:
+def _download_file_python(url: str, target_path: Path | str) -> Path:
     """Download a file from a given URL and save it to a specified path using a
     Python interface.
 
@@ -220,7 +220,7 @@ def _download_file_python(url: str, target_path: Path) -> Path:
         finally:
             Path(temp_file.name).unlink(missing_ok=True)
 
-    return target_path
+    return Path(target_path)
 
 
 @mainify
