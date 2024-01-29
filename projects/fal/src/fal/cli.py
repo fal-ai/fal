@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
 from http import HTTPStatus
 from sys import argv
 from typing import Literal
@@ -14,15 +13,12 @@ from fal import api, sdk, _serialization
 from fal.console import console
 from fal.exceptions import ApplicationExceptionHandler
 from fal.logging import get_logger, set_debug_logging
-from fal.logging.isolate import IsolateLogPrinter
 from fal.logging.trace import get_tracer
 from fal.rest_client import REST_CLIENT
 from fal.sdk import AliasInfo, KeyScope
-from isolate.logs import Log, LogLevel, LogSource
 from rich.table import Table
 
 import openapi_fal_rest.api.billing.get_user_details as get_user_details
-import openapi_fal_rest.api.logs.list_since as list_logs
 
 DEFAULT_HOST = "api.alpha.fal.ai"
 HOST_ENVVAR = "FAL_HOST"
@@ -326,34 +322,6 @@ def register_application(
 def run(host: api.FalServerlessHost, file_path: str, function_name: str):
     isolated_function = load_function_from(host, file_path, function_name)
     isolated_function()
-
-
-@function_cli.command("logs")
-@click.option("--lines", default=100)
-@click.option("--url", default=None)
-@click.pass_obj
-def get_logs(
-    host: api.FalServerlessHost, lines: int | None = 100, url: str | None = None
-):
-    log_printer = IsolateLogPrinter(debug=True)
-    logs_response = list_logs.sync_detailed(
-        client=REST_CLIENT, limit=lines, url_query=url
-    )
-    if not logs_response.status_code == 200 or type(logs_response.parsed) != list:
-        raise api.FalServerlessError(str(logs_response.parsed))
-    if len(logs_response.parsed) == 0:
-        console.print("No logs found")
-    for log in logs_response.parsed:
-        app = log.app or "fal"
-
-        log_printer.print(
-            Log(
-                message=f"{app}: {log.message}",
-                source=LogSource.USER,
-                level=LogLevel[log.level],
-                timestamp=datetime.fromisoformat(log.timestamp),
-            )
-        )
 
 
 ##### Alias group #####
