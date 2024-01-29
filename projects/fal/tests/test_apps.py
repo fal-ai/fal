@@ -1,3 +1,4 @@
+import time
 from typing import Generator
 
 import fal
@@ -5,10 +6,10 @@ import fal.api as api
 import pytest
 from fal import apps
 from fal.rest_client import REST_CLIENT
-import time
+from openapi_fal_rest.api.applications import app_metadata
 from pydantic import BaseModel
 
-from openapi_fal_rest.api.applications import app_metadata
+import pydantic_patch  # noqa
 
 
 class Input(BaseModel):
