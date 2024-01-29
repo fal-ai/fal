@@ -1,4 +1,5 @@
 import time
+from pathlib import Path
 
 import fal
 import pytest
@@ -27,11 +28,27 @@ class Output(BaseModel):
     result: int
 
 
+pydantic_patch_contents = Path("pydantic_patch.py").read_text()
+
+
+def test_fn():
+    import sys
+    from tempfile import mkdtemp
+
+    package_dir = mkdtemp()
+
+    path = Path(package_dir) / "pydantic_patch.py"
+    path.write_text(pydantic_patch_contents)
+
+    sys.path.insert(0, package_dir)
+
+
 @fal.function(
-    keep_alive=60,
+    keep_alive=0,
     machine_type="S",
     serve=True,
     max_concurrency=1,
+    setup_function=test_fn,
 )
 def addition_app(input: Input) -> Output:
     print("starting...")
