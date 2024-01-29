@@ -4,6 +4,13 @@ import fal
 import pytest
 from fal import apps
 from pydantic import BaseModel
+from pydantic import __version__ as PYDANTIC_VERSION
+
+# This is just a rough first draft of how we would check the Pydantic version
+IS_PYDANTIC_2 = PYDANTIC_VERSION[0] == "2"
+
+if IS_PYDANTIC_2:
+    import pydantic_patch  # noqa
 
 
 class Input(BaseModel):
