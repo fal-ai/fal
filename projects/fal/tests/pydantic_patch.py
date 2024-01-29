@@ -75,8 +75,9 @@ def build_pydantic_model(
             for name, (func, info) in field_validators.items()
         },
     }
+    # TODO: review if this is the optimal way to handle model field annotations
     model_fields["__annotations__"] = {
-        name: field.annotation for name, field in model_fields.items()
+        name: getattr(field, "annotation", None) for name, field in model_fields.items()
     }
     model_fields.update({name: func for name, (func, _) in field_validators.items()})
 
