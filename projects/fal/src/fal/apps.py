@@ -11,7 +11,7 @@ from fal import flags
 from fal.sdk import Credentials, get_default_credentials
 
 _URL_FORMAT = f"https://{{app_id}}.{flags.GATEWAY_HOST}/fal/queue"
-_REALTIME_URL_FORMAT = "wss://fal.run/{app_id}"
+_REALTIME_URL_FORMAT = f"wss://{{app_id}}.{flags.GATEWAY_HOST}"
 
 
 @dataclass

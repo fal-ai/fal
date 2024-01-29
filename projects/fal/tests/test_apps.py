@@ -112,12 +112,13 @@ class RTOutput(BaseModel):
     text: str
 
 
-class RealtimeApp(fal.App, _scheduler="nomad"):
+class RealtimeApp(fal.App, keep_alive=300, max_concurrency=1):
     requirements = ["websockets", "msgpack"]
+    machine_type = "S"
 
     @fal.endpoint("/")
     def generate(self, input: RTInput) -> RTOutput:
-        return Output(text=input.prompt)
+        return RTOutput(text=input.prompt)
 
     @fal.endpoint("/ws", is_websocket=True)
     async def generate_ws(self, websocket: WebSocket) -> None:
@@ -204,7 +205,7 @@ def test_realtime_app():
         application_auth_mode="public",
     )
     user_id = _get_user_id()
-    yield f"{user_id}/{app_revision}"
+    yield f"{user_id}-{app_revision}"
 
 
 def test_app_client(test_app: str):
@@ -386,6 +387,9 @@ def test_app_set_delete_alias(aliased_app: tuple[str, str]):
 
 
 def test_realtime_connection(test_realtime_app):
+    response = apps.run(test_realtime_app, arguments={"prompt": "a cat"})
+    assert response["text"] == "a cat"
+
     with apps._connect(test_realtime_app) as connection:
         for _ in range(3):
             response = connection.run({"prompt": "a cat"})
