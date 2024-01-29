@@ -5,6 +5,7 @@ import shutil
 import subprocess
 from functools import lru_cache
 from pathlib import Path, PurePath
+import sys
 from tempfile import TemporaryDirectory
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
@@ -320,6 +321,7 @@ def clone_repository(
     target_dir: str | Path | None = None,
     repo_name: str | None = None,
     force: bool = False,
+    include_to_path: bool = False,
 ) -> Path:
     """Clones a Git repository from the specified HTTPS URL into a local
     directory.
@@ -339,6 +341,8 @@ def clone_repository(
             If not provided, the repository's name from the URL is used.
         force: If `True`, the repository is cloned even if it already exists locally
             and its commit hash matches the provided commit hash. Defaults to `False`.
+        include_to_path: If `True`, the cloned repository is added to the `sys.path`.
+            Defaults to `False`.
 
     Returns:
         A Path object representing the full path to the cloned Git repository.
@@ -395,6 +399,9 @@ def clone_repository(
         temp_dir.cleanup()
 
         raise error
+
+    if include_to_path:
+        sys.path.insert(0, str(local_repo_path))
 
     return local_repo_path
 
