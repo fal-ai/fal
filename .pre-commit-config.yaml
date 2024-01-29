@@ -3,6 +3,10 @@
 
 repos:
   # Global hooks (these can be configured with global pyproject.toml)
+  - repo: https://github.com/pycqa/isort
+    rev: 5.13.2
+    hooks:
+      - id: isort
   - repo: https://github.com/hakancelikdev/unimport
     rev: 1.0.0
     hooks:
@@ -43,12 +47,6 @@ repos:
             ^projects/fal/src/|
             ^projects/fal/tests/
           )
-  # - repo: https://github.com/pycqa/isort
-  #   rev: 5.13.1
-  #   hooks:
-  #     - id: isort
-  #       args: ["--profile", "black"]
-
   # Monorepo Hooks (e.g. they need to be project specific)
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: "v1.3.0"
