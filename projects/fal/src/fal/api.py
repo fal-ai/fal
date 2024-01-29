@@ -109,7 +109,7 @@ class Host(Generic[ArgsT, ReturnT]):
                 options.environment[key] = value
 
         if options.gateway.get("serve"):
-            options.add_requirements(["fastapi==0.99.1", "uvicorn"])
+            options.add_requirements(["pydantic==2.5.3", "fastapi==0.109.0", "uvicorn"])
 
         return options
 
