@@ -31,7 +31,8 @@ class Output(BaseModel):
 pydantic_patch_contents = Path("pydantic_patch.py").read_text()
 
 
-def test_fn():
+def apply_patch():
+    """Load the patch via a package in a temporary directory prepended to the PATH."""
     import sys
     from tempfile import mkdtemp
 
@@ -48,7 +49,7 @@ def test_fn():
     machine_type="S",
     serve=True,
     max_concurrency=1,
-    setup_function=test_fn,
+    setup_function=apply_patch,
 )
 def addition_app(input: Input) -> Output:
     print("starting...")
@@ -61,8 +62,7 @@ def addition_app(input: Input) -> Output:
 
 @pytest.fixture(scope="module")
 def test_app():
-    # Create a temporary app, register it, and return the ID of it.
-
+    """Create a temporary app, register it, and return the ID of it."""
     from fal.cli import _get_user_id
 
     app_revision = addition_app.host.register(
