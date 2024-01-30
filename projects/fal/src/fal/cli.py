@@ -324,6 +324,16 @@ def run(host: api.FalServerlessHost, file_path: str, function_name: str):
     isolated_function()
 
 
+@function_cli.command("logs")
+@click.option("--lines", default=100)
+@click.option("--url", default=None)
+@click.pass_obj
+def get_logs(
+    host: api.FalServerlessHost, lines: int | None = 100, url: str | None = None
+):
+    console.print("logs command is deprecated. To see logs, got to fal web page: https://www.fal.ai/dashboard/logs")
+
+
 ##### Alias group #####
 @click.group
 @click.option("--host", default=DEFAULT_HOST, envvar=HOST_ENVVAR)
