@@ -331,7 +331,9 @@ def run(host: api.FalServerlessHost, file_path: str, function_name: str):
 def get_logs(
     host: api.FalServerlessHost, lines: int | None = 100, url: str | None = None
 ):
-    console.print("logs command is deprecated. To see logs, got to fal web page: https://www.fal.ai/dashboard/logs")
+    console.print(
+        "logs command is deprecated. To see logs, got to fal web page: https://www.fal.ai/dashboard/logs"
+    )
 
 
 ##### Alias group #####
