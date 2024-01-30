@@ -406,6 +406,7 @@ def clone_repository(
     return local_repo_path
 
 
+@mainify
 def __add_local_path_to_sys_path(local_path: Path | str):
     local_path_str = str(local_path)
 
