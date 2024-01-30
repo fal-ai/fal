@@ -355,6 +355,7 @@ def clone_repository(
     if local_repo_path.exists():
         local_repo_commit_hash = _get_git_revision_hash(local_repo_path)
         if local_repo_commit_hash == commit_hash and not force:
+            __add_local_path_to_sys_path(local_repo_path)
             return local_repo_path
         else:
             if local_repo_commit_hash != commit_hash:
@@ -400,10 +401,17 @@ def clone_repository(
 
         raise error
 
-    if include_to_path:
-        sys.path.insert(0, str(local_repo_path))
+    __add_local_path_to_sys_path(local_repo_path)
 
     return local_repo_path
+
+
+@mainify
+def __add_local_path_to_sys_path(local_path: Path | str):
+    local_path_str = str(local_path)
+
+    if local_path_str not in sys.path:
+        sys.path.insert(0, local_path_str)
 
 
 @mainify
