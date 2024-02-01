@@ -9,8 +9,6 @@ from fal.rest_client import REST_CLIENT
 from openapi_fal_rest.api.applications import app_metadata
 from pydantic import BaseModel
 
-import pydantic_patch  # noqa
-
 
 class Input(BaseModel):
     lhs: int
