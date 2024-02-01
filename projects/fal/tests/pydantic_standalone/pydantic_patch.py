@@ -1,6 +1,6 @@
 """A standalone version of the Pydantic v2 patch shipped in `fal._pydantic_patch`."""
 from pprint import pprint
-from typing import Callable, TypeVar
+from typing import Callable, Optional, TypeVar, Union
 
 import dill
 import dill._dill as dill_serialization
@@ -41,7 +41,7 @@ FieldVDeco = Decorator[FieldValidatorDecoratorInfo]
 def build_pydantic_model(
     name: str,
     model_config: ConfigDict,
-    model_doc: str | None,
+    model_doc: Optional[str],
     base_cls: type[ModelT],
     model_module: str,
     model_fields: Fields,
@@ -95,15 +95,15 @@ def build_pydantic_model(
 
 
 def extract_validators(
-    validators: dict[str, ModelVDeco] | dict[str, FieldVDeco],
-) -> ModelVs | FieldVs:
+    validators: Union[dict[str, ModelVDeco], dict[str, FieldVDeco]],
+) -> Union[ModelVs, FieldVs]:
     return {name: (deco.func, deco.info) for name, deco in validators.items()}
 
 
 def pickler_building_args(
     model: ModelT,
 ) -> tuple[
-    str, ConfigDict, str | None, type[ModelT], str, Fields, ModelVs, FieldVs, Methods
+    str, ConfigDict, Optional[str], type[ModelT], str, Fields, ModelVs, FieldVs, Methods
 ]:
     """Prepare the arguments (which are all passed as positional arguments).
 
@@ -140,7 +140,7 @@ def pickler_building_args(
 
 @dill.register(type(BaseModel))
 def _dill_hook_for_pydantic_models(
-    pickler: dill.Pickler, model: ModelT | type[BaseModel]
+    pickler: dill.Pickler, model: Union[ModelT, type[BaseModel]]
 ) -> None:
     """Custom dill serialiser for Pydantic models."""
     # TODO: confirm that this definitely receives instances of the model even though the

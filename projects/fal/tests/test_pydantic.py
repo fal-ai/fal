@@ -1,5 +1,6 @@
 """Verify that the deserialisation approach works as a standalone test."""
 from __future__ import annotations
+
 import subprocess
 import sys
 
