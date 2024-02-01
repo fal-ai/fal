@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
 from http import HTTPStatus
 from sys import argv
 from typing import Literal
@@ -10,19 +9,16 @@ from uuid import uuid4
 import click
 import fal.auth as auth
 import fal
-from fal import api, sdk
+from fal import api, sdk, _serialization
 from fal.console import console
 from fal.exceptions import ApplicationExceptionHandler
 from fal.logging import get_logger, set_debug_logging
-from fal.logging.isolate import IsolateLogPrinter
 from fal.logging.trace import get_tracer
 from fal.rest_client import REST_CLIENT
 from fal.sdk import AliasInfo, KeyScope
-from isolate.logs import Log, LogLevel, LogSource
 from rich.table import Table
 
 import openapi_fal_rest.api.billing.get_user_details as get_user_details
-import openapi_fal_rest.api.logs.list_since as list_logs
 
 DEFAULT_HOST = "api.alpha.fal.ai"
 HOST_ENVVAR = "FAL_HOST"
@@ -246,6 +242,10 @@ def load_function_from(
     if function_name not in module:
         raise api.FalServerlessError(f"Function '{function_name}' not found in module")
 
+    # The module for the function is set to <run_path> when runpy is used, in which
+    # case we want to manually include the packages it is defined in.
+    _serialization.include_packages_from_path(file_path)
+
     target = module[function_name]
     if isinstance(target, type) and issubclass(target, fal.App):
         target = fal.wrap_app(target, host=host)
@@ -300,14 +300,19 @@ def register_application(
     )
 
     if id:
+        gateway_host = remove_http_and_port_from_url(host.url)
+        gateway_host = (
+            gateway_host.replace("api.", "").replace("alpha.", "").replace("ai", "run")
+        )
+
         if alias:
             console.print(
                 f"Registered a new revision for function '{alias}' (revision='{id}')."
             )
-            console.print(f"URL: https://fal.run/{user_id}/{alias}")
+            console.print(f"URL: https://{gateway_host}/{user_id}/{alias}")
         else:
             console.print(f"Registered anonymous function '{id}'.")
-            console.print(f"URL: https://fal.run/{user_id}/{id}")
+            console.print(f"URL: https://{gateway_host}/{user_id}/{id}")
 
 
 @function_cli.command("run")
@@ -326,25 +331,9 @@ def run(host: api.FalServerlessHost, file_path: str, function_name: str):
 def get_logs(
     host: api.FalServerlessHost, lines: int | None = 100, url: str | None = None
 ):
-    log_printer = IsolateLogPrinter(debug=True)
-    logs_response = list_logs.sync_detailed(
-        client=REST_CLIENT, limit=lines, url_query=url
+    console.print(
+        "logs command is deprecated. To see logs, got to fal web page: https://www.fal.ai/dashboard/logs"
     )
-    if not logs_response.status_code == 200 or type(logs_response.parsed) != list:
-        raise api.FalServerlessError(str(logs_response.parsed))
-    if len(logs_response.parsed) == 0:
-        console.print("No logs found")
-    for log in logs_response.parsed:
-        app = log.app or "fal"
-
-        log_printer.print(
-            Log(
-                message=f"{app}: {log.message}",
-                source=LogSource.USER,
-                level=LogLevel[log.level],
-                timestamp=datetime.fromisoformat(log.timestamp),
-            )
-        )
 
 
 ##### Alias group #####

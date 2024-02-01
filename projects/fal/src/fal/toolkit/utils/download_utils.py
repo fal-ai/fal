@@ -5,6 +5,7 @@ import shutil
 import subprocess
 from functools import lru_cache
 from pathlib import Path, PurePath
+import sys
 from tempfile import TemporaryDirectory
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
@@ -71,8 +72,13 @@ def _get_remote_file_properties(url: str) -> tuple[str, int]:
         content_length = int(response.headers.get("Content-Length", -1))
 
     if not file_name:
-        url_path = urlparse(url).path
-        file_name = Path(url_path).name or _hash_url(url)
+        parsed_url = urlparse(url)
+
+        if parsed_url.scheme == "data":
+            file_name = _hash_url(url)
+        else:
+            url_path = parsed_url.path
+            file_name = Path(url_path).name or _hash_url(url)
 
     return file_name, content_length
 
@@ -180,7 +186,7 @@ def download_file(
 
 
 @mainify
-def _download_file_python(url: str, target_path: Path) -> Path:
+def _download_file_python(url: str, target_path: Path | str) -> Path:
     """Download a file from a given URL and save it to a specified path using a
     Python interface.
 
@@ -215,7 +221,7 @@ def _download_file_python(url: str, target_path: Path) -> Path:
         finally:
             Path(temp_file.name).unlink(missing_ok=True)
 
-    return target_path
+    return Path(target_path)
 
 
 @mainify
@@ -315,6 +321,7 @@ def clone_repository(
     target_dir: str | Path | None = None,
     repo_name: str | None = None,
     force: bool = False,
+    include_to_path: bool = False,
 ) -> Path:
     """Clones a Git repository from the specified HTTPS URL into a local
     directory.
@@ -334,6 +341,8 @@ def clone_repository(
             If not provided, the repository's name from the URL is used.
         force: If `True`, the repository is cloned even if it already exists locally
             and its commit hash matches the provided commit hash. Defaults to `False`.
+        include_to_path: If `True`, the cloned repository is added to the `sys.path`.
+            Defaults to `False`.
 
     Returns:
         A Path object representing the full path to the cloned Git repository.
@@ -346,8 +355,20 @@ def clone_repository(
     if local_repo_path.exists():
         local_repo_commit_hash = _get_git_revision_hash(local_repo_path)
         if local_repo_commit_hash == commit_hash and not force:
+            if include_to_path:
+                __add_local_path_to_sys_path(local_repo_path)
             return local_repo_path
         else:
+            if local_repo_commit_hash != commit_hash:
+                print(
+                    f"Local repository '{local_repo_path}' has a different commit hash "
+                    f"({local_repo_commit_hash}) than the one provided ({commit_hash})."
+                )
+            elif force:
+                print(
+                    f"Local repository '{local_repo_path}' already exists. "
+                    f"Forcing re-download."
+                )
             print(f"Removing the existing repository: {local_repo_path} ")
             shutil.rmtree(local_repo_path)
 
@@ -362,6 +383,7 @@ def clone_repository(
         clone_command = [
             "git",
             "clone",
+            "--recursive",
             https_url,
             temp_dir_path,
         ]
@@ -380,13 +402,37 @@ def clone_repository(
 
         raise error
 
+    if include_to_path:
+        __add_local_path_to_sys_path(local_repo_path)
+
     return local_repo_path
+
+
+@mainify
+def __add_local_path_to_sys_path(local_path: Path | str):
+    local_path_str = str(local_path)
+
+    if local_path_str not in sys.path:
+        sys.path.insert(0, local_path_str)
 
 
 @mainify
 def _get_git_revision_hash(repo_path: Path) -> str:
     import subprocess
 
-    return subprocess.check_output(
-        ["git", "rev-parse", "HEAD"], cwd=repo_path, text=True
-    ).strip()
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "HEAD"],
+            cwd=repo_path,
+            text=True,
+            stderr=subprocess.STDOUT,
+        ).strip()
+    except subprocess.CalledProcessError as error:
+        if "not a git repository" in error.output:
+            print(f"Repository '{repo_path}' is not a git repository.")
+            return ""
+
+        print(
+            f"{error}\nFailed to get the commit hash of the repository '{repo_path}' ."
+        )
+        raise error

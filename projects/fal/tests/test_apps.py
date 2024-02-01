@@ -6,6 +6,8 @@ import fal.api as api
 import pytest
 from fal import apps
 from fal.rest_client import REST_CLIENT
+from fastapi import WebSocket
+
 from openapi_fal_rest.api.applications import app_metadata
 from pydantic import BaseModel
 
@@ -102,6 +104,34 @@ class StatefulAdditionApp(fal.App, keep_alive=300, max_concurrency=1):
         return Output(result=self.counter)
 
 
+class RTInput(BaseModel):
+    prompt: str
+
+
+class RTOutput(BaseModel):
+    text: str
+
+
+class RealtimeApp(fal.App, keep_alive=300, max_concurrency=1):
+    requirements = ["websockets", "msgpack"]
+    machine_type = "S"
+
+    @fal.endpoint("/")
+    def generate(self, input: RTInput) -> RTOutput:
+        return RTOutput(text=input.prompt)
+
+    @fal.endpoint("/ws", is_websocket=True)
+    async def generate_ws(self, websocket: WebSocket) -> None:
+        await websocket.accept()
+        for _ in range(3):
+            await websocket.send_json({"message": "Hello world!"})
+        await websocket.close()
+
+    @fal.realtime("/realtime")
+    def generate_rt(self, input: RTInput) -> RTOutput:
+        return RTOutput(text=input.prompt)
+
+
 @pytest.fixture(scope="module")
 def aliased_app() -> Generator[tuple[str, str], None, None]:
     # Create a temporary app, register it, and return the ID of it.
@@ -157,6 +187,22 @@ def test_stateful_app():
     app_revision = app.host.register(
         func=app.func,
         options=app.options,
+    )
+    user_id = _get_user_id()
+    yield f"{user_id}-{app_revision}"
+
+
+@pytest.fixture(scope="module")
+def test_realtime_app():
+    # Create a temporary app, register it, and return the ID of it.
+
+    from fal.cli import _get_user_id
+
+    app = fal.wrap_app(RealtimeApp)
+    app_revision = app.host.register(
+        func=app.func,
+        options=app.options,
+        application_auth_mode="public",
     )
     user_id = _get_user_id()
     yield f"{user_id}-{app_revision}"
@@ -338,3 +384,13 @@ def test_app_set_delete_alias(aliased_app: tuple[str, str]):
         res = client.list_aliases()
         found = next(filter(lambda alias: alias.alias == app_alias, res), None)
         assert not found, f"Found app {app_alias} in {res} after deletion"
+
+
+def test_realtime_connection(test_realtime_app):
+    response = apps.run(test_realtime_app, arguments={"prompt": "a cat"})
+    assert response["text"] == "a cat"
+
+    with apps._connect(test_realtime_app) as connection:
+        for _ in range(3):
+            response = connection.run({"prompt": "a cat"})
+            assert response["text"] == "a cat"

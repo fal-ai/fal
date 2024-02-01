@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import io
+from tempfile import NamedTemporaryFile
 from typing import TYPE_CHECKING, Literal, Optional, Union
 
 from fal.toolkit.file.file import DEFAULT_REPOSITORY, File
 from fal.toolkit.file.types import FileData, FileRepository, RepositoryId
 from fal.toolkit.mainify import mainify
+from fal.toolkit.utils.download_utils import _download_file_python
 from pydantic import BaseModel, Field
 
 if TYPE_CHECKING:
@@ -43,7 +45,7 @@ IMAGE_SIZE_PRESETS: dict[ImageSizePreset, ImageSize] = {
 
 ImageSizeInput = Union[ImageSize, ImageSizePreset]
 
-
+@mainify
 def get_image_size(source: ImageSizeInput) -> ImageSize:
     if isinstance(source, ImageSize):
         return source
@@ -52,8 +54,6 @@ def get_image_size(source: ImageSizeInput) -> ImageSize:
         return size
     raise TypeError(f"Invalid value for ImageSize: {source}")
 
-
-get_image_size.__module__ = "__main__"
 
 ImageFormat = Literal["png", "jpeg", "jpg", "webp", "gif"]
 
@@ -117,3 +117,23 @@ class Image(File):
             raw_image = f.getvalue()
 
         return cls.from_bytes(raw_image, format, size, file_name, repository)
+
+    def to_pil(self, mode: str = "RGB") -> PILImage.Image:
+        try:
+            from PIL import Image as PILImage, ImageOps
+        except ImportError:
+            raise ImportError(
+                "The PIL package is required to use Image.to_pil()."
+            )
+
+        # Stream the image data from url to a temp file and convert it to a PIL image
+        with NamedTemporaryFile() as temp_file:
+            temp_file_path = temp_file.name
+
+            _download_file_python(self.url, temp_file_path)
+
+            img = PILImage.open(temp_file_path).convert(mode)
+            img = ImageOps.exif_transpose(img)
+
+            return img
+

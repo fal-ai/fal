@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 import time
+import json
 from dataclasses import dataclass, field
 from typing import Any, Iterator
+from contextlib import contextmanager
 
 import httpx
 from fal import flags
 from fal.sdk import Credentials, get_default_credentials
 
 _URL_FORMAT = f"https://{{app_id}}.{flags.GATEWAY_HOST}/fal/queue"
+_REALTIME_URL_FORMAT = f"wss://{{app_id}}.{flags.GATEWAY_HOST}"
 
 
 @dataclass
@@ -147,3 +150,45 @@ def submit(app_id: str, arguments: dict[str, Any], *, path: str = "/") -> Reques
         request_id=data["request_id"],
         _creds=creds,
     )
+
+
+@dataclass
+class _RealtimeConnection:
+    """A realtime connection to a Fal app."""
+
+    _ws: Any
+
+    def run(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        import msgpack
+
+        """Run an inference task on the app and return the result."""
+
+        payload = msgpack.packb(arguments)
+
+        self._ws.send(payload)
+        while True:
+            response = self._ws.recv()
+            if isinstance(response, str):
+                print(response)
+                json_payload = json.loads(response)
+                if json_payload.get("type") == "x-fal-error":
+                    raise ValueError(json_payload["reason"])
+                continue
+
+            return msgpack.unpackb(response)
+
+
+@contextmanager
+def _connect(app_id: str, *, path: str = "/realtime") -> Iterator[_RealtimeConnection]:
+    """Connect to a realtime endpoint. This is an internal and experimental API, use it
+    at your own risk."""
+
+    from websockets.sync import client
+
+    url = _REALTIME_URL_FORMAT.format(app_id=app_id) + path
+    creds = get_default_credentials()
+
+    with client.connect(
+        url, additional_headers=creds.to_headers(), open_timeout=90
+    ) as ws:
+        yield _RealtimeConnection(ws)
