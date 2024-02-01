@@ -1,13 +1,11 @@
 """A standalone version of the Pydantic v2 patch shipped in `fal._pydantic_patch`."""
-import subprocess
-import sys
 from pprint import pprint
 from typing import Callable, TypeVar
 
 import dill
 import dill._dill as dill_serialization
 import pydantic
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel
 from pydantic._internal._decorators import (
     Decorator,
     FieldValidatorDecoratorInfo,

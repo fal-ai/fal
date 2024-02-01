@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from tempfile import NamedTemporaryFile, TemporaryDirectory
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 from urllib.parse import urlparse
 from zipfile import ZipFile
 
@@ -43,15 +43,15 @@ class File(BaseModel):
     url: str = Field(
         description="The URL where the file can be downloaded from.",
     )
-    content_type: Optional[str] = Field(
+    content_type: str | None = Field(
         description="The mime type of the file.",
         examples=["image/png"],
     )
-    file_name: Optional[str] = Field(
+    file_name: str | None = Field(
         description="The name of the file. It will be auto-generated if not provided.",
         examples=["z9RV14K95DvU.png"],
     )
-    file_size: Optional[int] = Field(
+    file_size: int | None = Field(
         description="The size of the file in bytes.", examples=[4404019]
     )
 
@@ -109,8 +109,8 @@ class File(BaseModel):
     def from_bytes(
         cls,
         data: bytes,
-        content_type: Optional[str] = None,
-        file_name: Optional[str] = None,
+        content_type: str | None = None,
+        file_name: str | None = None,
         repository: FileRepository | RepositoryId = DEFAULT_REPOSITORY,
     ) -> File:
         return cls(
@@ -122,7 +122,7 @@ class File(BaseModel):
     def from_path(
         cls,
         path: str | Path,
-        content_type: Optional[str] = None,
+        content_type: str | None = None,
         repository: FileRepository | RepositoryId = DEFAULT_REPOSITORY,
     ) -> File:
         file_path = Path(path)
@@ -154,7 +154,7 @@ class File(BaseModel):
 
 @mainify
 class CompressedFile(File):
-    _extract_dir: Optional[TemporaryDirectory] = PrivateAttr(default=None)
+    _extract_dir: TemporaryDirectory | None = PrivateAttr(default=None)
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

@@ -1,16 +1,10 @@
 """Verify that the deserialisation approach works as a standalone test."""
 from __future__ import annotations
-
-import inspect
 import subprocess
 import sys
-from pprint import pprint
-from textwrap import dedent
 
 import dill
-from fal._pydantic_patch import patch
 from pydantic import BaseModel, Field, field_validator, model_validator
-from pytest import raises
 
 from pydantic_standalone.pydantic_patch import deserialise_pydantic_model
 

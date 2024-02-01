@@ -9,7 +9,6 @@ __all__ = ["patch"]
 
 @mainify
 def patch():
-    from pprint import pprint
     from typing import Callable, TypeVar
 
     import dill
