@@ -1,7 +1,10 @@
 """Patch for serialising Pydantic v2 models."""
 
 from __future__ import annotations
+
 from fal.toolkit import mainify
+
+__all__ = ["patch"]
 
 
 @mainify
@@ -167,26 +170,3 @@ def patch():
             pickler_args = pickler_building_args(model=model)
             pickler.save_reduce(build_pydantic_model, pickler_args)
         return
-
-    def deserialise_pydantic_model() -> ModelT:
-        """Serialise (`dill.dumps`) then deserialise (`dill.loads`) a Pydantic model.
-
-        The `recurse` setting must be set, counterintuitively, to prevent excessive
-        recursion (refer to e.g. dill issue
-        [#482](https://github.com/uqfoundation/dill/issues/482#issuecomment-1139017499)):
-
-            to limit the amount of recursion that dill is doing to pickle the function, we
-            need to turn on a setting called recurse, but that is because the setting
-            actually recurses over the global dictionary and finds the smallest subset that
-            the function needs to run, which will limit the number of objects that dill
-            needs to include in the pickle.
-        """
-        dill.settings["recurse"] = True
-        serialized_cls = dill.dumps(Input)
-        print("===== DESERIALIZING =====")
-        model_cls = dill.loads(serialized_cls)
-        deserialised_fvs = vars(model_cls)["__pydantic_decorators__"].field_validators
-        pprint(deserialised_fvs)
-        print("===== INSTANTIATING =====")
-        model = model_cls(prompt="a", num_steps=4, epochs=10)
-        return model
