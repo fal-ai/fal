@@ -69,8 +69,13 @@ def temp_app():
 
 
 def test_app_client(temp_app: str):
-    response = apps.run(test_app, arguments={"lhs": 1, "rhs": 2})
+    """Add numbers together, with minimal args and then with `wait_time` too.
+
+    Arguments:
+      temp_app: app ID of the served calculator app (in a pytest fixture).
+    """
+    response = apps.run(temp_app, arguments={"lhs": 1, "rhs": 2})
     assert response["result"] == 3
 
-    response = apps.run(test_app, arguments={"lhs": 2, "rhs": 3, "wait_time": 1})
+    response = apps.run(temp_app, arguments={"lhs": 2, "rhs": 3, "wait_time": 1})
     assert response["result"] == 5
