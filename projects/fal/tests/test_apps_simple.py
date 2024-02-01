@@ -57,7 +57,7 @@ def addition_app(input: Input) -> Output:
 
 
 @pytest.fixture(scope="module")
-def test_app():
+def temp_app():
     """Create a temporary app, register it, and return the ID of it."""
     from fal.cli import _get_user_id
 
@@ -68,7 +68,7 @@ def test_app():
     yield f"{user_id}-{app_revision}"
 
 
-def test_app_client(test_app: str):
+def test_app_client(temp_app: str):
     response = apps.run(test_app, arguments={"lhs": 1, "rhs": 2})
     assert response["result"] == 3
 
