@@ -34,4 +34,4 @@ jobs:
           FAL_HOST: api.${{ vars.FAL_CLOUD_INTEGRATION_TEST_HOST }}
         run: |
           cd projects/fal/tests
-          pytest -v .
+          python -m pytest -v .
