@@ -57,7 +57,7 @@ def addition_app(input: Input) -> Output:
 
 
 @pytest.fixture(scope="module")
-def temp_app():
+def temp_app_id():
     """Create a temporary app, register it, and return the ID of it."""
     from fal.cli import _get_user_id
 
@@ -68,14 +68,14 @@ def temp_app():
     yield f"{user_id}-{app_revision}"
 
 
-def test_app_client(temp_app: str):
+def test_app_client(temp_app_id: str):
     """Add numbers together, with minimal args and then with `wait_time` too.
 
     Arguments:
-      temp_app: app ID of the served calculator app (in a pytest fixture).
+      temp_app_id: app ID of the served calculator app (in a pytest fixture).
     """
-    response = apps.run(temp_app, arguments={"lhs": 1, "rhs": 2})
+    response = apps.run(temp_app_id, arguments={"lhs": 1, "rhs": 2})
     assert response["result"] == 3
 
-    response = apps.run(temp_app, arguments={"lhs": 2, "rhs": 3, "wait_time": 1})
+    response = apps.run(temp_app_id, arguments={"lhs": 2, "rhs": 3, "wait_time": 1})
     assert response["result"] == 5
