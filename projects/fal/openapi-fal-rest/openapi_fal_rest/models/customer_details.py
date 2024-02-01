@@ -2,6 +2,7 @@ from typing import Any, Dict, List, Type, TypeVar, Union
 
 import attr
 
+from ..models.lock_reason import LockReason
 from ..types import UNSET, Unset
 
 T = TypeVar("T", bound="CustomerDetails")
@@ -16,6 +17,8 @@ class CustomerDetails:
         hard_monthly_budget (Union[Unset, int]):
         current_balance (Union[Unset, int]):
         is_paying (Union[Unset, bool]):
+        is_locked (Union[Unset, bool]):
+        lock_reason (Union[Unset, None, LockReason]): An enumeration.
     """
 
     user_id: str
@@ -23,6 +26,8 @@ class CustomerDetails:
     hard_monthly_budget: Union[Unset, int] = UNSET
     current_balance: Union[Unset, int] = 0
     is_paying: Union[Unset, bool] = False
+    is_locked: Union[Unset, bool] = False
+    lock_reason: Union[Unset, None, LockReason] = UNSET
     additional_properties: Dict[str, Any] = attr.ib(init=False, factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -31,6 +36,10 @@ class CustomerDetails:
         hard_monthly_budget = self.hard_monthly_budget
         current_balance = self.current_balance
         is_paying = self.is_paying
+        is_locked = self.is_locked
+        lock_reason: Union[Unset, None, str] = UNSET
+        if not isinstance(self.lock_reason, Unset):
+            lock_reason = self.lock_reason.value if self.lock_reason else None
 
         field_dict: Dict[str, Any] = {}
         field_dict.update(self.additional_properties)
@@ -47,6 +56,10 @@ class CustomerDetails:
             field_dict["current_balance"] = current_balance
         if is_paying is not UNSET:
             field_dict["is_paying"] = is_paying
+        if is_locked is not UNSET:
+            field_dict["is_locked"] = is_locked
+        if lock_reason is not UNSET:
+            field_dict["lock_reason"] = lock_reason
 
         return field_dict
 
@@ -63,12 +76,25 @@ class CustomerDetails:
 
         is_paying = d.pop("is_paying", UNSET)
 
+        is_locked = d.pop("is_locked", UNSET)
+
+        _lock_reason = d.pop("lock_reason", UNSET)
+        lock_reason: Union[Unset, None, LockReason]
+        if _lock_reason is None:
+            lock_reason = None
+        elif isinstance(_lock_reason, Unset):
+            lock_reason = UNSET
+        else:
+            lock_reason = LockReason(_lock_reason)
+
         customer_details = cls(
             user_id=user_id,
             soft_monthly_budget=soft_monthly_budget,
             hard_monthly_budget=hard_monthly_budget,
             current_balance=current_balance,
             is_paying=is_paying,
+            is_locked=is_locked,
+            lock_reason=lock_reason,
         )
 
         customer_details.additional_properties = d
