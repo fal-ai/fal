@@ -20,10 +20,6 @@ class Input(BaseModel):
     wait_time: int = 0
 
 
-class StatefulInput(BaseModel):
-    value: int
-
-
 class Output(BaseModel):
     result: int
 
