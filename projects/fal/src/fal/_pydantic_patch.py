@@ -1,6 +1,7 @@
 """Patch for serialising Pydantic v2 models."""
-
 from __future__ import annotations
+
+from typing_extensions import TypeAlias  # 3.9+ can import from typing
 
 from fal.toolkit import mainify
 
@@ -41,9 +42,9 @@ def patch():
     """A mapping of field validator names to a tuple of the validator funcdef and info."""
     Methods = dict[str, Callable]
     """A mapping of method names to the method funcdef."""
-    ModelVDeco = Decorator[ModelValidatorDecoratorInfo]
+    ModelVDeco: TypeAlias = Decorator[ModelValidatorDecoratorInfo]
     """Alias for the decorator storing info about a model validator."""
-    FieldVDeco = Decorator[FieldValidatorDecoratorInfo]
+    FieldVDeco: TypeAlias = Decorator[FieldValidatorDecoratorInfo]
     """Alias for the decorator storing info about a field validator."""
 
     def build_pydantic_model(
@@ -154,7 +155,7 @@ def patch():
             "methods": methods,
         }
         pickler_args = tuple(pickled_model.values())
-        return pickler_args
+        return pickler_args  # type: ignore
 
     @dill.register(type(BaseModel))
     def _dill_hook_for_pydantic_models(
