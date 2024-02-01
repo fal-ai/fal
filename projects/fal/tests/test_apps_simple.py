@@ -5,13 +5,6 @@ import fal
 import pytest
 from fal import apps
 from pydantic import BaseModel
-from pydantic import __version__ as PYDANTIC_VERSION
-
-# This is just a rough first draft of how we would check the Pydantic version
-IS_PYDANTIC_2 = PYDANTIC_VERSION[0] == "2"
-
-if IS_PYDANTIC_2:
-    import pydantic_patch  # noqa
 
 
 class Input(BaseModel):
@@ -24,7 +17,8 @@ class Output(BaseModel):
     result: int
 
 
-pydantic_patch_contents = Path("pydantic_patch.py").read_text()
+pydantic_patch_module = Path(fal.__path__[0]) / "_pydantic_patch.py"
+pydantic_patch_contents = pydantic_patch_module.read_text()
 
 
 def apply_patch():

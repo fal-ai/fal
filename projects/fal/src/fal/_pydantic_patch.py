@@ -1,3 +1,4 @@
+"""Patch for serialising Pydantic v2 models."""
 import subprocess
 import sys
 from pprint import pprint
@@ -14,6 +15,8 @@ from pydantic._internal._decorators import (
 )
 from pydantic.config import ConfigDict
 from pydantic.fields import FieldInfo
+
+from fal.toolkit import mainify
 
 __all__ = [
     "build_pydantic_model",
@@ -39,6 +42,7 @@ FieldVDeco = Decorator[FieldValidatorDecoratorInfo]
 """Alias for the decorator storing info about a field validator."""
 
 
+@mainify
 def build_pydantic_model(
     name: str,
     model_config: ConfigDict,
@@ -95,12 +99,14 @@ def build_pydantic_model(
     return model_cls
 
 
+@mainify
 def extract_validators(
     validators: dict[str, ModelVDeco] | dict[str, FieldVDeco],
 ) -> ModelVs | FieldVs:
     return {name: (deco.func.__func__, deco.info) for name, deco in validators.items()}
 
 
+@mainify
 def pickler_building_args(
     model: ModelT,
 ) -> tuple[
@@ -154,6 +160,7 @@ def _dill_hook_for_pydantic_models(
     return
 
 
+@mainify
 def deserialise_pydantic_model() -> ModelT:
     """Serialise (`dill.dumps`) then deserialise (`dill.loads`) a Pydantic model.
 
