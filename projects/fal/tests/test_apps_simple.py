@@ -1,5 +1,4 @@
 import time
-from pathlib import Path
 
 import fal
 import pytest
@@ -17,29 +16,11 @@ class Output(BaseModel):
     result: int
 
 
-pydantic_patch_module = Path(fal.__path__[0]) / "_pydantic_patch.py"
-pydantic_patch_contents = pydantic_patch_module.read_text()
-
-
-def apply_patch():
-    """Load the patch via a package in a temporary directory prepended to the PATH."""
-    import sys
-    from tempfile import mkdtemp
-
-    package_dir = mkdtemp()
-
-    path = Path(package_dir) / "pydantic_patch.py"
-    path.write_text(pydantic_patch_contents)
-
-    sys.path.insert(0, package_dir)
-
-
 @fal.function(
     keep_alive=0,
     machine_type="S",
     serve=True,
     max_concurrency=1,
-    setup_function=apply_patch,
 )
 def addition_app(input: Input) -> Output:
     print("starting...")

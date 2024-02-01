@@ -13,7 +13,7 @@ from fal.toolkit import mainify
 IS_PYDANTIC_2 = PYDANTIC_VERSION[0] == "2"
 
 if IS_PYDANTIC_2:
-    import fal._pydantic_patch  # noqa
+    from fal._pydantic_patch import patch
 
 
 # each @fal.function gets added to this set so that we can
@@ -146,6 +146,8 @@ def patch_dill():
     import dill
 
     dill.settings["recurse"] = True
-    if not IS_PYDANTIC_2:
+    if IS_PYDANTIC_2:
+        patch()
+    else:
         patch_pydantic_class_attributes()
         patch_pydantic_field_serialization()
