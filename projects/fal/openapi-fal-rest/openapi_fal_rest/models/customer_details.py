@@ -18,7 +18,7 @@ class CustomerDetails:
         current_balance (Union[Unset, int]):
         is_paying (Union[Unset, bool]):
         is_locked (Union[Unset, bool]):
-        lock_reason (Union[Unset, LockReason]): An enumeration.
+        lock_reason (Union[Unset, None, LockReason]): An enumeration.
     """
 
     user_id: str
@@ -27,7 +27,7 @@ class CustomerDetails:
     current_balance: Union[Unset, int] = 0
     is_paying: Union[Unset, bool] = False
     is_locked: Union[Unset, bool] = False
-    lock_reason: Union[Unset, LockReason] = UNSET
+    lock_reason: Union[Unset, None, LockReason] = UNSET
     additional_properties: Dict[str, Any] = attr.ib(init=False, factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -37,9 +37,9 @@ class CustomerDetails:
         current_balance = self.current_balance
         is_paying = self.is_paying
         is_locked = self.is_locked
-        lock_reason: Union[Unset, str] = UNSET
+        lock_reason: Union[Unset, None, str] = UNSET
         if not isinstance(self.lock_reason, Unset):
-            lock_reason = self.lock_reason.value
+            lock_reason = self.lock_reason.value if self.lock_reason else None
 
         field_dict: Dict[str, Any] = {}
         field_dict.update(self.additional_properties)
@@ -79,8 +79,10 @@ class CustomerDetails:
         is_locked = d.pop("is_locked", UNSET)
 
         _lock_reason = d.pop("lock_reason", UNSET)
-        lock_reason: Union[Unset, LockReason]
-        if isinstance(_lock_reason, Unset):
+        lock_reason: Union[Unset, None, LockReason]
+        if _lock_reason is None:
+            lock_reason = None
+        elif isinstance(_lock_reason, Unset):
             lock_reason = UNSET
         else:
             lock_reason = LockReason(_lock_reason)
