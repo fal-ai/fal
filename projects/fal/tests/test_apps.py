@@ -1,3 +1,4 @@
+import time
 from typing import Generator
 
 import fal
@@ -6,10 +7,9 @@ import pytest
 from fal import apps
 from fal.rest_client import REST_CLIENT
 from fastapi import WebSocket
-import time
-from pydantic import BaseModel
 
 from openapi_fal_rest.api.applications import app_metadata
+from pydantic import BaseModel
 
 
 class Input(BaseModel):

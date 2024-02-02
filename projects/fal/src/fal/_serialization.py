@@ -1,11 +1,20 @@
 from __future__ import annotations
 
-from pathlib import Path
 from functools import wraps
+from pathlib import Path
 
 import dill
 from dill import _dill
+from pydantic import __version__ as PYDANTIC_VERSION
+
 from fal.toolkit import mainify
+
+# This is just a rough first draft of how we would check the Pydantic version
+IS_PYDANTIC_2 = PYDANTIC_VERSION[0] == "2"
+
+if IS_PYDANTIC_2:
+    from fal._pydantic_patch import patch
+
 
 # each @fal.function gets added to this set so that we can
 # mainify the module this function is in
@@ -141,5 +150,8 @@ def patch_dill():
     import dill
 
     dill.settings["recurse"] = True
-    patch_pydantic_class_attributes()
-    patch_pydantic_field_serialization()
+    if IS_PYDANTIC_2:
+        patch()
+    else:
+        patch_pydantic_class_attributes()
+        patch_pydantic_field_serialization()
