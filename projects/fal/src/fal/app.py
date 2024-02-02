@@ -337,28 +337,29 @@ def realtime(
 ) -> Callable[[EndpointT], EndpointT]:
     """Designate the decorated function as a realtime application endpoint."""
 
-    def marker_fn(callable: EndpointT) -> EndpointT:
+    def marker_fn(original_func: EndpointT) -> EndpointT:
         nonlocal input_modal
 
-        if hasattr(callable, "route_signature"):
+        if hasattr(original_func, "route_signature"):
             raise ValueError(
-                f"Can't set multiple routes for the same function: {callable.__name__}"
+                f"Can't set multiple routes for the same function: {original_func.__name__}"
             )
 
         if input_modal is _SENTINEL:
-            type_hints = typing.get_type_hints(callable)
+            type_hints = typing.get_type_hints(original_func)
             if len(type_hints) >= 1:
                 input_modal = type_hints[list(type_hints.keys())[0]]
             else:
                 input_modal = None
 
         callable = _fal_websocket_template(
-            callable,
+            original_func,
             buffering=buffering,
             session_timeout=session_timeout,
             input_modal=input_modal,
         )
         callable.route_signature = RouteSignature(path=path, is_websocket=True)  # type: ignore
+        callable.original_func = original_func  # type: ignore
         return callable
 
     return marker_fn
