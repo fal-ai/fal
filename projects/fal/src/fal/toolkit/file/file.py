@@ -4,7 +4,11 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import urlparse
 
-from fal.toolkit.file.providers.fal import FalFileRepository, InMemoryRepository
+from fal.toolkit.file.providers.fal import (
+    FalFileRepository,
+    InMemoryRepository,
+    FalCDNFileRepository,
+)
 from fal.toolkit.file.providers.gcp import GoogleStorageRepository
 from fal.toolkit.file.providers.r2 import R2Repository
 from fal.toolkit.file.types import FileData, FileRepository, RepositoryId
@@ -22,6 +26,7 @@ BUILT_IN_REPOSITORIES: dict[RepositoryId, FileRepositoryFactory] = {
     "in_memory": lambda: InMemoryRepository(),
     "gcp_storage": lambda: GoogleStorageRepository(),
     "r2": lambda: R2Repository(),
+    "cdn": lambda: FalCDNFileRepository(),
 }
 
 
