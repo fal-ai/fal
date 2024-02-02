@@ -211,9 +211,7 @@ def _fal_websocket_template(
     from contextlib import suppress
     from fastapi import WebSocket, WebSocketDisconnect
 
-    queue: deque[Any] = deque(maxlen=buffering)
-
-    async def mirror_input(websocket: WebSocket) -> None:
+    async def mirror_input(queue: deque[Any], websocket: WebSocket) -> None:
         while True:
             try:
                 raw_input = await asyncio.wait_for(
@@ -229,7 +227,7 @@ def _fal_websocket_template(
 
             queue.append(input)
 
-    async def mirror_output(self, websocket: WebSocket) -> None:
+    async def mirror_output(self, queue: deque[Any], websocket: WebSocket) -> None:
         while True:
             if not queue:
                 await asyncio.sleep(0.05)
@@ -256,9 +254,11 @@ def _fal_websocket_template(
         import asyncio
 
         await websocket.accept()
-        input_task = asyncio.create_task(mirror_input(websocket))
+        queue: deque[Any] = deque(maxlen=buffering)
+        input_task = asyncio.create_task(mirror_input(queue, websocket))
         input_task.add_done_callback(lambda _: queue.append(None))
-        output_task = asyncio.create_task(mirror_output(self, websocket))
+        output_task = asyncio.create_task(mirror_output(self, queue, websocket))
+
         try:
             await asyncio.wait(
                 {
