@@ -11,6 +11,8 @@ from fal.toolkit.exceptions import FileUploadException
 from fal.toolkit.file.types import FileData, FileRepository
 from fal.toolkit.mainify import mainify
 
+_FAL_CDN = "https://fal-cdn.batuhan-941.workers.dev"
+
 
 @mainify
 @dataclass
@@ -70,3 +72,40 @@ class FalFileRepository(FileRepository):
 class InMemoryRepository(FileRepository):
     def save(self, file: FileData) -> str:
         return f'data:{file.content_type};base64,{b64encode(file.data).decode("utf-8")}'
+
+
+@mainify
+@dataclass
+class FalCDNFileRepository(FileRepository):
+    def save(self, file: FileData) -> str:
+        headers = {
+            **self.auth_headers,
+            "Accept": "application/json",
+            "Content-Type": file.content_type,
+        }
+
+        url = _FAL_CDN + "/files/upload"
+        request = Request(url, headers=headers, method="POST", data=file.data)
+        try:
+            with urlopen(request) as response:
+                result = json.load(response)
+        except HTTPError as e:
+            raise FileUploadException(
+                f"Error initiating upload. Status {e.status}: {e.reason}"
+            )
+
+        access_url = result["access_url"]
+        return access_url
+
+    @property
+    def auth_headers(self) -> dict[str, str]:
+        key_id = os.environ.get("FAL_KEY_ID")
+        key_secret = os.environ.get("FAL_KEY_SECRET")
+
+        if not key_id or not key_secret:
+            raise FileUploadException("FAL_KEY_ID and FAL_KEY_SECRET must be set")
+
+        return {
+            "Authorization": f"Bearer {key_id}:{key_secret}",
+            "User-Agent": "fal/0.1.0",
+        }
