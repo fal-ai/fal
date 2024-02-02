@@ -84,7 +84,7 @@ class FalCDNFileRepository(FileRepository):
             "Content-Type": file.content_type,
         }
 
-        url = _FAL_CDN + "/files/upload"
+        url = os.getenv("FAL_CDN_HOST", _FAL_CDN) + "/files/upload"
         request = Request(url, headers=headers, method="POST", data=file.data)
         try:
             with urlopen(request) as response:
