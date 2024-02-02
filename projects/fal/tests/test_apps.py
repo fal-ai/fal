@@ -113,7 +113,6 @@ class RTOutput(BaseModel):
 
 
 class RealtimeApp(fal.App, keep_alive=300, max_concurrency=1):
-    requirements = ["websockets", "msgpack"]
     machine_type = "S"
 
     @fal.endpoint("/")
