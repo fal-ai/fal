@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 import click
+
 from fal.auth import auth0, local
 from fal.console import console
 from fal.console.icons import CHECK_ICON

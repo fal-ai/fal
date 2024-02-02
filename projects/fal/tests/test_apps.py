@@ -1,15 +1,15 @@
+import time
 from typing import Generator
+
+import pytest
+from fastapi import WebSocket
+from openapi_fal_rest.api.applications import app_metadata
+from pydantic import BaseModel
 
 import fal
 import fal.api as api
-import pytest
 from fal import apps
 from fal.rest_client import REST_CLIENT
-from fastapi import WebSocket
-import time
-from pydantic import BaseModel
-
-from openapi_fal_rest.api.applications import app_metadata
 
 
 class Input(BaseModel):

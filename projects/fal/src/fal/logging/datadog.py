@@ -8,9 +8,10 @@ from datadog_api_client import Configuration, ThreadedApiClient
 from datadog_api_client.v2.api.logs_api import LogsApi
 from datadog_api_client.v2.model.http_log import HTTPLog
 from datadog_api_client.v2.model.http_log_item import HTTPLogItem
+from structlog.typing import EventDict, WrappedLogger
+
 from fal.env import CLI_ENV, DATADOG_API_KEY, DATADOG_APP_KEY
 from fal.logging.trace import get_current_span_context
-from structlog.typing import EventDict, WrappedLogger
 
 if sys.version_info >= (3, 10):
     import importlib.metadata as importlib_metadata

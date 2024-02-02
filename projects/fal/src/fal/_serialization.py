@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from pathlib import Path
 from functools import wraps
+from pathlib import Path
 
 import dill
 from dill import _dill
+
 from fal.toolkit import mainify
 
 # each @fal.function gets added to this set so that we can

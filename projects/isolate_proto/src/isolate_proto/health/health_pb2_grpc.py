@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import grpc
+
 from isolate_proto.health import health_pb2 as health__pb2
 
 

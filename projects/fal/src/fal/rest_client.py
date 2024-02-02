@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+from openapi_fal_rest.client import Client
+
 import fal.flags as flags
 from fal.sdk import get_default_credentials
-
-from openapi_fal_rest.client import Client
 
 
 class CredentialsClient(Client):
