@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 ImageSizePreset = Literal[
     "square_hd",
     "square",
+    "square_hq",
     "portrait_4_3",
     "portrait_16_9",
     "landscape_4_3",
@@ -37,6 +38,7 @@ class ImageSize(BaseModel):
 IMAGE_SIZE_PRESETS: dict[ImageSizePreset, ImageSize] = {
     "square_hd": ImageSize(width=1024, height=1024),
     "square": ImageSize(width=512, height=512),
+    "square_hq": ImageSize(width=768, height=768),
     "portrait_4_3": ImageSize(width=768, height=1024),
     "portrait_16_9": ImageSize(width=576, height=1024),
     "landscape_4_3": ImageSize(width=1024, height=768),
