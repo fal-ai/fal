@@ -11,6 +11,8 @@ from fastapi import FastAPI
 from typing import Any, NamedTuple, Callable, TypeVar, ClassVar
 from fal.logging import get_logger
 
+REALTIME_APP_REQUIREMENTS = ["websockets", "msgpack"]
+
 EndpointT = TypeVar("EndpointT", bound=Callable[..., Any])
 logger = get_logger(__name__)
 
@@ -28,6 +30,10 @@ def wrap_app(cls: type[App], **kwargs) -> fal.api.IsolatedFunction:
         metadata["openapi"] = app.openapi()
     except Exception as exc:
         logger.warning("Failed to build OpenAPI specification for %s", cls.__name__)
+        realtime_app = False
+    else:
+        routes = app.collect_routes()
+        realtime_app = any(route.is_websocket for route in routes)
 
     wrapper = fal.api.function(
         "virtualenv",
@@ -38,7 +44,10 @@ def wrap_app(cls: type[App], **kwargs) -> fal.api.IsolatedFunction:
         metadata=metadata,
         serve=True,
     )
-    return wrapper(initialize_and_serve).on(
+    fn = wrapper(initialize_and_serve)
+    if realtime_app:
+        fn.options.add_requirements(REALTIME_APP_REQUIREMENTS)
+    return fn.on(
         serve=False,
         exposed_port=8080,
     )
@@ -85,6 +94,13 @@ class App:
         app = self._build_app()
         uvicorn.run(app, host="0.0.0.0", port=8080)
 
+    def collect_routes(self) -> dict[RouteSignature, Callable[..., Any]]:
+        return {
+            signature: endpoint
+            for _, endpoint in inspect.getmembers(self, inspect.ismethod)
+            if (signature := getattr(endpoint, "route_signature", None))
+        }
+
     def _build_app(self) -> FastAPI:
         from fastapi import FastAPI
         from fastapi.middleware.cors import CORSMiddleware
@@ -126,11 +142,7 @@ class App:
             allow_origins=("*"),
         )
 
-        routes: dict[RouteSignature, Callable[..., Any]] = {
-            signature: endpoint
-            for _, endpoint in inspect.getmembers(self, inspect.ismethod)
-            if (signature := getattr(endpoint, "route_signature", None))
-        }
+        routes = self.collect_routes()
         if not routes:
             raise ValueError("An application must have at least one route!")
 
