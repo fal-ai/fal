@@ -1,18 +1,18 @@
 from __future__ import annotations
 
+import tempfile
 from pathlib import Path
 from uuid import uuid4
 
-import fal
-from fal.toolkit.file.file import CompressedFile
-from pydantic import BaseModel, Field
 import pytest
+from pydantic import BaseModel, Field
+
+import fal
 from fal import FalServerlessHost, FalServerlessKeyCredentials, local, sync_dir
 from fal.api import FalServerlessError
-from fal.toolkit import clone_repository, download_file, download_model_weights
+from fal.toolkit import File, clone_repository, download_file, download_model_weights
+from fal.toolkit.file.file import CompressedFile
 from fal.toolkit.utils.download_utils import _get_git_revision_hash, _hash_url
-import tempfile
-from fal.toolkit import File
 
 
 def test_isolated(isolated_client):

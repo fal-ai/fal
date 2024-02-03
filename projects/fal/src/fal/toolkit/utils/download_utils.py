@@ -3,9 +3,9 @@ from __future__ import annotations
 import hashlib
 import shutil
 import subprocess
+import sys
 from functools import lru_cache
 from pathlib import Path, PurePath
-import sys
 from tempfile import TemporaryDirectory
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen

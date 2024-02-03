@@ -10,6 +10,7 @@ from google.protobuf.timestamp_pb2 import Timestamp
 # Imitates how includes in our protobuf files are handled.
 from isolate.connections.grpc.definitions import *
 from isolate.server.definitions import *
+
 from isolate_proto.controller_pb2 import *
 from isolate_proto.controller_pb2_grpc import (
     IsolateControllerServicer,

@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-import time
 import json
+import time
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any, Iterator
-from contextlib import contextmanager
 
 import httpx
+
 from fal import flags
 from fal.sdk import Credentials, get_default_credentials
 

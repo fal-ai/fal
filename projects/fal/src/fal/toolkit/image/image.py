@@ -4,11 +4,12 @@ import io
 from tempfile import NamedTemporaryFile
 from typing import TYPE_CHECKING, Literal, Optional, Union
 
+from pydantic import BaseModel, Field
+
 from fal.toolkit.file.file import DEFAULT_REPOSITORY, File
 from fal.toolkit.file.types import FileData, FileRepository, RepositoryId
 from fal.toolkit.mainify import mainify
 from fal.toolkit.utils.download_utils import _download_file_python
-from pydantic import BaseModel, Field
 
 if TYPE_CHECKING:
     from PIL import Image as PILImage
@@ -120,7 +121,8 @@ class Image(File):
 
     def to_pil(self, mode: str = "RGB") -> PILImage.Image:
         try:
-            from PIL import Image as PILImage, ImageOps
+            from PIL import Image as PILImage
+            from PIL import ImageOps
         except ImportError:
             raise ImportError(
                 "The PIL package is required to use Image.to_pil()."

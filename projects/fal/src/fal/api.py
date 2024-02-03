@@ -23,10 +23,17 @@ from typing import (
 
 import dill
 import dill.detect
-import fal.flags as flags
 import grpc
 import isolate
 import yaml
+from isolate.backends.common import active_python
+from isolate.backends.settings import DEFAULT_SETTINGS
+from isolate.connections import PythonIPC
+from packaging.requirements import Requirement
+from packaging.utils import canonicalize_name
+from typing_extensions import Concatenate, ParamSpec
+
+import fal.flags as flags
 from fal._serialization import add_serialization_listeners_for, patch_dill
 from fal.logging.isolate import IsolateLogPrinter
 from fal.sdk import (
@@ -42,12 +49,6 @@ from fal.sdk import (
     get_default_credentials,
 )
 from fal.toolkit import mainify
-from isolate.backends.common import active_python
-from isolate.backends.settings import DEFAULT_SETTINGS
-from isolate.connections import PythonIPC
-from packaging.requirements import Requirement
-from packaging.utils import canonicalize_name
-from typing_extensions import Concatenate, ParamSpec
 
 ArgsT = ParamSpec("ArgsT")
 ReturnT = TypeVar("ReturnT", covariant=True)

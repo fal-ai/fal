@@ -9,6 +9,7 @@ from auth0.authentication.token_verifier import (
     AsymmetricSignatureVerifier,
     TokenVerifier,
 )
+
 from fal.console import console
 from fal.console.icons import CHECK_ICON
 from fal.console.ux import get_browser

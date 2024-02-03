@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import traceback
 from typing import TYPE_CHECKING, Any
+
 from fal.toolkit.mainify import mainify
 
 if TYPE_CHECKING:
@@ -19,6 +20,7 @@ def optimize(
     Warning: This function is experimental and may not work as expected.
     """
     import runpy
+
     import torch.nn as nn
 
     if not isinstance(module, nn.Module):

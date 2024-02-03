@@ -7,18 +7,18 @@ from typing import Literal
 from uuid import uuid4
 
 import click
-import fal.auth as auth
+import openapi_fal_rest.api.billing.get_user_details as get_user_details
+from rich.table import Table
+
 import fal
-from fal import api, sdk, _serialization
+import fal.auth as auth
+from fal import _serialization, api, sdk
 from fal.console import console
 from fal.exceptions import ApplicationExceptionHandler
 from fal.logging import get_logger, set_debug_logging
 from fal.logging.trace import get_tracer
 from fal.rest_client import REST_CLIENT
 from fal.sdk import AliasInfo, KeyScope
-from rich.table import Table
-
-import openapi_fal_rest.api.billing.get_user_details as get_user_details
 
 DEFAULT_HOST = "api.alpha.fal.ai"
 HOST_ENVVAR = "FAL_HOST"

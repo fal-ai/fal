@@ -4,9 +4,10 @@ from base64 import b64encode
 from io import BytesIO
 
 import pytest
-from fal.toolkit import Image, mainify
 from PIL import Image as PILImage
 from pydantic import BaseModel, Field
+
+from fal.toolkit import Image, mainify
 
 
 @mainify

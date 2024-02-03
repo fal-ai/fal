@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from contextlib import suppress
 
-import fal
 import pytest
+
+import fal
 from fal.api import FalServerlessError, Options
 from fal.toolkit.file.file import File
 
@@ -407,8 +408,9 @@ def test_cached_function(isolated_client, capsys, monkeypatch):
 
 
 def test_pydantic_serialization(isolated_client):
-    from fal.toolkit import mainify
     from pydantic import BaseModel, Field
+
+    from fal.toolkit import mainify
 
     @mainify
     class MathQuery(BaseModel):
@@ -429,8 +431,9 @@ def test_pydantic_serialization(isolated_client):
 
 
 def test_serve_on_off(isolated_client):
-    from fal.toolkit import mainify
     from pydantic import BaseModel, Field
+
+    from fal.toolkit import mainify
 
     @mainify
     class MathQuery(BaseModel):

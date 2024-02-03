@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import inspect
-import typing
 import os
+import typing
+from contextlib import asynccontextmanager
+from typing import Any, Callable, ClassVar, NamedTuple, TypeVar
+
+from fastapi import FastAPI
+
 import fal.api
 from fal._serialization import add_serialization_listeners_for
-from contextlib import asynccontextmanager
-from fal.toolkit import mainify
-from fastapi import FastAPI
-from typing import Any, NamedTuple, Callable, TypeVar, ClassVar
 from fal.logging import get_logger
+from fal.toolkit import mainify
 
 REALTIME_APP_REQUIREMENTS = ["websockets", "msgpack"]
 
@@ -205,10 +207,11 @@ def _fal_websocket_template(
     # be a boilerplate for the user to fill in their inference function
     # and start using it.
 
-    import msgpack
     import asyncio
     from collections import deque
     from contextlib import suppress
+
+    import msgpack
     from fastapi import WebSocket, WebSocketDisconnect
 
     async def mirror_input(queue: deque[Any], websocket: WebSocket) -> None:
