@@ -107,9 +107,16 @@ class StatefulAdditionApp(fal.App, keep_alive=300, max_concurrency=1):
 class RTInput(BaseModel):
     prompt: str
 
+    def can_batch(self, other: "RTInput") -> bool:
+        return "don't batch" not in other.prompt
+
 
 class RTOutput(BaseModel):
     text: str
+
+
+class RTOutputs(BaseModel):
+    texts: list[str]
 
 
 class RealtimeApp(fal.App, keep_alive=300, max_concurrency=1):
@@ -129,6 +136,11 @@ class RealtimeApp(fal.App, keep_alive=300, max_concurrency=1):
     @fal.realtime("/realtime")
     def generate_rt(self, input: RTInput) -> RTOutput:
         return RTOutput(text=input.prompt)
+
+    @fal.realtime("/realtime/batched", buffering=10, max_batch_size=4)
+    def generate_rt_batched(self, input: RTInput, *inputs: RTInput) -> RTOutputs:
+        time.sleep(2)  # fixed cost
+        return RTOutputs(texts=[input.prompt] + [i.prompt for i in inputs])
 
 
 @pytest.fixture(scope="module")
@@ -393,3 +405,22 @@ def test_realtime_connection(test_realtime_app):
         for _ in range(3):
             response = connection.run({"prompt": "a cat"})
             assert response["text"] == "a cat"
+
+    with apps._connect(test_realtime_app, path="/realtime/batched") as connection:
+        connection.send({"prompt": "keep busy"})
+        time.sleep(0.1)
+
+        for prompt in range(10):
+            connection.send({"prompt": str(prompt)})
+
+        assert connection.recv()["texts"] == ["keep busy"]
+
+        received_prompts = set()
+        batch_sizes = []
+        while len(received_prompts) < 10:
+            response = connection.recv()
+            received_prompts.update(response["texts"])
+            batch_sizes.append(len(response["texts"]))
+
+        assert len(received_prompts) == 10
+        assert batch_sizes == [4, 4, 2]

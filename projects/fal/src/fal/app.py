@@ -202,6 +202,7 @@ def _fal_websocket_template(
     buffering: int | None = None,
     session_timeout: float | None = None,
     input_modal: Any | None = None,
+    max_batch_size: int = 1,
 ) -> EndpointT:
     # A template for fal's realtime websocket endpoints to basically
     # be a boilerplate for the user to fill in their inference function
@@ -238,9 +239,22 @@ def _fal_websocket_template(
 
             input = queue.popleft()
             if input is None:
-                break
+                return None  # End of input
 
-            output = func(self, input)
+            batch = [input]
+            while queue and len(batch) < max_batch_size:
+                next_input = queue.popleft()
+                if (
+                    next_input is None
+                    or hasattr(input, "can_batch")
+                    and not input.can_batch(next_input)
+                ):
+                    print("Can't batch", next_input)
+                    queue.appendleft(next_input)
+                    break
+                batch.append(next_input)
+
+            output = func(self, *batch)
             if not isinstance(output, dict):
                 # Handle pydantic output modal
                 if hasattr(output, "dict"):
@@ -337,6 +351,7 @@ def realtime(
     buffering: int | None = None,
     session_timeout: float | None = None,
     input_modal: Any | None = _SENTINEL,
+    max_batch_size: int = 1,
 ) -> Callable[[EndpointT], EndpointT]:
     """Designate the decorated function as a realtime application endpoint."""
 
@@ -360,6 +375,7 @@ def realtime(
             buffering=buffering,
             session_timeout=session_timeout,
             input_modal=input_modal,
+            max_batch_size=max_batch_size,
         )
         callable.route_signature = RouteSignature(path=path, is_websocket=True)  # type: ignore
         callable.original_func = original_func  # type: ignore
