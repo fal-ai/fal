@@ -296,7 +296,7 @@ def download_model_weights(url: str, force: bool = False):
         A Path object representing the full path to the downloaded model weights.
     """
     # This is not a protected path, so the user may change stuff internally
-    weights_dir = FAL_MODEL_WEIGHTS_DIR / _hash_url(url)
+    weights_dir = Path(FAL_MODEL_WEIGHTS_DIR / _hash_url(url))
 
     if weights_dir.exists() and not force:
         try:
