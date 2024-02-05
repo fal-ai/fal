@@ -231,7 +231,11 @@ def _fal_websocket_template(
 
             queue.append(input)
 
-    async def mirror_output(self, queue: deque[Any], websocket: WebSocket) -> None:
+    async def mirror_output(
+        self,
+        queue: deque[Any],
+        websocket: WebSocket,
+    ) -> None:
         loop = asyncio.get_event_loop()
         outgoing_messages: asyncio.Queue[bytes] = asyncio.Queue(maxsize=buffering or 1)
 
@@ -242,6 +246,7 @@ def _fal_websocket_template(
             while True:
                 output = await outgoing_messages.get()
                 await emit(output)
+                outgoing_messages.task_done()
 
         emitter = asyncio.create_task(background_emitter())
 
@@ -252,7 +257,10 @@ def _fal_websocket_template(
 
             input = queue.popleft()
             if input is None or emitter.done():
-                emitter.cancel()
+                if not emitter.done():
+                    await outgoing_messages.join()
+                    emitter.cancel()
+
                 with suppress(asyncio.CancelledError):
                     await emitter
                 return None  # End of input
@@ -260,10 +268,8 @@ def _fal_websocket_template(
             batch = [input]
             while queue and len(batch) < max_batch_size:
                 next_input = queue.popleft()
-                if (
-                    next_input is None
-                    or hasattr(input, "can_batch")
-                    and not input.can_batch(next_input, len(batch))
+                if hasattr(input, "can_batch") and not input.can_batch(
+                    next_input, len(batch)
                 ):
                     queue.appendleft(next_input)
                     break
@@ -289,6 +295,7 @@ def _fal_websocket_template(
         import asyncio
 
         await websocket.accept()
+
         queue: deque[Any] = deque(maxlen=buffering)
         input_task = asyncio.create_task(mirror_input(queue, websocket))
         input_task.add_done_callback(lambda _: queue.append(None))
