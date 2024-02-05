@@ -473,24 +473,14 @@ def alias_list_runners(
         table.add_row(
             runner.runner_id,
             str(runner.in_flight_requests),
-            "N/A (active)"
-            if not runner.expiration_countdown
-            else f"{runner.expiration_countdown}s",
+            (
+                "N/A (active)"
+                if not runner.expiration_countdown
+                else f"{runner.expiration_countdown}s"
+            ),
         )
 
     console.print(table)
-
-
-@alias_cli.command("scale")
-@click.argument("alias", required=True)
-@click.argument("max_concurrency", required=True, type=int)
-def alias_scale(alias: str, max_concurrency: int):
-    alias_update.callback(
-        alias=alias,
-        keep_alive=None,
-        max_multiplexing=None,
-        max_concurrency=max_concurrency,
-    )  # type: ignore
 
 
 ##### Secrets group #####
