@@ -107,7 +107,11 @@ class StatefulAdditionApp(fal.App, keep_alive=300, max_concurrency=1):
 class RTInput(BaseModel):
     prompt: str
 
-    def can_batch(self, other: "RTInput") -> bool:
+    def can_batch(
+        self,
+        other: "RTInput",
+        current_batch_size: int = 1,
+    ) -> bool:
         return "don't batch" not in other.prompt
 
 

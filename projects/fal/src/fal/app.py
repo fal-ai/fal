@@ -232,13 +232,29 @@ def _fal_websocket_template(
             queue.append(input)
 
     async def mirror_output(self, queue: deque[Any], websocket: WebSocket) -> None:
+        loop = asyncio.get_event_loop()
+        outgoing_messages: asyncio.Queue[bytes] = asyncio.Queue(maxsize=buffering or 1)
+
+        async def emit(message):
+            await websocket.send_bytes(message)
+
+        async def background_emitter():
+            while True:
+                output = await outgoing_messages.get()
+                await emit(output)
+
+        emitter = asyncio.create_task(background_emitter())
+
         while True:
             if not queue:
                 await asyncio.sleep(0.05)
                 continue
 
             input = queue.popleft()
-            if input is None:
+            if input is None or emitter.done():
+                emitter.cancel()
+                with suppress(asyncio.CancelledError):
+                    await emitter
                 return None  # End of input
 
             batch = [input]
@@ -247,14 +263,13 @@ def _fal_websocket_template(
                 if (
                     next_input is None
                     or hasattr(input, "can_batch")
-                    and not input.can_batch(next_input)
+                    and not input.can_batch(next_input, len(batch))
                 ):
-                    print("Can't batch", next_input)
                     queue.appendleft(next_input)
                     break
                 batch.append(next_input)
 
-            output = func(self, *batch)
+            output = await loop.run_in_executor(None, func, self, *batch)  # type: ignore
             if not isinstance(output, dict):
                 # Handle pydantic output modal
                 if hasattr(output, "dict"):
@@ -265,7 +280,10 @@ def _fal_websocket_template(
                     )
 
             message = msgpack.packb(output, use_bin_type=True)
-            await websocket.send_bytes(message)
+            try:
+                outgoing_messages.put_nowait(message)
+            except asyncio.QueueFull:
+                await emit(message)
 
     async def websocket_template(self, websocket: WebSocket) -> None:
         import asyncio
