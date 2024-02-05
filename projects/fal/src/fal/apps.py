@@ -11,8 +11,16 @@ import httpx
 from fal import flags
 from fal.sdk import Credentials, get_default_credentials
 
-_URL_FORMAT = f"https://{{app_id}}.{flags.GATEWAY_HOST}/fal/queue"
-_REALTIME_URL_FORMAT = f"wss://{{app_id}}.{flags.GATEWAY_HOST}"
+_QUEUE_URL_FORMAT = f"https://queue.{flags.FAL_RUN_HOST}/{{app_id}}"
+_REALTIME_URL_FORMAT = f"wss://{flags.FAL_RUN_HOST}/{{app_id}}"
+
+
+def url_format(app_id: str, format: str) -> str:
+    if "/" not in app_id:
+        # Convert the app_id to the format used in the URL.
+        app_id = app_id.replace("-", "/", 1)
+
+    return format.format(app_id=app_id)
 
 
 @dataclass
@@ -58,7 +66,7 @@ class RequestHandle:
         """Check the status of an async inference request."""
 
         url = (
-            _URL_FORMAT.format(app_id=self.app_id)
+            url_format(self.app_id, _QUEUE_URL_FORMAT)
             + f"/requests/{self.request_id}/status/"
         )
         response = _HTTP_CLIENT.get(
@@ -101,8 +109,7 @@ class RequestHandle:
         """Retrieve the result of an async inference request, raises an exception
         if the request is not completed yet."""
         url = (
-            _URL_FORMAT.format(app_id=self.app_id)
-            + f"/requests/{self.request_id}/response/"
+            url_format(self.app_id, _QUEUE_URL_FORMAT) + f"/requests/{self.request_id}/"
         )
         response = _HTTP_CLIENT.get(url, headers=self._creds.to_headers())
         response.raise_for_status()
@@ -135,7 +142,7 @@ def submit(app_id: str, arguments: dict[str, Any], *, path: str = "/") -> Reques
     which can be used to check the status of the request and retrieve the
     result."""
 
-    url = _URL_FORMAT.format(app_id=app_id) + "/submit" + path
+    url = url_format(app_id, _QUEUE_URL_FORMAT) + path
     creds = get_default_credentials()
 
     response = _HTTP_CLIENT.post(
@@ -186,7 +193,7 @@ def _connect(app_id: str, *, path: str = "/realtime") -> Iterator[_RealtimeConne
 
     from websockets.sync import client
 
-    url = _REALTIME_URL_FORMAT.format(app_id=app_id) + path
+    url = url_format(app_id, _REALTIME_URL_FORMAT) + path
     creds = get_default_credentials()
 
     with client.connect(

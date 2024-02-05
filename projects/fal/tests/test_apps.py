@@ -159,7 +159,7 @@ def test_app():
         options=addition_app.options,
     )
     user_id = _get_user_id()
-    yield f"{user_id}-{app_revision}"
+    yield f"{user_id}/{app_revision}"
 
 
 @pytest.fixture(scope="module")
@@ -213,6 +213,17 @@ def test_app_client(test_app: str):
 
     response = apps.run(test_app, arguments={"lhs": 2, "rhs": 3, "wait_time": 1})
     assert response["result"] == 5
+
+
+def test_app_client_old_format(test_app: str):
+    assert test_app.count("/") == 1, "Test app should be in new format"
+    old_format = test_app.replace("/", "-")
+    assert test_app.count("-") + 1 == old_format.count(
+        "-"
+    ), "Old format should have one more hyphen"
+
+    response = apps.run(old_format, arguments={"lhs": 1, "rhs": 2})
+    assert response["result"] == 3
 
 
 def test_stateful_app_client(test_stateful_app: str):
