@@ -175,7 +175,7 @@ def test_app():
         options=addition_app.options,
     )
     user_id = _get_user_id()
-    yield f"{user_id}-{app_revision}"
+    yield f"{user_id}/{app_revision}"
 
 
 @pytest.fixture(scope="module")
@@ -189,7 +189,7 @@ def test_fastapi_app():
         options=calculator_app.options,
     )
     user_id = _get_user_id()
-    yield f"{user_id}-{app_revision}"
+    yield f"{user_id}/{app_revision}"
 
 
 @pytest.fixture(scope="module")
@@ -204,7 +204,7 @@ def test_stateful_app():
         options=app.options,
     )
     user_id = _get_user_id()
-    yield f"{user_id}-{app_revision}"
+    yield f"{user_id}/{app_revision}"
 
 
 @pytest.fixture(scope="module")
@@ -220,7 +220,7 @@ def test_realtime_app():
         application_auth_mode="public",
     )
     user_id = _get_user_id()
-    yield f"{user_id}-{app_revision}"
+    yield f"{user_id}/{app_revision}"
 
 
 def test_app_client(test_app: str):
@@ -229,6 +229,17 @@ def test_app_client(test_app: str):
 
     response = apps.run(test_app, arguments={"lhs": 2, "rhs": 3, "wait_time": 1})
     assert response["result"] == 5
+
+
+def test_app_client_old_format(test_app: str):
+    assert test_app.count("/") == 1, "Test app should be in new format"
+    old_format = test_app.replace("/", "-")
+    assert test_app.count("-") + 1 == old_format.count(
+        "-"
+    ), "Old format should have one more hyphen"
+
+    response = apps.run(old_format, arguments={"lhs": 1, "rhs": 2})
+    assert response["result"] == 3
 
 
 def test_stateful_app_client(test_stateful_app: str):
@@ -279,7 +290,7 @@ def test_app_client_async(test_app: str):
 
 
 def test_app_openapi_spec_metadata(test_app: str, request: pytest.FixtureRequest):
-    user_id, _, app_id = test_app.partition("-")
+    user_id, _, app_id = test_app.partition("/")
     res = app_metadata.sync_detailed(
         app_alias_or_id=app_id, app_user_id=user_id, client=REST_CLIENT
     )
@@ -298,7 +309,7 @@ def test_app_no_serve_spec_metadata(
     test_fastapi_app: str, request: pytest.FixtureRequest
 ):
     # We do not store the openapi spec for apps that do not use serve=True
-    user_id, _, app_id = test_fastapi_app.partition("-")
+    user_id, _, app_id = test_fastapi_app.partition("/")
     res = app_metadata.sync_detailed(
         app_alias_or_id=app_id, app_user_id=user_id, client=REST_CLIENT
     )

@@ -11,8 +11,16 @@ import httpx
 from fal import flags
 from fal.sdk import Credentials, get_default_credentials
 
-_URL_FORMAT = f"https://{{app_id}}.{flags.GATEWAY_HOST}/fal/queue"
-_REALTIME_URL_FORMAT = f"wss://{{app_id}}.{flags.GATEWAY_HOST}"
+_QUEUE_URL_FORMAT = f"https://queue.{flags.FAL_RUN_HOST}/{{app_id}}"
+_REALTIME_URL_FORMAT = f"wss://{flags.FAL_RUN_HOST}/{{app_id}}"
+
+
+def _backwards_compatible_app_id(app_id: str) -> str:
+    if "/" not in app_id:
+        # Convert the app_id to the format used in the URL.
+        return app_id.replace("-", "/", 1)
+
+    return app_id
 
 
 @dataclass
@@ -54,11 +62,14 @@ class RequestHandle:
     # Use the credentials that were used to submit the request by default.
     _creds: Credentials = field(default_factory=get_default_credentials, repr=False)
 
+    def __post_init__(self):
+        self.app_id = _backwards_compatible_app_id(self.app_id)
+
     def status(self, *, logs: bool = False) -> _Status:
         """Check the status of an async inference request."""
 
         url = (
-            _URL_FORMAT.format(app_id=self.app_id)
+            _QUEUE_URL_FORMAT.format(app_id=self.app_id)
             + f"/requests/{self.request_id}/status/"
         )
         response = _HTTP_CLIENT.get(
@@ -101,8 +112,8 @@ class RequestHandle:
         """Retrieve the result of an async inference request, raises an exception
         if the request is not completed yet."""
         url = (
-            _URL_FORMAT.format(app_id=self.app_id)
-            + f"/requests/{self.request_id}/response/"
+            _QUEUE_URL_FORMAT.format(app_id=self.app_id)
+            + f"/requests/{self.request_id}/"
         )
         response = _HTTP_CLIENT.get(url, headers=self._creds.to_headers())
         response.raise_for_status()
@@ -135,7 +146,8 @@ def submit(app_id: str, arguments: dict[str, Any], *, path: str = "/") -> Reques
     which can be used to check the status of the request and retrieve the
     result."""
 
-    url = _URL_FORMAT.format(app_id=app_id) + "/submit" + path
+    app_id = _backwards_compatible_app_id(app_id)
+    url = _QUEUE_URL_FORMAT.format(app_id=app_id) + path
     creds = get_default_credentials()
 
     response = _HTTP_CLIENT.post(
@@ -193,6 +205,7 @@ def _connect(app_id: str, *, path: str = "/realtime") -> Iterator[_RealtimeConne
 
     from websockets.sync import client
 
+    app_id = _backwards_compatible_app_id(app_id)
     url = _REALTIME_URL_FORMAT.format(app_id=app_id) + path
     creds = get_default_credentials()
 

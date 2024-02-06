@@ -24,4 +24,9 @@ REST_HOST = GRPC_HOST.replace("api", "rest", 1)
 REST_SCHEME = "http" if TEST_MODE or AUTH_DISABLED else "https"
 REST_URL = f"{REST_SCHEME}://{REST_HOST}"
 
+# fal.run / env.fal.run
+FAL_RUN_HOST = (
+    GRPC_HOST.replace("api.", "", 1).replace("alpha.", "", 1).replace(".ai", ".run", 1)
+)
+
 FORCE_SETUP = bool_envvar("FAL_FORCE_SETUP")
