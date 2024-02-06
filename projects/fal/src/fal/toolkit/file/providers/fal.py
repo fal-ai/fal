@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from fal.sdk import key_credentials
+from fal.auth import key_credentials
 from fal.toolkit.exceptions import FileUploadException
 from fal.toolkit.file.types import FileData, FileRepository
 from fal.toolkit.mainify import mainify

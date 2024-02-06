@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import enum
-import os
 from contextlib import ExitStack
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -16,7 +15,7 @@ from isolate.server.interface import from_grpc, to_serialized_object, to_struct
 import isolate_proto
 from fal import flags
 from fal._serialization import patch_dill
-from fal.auth import USER
+from fal.auth import USER, key_credentials
 from fal.logging import get_logger
 from fal.logging.trace import TraceContextInterceptor
 from isolate_proto.configuration import GRPC_OPTIONS
@@ -122,21 +121,6 @@ class AuthenticatedCredentials(Credentials):
 class ServerlessSecret:
     name: str
     created_at: datetime
-
-
-def key_credentials() -> tuple[str, str] | None:
-    # Ignore key credentials when the user forces auth by user.
-    if os.environ.get("FAL_FORCE_AUTH_BY_USER") == "1":
-        return None
-
-    if "FAL_KEY" in os.environ:
-        key = os.environ["FAL_KEY"]
-        key_id, key_secret = key.split(":", 1)
-        return (key_id, key_secret)
-    elif "FAL_KEY_ID" in os.environ and "FAL_KEY_SECRET" in os.environ:
-        return (os.environ["FAL_KEY_ID"], os.environ["FAL_KEY_SECRET"])
-    else:
-        return None
 
 
 def get_agent_credentials(original_credentials: Credentials) -> Credentials:
