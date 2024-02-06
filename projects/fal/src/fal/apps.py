@@ -160,13 +160,21 @@ class _RealtimeConnection:
     _ws: Any
 
     def run(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Run an inference task on the app and return the result."""
+        self.send(arguments)
+        return self.recv()
+
+    def send(self, arguments: dict[str, Any]) -> None:
         import msgpack
 
-        """Run an inference task on the app and return the result."""
-
+        """Send an inference task to the app."""
         payload = msgpack.packb(arguments)
-
         self._ws.send(payload)
+
+    def recv(self) -> dict[str, Any]:
+        import msgpack
+
+        """Receive the result of an inference task."""
         while True:
             response = self._ws.recv()
             if isinstance(response, str):
@@ -175,7 +183,6 @@ class _RealtimeConnection:
                 if json_payload.get("type") == "x-fal-error":
                     raise ValueError(json_payload["reason"])
                 continue
-
             return msgpack.unpackb(response)
 
 
