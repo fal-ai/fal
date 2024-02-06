@@ -9,8 +9,10 @@ from fal.auth import auth0, local
 from fal.console import console
 from fal.console.icons import CHECK_ICON
 from fal.exceptions.auth import UnauthenticatedException
+from fal.toolkit.mainify import mainify
 
 
+@mainify
 def key_credentials() -> tuple[str, str] | None:
     # Ignore key credentials when the user forces auth by user.
     if os.environ.get("FAL_FORCE_AUTH_BY_USER") == "1":
