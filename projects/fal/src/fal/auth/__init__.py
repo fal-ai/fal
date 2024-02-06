@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 
 import click
@@ -8,6 +9,23 @@ from fal.auth import auth0, local
 from fal.console import console
 from fal.console.icons import CHECK_ICON
 from fal.exceptions.auth import UnauthenticatedException
+from fal.toolkit.mainify import mainify
+
+
+@mainify
+def key_credentials() -> tuple[str, str] | None:
+    # Ignore key credentials when the user forces auth by user.
+    if os.environ.get("FAL_FORCE_AUTH_BY_USER") == "1":
+        return None
+
+    if "FAL_KEY" in os.environ:
+        key = os.environ["FAL_KEY"]
+        key_id, key_secret = key.split(":", 1)
+        return (key_id, key_secret)
+    elif "FAL_KEY_ID" in os.environ and "FAL_KEY_SECRET" in os.environ:
+        return (os.environ["FAL_KEY_ID"], os.environ["FAL_KEY_SECRET"])
+    else:
+        return None
 
 
 def login():

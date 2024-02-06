@@ -188,7 +188,7 @@ def key_generate(client: sdk.FalServerlessClient, scope: str, alias: str | None)
             "This is the only time the secret will be visible.\n"
             "You will need to generate a new key pair if you lose access to this secret."
         )
-        print(f"FAL_KEY_ID='{result[1]}'\nFAL_KEY_SECRET='{result[0]}'")
+        print(f"FAL_KEY='{result[1]}:{result[0]}'")
 
 
 @key_cli.command(name="list")

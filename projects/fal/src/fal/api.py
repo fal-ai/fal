@@ -45,7 +45,7 @@ from fal.sdk import (
     FalServerlessConnection,
     HostedRunState,
     MachineRequirements,
-    _get_agent_credentials,
+    get_agent_credentials,
     get_default_credentials,
 )
 from fal.toolkit import mainify
@@ -329,7 +329,7 @@ class FalServerlessHost(Host):
 
     def __setstate__(self, state: dict[str, Any]) -> None:
         self.__dict__.update(state)
-        self.credentials = _get_agent_credentials(self.credentials)
+        self.credentials = get_agent_credentials(self.credentials)
 
     @property
     def _connection(self) -> FalServerlessConnection:
