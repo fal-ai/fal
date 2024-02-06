@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
+from fal.sdk import key_credentials
 from fal.toolkit.exceptions import FileUploadException
 from fal.toolkit.file.types import FileData, FileRepository
 from fal.toolkit.mainify import mainify
@@ -18,9 +19,11 @@ _FAL_CDN = "https://fal-cdn.batuhan-941.workers.dev"
 @dataclass
 class FalFileRepository(FileRepository):
     def save(self, file: FileData) -> str:
-        key_id = os.environ.get("FAL_KEY_ID")
-        key_secret = os.environ.get("FAL_KEY_SECRET")
+        key_creds = key_credentials()
+        if not key_creds:
+            raise FileUploadException("FAL_KEY must be set")
 
+        key_id, key_secret = key_creds
         headers = {
             "Authorization": f"Key {key_id}:{key_secret}",
             "Accept": "application/json",
@@ -99,12 +102,11 @@ class FalCDNFileRepository(FileRepository):
 
     @property
     def auth_headers(self) -> dict[str, str]:
-        key_id = os.environ.get("FAL_KEY_ID")
-        key_secret = os.environ.get("FAL_KEY_SECRET")
+        key_creds = key_credentials()
+        if not key_creds:
+            raise FileUploadException("FAL_KEY must be set")
 
-        if not key_id or not key_secret:
-            raise FileUploadException("FAL_KEY_ID and FAL_KEY_SECRET must be set")
-
+        key_id, key_secret = key_creds
         return {
             "Authorization": f"Bearer {key_id}:{key_secret}",
             "User-Agent": "fal/0.1.0",

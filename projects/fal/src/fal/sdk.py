@@ -124,27 +124,28 @@ class ServerlessSecret:
     created_at: datetime
 
 
-def key_credentials() -> FalServerlessKeyCredentials | None:
+def key_credentials() -> tuple[str, str] | None:
     # Ignore key credentials when the user forces auth by user.
     if os.environ.get("FAL_FORCE_AUTH_BY_USER") == "1":
         return None
 
-    if "FAL_KEY_ID" in os.environ and "FAL_KEY_SECRET" in os.environ:
-        return FalServerlessKeyCredentials(
-            os.environ["FAL_KEY_ID"],
-            os.environ["FAL_KEY_SECRET"],
-        )
+    if "FAL_KEY" in os.environ:
+        key = os.environ["FAL_KEY"]
+        key_id, key_secret = key.split(":", 1)
+        return (key_id, key_secret)
+    elif "FAL_KEY_ID" in os.environ and "FAL_KEY_SECRET" in os.environ:
+        return (os.environ["FAL_KEY_ID"], os.environ["FAL_KEY_SECRET"])
     else:
         return None
 
 
-def _get_agent_credentials(original_credentials: Credentials) -> Credentials:
+def get_agent_credentials(original_credentials: Credentials) -> Credentials:
     """If running inside a fal Serverless box, use the preconfigured credentials
     instead of the user provided ones."""
 
     key_creds = key_credentials()
     if is_agent() and key_creds:
-        return key_creds
+        return FalServerlessKeyCredentials(key_creds[0], key_creds[1])
     else:
         return original_credentials
 
@@ -156,7 +157,7 @@ def get_default_credentials() -> Credentials:
     key_creds = key_credentials()
     if key_creds:
         log.debug("Using key credentials")
-        return key_creds
+        return FalServerlessKeyCredentials(key_creds[0], key_creds[1])
     else:
         return AuthenticatedCredentials()
 
@@ -294,9 +295,11 @@ def _from_grpc_register_application_result(
 ) -> RegisterApplicationResult:
     return RegisterApplicationResult(
         logs=[from_grpc(log) for log in message.logs],
-        result=None
-        if not message.HasField("result")
-        else RegisterApplicationResultType(message.result.application_id),
+        result=(
+            None
+            if not message.HasField("result")
+            else RegisterApplicationResultType(message.result.application_id)
+        ),
     )
 
 
