@@ -59,6 +59,10 @@ def wrap_app(cls: type[App], **kwargs) -> fal.api.IsolatedFunction:
 class RouteSignature(NamedTuple):
     path: str
     is_websocket: bool = False
+    input_modal: type | None = None
+    buffering: int | None = None
+    session_timeout: float | None = None
+    max_batch_size: int = 1
 
 
 @mainify
@@ -199,10 +203,7 @@ def endpoint(
 
 def _fal_websocket_template(
     func: EndpointT,
-    buffering: int | None = None,
-    session_timeout: float | None = None,
-    input_modal: Any | None = None,
-    max_batch_size: int = 1,
+    route_signature: RouteSignature,
 ) -> EndpointT:
     # A template for fal's realtime websocket endpoints to basically
     # be a boilerplate for the user to fill in their inference function
@@ -220,14 +221,14 @@ def _fal_websocket_template(
             try:
                 raw_input = await asyncio.wait_for(
                     websocket.receive_bytes(),
-                    timeout=session_timeout,
+                    timeout=route_signature.session_timeout,
                 )
             except asyncio.TimeoutError:
                 return
 
             input = msgpack.unpackb(raw_input, raw=False)
-            if input_modal:
-                input = input_modal(**input)
+            if route_signature.input_modal:
+                input = route_signature.input_modal(**input)
 
             queue.append(input)
 
@@ -237,7 +238,9 @@ def _fal_websocket_template(
         websocket: WebSocket,
     ) -> None:
         loop = asyncio.get_event_loop()
-        outgoing_messages: asyncio.Queue[bytes] = asyncio.Queue(maxsize=buffering or 1)
+        outgoing_messages: asyncio.Queue[bytes] = asyncio.Queue(
+            maxsize=route_signature.buffering or 1
+        )
 
         async def emit(message):
             await websocket.send_bytes(message)
@@ -266,7 +269,7 @@ def _fal_websocket_template(
                 return None  # End of input
 
             batch = [input]
-            while queue and len(batch) < max_batch_size:
+            while queue and len(batch) < route_signature.max_batch_size:
                 next_input = queue.popleft()
                 if hasattr(input, "can_batch") and not input.can_batch(
                     next_input, len(batch)
@@ -296,7 +299,7 @@ def _fal_websocket_template(
 
         await websocket.accept()
 
-        queue: deque[Any] = deque(maxlen=buffering)
+        queue: deque[Any] = deque(maxlen=route_signature.buffering)
         input_task = asyncio.create_task(mirror_input(queue, websocket))
         input_task.add_done_callback(lambda _: queue.append(None))
         output_task = asyncio.create_task(mirror_output(self, queue, websocket))
@@ -314,7 +317,9 @@ def _fal_websocket_template(
                 # so we can just close the connection after the
                 # processing of the last input is done.
                 input_task.result()
-                await asyncio.wait_for(output_task, timeout=session_timeout)
+                await asyncio.wait_for(
+                    output_task, timeout=route_signature.session_timeout
+                )
             else:
                 assert output_task.done()
 
@@ -362,7 +367,8 @@ def _fal_websocket_template(
         "websocket": WebSocket,
         "return": None,
     }
-
+    websocket_template.route_signature = route_signature  # type: ignore
+    websocket_template.original_func = func  # type: ignore
     return typing.cast(EndpointT, websocket_template)
 
 
@@ -395,16 +401,18 @@ def realtime(
             else:
                 input_modal = None
 
-        callable = _fal_websocket_template(
-            original_func,
+        route_signature = RouteSignature(
+            path=path,
+            is_websocket=True,
+            input_modal=input_modal,
             buffering=buffering,
             session_timeout=session_timeout,
-            input_modal=input_modal,
             max_batch_size=max_batch_size,
         )
-        callable.route_signature = RouteSignature(path=path, is_websocket=True)  # type: ignore
-        callable.original_func = original_func  # type: ignore
-        return callable
+        return _fal_websocket_template(
+            original_func,
+            route_signature,
+        )
 
     return marker_fn
 
