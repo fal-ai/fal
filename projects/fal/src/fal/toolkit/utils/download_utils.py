@@ -154,7 +154,7 @@ def download_file(
 
     # If target_dir is not an absolute path, use "/data" as the relative directory
     if not target_dir_path.is_absolute():
-        target_dir_path = FAL_PERSISTENT_DIR / target_dir_path  # type: ignore[assignment]
+        target_dir_path = Path(FAL_PERSISTENT_DIR / target_dir_path)  # type: ignore[assignment]
 
     target_path = target_dir_path.resolve() / file_name
 
