@@ -44,6 +44,11 @@ class Input(BaseModel):
         """A model post-validator that increments a `validation_counter` attribute."""
         self.validation_counter += 100
 
+    @classmethod
+    def from_template(cls, template: str, values: tuple[str, ...], **kwargs) -> Input:
+        prompt = template.format(*values)
+        return cls(prompt=prompt, **kwargs)
+
 
 def validate_deserialisation(model: Input) -> None:
     """Assert the model instance was deserialised correctly.
@@ -63,7 +68,7 @@ def validate_deserialisation(model: Input) -> None:
     return
 
 
-def deserialise_pydantic_model() -> ModelT:
+def deserialise_pydantic_model() -> tuple[ModelT, ModelT]:
     """Serialise (`dill.dumps`) then deserialise (`dill.loads`) a Pydantic model.
 
     The `recurse` setting must be set, counterintuitively, to prevent excessive
@@ -83,8 +88,12 @@ def deserialise_pydantic_model() -> ModelT:
     deserialised_fvs = vars(model_cls)["__pydantic_decorators__"].field_validators
     # pprint(deserialised_fvs)
     print("===== INSTANTIATING =====")
-    model = model_cls(prompt="a", num_steps=4, epochs=10)
-    return model
+    model_from_kwargs = model_cls(prompt="a", num_steps=4, epochs=10)
+    # has_clsmethod = hasattr(model_cls, "from_template")
+    model_from_template = model_cls.from_template(
+        template="{}", values=("a",), num_steps=4, epochs=10
+    )
+    return model_from_kwargs, model_from_template
 
 
 def test_deserialise_pydantic_model():
@@ -116,8 +125,11 @@ def run_deserialisation_test() -> None:
         pprint(vars(Input)["__pydantic_decorators__"].field_validators)
         ```
     """
-    model = deserialise_pydantic_model()
-    validate_deserialisation(model)
+    model_from_kwargs, model_from_template = deserialise_pydantic_model()
+    validate_deserialisation(model_from_kwargs)
+    validate_deserialisation(model_from_template)
+    assert model_from_template.prompt == model_from_kwargs.prompt
+    assert model_from_template == model_from_kwargs
 
 
 if __name__ == "__main__" and "--run-deserialisation-test" in sys.argv:
