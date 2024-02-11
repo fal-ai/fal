@@ -11,6 +11,8 @@ from fal.toolkit.exceptions import FileUploadException
 from fal.toolkit.file.types import FileData, FileRepository
 from fal.toolkit.mainify import mainify
 
+__all__ = ["FalFileRepository", "InMemoryRepository"]
+
 
 @mainify
 @dataclass

@@ -37,7 +37,8 @@ repos:
         exclude: |
           (?x)(
             ^projects/fal/src/fal/toolkit/image/image.py|
-            ^projects/fal/src/fal/toolkit/file/file.py
+            ^projects/fal/src/fal/toolkit/file/file/standard.py|
+            ^projects/fal/src/fal/toolkit/file/file/zipped.py
           )
         files: |
           (?x)(
