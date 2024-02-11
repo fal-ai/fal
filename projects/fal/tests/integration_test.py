@@ -510,7 +510,7 @@ def test_fal_file_input(isolated_client, file_url: str, expected_content: str):
     class TestInput(BaseModel):
         file: File = Field()
 
-    @isolated_client(requirements=["pydantic==1.10.12"])
+    @isolated_client(requirements=["pydantic==2.5.3"])
     def init_file_on_fal(input: TestInput) -> File:
         return input.file
 
@@ -531,7 +531,7 @@ def test_fal_compressed_file(isolated_client):
     class TestInput(BaseModel):
         files: CompressedFile
 
-    @isolated_client(requirements=["pydantic==1.10.12"])
+    @isolated_client(requirements=["pydantic==2.5.3"])
     def init_compressed_file_on_fal(input: TestInput) -> int:
         extracted_file_paths = [file for file in input.files]
         return extracted_file_paths
