@@ -29,6 +29,13 @@ repos:
       - id: check-merge-conflict
       - id: check-vcs-permalinks
       - id: debug-statements
+      - id: name-tests-test
+        exclude: |
+          (?x)(
+            ^projects/fal/tests/mainify_package/|
+            ^projects/fal/tests/mainify_target.py|
+            ^projects/fal/tests/pydantic_standalone/pydantic_patch.py
+          )
   - repo: https://github.com/asottile/pyupgrade
     rev: v3.1.0
     hooks:
