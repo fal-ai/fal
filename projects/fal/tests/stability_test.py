@@ -453,7 +453,7 @@ def test_serve_on_off(isolated_client):
 
     local_first_add_2 = local_first_add.on(serve=True).on(serve=False)
     result_2 = local_first_add_2(MathQuery(x=1, y=2))
-    assert result_2 == expected.model_dump()
+    assert result_2.model_dump() == expected.model_dump()
 
 
 def test_mainify():
