@@ -36,10 +36,12 @@ def _pydantic_make_private_field(kwargs):
     return ModelPrivateAttr(**kwargs)
 
 
-# this allows us to record all the "isolated" function and then mainify everything in
-# module they exist
 @wraps(_dill._locate_function)
 def by_value_locator(obj, pickler=None, og_locator=_dill._locate_function):
+    """
+    This allows us to record all the "isolated" function and then mainify everything in
+    module they exist.
+    """
     module_name = getattr(obj, "__module__", None)
     if module_name is not None:
         # If it is coming from the same module, directly allow
@@ -89,9 +91,11 @@ def add_serialization_listeners_for(obj):
 
 @mainify
 def patch_pydantic_field_serialization():
-    # Cythonized pydantic fields can't be serialized automatically, so we are
-    # have a special case handling for them that unpacks it to a dictionary
-    # and then reloads it on the other side.
+    """
+    Cythonized pydantic fields can't be serialized automatically, so we are
+    have a special case handling for them that unpacks it to a dictionary
+    and then reloads it on the other side.
+    """
     import dill
 
     try:
@@ -134,9 +138,11 @@ def patch_pydantic_field_serialization():
 
 @mainify
 def patch_pydantic_class_attributes():
-    # Dill attempts to modify the __class__ of deserialized pydantic objects
-    # on this side but it meets with a rejection from pydantic's semantics since
-    # __class__ is not recognized as a proper dunder attribute.
+    """
+    Dill attempts to modify the `__class__` of deserialized Pydantic objects
+    on this side but it meets with a rejection from Pydantic's semantics since
+    `__class__` is not recognized as a proper dunder attribute.
+    """
     try:
         import pydantic.utils
     except ImportError:
