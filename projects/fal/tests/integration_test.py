@@ -1,18 +1,17 @@
 from __future__ import annotations
 
+import tempfile
 from pathlib import Path
 from uuid import uuid4
 
 import fal
-from fal.toolkit.file.file import CompressedFile
-from pydantic import BaseModel, Field
 import pytest
 from fal import FalServerlessHost, FalServerlessKeyCredentials, local, sync_dir
 from fal.api import FalServerlessError
-from fal.toolkit import clone_repository, download_file, download_model_weights
+from fal.toolkit import File, clone_repository, download_file, download_model_weights
+from fal.toolkit.file.file import CompressedFile
 from fal.toolkit.utils.download_utils import _get_git_revision_hash, _hash_url
-import tempfile
-from fal.toolkit import File
+from pydantic import BaseModel, Field
 
 
 def test_isolated(isolated_client):
@@ -448,7 +447,7 @@ def fal_file_content_matches(file: File, content: str):
 
 
 def test_fal_file_from_path(isolated_client):
-    @isolated_client(requirements=["pydantic==1.10.12"])
+    @isolated_client(requirements=["pydantic==2.5.3"])
     def fal_file_from_temp(content: str):
         with tempfile.NamedTemporaryFile() as temp_file:
             file_path = temp_file.name
@@ -465,7 +464,7 @@ def test_fal_file_from_path(isolated_client):
 
 
 def test_fal_file_from_bytes(isolated_client):
-    @isolated_client(requirements=["pydantic==1.10.12"])
+    @isolated_client(requirements=["pydantic==2.5.3"])
     def fal_file_from_bytes(content: str):
         return File.from_bytes(content.encode(), repository="in_memory")
 
@@ -476,7 +475,7 @@ def test_fal_file_from_bytes(isolated_client):
 
 
 def test_fal_file_save(isolated_client):
-    @isolated_client(requirements=["pydantic==1.10.12"])
+    @isolated_client(requirements=["pydantic==2.5.3"])
     def fal_file_to_local_file(content: str):
         file = File.from_bytes(content.encode(), repository="in_memory")
 
