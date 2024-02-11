@@ -166,7 +166,7 @@ def patch():
             "model_fields": model.model_fields,
             "model_validators": model_validators,
             "field_validators": field_validators,
-            "methods": methods,
+            "methods": model_methods,
         }
         pickler_args = tuple(pickled_model.values())
         return pickler_args  # type: ignore

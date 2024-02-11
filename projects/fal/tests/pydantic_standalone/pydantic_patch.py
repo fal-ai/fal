@@ -16,10 +16,10 @@ from pydantic.fields import FieldInfo
 
 __all__ = [
     "build_pydantic_model",
+    "extract_validators",
     "pickler_building_args",
     "_dill_hook_for_pydantic_models",
     "deserialise_pydantic_model",
-    "validate_deserialisation",
 ]
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
@@ -181,7 +181,7 @@ def deserialise_pydantic_model() -> ModelT:
         needs to include in the pickle.
     """
     dill.settings["recurse"] = True
-    serialized_cls = dill.dumps(Input)
+    serialized_cls = dill.dumps(Input)  # This is picked up magically? RED FLAG
     print("===== DESERIALIZING =====")
     model_cls = dill.loads(serialized_cls)
     deserialised_fvs = vars(model_cls)["__pydantic_decorators__"].field_validators
