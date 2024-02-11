@@ -419,7 +419,7 @@ def test_pydantic_serialization(isolated_client):
     class MathResult(BaseModel):
         result: int = Field(description="The result of the operation")
 
-    @isolated_client("virtualenv", requirements=["pydantic<2"])
+    @isolated_client("virtualenv", requirements=["pydantic>=2"])
     def add(query: MathQuery) -> MathResult:
         return MathResult(result=query.x + query.y)
 

@@ -4,7 +4,8 @@ import os
 from base64 import b64encode
 
 import pytest
-from fal.toolkit.file.file import File, GoogleStorageRepository
+from fal.toolkit.file.file import File
+from fal.toolkit.file.providers import GoogleStorageRepository
 
 
 def test_binary_content_matches():
