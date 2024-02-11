@@ -124,7 +124,11 @@ def pickler_building_args(
         method_name: model_method
         for method_name, model_method in model.__dict__.items()
         # Private attributes (with `PrivateAttr`) are set through `model_fields`
-        if not method_name.startswith("_")
+        # but methods can have also be underscore-prefixed...
+        if not method_name.startswith("__")
+        # If ABC is an issue, consult other examples like Ray's vendored cloudpickle
+        # https://github.com/ray-project/ray/blob/master/python/ray/cloudpickle/cloudpickle.py#L743
+        if not method_name.startswith("_abc")
         if method_name
         not in (
             # The `model_*` namespace also includes `model_post_init`, which we
