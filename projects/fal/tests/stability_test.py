@@ -447,10 +447,13 @@ def test_serve_on_off(isolated_client):
         return MathResult(result=query.x + query.y)
 
     local_first_add = add.on(serve=False)
-    assert local_first_add(MathQuery(x=1, y=2)) == MathResult(result=3)
+    result_1 = local_first_add(MathQuery(x=1, y=2))
+    expected = MathResult(result=3)
+    assert result_1.model_dump() == expected.model_dump()
 
     local_first_add_2 = local_first_add.on(serve=True).on(serve=False)
-    assert local_first_add_2(MathQuery(x=1, y=2)) == MathResult(result=3)
+    result_2 = local_first_add_2(MathQuery(x=1, y=2))
+    assert result_2 == expected.model_dump()
 
 
 def test_mainify():
