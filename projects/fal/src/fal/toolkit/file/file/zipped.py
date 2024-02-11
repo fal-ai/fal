@@ -9,7 +9,7 @@ from pydantic import PrivateAttr
 
 from fal.toolkit.mainify import mainify
 
-from .normal import File
+from .standard import File
 
 __all__ = ["CompressedFile"]
 

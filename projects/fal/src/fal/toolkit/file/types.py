@@ -7,6 +7,8 @@ from uuid import uuid4
 
 from fal.toolkit.mainify import mainify
 
+__all__ = ["FileData", "RepositoryId", "FileRepository"]
+
 
 @mainify
 class FileData:
