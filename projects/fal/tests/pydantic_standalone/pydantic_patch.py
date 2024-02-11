@@ -149,7 +149,7 @@ def pickler_building_args(
         "methods": model_methods,
     }
     pickler_args = tuple(pickled_model.values())
-    return pickler_args
+    return pickler_args  # type: ignore
 
 
 @dill.register(type(BaseModel))

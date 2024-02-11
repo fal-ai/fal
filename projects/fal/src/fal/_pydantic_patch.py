@@ -101,6 +101,9 @@ def patch():
             __validators__=validators,
             **model_fields,
         )
+
+        # Methods must be applied with `setattr` (if simply combined with model_fields,
+        # they will not be deserialised)
         for method_name, method_funcdef in methods.items():
             setattr(model_cls, method_name, method_funcdef)
         return model_cls
@@ -136,13 +139,24 @@ def patch():
         """
         decorators = model.__pydantic_decorators__
         model_validators = extract_validators(decorators.model_validators)
-        field_validators = extract_validators(decorators.field_validators)
-        # The `methods` assignment is a testing PLACEHOLDER (TODO: handle correctly)
-        methods = {
-            field_name: field_value
-            for field_name, field_value in model.__dict__.items()
-            if field_name in ["steps_x2"]
+        field_validators = {}  # extract_validators(decorators.field_validators)
+        model_methods = {
+            method_name: model_method
+            for method_name, model_method in model.__dict__.items()
+            # Private attributes (with `PrivateAttr`) are set through `model_fields`
+            if not method_name.startswith("_")
+            if method_name
+            not in (
+                # The `model_*` namespace also includes `model_post_init`, which we do
+                # potentially want, so we don't exclude it here.
+                "model_fields",
+                "model_config",
+                *model.model_fields,
+                *model_validators,
+                *field_validators,
+            )
         }
+
         pickled_model = {
             "name": model.__name__,
             "model_config": model.model_config,
