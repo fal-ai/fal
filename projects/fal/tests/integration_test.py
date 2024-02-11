@@ -446,6 +446,18 @@ def fal_file_content_matches(file: File, content: str):
     return file.as_bytes().decode() == content
 
 
+def test_fal_file_methods(isolated_client):
+    @isolated_client(requirements=["pydantic==2.5.3"])
+    def fal_file_methods_set():
+        file_cls_methods = set(vars(File))
+        return file_cls_methods
+
+    file_cls_methods = fal_file_methods_set()
+
+    expected = {"_from_url", "from_bytes", "from_path", "as_bytes", "save"}
+    assert expected.difference(file_cls_methods) == set()
+
+
 def test_fal_file_from_path(isolated_client):
     @isolated_client(requirements=["pydantic==2.5.3"])
     def fal_file_from_temp(content: str):
@@ -455,7 +467,8 @@ def test_fal_file_from_path(isolated_client):
             with open(file_path, "w") as fp:
                 fp.write(content)
 
-            return File.from_path(file_path, repository="in_memory")
+            file_in_memory = File.from_path(file_path, repository="in_memory")
+            return file_in_memory
 
     file_content = "file-test"
     file = fal_file_from_temp(file_content)
