@@ -35,17 +35,15 @@ class File(BaseModel):
     )
 
     def __init__(self, **kwargs):
-        if "file_data" in kwargs:
+        has_fd = "file_data" in kwargs
+        if has_fd:
             data: FileData = kwargs.pop("file_data")
             repository = kwargs.pop("repository", None)
-
             repo = (
                 repository
                 if isinstance(repository, FileRepository)
                 else get_builtin_repository(repository)
             )
-            self._file_data = data
-
             kwargs.update(
                 {
                     "url": repo.save(data),
@@ -54,8 +52,9 @@ class File(BaseModel):
                     "file_size": len(data.data),
                 }
             )
-
         super().__init__(**kwargs)
+        if has_fd:
+            self._file_data = data
 
     # Pydantic custom validator for input type conversion
     @classmethod
