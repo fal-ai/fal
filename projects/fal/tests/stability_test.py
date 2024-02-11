@@ -425,7 +425,8 @@ def test_pydantic_serialization(isolated_client):
 
     result = add(MathQuery(x=1, y=2))
     assert result.result == 3
-    assert result == MathResult(result=3)
+    expected = MathResult(result=3)
+    assert result.model_dump() == expected.model_dump()
 
 
 def test_serve_on_off(isolated_client):
