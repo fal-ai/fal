@@ -137,28 +137,66 @@ def patch():
             model: The `pydantic.BaseModel` subclass instance that triggers the
                 deserialisation hook and gets pickled by `build_pydantic_model`.
         """
+        from pprint import pprint
+
         decorators = model.__pydantic_decorators__
         model_validators = extract_validators(decorators.model_validators)
         field_validators = {}  # extract_validators(decorators.field_validators)
         model_methods = {}
+
+        # model_base_cls = model.__mro__[0]
+        # base_model_cls = model.__mro__[1]
+
+        # print(f"CLASS KEYS: ({model_base_cls})")
+        # model_class_dict_keys = list(vars(model_base_cls))
+        # pprint(model_class_dict_keys)
+
+        # print(f"BASE CLASS KEYS: ({base_model_cls})")
+        # base_model_class_dict_keys = list(vars(base_model_cls))
+        # pprint(base_model_class_dict_keys)
+
+        # print(f"INSTANCE KEYS: ({model})")
+        # model_instance_dict_keys = list(vars(model))
+        # pprint(model_instance_dict_keys)
+
+        # base_only = set(base_model_class_dict_keys).difference(model_class_dict_keys)
+        # model_only = set(model_class_dict_keys).difference(base_model_class_dict_keys)
+        # both_bm = set(base_model_class_dict_keys).union(model_class_dict_keys)
+        # both_bm_no_pyd = [k for k in both_bm if not k.startswith("__pydantic")]
+
+        # Unsure if we actually need to traverse the MRO... Maybe for CompressedFile?
+        # for model_base_class in model.__mro__:
+        model_qualname = model.__qualname__
         for method_name, model_method in model.__dict__.items():
-            if method_name.startswith("__pydantic_"):
-                # Leave Pydantic's private namespace alone!
+            if method_name == "__weakref__":
+                # This is added specifically by Pydantic for cloudpickle, do not touch
                 continue
-            elif method_name.startswith("_abc"):
-                # If ABC is an issue, consult other examples like Ray's vendored cloudpickle
-                # https://github.com/ray-project/ray/blob/master/python/ray/cloudpickle/cloudpickle.py#L743
+            if not hasattr(model_method, "__qualname__"):
+                print(f"SKIPPING {method_name}")
                 continue
-            elif method_name in ("model_fields", "model_config"):
+            expected_method_qualname = f"{model_qualname}.{method_name}"
+            own_method = model_method.__qualname__ == expected_method_qualname
+            if not own_method:
+                print(f"NOT OWNED: {method_name}")
                 continue
-            elif method_name in model.model_fields or method_name in model_validators:
-                # The `model_*` namespace also includes `model_post_init`, which we do
-                # potentially want, so we don't exclude it here.
+            print(f"GOT {method_name}")
+            # if method_name.startswith("__pydantic_"):
+            #     # Leave Pydantic's private namespace alone!
+            #     continue
+            # elif method_name.startswith("_abc"):
+            #     # If ABC is an issue, consult other examples like Ray's vendored cloudpickle
+            #     # https://github.com/ray-project/ray/blob/master/python/ray/cloudpickle/cloudpickle.py#L743
+            #     continue
+            # elif method_name in ("model_fields", "model_config"):
+            #     # The `model_*` namespace also includes `model_post_init`, which we do
+            #     # potentially want, so we don't exclude it here.
+            #     continue
+            if method_name in model.model_fields:
+                continue
+            elif method_name in model_validators:
                 continue
             elif method_name in field_validators:
                 continue
-            elif method_name.startswith("__"):
-                print(method_name)
             model_methods.update({method_name: model_method})
 
         pickled_model = {
@@ -185,6 +223,7 @@ def patch():
         if model is BaseModel:
             dill_serialization.save_type(pickler, model)
         else:
+            # model is a `pydantic._internal._model_construction.ModelMetaclass`
             pickler_args = pickler_building_args(model=model)
             pickler.save_reduce(build_pydantic_model, pickler_args)
         return
