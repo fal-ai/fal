@@ -140,25 +140,26 @@ def patch():
         decorators = model.__pydantic_decorators__
         model_validators = extract_validators(decorators.model_validators)
         field_validators = {}  # extract_validators(decorators.field_validators)
-        model_methods = {
-            method_name: model_method
-            for method_name, model_method in model.__dict__.items()
-            # Private attributes (with `PrivateAttr`) are set through `model_fields`
-            if not method_name.startswith("__")
-            # If ABC is an issue, consult other examples like Ray's vendored cloudpickle
-            # https://github.com/ray-project/ray/blob/master/python/ray/cloudpickle/cloudpickle.py#L743
-            if not method_name.startswith("_abc")
-            if method_name
-            not in (
+        model_methods = {}
+        for method_name, model_method in model.__dict__.items():
+            if method_name.startswith("__pydantic_"):
+                # Leave Pydantic's private namespace alone!
+                continue
+            elif method_name.startswith("_abc"):
+                # If ABC is an issue, consult other examples like Ray's vendored cloudpickle
+                # https://github.com/ray-project/ray/blob/master/python/ray/cloudpickle/cloudpickle.py#L743
+                continue
+            elif method_name in ("model_fields", "model_config"):
+                continue
+            elif method_name in model.model_fields or method_name in model_validators:
                 # The `model_*` namespace also includes `model_post_init`, which we do
                 # potentially want, so we don't exclude it here.
-                "model_fields",
-                "model_config",
-                *model.model_fields,
-                *model_validators,
-                *field_validators,
-            )
-        }
+                continue
+            elif method_name in field_validators:
+                continue
+            elif method_name.startswith("__"):
+                print(method_name)
+            model_methods.update({method_name: model_method})
 
         pickled_model = {
             "name": model.__name__,
