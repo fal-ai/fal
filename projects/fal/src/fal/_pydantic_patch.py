@@ -171,15 +171,20 @@ def patch():
             if method_name == "__weakref__":
                 # This is added specifically by Pydantic for cloudpickle, do not touch
                 continue
-            if not hasattr(model_method, "__qualname__"):
-                print(f"SKIPPING {method_name}")
+            if hasattr(model_method, "__class__"):
+                is_classmethod = model_method.__class__.__name__ == "classmethod"
+            else:
+                is_classmethod = False
+            testable_method = model_method.__func__ if is_classmethod else model_method
+            if not hasattr(testable_method, "__qualname__"):
+                # print(f"SKIPPING {method_name}")
                 continue
             expected_method_qualname = f"{model_qualname}.{method_name}"
-            own_method = model_method.__qualname__ == expected_method_qualname
+            own_method = testable_method.__qualname__ == expected_method_qualname
             if not own_method:
-                print(f"NOT OWNED: {method_name}")
+                # print(f"NOT OWNED: {method_name}")
                 continue
-            print(f"GOT {method_name}")
+            # print(f"GOT {method_name}")
             # if method_name.startswith("__pydantic_"):
             #     # Leave Pydantic's private namespace alone!
             #     continue
