@@ -52,7 +52,10 @@ class File(BaseModel):
                     "file_size": len(data.data),
                 }
             )
-        super().__init__(**kwargs)
+        assert issubclass(
+            self.__class__, BaseModel
+        ), f"{cls=} is not a BaseModel subclass"
+        super(File, self).__init__(**kwargs)
         if has_fd:
             self._file_data = data
 
@@ -91,10 +94,14 @@ class File(BaseModel):
         file_name: Optional[str] = None,
         repository: FileRepository | RepositoryId = DEFAULT_REPOSITORY,
     ) -> File:
-        return cls(
-            file_data=FileData(data, content_type, file_name),
-            repository=repository,
-        )
+        assert issubclass(cls, BaseModel), f"{cls=} is not a subclass of BaseModel"
+        try:
+            return cls(
+                file_data=FileData(data, content_type, file_name),
+                repository=repository,
+            )
+        except TypeError:
+            raise ValueError(f"{cls.__mro__=}, {cls.__bases__=}")
 
     @classmethod
     def from_path(
