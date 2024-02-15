@@ -39,9 +39,29 @@ class ServerCredentials:
         raise NotImplementedError
 
     @property
-    def base_options(self) -> dict[str, str]:
-        grpc_ops: list[tuple[str, str]] = GRPC_OPTIONS
-        return dict(grpc_ops)
+    def base_options(self) -> dict[str, str | int]:
+        import json
+
+        grpc_ops: dict[str, str | int] = dict(GRPC_OPTIONS)
+        grpc_ops["grpc.enable_retries"] = 1
+        grpc_ops["grpc.service_config"] = json.dumps(
+            {
+                "methodConfig": [
+                    {
+                        "name": [{}],
+                        "retryPolicy": {
+                            "maxAttempts": 5,
+                            "initialBackoff": "0.1s",
+                            "maxBackoff": "5s",
+                            "backoffMultiplier": 2,
+                            "retryableStatusCodes": ["UNAVAILABLE"],
+                        },
+                    }
+                ]
+            }
+        )
+
+        return grpc_ops
 
 
 class LocalCredentials(ServerCredentials):
@@ -342,61 +362,12 @@ class FalServerlessConnection:
     def close(self):
         self._stack.close()
 
-    def grpc_service_config(self, existing_service_config: str | None) -> str:
-        # To be used for the `"grpc.service_config"` option in the gRPC channel.
-        import json
-
-        existing_service_config = existing_service_config or "{}"
-
-        service_config = {}
-        try:
-            service_config = json.loads(existing_service_config or "{}")
-            if not isinstance(service_config, dict):
-                raise json.JSONDecodeError("Invalid service config type", "", 0)
-
-            existing_method_config: list[dict] = service_config.get("methodConfig", [])
-            if not isinstance(existing_method_config, list):
-                raise json.JSONDecodeError("Invalid 'methodConfig' type", "", 0)
-        except json.JSONDecodeError:
-            log.warning(
-                f"Invalid service config: {existing_service_config}. Overwriting."
-            )
-            existing_method_config = []
-
-        method_config = {
-            # List all services this applies to
-            "name": [
-                {"service": "controller.IsolateController"},
-            ],
-            "retryPolicy": {
-                "maxAttempts": 5,
-                "initialBackoff": "0.1s",
-                "maxBackoff": "10s",
-                "backoffMultiplier": 2,
-                "retryableStatusCodes": ["UNAVAILABLE"],
-            },
-        }
-
-        existing_method_config.insert(0, method_config)
-        service_config["methodConfig"] = existing_method_config
-
-        try:
-            return json.dumps(service_config)
-        except json.JSONDecodeError:
-            log.warning(f"Failed to serialize service config: {service_config}")
-            return existing_service_config
-
     @property
     def stub(self) -> isolate_proto.IsolateControllerStub:
         if self._stub:
             return self._stub
 
-        options: dict[str, str] = self.credentials.server_credentials.base_options
-        # Add the service config to the options
-        options["grpc.service_config"] = self.grpc_service_config(
-            options.get("grpc.service_config")
-        )
-
+        options = self.credentials.server_credentials.base_options
         channel_creds = self.credentials.to_grpc()
         channel = self._stack.enter_context(
             grpc.secure_channel(
