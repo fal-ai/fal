@@ -29,7 +29,7 @@ FAL_SERVERLESS_DEFAULT_KEEP_ALIVE = 10
 FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING = 1
 FAL_SERVERLESS_DEFAULT_MIN_CONCURRENCY = 0
 
-log = get_logger(__name__)
+logger = get_logger(__name__)
 
 patch_dill()
 
@@ -161,7 +161,7 @@ def get_default_credentials() -> Credentials:
 
     key_creds = key_credentials()
     if key_creds:
-        log.debug("Using key credentials")
+        logger.debug("Using key credentials")
         return FalServerlessKeyCredentials(key_creds[0], key_creds[1])
     else:
         return AuthenticatedCredentials()

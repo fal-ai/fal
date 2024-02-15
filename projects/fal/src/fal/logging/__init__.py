@@ -5,7 +5,6 @@ from typing import Any
 import structlog
 from structlog.typing import EventDict, WrappedLogger
 
-from .datadog import submit_to_datadog
 from .style import LEVEL_STYLES
 from .user import add_user_id
 
@@ -45,7 +44,6 @@ structlog.configure(
         structlog.processors.TimeStamper(fmt="%Y-%m-%d %H:%M:%S"),
         structlog.processors.StackInfoRenderer(),
         add_user_id,
-        submit_to_datadog,
         _console_log_output,
     ],
     wrapper_class=structlog.stdlib.BoundLogger,
