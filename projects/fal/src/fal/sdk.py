@@ -39,8 +39,29 @@ class ServerCredentials:
         raise NotImplementedError
 
     @property
-    def extra_options(self) -> list[tuple[str, str]]:
-        return GRPC_OPTIONS
+    def base_options(self) -> dict[str, str | int]:
+        import json
+
+        grpc_ops: dict[str, str | int] = dict(GRPC_OPTIONS)
+        grpc_ops["grpc.enable_retries"] = 1
+        grpc_ops["grpc.service_config"] = json.dumps(
+            {
+                "methodConfig": [
+                    {
+                        "name": [{}],
+                        "retryPolicy": {
+                            "maxAttempts": 5,
+                            "initialBackoff": "0.1s",
+                            "maxBackoff": "5s",
+                            "backoffMultiplier": 2,
+                            "retryableStatusCodes": ["UNAVAILABLE"],
+                        },
+                    }
+                ]
+            }
+        )
+
+        return grpc_ops
 
 
 class LocalCredentials(ServerCredentials):
@@ -346,10 +367,14 @@ class FalServerlessConnection:
         if self._stub:
             return self._stub
 
-        options = self.credentials.server_credentials.extra_options
+        options = self.credentials.server_credentials.base_options
         channel_creds = self.credentials.to_grpc()
         channel = self._stack.enter_context(
-            grpc.secure_channel(self.hostname, channel_creds, options)
+            grpc.secure_channel(
+                target=self.hostname,
+                credentials=channel_creds,
+                options=list(options.items()),
+            )
         )
         channel = grpc.intercept_channel(channel, TraceContextInterceptor())
         self._stub = isolate_proto.IsolateControllerStub(channel)
