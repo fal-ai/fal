@@ -19,6 +19,13 @@ EndpointT = TypeVar("EndpointT", bound=Callable[..., Any])
 logger = get_logger(__name__)
 
 
+async def _call_any_fn(fn, *args, **kwargs):
+    if inspect.iscoroutinefunction(fn):
+        return await fn(*args, **kwargs)
+    else:
+        return fn(*args, **kwargs)
+
+
 def wrap_app(cls: type[App], **kwargs) -> fal.api.IsolatedFunction:
     add_serialization_listeners_for(cls)
 
@@ -113,11 +120,11 @@ class App:
 
         @asynccontextmanager
         async def lifespan(app: FastAPI):
-            self.setup()
+            await _call_any_fn(self.setup)
             try:
                 yield
             finally:
-                self.teardown()
+                await _call_any_fn(self.teardown)
 
         _app = FastAPI(lifespan=lifespan)
 
