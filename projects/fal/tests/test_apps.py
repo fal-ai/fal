@@ -85,7 +85,7 @@ def calculator_app():
 class StatefulAdditionApp(fal.App, keep_alive=300, max_concurrency=1):
     machine_type = "S"
 
-    def setup(self):
+    async def setup(self):
         self.counter = 0
 
     @fal.endpoint("/reset")
