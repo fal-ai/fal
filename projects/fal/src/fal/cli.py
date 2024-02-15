@@ -29,7 +29,7 @@ PORT_ENVVAR = "FAL_PORT"
 DEBUG_ENABLED = False
 
 
-log = get_logger(__name__)
+logger = get_logger(__name__)
 
 
 class ExecutionInfo:
@@ -63,13 +63,13 @@ class MainGroup(click.Group):
             qualified_name, attributes={"invocation_id": invocation_id}
         ):
             try:
-                log.debug(
+                logger.debug(
                     f"Executing command: {qualified_name}",
                     command=qualified_name,
                 )
                 return super().invoke(ctx)
             except Exception as exception:
-                log.error(exception)
+                logger.error(exception)
                 if execution_info.debug:
                     # Here we supress detailed errors on click lines because
                     # they're mostly decorator calls, irrelevant to the dev's error tracing

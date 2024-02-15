@@ -7,6 +7,10 @@ from grpc_interceptor import ClientCallDetails, ClientInterceptor
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 
+from fal.logging import get_logger
+
+logger = get_logger(__name__)
+
 provider = TracerProvider()
 # The line below can be used in dev to inspect opentelemetry result
 # It must be imported from opentelemetry.sdk.trace.export
@@ -41,6 +45,7 @@ class TraceContextInterceptor(ClientInterceptor):
         call_details: ClientCallDetails,
     ):
         current_span = get_current_span_context()
+
         if current_span is not None:
             new_details = call_details._replace(
                 metadata=(
@@ -50,5 +55,7 @@ class TraceContextInterceptor(ClientInterceptor):
                     ("x-fal-invocation-id", current_span.invocation_id),
                 )
             )
-            return method(request_or_iterator, new_details)
+            call_details = new_details
+
+        logger.debug("Calling %s", call_details)
         return method(request_or_iterator, call_details)
