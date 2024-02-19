@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import json
 import os
 import typing
 from contextlib import asynccontextmanager
@@ -70,6 +71,7 @@ class RouteSignature(NamedTuple):
     buffering: int | None = None
     session_timeout: float | None = None
     max_batch_size: int = 1
+    emit_timings: bool = False
 
 
 @mainify
@@ -245,12 +247,18 @@ def _fal_websocket_template(
         websocket: WebSocket,
     ) -> None:
         loop = asyncio.get_event_loop()
+        max_allowed_buffering = route_signature.buffering or 1
         outgoing_messages: asyncio.Queue[bytes] = asyncio.Queue(
-            maxsize=route_signature.buffering or 1
+            maxsize=max_allowed_buffering * 2  # x2 for outgoing timings
         )
 
         async def emit(message):
-            await websocket.send_bytes(message)
+            if isinstance(message, bytes):
+                await websocket.send_bytes(message)
+            elif isinstance(message, str):
+                await websocket.send_text(message)
+            else:
+                raise TypeError(f"Can't send message of type {type(message)}")
 
         async def background_emitter():
             while True:
@@ -285,7 +293,9 @@ def _fal_websocket_template(
                     break
                 batch.append(next_input)
 
+            t0 = loop.time()
             output = await loop.run_in_executor(None, func, self, *batch)  # type: ignore
+            total_time = loop.time() - t0
             if not isinstance(output, dict):
                 # Handle pydantic output modal
                 if hasattr(output, "dict"):
@@ -295,11 +305,23 @@ def _fal_websocket_template(
                         f"Expected a dict or pydantic model as output, got {type(output)}"
                     )
 
-            message = msgpack.packb(output, use_bin_type=True)
-            try:
-                outgoing_messages.put_nowait(message)
-            except asyncio.QueueFull:
-                await emit(message)
+            messages = [
+                msgpack.packb(output, use_bin_type=True),
+            ]
+            if route_signature.emit_timings:
+                # We emit x-fal messages in JSON, no matter what the input/output format is.
+                timings = {
+                    "type": "x-fal-message",
+                    "action": "timings",
+                    "timing": total_time,
+                }
+                messages.append(json.dumps(timings, separators=(",", ":")))
+
+            for message in messages:
+                try:
+                    outgoing_messages.put_nowait(message)
+                except asyncio.QueueFull:
+                    await emit(message)
 
     async def websocket_template(self, websocket: WebSocket) -> None:
         import asyncio
