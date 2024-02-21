@@ -37,6 +37,7 @@ from typing_extensions import Concatenate, ParamSpec
 
 import fal.flags as flags
 from fal._serialization import add_serialization_listeners_for, patch_dill
+from fal.logging import get_logger
 from fal.logging.isolate import IsolateLogPrinter
 from fal.sdk import (
     FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
@@ -51,6 +52,8 @@ from fal.sdk import (
     get_default_credentials,
 )
 from fal.toolkit import mainify
+
+logger = get_logger(__name__)
 
 ArgsT = ParamSpec("ArgsT")
 ReturnT = TypeVar("ReturnT", covariant=True)
@@ -793,7 +796,7 @@ class BaseServable:
     def collect_routes(self) -> dict[RouteSignature, Callable[..., Any]]:
         raise NotImplementedError
 
-    def _add_extra_middlewares(self, app: FastAPI):
+    def _add_extra_middlewares(self, app: FastAPI) -> None:
         """
         For subclasses to add extra middlewares to the app.
         """
@@ -816,6 +819,21 @@ class BaseServable:
             allow_methods=("*"),
             allow_origins=("*"),
         )
+
+        @_app.middleware("http")
+        async def fal_logger_middleware(request, call_next):
+            try:
+                fal_headers = {
+                    header: request.headers[header]
+                    for header in request.headers
+                    if header.startswith("X-Fal-Log-")
+                }
+                # TODO: somehow add the header to the logger context of the served function or app
+            except Exception:
+                logger.exception(
+                    "Failed to get fal headers for %s",
+                    self.__class__.__name__,
+                )
 
         self._add_extra_middlewares(_app)
 

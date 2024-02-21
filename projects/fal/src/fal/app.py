@@ -108,6 +108,8 @@ class App(fal.api.BaseServable):
         """Teardown the application after serving."""
 
     def _add_extra_middlewares(self, app: FastAPI):
+        super()._add_extra_middlewares(app)
+
         @app.middleware("http")
         async def provide_hints_headers(request, call_next):
             response = await call_next(request)
