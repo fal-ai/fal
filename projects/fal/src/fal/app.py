@@ -11,6 +11,7 @@ from fastapi import FastAPI
 
 import fal.api
 from fal._serialization import add_serialization_listeners_for
+from fal.api import RouteSignature
 from fal.logging import get_logger
 from fal.toolkit import mainify
 
@@ -85,7 +86,7 @@ class App(fal.api.BaseServable):
                 "Running apps through SDK is not implemented yet."
             )
 
-    def collect_routes(self) -> dict[fal.api.RouteSignature, Callable[..., Any]]:
+    def collect_routes(self) -> dict[RouteSignature, Callable[..., Any]]:
         return {
             signature: endpoint
             for _, endpoint in inspect.getmembers(self, inspect.ismethod)
@@ -142,7 +143,7 @@ def endpoint(
                 f"Can't set multiple routes for the same function: {callable.__name__}"
             )
 
-        callable.route_signature = fal.api.RouteSignature(path=path, is_websocket=is_websocket)  # type: ignore
+        callable.route_signature = RouteSignature(path=path, is_websocket=is_websocket)  # type: ignore
         return callable
 
     return marker_fn
@@ -150,7 +151,7 @@ def endpoint(
 
 def _fal_websocket_template(
     func: EndpointT,
-    route_signature: fal.api.RouteSignature,
+    route_signature: RouteSignature,
 ) -> EndpointT:
     # A template for fal's realtime websocket endpoints to basically
     # be a boilerplate for the user to fill in their inference function
@@ -368,7 +369,7 @@ def realtime(
             else:
                 input_modal = None
 
-        route_signature = fal.api.RouteSignature(
+        route_signature = RouteSignature(
             path=path,
             is_websocket=True,
             input_modal=input_modal,
