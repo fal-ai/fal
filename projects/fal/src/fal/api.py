@@ -825,7 +825,14 @@ class BaseServable:
             # Rewrite the message to include the path that was not found.
             # This is supposed to make it easier to understand to the user
             # that the error comes from the app and not our platform.
-            return JSONResponse({"detail": f"Path {request.url.path} not found"}, 404)
+            try:
+                if exc.detail == "Not Found":
+                    return JSONResponse(
+                        {"detail": f"Path {request.url.path} not found"}, 404
+                    )
+            finally:
+                # If it's not a generic 404, just return the original message.
+                return JSONResponse({"detail": exc.detail}, 404)
 
         routes = self.collect_routes()
         if not routes:
