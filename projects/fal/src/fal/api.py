@@ -754,7 +754,8 @@ class FalFastAPI(FastAPI):
         """
 
         def mark_order(obj: dict[str, Any], key: str):
-            obj[f"x-fal-order-{key}"] = list(obj[key].keys())
+            if key in obj:
+                obj[f"x-fal-order-{key}"] = list(obj[key].keys())
 
         mark_order(spec, "paths")
 
@@ -763,13 +764,12 @@ class FalFastAPI(FastAPI):
             Mark the order of properties in the schema object.
             They can have 'allOf', 'properties' or '$ref' key.
             """
-            if "allOf" in schema:
-                for sub_schema in schema["allOf"]:
-                    order_schema_object(sub_schema)
-            if "properties" in schema:
-                mark_order(schema, "properties")
+            for sub_schema in schema.get("allOf", []):
+                order_schema_object(sub_schema)
 
-        for key in spec.get("components", {}).get("schemas") or {}:
+            mark_order(schema, "properties")
+
+        for key in spec.get("components", {}).get("schemas", {}):
             order_schema_object(spec["components"]["schemas"][key])
 
         return spec
