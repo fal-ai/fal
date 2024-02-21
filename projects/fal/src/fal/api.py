@@ -830,10 +830,14 @@ class BaseServable:
                 }
                 # TODO: somehow add the header to the logger context of the served function or app
             except Exception:
+                from fastapi.logger import logger
+
                 logger.exception(
                     "Failed to get fal headers for %s",
                     self.__class__.__name__,
                 )
+            finally:
+                return await call_next(request)
 
         self._add_extra_middlewares(_app)
 
