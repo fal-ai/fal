@@ -116,7 +116,16 @@ class RequestHandle:
             + f"/requests/{self.request_id}/"
         )
         response = _HTTP_CLIENT.get(url, headers=self._creds.to_headers())
-        response.raise_for_status()
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            if response.headers["Content-Type"] != "application/json":
+                raise
+            raise httpx.HTTPStatusError(
+                f"{response.status_code}: {response.text}",
+                request=e.request,
+                response=e.response,
+            ) from e
 
         data = response.json()
         return data

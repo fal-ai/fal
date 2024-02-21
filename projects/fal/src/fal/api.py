@@ -806,6 +806,7 @@ class BaseServable:
     def _build_app(self) -> FastAPI:
         from fastapi import HTTPException, Request
         from fastapi.middleware.cors import CORSMiddleware
+        from fastapi.responses import JSONResponse
 
         _app = FalFastAPI(lifespan=self.lifespan)
 
@@ -824,7 +825,13 @@ class BaseServable:
             # Rewrite the message to include the path that was not found.
             # This is supposed to make it easier to understand to the user
             # that the error comes from the app and not our platform.
-            return HTTPException(404, f"Path {request.url.path} not found")
+            if exc.detail == "Not Found":
+                return JSONResponse(
+                    {"detail": f"Path {request.url.path} not found"}, 404
+                )
+            else:
+                # If it's not a generic 404, just return the original message.
+                return JSONResponse({"detail": exc.detail}, 404)
 
         routes = self.collect_routes()
         if not routes:

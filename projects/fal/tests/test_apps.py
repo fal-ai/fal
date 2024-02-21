@@ -3,6 +3,7 @@ from typing import Generator
 
 import pytest
 from fastapi import WebSocket
+from httpx import HTTPStatusError
 from openapi_fal_rest.api.applications import app_metadata
 from pydantic import BaseModel
 
@@ -323,6 +324,11 @@ def test_app_no_serve_spec_metadata(
     assert (
         "openapi" not in metadata
     ), f"openapi should not be present in metadata {metadata}"
+
+
+def test_404_response(test_app: str, request: pytest.FixtureRequest):
+    with pytest.raises(HTTPStatusError, match="Path /other not found"):
+        apps.run(test_app, path="/other", arguments={"lhs": 1, "rhs": 2})
 
 
 def test_app_update_app(aliased_app: tuple[str, str]):
