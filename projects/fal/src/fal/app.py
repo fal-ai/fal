@@ -5,7 +5,7 @@ import json
 import os
 import typing
 from contextlib import asynccontextmanager
-from typing import Any, Callable, ClassVar, NamedTuple, TypeVar
+from typing import Any, Callable, ClassVar, TypeVar
 
 from fastapi import FastAPI
 
@@ -64,18 +64,7 @@ def wrap_app(cls: type[App], **kwargs) -> fal.api.IsolatedFunction:
 
 
 @mainify
-class RouteSignature(NamedTuple):
-    path: str
-    is_websocket: bool = False
-    input_modal: type | None = None
-    buffering: int | None = None
-    session_timeout: float | None = None
-    max_batch_size: int = 1
-    emit_timings: bool = False
-
-
-@mainify
-class App:
+class App(fal.api.BaseServable):
     requirements: ClassVar[list[str]] = []
     machine_type: ClassVar[str] = "S"
     host_kwargs: ClassVar[dict[str, Any]] = {}
@@ -96,42 +85,30 @@ class App:
                 "Running apps through SDK is not implemented yet."
             )
 
-    def setup(self):
-        """Setup the application before serving."""
-
-    def provide_hints(self) -> list[str]:
-        """Provide hints for routing the application."""
-        raise NotImplementedError
-
-    def serve(self) -> None:
-        import uvicorn
-
-        app = self._build_app()
-        uvicorn.run(app, host="0.0.0.0", port=8080)
-
-    def collect_routes(self) -> dict[RouteSignature, Callable[..., Any]]:
+    def collect_routes(self) -> dict[fal.api.RouteSignature, Callable[..., Any]]:
         return {
             signature: endpoint
             for _, endpoint in inspect.getmembers(self, inspect.ismethod)
             if (signature := getattr(endpoint, "route_signature", None))
         }
 
-    def _build_app(self) -> FastAPI:
-        from fastapi import FastAPI
-        from fastapi.middleware.cors import CORSMiddleware
+    @asynccontextmanager
+    async def lifespan(self, app: FastAPI):
+        await _call_any_fn(self.setup)
+        try:
+            yield
+        finally:
+            await _call_any_fn(self.teardown)
 
-        @asynccontextmanager
-        async def lifespan(app: FastAPI):
-            await _call_any_fn(self.setup)
-            try:
-                yield
-            finally:
-                await _call_any_fn(self.teardown)
+    def setup(self):
+        """Setup the application before serving."""
 
-        _app = FastAPI(lifespan=lifespan)
+    def teardown(self):
+        """Teardown the application after serving."""
 
-        @_app.middleware("http")
-        async def provide_hints(request, call_next):
+    def _add_extra_middlewares(self, app: FastAPI):
+        @app.middleware("http")
+        async def provide_hints_headers(request, call_next):
             response = await call_next(request)
             try:
                 response.headers["X-Fal-Runner-Hints"] = ",".join(self.provide_hints())
@@ -139,57 +116,18 @@ class App:
                 # This lets us differentiate between apps that don't provide hints
                 # and apps that provide empty hints.
                 pass
-            except Exception as exc:
+            except Exception:
                 from fastapi.logger import logger
 
                 logger.exception(
                     "Failed to provide hints for %s",
                     self.__class__.__name__,
-                    exc_info=exc,
                 )
             return response
 
-        _app.add_middleware(
-            CORSMiddleware,
-            allow_credentials=True,
-            allow_headers=("*"),
-            allow_methods=("*"),
-            allow_origins=("*"),
-        )
-
-        routes = self.collect_routes()
-        if not routes:
-            raise ValueError("An application must have at least one route!")
-
-        for signature, endpoint in routes.items():
-            if signature.is_websocket:
-                _app.add_api_websocket_route(
-                    signature.path,
-                    endpoint,
-                    name=endpoint.__name__,
-                )
-            else:
-                _app.add_api_route(
-                    signature.path,
-                    endpoint,
-                    name=endpoint.__name__,
-                    methods=["POST"],
-                )
-
-        return _app
-
-    def openapi(self) -> dict[str, Any]:
-        """
-        Build the OpenAPI specification for the served function.
-        Attach needed metadata for a better integration to fal.
-        """
-        app = self._build_app()
-        spec = app.openapi()
-        _mark_order_openapi(spec)
-        return spec
-
-    def teardown(self):
-        """Teardown the application after serving."""
+    def provide_hints(self) -> list[str]:
+        """Provide hints for routing the application."""
+        raise NotImplementedError
 
 
 @mainify
@@ -204,7 +142,7 @@ def endpoint(
                 f"Can't set multiple routes for the same function: {callable.__name__}"
             )
 
-        callable.route_signature = RouteSignature(path=path, is_websocket=is_websocket)  # type: ignore
+        callable.route_signature = fal.api.RouteSignature(path=path, is_websocket=is_websocket)  # type: ignore
         return callable
 
     return marker_fn
@@ -212,7 +150,7 @@ def endpoint(
 
 def _fal_websocket_template(
     func: EndpointT,
-    route_signature: RouteSignature,
+    route_signature: fal.api.RouteSignature,
 ) -> EndpointT:
     # A template for fal's realtime websocket endpoints to basically
     # be a boilerplate for the user to fill in their inference function
@@ -430,7 +368,7 @@ def realtime(
             else:
                 input_modal = None
 
-        route_signature = RouteSignature(
+        route_signature = fal.api.RouteSignature(
             path=path,
             is_websocket=True,
             input_modal=input_modal,
@@ -444,32 +382,3 @@ def realtime(
         )
 
     return marker_fn
-
-
-def _mark_order_openapi(spec: dict[str, Any]):
-    """
-    Add x-fal-order-* keys to the OpenAPI specification to help the rendering of UI.
-
-    NOTE: We rely on the fact that fastapi and Python dicts keep the order of properties.
-    """
-
-    def mark_order(obj: dict[str, Any], key: str):
-        obj[f"x-fal-order-{key}"] = list(obj[key].keys())
-
-    mark_order(spec, "paths")
-
-    def order_schema_object(schema: dict[str, Any]):
-        """
-        Mark the order of properties in the schema object.
-        They can have 'allOf', 'properties' or '$ref' key.
-        """
-        if "allOf" in schema:
-            for sub_schema in schema["allOf"]:
-                order_schema_object(sub_schema)
-        if "properties" in schema:
-            mark_order(schema, "properties")
-
-    for key in spec["components"].get("schemas") or {}:
-        order_schema_object(spec["components"]["schemas"][key])
-
-    return spec

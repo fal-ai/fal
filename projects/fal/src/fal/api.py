@@ -4,7 +4,7 @@ import inspect
 import sys
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import suppress
+from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field, replace
 from functools import partial, wraps
 from os import PathLike
@@ -16,6 +16,7 @@ from typing import (
     Generic,
     Iterator,
     Literal,
+    NamedTuple,
     TypeVar,
     cast,
     overload,
@@ -26,6 +27,7 @@ import dill.detect
 import grpc
 import isolate
 import yaml
+from fastapi import FastAPI
 from isolate.backends.common import active_python
 from isolate.backends.settings import DEFAULT_SETTINGS
 from isolate.connections import PythonIPC
@@ -730,53 +732,17 @@ def function(  # type: ignore
 
 
 @mainify
-class ServeWrapper:
-    _func: Callable
-
-    def __init__(self, func: Callable):
-        self._func = func
-
-    def build_app(self):
-        from fastapi import FastAPI
-        from fastapi.middleware.cors import CORSMiddleware
-
-        _app = FastAPI()
-
-        _app.add_middleware(
-            CORSMiddleware,
-            allow_credentials=True,
-            allow_headers=("*"),
-            allow_methods=("*"),
-            allow_origins=("*"),
-        )
-
-        _app.add_api_route(
-            "/",
-            self._func,  # type: ignore
-            name=self._func.__name__,
-            methods=["POST"],
-        )
-
-        return _app
-
-    def __call__(self, *args, **kwargs) -> None:
-        if len(args) != 0 or len(kwargs) != 0:
-            print(
-                f"[warning] {self._func.__name__} function is served with no arguments."
-            )
-
-        from uvicorn import run
-
-        app = self.build_app()
-        run(app, host="0.0.0.0", port=8080)
+class FalFastAPI(FastAPI):
+    """
+    A subclass of FastAPI that adds some fal-specific functionality.
+    """
 
     def openapi(self) -> dict[str, Any]:
         """
         Build the OpenAPI specification for the served function.
         Attach needed metadata for a better integration to fal.
         """
-        app = self.build_app()
-        spec = app.openapi()
+        spec = super().openapi()
         self._mark_order_openapi(spec)
         return spec
 
@@ -807,6 +773,103 @@ class ServeWrapper:
             order_schema_object(spec["components"]["schemas"][key])
 
         return spec
+
+
+@mainify
+class RouteSignature(NamedTuple):
+    path: str
+    is_websocket: bool = False
+    input_modal: type | None = None
+    buffering: int | None = None
+    session_timeout: float | None = None
+    max_batch_size: int = 1
+    emit_timings: bool = False
+
+
+@mainify
+class BaseServable:
+    def collect_routes(self) -> dict[RouteSignature, Callable[..., Any]]:
+        raise NotImplementedError
+
+    def _add_extra_middlewares(self, app: FastAPI):
+        """
+        For subclasses to add extra middlewares to the app.
+        """
+        pass
+
+    @asynccontextmanager
+    async def lifespan(self, app: FastAPI):
+        yield
+
+    def _build_app(self) -> FastAPI:
+        from fastapi.middleware.cors import CORSMiddleware
+
+        _app = FalFastAPI(lifespan=self.lifespan)
+
+        _app.add_middleware(
+            CORSMiddleware,
+            allow_credentials=True,
+            allow_headers=("*"),
+            allow_methods=("*"),
+            allow_origins=("*"),
+        )
+
+        self._add_extra_middlewares(_app)
+
+        routes = self.collect_routes()
+        if not routes:
+            raise ValueError("An application must have at least one route!")
+
+        for signature, endpoint in routes.items():
+            if signature.is_websocket:
+                _app.add_api_websocket_route(
+                    signature.path,
+                    endpoint,
+                    name=endpoint.__name__,
+                )
+            else:
+                _app.add_api_route(
+                    signature.path,
+                    endpoint,
+                    name=endpoint.__name__,
+                    methods=["POST"],
+                )
+
+        return _app
+
+    def openapi(self) -> dict[str, Any]:
+        """
+        Build the OpenAPI specification for the served function.
+        Attach needed metadata for a better integration to fal.
+        """
+        return self._build_app().openapi()
+
+    def serve(self) -> None:
+        import uvicorn
+
+        app = self._build_app()
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+
+
+@mainify
+class ServeWrapper(BaseServable):
+    _func: Callable
+
+    def __init__(self, func: Callable):
+        self._func = func
+
+    def collect_routes(self) -> dict[RouteSignature, Callable[..., Any]]:
+        return {
+            RouteSignature("/"): self._func,
+        }
+
+    def __call__(self, *args, **kwargs) -> None:
+        if len(args) != 0 or len(kwargs) != 0:
+            print(
+                f"[warning] {self._func.__name__} function is served with no arguments."
+            )
+
+        self.serve()
 
 
 @dataclass
