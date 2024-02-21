@@ -821,18 +821,22 @@ class BaseServable:
         )
 
         @_app.middleware("http")
-        async def fal_logger_middleware(request, call_next):
+        async def fal_logger_middleware(request: Request, call_next):
             try:
+                print(f"headers: {request.headers}")
+                for header in request.headers:
+                    print(f"header: {header}")
+
+                print("...")
                 fal_headers = {
                     header: request.headers[header]
                     for header in request.headers
-                    if header.startswith("X-Fal-Log-")
+                    if header.lower().startswith("x-fal-log-")
                 }
+                print(f"fal headers found: {fal_headers}")
                 # TODO: somehow add the header to the logger context of the served function or app
             except Exception:
-                from fastapi.logger import logger
-
-                logger.exception(
+                print(
                     "Failed to get fal headers for %s",
                     self.__class__.__name__,
                 )
