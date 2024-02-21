@@ -830,7 +830,7 @@ class BaseServable:
                     return JSONResponse(
                         {"detail": f"Path {request.url.path} not found"}, 404
                     )
-            finally:
+            except Exception:
                 # If it's not a generic 404, just return the original message.
                 return JSONResponse({"detail": exc.detail}, 404)
 
