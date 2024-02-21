@@ -804,6 +804,7 @@ class BaseServable:
         yield
 
     def _build_app(self) -> FastAPI:
+        from fastapi import HTTPException, Request
         from fastapi.middleware.cors import CORSMiddleware
 
         _app = FalFastAPI(lifespan=self.lifespan)
@@ -817,6 +818,13 @@ class BaseServable:
         )
 
         self._add_extra_middlewares(_app)
+
+        @_app.exception_handler(404)
+        async def not_found_exception_handler(request: Request, exc: HTTPException):
+            # Rewrite the message to include the path that was not found.
+            # This is supposed to make it easier to understand to the user
+            # that the error comes from the app and not our platform.
+            return HTTPException(404, f"Path {request.url.path} not found")
 
         routes = self.collect_routes()
         if not routes:
