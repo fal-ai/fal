@@ -53,15 +53,15 @@ def wrap_app(cls: type[App], **kwargs) -> fal.api.IsolatedFunction:
         **cls.host_kwargs,
         **kwargs,
         metadata=metadata,
-        serve=True,
+        exposed_port=8080,
+        serve=False,
     )
     fn = wrapper(initialize_and_serve)
+    fn.options.add_requirements(fal.api.SERVE_REQUIREMENTS)
     if realtime_app:
         fn.options.add_requirements(REALTIME_APP_REQUIREMENTS)
-    return fn.on(
-        serve=False,
-        exposed_port=8080,
-    )
+
+    return fn
 
 
 @mainify

@@ -58,6 +58,8 @@ ReturnT = TypeVar("ReturnT", covariant=True)
 BasicConfig = Dict[str, Any]
 _UNSET = object()
 
+SERVE_REQUIREMENTS = ["fastapi==0.99.1", "uvicorn"]
+
 
 @dataclass
 class FalServerlessError(Exception):
@@ -112,7 +114,7 @@ class Host(Generic[ArgsT, ReturnT]):
                 options.environment[key] = value
 
         if options.gateway.get("serve"):
-            options.add_requirements(["fastapi==0.99.1", "uvicorn"])
+            options.add_requirements(SERVE_REQUIREMENTS)
 
         return options
 
