@@ -265,6 +265,7 @@ def load_function_from(
     type=click.Choice(ALIAS_AUTH_OPTIONS),
     default="private",
 )
+@click.option("-R", "--rollout", is_flag=True)
 @click.argument("file_path", required=True)
 @click.argument("function_name", required=True)
 @click.pass_obj
@@ -274,6 +275,7 @@ def register_application(
     function_name: str,
     alias: str | None,
     auth_mode: ALIAS_AUTH_TYPE,
+    rollout: bool,
 ):
     user_id = _get_user_id()
 
@@ -297,6 +299,7 @@ def register_application(
         application_name=alias,
         application_auth_mode=auth_mode,
         metadata=isolated_function.options.host.get("metadata", {}),
+        do_rollout=rollout,
     )
 
     if id:
