@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "isolate_proto"
-version = "0.3.2a0"
+version = "0.3.3a0"
 readme = "README.md"
 description = "(internal) gRPC definitions for Isolate Cloud"
 authors = ["Features & Labels <hello@fal.ai>"]
