@@ -12,3 +12,19 @@ from fal.toolkit.utils import (
     download_file,
     download_model_weights,
 )
+
+__all__ = [
+    "CompressedFile",
+    "File",
+    "Image",
+    "ImageSizeInput",
+    "get_image_size",
+    "mainify",
+    "optimize",
+    "FAL_MODEL_WEIGHTS_DIR",
+    "FAL_PERSISTENT_DIR",
+    "FAL_REPOSITORY_DIR",
+    "clone_repository",
+    "download_file",
+    "download_model_weights",
+]

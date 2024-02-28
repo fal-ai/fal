@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 from fal import apps
-
-# TODO: DEPRECATED - use function instead
 from fal.api import FalServerlessHost, LocalHost, cached
 from fal.api import function
 from fal.api import function as isolated
@@ -15,6 +13,17 @@ serverless = FalServerlessHost()
 
 # DEPRECATED - use serverless instead
 cloud = FalServerlessHost()
+
+__all__ = [
+    "function",
+    "cached",
+    "App",
+    "endpoint",
+    "realtime",
+    # "wrap_app",
+    "FalServerlessKeyCredentials",
+    "sync_dir",
+]
 
 
 # NOTE: This makes `import fal.dbt` import the `dbt-fal` module and `import fal` import the `fal` module
