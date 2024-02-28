@@ -1295,15 +1295,18 @@ class RunnerInfo(google.protobuf.message.Message):
     RUNNER_ID_FIELD_NUMBER: builtins.int
     IN_FLIGHT_REQUESTS_FIELD_NUMBER: builtins.int
     EXPIRATION_COUNTDOWN_FIELD_NUMBER: builtins.int
+    UPTIME_FIELD_NUMBER: builtins.int
     runner_id: builtins.str
     in_flight_requests: builtins.int
     expiration_countdown: builtins.int
+    uptime: builtins.float
     def __init__(
         self,
         *,
         runner_id: builtins.str = ...,
         in_flight_requests: builtins.int = ...,
         expiration_countdown: builtins.int = ...,
+        uptime: builtins.float = ...,
     ) -> None: ...
     def ClearField(
         self,
@@ -1314,6 +1317,8 @@ class RunnerInfo(google.protobuf.message.Message):
             b"in_flight_requests",
             "runner_id",
             b"runner_id",
+            "uptime",
+            b"uptime",
         ],
     ) -> None: ...
 
