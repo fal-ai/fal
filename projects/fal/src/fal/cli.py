@@ -468,6 +468,7 @@ def alias_list_runners(
     table.add_column("Runner ID")
     table.add_column("In Flight Requests")
     table.add_column("Expires in")
+    table.add_column("Uptime")
 
     for runner in runners:
         table.add_row(
@@ -478,6 +479,7 @@ def alias_list_runners(
                 if not runner.expiration_countdown
                 else f"{runner.expiration_countdown}s"
             ),
+            f"{runner.uptime} ({runner.uptime.total_seconds()}s)",
         )
 
     console.print(table)

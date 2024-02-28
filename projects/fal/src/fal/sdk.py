@@ -204,6 +204,7 @@ class RunnerInfo:
     runner_id: str
     in_flight_requests: int
     expiration_countdown: int
+    uptime: timedelta
 
 
 @dataclass
@@ -291,6 +292,7 @@ def _from_grpc_runner_info(message: isolate_proto.RunnerInfo) -> RunnerInfo:
         runner_id=message.runner_id,
         in_flight_requests=message.in_flight_requests,
         expiration_countdown=message.expiration_countdown,
+        uptime=timedelta(seconds=message.uptime),
     )
 
 
