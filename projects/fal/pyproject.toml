@@ -14,7 +14,6 @@ python = "^3.8"
 isolate = {version = ">=0.12.3, <1.0", extras = ["build"]}
 isolate-proto = {path = "../isolate_proto", develop = true}
 auth0-python = "^4.1.0"
-requests = "^2.28.1"
 grpcio = "^1.50.0"
 dill = "0.3.7"
 typing-extensions = "^4.7.1"
