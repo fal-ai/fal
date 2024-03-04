@@ -13,7 +13,6 @@ packages = [
 python = "^3.8"
 isolate = {version = ">=0.12.3, <1.0", extras = ["build"]}
 isolate-proto = {path = "../isolate_proto", develop = true}
-auth0-python = "^4.1.0"
 grpcio = "^1.50.0"
 dill = "0.3.7"
 typing-extensions = "^4.7.1"
@@ -43,6 +42,7 @@ importlib-metadata = { version = ">=4.4", python = "<3.10" }
 msgpack = "^1.0.7"
 websockets = "^12.0"
 pillow = "^10.2.0"
+pyjwt = "^2.8.0"
 
 [tool.poetry.group.dev.dependencies]
 openapi-python-client = "^0.14.1"
