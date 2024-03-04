@@ -4,7 +4,7 @@ import time
 import warnings
 
 import click
-import requests
+import httpx
 from auth0.authentication.token_verifier import (
     AsymmetricSignatureVerifier,
     TokenVerifier,
@@ -54,7 +54,7 @@ def login() -> dict:
         "client_id": AUTH0_CLIENT_ID,
         "scope": AUTH0_SCOPE,
     }
-    device_code_response = requests.post(
+    device_code_response = httpx.post(
         f"https://{AUTH0_DOMAIN}/oauth/device/code", data=device_code_payload
     )
 
@@ -81,7 +81,7 @@ def login() -> dict:
 
     with console.status("Waiting for confirmation...") as status:
         while True:
-            token_response = requests.post(
+            token_response = httpx.post(
                 f"https://{AUTH0_DOMAIN}/oauth/token", data=token_payload
             )
 
@@ -109,7 +109,7 @@ def refresh(token: str) -> dict:
         "refresh_token": token,
     }
 
-    token_response = requests.post(
+    token_response = httpx.post(
         f"https://{AUTH0_DOMAIN}/oauth/token", data=token_payload
     )
 
@@ -130,7 +130,7 @@ def revoke(token: str):
         "token": token,
     }
 
-    token_response = requests.post(
+    token_response = httpx.post(
         f"https://{AUTH0_DOMAIN}/oauth/revoke", data=token_payload
     )
 
@@ -142,7 +142,7 @@ def revoke(token: str):
 
 
 def get_user_info(bearer_token: str) -> dict:
-    userinfo_response = requests.post(
+    userinfo_response = httpx.post(
         f"https://{AUTH0_DOMAIN}/userinfo",
         headers={"Authorization": bearer_token},
     )
