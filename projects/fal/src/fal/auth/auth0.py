@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import time
 import warnings
 
@@ -147,25 +148,24 @@ def get_user_info(bearer_token: str) -> dict:
     return userinfo_response.json()
 
 
-# To cache the client
-JWT_CLIENT = None
+@functools.lru_cache
+def build_jwk_client():
+    from jwt import PyJWKClient
+
+    return PyJWKClient(AUTH0_JWKS_URL, cache_keys=True)
 
 
 def validate_id_token(token: str):
     """
     id_token is intended for the client (this sdk) only. Never send one to another service.
     """
-    from jwt import PyJWKClient, decode
+    from jwt import decode
 
-    global JWT_CLIENT
-    if JWT_CLIENT is None:
-        # This is short-lived, so we can just cache it in case it
-        # is used more than once in a request
-        JWT_CLIENT = PyJWKClient(AUTH0_JWKS_URL, cache_keys=True)
+    jwk_client = build_jwk_client()
 
     decode(
         token,
-        key=JWT_CLIENT.get_signing_key_from_jwt(token).key,
+        key=jwk_client.get_signing_key_from_jwt(token).key,
         algorithms=AUTH0_ALGORITHMS,
         issuer=AUTH0_ISSUER,
         audience=AUTH0_CLIENT_ID,
