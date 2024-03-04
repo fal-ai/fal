@@ -62,7 +62,7 @@ def _fetch_access_token() -> str:
 
         if access_token is not None:
             try:
-                auth0.validate_access_token(access_token)
+                auth0.verify_access_token_expiration(access_token)
                 return access_token
             except:
                 # access_token expired, will refresh

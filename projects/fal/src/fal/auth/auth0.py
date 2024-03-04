@@ -5,10 +5,6 @@ import warnings
 
 import click
 import httpx
-from auth0.authentication.token_verifier import (
-    AsymmetricSignatureVerifier,
-    TokenVerifier,
-)
 
 from fal.console import console
 from fal.console.icons import CHECK_ICON
@@ -115,8 +111,6 @@ def refresh(token: str) -> dict:
 
     token_data = token_response.json()
     if token_response.status_code == 200:
-        # DEBUG: print("Authenticated!")
-
         validate_id_token(token_data["id_token"])
 
         return token_data
@@ -153,24 +147,39 @@ def get_user_info(bearer_token: str) -> dict:
     return userinfo_response.json()
 
 
+# To cache the client
+JWT_CLIENT = None
+
+
 def validate_id_token(token: str):
     """
-    Verify the token and its precedence.
-    `id_token`s are intended for the client (this sdk) only.
-    Never send one to another service.
-
-    :param id_token:
+    id_token is intended for the client (this sdk) only. Never send one to another service.
     """
-    sv = AsymmetricSignatureVerifier(AUTH0_JWKS_URL)
-    tv = TokenVerifier(
-        signature_verifier=sv,
+    from jwt import PyJWKClient, decode
+
+    global JWT_CLIENT
+    if JWT_CLIENT is None:
+        # This is short-lived, so we can just cache it in case it
+        # is used more than once in a request
+        JWT_CLIENT = PyJWKClient(AUTH0_JWKS_URL, cache_keys=True)
+
+    decode(
+        token,
+        key=JWT_CLIENT.get_signing_key_from_jwt(token).key,
+        algorithms=AUTH0_ALGORITHMS,
         issuer=AUTH0_ISSUER,
         audience=AUTH0_CLIENT_ID,
+        options={
+            "verify_signature": True,
+            "verify_exp": True,
+            "verify_iat": True,
+            "verify_aud": True,
+            "verify_iss": True,
+        },
     )
-    tv.verify(token)
 
 
-def validate_access_token(token: str):
+def verify_access_token_expiration(token: str):
     from datetime import timedelta
 
     from jwt import decode
