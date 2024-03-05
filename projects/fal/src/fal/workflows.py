@@ -226,7 +226,6 @@ class Workflow:
             }
         )
         for node_name in graph.static_order():
-            print("Running: ", node_name)
             node = self.nodes[node_name]
             context.vars[node_name] = node.execute(context)
 
