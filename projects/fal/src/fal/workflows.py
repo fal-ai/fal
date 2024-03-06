@@ -346,7 +346,14 @@ def main() -> None:
                 input = context.hydrate(node.input)
                 assert isinstance(input, dict)
 
-                handle = fal.apps.submit(node.app, input)
+                owner, _, app = node.app.partition("/")
+                app, sep, path = app.partition("/")
+
+                handle = fal.apps.submit(
+                    f"{owner}/{app}",
+                    path=f"{sep}{path}",
+                    arguments=input,
+                )
                 log_count = 0
                 for event in handle.iter_events(logs=True):
                     if isinstance(event, fal.apps.Queued):
