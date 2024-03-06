@@ -2,9 +2,14 @@ from __future__ import annotations
 
 import ast
 import graphlib
+import json
+from argparse import ArgumentParser
 from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any, Iterator, Union, cast
+
+import rich
+from rich.syntax import Syntax
 
 import fal
 
@@ -243,3 +248,76 @@ class Workflow:
             "nodes": {node.name: node.to_json() for node in self.nodes.values()},
             "output": export_workflow_json(self.output),
         }
+
+
+def main() -> None:
+    import cli_nested_json
+
+    parser = ArgumentParser()
+    parser.add_argument("workflow_file", type=str)
+    args, input_params = parser.parse_known_args()
+
+    with open(args.workflow_file) as stream:
+        workflow = Workflow.from_json(json.load(stream))
+
+    payload = cli_nested_json.interpret_nested_json(
+        [part.split("=") for part in input_params]
+    )
+    console = rich.get_console()
+    console.print(
+        f"🤧 Loaded {args.workflow_file!r} with {len(workflow.nodes)} nodes!",
+        style="bold magenta",
+    )
+
+    context = Context({INPUT_VARIABLE_NAME: payload})
+
+    graph = graphlib.TopologicalSorter(
+        graph={
+            node.name: node.requires - {INPUT_VARIABLE_NAME}
+            for node in workflow.nodes.values()
+        }
+    )
+    with console.status("Starting the execution", spinner="bouncingBall") as status:
+        for n, node_name in enumerate(graph.static_order()):
+            node = workflow.nodes[node_name]
+            status.update(
+                status=f"Executing {node_name!r} ({n}/{len(workflow.nodes)})",
+                spinner="runner",
+            )
+            input = context.hydrate(node.input)
+            assert isinstance(input, dict)
+
+            handle = fal.apps.submit(node.app, input)
+            log_count = 0
+            for event in handle.iter_events(logs=True):
+                if isinstance(event, fal.apps.Queued):
+                    status.update(
+                        status=f"Queued for {node_name!r} (position={event.position}) ({n}/{len(workflow.nodes)})",
+                        spinner="dots",
+                    )
+                elif isinstance(event, fal.apps.InProgress):
+                    status.update(
+                        status=f"Executing {node_name!r} ({n}/{len(workflow.nodes)})",
+                        spinner="runner",
+                    )
+                    for log in event.logs[log_count:]:  # type: ignore
+                        console.log(log["message"], style="dim")
+                        log_count += 1
+
+            handle_status = handle.status(logs=True)
+            assert isinstance(handle_status, fal.apps.Completed)
+            for log in handle_status.logs[log_count:]:  # type: ignore
+                console.log(log["message"], style="dim")
+
+            context.vars[node_name] = handle.get()
+
+        console.print(
+            f"🎉 Execution complete!",
+            style="bold green",
+        )
+        output = context.hydrate(workflow.output)
+        console.print(Syntax(json.dumps(output, indent=2), "json"))
+
+
+if __name__ == "__main__":
+    main()
