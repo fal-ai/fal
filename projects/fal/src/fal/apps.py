@@ -63,7 +63,10 @@ class RequestHandle:
     _creds: Credentials = field(default_factory=get_default_credentials, repr=False)
 
     def __post_init__(self):
-        self.app_id = _backwards_compatible_app_id(self.app_id)
+        app_id = _backwards_compatible_app_id(self.app_id)
+        # drop any extra path components
+        user_id, app_name = app_id.split("/")[:2]
+        self.app_id = f"{user_id}/{app_name}"
 
     def status(self, *, logs: bool = False) -> _Status:
         """Check the status of an async inference request."""
@@ -143,20 +146,23 @@ class RequestHandle:
 _HTTP_CLIENT = httpx.Client(headers={"User-Agent": "Fal/Python"})
 
 
-def run(app_id: str, arguments: dict[str, Any], *, path: str = "/") -> dict[str, Any]:
+def run(app_id: str, arguments: dict[str, Any], *, path: str = "") -> dict[str, Any]:
     """Run an inference task on a Fal app and return the result."""
 
     handle = submit(app_id, arguments, path=path)
     return handle.get()
 
 
-def submit(app_id: str, arguments: dict[str, Any], *, path: str = "/") -> RequestHandle:
+def submit(app_id: str, arguments: dict[str, Any], *, path: str = "") -> RequestHandle:
     """Submit an async inference task to the app. Returns a request handle
     which can be used to check the status of the request and retrieve the
     result."""
 
     app_id = _backwards_compatible_app_id(app_id)
-    url = _QUEUE_URL_FORMAT.format(app_id=app_id) + path
+    url = _QUEUE_URL_FORMAT.format(app_id=app_id)
+    if path:
+        url += "/" + path.removeprefix("/")
+
     creds = get_default_credentials()
 
     response = _HTTP_CLIENT.post(
@@ -215,7 +221,10 @@ def _connect(app_id: str, *, path: str = "/realtime") -> Iterator[_RealtimeConne
     from websockets.sync import client
 
     app_id = _backwards_compatible_app_id(app_id)
-    url = _REALTIME_URL_FORMAT.format(app_id=app_id) + path
+    url = _REALTIME_URL_FORMAT.format(app_id=app_id)
+    if path:
+        url += "/" + path.removeprefix("/")
+
     creds = get_default_credentials()
 
     with client.connect(
