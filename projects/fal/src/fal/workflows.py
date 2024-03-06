@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import graphlib
 import json
+import webbrowser
 from argparse import ArgumentParser
 from collections import Counter
 from dataclasses import dataclass, field
@@ -13,7 +14,7 @@ from rich.syntax import Syntax
 
 import fal
 
-JSONType = Union[dict[str, Any], list[Any], str, int, float, bool, None]
+JSONType = Union[dict[str, Any], list[Any], str, int, float, bool, None, "Leaf"]
 VARIABLE_PREFIX = "$"
 INPUT_VARIABLE_NAME = "input"
 
@@ -35,7 +36,7 @@ def parse_leaf(raw_leaf: str) -> Leaf:
     return parse_node(leaf_tree)
 
 
-def export_workflow_json(data: dict[str, Any]) -> dict[str, Any]:
+def export_workflow_json(data: JSONType) -> JSONType:
     if isinstance(data, dict):
         return {k: export_workflow_json(v) for k, v in data.items()}
     elif isinstance(data, list):
@@ -46,7 +47,7 @@ def export_workflow_json(data: dict[str, Any]) -> dict[str, Any]:
         return data
 
 
-def import_workflow_json(data: dict[str, Any]) -> dict[str, Any]:
+def import_workflow_json(data: JSONType) -> JSONType:
     if isinstance(data, dict):
         return {k: import_workflow_json(v) for k, v in data.items()}
     elif isinstance(data, list):
@@ -75,7 +76,7 @@ class Context:
     def hydrate(self, input: JSONType) -> JSONType:
         if isinstance(input, dict):
             return {k: self.hydrate(v) for k, v in input.items()}
-        elif isinstance(input, dict):
+        elif isinstance(input, list):
             return [self.hydrate(v) for v in input]
         elif isinstance(input, Leaf):
             return input.execute(self)
@@ -153,11 +154,62 @@ class ReferenceLeaf(Leaf):
 @dataclass
 class Node:
     name: str
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> Node:
+        type = data.pop("type")
+        if type == "display":
+            return Display.from_json(data)
+        elif type == "run":
+            return Run.from_json(data)
+        else:
+            raise ValueError(f"Invalid node type: {type}")
+
+    def to_json(self) -> dict[str, Any]:
+        raise NotImplementedError
+
+    def execute(self, context: Context) -> JSONType:
+        raise NotImplementedError
+
+    @property
+    def requires(self) -> set[str]:
+        raise NotImplementedError
+
+
+@dataclass
+class Display(Node):
+    fields: list[Leaf]
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> Display:
+        return cls(
+            name=data["name"],
+            fields=import_workflow_json(data["fields"]),  # type: ignore
+        )
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "type": "display",
+            "name": self.name,
+            "fields": export_workflow_json(self.fields),
+        }
+
+    def execute(self, context: Context) -> JSONType:
+        for url in context.hydrate(self.fields):  # type: ignore
+            webbrowser.open(url)
+
+    @property
+    def requires(self) -> set[str]:
+        return {leaf.referee.name for leaf in self.fields}  # type: ignore
+
+
+@dataclass
+class Run(Node):
     app: str
     input: JSONType
 
     @classmethod
-    def from_json(cls, data: dict[str, Any]) -> Node:
+    def from_json(cls, data: dict[str, Any]) -> Run:
         return cls(
             name=data["name"],
             app=data["app"],
@@ -179,6 +231,7 @@ class Node:
 
     def to_json(self) -> dict[str, Any]:
         return {
+            "type": "run",
             "name": self.name,
             "app": self.app,
             "input": export_workflow_json(self.input),  # type: ignore
@@ -193,7 +246,7 @@ class Workflow:
 
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> Workflow:
-        data = import_workflow_json(data)
+        data = import_workflow_json(data)  # type: ignore
         return cls(
             nodes={
                 node_name: Node.from_json(node_data)
@@ -204,16 +257,21 @@ class Workflow:
 
     def __post_init__(self) -> None:
         for node in self.nodes.values():
-            self._app_counter[node.app] += 1
+            if isinstance(node, Run):
+                self._app_counter[node.app] += 1
 
     def _generate_node_name(self, app: str) -> str:
         self._app_counter[app] += 1
         return f"{app.replace('/', '_').replace('-', '_')}_{self._app_counter[app]}"
 
-    def call(self, app: str, input: JSONType) -> ReferenceLeaf:
+    def run(self, app: str, input: JSONType) -> ReferenceLeaf:
         node_name = self._generate_node_name(app)
-        node = self.nodes[node_name] = Node(node_name, app, input)
+        node = self.nodes[node_name] = Run(node_name, app, input)
         return ReferenceLeaf(node.name)
+
+    def display(self, *fields: Leaf) -> None:
+        node_name = self._generate_node_name("display")
+        self.nodes[node_name] = Display(node_name, fields=list(fields))
 
     def set_output(self, output: JSONType) -> None:
         self.output = output  # type: ignore
@@ -224,13 +282,13 @@ class Workflow:
 
         context = Context({INPUT_VARIABLE_NAME: input})
 
-        graph = graphlib.TopologicalSorter(
+        sorter = graphlib.TopologicalSorter(
             graph={
                 node.name: node.requires - {INPUT_VARIABLE_NAME}
                 for node in self.nodes.values()
             }
         )
-        for node_name in graph.static_order():
+        for node_name in sorter.static_order():
             node = self.nodes[node_name]
             context.vars[node_name] = node.execute(context)
 
@@ -271,45 +329,48 @@ def main() -> None:
 
     context = Context({INPUT_VARIABLE_NAME: payload})
 
-    graph = graphlib.TopologicalSorter(
+    sorter = graphlib.TopologicalSorter(
         graph={
             node.name: node.requires - {INPUT_VARIABLE_NAME}
             for node in workflow.nodes.values()
         }
     )
     with console.status("Starting the execution", spinner="bouncingBall") as status:
-        for n, node_name in enumerate(graph.static_order()):
+        for n, node_name in enumerate(sorter.static_order()):
             node = workflow.nodes[node_name]
             status.update(
                 status=f"Executing {node_name!r} ({n}/{len(workflow.nodes)})",
                 spinner="runner",
             )
-            input = context.hydrate(node.input)
-            assert isinstance(input, dict)
+            if isinstance(node, Run):
+                input = context.hydrate(node.input)
+                assert isinstance(input, dict)
 
-            handle = fal.apps.submit(node.app, input)
-            log_count = 0
-            for event in handle.iter_events(logs=True):
-                if isinstance(event, fal.apps.Queued):
-                    status.update(
-                        status=f"Queued for {node_name!r} (position={event.position}) ({n}/{len(workflow.nodes)})",
-                        spinner="dots",
-                    )
-                elif isinstance(event, fal.apps.InProgress):
-                    status.update(
-                        status=f"Executing {node_name!r} ({n}/{len(workflow.nodes)})",
-                        spinner="runner",
-                    )
-                    for log in event.logs[log_count:]:  # type: ignore
-                        console.log(log["message"], style="dim")
-                        log_count += 1
+                handle = fal.apps.submit(node.app, input)
+                log_count = 0
+                for event in handle.iter_events(logs=True):
+                    if isinstance(event, fal.apps.Queued):
+                        status.update(
+                            status=f"Queued for {node_name!r} (position={event.position}) ({n}/{len(workflow.nodes)})",
+                            spinner="dots",
+                        )
+                    elif isinstance(event, fal.apps.InProgress):
+                        status.update(
+                            status=f"Executing {node_name!r} ({n}/{len(workflow.nodes)})",
+                            spinner="runner",
+                        )
+                        for log in event.logs[log_count:]:  # type: ignore
+                            console.log(log["message"], style="dim")
+                            log_count += 1
 
-            handle_status = handle.status(logs=True)
-            assert isinstance(handle_status, fal.apps.Completed)
-            for log in handle_status.logs[log_count:]:  # type: ignore
-                console.log(log["message"], style="dim")
+                handle_status = handle.status(logs=True)
+                assert isinstance(handle_status, fal.apps.Completed)
+                for log in handle_status.logs[log_count:]:  # type: ignore
+                    console.log(log["message"], style="dim")
 
-            context.vars[node_name] = handle.get()
+                context.vars[node_name] = handle.get()
+            else:
+                context.vars[node_name] = node.execute(context)
 
         console.print(
             f"🎉 Execution complete!",
