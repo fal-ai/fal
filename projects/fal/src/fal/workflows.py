@@ -10,11 +10,13 @@ from dataclasses import dataclass, field
 from typing import Any, Iterator, Union, cast
 
 import rich
+from pydantic import BaseModel
 from rich.syntax import Syntax
 
 import fal
 
 JSONType = Union[dict[str, Any], list[Any], str, int, float, bool, None, "Leaf"]
+SchemaType = dict[str, Any]
 VARIABLE_PREFIX = "$"
 INPUT_VARIABLE_NAME = "input"
 
@@ -240,6 +242,9 @@ class Run(Node):
 
 @dataclass
 class Workflow:
+    name: str
+    input_schema: SchemaType
+    output_schema: SchemaType
     nodes: dict[str, Node] = field(default_factory=dict)
     output: dict[str, Any] | None = None
     _app_counter: Counter = field(default_factory=Counter)
@@ -248,6 +253,9 @@ class Workflow:
     def from_json(cls, data: dict[str, Any]) -> Workflow:
         data = import_workflow_json(data)  # type: ignore
         return cls(
+            name=data["name"],
+            input_schema=data["schema"]["input"],
+            output_schema=data["schema"]["output"],
             nodes={
                 node_name: Node.from_json(node_data)
                 for node_name, node_data in data["nodes"].items()
@@ -303,9 +311,26 @@ class Workflow:
             raise ValueError("Can't serialize the workflow before the output is set.")
 
         return {
+            "name": self.name,
+            "schema": {
+                "input": self.input_schema,
+                "output": self.output_schema,
+            },
             "nodes": {node.name: node.to_json() for node in self.nodes.values()},
             "output": export_workflow_json(self.output),
         }
+
+
+def create_workflow(
+    name: str,
+    input: type[BaseModel],
+    output: type[BaseModel],
+) -> Workflow:
+    return Workflow(
+        name=name,
+        input_schema=input.schema(),
+        output_schema=output.schema(),
+    )
 
 
 def main() -> None:
@@ -323,7 +348,7 @@ def main() -> None:
     )
     console = rich.get_console()
     console.print(
-        f"🤧 Loaded {args.workflow_file!r} with {len(workflow.nodes)} nodes!",
+        f"🤧 Loaded {workflow.name!r} with {len(workflow.nodes)} nodes!",
         style="bold magenta",
     )
 
