@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import ast
 import graphlib
 import json
 import webbrowser
@@ -21,21 +20,32 @@ VARIABLE_PREFIX = "$"
 INPUT_VARIABLE_NAME = "input"
 
 
+class WorkflowSyntaxError(Exception):
+    pass
+
+
 def parse_leaf(raw_leaf: str) -> Leaf:
-    raw_leaf = raw_leaf.removeprefix(VARIABLE_PREFIX)
-    leaf_tree = ast.parse(raw_leaf, mode="eval").body
+    """Parses a leaf (which is in the form of $variable.field.field_2[index] etc.)
+    into a tree of Leaf objects."""
+    raw_parts = raw_leaf.split(".")
+    reference, *raw_parts = raw_parts
+    if not reference.startswith(VARIABLE_PREFIX):
+        raise WorkflowSyntaxError(
+            f"Invalid leaf: {raw_leaf} (must start with a reference)"
+        )
 
-    def parse_node(node: ast.AST) -> Leaf:
-        if isinstance(node, ast.Name):
-            return ReferenceLeaf(node.id)
-        elif isinstance(node, ast.Attribute):
-            return AttributeLeaf(parse_node(node.value), node.attr)
-        elif isinstance(node, ast.Subscript):
-            return IndexLeaf(parse_node(node.value), ast.literal_eval(node.slice))
+    leaf: Leaf = ReferenceLeaf(reference.removeprefix(VARIABLE_PREFIX))
+    for raw_part in raw_parts:
+        if raw_part.isdigit():
+            leaf = IndexLeaf(leaf, int(raw_part))
+        elif raw_part.isidentifier():
+            leaf = AttributeLeaf(leaf, raw_part)
         else:
-            raise ValueError(f"Invalid leaf: {raw_leaf}")
+            raise WorkflowSyntaxError(
+                f"Invalid leaf: {raw_leaf} (unexpected {raw_part})"
+            )
 
-    return parse_node(leaf_tree)
+    return leaf
 
 
 def export_workflow_json(data: JSONType) -> JSONType:
@@ -131,7 +141,7 @@ class IndexLeaf(Leaf):
         return output[self.index]
 
     def __repr__(self) -> str:
-        return f"{self.leaf!r}[{self.index}]"
+        return f"{self.leaf!r}.{self.index}"
 
     @property
     def referee(self) -> ReferenceLeaf:
