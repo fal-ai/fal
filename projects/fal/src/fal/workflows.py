@@ -16,8 +16,13 @@ import fal
 
 JSONType = Union[dict[str, Any], list[Any], str, int, float, bool, None, "Leaf"]
 SchemaType = dict[str, Any]
+
 VARIABLE_PREFIX = "$"
 INPUT_VARIABLE_NAME = "input"
+
+# Will be 1.0 once the server is finalized and anything <1.0
+# is going to be rejected.
+WORKFLOW_EXPORT_VERSION = "0.1"
 
 
 class WorkflowSyntaxError(Exception):
@@ -233,20 +238,20 @@ class Run(Node):
         assert isinstance(input, dict)
         return cast(JSONType, fal.apps.run(self.app, input))
 
-    @property
-    def requires(self) -> set[str]:
-        return {
-            leaf.referee.id  # type: ignore
-            for leaf in iter_leaves(self.input)
-            if isinstance(leaf, Leaf)
-        }
-
     def to_json(self) -> dict[str, Any]:
         return {
             "type": "run",
             "id": self.id,
             "app": self.app,
             "input": export_workflow_json(self.input),  # type: ignore
+        }
+
+    @property
+    def requires(self) -> set[str]:
+        return {
+            leaf.referee.id  # type: ignore
+            for leaf in iter_leaves(self.input)
+            if isinstance(leaf, Leaf)
         }
 
 
@@ -328,6 +333,7 @@ class Workflow:
             },
             "nodes": {node.id: node.to_json() for node in self.nodes.values()},
             "output": export_workflow_json(self.output),
+            "version": WORKFLOW_EXPORT_VERSION,
         }
 
 
