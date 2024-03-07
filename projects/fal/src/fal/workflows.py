@@ -150,13 +150,13 @@ class IndexLeaf(Leaf):
 
 @dataclass
 class ReferenceLeaf(Leaf):
-    name: str
+    id: str
 
     def execute(self, context: Context) -> JSONType:
-        return context.vars[self.name]
+        return context.vars[self.id]
 
     def __repr__(self) -> str:
-        return VARIABLE_PREFIX + self.name
+        return VARIABLE_PREFIX + self.id
 
     @property
     def referee(self) -> ReferenceLeaf:
@@ -165,7 +165,7 @@ class ReferenceLeaf(Leaf):
 
 @dataclass
 class Node:
-    name: str
+    id: str
 
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> Node:
@@ -195,14 +195,14 @@ class Display(Node):
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> Display:
         return cls(
-            name=data["name"],
+            id=data["id"],
             fields=import_workflow_json(data["fields"]),  # type: ignore
         )
 
     def to_json(self) -> dict[str, Any]:
         return {
             "type": "display",
-            "name": self.name,
+            "id": self.id,
             "fields": export_workflow_json(self.fields),
         }
 
@@ -212,7 +212,7 @@ class Display(Node):
 
     @property
     def requires(self) -> set[str]:
-        return {leaf.referee.name for leaf in self.fields}  # type: ignore
+        return {leaf.referee.id for leaf in self.fields}  # type: ignore
 
 
 @dataclass
@@ -223,7 +223,7 @@ class Run(Node):
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> Run:
         return cls(
-            name=data["name"],
+            id=data["id"],
             app=data["app"],
             input=import_workflow_json(data["input"]),
         )
@@ -236,7 +236,7 @@ class Run(Node):
     @property
     def requires(self) -> set[str]:
         return {
-            leaf.referee.name  # type: ignore
+            leaf.referee.id  # type: ignore
             for leaf in iter_leaves(self.input)
             if isinstance(leaf, Leaf)
         }
@@ -244,7 +244,7 @@ class Run(Node):
     def to_json(self) -> dict[str, Any]:
         return {
             "type": "run",
-            "name": self.name,
+            "id": self.id,
             "app": self.app,
             "input": export_workflow_json(self.input),  # type: ignore
         }
@@ -267,8 +267,8 @@ class Workflow:
             input_schema=data["schema"]["input"],
             output_schema=data["schema"]["output"],
             nodes={
-                node_name: Node.from_json(node_data)
-                for node_name, node_data in data["nodes"].items()
+                node_id: Node.from_json(node_data)
+                for node_id, node_data in data["nodes"].items()
             },
             output=data["output"],
         )
@@ -278,18 +278,18 @@ class Workflow:
             if isinstance(node, Run):
                 self._app_counter[node.app] += 1
 
-    def _generate_node_name(self, app: str) -> str:
+    def _generate_node_id(self, app: str) -> str:
         self._app_counter[app] += 1
         return f"{app.replace('/', '_').replace('-', '_')}_{self._app_counter[app]}"
 
     def run(self, app: str, input: JSONType) -> ReferenceLeaf:
-        node_name = self._generate_node_name(app)
-        node = self.nodes[node_name] = Run(node_name, app, input)
-        return ReferenceLeaf(node.name)
+        node_id = self._generate_node_id(app)
+        node = self.nodes[node_id] = Run(node_id, app, input)
+        return ReferenceLeaf(node.id)
 
     def display(self, *fields: Leaf) -> None:
-        node_name = self._generate_node_name("display")
-        self.nodes[node_name] = Display(node_name, fields=list(fields))
+        node_id = self._generate_node_id("display")
+        self.nodes[node_id] = Display(node_id, fields=list(fields))
 
     def set_output(self, output: JSONType) -> None:
         self.output = output  # type: ignore
@@ -302,13 +302,13 @@ class Workflow:
 
         sorter = graphlib.TopologicalSorter(
             graph={
-                node.name: node.requires - {INPUT_VARIABLE_NAME}
+                node.id: node.requires - {INPUT_VARIABLE_NAME}
                 for node in self.nodes.values()
             }
         )
-        for node_name in sorter.static_order():
-            node = self.nodes[node_name]
-            context.vars[node_name] = node.execute(context)
+        for node_id in sorter.static_order():
+            node = self.nodes[node_id]
+            context.vars[node_id] = node.execute(context)
 
         return context.hydrate(self.output)
 
@@ -326,7 +326,7 @@ class Workflow:
                 "input": self.input_schema,
                 "output": self.output_schema,
             },
-            "nodes": {node.name: node.to_json() for node in self.nodes.values()},
+            "nodes": {node.id: node.to_json() for node in self.nodes.values()},
             "output": export_workflow_json(self.output),
         }
 
@@ -366,15 +366,15 @@ def main() -> None:
 
     sorter = graphlib.TopologicalSorter(
         graph={
-            node.name: node.requires - {INPUT_VARIABLE_NAME}
+            node.id: node.requires - {INPUT_VARIABLE_NAME}
             for node in workflow.nodes.values()
         }
     )
     with console.status("Starting the execution", spinner="bouncingBall") as status:
-        for n, node_name in enumerate(sorter.static_order()):
-            node = workflow.nodes[node_name]
+        for n, node_id in enumerate(sorter.static_order()):
+            node = workflow.nodes[node_id]
             status.update(
-                status=f"Executing {node_name!r} ({n}/{len(workflow.nodes)})",
+                status=f"Executing {node_id!r} ({n}/{len(workflow.nodes)})",
                 spinner="runner",
             )
             if isinstance(node, Run):
@@ -393,12 +393,12 @@ def main() -> None:
                 for event in handle.iter_events(logs=True):
                     if isinstance(event, fal.apps.Queued):
                         status.update(
-                            status=f"Queued for {node_name!r} (position={event.position}) ({n}/{len(workflow.nodes)})",
+                            status=f"Queued for {node_id!r} (position={event.position}) ({n}/{len(workflow.nodes)})",
                             spinner="dots",
                         )
                     elif isinstance(event, fal.apps.InProgress):
                         status.update(
-                            status=f"Executing {node_name!r} ({n}/{len(workflow.nodes)})",
+                            status=f"Executing {node_id!r} ({n}/{len(workflow.nodes)})",
                             spinner="runner",
                         )
                         for log in event.logs[log_count:]:  # type: ignore
@@ -410,9 +410,9 @@ def main() -> None:
                 for log in handle_status.logs[log_count:]:  # type: ignore
                     console.log(log["message"], style="dim")
 
-                context.vars[node_name] = handle.get()
+                context.vars[node_id] = handle.get()
             else:
-                context.vars[node_name] = node.execute(context)
+                context.vars[node_id] = node.execute(context)
 
         console.print(
             f"🎉 Execution complete!",
