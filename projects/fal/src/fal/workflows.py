@@ -29,6 +29,10 @@ class WorkflowSyntaxError(Exception):
     pass
 
 
+class MisconfiguredGraphError(WorkflowSyntaxError):
+    pass
+
+
 def parse_leaf(raw_leaf: str) -> Leaf:
     """Parses a leaf (which is in the form of $variable.field.field_2[index] etc.)
     into a tree of Leaf objects."""
@@ -79,11 +83,19 @@ def iter_leaves(data: JSONType) -> Iterator[JSONType]:
     if isinstance(data, dict):
         for value in data.values():
             yield from iter_leaves(value)
-    elif isinstance(data, dict):
+    elif isinstance(data, list):
         for item in data:
             yield from iter_leaves(item)
     else:
         yield data
+
+
+def depends(data: JSONType) -> set[str]:
+    return {
+        leaf.referee.id  # type: ignore
+        for leaf in iter_leaves(data)
+        if isinstance(leaf, Leaf)
+    }
 
 
 @dataclass
@@ -158,7 +170,10 @@ class ReferenceLeaf(Leaf):
     id: str
 
     def execute(self, context: Context) -> JSONType:
-        return context.vars[self.id]
+        try:
+            return context.vars[self.id]
+        except KeyError:
+            raise MisconfiguredGraphError(f"Variable {self.id!r} is not defined")
 
     def __repr__(self) -> str:
         return VARIABLE_PREFIX + self.id
@@ -171,6 +186,7 @@ class ReferenceLeaf(Leaf):
 @dataclass
 class Node:
     id: str
+    depends: set[str]
 
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> Node:
@@ -180,16 +196,12 @@ class Node:
         elif type == "run":
             return Run.from_json(data)
         else:
-            raise ValueError(f"Invalid node type: {type}")
+            raise WorkflowSyntaxError(f"Invalid node type: {type}")
 
     def to_json(self) -> dict[str, Any]:
         raise NotImplementedError
 
     def execute(self, context: Context) -> JSONType:
-        raise NotImplementedError
-
-    @property
-    def requires(self) -> set[str]:
         raise NotImplementedError
 
 
@@ -201,6 +213,7 @@ class Display(Node):
     def from_json(cls, data: dict[str, Any]) -> Display:
         return cls(
             id=data["id"],
+            depends=set(data["depends"]),
             fields=import_workflow_json(data["fields"]),  # type: ignore
         )
 
@@ -208,16 +221,13 @@ class Display(Node):
         return {
             "type": "display",
             "id": self.id,
+            "depends": list(self.depends),
             "fields": export_workflow_json(self.fields),
         }
 
     def execute(self, context: Context) -> JSONType:
         for url in context.hydrate(self.fields):  # type: ignore
             webbrowser.open(url)
-
-    @property
-    def requires(self) -> set[str]:
-        return {leaf.referee.id for leaf in self.fields}  # type: ignore
 
 
 @dataclass
@@ -229,6 +239,7 @@ class Run(Node):
     def from_json(cls, data: dict[str, Any]) -> Run:
         return cls(
             id=data["id"],
+            depends=set(data["depends"]),
             app=data["app"],
             input=import_workflow_json(data["input"]),
         )
@@ -243,15 +254,8 @@ class Run(Node):
             "type": "run",
             "id": self.id,
             "app": self.app,
+            "depends": list(self.depends),
             "input": export_workflow_json(self.input),  # type: ignore
-        }
-
-    @property
-    def requires(self) -> set[str]:
-        return {
-            leaf.referee.id  # type: ignore
-            for leaf in iter_leaves(self.input)
-            if isinstance(leaf, Leaf)
         }
 
 
@@ -289,25 +293,36 @@ class Workflow:
 
     def run(self, app: str, input: JSONType) -> ReferenceLeaf:
         node_id = self._generate_node_id(app)
-        node = self.nodes[node_id] = Run(node_id, app, input)
+        node = self.nodes[node_id] = Run(
+            id=node_id,
+            depends=depends(input),
+            app=app,
+            input=input,
+        )
         return ReferenceLeaf(node.id)
 
     def display(self, *fields: Leaf) -> None:
         node_id = self._generate_node_id("display")
-        self.nodes[node_id] = Display(node_id, fields=list(fields))
+        self.nodes[node_id] = Display(
+            node_id,
+            depends=depends(list(fields)),
+            fields=list(fields),
+        )
 
     def set_output(self, output: JSONType) -> None:
         self.output = output  # type: ignore
 
     def execute(self, input: JSONType) -> JSONType:
         if not self.output:
-            raise ValueError("Can't execute the workflow before the output is set.")
+            raise WorkflowSyntaxError(
+                "Can't execute the workflow before the output is set."
+            )
 
         context = Context({INPUT_VARIABLE_NAME: input})
 
         sorter = graphlib.TopologicalSorter(
             graph={
-                node.id: node.requires - {INPUT_VARIABLE_NAME}
+                node.id: node.depends - {INPUT_VARIABLE_NAME}
                 for node in self.nodes.values()
             }
         )
@@ -323,7 +338,9 @@ class Workflow:
 
     def to_json(self) -> dict[str, JSONType]:
         if not self.output:
-            raise ValueError("Can't serialize the workflow before the output is set.")
+            raise WorkflowSyntaxError(
+                "Can't serialize the workflow before the output is set."
+            )
 
         return {
             "name": self.name,
@@ -372,7 +389,7 @@ def main() -> None:
 
     sorter = graphlib.TopologicalSorter(
         graph={
-            node.id: node.requires - {INPUT_VARIABLE_NAME}
+            node.id: node.depends - {INPUT_VARIABLE_NAME}
             for node in workflow.nodes.values()
         }
     )
