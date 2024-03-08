@@ -1,6 +1,9 @@
+import secrets
 import time
+from contextlib import contextmanager
 from typing import Generator
 
+import httpx
 import pytest
 from fastapi import WebSocket
 from httpx import HTTPStatusError
@@ -11,6 +14,7 @@ import fal
 import fal.api as api
 from fal import apps
 from fal.rest_client import REST_CLIENT
+from fal.workflows import Workflow
 
 
 class Input(BaseModel):
@@ -43,10 +47,11 @@ def addition_app(input: Input) -> Output:
 
 
 @fal.function(
-    keep_alive=0,
+    keep_alive=300,
     requirements=["fastapi", "uvicorn", "pydantic==1.10.12"],
     machine_type="S",
     max_concurrency=1,
+    max_multiplexing=30,
     exposed_port=8000,
 )
 def calculator_app():
@@ -445,3 +450,54 @@ def test_realtime_connection(test_realtime_app):
 
         assert len(received_prompts) == 10
         assert batch_sizes == [4, 4, 2]
+
+
+@contextmanager
+def delete_workflow_on_exit(client: httpx.Client, workflow_url: str):
+    try:
+        yield
+    finally:
+        client.delete(workflow_url)
+
+
+def test_workflows(test_app: str):
+    workflow = Workflow(
+        name="test_workflow_" + secrets.token_hex(),
+        input_schema={},
+        output_schema={},
+    )
+    # (lhs + rhs) + (lhs + rhs)
+    lhs = workflow.run(
+        test_app,
+        input={
+            "lhs": workflow.input.lhs,
+            "rhs": workflow.input.rhs,
+        },
+    )
+    rhs = workflow.run(
+        test_app,
+        input={
+            "lhs": workflow.input.lhs,
+            "rhs": workflow.input.rhs,
+        },
+    )
+    out = workflow.run(
+        test_app,
+        input={
+            "lhs": lhs.result,
+            "rhs": rhs.result,
+        },
+    )
+    workflow.set_output({"result": out.result})
+    workflow_url = workflow.publish(title="Test Workflow", is_public=False)
+
+    with httpx.Client(
+        base_url=REST_CLIENT.base_url,
+        headers=REST_CLIENT.get_headers(),
+        timeout=300,
+    ) as client:
+        with delete_workflow_on_exit(client, workflow_url):
+            response = client.post(workflow_url, json={"lhs": 2, "rhs": 3})
+            print(response.json())
+            assert response.status_code == 200
+            assert response.json() == {"result": 10}

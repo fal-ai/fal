@@ -30,3 +30,4 @@ FAL_RUN_HOST = (
 )
 
 FORCE_SETUP = bool_envvar("FAL_FORCE_SETUP")
+DONT_OPEN_LINKS = bool_envvar("FAL_DONT_OPEN_LINKS")

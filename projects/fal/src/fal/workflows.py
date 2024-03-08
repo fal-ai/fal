@@ -16,6 +16,7 @@ from pydantic import BaseModel
 from rich.syntax import Syntax
 
 import fal
+from fal import flags
 from fal.rest_client import REST_CLIENT
 
 JSONType = Union[dict[str, Any], list[Any], str, int, float, bool, None, "Leaf"]
@@ -231,7 +232,10 @@ class Display(Node):
 
     def execute(self, context: Context) -> JSONType:
         for url in context.hydrate(self.fields):  # type: ignore
-            webbrowser.open(url)
+            if flags.DONT_OPEN_LINKS:
+                print("Link:", url)
+            else:
+                webbrowser.open(url)
 
 
 @dataclass
@@ -379,7 +383,6 @@ class Workflow:
             + published_workflow.user_id
             + "/"
             + published_workflow.name
-            + "/"
         )
 
 
