@@ -2,14 +2,14 @@ from typing import Any, Dict, List, Type, TypeVar
 
 import attr
 
-T = TypeVar("T", bound="AppMetadataResponseAppMetadata")
+T = TypeVar("T", bound="WorkflowContentsOutput")
 
 
 @attr.s(auto_attribs=True)
-class AppMetadataResponseAppMetadata:
+class WorkflowContentsOutput:
     """ """
 
-    additional_properties: Dict[str, Any] = attr.ib(init=False, factory=dict)
+    additional_properties: Dict[str, str] = attr.ib(init=False, factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
 
@@ -22,19 +22,19 @@ class AppMetadataResponseAppMetadata:
     @classmethod
     def from_dict(cls: Type[T], src_dict: Dict[str, Any]) -> T:
         d = src_dict.copy()
-        app_metadata_response_app_metadata = cls()
+        workflow_contents_output = cls()
 
-        app_metadata_response_app_metadata.additional_properties = d
-        return app_metadata_response_app_metadata
+        workflow_contents_output.additional_properties = d
+        return workflow_contents_output
 
     @property
     def additional_keys(self) -> List[str]:
         return list(self.additional_properties.keys())
 
-    def __getitem__(self, key: str) -> Any:
+    def __getitem__(self, key: str) -> str:
         return self.additional_properties[key]
 
-    def __setitem__(self, key: str, value: Any) -> None:
+    def __setitem__(self, key: str, value: str) -> None:
         self.additional_properties[key] = value
 
     def __delitem__(self, key: str) -> None:

@@ -9,10 +9,14 @@ from dataclasses import dataclass, field
 from typing import Any, Iterator, Union, cast
 
 import rich
+from openapi_fal_rest.api.workflows import (
+    create_or_update_workflow_workflows_post as publish_workflow,
+)
 from pydantic import BaseModel
 from rich.syntax import Syntax
 
 import fal
+from fal.rest_client import REST_CLIENT
 
 JSONType = Union[dict[str, Any], list[Any], str, int, float, bool, None, "Leaf"]
 SchemaType = dict[str, Any]
@@ -352,6 +356,31 @@ class Workflow:
             "output": export_workflow_json(self.output),
             "version": WORKFLOW_EXPORT_VERSION,
         }
+
+    to_dict = to_json
+
+    def publish(self, title: str, *, is_public: bool = True) -> None:
+        workflow_contents = publish_workflow.TypedWorkflow(
+            name=self.name,
+            title=title,
+            contents=self,  # type: ignore
+            is_public=is_public,
+        )
+        published_workflow = publish_workflow.sync(
+            client=REST_CLIENT,
+            json_body=workflow_contents,
+        )
+        if isinstance(published_workflow, Exception):
+            raise published_workflow
+
+        return (
+            REST_CLIENT.base_url
+            + "/workflows/"
+            + published_workflow.user_id
+            + "/"
+            + published_workflow.name
+            + "/"
+        )
 
 
 def create_workflow(
