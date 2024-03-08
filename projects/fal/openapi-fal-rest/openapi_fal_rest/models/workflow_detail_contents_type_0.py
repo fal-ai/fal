@@ -2,11 +2,11 @@ from typing import Any, Dict, List, Type, TypeVar
 
 import attr
 
-T = TypeVar("T", bound="AppMetadataResponseAppMetadata")
+T = TypeVar("T", bound="WorkflowDetailContentsType0")
 
 
 @attr.s(auto_attribs=True)
-class AppMetadataResponseAppMetadata:
+class WorkflowDetailContentsType0:
     """ """
 
     additional_properties: Dict[str, Any] = attr.ib(init=False, factory=dict)
@@ -22,10 +22,10 @@ class AppMetadataResponseAppMetadata:
     @classmethod
     def from_dict(cls: Type[T], src_dict: Dict[str, Any]) -> T:
         d = src_dict.copy()
-        app_metadata_response_app_metadata = cls()
+        workflow_detail_contents_type_0 = cls()
 
-        app_metadata_response_app_metadata.additional_properties = d
-        return app_metadata_response_app_metadata
+        workflow_detail_contents_type_0.additional_properties = d
+        return workflow_detail_contents_type_0
 
     @property
     def additional_keys(self) -> List[str]:
