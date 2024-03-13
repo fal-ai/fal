@@ -503,6 +503,10 @@ def test_workflows(test_app: str):
     workflow.set_output({"result": out.result})
     workflow_url = workflow.publish(title="Test Workflow", is_public=False)
 
+    # Test the underlying app
+    data = fal.apps.run(test_app, arguments={"lhs": 2, "rhs": 3})
+    assert data["result"] == 5
+
     with httpx.Client(
         base_url=REST_CLIENT.base_url,
         headers=REST_CLIENT.get_headers(),
