@@ -472,8 +472,6 @@ def delete_workflow_on_exit(client: httpx.Client, workflow_url: str):
         client.delete(workflow_url)
 
 
-# TODO: remove the mark
-@pytest.mark.xfail(reason="This test currently fails randomly")
 def test_workflows(test_app: str):
     workflow = Workflow(
         name="test_workflow_" + secrets.token_hex(),
