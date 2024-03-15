@@ -37,7 +37,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --upgrade pip wheel
-          pip install -e 'projects/fal[test]' ${{ matrix.deps }}
+          pip install -e 'projects/fal[test]' ${{ matrix.deps }} boto3
 
       - name: Run integration tests
         env:
