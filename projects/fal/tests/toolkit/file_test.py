@@ -81,6 +81,11 @@ def test_uniqueness_of_file_name(repo: RepositoryId | FileRepository):
             pytest.skip(reason="GCLOUD_SA_JSON environment variable is not set")
         repo = GoogleStorageRepository(bucket_name="fal_registry_image_results")
 
+    if repo == "r2":
+        r2_account_json = os.environ.get("R2_CREDS_JSON")
+        if r2_account_json is None:
+            pytest.skip(reason="R2_CREDS_JSON environment variable is not set")
+
     file = File.from_bytes(
         b"Hello GCP Storage!", repository=repo, file_name="hello.txt"
     )
