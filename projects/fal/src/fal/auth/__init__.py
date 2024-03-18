@@ -85,10 +85,12 @@ def _fetch_access_token() -> str:
 class UserAccess:
     _access_token: str | None = field(repr=False, default=None)
     _user_info: dict | None = field(repr=False, default=None)
+    _exc: Exception | None = field(repr=False, default=None)
 
     def invalidate(self) -> None:
         self._access_token = None
         self._user_info = None
+        self._exc = None
 
     @property
     def info(self) -> dict:
@@ -99,8 +101,18 @@ class UserAccess:
 
     @property
     def access_token(self) -> str:
+        if self._exc is not None:
+            # We access this several times, so we want to raise the
+            # original exception instead of the newer exceptions we
+            # would get from the effects of the original exception.
+            raise self._exc
+
         if self._access_token is None:
-            self._access_token = _fetch_access_token()
+            try:
+                self._access_token = _fetch_access_token()
+            except Exception as e:
+                self._exc = e
+                raise
 
         return self._access_token
 
