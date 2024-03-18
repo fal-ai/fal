@@ -169,6 +169,7 @@ def validate_id_token(token: str):
         algorithms=AUTH0_ALGORITHMS,
         issuer=AUTH0_ISSUER,
         audience=AUTH0_CLIENT_ID,
+        leeway=60,  # 1 minute, to account for clock skew
         options={
             "verify_signature": True,
             "verify_exp": True,
@@ -180,12 +181,11 @@ def validate_id_token(token: str):
 
 
 def verify_access_token_expiration(token: str):
-    from datetime import timedelta
-
     from jwt import decode
 
+    leeway = 60 * 30 * 60  # 30 minutes
     decode(
         token,
-        leeway=timedelta(minutes=-30),  # Mark as expired some time before it expires
+        leeway=-leeway,  # negative to consider expired before actual expiration
         options={"verify_exp": True, "verify_signature": False},
     )
