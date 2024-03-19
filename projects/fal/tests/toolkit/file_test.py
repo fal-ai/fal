@@ -86,15 +86,11 @@ def test_uniqueness_of_file_name(repo: RepositoryId | FileRepository):
         if r2_account_json is None:
             pytest.skip(reason="R2_CREDS_JSON environment variable is not set")
 
-    file = File.from_bytes(
-        b"Hello GCP Storage!", repository=repo, file_name="hello.txt"
-    )
+    file = File.from_bytes(b"print('Hello!')", repository=repo, file_name="hello.py")
 
     host_and_path = file.url.split("?")[0]
     last_path = host_and_path.split("/")[-1]
-    assert last_path.endswith(
-        ".txt"
-    ), "The file name should end with the same extension"
+    assert last_path.endswith(".py"), "The file name should end with the same extension"
     assert (
         len(last_path) > 10
     ), "There should be a long enough random string in the file name"
