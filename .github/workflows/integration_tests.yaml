@@ -16,6 +16,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-python@v4
         with:
@@ -23,7 +25,6 @@ jobs:
 
       - name: Install dependencies
         run: |
-          git clone --depth 1 https://github.com/fal-ai/fal
           pip install -e projects/fal
           pip install pytest pytest-asyncio pillow
 
