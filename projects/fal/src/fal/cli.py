@@ -574,7 +574,10 @@ def _get_user_id() -> str:
             raise api.FalServerlessError(content["detail"])
     try:
         full_user_id = user_details_response.parsed.user_id
-        user_id = full_user_id.split("|")[1]
+        _provider, _, user_id = full_user_id.partition("|")
+        if not user_id:
+            user_id = full_user_id
+
         return user_id
     except Exception as e:
         raise api.FalServerlessError(f"Could not parse the user data: {e}")
