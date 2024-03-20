@@ -54,6 +54,8 @@ class MainGroup(click.Group):
     _tracer = get_tracer(__name__)
 
     def invoke(self, ctx):
+        from click.exceptions import Abort, ClickException, Exit
+
         execution_info = ExecutionInfo(debug=ctx.params["debug"])
         qualified_name = " ".join([ctx.info_name] + argv[1:])
         invocation_id = execution_info.invocation_id
@@ -68,6 +70,9 @@ class MainGroup(click.Group):
                     command=qualified_name,
                 )
                 return super().invoke(ctx)
+            except (EOFError, KeyboardInterrupt, ClickException, Exit, Abort):
+                # let click's main handle these
+                raise
             except Exception as exception:
                 logger.error(exception)
                 if execution_info.debug:
