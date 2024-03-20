@@ -76,6 +76,8 @@ def login() -> dict:
         "client_id": AUTH0_CLIENT_ID,
     }
 
+    console.print(f"\nYour device code is {device_user_code}\n", style="bold")
+
     with console.status("Waiting for confirmation...") as status:
         while True:
             token_response = httpx.post(
