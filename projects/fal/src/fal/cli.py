@@ -123,10 +123,7 @@ class AliasCommand(click.Command):
         return self._wrapped.__getattribute__(__name)
 
 
-@click.group(
-    cls=MainGroup,
-    context_settings={"allow_interspersed_args": True},
-)
+@click.group(cls=MainGroup)
 @click.option(
     "--debug", is_flag=True, help="Enable detailed errors and verbose logging."
 )
