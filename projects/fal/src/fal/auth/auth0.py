@@ -183,7 +183,7 @@ def validate_id_token(token: str):
 def verify_access_token_expiration(token: str):
     from jwt import decode
 
-    leeway = 60 * 30 * 60  # 30 minutes
+    leeway = 30 * 60  # 30 minutes
     decode(
         token,
         leeway=-leeway,  # negative to consider expired before actual expiration
