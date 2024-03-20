@@ -583,7 +583,3 @@ def _get_user_id() -> str:
         return user_id
     except Exception as e:
         raise api.FalServerlessError(f"Could not parse the user data: {e}")
-
-
-if __name__ == "__main__":
-    cli()
