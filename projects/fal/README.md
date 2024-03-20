@@ -1,3 +1,6 @@
+[![PyPI](https://img.shields.io/pypi/v/fal.svg?logo=PyPI)](https://pypi.org/project/fal)
+[![Tests](https://img.shields.io/github/actions/workflow/status/fal-ai/fal/integration_tests.yaml?label=Tests)](https://github.com/fal-ai/fal/actions)
+
 # fal
 
 fal is a serverless Python runtime that lets you run and scale code in the cloud with no infra management.
