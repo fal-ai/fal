@@ -42,7 +42,7 @@ importlib-metadata = { version = ">=4.4", python = "<3.10" }
 msgpack = "^1.0.7"
 websockets = "^12.0"
 pillow = "^10.2.0"
-pyjwt = "^2.8.0"
+pyjwt = { version = "^2.8.0", extras = ["crypto"] }
 
 [tool.poetry.group.dev.dependencies]
 openapi-python-client = "^0.14.1"
