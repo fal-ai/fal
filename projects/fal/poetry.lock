@@ -419,14 +419,14 @@ testing = ["flufl.flake8", "importlib-resources (>=1.3)", "packaging", "pyfakefs
 
 [[package]]
 name = "isolate"
-version = "0.12.6"
+version = "0.12.7"
 description = "Managed isolated environments for Python"
 category = "main"
 optional = false
-python-versions = ">=3.7,<4.0"
+python-versions = "<4.0,>=3.7"
 files = [
-    {file = "isolate-0.12.6-py3-none-any.whl", hash = "sha256:21aca4ddbd7e5d67cce5abd03f49e60414b195632a0fd7ce4bbc5794c3d84e04"},
-    {file = "isolate-0.12.6.tar.gz", hash = "sha256:05990e90662b22ee9230b52f75b5283f54a2411ea04f20c62cd280159e32f636"},
+    {file = "isolate-0.12.7-py3-none-any.whl", hash = "sha256:ebdca7a57dff4d5652ef9f570af633f9a2678045fbbe68bd0d7b42bfbab96ce8"},
+    {file = "isolate-0.12.7.tar.gz", hash = "sha256:611786e416bfd0ff033cac79d006b60310c1d0366dbb8688d1102e2b64b4e235"},
 ]
 
 [package.dependencies]
