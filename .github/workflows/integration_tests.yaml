@@ -1,12 +1,22 @@
 name: Run Integration Tests
 
 on:
+  push:
+    branches: [main]
+
   pull_request:
     types: [assigned, opened, synchronize, reopened]
     paths-ignore:
       - "README.md"
-  
+
+  schedule:
+    - cron: '30 5 * * *' # every day at 5:30 UTC
+
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
 
 jobs:
   run:
