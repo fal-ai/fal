@@ -9,6 +9,7 @@ from uuid import uuid4
 import click
 import openapi_fal_rest.api.billing.get_user_details as get_user_details
 from rich.table import Table
+from rich_click import RichCommand, RichGroup
 
 import fal
 import fal.auth as auth
@@ -41,7 +42,7 @@ class ExecutionInfo:
         self.invocation_id = str(uuid4())
 
 
-class MainGroup(click.Group):
+class MainGroup(RichGroup):
     """A custom implementation of the top-level group
     (i.e. called on all commands and subcommands).
 
@@ -88,7 +89,7 @@ class MainGroup(click.Group):
 
     def add_command(
         self,
-        cmd: click.Command,
+        cmd: RichCommand,
         name: str | None = None,
         aliases: list[str] | None = None,
     ) -> None:
@@ -113,7 +114,7 @@ class MainGroup(click.Group):
             self.add_command(alias_cmd, alias)
 
 
-class AliasCommand(click.Command):
+class AliasCommand(RichCommand):
     def __init__(self, wrapped):
         self._wrapped = wrapped
 
@@ -138,7 +139,7 @@ def cli(debug):
 
 
 ###### Auth group ######
-@click.group
+@click.group(cls=RichGroup)
 def auth_cli():
     pass
 
@@ -162,7 +163,7 @@ def auth_test():
 
 
 ###### Key group ######
-@click.group
+@click.group(cls=RichGroup)
 @click.option("--host", default=DEFAULT_HOST, envvar=HOST_ENVVAR)
 @click.option("--port", default=DEFAULT_PORT, envvar=PORT_ENVVAR, hidden=True)
 @click.pass_context
@@ -228,7 +229,7 @@ ALIAS_AUTH_OPTIONS = ["public", "private", "shared"]
 ALIAS_AUTH_TYPE = Literal["public", "private", "shared"]
 
 
-@click.group
+@click.group(cls=RichGroup)
 @click.option("--host", default=DEFAULT_HOST, envvar=HOST_ENVVAR)
 @click.option("--port", default=DEFAULT_PORT, envvar=PORT_ENVVAR, hidden=True)
 @click.pass_context
@@ -342,7 +343,7 @@ def get_logs(
 
 
 ##### Alias group #####
-@click.group
+@click.group(cls=RichGroup)
 @click.option("--host", default=DEFAULT_HOST, envvar=HOST_ENVVAR)
 @click.option("--port", default=DEFAULT_PORT, envvar=PORT_ENVVAR, hidden=True)
 @click.pass_context
@@ -491,7 +492,7 @@ def alias_list_runners(
 
 
 ##### Secrets group #####
-@click.group
+@click.group(cls=RichGroup)
 @click.option("--host", default=DEFAULT_HOST, envvar=HOST_ENVVAR)
 @click.option("--port", default=DEFAULT_PORT, envvar=PORT_ENVVAR, hidden=True)
 @click.pass_context
