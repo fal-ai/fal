@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass, field
 from http import HTTPStatus
 from sys import argv
-from typing import Literal
+from typing import Any, Callable, Literal
 from uuid import uuid4
 
 import click
@@ -33,13 +34,26 @@ DEBUG_ENABLED = False
 logger = get_logger(__name__)
 
 
-class ExecutionInfo:
-    debug: bool
-    invocation_id: str
+@dataclass
+class State:
+    debug: bool = False
+    invocation_id: str = field(default_factory=lambda: str(uuid4()))
 
-    def __init__(self, debug=False):
-        self.debug = debug
-        self.invocation_id = str(uuid4())
+
+def debug_option(*param_decls: str, **kwargs: Any) -> Callable[[click.FC], click.FC]:
+    def callback(ctx: click.Context, param: click.Parameter, value: bool) -> None:
+        state = ctx.ensure_object(State)
+        state.debug = value
+        set_debug_logging(value)
+
+    if not param_decls:
+        param_decls = ("--debug",)
+
+    kwargs.setdefault("is_flag", True)
+    kwargs.setdefault("expose_value", False)
+    kwargs.setdefault("callback", callback)
+    kwargs.setdefault("help", "Enable detailed errors and verbose logging.")
+    return click.option(*param_decls, **kwargs)
 
 
 class MainGroup(RichGroup):
@@ -57,13 +71,11 @@ class MainGroup(RichGroup):
     def invoke(self, ctx):
         from click.exceptions import Abort, ClickException, Exit
 
-        execution_info = ExecutionInfo(debug=ctx.params["debug"])
+        state = ctx.ensure_object(State)
         qualified_name = " ".join([ctx.info_name] + argv[1:])
-        invocation_id = execution_info.invocation_id
-        set_debug_logging(execution_info.debug)
 
         with self._tracer.start_as_current_span(
-            qualified_name, attributes={"invocation_id": invocation_id}
+            qualified_name, attributes={"invocation_id": state.invocation_id}
         ):
             try:
                 logger.debug(
@@ -76,13 +88,13 @@ class MainGroup(RichGroup):
                 raise
             except Exception as exception:
                 logger.error(exception)
-                if execution_info.debug:
+                if state.debug:
                     # Here we supress detailed errors on click lines because
                     # they're mostly decorator calls, irrelevant to the dev's error tracing
                     console.print_exception(suppress=[click])
                     console.print()
                     console.print(
-                        f"The [markdown.code]invocation_id[/] for this operation is: [white]{invocation_id}[/]"
+                        f"The [markdown.code]invocation_id[/] for this operation is: [white]{state.invocation_id}[/]"
                     )
                 else:
                     self._exception_handler.handle(exception)
@@ -130,31 +142,33 @@ class AliasCommand(RichCommand):
 
 
 @click.group(cls=MainGroup)
-@click.option(
-    "--debug", is_flag=True, help="Enable detailed errors and verbose logging."
-)
 @click.version_option()
-def cli(debug):
+@debug_option()
+def cli():
     pass
 
 
 ###### Auth group ######
 @click.group(cls=RichGroup)
+@debug_option()
 def auth_cli():
     pass
 
 
 @auth_cli.command(name="login")
+@debug_option()
 def auth_login():
     auth.login()
 
 
 @auth_cli.command(name="logout")
+@debug_option()
 def auth_logout():
     auth.logout()
 
 
 @auth_cli.command(name="hello", hidden=True)
+@debug_option()
 def auth_test():
     """
     To test auth.
@@ -166,6 +180,7 @@ def auth_test():
 @click.group(cls=RichGroup)
 @click.option("--host", default=DEFAULT_HOST, envvar=HOST_ENVVAR)
 @click.option("--port", default=DEFAULT_PORT, envvar=PORT_ENVVAR, hidden=True)
+@debug_option()
 @click.pass_context
 def key_cli(ctx, host: str, port: str):
     ctx.obj = sdk.FalServerlessClient(f"{host}:{port}")
@@ -184,6 +199,7 @@ def key_cli(ctx, host: str, port: str):
     default=None,
     help="An alias for the key.",
 )
+@debug_option()
 @click.pass_obj
 def key_generate(client: sdk.FalServerlessClient, scope: str, alias: str | None):
     with client.connect() as connection:
@@ -198,6 +214,7 @@ def key_generate(client: sdk.FalServerlessClient, scope: str, alias: str | None)
 
 
 @key_cli.command(name="list")
+@debug_option()
 @click.pass_obj
 def key_list(client: sdk.FalServerlessClient):
     table = Table(title="Keys")
@@ -218,6 +235,7 @@ def key_list(client: sdk.FalServerlessClient):
 
 @key_cli.command(name="revoke")
 @click.argument("key_id", required=True)
+@debug_option()
 @click.pass_obj
 def key_revoke(client: sdk.FalServerlessClient, key_id: str):
     with client.connect() as connection:
@@ -232,6 +250,7 @@ ALIAS_AUTH_TYPE = Literal["public", "private", "shared"]
 @click.group(cls=RichGroup)
 @click.option("--host", default=DEFAULT_HOST, envvar=HOST_ENVVAR)
 @click.option("--port", default=DEFAULT_PORT, envvar=PORT_ENVVAR, hidden=True)
+@debug_option()
 @click.pass_context
 def function_cli(ctx, host: str, port: str):
     ctx.obj = api.FalServerlessHost(f"{host}:{port}")
@@ -273,6 +292,7 @@ def load_function_from(
 )
 @click.argument("file_path", required=True)
 @click.argument("function_name", required=True)
+@debug_option()
 @click.pass_obj
 def register_application(
     host: api.FalServerlessHost,
@@ -324,6 +344,7 @@ def register_application(
 @function_cli.command("run")
 @click.argument("file_path", required=True)
 @click.argument("function_name", required=True)
+@debug_option()
 @click.pass_obj
 def run(host: api.FalServerlessHost, file_path: str, function_name: str):
     isolated_function = load_function_from(host, file_path, function_name)
@@ -333,6 +354,7 @@ def run(host: api.FalServerlessHost, file_path: str, function_name: str):
 @function_cli.command("logs")
 @click.option("--lines", default=100)
 @click.option("--url", default=None)
+@debug_option()
 @click.pass_obj
 def get_logs(
     host: api.FalServerlessHost, lines: int | None = 100, url: str | None = None
@@ -346,6 +368,7 @@ def get_logs(
 @click.group(cls=RichGroup)
 @click.option("--host", default=DEFAULT_HOST, envvar=HOST_ENVVAR)
 @click.option("--port", default=DEFAULT_PORT, envvar=PORT_ENVVAR, hidden=True)
+@debug_option()
 @click.pass_context
 def alias_cli(ctx, host: str, port: str):
     ctx.obj = api.FalServerlessClient(f"{host}:{port}")
@@ -386,6 +409,7 @@ def _alias_table(aliases: list[AliasInfo]):
     type=click.Choice(ALIAS_AUTH_OPTIONS),
     default="private",
 )
+@debug_option()
 @click.pass_obj
 def alias_set(
     client: api.FalServerlessClient,
@@ -399,6 +423,7 @@ def alias_set(
 
 @alias_cli.command("delete")
 @click.argument("alias", required=True)
+@debug_option()
 @click.pass_obj
 def alias_delete(client: api.FalServerlessClient, alias: str):
     with client.connect() as connection:
@@ -408,6 +433,7 @@ def alias_delete(client: api.FalServerlessClient, alias: str):
 
 
 @alias_cli.command("list")
+@debug_option()
 @click.pass_obj
 def alias_list(client: api.FalServerlessClient):
     with client.connect() as connection:
@@ -429,6 +455,7 @@ def alias_list(client: api.FalServerlessClient):
 #     "auth_mode",
 #     type=click.Choice(ALIAS_AUTH_OPTIONS),
 # )
+@debug_option()
 @click.pass_obj
 def alias_update(
     client: api.FalServerlessClient,
@@ -462,6 +489,7 @@ def alias_update(
 
 @alias_cli.command("runners")
 @click.argument("alias", required=True)
+@debug_option()
 @click.pass_obj
 def alias_list_runners(
     client: api.FalServerlessClient,
@@ -495,12 +523,14 @@ def alias_list_runners(
 @click.group(cls=RichGroup)
 @click.option("--host", default=DEFAULT_HOST, envvar=HOST_ENVVAR)
 @click.option("--port", default=DEFAULT_PORT, envvar=PORT_ENVVAR, hidden=True)
+@debug_option()
 @click.pass_context
 def secrets_cli(ctx, host: str, port: str):
     ctx.obj = sdk.FalServerlessClient(f"{host}:{port}")
 
 
 @secrets_cli.command("list")
+@debug_option()
 @click.pass_obj
 def list_secrets(client: api.FalServerlessClient):
     table = Table(title="Secrets")
@@ -517,6 +547,7 @@ def list_secrets(client: api.FalServerlessClient):
 @secrets_cli.command("set")
 @click.argument("secret_name", required=True)
 @click.argument("secret_value", required=True)
+@debug_option()
 @click.pass_obj
 def set_secret(client: api.FalServerlessClient, secret_name: str, secret_value: str):
     with client.connect() as connection:
@@ -526,6 +557,7 @@ def set_secret(client: api.FalServerlessClient, secret_name: str, secret_value: 
 
 @secrets_cli.command("delete")
 @click.argument("secret_name", required=True)
+@debug_option()
 @click.pass_obj
 def delete_secret(client: api.FalServerlessClient, secret_name: str):
     with client.connect() as connection:
