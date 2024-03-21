@@ -9,7 +9,7 @@ import httpx
 
 from fal.console import console
 from fal.console.icons import CHECK_ICON
-from fal.console.ux import get_browser
+from fal.console.ux import maybe_open_browser_tab
 
 WEBSITE_URL = "https://fal.ai"
 
@@ -27,19 +27,17 @@ def logout_url(return_url: str):
 
 
 def _open_browser(url: str, code: str | None) -> None:
-    browser = get_browser()
-    console.print()
+    maybe_open_browser_tab(url)
 
-    if browser is not None and click.confirm(
-        "Open browser automatically ('no' to show URL)?", default=True, err=True
-    ):
-        browser.open_new_tab(url)
-    else:
-        console.print(f"On your computer or mobile device navigate to: {url}")
-        if code:
-            console.print(
-                f"Confirm it shows the following code: [markdown.code]{code}[/]"
-            )
+    console.print(
+        "If browser didn't open automatically, on your computer or mobile device navigate to"
+    )
+    console.print(url)
+
+    if code:
+        console.print(
+            f"\nConfirm it shows the following code: [markdown.code]{code}[/]\n"
+        )
 
 
 def login() -> dict:
