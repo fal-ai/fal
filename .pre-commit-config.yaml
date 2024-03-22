@@ -47,6 +47,15 @@ repos:
             ^projects/fal/src/|
             ^projects/fal/tests/
           )
+  - repo: https://github.com/python-poetry/poetry
+    rev: 1.8.2
+    hooks:
+    - id: poetry-check
+      name: poetry check projects/fal
+      args: [--directory=projects/fal]
+    - id: poetry-check
+      name: poetry check projects/isolate_proto
+      args: [--directory=projects/isolate_proto]
   # Monorepo Hooks (e.g. they need to be project specific)
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: "v1.3.0"
