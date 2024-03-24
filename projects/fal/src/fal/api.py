@@ -349,6 +349,7 @@ class FalServerlessHost(Host):
         application_name: str | None = None,
         application_auth_mode: Literal["public", "shared", "private"] | None = None,
         metadata: dict[str, Any] | None = None,
+        do_rollout: bool = False,
     ) -> str | None:
         environment_options = options.environment.copy()
         environment_options.setdefault("python_version", active_python())
@@ -401,6 +402,7 @@ class FalServerlessHost(Host):
             application_auth_mode=application_auth_mode,
             machine_requirements=machine_requirements,
             metadata=metadata,
+            do_rollout=do_rollout,
         ):
             for log in partial_result.logs:
                 self._log_printer.print(log)
