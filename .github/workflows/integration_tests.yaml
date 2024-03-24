@@ -36,7 +36,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -e projects/fal
-          pip install pytest pytest-asyncio pillow
+          pip install pytest pytest-asyncio pillow boto3
 
       - name: Run integration tests
         env:
