@@ -175,6 +175,21 @@ def cached(func: Callable[ArgsT, ReturnT]) -> Callable[ArgsT, ReturnT]:
     return wrapper
 
 
+@mainify
+class UserFunctionException(Exception):
+    pass
+
+
+def match_class(obj, cls):
+    # NOTE: Can't use isinstance because we are not using dill's byref setting when
+    # loading/dumping objects in RPC, which means that our exceptions from remote
+    # server are created by value and are actually a separate class that only looks
+    # like original one.
+    #
+    # See https://github.com/fal-ai/fal/issues/142
+    return type(obj).__name__ == cls.__name__
+
+
 def _prepare_partial_func(
     func: Callable[ArgsT, ReturnT],
     *args: ArgsT.args,
@@ -184,9 +199,19 @@ def _prepare_partial_func(
 
     @wraps(func)
     def wrapper(*remote_args: ArgsT.args, **remote_kwargs: ArgsT.kwargs) -> ReturnT:
-        result = func(*remote_args, *args, **remote_kwargs, **kwargs)
-        with suppress(Exception):
-            patch_dill()
+        try:
+            result = func(*remote_args, *args, **remote_kwargs, **kwargs)
+        except Exception as exc:
+            tb = exc.__traceback__
+            if tb is not None and tb.tb_next is not None:
+                # remove our wrapper from user's traceback
+                tb = tb.tb_next
+            raise UserFunctionException(
+                f"Uncaught user function exception: {str(exc)}"
+            ) from exc.with_traceback(tb)
+        finally:
+            with suppress(Exception):
+                patch_dill()
         return result
 
     return wrapper
@@ -895,6 +920,7 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
     raw_func: Callable[ArgsT, ReturnT]
     options: Options
     executor: ThreadPoolExecutor = field(default_factory=ThreadPoolExecutor)
+    reraise: bool = True
 
     def __getstate__(self) -> dict[str, Any]:
         # Ensure that the executor is not pickled.
@@ -946,6 +972,12 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
                     f"function uses the following modules which weren't present in the environment definition:\n"
                     + "\n".join(lines)
                 ) from None
+        except Exception as exc:
+            cause = exc.__cause__
+            if self.reraise and match_class(exc, UserFunctionException) and cause:
+                # re-raise original exception without our wrappers
+                raise cause
+            raise
 
     @overload
     def on(

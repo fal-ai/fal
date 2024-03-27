@@ -1,12 +1,15 @@
 from __future__ import annotations
 
-from typing import Generic, TypeVar
+from typing import TYPE_CHECKING, Generic, TypeVar
 
 from grpc import Call as RpcCall
 from rich.markdown import Markdown
 
 from fal.console import console
 from fal.console.icons import CROSS_ICON
+
+if TYPE_CHECKING:
+    from fal.api import UserFunctionException
 
 from ._base import FalServerlessException
 
@@ -44,3 +47,23 @@ class GrpcExceptionHandler(BaseExceptionHandler[RpcCall]):
 
     def handle(self, exception: RpcCall):
         console.print(exception.details())
+
+
+class UserFunctionExceptionHandler(BaseExceptionHandler["UserFunctionException"]):
+    def should_handle(self, exception: Exception) -> bool:
+        from fal.api import UserFunctionException, match_class
+
+        return match_class(exception, UserFunctionException)
+
+    def handle(self, exception: UserFunctionException):
+        import rich
+
+        cause = exception.__cause__
+        exc = cause or exception
+        tb = rich.traceback.Traceback.from_exception(
+            type(exc),
+            exc,
+            exc.__traceback__,
+        )
+        console.print(tb)
+        super().handle(exception)
