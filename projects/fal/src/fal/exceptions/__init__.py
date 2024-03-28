@@ -4,6 +4,7 @@ from .handlers import (
     BaseExceptionHandler,
     FalServerlessExceptionHandler,
     GrpcExceptionHandler,
+    UserFunctionExceptionHandler,
 )
 
 
@@ -20,6 +21,7 @@ class ApplicationExceptionHandler:
     _handlers: list[BaseExceptionHandler] = [
         GrpcExceptionHandler(),
         FalServerlessExceptionHandler(),
+        UserFunctionExceptionHandler(),
     ]
 
     def handle(self, exception):

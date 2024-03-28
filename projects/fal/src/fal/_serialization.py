@@ -138,9 +138,37 @@ def patch_pydantic_class_attributes():
 
 
 @mainify
+def patch_exceptions():
+    # Adapting tblib.pickling_support.install for dill.
+    from types import TracebackType
+
+    import dill
+    from tblib.pickling_support import (
+        _get_subclasses,
+        pickle_exception,
+        pickle_traceback,
+    )
+
+    @dill.register(TracebackType)
+    def save_traceback(pickler, obj):
+        unpickle, args = pickle_traceback(obj)
+        pickler.save_reduce(unpickle, args, obj=obj)
+
+    @dill.register(BaseException)
+    def save_exception(pickler, obj):
+        unpickle, args = pickle_exception(obj)
+        pickler.save_reduce(unpickle, args, obj=obj)
+
+    for exception_cls in _get_subclasses(BaseException):
+        dill.pickle(exception_cls, save_exception)
+
+
+@mainify
 def patch_dill():
     import dill
 
     dill.settings["recurse"] = True
+
+    patch_exceptions()
     patch_pydantic_class_attributes()
     patch_pydantic_field_serialization()

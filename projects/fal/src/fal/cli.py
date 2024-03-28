@@ -348,6 +348,8 @@ def register_application(
 @click.pass_obj
 def run(host: api.FalServerlessHost, file_path: str, function_name: str):
     isolated_function = load_function_from(host, file_path, function_name)
+    # let our exc handlers handle UserFunctionException
+    isolated_function.reraise = False
     isolated_function()
 
 
