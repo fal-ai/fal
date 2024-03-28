@@ -12,6 +12,7 @@ import rich
 from openapi_fal_rest.api.workflows import (
     create_or_update_workflow_workflows_post as publish_workflow,
 )
+from openapi_fal_rest.models.http_validation_error import HTTPValidationError
 from pydantic import BaseModel
 from rich.syntax import Syntax
 
@@ -363,7 +364,7 @@ class Workflow:
 
     to_dict = to_json
 
-    def publish(self, title: str, *, is_public: bool = True) -> None:
+    def publish(self, title: str, *, is_public: bool = True):
         workflow_contents = publish_workflow.TypedWorkflow(
             name=self.name,
             title=title,
@@ -376,14 +377,14 @@ class Workflow:
         )
         if isinstance(published_workflow, Exception):
             raise published_workflow
+        if isinstance(published_workflow, HTTPValidationError):
+            raise RuntimeError(published_workflow.detail)
+        if not published_workflow:
+            raise RuntimeError("Failed to publish the workflow")
 
-        return (
-            REST_CLIENT.base_url
-            + "/workflows/"
-            + published_workflow.user_id
-            + "/"
-            + published_workflow.name
-        )
+        # NOTE: dropping the provider prefix from the user_id
+        user_id_part = published_workflow.user_id.split("|")[-1]
+        return f"{user_id_part}/{published_workflow.name}"
 
 
 def create_workflow(

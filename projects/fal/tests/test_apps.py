@@ -501,7 +501,7 @@ def test_workflows(test_app: str):
         },
     )
     workflow.set_output({"result": out.result})
-    workflow_url = workflow.publish(title="Test Workflow", is_public=False)
+    workflow_id = workflow.publish(title="Test Workflow", is_public=False)
 
     # Test the underlying app
     data = fal.apps.run(test_app, arguments={"lhs": 2, "rhs": 3})
@@ -512,8 +512,10 @@ def test_workflows(test_app: str):
         headers=REST_CLIENT.get_headers(),
         timeout=300,
     ) as client:
-        with delete_workflow_on_exit(client, workflow_url):
-            response = client.post(workflow_url, json={"lhs": 2, "rhs": 3})
-            print(response.json())
-            assert response.status_code == 200
-            assert response.json() == {"result": 10}
+        with delete_workflow_on_exit(
+            client, REST_CLIENT.base_url + "/workflows/" + workflow_id
+        ):
+            data = fal.apps.run(
+                "workflows/" + workflow_id, arguments={"lhs": 2, "rhs": 3}
+            )
+            assert data["result"] == 10

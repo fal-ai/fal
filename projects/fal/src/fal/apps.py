@@ -65,8 +65,12 @@ class RequestHandle:
     def __post_init__(self):
         app_id = _backwards_compatible_app_id(self.app_id)
         # drop any extra path components
-        user_id, app_name = app_id.split("/")[:2]
-        self.app_id = f"{user_id}/{app_name}"
+        parts = app_id.split("/")[:3]
+        if parts[0] != "workflows":
+            # if the app_id is not a workflow, only keep the first two parts
+            parts = parts[:2]
+
+        self.app_id = "/".join(parts)
 
     def status(self, *, logs: bool = False) -> _Status:
         """Check the status of an async inference request."""
