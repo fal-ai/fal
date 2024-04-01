@@ -12,7 +12,7 @@ def add_user_id(
     user_id: str | None = None
     try:
         user_id = USER.info.get("sub")
-    except:
+    except Exception:
         # logs are fail-safe, so any exception is safe to ignore
         # this is expected to happen only when user is logged out
         # or there's no internet connection

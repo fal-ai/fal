@@ -471,7 +471,7 @@ def main() -> None:
                 context.vars[node_id] = node.execute(context)
 
         console.print(
-            f"🎉 Execution complete!",
+            "🎉 Execution complete!",
             style="bold green",
         )
         output = context.hydrate(workflow.output)

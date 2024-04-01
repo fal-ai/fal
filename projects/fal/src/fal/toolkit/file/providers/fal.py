@@ -27,7 +27,7 @@ class FalFileRepository(FileRepository):
         headers = {
             "Authorization": f"Key {key_id}:{key_secret}",
             "Accept": "application/json",
-            "Content-Type": f"application/json",
+            "Content-Type": "application/json",
         }
 
         grpc_host = os.environ.get("FAL_HOST", "api.alpha.fal.ai")

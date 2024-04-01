@@ -3,28 +3,15 @@
 
 repos:
   # Global hooks (these can be configured with global pyproject.toml)
-  - repo: https://github.com/pycqa/isort
-    rev: 5.13.2
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: 'v0.3.4'
     hooks:
-      - id: isort
-  - repo: https://github.com/hakancelikdev/unimport
-    rev: 1.0.0
-    hooks:
-      - id: unimport
-        args: ["--ignore-init", "-r"]
-        exclude: |
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+        files: |
           (?x)(
-            ^projects/isolate_proto/|
-            ^projects/fal/openapi-fal-rest/
-          )
-  - repo: https://github.com/psf/black
-    rev: 22.6.0
-    hooks:
-      - id: black
-        exclude: |
-          (?x)(
-            ^projects/fal/src/fal/toolkit/image/image.py |
-            ^projects/fal/openapi-fal-rest/
+            ^projects/fal/src/|
+            ^projects/fal/tests/
           )
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.3.0
@@ -37,7 +24,7 @@ repos:
     rev: v3.1.0
     hooks:
       - id: pyupgrade
-        args: ["--py37-plus"]
+        args: ["--py38-plus"]
         exclude: |
           (?x)(
             ^projects/fal/src/fal/toolkit/image/image.py

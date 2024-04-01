@@ -41,7 +41,7 @@ def optimize(
             module,
             optimization_config=optimization_config,
         )
-    except Exception as e:
+    except Exception:
         print(
             "[WARNING] Failed to optimize module, falling back "
             "to default torch execution."

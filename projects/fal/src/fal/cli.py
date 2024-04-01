@@ -113,7 +113,6 @@ class MainGroup(RichGroup):
 
         if aliases:
             # Add aliases to the help text
-            aliases_str = "Alias: " + ", ".join([name, *aliases])
             cmd.help = (cmd.help or "") + "\n\nAlias: " + ", ".join([name, *aliases])
             cmd.short_help = (
                 (cmd.short_help or "") + "(Alias: " + ", ".join(aliases) + ")"
@@ -603,7 +602,7 @@ def _get_user_id() -> str:
     if user_details_response.status_code != HTTPStatus.OK:
         try:
             content = json.loads(user_details_response.content.decode("utf8"))
-        except:
+        except Exception:
             raise api.FalServerlessError(
                 f"Error fetching user details: {user_details_response}"
             )

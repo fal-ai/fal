@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import io
 from tempfile import NamedTemporaryFile
-from typing import TYPE_CHECKING, Literal, Optional, Union
+from typing import TYPE_CHECKING, Literal, Union, Optional
 
 from pydantic import BaseModel, Field
 

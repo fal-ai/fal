@@ -42,7 +42,7 @@ def _hash_url(url: str) -> str:
 
 
 @mainify
-@lru_cache()
+@lru_cache
 def _get_remote_file_properties(url: str) -> tuple[str, int]:
     """Retrieves the file name and content length of a remote file.
 

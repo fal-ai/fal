@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 import sys
+import threading
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager, suppress
@@ -249,9 +250,6 @@ class LocalHost(Host):
 
 FAL_SERVERLESS_DEFAULT_URL = flags.GRPC_HOST
 FAL_SERVERLESS_DEFAULT_MACHINE_TYPE = "XS"
-
-
-import threading
 
 
 def _handle_grpc_error():

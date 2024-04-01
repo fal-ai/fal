@@ -94,7 +94,7 @@ class File(BaseModel):
         if isinstance(value, str):
             parsed_url = urlparse(value)
             if parsed_url.scheme not in ["http", "https", "data"]:
-                raise ValueError(f"value must be a valid URL")
+                raise ValueError("value must be a valid URL")
             return cls._from_url(parsed_url.geturl())
 
         return value

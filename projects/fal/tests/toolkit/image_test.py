@@ -29,7 +29,7 @@ def pil_image_to_bytes(image: PILImage.Image) -> bytes:
 
 
 def fal_image_downloaded(image: Image):
-    return image.file_size != None
+    return image.file_size is not None
 
 
 def fal_image_url_matches(image: Image, url: str):
@@ -67,14 +67,6 @@ def assert_fal_images_equals(fal_image_1: Image, fal_image_2: Image):
     assert fal_image_1.url == fal_image_2.url, "URL should match"
     assert fal_image_1.width == fal_image_2.width, "Width should match"
     assert fal_image_1.height == fal_image_2.height, "Height should match"
-
-
-@mainify
-def pil_image_to_bytes(image) -> bytes:
-
-    image_bytes = BytesIO()
-    image.save(image_bytes, format="PNG")
-    return image_bytes.getvalue()
 
 
 def test_fal_image_from_pil(isolated_client):

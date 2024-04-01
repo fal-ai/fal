@@ -436,7 +436,7 @@ def test_clone_repository(isolated_client, mock_fal_persistent_dirs):
 
 
 def fal_file_downloaded(file: File):
-    return file.file_size != None
+    return file.file_size is not None
 
 
 def fal_file_url_matches(file: File, url: str):
