@@ -7,7 +7,7 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field, replace
-from functools import partial, wraps
+from functools import wraps
 from os import PathLike
 from typing import (
     Any,
@@ -27,6 +27,7 @@ import dill
 import dill.detect
 import grpc
 import isolate
+import tblib
 import yaml
 from fastapi import FastAPI
 from isolate.backends.common import active_python
@@ -37,7 +38,7 @@ from packaging.utils import canonicalize_name
 from typing_extensions import Concatenate, ParamSpec
 
 import fal.flags as flags
-from fal._serialization import add_serialization_listeners_for, patch_dill
+from fal._serialization import add_serialization_listeners_for, patch_dill, patch_pickle
 from fal.logging.isolate import IsolateLogPrinter
 from fal.sdk import (
     FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
@@ -193,10 +194,11 @@ def match_class(obj, cls):
 
 def _prepare_partial_func(
     func: Callable[ArgsT, ReturnT],
+    patch_func: Callable[[], None],
     *args: ArgsT.args,
     **kwargs: ArgsT.kwargs,
 ) -> Callable[ArgsT, ReturnT]:
-    """Prepare the given function for execution on the remote isolate workers."""
+    """Prepare the given function for execution on isolate workers."""
 
     @wraps(func)
     def wrapper(*remote_args: ArgsT.args, **remote_kwargs: ArgsT.kwargs) -> ReturnT:
@@ -212,10 +214,28 @@ def _prepare_partial_func(
             ) from exc.with_traceback(tb)
         finally:
             with suppress(Exception):
-                patch_dill()
+                patch_func()
         return result
 
     return wrapper
+
+
+def _prepare_local_partial_func(
+    func: Callable[ArgsT, ReturnT],
+    *args: ArgsT.args,
+    **kwargs: ArgsT.kwargs,
+) -> Callable[ArgsT, ReturnT]:
+
+    return _prepare_partial_func(func, patch_pickle, *args, **kwargs)
+
+
+def _prepare_remote_partial_func(
+    func: Callable[ArgsT, ReturnT],
+    *args: ArgsT.args,
+    **kwargs: ArgsT.kwargs,
+) -> Callable[ArgsT, ReturnT]:
+
+    return _prepare_partial_func(func, patch_dill, *args, **kwargs)
 
 
 @dataclass
@@ -224,7 +244,7 @@ class LocalHost(Host):
     # packages for isolate agent to run.
     _AGENT_ENVIRONMENT = isolate.prepare_environment(
         "virtualenv",
-        requirements=[f"dill=={dill.__version__}"],
+        requirements=[f"dill=={dill.__version__}", f"tblib=={tblib.__version__}"],
     )
 
     def run(
@@ -244,7 +264,7 @@ class LocalHost(Host):
             environment.create(),
             extra_inheritance_paths=[self._AGENT_ENVIRONMENT.create()],
         ) as connection:
-            executable = partial(func, *args, **kwargs)
+            executable = _prepare_local_partial_func(func, *args, **kwargs)
             return connection.run(executable)
 
 
@@ -401,7 +421,7 @@ class FalServerlessHost(Host):
             min_concurrency=min_concurrency,
         )
 
-        partial_func = _prepare_partial_func(func)
+        partial_func = _prepare_remote_partial_func(func)
 
         if metadata is None:
             metadata = {}
@@ -471,7 +491,7 @@ class FalServerlessHost(Host):
         return_value = _UNSET
         # Allow isolate provided arguments (such as setup function) to take
         # precedence over the ones provided by the user.
-        partial_func = _prepare_partial_func(func, *args, **kwargs)
+        partial_func = _prepare_remote_partial_func(func, *args, **kwargs)
         for partial_result in self._connection.run(
             partial_func,
             environments,

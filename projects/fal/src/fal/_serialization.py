@@ -172,3 +172,10 @@ def patch_dill():
     patch_exceptions()
     patch_pydantic_class_attributes()
     patch_pydantic_field_serialization()
+
+
+@mainify
+def patch_pickle():
+    from tblib import pickling_support
+
+    pickling_support.install()

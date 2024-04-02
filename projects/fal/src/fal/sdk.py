@@ -14,7 +14,7 @@ from isolate.server.interface import from_grpc, to_serialized_object, to_struct
 
 import isolate_proto
 from fal import flags
-from fal._serialization import patch_dill
+from fal._serialization import patch_dill, patch_pickle
 from fal.auth import USER, key_credentials
 from fal.logging import get_logger
 from fal.logging.trace import TraceContextInterceptor
@@ -32,6 +32,7 @@ FAL_SERVERLESS_DEFAULT_MIN_CONCURRENCY = 0
 logger = get_logger(__name__)
 
 patch_dill()
+patch_pickle()
 
 
 class ServerCredentials:
