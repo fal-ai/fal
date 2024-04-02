@@ -44,21 +44,3 @@ class IsolateLogPrinter:
         # Use structlog processors to get consistent output with local logs
         message = _renderer.__call__(logger={}, name=level, event_dict=event)
         print(message)
-
-    def print_dict(self, log: dict):
-        level = LogLevel[log["level"]]
-        if level < LogLevel.INFO and not self.debug:
-            return
-        if "timestamp" in log.keys():
-            timestamp = log["timestamp"]
-        else:
-            timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")
-
-        event: EventDict = {
-            "event": log["message"],
-            "level": log["level"],
-            "timestamp": timestamp[:-3],
-        }
-
-        message = _renderer.__call__(logger={}, name=log["level"], event_dict=event)
-        print(message)
