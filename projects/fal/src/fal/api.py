@@ -246,6 +246,7 @@ class LocalHost(Host):
         "virtualenv",
         requirements=[f"dill=={dill.__version__}", f"tblib=={tblib.__version__}"],
     )
+    _log_printer = IsolateLogPrinter(debug=flags.DEBUG)
 
     def run(
         self,
@@ -254,7 +255,7 @@ class LocalHost(Host):
         args: tuple[Any, ...],
         kwargs: dict[str, Any],
     ) -> ReturnT:
-        settings = replace(DEFAULT_SETTINGS, serialization_method="dill")
+        settings = replace(DEFAULT_SETTINGS, serialization_method="dill", log_hook=self._log_printer.print)
         environment = isolate.prepare_environment(
             **options.environment,
             context=settings,
