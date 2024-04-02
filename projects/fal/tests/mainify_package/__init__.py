@@ -1,1 +1,1 @@
-from .impl import my_function
+from .impl import my_function  # noqa: F401

@@ -64,7 +64,7 @@ def _fetch_access_token() -> str:
             try:
                 auth0.verify_access_token_expiration(access_token)
                 return access_token
-            except:
+            except Exception:
                 # access_token expired, will refresh
                 pass
 

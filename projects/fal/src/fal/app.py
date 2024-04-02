@@ -39,7 +39,7 @@ def wrap_app(cls: type[App], **kwargs) -> fal.api.IsolatedFunction:
     try:
         app = cls(_allow_init=True)
         metadata["openapi"] = app.openapi()
-    except Exception as exc:
+    except Exception:
         logger.warning("Failed to build OpenAPI specification for %s", cls.__name__)
         realtime_app = False
     else:

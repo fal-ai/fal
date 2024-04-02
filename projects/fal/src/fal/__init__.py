@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from fal import apps
+from fal import apps  # noqa: F401
 from fal.api import FalServerlessHost, LocalHost, cached
 from fal.api import function
-from fal.api import function as isolated
-from fal.app import App, endpoint, realtime, wrap_app
+from fal.api import function as isolated  # noqa: F401
+from fal.app import App, endpoint, realtime, wrap_app  # noqa: F401
 from fal.sdk import FalServerlessKeyCredentials
 from fal.sync import sync_dir
 
@@ -32,6 +32,6 @@ __all__ = [
 # This will add to the package’s __path__ all subdirectories of directories on sys.path named after the package which effectively combines both modules into a single namespace (dbt.adapters)
 # The matching statement is in plugins/postgres/dbt/adapters/__init__.py
 
-from pkgutil import extend_path
+from pkgutil import extend_path  # noqa: E402
 
 __path__ = extend_path(__path__, __name__)
