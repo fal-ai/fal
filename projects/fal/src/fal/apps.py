@@ -24,8 +24,7 @@ def _backwards_compatible_app_id(app_id: str) -> str:
 
 
 @dataclass
-class _Status:
-    ...
+class _Status: ...
 
 
 @dataclass
@@ -59,28 +58,45 @@ class RequestHandle:
     app_id: str
     request_id: str
 
+    _response_url: str = field(repr=False, default=None)  # type: ignore
+    _status_url: str = field(repr=False, default=None)  # type: ignore
+    _cancel_url: str = field(repr=False, default=None)  # type: ignore
+
     # Use the credentials that were used to submit the request by default.
     _creds: Credentials = field(default_factory=get_default_credentials, repr=False)
 
     def __post_init__(self):
         app_id = _backwards_compatible_app_id(self.app_id)
-        # drop any extra path components
+        # keep first 3 parts
         parts = app_id.split("/")[:3]
         if parts[0] != "workflows":
-            # if the app_id is not a workflow, only keep the first two parts
+            # if not a workflow, keep only 2 parts
             parts = parts[:2]
-
         self.app_id = "/".join(parts)
+
+        if not self._response_url or not self._status_url or not self._cancel_url:
+            base_url = _QUEUE_URL_FORMAT.format(app_id=self.app_id)
+            self._status_url = f"{base_url}/requests/{self.request_id}/status"
+            self._response_url = f"{base_url}/requests/{self.request_id}"
+            self._cancel_url = f"{base_url}/requests/{self.request_id}/cancel"
+
+    @classmethod
+    def from_response(cls, response: httpx.Response) -> RequestHandle:
+        data: dict = response.json()
+
+        return cls(
+            app_id=data["app_id"],
+            request_id=data["request_id"],
+            _response_url=data.get("response_url"),  # type: ignore
+            _status_url=data.get("status_url"),  # type: ignore
+            _cancel_url=data.get("cancel_url"),  # type: ignore
+        )
 
     def status(self, *, logs: bool = False) -> _Status:
         """Check the status of an async inference request."""
 
-        url = (
-            _QUEUE_URL_FORMAT.format(app_id=self.app_id)
-            + f"/requests/{self.request_id}/status/"
-        )
         response = _HTTP_CLIENT.get(
-            url,
+            self._status_url,
             headers=self._creds.to_headers(),
             params={"logs": int(logs)},
         )
@@ -118,11 +134,10 @@ class RequestHandle:
     def fetch_result(self) -> dict[str, Any]:
         """Retrieve the result of an async inference request, raises an exception
         if the request is not completed yet."""
-        url = (
-            _QUEUE_URL_FORMAT.format(app_id=self.app_id)
-            + f"/requests/{self.request_id}/"
+        response = _HTTP_CLIENT.get(
+            self._response_url,
+            headers=self._creds.to_headers(),
         )
-        response = _HTTP_CLIENT.get(url, headers=self._creds.to_headers())
         try:
             response.raise_for_status()
         except httpx.HTTPStatusError as e:
@@ -176,12 +191,7 @@ def submit(app_id: str, arguments: dict[str, Any], *, path: str = "") -> Request
     )
     response.raise_for_status()
 
-    data = response.json()
-    return RequestHandle(
-        app_id=app_id,
-        request_id=data["request_id"],
-        _creds=creds,
-    )
+    return RequestHandle.from_response(response)
 
 
 @dataclass
