@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import sys
 from datetime import datetime, timezone
 
-from isolate.logs import Log, LogLevel
+from isolate.logs import Log, LogLevel, LogSource
 from structlog.dev import ConsoleRenderer
 from structlog.typing import EventDict
 
@@ -21,6 +22,12 @@ class IsolateLogPrinter:
     def print(self, log: Log):
         if log.level < LogLevel.INFO and not self.debug:
             return
+
+        if log.source == LogSource.USER:
+            stream = sys.stderr if log.level == LogLevel.STDERR else sys.stdout
+            print(log.message, file=stream)
+            return
+
         level = str(log.level)
 
         if hasattr(log, "timestamp"):
