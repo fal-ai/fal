@@ -17,7 +17,6 @@ from fal.toolkit.file.providers.fal import (
 from fal.toolkit.file.providers.gcp import GoogleStorageRepository
 from fal.toolkit.file.providers.r2 import R2Repository
 from fal.toolkit.file.types import FileData, FileRepository, RepositoryId
-from fal.toolkit.mainify import mainify
 from fal.toolkit.utils.download_utils import download_file
 
 FileRepositoryFactory = Callable[[], FileRepository]
@@ -42,7 +41,6 @@ get_builtin_repository.__module__ = "__main__"
 DEFAULT_REPOSITORY: FileRepository | RepositoryId = "fal"
 
 
-@mainify
 class File(BaseModel):
     # public properties
     _file_data: FileData = PrivateAttr()
@@ -158,7 +156,6 @@ class File(BaseModel):
         return file_path
 
 
-@mainify
 class CompressedFile(File):
     _extract_dir: Optional[TemporaryDirectory] = PrivateAttr(default=None)
 

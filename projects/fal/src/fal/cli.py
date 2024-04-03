@@ -267,8 +267,8 @@ def load_function_from(
         raise api.FalServerlessError(f"Function '{function_name}' not found in module")
 
     # The module for the function is set to <run_path> when runpy is used, in which
-    # case we want to manually include the packages it is defined in.
-    _serialization.include_packages_from_path(file_path)
+    # case we want to manually include the package it is defined in.
+    _serialization.include_package_from_path(file_path)
 
     target = module[function_name]
     if isinstance(target, type) and issubclass(target, fal.App):

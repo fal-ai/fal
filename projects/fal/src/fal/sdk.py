@@ -14,7 +14,7 @@ from isolate.server.interface import from_grpc, to_serialized_object, to_struct
 
 import isolate_proto
 from fal import flags
-from fal._serialization import patch_dill, patch_pickle
+from fal._serialization import patch_pickle
 from fal.auth import USER, key_credentials
 from fal.logging import get_logger
 from fal.logging.trace import TraceContextInterceptor
@@ -24,14 +24,13 @@ ResultT = TypeVar("ResultT")
 InputT = TypeVar("InputT")
 UNSET = object()
 
-_DEFAULT_SERIALIZATION_METHOD = "dill"
+_DEFAULT_SERIALIZATION_METHOD = "cloudpickle"
 FAL_SERVERLESS_DEFAULT_KEEP_ALIVE = 10
 FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING = 1
 FAL_SERVERLESS_DEFAULT_MIN_CONCURRENCY = 0
 
 logger = get_logger(__name__)
 
-patch_dill()
 patch_pickle()
 
 

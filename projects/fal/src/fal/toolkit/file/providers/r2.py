@@ -6,12 +6,10 @@ from dataclasses import dataclass
 from io import BytesIO
 
 from fal.toolkit.file.types import FileData, FileRepository
-from fal.toolkit.mainify import mainify
 
 DEFAULT_URL_TIMEOUT = 60 * 15  # 15 minutes
 
 
-@mainify
 @dataclass
 class R2Repository(FileRepository):
     bucket_name: str = "fal_file_storage"

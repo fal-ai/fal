@@ -23,8 +23,7 @@ from typing import (
     overload,
 )
 
-import dill
-import dill.detect
+import cloudpickle
 import grpc
 import isolate
 import tblib
@@ -38,7 +37,7 @@ from packaging.utils import canonicalize_name
 from typing_extensions import Concatenate, ParamSpec
 
 import fal.flags as flags
-from fal._serialization import add_serialization_listeners_for, patch_dill, patch_pickle
+from fal._serialization import patch_pickle, include_modules_from
 from fal.logging.isolate import IsolateLogPrinter
 from fal.sdk import (
     FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
@@ -52,7 +51,6 @@ from fal.sdk import (
     get_agent_credentials,
     get_default_credentials,
 )
-from fal.toolkit import mainify
 
 ArgsT = ParamSpec("ArgsT")
 ReturnT = TypeVar("ReturnT", covariant=True)
@@ -177,24 +175,12 @@ def cached(func: Callable[ArgsT, ReturnT]) -> Callable[ArgsT, ReturnT]:
     return wrapper
 
 
-@mainify
 class UserFunctionException(Exception):
     pass
 
 
-def match_class(obj, cls):
-    # NOTE: Can't use isinstance because we are not using dill's byref setting when
-    # loading/dumping objects in RPC, which means that our exceptions from remote
-    # server are created by value and are actually a separate class that only looks
-    # like original one.
-    #
-    # See https://github.com/fal-ai/fal/issues/142
-    return type(obj).__name__ == cls.__name__
-
-
 def _prepare_partial_func(
     func: Callable[ArgsT, ReturnT],
-    patch_func: Callable[[], None],
     *args: ArgsT.args,
     **kwargs: ArgsT.kwargs,
 ) -> Callable[ArgsT, ReturnT]:
@@ -214,28 +200,10 @@ def _prepare_partial_func(
             ) from exc.with_traceback(tb)
         finally:
             with suppress(Exception):
-                patch_func()
+                patch_pickle()
         return result
 
     return wrapper
-
-
-def _prepare_local_partial_func(
-    func: Callable[ArgsT, ReturnT],
-    *args: ArgsT.args,
-    **kwargs: ArgsT.kwargs,
-) -> Callable[ArgsT, ReturnT]:
-
-    return _prepare_partial_func(func, patch_pickle, *args, **kwargs)
-
-
-def _prepare_remote_partial_func(
-    func: Callable[ArgsT, ReturnT],
-    *args: ArgsT.args,
-    **kwargs: ArgsT.kwargs,
-) -> Callable[ArgsT, ReturnT]:
-
-    return _prepare_partial_func(func, patch_dill, *args, **kwargs)
 
 
 @dataclass
@@ -244,7 +212,7 @@ class LocalHost(Host):
     # packages for isolate agent to run.
     _AGENT_ENVIRONMENT = isolate.prepare_environment(
         "virtualenv",
-        requirements=[f"dill=={dill.__version__}", f"tblib=={tblib.__version__}"],
+        requirements=[f"cloudpickle=={cloudpickle.__version__}", f"tblib=={tblib.__version__}"],
     )
     _log_printer = IsolateLogPrinter(debug=flags.DEBUG)
 
@@ -255,7 +223,7 @@ class LocalHost(Host):
         args: tuple[Any, ...],
         kwargs: dict[str, Any],
     ) -> ReturnT:
-        settings = replace(DEFAULT_SETTINGS, serialization_method="dill", log_hook=self._log_printer.print)
+        settings = replace(DEFAULT_SETTINGS, serialization_method="cloudpickle", log_hook=self._log_printer.print)
         environment = isolate.prepare_environment(
             **options.environment,
             context=settings,
@@ -265,7 +233,7 @@ class LocalHost(Host):
             environment.create(),
             extra_inheritance_paths=[self._AGENT_ENVIRONMENT.create()],
         ) as connection:
-            executable = _prepare_local_partial_func(func, *args, **kwargs)
+            executable = _prepare_partial_func(func, *args, **kwargs)
             return connection.run(executable)
 
 
@@ -311,6 +279,8 @@ def _handle_grpc_error():
 def find_missing_dependencies(
     func: Callable, env: dict
 ) -> Iterator[tuple[str, list[str]]]:
+    import dill
+
     if env["kind"] != "virtualenv":
         return
 
@@ -422,7 +392,7 @@ class FalServerlessHost(Host):
             min_concurrency=min_concurrency,
         )
 
-        partial_func = _prepare_remote_partial_func(func)
+        partial_func = _prepare_partial_func(func)
 
         if metadata is None:
             metadata = {}
@@ -492,7 +462,7 @@ class FalServerlessHost(Host):
         return_value = _UNSET
         # Allow isolate provided arguments (such as setup function) to take
         # precedence over the ones provided by the user.
-        partial_func = _prepare_remote_partial_func(func, *args, **kwargs)
+        partial_func = _prepare_partial_func(func, *args, **kwargs)
         for partial_result in self._connection.run(
             partial_func,
             environments,
@@ -766,7 +736,7 @@ def function(  # type: ignore
     options = host.parse_options(kind=kind, **config)
 
     def wrapper(func: Callable[ArgsT, ReturnT]):
-        add_serialization_listeners_for(func)
+        include_modules_from(func)
         proxy = IsolatedFunction(
             host=host,
             raw_func=func,  # type: ignore
@@ -777,7 +747,6 @@ def function(  # type: ignore
     return wrapper
 
 
-@mainify
 class FalFastAPI(FastAPI):
     """
     A subclass of FastAPI that adds some fal-specific functionality.
@@ -821,7 +790,6 @@ class FalFastAPI(FastAPI):
         return spec
 
 
-@mainify
 class RouteSignature(NamedTuple):
     path: str
     is_websocket: bool = False
@@ -832,7 +800,6 @@ class RouteSignature(NamedTuple):
     emit_timings: bool = False
 
 
-@mainify
 class BaseServable:
     def collect_routes(self) -> dict[RouteSignature, Callable[..., Any]]:
         raise NotImplementedError
@@ -912,7 +879,6 @@ class BaseServable:
         uvicorn.run(app, host="0.0.0.0", port=8080)
 
 
-@mainify
 class ServeWrapper(BaseServable):
     _func: Callable
 
@@ -993,7 +959,7 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
                 ) from None
         except Exception as exc:
             cause = exc.__cause__
-            if self.reraise and match_class(exc, UserFunctionException) and cause:
+            if self.reraise and isinstance(exc, UserFunctionException) and cause:
                 # re-raise original exception without our wrappers
                 raise cause
             raise

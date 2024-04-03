@@ -10,8 +10,6 @@ from tempfile import TemporaryDirectory
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
-from fal.toolkit.mainify import mainify
-
 FAL_PERSISTENT_DIR = PurePath("/data")
 FAL_REPOSITORY_DIR = FAL_PERSISTENT_DIR / ".fal" / "repos"
 FAL_MODEL_WEIGHTS_DIR = FAL_PERSISTENT_DIR / ".fal" / "model_weights"
@@ -23,12 +21,10 @@ TEMP_HEADERS = {
 }
 
 
-@mainify
 class DownloadError(Exception):
     pass
 
 
-@mainify
 def _hash_url(url: str) -> str:
     """Hashes a URL using SHA-256.
 
@@ -41,7 +37,6 @@ def _hash_url(url: str) -> str:
     return hashlib.sha256(url.encode("utf-8")).hexdigest()
 
 
-@mainify
 @lru_cache
 def _get_remote_file_properties(url: str) -> tuple[str, int]:
     """Retrieves the file name and content length of a remote file.
@@ -83,7 +78,6 @@ def _get_remote_file_properties(url: str) -> tuple[str, int]:
     return file_name, content_length
 
 
-@mainify
 def _file_content_length_matches(url: str, file_path: Path) -> bool:
     """Check if the local file's content length matches the expected remote
     file's content length.
@@ -109,7 +103,6 @@ def _file_content_length_matches(url: str, file_path: Path) -> bool:
     return local_file_content_length == remote_file_content_length
 
 
-@mainify
 def download_file(
     url: str,
     target_dir: str | Path,
@@ -185,7 +178,6 @@ def download_file(
     return target_path
 
 
-@mainify
 def _download_file_python(url: str, target_path: Path | str) -> Path:
     """Download a file from a given URL and save it to a specified path using a
     Python interface.
@@ -224,7 +216,6 @@ def _download_file_python(url: str, target_path: Path | str) -> Path:
     return Path(target_path)
 
 
-@mainify
 def _stream_url_data_to_file(url: str, file_path: str, chunk_size_in_mb: int = 64):
     """Download data from a URL and stream it to a file.
 
@@ -273,7 +264,6 @@ def _stream_url_data_to_file(url: str, file_path: str, chunk_size_in_mb: int = 6
         raise DownloadError("Received less data than expected from the server.")
 
 
-@mainify
 def download_model_weights(url: str, force: bool = False):
     """Downloads model weights from the specified URL and saves them to a
     predefined directory.
@@ -313,7 +303,6 @@ def download_model_weights(url: str, force: bool = False):
     )
 
 
-@mainify
 def clone_repository(
     https_url: str,
     *,
@@ -408,7 +397,6 @@ def clone_repository(
     return local_repo_path
 
 
-@mainify
 def __add_local_path_to_sys_path(local_path: Path | str):
     local_path_str = str(local_path)
 
@@ -416,7 +404,6 @@ def __add_local_path_to_sys_path(local_path: Path | str):
         sys.path.insert(0, local_path_str)
 
 
-@mainify
 def _get_git_revision_hash(repo_path: Path) -> str:
     import subprocess
 

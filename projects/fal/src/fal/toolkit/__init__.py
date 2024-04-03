@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from fal.toolkit.file import CompressedFile, File
 from fal.toolkit.image.image import Image, ImageSizeInput, get_image_size
-from fal.toolkit.mainify import mainify
 from fal.toolkit.optimize import optimize
 from fal.toolkit.utils import (
     FAL_MODEL_WEIGHTS_DIR,
@@ -19,7 +18,6 @@ __all__ = [
     "Image",
     "ImageSizeInput",
     "get_image_size",
-    "mainify",
     "optimize",
     "FAL_MODEL_WEIGHTS_DIR",
     "FAL_PERSISTENT_DIR",

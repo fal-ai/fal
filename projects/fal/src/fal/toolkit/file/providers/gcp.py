@@ -6,12 +6,10 @@ import os
 from dataclasses import dataclass
 
 from fal.toolkit.file.types import FileData, FileRepository
-from fal.toolkit.mainify import mainify
 
 DEFAULT_URL_TIMEOUT = 60 * 15  # 15 minutes
 
 
-@mainify
 @dataclass
 class GoogleStorageRepository(FileRepository):
     bucket_name: str = "fal_file_storage"
