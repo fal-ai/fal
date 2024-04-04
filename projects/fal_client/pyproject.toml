@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fal_client"
+version = "0.1.0"
+description = "Python client for fal.ai"
+readme = "README.md"
+authors = [{ name = "fal <hello@fal.ai>" }]
+requires-python = ">=3.8"
+dependencies = [
+    "httpx>=0.21.0,<1",
+    "httpx-sse>=0.4.0,<0.5",
+]
+
+[project.urls]
+homepage = "https://fal.ai"
+repository = "https://github.com/fal-ai/fal"
+
+[tool.pytest.ini_options]
+testpaths = "tests/"
+asyncio_mode = "auto"
+
+[tool.setuptools]
+packages = ["fal_client"]
+package-dir = {"" = "src"}
+
+[tool.setuptools.package-data]
+"fal_client" = ["py.typed"]
