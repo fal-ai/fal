@@ -133,17 +133,22 @@ class AsyncRequestHandle(_BaseRequestHandle):
 
 @dataclass(frozen=True)
 class AsyncClient:
-    key: str = field(default_factory=fetch_credentials, repr=False)
+    key: str | None = field(default=None, repr=False)
     default_timeout: float = 60.0
 
     @cached_property
-    def client(self) -> httpx.AsyncClient:
-        return httpx.AsyncClient(headers={"Authorization": f"Key {self.key}"})
+    def _client(self) -> httpx.AsyncClient:
+        if self.key is None:
+            key = fetch_credentials()
+        else:
+            key = self.key
+
+        return httpx.AsyncClient(headers={"Authorization": f"Key {key}"})
 
     async def run(
         self,
         application: str,
-        data: AnyJSON,
+        arguments: AnyJSON,
         *,
         path: str = "",
     ) -> AnyJSON:
@@ -151,9 +156,9 @@ class AsyncClient:
         if path:
             url += "/" + path.lstrip("/")
 
-        response = await self.client.post(
+        response = await self._client.post(
             url,
-            json=data,
+            json=arguments,
             timeout=self.default_timeout,
         )
         response.raise_for_status()
@@ -162,7 +167,7 @@ class AsyncClient:
     async def submit(
         self,
         application: str,
-        data: AnyJSON,
+        arguments: AnyJSON,
         *,
         path: str = "",
     ) -> AsyncRequestHandle:
@@ -170,9 +175,9 @@ class AsyncClient:
         if path:
             url += "/" + path.lstrip("/")
 
-        response = await self.client.post(
+        response = await self._client.post(
             url,
-            json=data,
+            json=arguments,
             timeout=self.default_timeout,
         )
         response.raise_for_status()
@@ -183,13 +188,13 @@ class AsyncClient:
             response_url=data["response_url"],
             status_url=data["status_url"],
             cancel_url=data["cancel_url"],
-            client=self.client,
+            client=self._client,
         )
 
     async def stream(
         self,
         application: str,
-        data: AnyJSON,
+        arguments: AnyJSON,
         *,
         path: str = "/stream",
     ) -> AsyncIterator[dict[str, Any]]:
@@ -197,12 +202,12 @@ class AsyncClient:
         if path:
             url += "/" + path.lstrip("/")
 
-        async with aconnect_sse(self.client, "POST", url, json=data) as events:
+        async with aconnect_sse(self._client, "POST", url, json=arguments) as events:
             async for event in events.aiter_sse():
                 yield event.json()
 
     async def upload(self, data: str | bytes, content_type: str) -> str:
-        response = await self.client.post(
+        response = await self._client.post(
             CDN_URL + "/files/upload",
             data=data,
             headers={"Content-Type": content_type},
@@ -227,20 +232,24 @@ class AsyncClient:
 
 @dataclass(frozen=True)
 class SyncClient:
-    key: str = field(default_factory=fetch_credentials, repr=False)
+    key: str | None = field(default=None, repr=False)
     default_timeout: float = 60.0
 
     @cached_property
-    def client(self) -> httpx.Client:
+    def _client(self) -> httpx.Client:
+        if self.key is None:
+            key = fetch_credentials()
+        else:
+            key = self.key
         return httpx.Client(
-            headers={"Authorization": f"Key {self.key}"},
+            headers={"Authorization": f"Key {key}"},
             timeout=self.default_timeout,
         )
 
     def run(
         self,
         application: str,
-        data: AnyJSON,
+        arguments: AnyJSON,
         *,
         path: str = "",
         timeout: float | None = None,
@@ -249,9 +258,9 @@ class SyncClient:
         if path:
             url += "/" + path.lstrip("/")
 
-        response = self.client.post(
+        response = self._client.post(
             url,
-            json=data,
+            json=arguments,
             timeout=timeout,
         )
         response.raise_for_status()
@@ -260,7 +269,7 @@ class SyncClient:
     def submit(
         self,
         application: str,
-        data: AnyJSON,
+        arguments: AnyJSON,
         *,
         path: str = "",
     ) -> SyncRequestHandle:
@@ -268,9 +277,9 @@ class SyncClient:
         if path:
             url += "/" + path.lstrip("/")
 
-        response = self.client.post(
+        response = self._client.post(
             url,
-            json=data,
+            json=arguments,
             timeout=self.default_timeout,
         )
         response.raise_for_status()
@@ -281,13 +290,13 @@ class SyncClient:
             response_url=data["response_url"],
             status_url=data["status_url"],
             cancel_url=data["cancel_url"],
-            client=self.client,
+            client=self._client,
         )
 
     def stream(
         self,
         application: str,
-        data: AnyJSON,
+        arguments: AnyJSON,
         *,
         path: str = "/stream",
     ) -> Iterator[dict[str, Any]]:
@@ -295,12 +304,12 @@ class SyncClient:
         if path:
             url += "/" + path.lstrip("/")
 
-        with connect_sse(self.client, "POST", url, json=data) as events:
+        with connect_sse(self._client, "POST", url, json=arguments) as events:
             for event in events.iter_sse():
                 yield event.json()
 
     def upload(self, data: str | bytes, content_type: str) -> str:
-        response = self.client.post(
+        response = self._client.post(
             CDN_URL + "/files/upload",
             data=data,
             headers={"Content-Type": content_type},

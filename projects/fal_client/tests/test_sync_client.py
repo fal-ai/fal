@@ -13,7 +13,7 @@ def client() -> fal_client.SyncClient:
 def test_fal_client(client: fal_client.SyncClient):
     output = client.run(
         "fal-ai/fast-sdxl",
-        data={
+        arguments={
             "prompt": "a cat",
         },
     )
@@ -21,7 +21,7 @@ def test_fal_client(client: fal_client.SyncClient):
 
     handle = client.submit(
         "fal-ai/fast-sdxl/image-to-image",
-        data={
+        arguments={
             "image_url": output["images"][0]["url"],
             "prompt": "an orange cat",
             "seed": 42,
@@ -44,7 +44,7 @@ def test_fal_client_streaming(client: fal_client.SyncClient):
     events = []
     for event in client.stream(
         "fal-ai/llavav15-13b",
-        data={
+        arguments={
             "image_url": "https://llava-vl.github.io/static/images/monalisa.jpg",
             "prompt": "Do you know who drew this painting?",
         },
