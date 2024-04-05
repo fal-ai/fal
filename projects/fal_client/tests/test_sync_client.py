@@ -1,5 +1,8 @@
+import io
 import pytest
 import fal_client
+import httpx
+from PIL import Image
 
 
 @pytest.fixture
@@ -51,3 +54,34 @@ def test_fal_client_streaming(client: fal_client.SyncClient):
 
     assert len(events) >= 2
     assert not events[-1]["partial"]
+
+
+def test_fal_client_upload(
+    client: fal_client.SyncClient,
+    tmp_path,
+):
+    url = client.upload(b"Hello, world!", content_type="text/plain")
+    response = httpx.get(url)
+    response.raise_for_status()
+
+    assert response.text == "Hello, world!"
+
+    fake_file = tmp_path / "fake.txt"
+    fake_file.write_text("from fake.txt")
+
+    url = client.upload_file(fake_file)
+    response = httpx.get(url)
+    response.raise_for_status()
+
+    assert response.text == "from fake.txt"
+
+    image = Image.new("RGB", (100, 100))
+
+    url = client.upload_image(image)
+    response = httpx.get(url)
+    response.raise_for_status()
+
+    response_image = Image.open(io.BytesIO(response.content))
+    assert response_image.size == (100, 100)
+    assert response_image.mode == "RGB"
+    assert response_image.getpixel((0, 0)) == (0, 0, 0)

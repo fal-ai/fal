@@ -1,15 +1,24 @@
+from __future__ import annotations
+
+import io
+import os
 import httpx
+import mimetypes
 from httpx_sse import aconnect_sse, connect_sse
 from dataclasses import dataclass, field
 from functools import cached_property
 from fal_client.auth import FAL_RUN_HOST, fetch_credentials
-from typing import Any, AsyncIterator, Iterator
+from typing import Any, AsyncIterator, Iterator, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from PIL import Image
 
 AnyJSON = dict[str, Any]
 
 RUN_URL_FORMAT = f"https://{FAL_RUN_HOST}/"
 QUEUE_URL_FORMAT = f"https://queue.{FAL_RUN_HOST}/"
 REALTIME_URL_FORMAT = f"wss://{FAL_RUN_HOST}/"
+CDN_URL = "https://fal.media"
 
 
 @dataclass
@@ -192,6 +201,29 @@ class AsyncClient:
             async for event in events.aiter_sse():
                 yield event.json()
 
+    async def upload(self, data: str | bytes, content_type: str) -> str:
+        response = await self.client.post(
+            CDN_URL + "/files/upload",
+            data=data,
+            headers={"Content-Type": content_type},
+        )
+        response.raise_for_status()
+
+        return response.json()["access_url"]
+
+    async def upload_file(self, path: os.PathLike) -> str:
+        mime_type, _ = mimetypes.guess_type(path)
+        if mime_type is None:
+            mime_type = "application/octet-stream"
+
+        with open(path, "rb") as file:
+            return await self.upload(file.read(), mime_type)
+
+    async def upload_image(self, image: Image.Image, format: str = "jpeg") -> str:
+        with io.BytesIO() as buffer:
+            image.save(buffer, format=format)
+            return await self.upload(buffer.getvalue(), f"image/{format}")
+
 
 @dataclass(frozen=True)
 class SyncClient:
@@ -266,3 +298,26 @@ class SyncClient:
         with connect_sse(self.client, "POST", url, json=data) as events:
             for event in events.iter_sse():
                 yield event.json()
+
+    def upload(self, data: str | bytes, content_type: str) -> str:
+        response = self.client.post(
+            CDN_URL + "/files/upload",
+            data=data,
+            headers={"Content-Type": content_type},
+        )
+        response.raise_for_status()
+
+        return response.json()["access_url"]
+
+    def upload_file(self, path: os.PathLike) -> str:
+        mime_type, _ = mimetypes.guess_type(path)
+        if mime_type is None:
+            mime_type = "application/octet-stream"
+
+        with open(path, "rb") as file:
+            return self.upload(file.read(), mime_type)
+
+    def upload_image(self, image: Image.Image, format: str = "jpeg") -> str:
+        with io.BytesIO() as buffer:
+            image.save(buffer, format=format)
+            return self.upload(buffer.getvalue(), f"image/{format}")
