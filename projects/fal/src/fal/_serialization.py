@@ -28,7 +28,7 @@ def include_package_from_path(raw_path: str) -> None:
 def include_modules_from(obj: Any) -> None:
     module_name = getattr(obj, "__module__", None)
     if not module_name:
-        return None
+        return
 
     if "." in module_name:
         # Just include the whole package

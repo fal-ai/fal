@@ -60,8 +60,9 @@ class File(BaseModel):
     )
 
     def __init__(self, **kwargs):
+        data: Optional[FileData] = None
         if "file_data" in kwargs:
-            data: FileData = kwargs.pop("file_data")
+            data = kwargs.pop("file_data")
             repository = kwargs.pop("repository", None)
 
             repo = (
@@ -69,7 +70,6 @@ class File(BaseModel):
                 if isinstance(repository, FileRepository)
                 else get_builtin_repository(repository)
             )
-            self._file_data = data
 
             kwargs.update(
                 {
@@ -81,6 +81,8 @@ class File(BaseModel):
             )
 
         super().__init__(**kwargs)
+        if data is not None:
+            self._file_data = data
 
     # Pydantic custom validator for input type conversion
     @classmethod
