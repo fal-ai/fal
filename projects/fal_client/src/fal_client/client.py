@@ -22,6 +22,7 @@ RUN_URL_FORMAT = f"https://{FAL_RUN_HOST}/"
 QUEUE_URL_FORMAT = f"https://queue.{FAL_RUN_HOST}/"
 REALTIME_URL_FORMAT = f"wss://{FAL_RUN_HOST}/"
 CDN_URL = "https://fal.media"
+USER_AGENT = "fal-client/0.2.2 (python)"
 
 
 @dataclass
@@ -175,7 +176,12 @@ class AsyncClient:
         else:
             key = self.key
 
-        return httpx.AsyncClient(headers={"Authorization": f"Key {key}"})
+        return httpx.AsyncClient(
+            headers={
+                "Authorization": f"Key {key}",
+                "User-Agent": USER_AGENT,
+            }
+        )
 
     async def run(
         self,
@@ -185,7 +191,8 @@ class AsyncClient:
         path: str = "",
     ) -> AnyJSON:
         """Run an application with the given arguments (which will be JSON serialized). The path parameter can be used to
-        specify a subpath when applicable. This method will return the result of the inference call directly."""
+        specify a subpath when applicable. This method will return the result of the inference call directly.
+        """
 
         url = RUN_URL_FORMAT + application
         if path:
@@ -295,7 +302,10 @@ class SyncClient:
         else:
             key = self.key
         return httpx.Client(
-            headers={"Authorization": f"Key {key}"},
+            headers={
+                "Authorization": f"Key {key}",
+                "User-Agent": USER_AGENT,
+            },
             timeout=self.default_timeout,
         )
 
@@ -308,7 +318,8 @@ class SyncClient:
         timeout: float | None = None,
     ) -> AnyJSON:
         """Run an application with the given arguments (which will be JSON serialized). The path parameter can be used to
-        specify a subpath when applicable. This method will return the result of the inference call directly."""
+        specify a subpath when applicable. This method will return the result of the inference call directly.
+        """
 
         url = RUN_URL_FORMAT + application
         if path:
