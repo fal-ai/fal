@@ -30,8 +30,14 @@ sync_client = SyncClient()
 run = sync_client.run
 submit = sync_client.submit
 stream = sync_client.stream
+upload = sync_client.upload
+upload_file = sync_client.upload_file
+upload_image = sync_client.upload_image
 
 async_client = AsyncClient()
 run_async = async_client.run
 submit_async = async_client.submit
 stream_async = async_client.stream
+upload_async = async_client.upload
+upload_file_async = async_client.upload_file
+upload_image_async = async_client.upload_image
