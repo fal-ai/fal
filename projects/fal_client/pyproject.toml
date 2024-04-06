@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fal_client"
-version = "0.2.1"
+version = "0.2.2"
 description = "Python client for fal.ai"
 readme = "README.md"
 authors = [{ name = "fal <hello@fal.ai>" }]
