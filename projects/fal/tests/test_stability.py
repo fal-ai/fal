@@ -58,8 +58,6 @@ def test_function_pipelining(isolated_client):
     assert calling_function(regular_function()) == 84
 
 
-# TODO: remove the mark
-@pytest.mark.xfail(reason="It will fix itself after the new serverless is released")
 def test_function_calling_other_function(isolated_client):
     try:
         import importlib.metadata as importlib_metadata
