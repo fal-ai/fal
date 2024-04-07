@@ -25,11 +25,7 @@ repos:
     rev: v3.1.0
     hooks:
       - id: pyupgrade
-        args: ["--py38-plus"]
-        exclude: |
-          (?x)(
-            ^projects/fal/src/fal/toolkit/image/image.py
-          )
+        args: ["--py38-plus", "--keep-runtime-typing"]
         files: |
           (?x)(
             ^projects/fal/src/|

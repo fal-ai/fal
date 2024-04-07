@@ -2,12 +2,21 @@ from __future__ import annotations
 
 from pathlib import Path
 from tempfile import NamedTemporaryFile, TemporaryDirectory
-from typing import Any, Callable
+from typing import Callable, Optional, Any
 from urllib.parse import urlparse
 from zipfile import ZipFile
 
+import pydantic
+
+# https://github.com/pydantic/pydantic/pull/2573
+if not hasattr(pydantic, "__version__") or pydantic.__version__.startswith("1."):
+    IS_PYDANTIC_V2 = False
+else:
+    from pydantic_core import core_schema, CoreSchema
+    from pydantic import GetCoreSchemaHandler
+    IS_PYDANTIC_V2 = True
+
 from pydantic import BaseModel, Field, PrivateAttr
-from pydantic.typing import Optional
 
 from fal.toolkit.file.providers.fal import (
     FalCDNFileRepository,
@@ -48,15 +57,15 @@ class File(BaseModel):
         description="The URL where the file can be downloaded from.",
     )
     content_type: Optional[str] = Field(
-        description="The mime type of the file.",
+        None, description="The mime type of the file.",
         examples=["image/png"],
     )
     file_name: Optional[str] = Field(
-        description="The name of the file. It will be auto-generated if not provided.",
+        None, description="The name of the file. It will be auto-generated if not provided.",
         examples=["z9RV14K95DvU.png"],
     )
     file_size: Optional[int] = Field(
-        description="The size of the file in bytes.", examples=[4404019]
+        None, description="The size of the file in bytes.", examples=[4404019]
     )
 
     def __init__(self, **kwargs):
@@ -71,6 +80,7 @@ class File(BaseModel):
                 else get_builtin_repository(repository)
             )
 
+            assert data
             kwargs.update(
                 {
                     "url": repo.save(data),
@@ -79,15 +89,27 @@ class File(BaseModel):
                     "file_size": len(data.data),
                 }
             )
+        else:
+            data = None
 
         super().__init__(**kwargs)
         if data is not None:
             self._file_data = data
 
     # Pydantic custom validator for input type conversion
-    @classmethod
-    def __get_validators__(cls):
-        yield cls.__convert_from_str
+    if IS_PYDANTIC_V2:
+        @classmethod
+        def __get_pydantic_core_schema__(
+            cls, source_type: Any, handler: GetCoreSchemaHandler
+        ) -> CoreSchema:
+            return core_schema.no_info_before_validator_function(
+                cls.__convert_from_str,
+                handler(source_type),
+            )
+    else:
+        @classmethod
+        def __get_validators__(cls):
+            yield cls.__convert_from_str  
 
     @classmethod
     def __convert_from_str(cls, value: Any):

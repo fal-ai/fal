@@ -4,6 +4,8 @@ from contextlib import suppress
 
 import pytest
 
+from pydantic import __version__ as pydantic_version
+
 import fal
 from fal.api import FalServerlessError, Options
 from fal.toolkit.file.file import File
@@ -412,7 +414,7 @@ def test_pydantic_serialization(isolated_client):
     class MathResult(BaseModel):
         result: int = Field(description="The result of the operation")
 
-    @isolated_client("virtualenv", requirements=["pydantic<2"])
+    @isolated_client("virtualenv", requirements=[f"pydantic=={pydantic_version}"])
     def add(query: MathQuery) -> MathResult:
         return MathResult(result=query.x + query.y)
 
@@ -431,7 +433,7 @@ def test_serve_on_off(isolated_client):
     class MathResult(BaseModel):
         result: int = Field(description="The result of the operation")
 
-    @isolated_client("virtualenv", serve=True)
+    @isolated_client("virtualenv", serve=True, requirements=[f"pydantic=={pydantic_version}"])
     def add(query: MathQuery) -> MathResult:
         return MathResult(result=query.x + query.y)
 
@@ -468,7 +470,7 @@ def test_fal_storage(isolated_client):
     )
     assert file.as_bytes().decode().endswith("local")
 
-    @isolated_client(serve=True)
+    @isolated_client(serve=True, requirements=[f"pydantic=={pydantic_version}"])
     def hello_file():
         # Run in the isolated environment
         return File.from_bytes(b"Hello fal storage from isolated", repository="fal")

@@ -28,7 +28,7 @@ import grpc
 import isolate
 import tblib
 import yaml
-from fastapi import FastAPI
+from fastapi import FastAPI, __version__ as fastapi_version
 from isolate.backends.common import active_python
 from isolate.backends.settings import DEFAULT_SETTINGS
 from isolate.connections import PythonIPC
@@ -58,7 +58,7 @@ ReturnT = TypeVar("ReturnT", covariant=True)
 BasicConfig = Dict[str, Any]
 _UNSET = object()
 
-SERVE_REQUIREMENTS = ["fastapi==0.99.1", "uvicorn"]
+SERVE_REQUIREMENTS = [f"fastapi=={fastapi_version}", "uvicorn"]
 
 
 @dataclass

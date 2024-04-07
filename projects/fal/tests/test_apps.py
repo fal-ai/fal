@@ -8,7 +8,7 @@ import pytest
 from fastapi import WebSocket
 from httpx import HTTPStatusError
 from openapi_fal_rest.api.applications import app_metadata
-from pydantic import BaseModel
+from pydantic import BaseModel, __version__ as pydantic_version
 
 import fal
 import fal.api as api
@@ -36,6 +36,7 @@ class Output(BaseModel):
     machine_type="S",
     serve=True,
     max_concurrency=1,
+    requirements=[f"pydantic=={pydantic_version}"],
 )
 def addition_app(input: Input) -> Output:
     print("starting...")
@@ -90,6 +91,7 @@ def calculator_app():
 
 class StatefulAdditionApp(fal.App, keep_alive=300, max_concurrency=1):
     machine_type = "S"
+    requirements = [f"pydantic=={pydantic_version}"]
 
     async def setup(self):
         self.counter = 0
@@ -131,6 +133,7 @@ class RTOutputs(BaseModel):
 
 class RealtimeApp(fal.App, keep_alive=300, max_concurrency=1):
     machine_type = "S"
+    requirements = [f"pydantic=={pydantic_version}"]
 
     @fal.endpoint("/")
     def generate(self, input: RTInput) -> RTOutput:

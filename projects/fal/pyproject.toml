@@ -28,10 +28,10 @@ rich = "^13.3.2"
 rich_click = "*"
 packaging = ">=21.3"
 pathspec = "^0.11.1"
-pydantic = "<2.0"
+pydantic = "!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,<3"
 
 # serve=True dependencies
-fastapi = "0.99.1"
+fastapi = ">=0.99.1, <1"
 
 # rest-api-client dependencies
 httpx = ">=0.15.4"
@@ -47,7 +47,7 @@ pillow = "^10.2.0"
 pyjwt = { version = "^2.8.0", extras = ["crypto"] }
 
 [tool.poetry.group.dev.dependencies]
-openapi-python-client = "^0.14.1"
+openapi-python-client = ">=0.14.1, <1"
 
 [build-system]
 requires = ["poetry-core"]

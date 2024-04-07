@@ -62,11 +62,11 @@ class Image(File):
     """
 
     width: Optional[int] = Field(
-        description="The width of the image in pixels.",
+        None, description="The width of the image in pixels.",
         examples=[1024],
     )
     height: Optional[int] = Field(
-        description="The height of the image in pixels.", examples=[1024]
+        None, description="The height of the image in pixels.", examples=[1024]
     )
 
     @classmethod

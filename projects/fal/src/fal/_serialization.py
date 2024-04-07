@@ -97,6 +97,38 @@ def _patch_pydantic_field_serialization() -> None:
     _register(ModelPrivateAttr, pickle_private_attr)
 
 
+def _patch_pydantic_model_serialization() -> None:
+    # If user has created new pydantic models in his namespace, we will try to pickle those
+    # by value, which means recreating class skeleton, which will stumble upon
+    # __pydantic_parent_namespace__ in its __dict__ and it may contain modules that happened
+    # to be imported in the namespace but are not actually used, resulting in pickling errors.
+    # Unfortunately this also means that `model_rebuid()` might not work.
+    try:
+        import pydantic
+    except ImportError:
+        return
+
+    # https://github.com/pydantic/pydantic/pull/2573
+    if not hasattr(pydantic, "__version__") or pydantic.__version__.startswith("1."):
+        return
+
+    backup = "_original_extract_class_dict"
+    if getattr(cloudpickle.cloudpickle, backup, None):
+        return
+
+    original = cloudpickle.cloudpickle._extract_class_dict
+
+    def patched(cls):
+        attr_name = "__pydantic_parent_namespace__"
+        if issubclass(cls, pydantic.BaseModel) and getattr(cls, attr_name, None):
+            setattr(cls, attr_name, None)
+
+        return original(cls)
+
+    cloudpickle.cloudpickle._extract_class_dict = patched
+    setattr(cloudpickle.cloudpickle, backup, original)
+
+
 def _patch_lru_cache() -> None:
     # https://github.com/cloudpipe/cloudpickle/issues/178
     # https://github.com/uqfoundation/dill/blob/70f569b0dd268d2b1e85c0f300951b11f53c5d53/dill/_dill.py#L1429
@@ -182,6 +214,7 @@ def _patch_exceptions() -> None:
 
 def patch_pickle() -> None:
     _patch_pydantic_field_serialization()
+    _patch_pydantic_model_serialization()
     _patch_lru_cache()
     _patch_lock()
     _patch_rlock()

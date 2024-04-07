@@ -5,7 +5,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, __version__ as pydantic_version
 
 import fal
 from fal import FalServerlessHost, FalServerlessKeyCredentials, local, sync_dir
@@ -449,7 +449,7 @@ def fal_file_content_matches(file: File, content: str):
 
 
 def test_fal_file_from_path(isolated_client):
-    @isolated_client(requirements=["pydantic==1.10.12"])
+    @isolated_client(requirements=[f"pydantic=={pydantic_version}"])
     def fal_file_from_temp(content: str):
         with tempfile.NamedTemporaryFile() as temp_file:
             file_path = temp_file.name
@@ -466,7 +466,7 @@ def test_fal_file_from_path(isolated_client):
 
 
 def test_fal_file_from_bytes(isolated_client):
-    @isolated_client(requirements=["pydantic==1.10.12"])
+    @isolated_client(requirements=[f"pydantic=={pydantic_version}"])
     def fal_file_from_bytes(content: str):
         return File.from_bytes(content.encode(), repository="in_memory")
 
@@ -477,7 +477,7 @@ def test_fal_file_from_bytes(isolated_client):
 
 
 def test_fal_file_save(isolated_client):
-    @isolated_client(requirements=["pydantic==1.10.12"])
+    @isolated_client(requirements=[f"pydantic=={pydantic_version}"])
     def fal_file_to_local_file(content: str):
         file = File.from_bytes(content.encode(), repository="in_memory")
 
@@ -512,7 +512,7 @@ def test_fal_file_input(isolated_client, file_url: str, expected_content: str):
     class TestInput(BaseModel):
         file: File = Field()
 
-    @isolated_client(requirements=["pydantic==1.10.12"])
+    @isolated_client(requirements=[f"pydantic=={pydantic_version}"])
     def init_file_on_fal(input: TestInput) -> File:
         return input.file
 
@@ -533,7 +533,7 @@ def test_fal_compressed_file(isolated_client):
     class TestInput(BaseModel):
         files: CompressedFile
 
-    @isolated_client(requirements=["pydantic==1.10.12"])
+    @isolated_client(requirements=[f"pydantic=={pydantic_version}"])
     def init_compressed_file_on_fal(input: TestInput) -> int:
         extracted_file_paths = [file for file in input.files]
         return extracted_file_paths
