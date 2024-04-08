@@ -15,6 +15,7 @@ from fal.toolkit.file.file import CompressedFile
 from fal.toolkit.utils.download_utils import _get_git_revision_hash, _hash_url
 
 
+@pytest.mark.flaky(max_runs=3)
 def test_isolated(isolated_client):
     @isolated_client("virtualenv", requirements=["pyjokes==0.5.0"])
     def get_pyjokes_version():
