@@ -36,11 +36,11 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -e projects/fal
-          pip install pytest pytest-asyncio pillow
+          pip install pytest pytest-asyncio pytest-xdist pillow
 
       - name: Run integration tests
         env:
           FAL_KEY: ${{ secrets.FAL_CLOUD_KEY_ID }}:${{ secrets.FAL_CLOUD_KEY_SECRET }}
           FAL_HOST: api.${{ vars.FAL_CLOUD_INTEGRATION_TEST_HOST }}
         run: |
-          pytest -v projects/fal/tests
+          pytest -n auto -v projects/fal/tests

@@ -164,6 +164,25 @@ def patch_exceptions():
 
 
 @mainify
+def _patch_console_thread_locals() -> None:
+    # NOTE: we __sometimes__ might have to serialize these
+    from rich.console import ConsoleThreadLocals
+
+    @dill.register(ConsoleThreadLocals)
+    def save_console_thread_locals(pickler, obj):
+        args = {
+            "theme_stack": obj.theme_stack,
+            "buffer": obj.buffer,
+            "buffer_index": obj.buffer_index,
+        }
+
+        def unpickle(kwargs):
+            return ConsoleThreadLocals(**kwargs)
+
+        pickler.save_reduce(unpickle, (args,), obj=obj)
+
+
+@mainify
 def patch_dill():
     import dill
 
@@ -172,6 +191,7 @@ def patch_dill():
     patch_exceptions()
     patch_pydantic_class_attributes()
     patch_pydantic_field_serialization()
+    _patch_console_thread_locals()
 
 
 @mainify
