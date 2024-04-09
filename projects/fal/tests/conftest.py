@@ -9,4 +9,4 @@ from fal import function
 
 @pytest.fixture(scope="function")
 def isolated_client():
-    return partial(function, machine_type="M", keep_alive=0)
+    return partial(function, machine_type="XS", keep_alive=0)

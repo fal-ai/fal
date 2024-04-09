@@ -165,6 +165,7 @@ def patch_exceptions():
 
 @mainify
 def _patch_console_thread_locals() -> None:
+    # NOTE: we __sometimes__ might have to serialize these
     from rich.console import ConsoleThreadLocals
 
     @dill.register(ConsoleThreadLocals)
