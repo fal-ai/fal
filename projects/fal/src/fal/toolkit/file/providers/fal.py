@@ -12,7 +12,7 @@ from fal.toolkit.exceptions import FileUploadException
 from fal.toolkit.file.types import FileData, FileRepository
 from fal.toolkit.mainify import mainify
 
-_FAL_CDN = "https://fal-cdn.batuhan-941.workers.dev"
+_FAL_CDN = "https://fal.media"
 
 
 @mainify
