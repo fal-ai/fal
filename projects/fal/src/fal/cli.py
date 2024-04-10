@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from dataclasses import dataclass, field
 from http import HTTPStatus
 from sys import argv
@@ -258,11 +259,30 @@ def function_cli(ctx, host: str, port: str):
 def load_function_from(
     host: api.FalServerlessHost,
     file_path: str,
-    function_name: str,
-) -> api.IsolatedFunction:
+    function_name: str | None = None,
+) -> tuple[api.IsolatedFunction, str | None]:
     import runpy
 
     module = runpy.run_path(file_path)
+    if function_name is None:
+        fal_objects = {
+            obj.app_name: obj_name
+            for obj_name, obj in module.items()
+            if isinstance(obj, type)
+            and issubclass(obj, fal.App)
+            and hasattr(obj, "app_name")
+        }
+        if len(fal_objects) == 0:
+            raise api.FalServerlessError("No fal.App found in the module")
+        elif len(fal_objects) > 1:
+            raise api.FalServerlessError(
+                "Multiple fal.Apps found in the module. Please specify the name of the app."
+            )
+
+        [(app_name, function_name)] = fal_objects.items()
+    else:
+        app_name = None
+
     if function_name not in module:
         raise api.FalServerlessError(f"Function '{function_name}' not found in module")
 
@@ -278,7 +298,54 @@ def load_function_from(
         raise api.FalServerlessError(
             f"Function '{function_name}' is not a fal.function or a fal.App"
         )
-    return target
+    return target, app_name
+
+
+##### Deploy CLI #####
+@cli.command("deploy")
+@click.argument("file_path", type=Path, default=None, required=False)
+@click.option("--host", default=DEFAULT_HOST, envvar=HOST_ENVVAR)
+@click.option("--port", default=DEFAULT_PORT, envvar=PORT_ENVVAR, hidden=True)
+def deploy_fal_app(
+    file_path: Path | None = None,
+    host: str = DEFAULT_HOST,
+    port: str = DEFAULT_PORT,
+):
+    serverless_host = api.FalServerlessHost(f"{host}:{port}")
+    if file_path is None:
+        # Try to find a python file in the current directory
+        options = list(Path(".").glob("*.py"))
+        if len(options) == 0:
+            raise api.FalServerlessError(
+                "No python files found in the current directory"
+            )
+        elif len(options) > 1:
+            raise api.FalServerlessError(
+                "Multiple python files found in the current directory. "
+                "Please specify the file path of the app you want to deploy."
+            )
+
+        [file_path] = options
+
+    user_id = _get_user_id()
+    isolated_function, app_name = load_function_from(serverless_host, str(file_path))
+    id = serverless_host.register(
+        func=isolated_function.func,
+        options=isolated_function.options,
+        application_name=app_name,
+        metadata=isolated_function.options.host.get("metadata", {}),
+    )
+
+    if id:
+        gateway_host = remove_http_and_port_from_url(serverless_host.url)
+        gateway_host = (
+            gateway_host.replace("api.", "").replace("alpha.", "").replace("ai", "run")
+        )
+
+        console.print(
+            f"Registered a new revision for function '{app_name}' (revision='{id}')."
+        )
+        console.print(f"URL: https://{gateway_host}/{user_id}/{app_name}")
 
 
 @function_cli.command("serve")
@@ -302,7 +369,7 @@ def register_application(
 ):
     user_id = _get_user_id()
 
-    isolated_function = load_function_from(host, file_path, function_name)
+    isolated_function, _ = load_function_from(host, file_path, function_name)
     gateway_options = isolated_function.options.gateway
     if "serve" not in gateway_options and "exposed_port" not in gateway_options:
         raise api.FalServerlessError(
@@ -346,7 +413,7 @@ def register_application(
 @debug_option()
 @click.pass_obj
 def run(host: api.FalServerlessHost, file_path: str, function_name: str):
-    isolated_function = load_function_from(host, file_path, function_name)
+    isolated_function, _ = load_function_from(host, file_path, function_name)
     # let our exc handlers handle UserFunctionException
     isolated_function.reraise = False
     isolated_function()
