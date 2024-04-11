@@ -8,7 +8,6 @@ from pydantic import BaseModel, Field
 
 from fal.toolkit.file.file import DEFAULT_REPOSITORY, File
 from fal.toolkit.file.types import FileData, FileRepository, RepositoryId
-from fal.toolkit.mainify import mainify
 from fal.toolkit.utils.download_utils import _download_file_python
 
 if TYPE_CHECKING:
@@ -25,7 +24,6 @@ ImageSizePreset = Literal[
 ]
 
 
-@mainify
 class ImageSize(BaseModel):
     width: int = Field(
         default=512, description="The width of the generated image.", gt=0, le=14142
@@ -46,7 +44,6 @@ IMAGE_SIZE_PRESETS: dict[ImageSizePreset, ImageSize] = {
 
 ImageSizeInput = Union[ImageSize, ImageSizePreset]
 
-@mainify
 def get_image_size(source: ImageSizeInput) -> ImageSize:
     if isinstance(source, ImageSize):
         return source
@@ -59,7 +56,6 @@ def get_image_size(source: ImageSizeInput) -> ImageSize:
 ImageFormat = Literal["png", "jpeg", "jpg", "webp", "gif"]
 
 
-@mainify
 class Image(File):
     """
     Represents an image file.

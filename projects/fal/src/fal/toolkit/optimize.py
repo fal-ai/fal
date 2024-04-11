@@ -4,13 +4,11 @@ import os
 import traceback
 from typing import TYPE_CHECKING, Any
 
-from fal.toolkit.mainify import mainify
 
 if TYPE_CHECKING:
     import torch
 
 
-@mainify
 def optimize(
     module: torch.nn.Module, *, optimization_config: dict[str, Any] | None = None
 ) -> torch.nn.Module:

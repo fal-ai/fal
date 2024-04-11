@@ -51,9 +51,9 @@ class GrpcExceptionHandler(BaseExceptionHandler[RpcCall]):
 
 class UserFunctionExceptionHandler(BaseExceptionHandler["UserFunctionException"]):
     def should_handle(self, exception: Exception) -> bool:
-        from fal.api import UserFunctionException, match_class
+        from fal.api import UserFunctionException
 
-        return match_class(exception, UserFunctionException)
+        return isinstance(exception, UserFunctionException)
 
     def handle(self, exception: UserFunctionException):
         import rich

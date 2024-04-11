@@ -5,10 +5,7 @@ from mimetypes import guess_extension, guess_type
 from typing import Literal
 from uuid import uuid4
 
-from fal.toolkit.mainify import mainify
 
-
-@mainify
 class FileData:
     data: bytes
     content_type: str
@@ -34,7 +31,6 @@ class FileData:
 RepositoryId = Literal["fal", "in_memory", "gcp_storage", "r2", "cdn"]
 
 
-@mainify
 @dataclass
 class FileRepository:
     def save(self, data: FileData) -> str:

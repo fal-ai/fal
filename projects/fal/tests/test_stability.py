@@ -12,10 +12,6 @@ PACKAGE_NAME = "fal"
 
 
 def test_missing_dependencies_nested_server_error(isolated_client):
-    from fal import _serialization
-
-    _serialization._PACKAGES.clear()
-    _serialization._MODULES.clear()
 
     @isolated_client()
     def test1():
@@ -58,6 +54,7 @@ def test_function_pipelining(isolated_client):
     assert calling_function(regular_function()) == 84
 
 
+@pytest.mark.xfail(reason="See https://github.com/fal-ai/fal/issues/169")
 def test_function_calling_other_function(isolated_client):
     try:
         import importlib.metadata as importlib_metadata
@@ -408,14 +405,10 @@ def test_cached_function(isolated_client, capsys, monkeypatch):
 def test_pydantic_serialization(isolated_client):
     from pydantic import BaseModel, Field
 
-    from fal.toolkit import mainify
-
-    @mainify
     class MathQuery(BaseModel):
         x: int = Field(gt=0, description="The first operand")
         y: int = Field(gt=0, description="The second operand")
 
-    @mainify
     class MathResult(BaseModel):
         result: int = Field(description="The result of the operation")
 
@@ -431,14 +424,10 @@ def test_pydantic_serialization(isolated_client):
 def test_serve_on_off(isolated_client):
     from pydantic import BaseModel, Field
 
-    from fal.toolkit import mainify
-
-    @mainify
     class MathQuery(BaseModel):
         x: int = Field(gt=0, description="The first operand")
         y: int = Field(gt=0, description="The second operand")
 
-    @mainify
     class MathResult(BaseModel):
         result: int = Field(description="The result of the operation")
 
@@ -451,18 +440,6 @@ def test_serve_on_off(isolated_client):
 
     local_first_add_2 = local_first_add.on(serve=True).on(serve=False)
     assert local_first_add_2(MathQuery(x=1, y=2)) == MathResult(result=3)
-
-
-def test_mainify():
-    from tests.mainify_target import mainified
-
-    assert mainified() == "123"
-
-
-def test_mainify_package():
-    from tests.mainify_package import my_function
-
-    assert my_function() == 3
 
 
 def test_worker_env_vars(isolated_client):

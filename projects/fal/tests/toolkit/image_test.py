@@ -7,10 +7,9 @@ import pytest
 from PIL import Image as PILImage
 from pydantic import BaseModel, Field
 
-from fal.toolkit import Image, mainify
+from fal.toolkit import Image
 
 
-@mainify
 def get_image(as_bytes: bool = False):
     from PIL import Image
 
@@ -21,7 +20,6 @@ def get_image(as_bytes: bool = False):
     return pil_image_to_bytes(pil_image)
 
 
-@mainify
 def pil_image_to_bytes(image: PILImage.Image) -> bytes:
     image_bytes = BytesIO()
     image.save(image_bytes, format="PNG")
@@ -42,7 +40,6 @@ def fal_image_content_matches(image: Image, content: bytes):
     return images_are_equal(image1, image2)
 
 
-@mainify
 def image_to_data_uri(image: PILImage.Image) -> str:
     image_bytes = pil_image_to_bytes(image)
     b64_encoded = b64encode(image_bytes).decode("utf-8")

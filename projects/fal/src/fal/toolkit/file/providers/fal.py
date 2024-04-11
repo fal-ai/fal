@@ -10,12 +10,10 @@ from urllib.request import Request, urlopen
 from fal.auth import key_credentials
 from fal.toolkit.exceptions import FileUploadException
 from fal.toolkit.file.types import FileData, FileRepository
-from fal.toolkit.mainify import mainify
 
 _FAL_CDN = "https://fal.media"
 
 
-@mainify
 @dataclass
 class FalFileRepository(FileRepository):
     def save(self, file: FileData) -> str:
@@ -70,14 +68,12 @@ class FalFileRepository(FileRepository):
             return
 
 
-@mainify
 @dataclass
 class InMemoryRepository(FileRepository):
     def save(self, file: FileData) -> str:
         return f'data:{file.content_type};base64,{b64encode(file.data).decode("utf-8")}'
 
 
-@mainify
 @dataclass
 class FalCDNFileRepository(FileRepository):
     def save(self, file: FileData) -> str:

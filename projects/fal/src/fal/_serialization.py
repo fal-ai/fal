@@ -1,102 +1,71 @@
 from __future__ import annotations
 
-from functools import wraps
-from pathlib import Path
+from typing import Any, Callable
 
-import dill
-from dill import _dill
-
-from fal.toolkit import mainify
-
-# each @fal.function gets added to this set so that we can
-# mainify the module this function is in
-_MODULES: set[str] = set()
-_PACKAGES: set[str] = set()
+import pickle
+import cloudpickle
 
 
-@mainify
-def _pydantic_make_field(kwargs):
-    from pydantic.fields import ModelField
-
-    return ModelField(**kwargs)
-
-
-@mainify
-def _pydantic_make_private_field(kwargs):
-    from pydantic.fields import ModelPrivateAttr
-
-    return ModelPrivateAttr(**kwargs)
+def _register_pickle_by_value(name) -> None:
+    # cloudpickle.register_pickle_by_value wants an imported module object,
+    # but there is really no reason to go through that complication, as
+    # it might be prone to errors.
+    cloudpickle.cloudpickle._PICKLE_BY_VALUE_MODULES.add(name)
 
 
-# this allows us to record all the "isolated" function and then mainify everything in
-# module they exist
-@wraps(_dill._locate_function)
-def by_value_locator(obj, pickler=None, og_locator=_dill._locate_function):
-    module_name = getattr(obj, "__module__", None)
-    if module_name is not None:
-        # If it is coming from the same module, directly allow
-        # it to be pickled.
-        if module_name in _MODULES:
-            return False
+def include_package_from_path(raw_path: str) -> None:
+    from pathlib import Path
 
-        package_name, *_ = module_name.partition(".")
-        # If it is coming from the same package, then do the same.
-        if package_name in _PACKAGES:
-            return False
-
-    og_result = og_locator(obj, pickler)
-    return og_result
-
-
-_dill._locate_function = by_value_locator
-
-
-def include_packages_from_path(raw_path: str):
     path = Path(raw_path).resolve()
     parent = path
     while (parent.parent / "__init__.py").exists():
         parent = parent.parent
 
     if parent != path:
-        _PACKAGES.add(parent.name)
+        _register_pickle_by_value(parent.name)
 
 
-def add_serialization_listeners_for(obj):
+def include_modules_from(obj: Any) -> None:
     module_name = getattr(obj, "__module__", None)
     if not module_name:
-        return None
+        return
 
-    _MODULES.add(module_name)
+    if "." in module_name:
+        # Just include the whole package
+        package_name, *_ = module_name.partition(".")
+        _register_pickle_by_value(package_name)
+        return
+
     if module_name == "__main__":
         # When the module is __main__, we need to recursively go up the
         # tree to locate the actual package name.
         import __main__
 
-        include_packages_from_path(__main__.__file__)
+        include_package_from_path(__main__.__file__)
+        return
 
-    if "." in module_name:
-        package_name, *_ = module_name.partition(".")
-        _PACKAGES.add(package_name)
+    _register_pickle_by_value(module_name)
 
 
-@mainify
-def patch_pydantic_field_serialization():
+def _register(cls: Any, func: Callable) -> None:
+    cloudpickle.Pickler.dispatch[cls] = func
+
+
+def _patch_pydantic_field_serialization() -> None:
     # Cythonized pydantic fields can't be serialized automatically, so we are
     # have a special case handling for them that unpacks it to a dictionary
     # and then reloads it on the other side.
-    import dill
-
+    # https://github.com/ray-project/ray/blob/842bbcf4236e41f58d25058b0482cd05bfe9e4da/python/ray/_private/pydantic_compat.py#L80
     try:
-        import pydantic.fields
+        from pydantic.fields import ModelField, ModelPrivateAttr
     except ImportError:
         return
 
-    @dill.register(pydantic.fields.ModelField)
-    def _pickle_model_field(
-        pickler: dill.Pickler,
-        field: pydantic.fields.ModelField,
-    ) -> None:
-        args = {
+    def create_model_field(kwargs: dict) -> ModelField:
+        return ModelField(**kwargs)
+
+    def pickle_model_field(field: ModelField) -> tuple[Callable, tuple]:
+        kwargs = {
             "name": field.name,
             # outer_type_ is the original type for ModelFields,
             # while type_ can be updated later with the nested type
@@ -110,92 +79,114 @@ def patch_pydantic_field_serialization():
             "alias": field.alias,
             "field_info": field.field_info,
         }
-        pickler.save_reduce(_pydantic_make_field, (args,), obj=field)
 
-    @dill.register(pydantic.fields.ModelPrivateAttr)
-    def _pickle_model_private_attr(
-        pickler: dill.Pickler,
-        field: pydantic.fields.ModelPrivateAttr,
-    ) -> None:
-        args = {
+        return create_model_field, (kwargs,)
+
+    def create_private_attr(kwargs: dict) -> ModelPrivateAttr:
+        return ModelPrivateAttr(**kwargs)
+
+    def pickle_private_attr(field: ModelPrivateAttr) -> tuple[Callable, tuple]:
+        kwargs = {
             "default": field.default,
             "default_factory": field.default_factory,
         }
-        pickler.save_reduce(_pydantic_make_private_field, (args,), obj=field)
+
+        return create_private_attr, (kwargs,)
+
+    _register(ModelField, pickle_model_field)
+    _register(ModelPrivateAttr, pickle_private_attr)
 
 
-@mainify
-def patch_pydantic_class_attributes():
-    # Dill attempts to modify the __class__ of deserialized pydantic objects
-    # on this side but it meets with a rejection from pydantic's semantics since
-    # __class__ is not recognized as a proper dunder attribute.
-    try:
-        import pydantic.utils
-    except ImportError:
-        return
+def _patch_lru_cache() -> None:
+    # https://github.com/cloudpipe/cloudpickle/issues/178
+    # https://github.com/uqfoundation/dill/blob/70f569b0dd268d2b1e85c0f300951b11f53c5d53/dill/_dill.py#L1429
 
-    pydantic.utils.DUNDER_ATTRIBUTES.add("__class__")
+    from functools import lru_cache, _lru_cache_wrapper as LRUCacheType
 
+    def create_lru_cache(func: Callable, kwargs: dict) -> LRUCacheType:
+        return lru_cache(**kwargs)(func)
 
-@mainify
-def patch_exceptions():
-    # Adapting tblib.pickling_support.install for dill.
-    from types import TracebackType
+    def pickle_lru_cache(obj: LRUCacheType) -> tuple[Callable, tuple]:
+        if hasattr(obj, "cache_parameters"):
+            params = obj.cache_parameters()
+            kwargs = {
+                "maxsize": params["maxsize"],
+                "typed": params["typed"],
+            }
+        else:
+            kwargs = {"maxsize": obj.cache_info().maxsize}
 
-    import dill
-    from tblib.pickling_support import (
-        _get_subclasses,
-        pickle_exception,
-        pickle_traceback,
-    )
+        return create_lru_cache, (obj.__wrapped__, kwargs)
 
-    @dill.register(TracebackType)
-    def save_traceback(pickler, obj):
-        unpickle, args = pickle_traceback(obj)
-        pickler.save_reduce(unpickle, args, obj=obj)
-
-    @dill.register(BaseException)
-    def save_exception(pickler, obj):
-        unpickle, args = pickle_exception(obj)
-        pickler.save_reduce(unpickle, args, obj=obj)
-
-    for exception_cls in _get_subclasses(BaseException):
-        dill.pickle(exception_cls, save_exception)
+    _register(LRUCacheType, pickle_lru_cache)
 
 
-@mainify
+def _patch_lock() -> None:
+    # https://github.com/uqfoundation/dill/blob/70f569b0dd268d2b1e85c0f300951b11f53c5d53/dill/_dill.py#L1310
+    from threading import Lock
+    from _thread import LockType
+
+    def create_lock(locked: bool) -> Lock:
+        lock = Lock()
+        if locked and not lock.acquire(False):
+            raise pickle.UnpicklingError("Cannot acquire lock")
+        return lock
+
+    def pickle_lock(obj: LockType) -> tuple[Callable, tuple]:
+        return create_lock, (obj.locked(),)
+
+    _register(LockType, pickle_lock)
+
+
+def _patch_rlock() -> None:
+    # https://github.com/uqfoundation/dill/blob/70f569b0dd268d2b1e85c0f300951b11f53c5d53/dill/_dill.py#L1317
+    from _thread import RLock as RLockType  # type: ignore[attr-defined]
+
+    def create_rlock(count: int, owner: int) -> RLockType:
+        lock = RLockType()
+        if owner is not None:
+            lock._acquire_restore((count, owner))  # type: ignore[attr-defined]
+        if owner and not lock._is_owned():  # type: ignore[attr-defined]
+            raise pickle.UnpicklingError("Cannot acquire lock")
+        return lock
+
+    def pickle_rlock(obj: RLockType) -> tuple[Callable, tuple]:
+        r = obj.__repr__()
+        count = int(r.split('count=')[1].split()[0].rstrip('>'))
+        owner = int(r.split('owner=')[1].split()[0])
+
+        return create_rlock, (count, owner)
+
+    _register(RLockType, pickle_rlock)
+
+
 def _patch_console_thread_locals() -> None:
-    # NOTE: we __sometimes__ might have to serialize these
     from rich.console import ConsoleThreadLocals
 
-    @dill.register(ConsoleThreadLocals)
-    def save_console_thread_locals(pickler, obj):
-        args = {
-            "theme_stack": obj.theme_stack,
-            "buffer": obj.buffer,
-            "buffer_index": obj.buffer_index,
-        }
+    def create_locals(kwargs: dict) -> ConsoleThreadLocals:
+        return ConsoleThreadLocals(**kwargs)
 
-        def unpickle(kwargs):
-            return ConsoleThreadLocals(**kwargs)
+    def pickle_locals(obj: ConsoleThreadLocals) -> tuple[Callable, tuple]:
+        kwargs = {"theme_stack": obj.theme_stack, "buffer": obj.buffer, "buffer_index": obj.buffer_index}
+        return create_locals, (kwargs, )
 
-        pickler.save_reduce(unpickle, (args,), obj=obj)
+    _register(ConsoleThreadLocals, pickle_locals)
 
 
-@mainify
-def patch_dill():
-    import dill
+def _patch_exceptions() -> None:
+    # Support chained exceptions
+    from tblib.pickling_support import install
 
-    dill.settings["recurse"] = True
+    install()
 
-    patch_exceptions()
-    patch_pydantic_class_attributes()
-    patch_pydantic_field_serialization()
+
+def patch_pickle() -> None:
+    _patch_pydantic_field_serialization()
+    _patch_lru_cache()
+    _patch_lock()
+    _patch_rlock()
     _patch_console_thread_locals()
+    _patch_exceptions()
 
+    _register_pickle_by_value("fal")
 
-@mainify
-def patch_pickle():
-    from tblib import pickling_support
-
-    pickling_support.install()

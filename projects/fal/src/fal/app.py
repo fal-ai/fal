@@ -10,11 +10,9 @@ from typing import Any, Callable, ClassVar, TypeVar
 from fastapi import FastAPI
 
 import fal.api
-from fal._serialization import add_serialization_listeners_for
 from fal.api import RouteSignature
 from fal.logging import get_logger
-from fal.toolkit import mainify
-
+from fal._serialization import include_modules_from
 REALTIME_APP_REQUIREMENTS = ["websockets", "msgpack"]
 
 EndpointT = TypeVar("EndpointT", bound=Callable[..., Any])
@@ -29,7 +27,7 @@ async def _call_any_fn(fn, *args, **kwargs):
 
 
 def wrap_app(cls: type[App], **kwargs) -> fal.api.IsolatedFunction:
-    add_serialization_listeners_for(cls)
+    include_modules_from(cls)
 
     def initialize_and_serve():
         app = cls()
@@ -64,7 +62,6 @@ def wrap_app(cls: type[App], **kwargs) -> fal.api.IsolatedFunction:
     return fn
 
 
-@mainify
 class App(fal.api.BaseServable):
     requirements: ClassVar[list[str]] = []
     machine_type: ClassVar[str] = "S"
@@ -131,7 +128,6 @@ class App(fal.api.BaseServable):
         raise NotImplementedError
 
 
-@mainify
 def endpoint(
     path: str, *, is_websocket: bool = False
 ) -> Callable[[EndpointT], EndpointT]:
@@ -343,7 +339,6 @@ def _fal_websocket_template(
 _SENTINEL = object()
 
 
-@mainify
 def realtime(
     path: str,
     *,
