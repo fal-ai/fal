@@ -4,12 +4,14 @@ import json
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Any, Iterator
-
-import httpx
+from typing import Any, Iterator, TYPE_CHECKING
 
 from fal import flags
 from fal.sdk import Credentials, get_default_credentials
+
+if TYPE_CHECKING:
+    from httpx import Client
+
 
 _QUEUE_URL_FORMAT = f"https://queue.{flags.FAL_RUN_HOST}/{{app_id}}"
 _REALTIME_URL_FORMAT = f"wss://{flags.FAL_RUN_HOST}/{{app_id}}"
@@ -56,6 +58,7 @@ class Completed(_Status):
 class RequestHandle:
     """A handle to an async inference request."""
 
+    client: "Client"
     app_id: str
     request_id: str
 
@@ -79,7 +82,7 @@ class RequestHandle:
             _QUEUE_URL_FORMAT.format(app_id=self.app_id)
             + f"/requests/{self.request_id}/status/"
         )
-        response = _HTTP_CLIENT.get(
+        response = self.client.get(
             url,
             headers=self._creds.to_headers(),
             params={"logs": int(logs)},
@@ -116,19 +119,21 @@ class RequestHandle:
             time.sleep(__poll_delay)
 
     def fetch_result(self) -> dict[str, Any]:
+        from httpx import HTTPStatusError
+
         """Retrieve the result of an async inference request, raises an exception
         if the request is not completed yet."""
         url = (
             _QUEUE_URL_FORMAT.format(app_id=self.app_id)
             + f"/requests/{self.request_id}/"
         )
-        response = _HTTP_CLIENT.get(url, headers=self._creds.to_headers())
+        response = self.client.get(url, headers=self._creds.to_headers())
         try:
             response.raise_for_status()
-        except httpx.HTTPStatusError as e:
+        except HTTPStatusError as e:
             if response.headers["Content-Type"] != "application/json":
                 raise
-            raise httpx.HTTPStatusError(
+            raise HTTPStatusError(
                 f"{response.status_code}: {response.text}",
                 request=e.request,
                 response=e.response,
@@ -147,9 +152,6 @@ class RequestHandle:
         return self.fetch_result()
 
 
-_HTTP_CLIENT = httpx.Client(headers={"User-Agent": "Fal/Python"})
-
-
 def run(app_id: str, arguments: dict[str, Any], *, path: str = "") -> dict[str, Any]:
     """Run an inference task on a Fal app and return the result."""
 
@@ -161,6 +163,7 @@ def submit(app_id: str, arguments: dict[str, Any], *, path: str = "") -> Request
     """Submit an async inference task to the app. Returns a request handle
     which can be used to check the status of the request and retrieve the
     result."""
+    import httpx
 
     app_id = _backwards_compatible_app_id(app_id)
     url = _QUEUE_URL_FORMAT.format(app_id=app_id)
@@ -168,8 +171,9 @@ def submit(app_id: str, arguments: dict[str, Any], *, path: str = "") -> Request
         url += "/" + path.removeprefix("/")
 
     creds = get_default_credentials()
+    client = httpx.Client(headers={"User-Agent": "Fal/Python"})
 
-    response = _HTTP_CLIENT.post(
+    response = client.post(
         url,
         json=arguments,
         headers=creds.to_headers(),
@@ -178,6 +182,7 @@ def submit(app_id: str, arguments: dict[str, Any], *, path: str = "") -> Request
 
     data = response.json()
     return RequestHandle(
+        client,
         app_id=app_id,
         request_id=data["request_id"],
         _creds=creds,

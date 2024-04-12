@@ -5,14 +5,16 @@ import json
 import os
 import typing
 from contextlib import asynccontextmanager
-from typing import Any, Callable, ClassVar, TypeVar
-
-from fastapi import FastAPI
+from typing import Any, Callable, ClassVar, TypeVar, TYPE_CHECKING
 
 import fal.api
 from fal.api import RouteSignature
 from fal.logging import get_logger
 from fal._serialization import include_modules_from
+
+if TYPE_CHECKING:
+    from fastapi import FastAPI
+
 REALTIME_APP_REQUIREMENTS = ["websockets", "msgpack"]
 
 EndpointT = TypeVar("EndpointT", bound=Callable[..., Any])
@@ -91,7 +93,7 @@ class App(fal.api.BaseServable):
         }
 
     @asynccontextmanager
-    async def lifespan(self, app: FastAPI):
+    async def lifespan(self, app: "FastAPI"):
         await _call_any_fn(self.setup)
         try:
             yield
@@ -104,7 +106,7 @@ class App(fal.api.BaseServable):
     def teardown(self):
         """Teardown the application after serving."""
 
-    def _add_extra_middlewares(self, app: FastAPI):
+    def _add_extra_middlewares(self, app: "FastAPI"):
         @app.middleware("http")
         async def provide_hints_headers(request, call_next):
             response = await call_next(request)
