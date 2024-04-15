@@ -5,7 +5,7 @@ from io import BytesIO
 
 import pytest
 from PIL import Image as PILImage
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, __version__ as pydantic_version
 
 from fal.toolkit import Image
 
@@ -67,7 +67,7 @@ def assert_fal_images_equals(fal_image_1: Image, fal_image_2: Image):
 
 
 def test_fal_image_from_pil(isolated_client):
-    @isolated_client(requirements=["pillow", "pydantic==1.10.12"])
+    @isolated_client(requirements=["pillow", f"pydantic=={pydantic_version}"])
     def fal_image_from_bytes_remote():
         pil_image = get_image()
         return Image.from_pil(pil_image, repository="in_memory")
@@ -77,7 +77,7 @@ def test_fal_image_from_pil(isolated_client):
 
 
 def test_fal_image_from_bytes(isolated_client):
-    @isolated_client(requirements=["pillow", "pydantic==1.10.12"])
+    @isolated_client(requirements=["pillow", f"pydantic=={pydantic_version}"])
     def fal_image_from_bytes_remote():
         image_bytes = get_image(as_bytes=True)
         return Image.from_bytes(image_bytes, repository="in_memory", format="png")
@@ -97,7 +97,7 @@ def test_fal_image_input(isolated_client, image_url):
     class TestInput(BaseModel):
         image: Image = Field()
 
-    @isolated_client(requirements=["pillow", "pydantic==1.10.12"])
+    @isolated_client(requirements=["pillow", f"pydantic=={pydantic_version}"])
     def init_image_on_fal(input: TestInput) -> Image:
         return TestInput(image=input.image).image
 
@@ -117,7 +117,7 @@ def test_fal_image_input_to_pil(isolated_client):
     class TestInput(BaseModel):
         image: Image = Field()
 
-    @isolated_client(requirements=["pillow", "pydantic==1.10.12"])
+    @isolated_client(requirements=["pillow", f"pydantic=={pydantic_version}"])
     def init_image_on_fal(input: TestInput) -> bytes:
         input_image = TestInput(image=input.image).image
         pil_image = input_image.to_pil()

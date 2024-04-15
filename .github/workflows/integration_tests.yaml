@@ -23,7 +23,8 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-
+      matrix:
+        deps: ["pydantic==1.10.12", "pydantic==2.5.0"]
     steps:
       - uses: actions/checkout@v3
         with:
@@ -35,7 +36,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install -e projects/fal
+          pip install -e projects/fal ${{ matrix.deps }}
           pip install pytest pytest-asyncio pytest-xdist pillow
 
       - name: Run integration tests
