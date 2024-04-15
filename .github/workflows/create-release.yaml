@@ -1,0 +1,51 @@
+name: Create Github release
+
+on:
+  workflow_dispatch:
+    inputs:
+      project_name:
+        description: Project name
+        required: true
+        type: choice
+        options:
+          - fal
+          - fal_client
+          - isolate_proto
+      bump_version:
+        description: Version
+        required: false
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+jobs:
+  create_release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v2
+        with:
+          python-version: "3.9"
+
+      - name: Create Github release
+        env:
+          PROJECT_NAME: ${{ github.event.inputs.project_name }}
+          BUMP_VERSION: ${{ github.event.inputs.bump_version }}
+        run: |
+          last_tag=$(git describe --tags --abbrev=0 --match "${PROJECT_NAME}_v*")
+          regex="^${PROJECT_NAME}_v([0-9]*).([0-9]*).([0-9]*)$"
+          [[ $last_tag =~ $regex ]] || $(echo "failed to parse last tag '$last_tag'" && exit 1)
+          major=$BASH_REMATCH[1]
+          minor=$BASH_REMATCH[2]
+          patch=$BASH_REMATCH[3]
+          if [ $BUMP_VERSION == "major" ]; then version="$((major + 1)).0.0"; fi
+          if [ $BUMP_VERSION == "minor" ]; then version="$major.$((minor + 1)).0"; fi
+          if [ $BUMP_VERSION == "patch" ]; then version="$major.$minor.$((patch + 1))"; fi
+          git log $last_tag...HEAD --pretty=format:'*  %s' --reverse -- projects/$PROJECT_NAME/ > /tmp/notes.txt
+          gh release create ${PROJECT_NAME}_v$version --notes-file /tmp/notes.txt
