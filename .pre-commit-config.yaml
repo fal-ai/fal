@@ -35,9 +35,6 @@ repos:
     rev: 1.8.2
     hooks:
     - id: poetry-check
-      name: poetry check projects/fal
-      args: [--directory=projects/fal]
-    - id: poetry-check
       name: poetry check projects/isolate_proto
       args: [--directory=projects/isolate_proto]
   # Monorepo Hooks (e.g. they need to be project specific)
