@@ -4,6 +4,7 @@ For regenerating definitions:
 
 ```
 $ cd projects/isolate_proto
+$ pip install '.[dev]'
 $ python ../../tools/regen_grpc.py src/isolate_proto/controller.proto <isolate version>
 $ pre-commit run --all-files
 ```

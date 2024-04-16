@@ -32,4 +32,8 @@ test = [
 ]
 dev = [
     "isolate_proto[test]",
+    # for tools/regen_grpc.py
+    "refactor",
+    "grpcio-tools",
+    "mypy-protobuf",
 ]
