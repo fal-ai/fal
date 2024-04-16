@@ -1,10 +1,15 @@
 [build-system]
-requires = ["setuptools", "wheel"]
+requires = ["setuptools", "wheel", "setuptools_scm[toml]>=7"]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools_scm]
+root = "../../"
+git_describe_command= 'git describe --tags --abbrev=0 --dirty --match "fal_client_v*"'
+tag_regex = "^fal_client_v(?P<version>.*)$"
 
 [project]
 name = "fal_client"
-version = "0.2.2"
+dynamic = ["version"]
 description = "Python client for fal.ai"
 readme = "README.md"
 authors = [{ name = "fal <hello@fal.ai>" }]

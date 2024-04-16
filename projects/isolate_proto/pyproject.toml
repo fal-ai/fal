@@ -1,16 +1,32 @@
-[tool.poetry]
+[build-system]
+requires = ["setuptools", "wheel", "setuptools_scm[toml]>=7"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools_scm]
+root = "../../"
+git_describe_command= 'git describe --tags --abbrev=0 --dirty --match "isolate_proto_v*"'
+tag_regex = "^isolate_proto_v(?P<version>.*)$"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["isolate_proto"]
+namespaces = false
+
+[project]
 name = "isolate_proto"
-version = "0.3.5a0"
+dynamic = ["version"]
 readme = "README.md"
 description = "(internal) gRPC definitions for Isolate Cloud"
-authors = ["Features & Labels <hello@fal.ai>"]
+authors = [{ name = "Features & Labels <hello@fal.ai>" }]
+requires-python = ">=3.8"
+dependencies = [
+    "grpcio>=1.49",
+    "protobuf",
+    "isolate[build]>=0.12.3,<1.0",
+]
 
-[tool.poetry.dependencies]
-python = ">=3.7,<4"
-grpcio = ">=1.49"
-protobuf = "*"
-isolate = {version = ">=0.12.3, <1.0", extras = ["build"]}
-
-[build-system]
-requires = ["poetry-core>=1.1.0"]
-build-backend = "poetry.core.masonry.api"
+[project.optional-dependencies]
+test = [
+    "pytest",
+    "pytest-xdist",
+]

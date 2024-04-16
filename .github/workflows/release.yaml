@@ -1,0 +1,52 @@
+name: PyPI release
+
+on:
+  release:
+    types:
+    - published
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.parse.outputs.version }}
+      name: ${{ steps.parse.outputs.name }}
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v2
+        with:
+          python-version: "3.9"
+
+      - name: Parse tag
+        id: parse
+        run: |
+          regex="^(.*)_v(.*)$"
+          [[ $GITHUB_REF =~ $regex ]] || exit 1
+          name=${BASH_REMATCH[1]}
+          version=${BASH_REMATCH[2]}
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Install deps
+        run: python -m pip install --upgrade pip setuptools_scm build twine
+
+      - name: Build
+        working_directory: projects/${{ steps.parse.outputs.name }}
+        run: python -m build
+
+      - name: Publish PyPI
+        env:
+          TWINE_USERNAME: ${{ secrets.PYPI_USER }}
+          TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
+        working-directory: projects/${{ steps.parse.outputs.name }}
+        run: twine upload dist/*
+
+  release-container:
+    if: ${{ needs.release.outputs.name == "fal" }}
+    uses: ./.github/workflows/container.yml
+    needs: release
+    with:
+      version: ${{ needs.release.outputs.version }}
