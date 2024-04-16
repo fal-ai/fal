@@ -54,6 +54,18 @@ response = fal_client.run("fal-ai/whisper", arguments={"audio_url": audio_url})
 print(response["text"])
 ```
 
+## Encoding files as in-memory data URLs
+
+If you don't want to upload your file to our CDN service (for latency reasons, for example), you can encode it as a data URL and pass it directly to the client. Here's an example:
+
+```python
+import fal_client
+
+audio_data_url = fal_client.encode_file("path/to/audio.wav")
+response = fal_client.run("fal-ai/whisper", arguments={"audio_url": audio_data_url})
+print(response["text"])
+```
+
 ## Queuing requests
 
 When you want to send a request and keep receiving updates on its status, you can use the `submit` method. Here's an example:

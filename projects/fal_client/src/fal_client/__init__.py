@@ -7,6 +7,9 @@ from fal_client.client import (
     Completed,
     SyncRequestHandle,
     AsyncRequestHandle,
+    encode,
+    encode_file,
+    encode_image,
 )
 
 __all__ = [
@@ -24,6 +27,9 @@ __all__ = [
     "run_async",
     "submit_async",
     "stream_async",
+    "encode",
+    "encode_file",
+    "encode_image",
 ]
 
 sync_client = SyncClient()

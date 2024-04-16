@@ -5,6 +5,7 @@ import os
 import mimetypes
 import asyncio
 import time
+import base64
 from dataclasses import dataclass, field
 from functools import cached_property
 from typing import Any, AsyncIterator, Iterator, TYPE_CHECKING
@@ -415,3 +416,28 @@ class SyncClient:
         with io.BytesIO() as buffer:
             image.save(buffer, format=format)
             return self.upload(buffer.getvalue(), f"image/{format}")
+
+
+def encode(data: str | bytes, content_type: str) -> str:
+    """Encode the given data blob to a data URL with the specified content type."""
+    if isinstance(data, str):
+        data = data.encode("utf-8")
+
+    return f"data:{content_type};base64,{base64.b64encode(data).decode()}"
+
+
+def encode_file(path: os.PathLike) -> str:
+    """Encode a file from the local filesystem to a data URL with the inferred content type."""
+    mime_type, _ = mimetypes.guess_type(path)
+    if mime_type is None:
+        mime_type = "application/octet-stream"
+
+    with open(path, "rb") as file:
+        return encode(file.read(), mime_type)
+
+
+def encode_image(image: Image.Image, format: str = "jpeg") -> str:
+    """Encode a pillow image object to a data URL with the specified format."""
+    with io.BytesIO() as buffer:
+        image.save(buffer, format=format)
+        return encode(buffer.getvalue(), f"image/{format}")
