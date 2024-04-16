@@ -6,6 +6,7 @@ build-backend = "setuptools.build_meta"
 root = "../../"
 git_describe_command= 'git describe --tags --abbrev=0 --dirty --match "fal_v*"'
 tag_regex = "^fal_v(?P<version>.*)$"
+fallback_version = "0.0.0"
 
 [tool.setuptools.packages.find]
 where = ["src", "openapi-fal-rest"]
