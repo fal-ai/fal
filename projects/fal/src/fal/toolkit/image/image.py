@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Literal, Union, Optional
 from pydantic import BaseModel, Field
 
 from fal.toolkit.file.file import DEFAULT_REPOSITORY, File
-from fal.toolkit.file.types import FileData, FileRepository, RepositoryId
+from fal.toolkit.file.types import FileRepository, RepositoryId
 from fal.toolkit.utils.download_utils import _download_file_python
 
 if TYPE_CHECKING:
@@ -78,15 +78,15 @@ class Image(File):
         file_name: str | None = None,
         repository: FileRepository | RepositoryId = DEFAULT_REPOSITORY,
     ) -> Image:
-        file_data = FileData(
-            data=data, content_type=f"image/{format}", file_name=file_name
-        )
-        return cls(
-            file_data=file_data,
+        obj = super().from_bytes(
+            data,
+            content_type=f"image/{format}",
+            file_name=file_name,
             repository=repository,
-            width=size.width if size else None,
-            height=size.height if size else None,
         )
+        obj.width=size.width if size else None
+        obj.height=size.height if size else None
+        return obj
 
     @classmethod
     def from_pil(

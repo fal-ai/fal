@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
-from tempfile import NamedTemporaryFile, TemporaryDirectory
+from tempfile import NamedTemporaryFile, mkdtemp
 from typing import Callable, Optional, Any
 from urllib.parse import urlparse
 from zipfile import ZipFile
@@ -16,7 +17,7 @@ else:
     from pydantic import GetCoreSchemaHandler
     IS_PYDANTIC_V2 = True
 
-from pydantic import BaseModel, Field, PrivateAttr
+from pydantic import BaseModel, Field
 
 from fal.toolkit.file.providers.fal import (
     FalCDNFileRepository,
@@ -52,7 +53,6 @@ DEFAULT_REPOSITORY: FileRepository | RepositoryId = "fal"
 
 class File(BaseModel):
     # public properties
-    _file_data: FileData = PrivateAttr()
     url: str = Field(
         description="The URL where the file can be downloaded from.",
     )
@@ -67,34 +67,9 @@ class File(BaseModel):
     file_size: Optional[int] = Field(
         None, description="The size of the file in bytes.", examples=[4404019]
     )
-
-    def __init__(self, **kwargs):
-        data: Optional[FileData] = None
-        if "file_data" in kwargs:
-            data = kwargs.pop("file_data")
-            repository = kwargs.pop("repository", None)
-
-            repo = (
-                repository
-                if isinstance(repository, FileRepository)
-                else get_builtin_repository(repository)
-            )
-
-            assert data
-            kwargs.update(
-                {
-                    "url": repo.save(data),
-                    "content_type": data.content_type,
-                    "file_name": data.file_name,
-                    "file_size": len(data.data),
-                }
-            )
-        else:
-            data = None
-
-        super().__init__(**kwargs)
-        if data is not None:
-            self._file_data = data
+    file_data: Optional[bytes] = Field(
+        None, description="File data", exclude=True, repr=False,
+    )
 
     # Pydantic custom validator for input type conversion
     if IS_PYDANTIC_V2:
@@ -141,9 +116,20 @@ class File(BaseModel):
         file_name: Optional[str] = None,
         repository: FileRepository | RepositoryId = DEFAULT_REPOSITORY,
     ) -> File:
+        repo = (
+            repository
+            if isinstance(repository, FileRepository)
+            else get_builtin_repository(repository)
+        )
+
+        fdata = FileData(data, content_type, file_name)
+
         return cls(
-            file_data=FileData(data, content_type, file_name),
-            repository=repository,
+            url=repo.save(fdata),
+            content_type=fdata.content_type,
+            file_name=fdata.file_name,
+            file_size=len(data),
+            file_data=data,
         )
 
     @classmethod
@@ -163,10 +149,10 @@ class File(BaseModel):
         )
 
     def as_bytes(self) -> bytes:
-        if getattr(self, "_file_data", None) is None:
+        if self.file_data is None:
             raise ValueError("File has not been downloaded")
 
-        return self._file_data.data
+        return self.file_data
 
     def save(self, path: str | Path, overwrite: bool = False) -> Path:
         file_path = Path(path).resolve()
@@ -181,35 +167,31 @@ class File(BaseModel):
 
 
 class CompressedFile(File):
-    _extract_dir: Optional[TemporaryDirectory] = PrivateAttr(default=None)
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self._extract_dir = None
+    extract_dir: Optional[str] = Field(default=None, exclude=True, repr=False)
 
     def __iter__(self):
-        if not self._extract_dir:
+        if not self.extract_dir:
             self._extract_files()
 
-        files = Path(self._extract_dir.name).iterdir()  # type: ignore
+        files = Path(self.extract_dir).iterdir()  # type: ignore
         return iter(files)
 
     def _extract_files(self):
-        self._extract_dir = TemporaryDirectory()
+        self.extract_dir = mkdtemp()
 
         with NamedTemporaryFile() as temp_file:
             file_path = temp_file.name
             self.save(file_path, overwrite=True)
 
             with ZipFile(file_path) as zip_file:
-                zip_file.extractall(self._extract_dir.name)
+                zip_file.extractall(self.extract_dir)
 
     def glob(self, pattern: str):
-        if not self._extract_dir:
+        if not self.extract_dir:
             self._extract_files()
 
-        return Path(self._extract_dir.name).glob(pattern)  # type: ignore
+        return Path(self.extract_dir).glob(pattern)  # type: ignore
 
     def __del__(self):
-        if self._extract_dir:
-            self._extract_dir.cleanup()
+        if self.extract_dir:
+            shutil.rmtree(self.extract_dir)
