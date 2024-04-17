@@ -41,6 +41,7 @@ dependencies = [
     "pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,<3",
     # serve=True dependencies
     "fastapi>=0.99.1,<1",
+    "starlette-exporter>=0.21.0",
     # rest-api-client dependencies
     "httpx>=0.15.4",
     "attrs>=21.3.0",
@@ -52,6 +53,7 @@ dependencies = [
     "websockets>=12.0,<13",
     "pillow>=10.2.0,<11",
     "pyjwt[crypto]>=2.8.0,<3",
+    "uvicorn>=0.29.0,<1",
 ]
 
 [project.optional-dependencies]

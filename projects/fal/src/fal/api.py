@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import inspect
+import socket
 import sys
 import threading
 from collections import defaultdict
@@ -27,8 +29,10 @@ import cloudpickle
 import grpc
 import isolate
 import tblib
+import uvicorn
 import yaml
-from fastapi import FastAPI, __version__ as fastapi_version
+from fastapi import FastAPI
+from fastapi import __version__ as fastapi_version
 from isolate.backends.common import active_python
 from isolate.backends.settings import DEFAULT_SETTINGS
 from isolate.connections import PythonIPC
@@ -37,7 +41,7 @@ from packaging.utils import canonicalize_name
 from typing_extensions import Concatenate, ParamSpec
 
 import fal.flags as flags
-from fal._serialization import patch_pickle, include_modules_from
+from fal._serialization import include_modules_from, patch_pickle
 from fal.logging.isolate import IsolateLogPrinter
 from fal.sdk import (
     FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
@@ -58,7 +62,7 @@ ReturnT = TypeVar("ReturnT", covariant=True)
 BasicConfig = Dict[str, Any]
 _UNSET = object()
 
-SERVE_REQUIREMENTS = [f"fastapi=={fastapi_version}", "uvicorn"]
+SERVE_REQUIREMENTS = [f"fastapi=={fastapi_version}", "uvicorn", "starlette_exporter"]
 
 
 @dataclass
@@ -212,7 +216,10 @@ class LocalHost(Host):
     # packages for isolate agent to run.
     _AGENT_ENVIRONMENT = isolate.prepare_environment(
         "virtualenv",
-        requirements=[f"cloudpickle=={cloudpickle.__version__}", f"tblib=={tblib.__version__}"],
+        requirements=[
+            f"cloudpickle=={cloudpickle.__version__}",
+            f"tblib=={tblib.__version__}",
+        ],
     )
     _log_printer = IsolateLogPrinter(debug=flags.DEBUG)
 
@@ -223,7 +230,11 @@ class LocalHost(Host):
         args: tuple[Any, ...],
         kwargs: dict[str, Any],
     ) -> ReturnT:
-        settings = replace(DEFAULT_SETTINGS, serialization_method="cloudpickle", log_hook=self._log_printer.print)
+        settings = replace(
+            DEFAULT_SETTINGS,
+            serialization_method="cloudpickle",
+            log_hook=self._log_printer.print,
+        )
         environment = isolate.prepare_environment(
             **options.environment,
             context=settings,
@@ -421,6 +432,8 @@ class FalServerlessHost(Host):
 
             if partial_result.result:
                 return partial_result.result.application_id
+
+        return None
 
     @_handle_grpc_error()
     def run(
@@ -818,6 +831,7 @@ class BaseServable:
         from fastapi import HTTPException, Request
         from fastapi.middleware.cors import CORSMiddleware
         from fastapi.responses import JSONResponse
+        from starlette_exporter import PrometheusMiddleware
 
         _app = FalFastAPI(lifespan=self.lifespan)
 
@@ -827,6 +841,13 @@ class BaseServable:
             allow_headers=("*"),
             allow_methods=("*"),
             allow_origins=("*"),
+        )
+        _app.add_middleware(
+            PrometheusMiddleware,
+            prefix="http",
+            group_paths=True,
+            filter_unhandled_paths=True,
+            app_name="fal",
         )
 
         self._add_extra_middlewares(_app)
@@ -873,10 +894,35 @@ class BaseServable:
         return self._build_app().openapi()
 
     def serve(self) -> None:
-        import uvicorn
+        import asyncio
+
+        from starlette_exporter import handle_metrics
+        from uvicorn import Config
 
         app = self._build_app()
-        uvicorn.run(app, host="0.0.0.0", port=8080)
+        server = Server(config=Config(app, host="0.0.0.0", port=8080))
+        metrics_app = FastAPI()
+        metrics_app.add_route("/metrics", handle_metrics)
+        metrics_server = Server(config=Config(metrics_app, host="0.0.0.0", port=9090))
+
+        async def _serve() -> None:
+            event = asyncio.Event()
+            # TODO(squat): handle shutdowns gracefully.
+            # You cannot add signal handlers to any loop if you're not
+            # on the main thread.
+            # How can we detect that we are being shut down and stop the
+            # uvicorn servers gracefully?
+            # loop = asyncio.get_running_loop()
+            # loop.add_signal_handler(signal.SIGINT, event.set)
+            # loop.add_signal_handler(signal.SIGTERM, event.set)
+            await asyncio.gather(
+                server.serve_until_event(event),
+                metrics_server.serve_until_event(event),
+            )
+
+        with suppress(asyncio.CancelledError):
+            asyncio.set_event_loop(asyncio.new_event_loop())
+            asyncio.run(_serve())
 
 
 class ServeWrapper(BaseServable):
@@ -1035,3 +1081,22 @@ class ServedIsolatedFunction(
         self, host: Host | None = None, *, serve: Literal[False], **config: Any
     ) -> IsolatedFunction[ArgsT, ReturnT]:
         ...
+
+
+class Server(uvicorn.Server):
+    """Server is a uvicorn.Server that actually plays nicely with signals.
+    By default, uvicorn's Server class overwrites the signal handler for SIGINT, swallowing the signal and preventing other tasks from cancelling.
+    This class allows the task to be gracefully cancelled using asyncio's built-in task cancellation or with an event, like aiohttp.
+    """
+
+    def install_signal_handlers(self) -> None:
+        pass
+
+    async def serve_until_event(
+        self, finish_event: asyncio.Event, sockets: list[socket.socket] | None = None
+    ) -> None:
+        serve = asyncio.create_task(super().serve(sockets))
+        await finish_event.wait()
+        self.should_exit = True
+        with suppress(asyncio.TimeoutError):
+            await asyncio.wait_for(serve, timeout=10)
