@@ -85,3 +85,17 @@ def test_fal_client_upload(
     assert response_image.size == (100, 100)
     assert response_image.mode == "RGB"
     assert response_image.getpixel((0, 0)) == (0, 0, 0)
+
+
+def test_fal_client_encode(client: fal_client.SyncClient, tmp_path):
+    image = Image.new("RGB", (1024, 1024))
+
+    url = fal_client.encode_image(image)
+    response = client.run(
+        "fal-ai/fast-sdxl/image-to-image",
+        arguments={"image_url": url, "prompt": "a cat"},
+    )
+
+    assert len(response["images"]) == 1
+    assert response["images"][0]["width"] == 1024
+    assert response["images"][0]["height"] == 1024
