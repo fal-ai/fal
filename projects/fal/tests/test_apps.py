@@ -8,7 +8,8 @@ import pytest
 from fastapi import WebSocket
 from httpx import HTTPStatusError
 from openapi_fal_rest.api.applications import app_metadata
-from pydantic import BaseModel, __version__ as pydantic_version
+from pydantic import BaseModel
+from pydantic import __version__ as pydantic_version
 
 import fal
 import fal.api as api
@@ -39,6 +40,23 @@ class Output(BaseModel):
     requirements=[f"pydantic=={pydantic_version}"],
 )
 def addition_app(input: Input) -> Output:
+    print("starting...")
+    for _ in range(input.wait_time):
+        print("sleeping...")
+        time.sleep(1)
+
+    return Output(result=input.lhs + input.rhs)
+
+
+@fal.function(
+    keep_alive=60,
+    machine_type="S",
+    serve=True,
+    max_concurrency=1,
+    requirements=[f"pydantic=={pydantic_version}"],
+    _scheduler="nomad",
+)
+def nomad_addition_app(input: Input) -> Output:
     print("starting...")
     for _ in range(input.wait_time):
         print("sleeping...")
@@ -186,6 +204,20 @@ def test_app():
 
 
 @pytest.fixture(scope="module")
+def test_nomad_app():
+    # Create a temporary app, register it, and return the ID of it.
+
+    from fal.cli import _get_user_id
+
+    app_revision = nomad_addition_app.host.register(
+        func=nomad_addition_app.func,
+        options=nomad_addition_app.options,
+    )
+    user_id = _get_user_id()
+    yield f"{user_id}/{app_revision}"
+
+
+@pytest.fixture(scope="module")
 def test_fastapi_app():
     # Create a temporary app, register it, and return the ID of it.
 
@@ -230,11 +262,17 @@ def test_realtime_app():
     yield f"{user_id}/{app_revision}"
 
 
-def test_app_client(test_app: str):
+def test_app_client(test_app: str, test_nomad_app: str):
     response = apps.run(test_app, arguments={"lhs": 1, "rhs": 2})
     assert response["result"] == 3
 
     response = apps.run(test_app, arguments={"lhs": 2, "rhs": 3, "wait_time": 1})
+    assert response["result"] == 5
+
+    response = apps.run(test_nomad_app, arguments={"lhs": 1, "rhs": 2})
+    assert response["result"] == 3
+
+    response = apps.run(test_nomad_app, arguments={"lhs": 2, "rhs": 3, "wait_time": 1})
     assert response["result"] == 5
 
 

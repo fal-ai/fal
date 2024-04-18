@@ -14,7 +14,6 @@ PACKAGE_NAME = "fal"
 
 
 def test_missing_dependencies_nested_server_error(isolated_client):
-
     @isolated_client()
     def test1():
         return "hello"
@@ -38,6 +37,20 @@ def test_regular_function(isolated_client):
     assert regular_function() == 42
 
     @isolated_client("virtualenv")
+    def mult(a, b):
+        return a * b
+
+    assert mult(5, 2) == 10
+
+
+def test_regular_function_on_nomad(isolated_client):
+    @isolated_client(_scheduler="nomad")
+    def regular_function():
+        return 42
+
+    assert regular_function() == 42
+
+    @isolated_client(_scheduler="nomad")
     def mult(a, b):
         return a * b
 
@@ -433,7 +446,9 @@ def test_serve_on_off(isolated_client):
     class MathResult(BaseModel):
         result: int = Field(description="The result of the operation")
 
-    @isolated_client("virtualenv", serve=True, requirements=[f"pydantic=={pydantic_version}"])
+    @isolated_client(
+        "virtualenv", serve=True, requirements=[f"pydantic=={pydantic_version}"]
+    )
     def add(query: MathQuery) -> MathResult:
         return MathResult(result=query.x + query.y)
 
