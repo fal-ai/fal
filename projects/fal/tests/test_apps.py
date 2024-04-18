@@ -91,7 +91,6 @@ def calculator_app():
 
 class StatefulAdditionApp(fal.App, keep_alive=300, max_concurrency=1):
     machine_type = "S"
-    requirements = [f"pydantic=={pydantic_version}"]
 
     async def setup(self):
         self.counter = 0
@@ -133,7 +132,6 @@ class RTOutputs(BaseModel):
 
 class RealtimeApp(fal.App, keep_alive=300, max_concurrency=1):
     machine_type = "S"
-    requirements = [f"pydantic=={pydantic_version}"]
 
     @fal.endpoint("/")
     def generate(self, input: RTInput) -> RTOutput:
