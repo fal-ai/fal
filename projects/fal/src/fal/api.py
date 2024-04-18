@@ -38,6 +38,7 @@ from isolate.backends.settings import DEFAULT_SETTINGS
 from isolate.connections import PythonIPC
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
+from pydantic import __version__ as pydantic_version
 from typing_extensions import Concatenate, ParamSpec
 
 import fal.flags as flags
@@ -62,7 +63,12 @@ ReturnT = TypeVar("ReturnT", covariant=True)
 BasicConfig = Dict[str, Any]
 _UNSET = object()
 
-SERVE_REQUIREMENTS = [f"fastapi=={fastapi_version}", "uvicorn", "starlette_exporter"]
+SERVE_REQUIREMENTS = [
+    f"fastapi=={fastapi_version}",
+    f"pydantic=={pydantic_version}",
+    "uvicorn",
+    "starlette_exporter",
+]
 
 
 @dataclass
