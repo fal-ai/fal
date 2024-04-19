@@ -22,8 +22,6 @@ jobs:
 
       - name: Parse tag
         id: parse
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           regex="^(.*)_v(.*)$"
           [[ $GITHUB_REF =~ $regex ]] || exit 1
