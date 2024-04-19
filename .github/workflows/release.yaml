@@ -4,6 +4,12 @@ on:
   release:
     types:
     - published
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag (see create-release workflow)"
+        required: true
+        type: string
 
 jobs:
   build:
@@ -23,10 +29,10 @@ jobs:
       - name: Parse tag
         id: parse
         env:
-          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.tag || github.ref }}
         run: |
           regex="^(.*)_v(.*)$"
-          [[ $GITHUB_REF =~ $regex ]] || exit 1
+          [[ $TAG =~ $regex ]] || exit 1
           name=${BASH_REMATCH[1]}
           version=${BASH_REMATCH[2]}
           echo "name=$name" >> "$GITHUB_OUTPUT"
