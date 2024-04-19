@@ -71,7 +71,7 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
 
   release-container:
-    if: ${{ needs.build.outputs.name == "fal" }}
+    if: ${{ needs.build.outputs.name == 'fal' }}
     uses: ./.github/workflows/container.yml
     needs: build
     with:
