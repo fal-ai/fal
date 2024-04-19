@@ -1,4 +1,5 @@
 name: PyPI release
+run-name: PyPI release ${{ inputs.tag || github.ref }}
 
 on:
   release:
