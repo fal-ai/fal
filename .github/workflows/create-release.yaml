@@ -52,4 +52,4 @@ jobs:
           if [ $BUMP_VERSION == "minor" ]; then version="$major.$((minor + 1)).0"; fi
           if [ $BUMP_VERSION == "patch" ]; then version="$major.$minor.$((patch + 1))"; fi
           git log $last_tag...HEAD --pretty=format:'*  %s' --reverse -- projects/$PROJECT_NAME/ > /tmp/notes.txt
-          gh release create ${PROJECT_NAME}_v$version --notes-file /tmp/notes.txt
+          gh release create ${PROJECT_NAME}_v$version --title ${PROJECT_NAME}_v$version --notes-file /tmp/notes.txt
