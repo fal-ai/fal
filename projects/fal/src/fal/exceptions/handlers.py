@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Generic, TypeVar
 
 from grpc import Call as RpcCall
-from rich.markdown import Markdown
 
 from fal.console import console
 from fal.console.icons import CROSS_ICON
@@ -11,7 +10,6 @@ from fal.console.icons import CROSS_ICON
 if TYPE_CHECKING:
     from fal.api import UserFunctionException
 
-from ._base import FalServerlessException
 
 ExceptionType = TypeVar("ExceptionType", bound=BaseException)
 
@@ -23,24 +21,11 @@ class BaseExceptionHandler(Generic[ExceptionType]):
         return True
 
     def handle(self, exception: ExceptionType):
+        msg = f"{CROSS_ICON} {str(exception)}"
         cause = exception.__cause__
-        if cause is None:
-            console.print(str(exception))
-        else:
-            console.print(f"{str(exception)}: {str(cause)}")
-
-
-class FalServerlessExceptionHandler(BaseExceptionHandler[FalServerlessException]):
-    """Handle fal Serverless exceptions"""
-
-    def should_handle(self, exception: Exception) -> bool:
-        return isinstance(exception, FalServerlessException)
-
-    def handle(self, exception: FalServerlessException):
-        console.print(f"{CROSS_ICON} {exception.message}")
-        if exception.hint is not None:
-            console.print(Markdown(f"**Hint:** {exception.hint}"))
-            console.print()
+        if cause is not None:
+            msg += f": {str(cause)}"
+        console.print(msg)
 
 
 class GrpcExceptionHandler(BaseExceptionHandler[RpcCall]):

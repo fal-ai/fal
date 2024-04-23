@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+from ._base import FalServerlessException  # noqa: F401
 from .handlers import (
     BaseExceptionHandler,
-    FalServerlessExceptionHandler,
     GrpcExceptionHandler,
     UserFunctionExceptionHandler,
 )
@@ -20,7 +20,6 @@ class ApplicationExceptionHandler:
 
     _handlers: list[BaseExceptionHandler] = [
         GrpcExceptionHandler(),
-        FalServerlessExceptionHandler(),
         UserFunctionExceptionHandler(),
     ]
 
