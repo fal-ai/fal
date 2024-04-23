@@ -18,6 +18,7 @@ from rich.syntax import Syntax
 
 import fal
 from fal import flags
+from fal.exceptions import FalServerlessException
 from fal.rest_client import REST_CLIENT
 
 JSONType = Union[dict[str, Any], list[Any], str, int, float, bool, None, "Leaf"]
@@ -31,7 +32,7 @@ INPUT_VARIABLE_NAME = "input"
 WORKFLOW_EXPORT_VERSION = "0.1"
 
 
-class WorkflowSyntaxError(Exception):
+class WorkflowSyntaxError(FalServerlessException):
     pass
 
 

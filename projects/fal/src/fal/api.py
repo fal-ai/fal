@@ -40,6 +40,7 @@ from pydantic import __version__ as pydantic_version
 from typing_extensions import Concatenate, ParamSpec
 
 import fal.flags as flags
+from fal.exceptions import FalServerlessException
 from fal._serialization import include_modules_from, patch_pickle
 from fal.logging.isolate import IsolateLogPrinter
 from fal.sdk import (
@@ -70,12 +71,12 @@ SERVE_REQUIREMENTS = [
 
 
 @dataclass
-class FalServerlessError(Exception):
+class FalServerlessError(FalServerlessException):
     message: str
 
 
 @dataclass
-class InternalFalServerlessError(Exception):
+class InternalFalServerlessError(FalServerlessException):
     message: str
 
 
@@ -183,7 +184,7 @@ def cached(func: Callable[ArgsT, ReturnT]) -> Callable[ArgsT, ReturnT]:
     return wrapper
 
 
-class UserFunctionException(Exception):
+class UserFunctionException(FalServerlessException):
     pass
 
 
@@ -198,6 +199,8 @@ def _prepare_partial_func(
     def wrapper(*remote_args: ArgsT.args, **remote_kwargs: ArgsT.kwargs) -> ReturnT:
         try:
             result = func(*remote_args, *args, **remote_kwargs, **kwargs)
+        except FalServerlessException:
+            raise
         except Exception as exc:
             tb = exc.__traceback__
             if tb is not None and tb.tb_next is not None:
