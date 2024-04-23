@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import asyncio
 import inspect
-import socket
 import sys
 import threading
 from collections import defaultdict
@@ -912,19 +910,25 @@ class BaseServable:
         metrics_server = Server(config=Config(metrics_app, host="0.0.0.0", port=9090))
 
         async def _serve() -> None:
-            event = asyncio.Event()
-            # TODO(squat): handle shutdowns gracefully.
-            # You cannot add signal handlers to any loop if you're not
-            # on the main thread.
-            # How can we detect that we are being shut down and stop the
-            # uvicorn servers gracefully?
-            # loop = asyncio.get_running_loop()
-            # loop.add_signal_handler(signal.SIGINT, event.set)
-            # loop.add_signal_handler(signal.SIGTERM, event.set)
-            await asyncio.gather(
-                server.serve_until_event(event),
-                metrics_server.serve_until_event(event),
-            )
+            tasks = {
+                asyncio.create_task(server.serve()): server,
+                asyncio.create_task(metrics_server.serve()): metrics_server,
+            }
+
+            _, pending = await asyncio.wait(tasks.keys(), return_when=asyncio.FIRST_COMPLETED)
+            if not pending:
+                return
+
+            # try graceful shutdown
+            for task in pending:
+                tasks[task].should_exit = True
+            _, pending = await asyncio.wait(pending, timeout=2)
+            if not pending:
+                return
+
+            for task in pending:
+                task.cancel()
+            await asyncio.wait(pending)
 
         with suppress(asyncio.CancelledError):
             asyncio.set_event_loop(asyncio.new_event_loop())
@@ -1098,11 +1102,3 @@ class Server(uvicorn.Server):
     def install_signal_handlers(self) -> None:
         pass
 
-    async def serve_until_event(
-        self, finish_event: asyncio.Event, sockets: list[socket.socket] | None = None
-    ) -> None:
-        serve = asyncio.create_task(super().serve(sockets))
-        await finish_event.wait()
-        self.should_exit = True
-        with suppress(asyncio.TimeoutError):
-            await asyncio.wait_for(serve, timeout=10)
