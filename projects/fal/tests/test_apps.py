@@ -48,21 +48,8 @@ def addition_app(input: Input) -> Output:
     return Output(result=input.lhs + input.rhs)
 
 
-@fal.function(
-    keep_alive=60,
-    machine_type="S",
-    serve=True,
-    max_concurrency=1,
-    requirements=[f"pydantic=={pydantic_version}"],
-    _scheduler="nomad",
-)
-def nomad_addition_app(input: Input) -> Output:
-    print("starting...")
-    for _ in range(input.wait_time):
-        print("sleeping...")
-        time.sleep(1)
-
-    return Output(result=input.lhs + input.rhs)
+nomad_addition_app = addition_app.on(_scheduler="nomad")
+kubernetes_addition_app = addition_app.on(_scheduler="kubernetes")
 
 
 @fal.function(
@@ -210,6 +197,20 @@ def test_nomad_app():
     from fal.cli import _get_user_id
 
     app_revision = nomad_addition_app.host.register(
+        func=nomad_addition_app.func,
+        options=nomad_addition_app.options,
+    )
+    user_id = _get_user_id()
+    yield f"{user_id}/{app_revision}"
+
+
+@pytest.fixture(scope="module")
+def test_kubernetes_app():
+    # Create a temporary app, register it, and return the ID of it.
+
+    from fal.cli import _get_user_id
+
+    app_revision = kubernetes_addition_app.host.register(
         func=nomad_addition_app.func,
         options=nomad_addition_app.options,
     )

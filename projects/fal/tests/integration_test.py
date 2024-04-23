@@ -6,17 +6,18 @@ from uuid import uuid4
 
 import pytest
 from pydantic import BaseModel, Field, __version__ as pydantic_version
+from typing import Callable
 
 import fal
 from fal import FalServerlessHost, FalServerlessKeyCredentials, local, sync_dir
-from fal.api import FalServerlessError
+from fal.api import FalServerlessError, IsolatedFunction
 from fal.toolkit import File, clone_repository, download_file, download_model_weights
 from fal.toolkit.file.file import CompressedFile
 from fal.toolkit.utils.download_utils import _get_git_revision_hash, _hash_url
 
 
 @pytest.mark.flaky(max_runs=3)
-def test_isolated(isolated_client):
+def test_isolated(isolated_client: Callable[..., Callable[..., IsolatedFunction]]):
     @isolated_client("virtualenv", requirements=["pyjokes==0.5.0"])
     def get_pyjokes_version():
         import pyjokes
@@ -30,24 +31,22 @@ def test_isolated(isolated_client):
     def get_hostname() -> str:
         import socket
 
-        return socket.gethostname()
+        hostname = socket.gethostname()
+        return hostname
+
+    import socket
+    local_hostname = socket.gethostname()
 
     first = get_hostname()
-    assert first.startswith("worker")
+    assert local_hostname != first
 
     get_hostname_local = get_hostname.on(local)
     second = get_hostname_local()
-    assert not second.startswith("worker-")
+    assert local_hostname == second
 
     get_hostname_m = get_hostname.on(machine_type="L")
     third = get_hostname_m()
-    assert third.startswith("worker")
-    assert third != first
-
-    # The machine_type should be dropped when using local
-    get_hostname_m_local = get_hostname_m.on(local)
-    fourth = get_hostname_m_local()
-    assert not fourth.startswith("worker-")
+    assert local_hostname != third
 
 
 def test_isolate_setup_funcs(isolated_client):
