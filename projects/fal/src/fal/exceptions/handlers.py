@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
 from ._base import FalServerlessException
 
-ExceptionType = TypeVar("ExceptionType")
+ExceptionType = TypeVar("ExceptionType", bound=BaseException)
 
 
 class BaseExceptionHandler(Generic[ExceptionType]):
@@ -23,7 +23,11 @@ class BaseExceptionHandler(Generic[ExceptionType]):
         return True
 
     def handle(self, exception: ExceptionType):
-        console.print(str(exception))
+        cause = exception.__cause__
+        if cause is None:
+            console.print(str(exception))
+        else:
+            console.print(f"{str(exception)}: {str(cause)}")
 
 
 class FalServerlessExceptionHandler(BaseExceptionHandler[FalServerlessException]):
