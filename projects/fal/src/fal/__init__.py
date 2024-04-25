@@ -7,6 +7,8 @@ from fal.app import App, endpoint, realtime, wrap_app  # noqa: F401
 from fal.sdk import FalServerlessKeyCredentials
 from fal.sync import sync_dir
 
+from ._version import __version__, version_tuple  # noqa: F401
+
 local = LocalHost()
 serverless = FalServerlessHost()
 
@@ -22,4 +24,6 @@ __all__ = [
     # "wrap_app",
     "FalServerlessKeyCredentials",
     "sync_dir",
+    "__version__",
+    "version_tuple",
 ]

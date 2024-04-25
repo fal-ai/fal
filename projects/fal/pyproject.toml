@@ -7,6 +7,7 @@ root = "../../"
 git_describe_command= 'git describe --tags --abbrev=0 --dirty --match "fal_v*"'
 tag_regex = "^fal_v(?P<version>.*)$"
 fallback_version = "0.0.0"
+version_file = "src/fal/_fal_version.py"
 
 [tool.setuptools.packages.find]
 where = ["src", "openapi-fal-rest"]
@@ -35,7 +36,7 @@ dependencies = [
     "colorama>=0.4.6,<1",
     "portalocker>=2.7.0,<3",
     "rich>=13.3.2,<14",
-    "rich_click",
+    "rich_argparse",
     "packaging>=21.3,<22",
     "pathspec>=0.11.1,<1",
     "pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,<3",
@@ -69,7 +70,7 @@ dev = [
 ]
 
 [project.scripts]
-fal = "fal.cli:cli"
+fal = "fal.cli:main"
 
 [tool.ruff]
 target-version = "py38"
