@@ -345,7 +345,30 @@ def test_futures(isolated_client):
 
 def test_conda_environment(isolated_client):
     @isolated_client(
-        "conda", packages=["pyjokes=0.6.0"], machine_type="L", resolver="conda"
+        "conda",
+        packages=["pyjokes=0.6.0"],
+        machine_type="L",
+        resolver="conda",
+        # conda is only supported on Kubernetes
+        _scheduler="kubernetes",
+    )
+    def regular_function():
+        import pyjokes
+
+        return pyjokes.__version__
+
+    assert regular_function() == "0.6.0"
+
+
+@pytest.mark.xfail(reason="Nomad does not support conda")
+def test_conda_environment_on_nomad(isolated_client):
+    @isolated_client(
+        "conda",
+        packages=["pyjokes=0.6.0"],
+        machine_type="L",
+        resolver="conda",
+        # conda is only supported on Kubernetes
+        _scheduler="nomad",
     )
     def regular_function():
         import pyjokes
@@ -386,8 +409,13 @@ def test_cached_function(isolated_client, capsys, monkeypatch):
         time.sleep(1)  # slow CPU
         return math.factorial(n)
 
-    # HACK: make this machine is not shared with others by using a unique requirements
-    @isolated_client("virtualenv", keep_alive=30, requirements=["pyjokes     "])
+    # make sure this machine is not shared with others by using a unique requirements
+    @isolated_client(
+        "virtualenv",
+        keep_alive=30,
+        requirements=["pyjokes     "],
+        _scheduler="kubernetes",
+    )
     def regular_function(n):
         if get_pipe() == "pipe":
             return factorial(n)
