@@ -212,7 +212,7 @@ def test_kubernetes_app():
 
     app_revision = kubernetes_addition_app.host.register(
         func=nomad_addition_app.func,
-        options=nomad_addition_app.options,
+        options=kubernetes_addition_app.options,
     )
     user_id = _get_user_id()
     yield f"{user_id}/{app_revision}"
