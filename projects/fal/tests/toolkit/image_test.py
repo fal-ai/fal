@@ -2,12 +2,21 @@ from __future__ import annotations
 
 from base64 import b64encode
 from io import BytesIO
+from typing import Literal, overload
 
 import pytest
 from PIL import Image as PILImage
 from pydantic import BaseModel, Field, __version__ as pydantic_version
 
 from fal.toolkit import Image
+
+
+@overload
+def get_image(as_bytes: Literal[False] = False) -> PILImage.Image: ...
+
+
+@overload
+def get_image(as_bytes: Literal[True]) -> bytes: ...
 
 
 def get_image(as_bytes: bool = False):
@@ -123,7 +132,7 @@ def test_fal_image_input_to_pil(isolated_client):
         pil_image = input_image.to_pil()
         return pil_image_to_bytes(pil_image)
 
-    test_input = TestInput(image=image_to_data_uri(get_image()))
+    test_input = TestInput(image=Image.from_pil(get_image()))
     image_bytes = init_image_on_fal(test_input)
 
     assert image_bytes == get_image(as_bytes=True)

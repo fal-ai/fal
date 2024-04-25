@@ -19,6 +19,7 @@ def test_binary_content_matches():
 def test_default_content_type():
     file = File.from_bytes(b"Hello World", repository="in_memory")
     assert file.content_type == "application/octet-stream"
+    assert file.file_name
     assert file.file_name.endswith(".bin")
 
 
@@ -27,6 +28,7 @@ def test_file_name_from_content_type():
         b"Hello World", content_type="text/plain", repository="in_memory"
     )
     assert file.content_type == "text/plain"
+    assert file.file_name
     assert file.file_name.endswith(".txt")
 
 
