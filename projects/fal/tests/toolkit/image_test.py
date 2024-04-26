@@ -98,7 +98,7 @@ def test_fal_image_from_bytes(isolated_client):
 @pytest.mark.parametrize(
     "image_url",
     [
-        "https://storage.googleapis.com/falserverless/model_tests/remove_background/elephant.jpg",
+        "https://commons.wikimedia.org/static/images/project-logos/commonswiki-1.5x.png",
         image_to_data_uri(get_image()),
     ],
 )
