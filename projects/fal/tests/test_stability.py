@@ -348,7 +348,6 @@ def test_conda_environment(isolated_client):
         "conda",
         packages=["pyjokes=0.6.0"],
         machine_type="L",
-        resolver="conda",
         # conda is only supported on Kubernetes
         _scheduler="kubernetes",
     )
@@ -366,7 +365,6 @@ def test_conda_environment_on_nomad(isolated_client):
         "conda",
         packages=["pyjokes=0.6.0"],
         machine_type="L",
-        resolver="conda",
         # conda is only supported on Kubernetes
         _scheduler="nomad",
     )
