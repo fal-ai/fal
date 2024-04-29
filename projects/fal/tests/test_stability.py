@@ -13,7 +13,6 @@ from fal.toolkit.file.file import File
 PACKAGE_NAME = "fal"
 
 
-@pytest.mark.xfail(reason="We need to fix the SerializationError")
 def test_missing_dependencies_nested_server_error(isolated_client):
     @isolated_client()
     def test1():
