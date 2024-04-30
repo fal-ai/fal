@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime
 import json
 import os
 from base64 import b64encode
@@ -12,6 +13,16 @@ from fal.toolkit.exceptions import FileUploadException
 from fal.toolkit.file.types import FileData, FileRepository
 
 _FAL_CDN = "https://fal.media"
+
+
+@dataclass
+class ObjectLifecyclePreference:
+    expriation_days: datetime.timedelta
+
+
+GLOBAL_LIFECYCLE_PREFERENCE = ObjectLifecyclePreference(
+    expriation_days=datetime.timedelta(days=2)
+)
 
 
 @dataclass
@@ -70,17 +81,26 @@ class FalFileRepository(FileRepository):
 
 @dataclass
 class InMemoryRepository(FileRepository):
-    def save(self, file: FileData) -> str:
+    def save(
+        self,
+        file: FileData,
+    ) -> str:
         return f'data:{file.content_type};base64,{b64encode(file.data).decode("utf-8")}'
 
 
 @dataclass
 class FalCDNFileRepository(FileRepository):
-    def save(self, file: FileData) -> str:
+    def save(
+        self,
+        file: FileData,
+    ) -> str:
         headers = {
             **self.auth_headers,
             "Accept": "application/json",
             "Content-Type": file.content_type,
+            "X-Fal-Object-Lifecycle-Preference": json.dumps(
+                GLOBAL_LIFECYCLE_PREFERENCE
+            ),
         }
 
         url = os.getenv("FAL_CDN_HOST", _FAL_CDN) + "/files/upload"

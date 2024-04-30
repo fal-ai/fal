@@ -13,6 +13,7 @@ import fal.api
 from fal.api import RouteSignature
 from fal.logging import get_logger
 from fal._serialization import include_modules_from
+
 REALTIME_APP_REQUIREMENTS = ["websockets", "msgpack"]
 
 EndpointT = TypeVar("EndpointT", bound=Callable[..., Any])
@@ -119,6 +120,24 @@ class App(fal.api.BaseServable):
 
                 logger.exception(
                     "Failed to provide hints for %s",
+                    self.__class__.__name__,
+                )
+            return response
+
+        @app.middleware("http")
+        async def set_global_object_preference(request, call_next):
+            response = await call_next(request)
+            try:
+                from fal.toolkit.file.providers import fal
+
+                fal.GLOBAL_LIFECYCLE_PREFERENCE = request.headers[
+                    "X-Fal-Object-Lifecycle-Preference"
+                ]
+            except Exception:
+                from fastapi.logger import logger
+
+                logger.exception(
+                    "Failed set a global lifecycle preference %s",
                     self.__class__.__name__,
                 )
             return response
