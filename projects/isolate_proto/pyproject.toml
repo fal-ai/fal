@@ -30,3 +30,6 @@ test = [
     "pytest",
     "pytest-xdist",
 ]
+dev = [
+    "isolate_proto[test]",
+]
