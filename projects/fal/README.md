@@ -44,3 +44,23 @@ A new virtual environment will be created by fal in the cloud and the set of req
 ## Next steps
 
 If you would like to find out more about the capabilities of fal, check out to the [docs](https://fal.ai/docs). You can learn more about persistent storage, function caches and deploying your functions as API endpoints.
+
+## Contributing
+
+### Installing in editable mode with dev dependencies
+
+```py
+pip install -e 'projects/fal[dev]'
+pip install -e 'projects/fal_client[dev]'
+pip install -e 'projects/isolate_proto[dev]'
+```
+
+### Running tests
+
+```py
+pytest
+```
+
+### Commit format
+
+Please follow [conventional commits specification](https://www.conventionalcommits.org/) for descriptions/messages.
