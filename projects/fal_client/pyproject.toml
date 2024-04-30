@@ -19,6 +19,15 @@ dependencies = [
     "httpx-sse>=0.4.0,<0.5",
 ]
 
+[project.optional-dependencies]
+test = [
+    "pytest",
+    "pytest-asyncio",
+]
+dev = [
+    "fal_client[test]",
+]
+
 [project.urls]
 homepage = "https://fal.ai"
 repository = "https://github.com/fal-ai/fal"
