@@ -188,6 +188,16 @@ class HostedRunStatus:
 
 
 @dataclass
+class ApplicationInfo:
+    application_id: str
+    keep_alive: int
+    max_concurrency: int
+    max_multiplexing: int
+    active_runners: int
+    min_concurrency: int
+
+
+@dataclass
 class AliasInfo:
     alias: str
     revision: str
@@ -261,6 +271,18 @@ class KeyScope(enum.Enum):
             return KeyScope.API
         else:
             raise ValueError(f"Unknown KeyScope: {proto}")
+
+
+@from_grpc.register(isolate_proto.ApplicationInfo)
+def _from_grpc_application_info(message: isolate_proto.ApplicationInfo) -> ApplicationInfo:
+    return ApplicationInfo(
+        application_id=message.application_id,
+        keep_alive=message.keep_alive,
+        max_concurrency=message.max_concurrency,
+        max_multiplexing=message.max_multiplexing,
+        active_runners=message.active_runners,
+        min_concurrency=message.min_concurrency,
+    )
 
 
 @from_grpc.register(isolate_proto.AliasInfo)
@@ -495,6 +517,18 @@ class FalServerlessConnection:
             request
         )
         return from_grpc(res.alias_info)
+
+    def list_applications(self) -> list[ApplicationInfo]:
+        request = isolate_proto.ListApplicationsRequest()
+        response: isolate_proto.ListApplicationsResult = self.stub.ListApplications(request)
+        return [from_grpc(app) for app in response.applications]
+
+    def delete_application(
+        self,
+        application_id: str,
+    ) -> None:
+        request = isolate_proto.DeleteApplicationRequest(application_id=application_id)
+        self.stub.DeleteApplication(request)
 
     def run(
         self,
