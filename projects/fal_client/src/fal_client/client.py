@@ -168,7 +168,7 @@ class AsyncRequestHandle(_BaseRequestHandle):
 @dataclass(frozen=True)
 class AsyncClient:
     key: str | None = field(default=None, repr=False)
-    default_timeout: float = 60.0
+    default_timeout: float = 120.0
 
     @cached_property
     def _client(self) -> httpx.AsyncClient:
@@ -181,7 +181,8 @@ class AsyncClient:
             headers={
                 "Authorization": f"Key {key}",
                 "User-Agent": USER_AGENT,
-            }
+            },
+            timeout=self.default_timeout,
         )
 
     async def run(
@@ -190,6 +191,7 @@ class AsyncClient:
         arguments: AnyJSON,
         *,
         path: str = "",
+        timeout: float | None = None,
     ) -> AnyJSON:
         """Run an application with the given arguments (which will be JSON serialized). The path parameter can be used to
         specify a subpath when applicable. This method will return the result of the inference call directly.
@@ -202,7 +204,7 @@ class AsyncClient:
         response = await self._client.post(
             url,
             json=arguments,
-            timeout=self.default_timeout,
+            timeout=timeout,
         )
         response.raise_for_status()
         return response.json()
@@ -225,7 +227,6 @@ class AsyncClient:
         response = await self._client.post(
             url,
             json=arguments,
-            timeout=self.default_timeout,
         )
         response.raise_for_status()
 
@@ -244,6 +245,7 @@ class AsyncClient:
         arguments: AnyJSON,
         *,
         path: str = "/stream",
+        timeout: float | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         """Stream the output of an application with the given arguments (which will be JSON serialized). This is only supported
         at a few select applications at the moment, so be sure to first consult with the documentation of individual applications
@@ -256,7 +258,13 @@ class AsyncClient:
         if path:
             url += "/" + path.lstrip("/")
 
-        async with aconnect_sse(self._client, "POST", url, json=arguments) as events:
+        async with aconnect_sse(
+            self._client,
+            "POST",
+            url,
+            json=arguments,
+            timeout=timeout,
+        ) as events:
             async for event in events.aiter_sse():
                 yield event.json()
 
@@ -294,7 +302,7 @@ class AsyncClient:
 @dataclass(frozen=True)
 class SyncClient:
     key: str | None = field(default=None, repr=False)
-    default_timeout: float = 60.0
+    default_timeout: float = 120.0
 
     @cached_property
     def _client(self) -> httpx.Client:
@@ -371,6 +379,7 @@ class SyncClient:
         arguments: AnyJSON,
         *,
         path: str = "/stream",
+        timeout: float | None = None,
     ) -> Iterator[dict[str, Any]]:
         """Stream the output of an application with the given arguments (which will be JSON serialized). This is only supported
         at a few select applications at the moment, so be sure to first consult with the documentation of individual applications
@@ -383,7 +392,9 @@ class SyncClient:
         if path:
             url += "/" + path.lstrip("/")
 
-        with connect_sse(self._client, "POST", url, json=arguments) as events:
+        with connect_sse(
+            self._client, "POST", url, json=arguments, timeout=timeout
+        ) as events:
             for event in events.iter_sse():
                 yield event.json()
 
