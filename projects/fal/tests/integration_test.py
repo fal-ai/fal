@@ -9,7 +9,13 @@ import fal
 import pytest
 from fal import FalServerlessHost, FalServerlessKeyCredentials, local, sync_dir
 from fal.api import FalServerlessError, IsolatedFunction
-from fal.toolkit import File, clone_repository, download_file, download_model_weights
+from fal.toolkit import (
+    File,
+    Image as FalImage,
+    clone_repository,
+    download_file,
+    download_model_weights,
+)
 from fal.toolkit.file.file import CompressedFile
 from fal.toolkit.utils.download_utils import _get_git_revision_hash, _hash_url
 from pydantic import BaseModel, Field
@@ -35,6 +41,7 @@ def test_isolated(isolated_client: Callable[..., Callable[..., IsolatedFunction]
         return hostname
 
     import socket
+
     local_hostname = socket.gethostname()
 
     first = get_hostname()
@@ -544,3 +551,14 @@ def test_fal_compressed_file(isolated_client):
 
     assert all(isinstance(file, Path) for file in extracted_file_paths)
     assert len(extracted_file_paths) == 3
+
+
+def test_fal_cdn(isolated_client):
+
+    @isolated_client(requirements=[f"pydantic=={pydantic_version}"])
+    def upload_to_fal_cdn() -> FalImage:
+        return FalImage.from_bytes(b"0", "jpeg", repository="cdn")
+
+    uploaded_image = upload_to_fal_cdn()
+
+    assert uploaded_image

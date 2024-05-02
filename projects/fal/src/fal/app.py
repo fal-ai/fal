@@ -19,6 +19,8 @@ REALTIME_APP_REQUIREMENTS = ["websockets", "msgpack"]
 EndpointT = TypeVar("EndpointT", bound=Callable[..., Any])
 logger = get_logger(__name__)
 
+from fal.toolkit.file.providers import fal as fal_provider_module
+
 
 async def _call_any_fn(fn, *args, **kwargs):
     if inspect.iscoroutinefunction(fn):
@@ -128,11 +130,9 @@ class App(fal.api.BaseServable):
         async def set_global_object_preference(request, call_next):
             response = await call_next(request)
             try:
-                from fal.toolkit.file.providers import fal
-
-                fal.GLOBAL_LIFECYCLE_PREFERENCE = request.headers[
+                fal_provider_module.GLOBAL_LIFECYCLE_PREFERENCE = request.headers.get(
                     "X-Fal-Object-Lifecycle-Preference"
-                ]
+                )
             except Exception:
                 from fastapi.logger import logger
 

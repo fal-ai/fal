@@ -57,7 +57,8 @@ class File(BaseModel):
         description="The URL where the file can be downloaded from.",
     )
     content_type: Optional[str] = Field(
-        None, description="The mime type of the file.",
+        None,
+        description="The mime type of the file.",
         examples=["image/png"],
     )
     file_name: Optional[str] = Field(
@@ -69,11 +70,15 @@ class File(BaseModel):
         None, description="The size of the file in bytes.", examples=[4404019]
     )
     file_data: Optional[bytes] = Field(
-        None, description="File data", exclude=True, repr=False,
+        None,
+        description="File data",
+        exclude=True,
+        repr=False,
     )
 
     # Pydantic custom validator for input type conversion
     if IS_PYDANTIC_V2:
+
         @classmethod
         def __get_pydantic_core_schema__(
             cls, source_type: Any, handler: GetCoreSchemaHandler
@@ -82,7 +87,9 @@ class File(BaseModel):
                 cls.__convert_from_str,
                 handler(source_type),
             )
+
     else:
+
         @classmethod
         def __get_validators__(cls):
             yield cls.__convert_from_str
