@@ -18,8 +18,6 @@ GRPC_HOST = os.getenv("FAL_HOST", "api.alpha.fal.ai")
 if not TEST_MODE:
     assert GRPC_HOST.startswith("api"), "FAL_HOST must start with 'api'"
 
-GATEWAY_HOST = GRPC_HOST.replace("api", "gateway", 1)
-
 REST_HOST = GRPC_HOST.replace("api", "rest", 1)
 REST_SCHEME = "http" if TEST_MODE or AUTH_DISABLED else "https"
 REST_URL = f"{REST_SCHEME}://{REST_HOST}"
