@@ -3,7 +3,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 from tempfile import NamedTemporaryFile, mkdtemp
-from typing import Callable, Optional, Any
+from typing import Any, Callable, Optional
 from urllib.parse import urlparse
 from zipfile import ZipFile
 
@@ -13,8 +13,8 @@ import pydantic
 if not hasattr(pydantic, "__version__") or pydantic.__version__.startswith("1."):
     IS_PYDANTIC_V2 = False
 else:
-    from pydantic_core import core_schema, CoreSchema
     from pydantic import GetCoreSchemaHandler
+    from pydantic_core import CoreSchema, core_schema
     IS_PYDANTIC_V2 = True
 
 from pydantic import BaseModel, Field
@@ -61,7 +61,8 @@ class File(BaseModel):
         examples=["image/png"],
     )
     file_name: Optional[str] = Field(
-        None, description="The name of the file. It will be auto-generated if not provided.",
+        None,
+        description="The name of the file. It will be auto-generated if not provided.",
         examples=["z9RV14K95DvU.png"],
     )
     file_size: Optional[int] = Field(
@@ -84,7 +85,7 @@ class File(BaseModel):
     else:
         @classmethod
         def __get_validators__(cls):
-            yield cls.__convert_from_str  
+            yield cls.__convert_from_str
 
     @classmethod
     def __convert_from_str(cls, value: Any):

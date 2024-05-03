@@ -89,12 +89,13 @@ class MainGroup(RichGroup):
             except Exception as exception:
                 logger.error(exception)
                 if state.debug:
-                    # Here we supress detailed errors on click lines because
-                    # they're mostly decorator calls, irrelevant to the dev's error tracing
+                    # Here we supress detailed errors on click lines because they're
+                    # mostly decorator calls, irrelevant to the dev's error tracing
                     console.print_exception(suppress=[click])
                     console.print()
                     console.print(
-                        f"The [markdown.code]invocation_id[/] for this operation is: [white]{state.invocation_id}[/]"
+                        "The [markdown.code]invocation_id[/] for this operation is: "
+                        f"[white]{state.invocation_id}[/]"
                     )
                 else:
                     self._exception_handler.handle(exception)
@@ -207,7 +208,8 @@ def key_generate(client: sdk.FalServerlessClient, scope: str, alias: str | None)
         print(
             f"Generated key id and key secret, with the scope `{scope}`.\n"
             "This is the only time the secret will be visible.\n"
-            "You will need to generate a new key pair if you lose access to this secret."
+            "You will need to generate a new key pair if you lose access to this "
+            "secret."
         )
         print(f"FAL_KEY='{result[1]}:{result[0]}'")
 
@@ -306,7 +308,8 @@ def register_application(
     gateway_options = isolated_function.options.gateway
     if "serve" not in gateway_options and "exposed_port" not in gateway_options:
         raise api.FalServerlessError(
-            "One of `serve` or `exposed_port` options needs to be specified in the isolated annotation to register a function"
+            "One of `serve` or `exposed_port` options needs to be specified "
+            "in the isolated annotation to register a function"
         )
     elif (
         "exposed_port" in gateway_options

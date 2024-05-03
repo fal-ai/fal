@@ -3,19 +3,18 @@ import time
 from contextlib import contextmanager
 from typing import Generator
 
+import fal
+import fal.api as api
 import httpx
 import pytest
+from fal import apps
+from fal.rest_client import REST_CLIENT
+from fal.workflows import Workflow
 from fastapi import WebSocket
 from httpx import HTTPStatusError
 from openapi_fal_rest.api.applications import app_metadata
 from pydantic import BaseModel
 from pydantic import __version__ as pydantic_version
-
-import fal
-import fal.api as api
-from fal import apps
-from fal.rest_client import REST_CLIENT
-from fal.workflows import Workflow
 
 
 class Input(BaseModel):

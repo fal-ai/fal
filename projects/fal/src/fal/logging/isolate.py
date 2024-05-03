@@ -34,10 +34,10 @@ class IsolateLogPrinter:
             timestamp = log.timestamp
         else:
             # Default value for timestamp if user has old `isolate` version.
-            # Even if the controller version is controller by us, which means that the timestamp
-            # is being sent in the gRPC message.
-            # The `isolate` version users interpret that message with is out of our control.
-            # So we need to handle this case.
+            # Even if the controller version is controller by us, which means that
+            # the timestamp is being sent in the gRPC message.
+            # The `isolate` version users interpret that message with is out of our
+            # control. So we need to handle this case.
             timestamp = datetime.now(timezone.utc)
 
         event: EventDict = {

@@ -2,13 +2,11 @@ from __future__ import annotations
 
 from contextlib import suppress
 
-import pytest
-
-from pydantic import __version__ as pydantic_version
-
 import fal
+import pytest
 from fal.api import FalServerlessError, Options
 from fal.toolkit.file.file import File
+from pydantic import __version__ as pydantic_version
 
 PACKAGE_NAME = "fal"
 
