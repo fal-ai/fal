@@ -2,18 +2,18 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
+from typing import Callable
 from uuid import uuid4
 
-import pytest
-from pydantic import BaseModel, Field, __version__ as pydantic_version
-from typing import Callable
-
 import fal
+import pytest
 from fal import FalServerlessHost, FalServerlessKeyCredentials, local, sync_dir
 from fal.api import FalServerlessError, IsolatedFunction
 from fal.toolkit import File, clone_repository, download_file, download_model_weights
 from fal.toolkit.file.file import CompressedFile
 from fal.toolkit.utils.download_utils import _get_git_revision_hash, _hash_url
+from pydantic import BaseModel, Field
+from pydantic import __version__ as pydantic_version
 
 
 @pytest.mark.flaky(max_runs=3)

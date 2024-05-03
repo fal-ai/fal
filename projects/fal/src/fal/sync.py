@@ -31,7 +31,8 @@ def _upload_file(source_path: str, target_path: str, unzip: bool = False):
         body = upload_file_model.BodyUploadLocalFile(
             rest_types.File(
                 payload=file_to_upload,
-                # We need to set a file_name, otherwise the server errors processing the file
+                # We need to set a file_name, otherwise the server errors
+                # processing the file
                 file_name=os.path.basename(source_path),
             )
         )
@@ -45,7 +46,9 @@ def _upload_file(source_path: str, target_path: str, unzip: bool = False):
 
     if response.status_code != 200:
         raise Exception(
-            f"Failed to upload file. Server returned status code {response.status_code} and message {response.parsed}"
+            "Failed to upload file. "
+            "Server returned status code "
+            f"{response.status_code} and message {response.parsed}"
         )
 
 
@@ -94,7 +97,8 @@ def sync_dir(local_dir: str | Path, remote_dir: str, force_upload=False) -> str:
     local_dir_abs = os.path.expanduser(local_dir)
     if not os.path.isabs(remote_dir) or not remote_dir.startswith("/data"):
         raise ValueError(
-            "'remote_dir' must be an absolute path starting with `/data`, e.g. '/data/sync/my_dir'"
+            "'remote_dir' must be an absolute path starting with `/data`, "
+            "e.g. '/data/sync/my_dir'"
         )
 
     remote_dir = remote_dir.replace("/data/", "", 1)

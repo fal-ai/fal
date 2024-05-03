@@ -8,17 +8,17 @@ from enum import Enum
 from typing import Any, Callable, Generic, Iterator, Literal, TypeVar
 
 import grpc
+import isolate_proto
 from isolate.connections.common import is_agent
 from isolate.logs import Log
 from isolate.server.interface import from_grpc, to_serialized_object, to_struct
+from isolate_proto.configuration import GRPC_OPTIONS
 
-import isolate_proto
 from fal import flags
 from fal._serialization import patch_pickle
 from fal.auth import USER, key_credentials
 from fal.logging import get_logger
 from fal.logging.trace import TraceContextInterceptor
-from isolate_proto.configuration import GRPC_OPTIONS
 
 ResultT = TypeVar("ResultT")
 InputT = TypeVar("InputT")
@@ -274,7 +274,9 @@ class KeyScope(enum.Enum):
 
 
 @from_grpc.register(isolate_proto.ApplicationInfo)
-def _from_grpc_application_info(message: isolate_proto.ApplicationInfo) -> ApplicationInfo:
+def _from_grpc_application_info(
+    message: isolate_proto.ApplicationInfo
+) -> ApplicationInfo:
     return ApplicationInfo(
         application_id=message.application_id,
         keep_alive=message.keep_alive,
@@ -520,8 +522,8 @@ class FalServerlessConnection:
 
     def list_applications(self) -> list[ApplicationInfo]:
         request = isolate_proto.ListApplicationsRequest()
-        response: isolate_proto.ListApplicationsResult = self.stub.ListApplications(request)
-        return [from_grpc(app) for app in response.applications]
+        res: isolate_proto.ListApplicationsResult = self.stub.ListApplications(request)
+        return [from_grpc(app) for app in res.applications]
 
     def delete_application(
         self,

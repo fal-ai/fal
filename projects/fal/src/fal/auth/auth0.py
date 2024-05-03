@@ -30,7 +30,8 @@ def _open_browser(url: str, code: str | None) -> None:
     maybe_open_browser_tab(url)
 
     console.print(
-        "If browser didn't open automatically, on your computer or mobile device navigate to"
+        "If browser didn't open automatically, "
+        "on your computer or mobile device navigate to"
     )
     console.print(url)
 
@@ -155,7 +156,8 @@ def build_jwk_client():
 
 def validate_id_token(token: str):
     """
-    id_token is intended for the client (this sdk) only. Never send one to another service.
+    id_token is intended for the client (this sdk) only.
+    Never send one to another service.
     """
     from jwt import decode
 

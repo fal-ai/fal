@@ -62,7 +62,8 @@ def delete_token() -> None:
 @contextmanager
 def lock_token():
     """
-    Lock the access to the token file to avoid race conditions when running multiple scripts at the same time.
+    Lock the access to the token file to avoid race conditions when running multiple
+    scripts at the same time.
     """
     lock_file = _check_dir_exist() / _LOCK_FILE
     with portalocker.utils.TemporaryFileLock(

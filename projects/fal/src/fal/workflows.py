@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import graphlib
 import json
 import webbrowser
 from argparse import ArgumentParser
@@ -8,6 +7,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any, Iterator, Union, cast
 
+import graphlib
 import rich
 from openapi_fal_rest.api.workflows import (
     create_or_update_workflow_workflows_post as publish_workflow,
@@ -450,7 +450,12 @@ def main() -> None:
                 for event in handle.iter_events(logs=True):
                     if isinstance(event, fal.apps.Queued):
                         status.update(
-                            status=f"Queued for {node_id!r} (position={event.position}) ({n}/{len(workflow.nodes)})",
+                            status=(
+                                "Queued for "
+                                f"{node_id!r} "
+                                f"(position={event.position}) "
+                                f"({n}/{len(workflow.nodes)})",
+                            ),
                             spinner="dots",
                         )
                     elif isinstance(event, fal.apps.InProgress):

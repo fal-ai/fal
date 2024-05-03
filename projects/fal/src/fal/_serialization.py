@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import pickle
 from typing import Any, Callable
 
-import pickle
 import cloudpickle
 
 
@@ -98,11 +98,12 @@ def _patch_pydantic_field_serialization() -> None:
 
 
 def _patch_pydantic_model_serialization() -> None:
-    # If user has created new pydantic models in his namespace, we will try to pickle those
-    # by value, which means recreating class skeleton, which will stumble upon
-    # __pydantic_parent_namespace__ in its __dict__ and it may contain modules that happened
-    # to be imported in the namespace but are not actually used, resulting in pickling errors.
-    # Unfortunately this also means that `model_rebuid()` might not work.
+    # If user has created new pydantic models in his namespace, we will try to pickle
+    # those by value, which means recreating class skeleton, which will stumble upon
+    # __pydantic_parent_namespace__ in its __dict__ and it may contain modules that
+    # happened to be imported in the namespace but are not actually used, resulting
+    # in pickling errors. Unfortunately this also means that `model_rebuid()` might
+    # not work.
     try:
         import pydantic
     except ImportError:
@@ -133,7 +134,8 @@ def _patch_lru_cache() -> None:
     # https://github.com/cloudpipe/cloudpickle/issues/178
     # https://github.com/uqfoundation/dill/blob/70f569b0dd268d2b1e85c0f300951b11f53c5d53/dill/_dill.py#L1429
 
-    from functools import lru_cache, _lru_cache_wrapper as LRUCacheType
+    from functools import _lru_cache_wrapper as LRUCacheType
+    from functools import lru_cache
 
     def create_lru_cache(func: Callable, kwargs: dict) -> LRUCacheType:
         return lru_cache(**kwargs)(func)
@@ -155,8 +157,8 @@ def _patch_lru_cache() -> None:
 
 def _patch_lock() -> None:
     # https://github.com/uqfoundation/dill/blob/70f569b0dd268d2b1e85c0f300951b11f53c5d53/dill/_dill.py#L1310
-    from threading import Lock
     from _thread import LockType
+    from threading import Lock
 
     def create_lock(locked: bool) -> Lock:
         lock = Lock()
@@ -199,7 +201,11 @@ def _patch_console_thread_locals() -> None:
         return ConsoleThreadLocals(**kwargs)
 
     def pickle_locals(obj: ConsoleThreadLocals) -> tuple[Callable, tuple]:
-        kwargs = {"theme_stack": obj.theme_stack, "buffer": obj.buffer, "buffer_index": obj.buffer_index}
+        kwargs = {
+            "theme_stack": obj.theme_stack,
+            "buffer": obj.buffer,
+            "buffer_index": obj.buffer_index,
+        }
         return create_locals, (kwargs, )
 
     _register(ConsoleThreadLocals, pickle_locals)

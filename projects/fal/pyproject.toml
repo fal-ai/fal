@@ -70,3 +70,6 @@ dev = [
 
 [project.scripts]
 fal = "fal.cli:cli"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "PLC", "PLE", "PLW", "I"]

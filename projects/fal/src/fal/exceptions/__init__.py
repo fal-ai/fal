@@ -13,7 +13,8 @@ class ApplicationExceptionHandler:
 
     This exception handler is capable of handling, i.e. customize the output
     and add behavior, of any type of exception. Click handles all `ClickException`
-    types by default, but prints the stack for other exception not wrapped in ClickException.
+    types by default, but prints the stack for other exception not wrapped in
+    ClickException.
 
     The handler also allows for central metrics and logging collection.
     """

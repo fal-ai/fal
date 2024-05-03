@@ -10,9 +10,9 @@ from typing import Any, Callable, ClassVar, TypeVar
 from fastapi import FastAPI
 
 import fal.api
+from fal._serialization import include_modules_from
 from fal.api import RouteSignature
 from fal.logging import get_logger
-from fal._serialization import include_modules_from
 
 REALTIME_APP_REQUIREMENTS = ["websockets", "msgpack"]
 
@@ -256,14 +256,16 @@ def _fal_websocket_template(
                     output = output.dict()
                 else:
                     raise TypeError(
-                        f"Expected a dict or pydantic model as output, got {type(output)}"
+                        "Expected a dict or pydantic model as output, got "
+                        f"{type(output)}"
                     )
 
             messages = [
                 msgpack.packb(output, use_bin_type=True),
             ]
             if route_signature.emit_timings:
-                # We emit x-fal messages in JSON, no matter what the input/output format is.
+                # We emit x-fal messages in JSON, no matter what the
+                # input/output format is.
                 timings = {
                     "type": "x-fal-message",
                     "action": "timings",
@@ -373,7 +375,8 @@ def realtime(
 
         if hasattr(original_func, "route_signature"):
             raise ValueError(
-                f"Can't set multiple routes for the same function: {original_func.__name__}"
+                "Can't set multiple routes for the same function: "
+                f"{original_func.__name__}"
             )
 
         if input_modal is _SENTINEL:

@@ -17,7 +17,10 @@ FAL_MODEL_WEIGHTS_DIR = FAL_PERSISTENT_DIR / ".fal" / "model_weights"
 
 # TODO: how can we randomize the user agent to avoid being blocked?
 TEMP_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.8; rv:21.0) Gecko/20100101 Firefox/21.0"
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; "
+        "Intel Mac OS X 10.8; rv:21.0) Gecko/20100101 Firefox/21.0"
+    ),
 }
 
 
@@ -94,8 +97,8 @@ def _file_content_length_matches(url: str, file_path: Path) -> bool:
         file_path: The local path to the file being compared.
 
     Returns:
-        bool:`True` if the local file's content length matches the remote file's content length,
-              `False` otherwise.
+        bool: `True` if the local file's content length matches the remote file's
+            content length, `False` otherwise.
     """
     local_file_content_length = file_path.stat().st_size
     remote_file_content_length = _get_remote_file_properties(url)[1]

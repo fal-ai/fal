@@ -40,8 +40,8 @@ from pydantic import __version__ as pydantic_version
 from typing_extensions import Concatenate, ParamSpec
 
 import fal.flags as flags
-from fal.exceptions import FalServerlessException
 from fal._serialization import include_modules_from, patch_pickle
+from fal.exceptions import FalServerlessException
 from fal.logging.isolate import IsolateLogPrinter
 from fal.sdk import (
     FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
@@ -57,7 +57,7 @@ from fal.sdk import (
 )
 
 ArgsT = ParamSpec("ArgsT")
-ReturnT = TypeVar("ReturnT", covariant=True)
+ReturnT = TypeVar("ReturnT", covariant=True)  # noqa: PLC0105
 
 BasicConfig = Dict[str, Any]
 _UNSET = object()
@@ -113,8 +113,8 @@ class Host(Generic[ArgsT, ReturnT]):
         environment options."""
 
         options = Options()
-        for key, value in config.items():
-            key, value = cls.parse_key(key, value)
+        for item in config.items():
+            key, value = cls.parse_key(*item)
             if key in cls._SUPPORTED_KEYS:
                 options.host[key] = value
             elif key in cls._GATEWAY_KEYS:
@@ -545,7 +545,8 @@ _DEFAULT_HOST = FalServerlessHost()
 _SERVE_PORT = 8080
 
 # Overload @function to help users identify the correct signature.
-# NOTE: This is both in sync with host options and with environment configs from `isolate` package.
+# NOTE: This is both in sync with host options and with environment configs from
+# `isolate` package.
 
 
 ## virtualenv
@@ -785,7 +786,8 @@ class FalFastAPI(FastAPI):
         """
         Add x-fal-order-* keys to the OpenAPI specification to help the rendering of UI.
 
-        NOTE: We rely on the fact that fastapi and Python dicts keep the order of properties.
+        NOTE: We rely on the fact that fastapi and Python dicts keep the order of
+        properties.
         """
 
         def mark_order(obj: dict[str, Any], key: str):
@@ -918,7 +920,9 @@ class BaseServable:
                 asyncio.create_task(metrics_server.serve()): metrics_server,
             }
 
-            _, pending = await asyncio.wait(tasks.keys(), return_when=asyncio.FIRST_COMPLETED)
+            _, pending = await asyncio.wait(
+                tasks.keys(), return_when=asyncio.FIRST_COMPLETED,
+            )
             if not pending:
                 return
 
@@ -1007,13 +1011,15 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
                 lines = []
                 for used_modules, references in pairs:
                     lines.append(
-                        f"\t- {used_modules!r} (accessed through {', '.join(map(repr, references))})"
+                        f"\t- {used_modules!r} "
+                        f"(accessed through {', '.join(map(repr, references))})"
                     )
 
                 function_name = self.func.__name__
                 raise FalServerlessError(
-                    f"Couldn't deserialize your function on the remote server. \n\n[Hint] {function_name!r} "
-                    f"function uses the following modules which weren't present in the environment definition:\n"
+                    f"Couldn't deserialize your function on the remote server. \n\n"
+                    f"[Hint] {function_name!r} function uses the following modules "
+                    "which weren't present in the environment definition:\n"
                     + "\n".join(lines)
                 ) from None
         except Exception as exc:
@@ -1065,7 +1071,8 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
     def func(self) -> Callable[ArgsT, ReturnT]:
         serve_mode = self.options.gateway.get("serve")
         if serve_mode:
-            # This type can be safely ignored because this case only happens when it is a ServedIsolatedFunction
+            # This type can be safely ignored because this case only happens when it
+            # is a ServedIsolatedFunction
             serve_func: Callable[[], None] = ServeWrapper(self.raw_func)
             return serve_func  # type: ignore
         else:
@@ -1098,8 +1105,10 @@ class ServedIsolatedFunction(
 
 class Server(uvicorn.Server):
     """Server is a uvicorn.Server that actually plays nicely with signals.
-    By default, uvicorn's Server class overwrites the signal handler for SIGINT, swallowing the signal and preventing other tasks from cancelling.
-    This class allows the task to be gracefully cancelled using asyncio's built-in task cancellation or with an event, like aiohttp.
+    By default, uvicorn's Server class overwrites the signal handler for SIGINT,
+    swallowing the signal and preventing other tasks from cancelling.
+    This class allows the task to be gracefully cancelled using asyncio's built-in task
+    cancellation or with an event, like aiohttp.
     """
 
     def install_signal_handlers(self) -> None:

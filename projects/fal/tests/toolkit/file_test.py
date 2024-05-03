@@ -4,7 +4,6 @@ import os
 from base64 import b64encode
 
 import pytest
-
 from fal.toolkit.file.file import File, GoogleStorageRepository
 
 

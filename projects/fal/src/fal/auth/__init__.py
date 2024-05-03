@@ -51,7 +51,8 @@ def _fetch_access_token() -> str:
     Load the refresh token, request a new access_token (refreshing the refresh token)
     and return the access_token.
     """
-    # We need to lock both read and write access because we could be reading a soon invalid refresh_token
+    # We need to lock both read and write access because we could be reading a soon
+    # invalid refresh_token
     with local.lock_token():
         refresh_token, access_token = local.load_token()
 
