@@ -524,9 +524,12 @@ class Options:
             pip_requirements = self.environment.setdefault("requirements", [])
         elif kind == "conda":
             pip_requirements = self.environment.setdefault("pip", [])
+        elif kind == "container":
+            return None
         else:
             raise FalServerlessError(
-                "Only conda and virtualenv is supported as environment options"
+                "Only {conda, virtualenv, container} "
+                "are supported as environment options."
             )
 
         # Already has these.

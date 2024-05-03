@@ -1,25 +1,13 @@
-from dataclasses import dataclass
-from os import PathLike
-from typing import Any
-
-
-@dataclass
 class ContainerImage:
     """ContainerImage represents a Docker image that can be built
     from a Dockerfile.
     """
 
-    _dockerfile: str | PathLike
-    build_environment: dict[str, Any] | None = None
-    build_arguments: dict[str, str] | None = None
+    @classmethod
+    def from_dockerfile_str(cls, text: str, **kwargs):
+        return dict(dockerfile_str=text, **kwargs)
 
-    @property
-    def dockerfile(self) -> str:
-        if isinstance(self._dockerfile, PathLike):
-            with open(self._dockerfile) as f:
-                return f.read()
-        return self._dockerfile
-
-    @dockerfile.setter
-    def dockerfile(self, value: str | PathLike) -> None:
-        self._dockerfile = value
+    @classmethod
+    def from_dockerfile(cls, path: str, **kwargs):
+        with open(path) as fobj:
+            return cls.from_dockerfile_str(fobj.read(), **kwargs)

@@ -77,7 +77,10 @@ def test_regular_function_in_a_container_with_custom_image(isolated_client):
 
     assert regular_function() == 42
 
-    @isolated_client("container", image=ContainerImage(dockerfile="FROM python:3.9"))
+    @isolated_client(
+        "container",
+        image=ContainerImage.from_dockerfile_str("FROM python:3.9"),
+    )
     def mult(a, b):
         return a * b
 

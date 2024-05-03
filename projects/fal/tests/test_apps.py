@@ -51,10 +51,8 @@ def addition_app(input: Input) -> Output:
 nomad_addition_app = addition_app.on(_scheduler="nomad")
 
 @fal.function(
-    kind="contaner",
-    image=ContainerImage(
-        dockerfile="FROM python:3.11",
-    ),
+    kind="container",
+    image=ContainerImage.from_dockerfile_str("FROM python:3.11"),
     keep_alive=60,
     machine_type="S",
     serve=True,
