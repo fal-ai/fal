@@ -19,5 +19,8 @@ dmypy.json
 # JetBrains
 .idea/
 
+# vim
+*.swp
+
 /coverage.xml
 /.coverage
