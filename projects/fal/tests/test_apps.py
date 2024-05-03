@@ -8,6 +8,7 @@ import fal.api as api
 import httpx
 import pytest
 from fal import apps
+from fal.container import ContainerImage
 from fal.rest_client import REST_CLIENT
 from fal.workflows import Workflow
 from fastapi import WebSocket
@@ -48,6 +49,26 @@ def addition_app(input: Input) -> Output:
 
 
 nomad_addition_app = addition_app.on(_scheduler="nomad")
+
+@fal.function(
+    kind="contaner",
+    image=ContainerImage(
+        dockerfile="FROM python:3.11",
+    ),
+    keep_alive=60,
+    machine_type="S",
+    serve=True,
+    max_concurrency=1,
+    _scheduler="kubernetes",
+)
+def container_addition_app(input: Input) -> Output:
+    print("starting...")
+    for _ in range(input.wait_time):
+        print("sleeping...")
+        time.sleep(1)
+
+    return Output(result=input.lhs + input.rhs)
+
 
 @fal.function(
     keep_alive=300,
