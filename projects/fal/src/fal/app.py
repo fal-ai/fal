@@ -13,13 +13,12 @@ import fal.api
 from fal._serialization import include_modules_from
 from fal.api import RouteSignature
 from fal.logging import get_logger
+from fal.toolkit.file.providers import fal as fal_provider_module
 
 REALTIME_APP_REQUIREMENTS = ["websockets", "msgpack"]
 
 EndpointT = TypeVar("EndpointT", bound=Callable[..., Any])
 logger = get_logger(__name__)
-
-from fal.toolkit.file.providers import fal as fal_provider_module
 
 
 async def _call_any_fn(fn, *args, **kwargs):

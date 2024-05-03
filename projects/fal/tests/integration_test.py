@@ -11,10 +11,12 @@ from fal import FalServerlessHost, FalServerlessKeyCredentials, local, sync_dir
 from fal.api import FalServerlessError, IsolatedFunction
 from fal.toolkit import (
     File,
-    Image as FalImage,
     clone_repository,
     download_file,
     download_model_weights,
+)
+from fal.toolkit import (
+    Image as FalImage,
 )
 from fal.toolkit.file.file import CompressedFile
 from fal.toolkit.utils.download_utils import _get_git_revision_hash, _hash_url
