@@ -13,6 +13,7 @@ import fal.api
 from fal._serialization import include_modules_from
 from fal.api import RouteSignature
 from fal.logging import get_logger
+from fal.toolkit.file.providers import fal as fal_provider_module
 
 REALTIME_APP_REQUIREMENTS = ["websockets", "msgpack"]
 
@@ -128,11 +129,9 @@ class App(fal.api.BaseServable):
         async def set_global_object_preference(request, call_next):
             response = await call_next(request)
             try:
-                from fal.toolkit.file.providers import fal
-
-                fal.GLOBAL_LIFECYCLE_PREFERENCE = request.headers[
+                fal_provider_module.GLOBAL_LIFECYCLE_PREFERENCE = request.headers.get(
                     "X-Fal-Object-Lifecycle-Preference"
-                ]
+                )
             except Exception:
                 from fastapi.logger import logger
 

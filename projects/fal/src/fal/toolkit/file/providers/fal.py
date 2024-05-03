@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import datetime
+import dataclasses
 import json
 import os
 from base64 import b64encode
@@ -17,12 +17,10 @@ _FAL_CDN = "https://fal.media"
 
 @dataclass
 class ObjectLifecyclePreference:
-    expriation_days: datetime.timedelta
+    expriation_duration_seconds: int
 
 
-GLOBAL_LIFECYCLE_PREFERENCE = ObjectLifecyclePreference(
-    expriation_days=datetime.timedelta(days=2)
-)
+GLOBAL_LIFECYCLE_PREFERENCE = ObjectLifecyclePreference(expriation_duration_seconds=2)
 
 
 @dataclass
@@ -99,10 +97,9 @@ class FalCDNFileRepository(FileRepository):
             "Accept": "application/json",
             "Content-Type": file.content_type,
             "X-Fal-Object-Lifecycle-Preference": json.dumps(
-                GLOBAL_LIFECYCLE_PREFERENCE
+                dataclasses.asdict(GLOBAL_LIFECYCLE_PREFERENCE)
             ),
         }
-
         url = os.getenv("FAL_CDN_HOST", _FAL_CDN) + "/files/upload"
         request = Request(url, headers=headers, method="POST", data=file.data)
         try:
