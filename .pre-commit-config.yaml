@@ -21,16 +21,6 @@ repos:
       - id: check-merge-conflict
       - id: check-vcs-permalinks
       - id: debug-statements
-  - repo: https://github.com/asottile/pyupgrade
-    rev: v3.1.0
-    hooks:
-      - id: pyupgrade
-        args: ["--py38-plus", "--keep-runtime-typing"]
-        files: |
-          (?x)(
-            ^projects/fal/src/|
-            ^projects/fal/tests/
-          )
   # Monorepo Hooks (e.g. they need to be project specific)
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: "v1.3.0"
