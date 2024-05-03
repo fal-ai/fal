@@ -61,6 +61,13 @@ pip install -e 'projects/isolate_proto[dev]'
 pytest
 ```
 
+### Pre-commit
+
+```
+cd projects/fal
+pre-commit install
+```
+
 ### Commit format
 
 Please follow [conventional commits specification](https://www.conventionalcommits.org/) for descriptions/messages.
