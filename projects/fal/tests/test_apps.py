@@ -179,7 +179,7 @@ def aliased_app() -> Generator[tuple[str, str], None, None]:
 def test_app():
     # Create a temporary app, register it, and return the ID of it.
 
-    from fal.cli import _get_user_id
+    from fal.cli.deploy import _get_user_id
 
     app_revision = addition_app.host.register(
         func=addition_app.func,
@@ -193,7 +193,7 @@ def test_app():
 def test_nomad_app():
     # Create a temporary app, register it, and return the ID of it.
 
-    from fal.cli import _get_user_id
+    from fal.cli.deploy import _get_user_id
 
     app_revision = nomad_addition_app.host.register(
         func=nomad_addition_app.func,
@@ -207,7 +207,7 @@ def test_nomad_app():
 def test_kubernetes_app():
     # Create a temporary app, register it, and return the ID of it.
 
-    from fal.cli import _get_user_id
+    from fal.cli.deploy import _get_user_id
 
     app_revision = kubernetes_addition_app.host.register(
         func=nomad_addition_app.func,
@@ -221,7 +221,7 @@ def test_kubernetes_app():
 def test_fastapi_app():
     # Create a temporary app, register it, and return the ID of it.
 
-    from fal.cli import _get_user_id
+    from fal.cli.deploy import _get_user_id
 
     app_revision = calculator_app.host.register(
         func=calculator_app.func,
@@ -235,7 +235,7 @@ def test_fastapi_app():
 def test_stateful_app():
     # Create a temporary app, register it, and return the ID of it.
 
-    from fal.cli import _get_user_id
+    from fal.cli.deploy import _get_user_id
 
     app = fal.wrap_app(StatefulAdditionApp)
     app_revision = app.host.register(
@@ -250,7 +250,7 @@ def test_stateful_app():
 def test_realtime_app():
     # Create a temporary app, register it, and return the ID of it.
 
-    from fal.cli import _get_user_id
+    from fal.cli.deploy import _get_user_id
 
     app = fal.wrap_app(RealtimeApp)
     app_revision = app.host.register(

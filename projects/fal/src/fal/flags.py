@@ -27,5 +27,4 @@ FAL_RUN_HOST = (
     GRPC_HOST.replace("api.", "", 1).replace("alpha.", "", 1).replace(".ai", ".run", 1)
 )
 
-FORCE_SETUP = bool_envvar("FAL_FORCE_SETUP")
 DONT_OPEN_LINKS = bool_envvar("FAL_DONT_OPEN_LINKS")

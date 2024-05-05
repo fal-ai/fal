@@ -21,6 +21,7 @@ repos:
       - id: check-merge-conflict
       - id: check-vcs-permalinks
       - id: debug-statements
+        exclude: ^projects/fal/src/fal/cli/debug.py
   # Monorepo Hooks (e.g. they need to be project specific)
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: "v1.3.0"

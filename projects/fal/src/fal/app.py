@@ -3,6 +3,7 @@ from __future__ import annotations
 import inspect
 import json
 import os
+import re
 import typing
 from contextlib import asynccontextmanager
 from typing import Any, Callable, ClassVar, TypeVar
@@ -64,14 +65,33 @@ def wrap_app(cls: type[App], **kwargs) -> fal.api.IsolatedFunction:
     return fn
 
 
+
+PART_FINDER_RE = re.compile(r"[A-Z][a-z]*")
+
+
+def _to_fal_app_name(name: str) -> str:
+    # Convert MyGoodApp into my-good-app
+    return "-".join(part.lower() for part in PART_FINDER_RE.findall(name))
+
+
 class App(fal.api.BaseServable):
     requirements: ClassVar[list[str]] = []
     machine_type: ClassVar[str] = "S"
-    host_kwargs: ClassVar[dict[str, Any]] = {}
+    host_kwargs: ClassVar[dict[str, Any]] = {
+        "_scheduler": "nomad",
+        "_scheduler_options": {
+            "storage_region": "us-east",
+        },
+        "resolver": "uv",
+        "keep_alive": 60,
+    }
+    app_name: ClassVar[str]
 
     def __init_subclass__(cls, **kwargs):
+        app_name = kwargs.pop("name", None) or _to_fal_app_name(cls.__name__)
         parent_settings = getattr(cls, "host_kwargs", {})
         cls.host_kwargs = {**parent_settings, **kwargs}
+        cls.app_name = app_name
 
         if cls.__init__ is not App.__init__:
             raise ValueError(
