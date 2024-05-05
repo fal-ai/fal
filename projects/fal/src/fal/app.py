@@ -120,6 +120,9 @@ class App(fal.api.BaseServable):
         finally:
             await _call_any_fn(self.teardown)
 
+    def health(self):
+        return {}
+
     def setup(self):
         """Setup the application before serving."""
 
@@ -160,6 +163,11 @@ class App(fal.api.BaseServable):
                     self.__class__.__name__,
                 )
             return response
+
+    def _add_extra_routes(self, app: FastAPI):
+        @app.get("/health")
+        def health():
+            return self.health()
 
     def provide_hints(self) -> list[str]:
         """Provide hints for routing the application."""
