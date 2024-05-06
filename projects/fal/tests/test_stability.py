@@ -71,7 +71,10 @@ def test_regular_function_in_a_container(isolated_client):
 
 
 def test_regular_function_in_a_container_with_custom_image(isolated_client):
-    @isolated_client("container", image=ContainerImage(dockerfile="FROM python:3.9"))
+    @isolated_client(
+        "container",
+        image=ContainerImage.from_dockerfile_str("FROM python:3.9"),
+    )
     def regular_function():
         return 42
 
