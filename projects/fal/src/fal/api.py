@@ -832,6 +832,9 @@ class BaseServable:
         """
         pass
 
+    def _add_extra_routes(self, app: FastAPI):
+        pass
+
     @asynccontextmanager
     async def lifespan(self, app: FastAPI):
         yield
@@ -892,6 +895,8 @@ class BaseServable:
                     name=endpoint.__name__,
                     methods=["POST"],
                 )
+
+        self._add_extra_routes(_app)
 
         return _app
 
