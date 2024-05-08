@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import os
 import sys
 import threading
 from collections import defaultdict
@@ -845,7 +846,10 @@ class BaseServable:
         from fastapi.responses import JSONResponse
         from starlette_exporter import PrometheusMiddleware
 
-        _app = FalFastAPI(lifespan=self.lifespan)
+        _app = FalFastAPI(
+            lifespan=self.lifespan,
+            root_path=os.getenv("FAL_APP_ROOT_PATH") or "",
+        )
 
         _app.add_middleware(
             CORSMiddleware,
