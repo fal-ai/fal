@@ -84,6 +84,7 @@ def _deploy(args):
         file_path,
         func_name,
     )
+    app_name = args.app_name or app_name
     app_id = host.register(
         func=isolated_function.func,
         options=isolated_function.options,
@@ -114,6 +115,7 @@ def add_parser(main_subparsers, parents):
         "  fal deploy\n"
         "  fal deploy path/to/myfile.py\n"
         "  fal deploy path/to/myfile.py::MyApp\n"
+        "  fal deploy path/to/myfile.py::MyApp --app-name myapp --auth public\n"
     )
     parser = main_subparsers.add_parser(
         "deploy",
@@ -130,6 +132,10 @@ def add_parser(main_subparsers, parents):
             "Application reference. "
             "For example: `myfile.py::MyApp`, `myfile.py`."
         ),
+    )
+    parser.add_argument(
+        "--app-name",
+        help="Application name to deploy with.",
     )
     parser.add_argument(
         "--auth",
