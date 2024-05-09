@@ -39,12 +39,13 @@ class DictAction(argparse.Action):
             kvs = [values]
 
         for kv in kvs:
-            key, value = kv.split("=", 1)
-            if not value:
+            parts = kv.split("=", 1)
+            if len(parts) != 2:
                 raise argparse.ArgumentError(
                     self,
                     f'Could not parse argument "{values}" as k1=v1 k2=v2 ... format',
                 )
+            key, value = parts
             d[key] = value
 
         setattr(args, self.dest, d)
