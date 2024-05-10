@@ -195,7 +195,10 @@ def _patch_rlock() -> None:
 
 
 def _patch_console_thread_locals() -> None:
-    from rich.console import ConsoleThreadLocals
+    try:
+        from rich.console import ConsoleThreadLocals
+    except ModuleNotFoundError:
+        return
 
     def create_locals(kwargs: dict) -> ConsoleThreadLocals:
         return ConsoleThreadLocals(**kwargs)
