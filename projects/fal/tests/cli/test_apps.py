@@ -31,7 +31,7 @@ def test_set_rev():
 def test_scale():
     args = parse_args(
         [
-            "apps", "scale",
+            "apps", "scale", "myapp",
             "--keep-alive", "123",
             "--max-multiplexing", "321",
             "--min-concurrency", "7",
@@ -39,6 +39,7 @@ def test_scale():
         ]
     )
     assert args.func == _scale
+    assert args.app_name == "myapp"
     assert args.keep_alive == 123
     assert args.max_multiplexing == 321
     assert args.min_concurrency == 7

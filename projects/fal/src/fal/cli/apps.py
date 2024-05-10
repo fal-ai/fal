@@ -117,7 +117,7 @@ def _scale(args):
             return
 
         alias_info = connection.update_application(
-            application_name=args.app_alias,
+            application_name=args.app_name,
             keep_alive=args.keep_alive,
             max_multiplexing=args.max_multiplexing,
             max_concurrency=args.max_concurrency,
@@ -135,6 +135,10 @@ def _add_scale_parser(subparsers, parents):
         description=scale_help,
         help=scale_help,
         parents=parents,
+    )
+    parser.add_argument(
+        "app_name",
+        help="Application name.",
     )
     parser.add_argument(
         "--keep-alive",
