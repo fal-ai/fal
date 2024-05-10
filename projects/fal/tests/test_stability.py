@@ -67,6 +67,40 @@ def test_function_pipelining(isolated_client):
     assert calling_function(regular_function()) == 84
 
 
+def test_function_exception(isolated_client):
+    class FooException(Exception):
+        pass
+
+    class BarException(Exception):
+        pass
+
+    class MyFuncException(Exception):
+        pass
+
+    def foo():
+        raise FooException("foo")
+
+    def bar():
+        try:
+            foo()
+        except Exception as exc:
+            raise BarException("bar") from exc
+
+    @isolated_client()
+    def myfunc():
+        try:
+            bar()
+        except Exception as exc:
+            raise MyFuncException("myfunc") from exc
+
+    with pytest.raises(MyFuncException) as excinfo:
+        myfunc()
+
+    bar_exc = excinfo.value.__cause__
+    assert isinstance(bar_exc, BarException)
+    assert isinstance(bar_exc.__cause__, FooException)
+
+
 @pytest.mark.xfail(reason="See https://github.com/fal-ai/fal/issues/169")
 def test_function_calling_other_function(isolated_client):
     try:
