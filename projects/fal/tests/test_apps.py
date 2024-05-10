@@ -57,7 +57,6 @@ nomad_addition_app = addition_app.on(_scheduler="nomad")
     machine_type="S",
     serve=True,
     max_concurrency=1,
-    _scheduler="kubernetes",
 )
 def container_addition_app(input: Input) -> Output:
     print("starting...")

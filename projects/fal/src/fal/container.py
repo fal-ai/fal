@@ -3,9 +3,15 @@ class ContainerImage:
     from a Dockerfile.
     """
 
+    _known_keys = {"dockerfile_str", "build_env", "build_args"}
+
     @classmethod
     def from_dockerfile_str(cls, text: str, **kwargs):
-        return dict(dockerfile_str=text, **kwargs)
+        # Check for unknown keys and return them as a dict.
+        return dict(
+            dockerfile_str=text,
+            **{k: v for k, v in kwargs.items() if k in cls._known_keys},
+        )
 
     @classmethod
     def from_dockerfile(cls, path: str, **kwargs):
