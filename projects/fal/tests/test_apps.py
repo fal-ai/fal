@@ -426,7 +426,7 @@ def test_app_update_app(aliased_app: tuple[str, str]):
         assert res.max_multiplexing == new_max_multiplexing
 
     with host._connection as client:
-        new_max_concurrency = new_max_concurrency + 1
+        new_max_concurrency = new_max_concurrency - 1
         res = client.update_application(
             application_name=app_alias,
             max_concurrency=new_max_concurrency,
