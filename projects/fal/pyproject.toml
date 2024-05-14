@@ -37,7 +37,7 @@ dependencies = [
     "portalocker>=2.7.0,<3",
     "rich>=13.3.2,<14",
     "rich_argparse",
-    "packaging>=21.3,<22",
+    "packaging>=21.3",
     "pathspec>=0.11.1,<1",
     "pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,<3",
     # serve=True dependencies
