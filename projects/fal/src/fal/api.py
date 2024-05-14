@@ -278,7 +278,11 @@ def _handle_grpc_error():
                         "This is likely due to resource overflow. "
                         "You can try again by setting a bigger `machine_type`"
                     )
-
+                elif e.code() == grpc.StatusCode.INVALID_ARGUMENT and (
+                    "The function function could not be deserialized" in e.details()
+                ):
+                    # backward compatibility with isolate server < 0.12.8
+                    raise DeserializationError(e.details())
                 else:
                     raise FalServerlessError(e.details())
 
