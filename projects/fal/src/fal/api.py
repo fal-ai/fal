@@ -35,6 +35,7 @@ from fastapi import __version__ as fastapi_version
 from isolate.backends.common import active_python
 from isolate.backends.settings import DEFAULT_SETTINGS
 from isolate.connections import PythonIPC
+from isolate.connections.common import DeserializationError
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 from pydantic import __version__ as pydantic_version
@@ -79,11 +80,6 @@ class FalServerlessError(FalServerlessException):
 @dataclass
 class InternalFalServerlessError(FalServerlessException):
     message: str
-
-
-@dataclass
-class FalMissingDependencyError(FalServerlessError):
-    ...
 
 
 @dataclass
@@ -283,10 +279,6 @@ def _handle_grpc_error():
                         "You can try again by setting a bigger `machine_type`"
                     )
 
-                elif e.code() == grpc.StatusCode.INVALID_ARGUMENT and (
-                    "The function function could not be deserialized" in e.details()
-                ):
-                    raise FalMissingDependencyError(e.details()) from None
                 else:
                     raise FalServerlessError(e.details())
 
@@ -1012,7 +1004,7 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
                 args=args,
                 kwargs=kwargs,
             )
-        except FalMissingDependencyError as e:
+        except DeserializationError as e:
             pairs = list(find_missing_dependencies(self.func, self.options.environment))
             if not pairs:
                 raise e
