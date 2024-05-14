@@ -35,7 +35,6 @@ from fastapi import __version__ as fastapi_version
 from isolate.backends.common import active_python
 from isolate.backends.settings import DEFAULT_SETTINGS
 from isolate.connections import PythonIPC
-from isolate.connections.common import DeserializationError
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 from pydantic import __version__ as pydantic_version
@@ -57,6 +56,13 @@ from fal.sdk import (
     get_agent_credentials,
     get_default_credentials,
 )
+
+try:
+    from isolate.connections.common import DeserializationError
+except ImportError:
+    # backward compatibility
+    from isolate.connections.common import SerializationError as DeserializationError
+
 
 ArgsT = ParamSpec("ArgsT")
 ReturnT = TypeVar("ReturnT", covariant=True)  # noqa: PLC0105
