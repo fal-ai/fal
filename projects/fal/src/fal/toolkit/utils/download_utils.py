@@ -111,6 +111,7 @@ def download_file(
     target_dir: str | Path,
     *,
     force: bool = False,
+    verbose: bool = True,
 ) -> Path:
     """Downloads a file from the specified URL to the target directory.
 
@@ -134,6 +135,8 @@ def download_file(
         force: If `True`, the file is downloaded even if it already exists locally and
             its content length matches the expected content length from the remote file.
             Defaults to `False`.
+        verbose: If `True`, the function prints messages to the console indicating the
+            download progress. Defaults to `True`.
 
     Returns:
         A Path object representing the full path to the downloaded file.
@@ -142,7 +145,11 @@ def download_file(
         ValueError: If the provided `file_name` contains a forward slash ('/').
         DownloadError: If an error occurs during the download process.
     """
-    file_name = _get_remote_file_properties(url)[0]
+    try:
+        file_name = _get_remote_file_properties(url)[0]
+    except Exception as e:
+        raise DownloadError(f"Failed to get remote file properties for {url}") from e
+
     if "/" in file_name:
         raise ValueError(f"File name '{file_name}' cannot contain a slash.")
 
@@ -161,10 +168,11 @@ def download_file(
     ):
         return target_path
 
-    if force:
-        print(f"File already exists. Forcing download of {url} to {target_path}")
-    else:
-        print(f"Downloading {url} to {target_path}")
+    if verbose:
+        if force:
+            print(f"File already exists. Forcing download of {url} to {target_path}")
+        else:
+            print(f"Downloading {url} to {target_path}")
 
     # Make sure the directory exists
     target_path.parent.mkdir(parents=True, exist_ok=True)
@@ -181,13 +189,16 @@ def download_file(
     return target_path
 
 
-def _download_file_python(url: str, target_path: Path | str) -> Path:
+def _download_file_python(url: str, target_path: Path | str, verbose: bool = True
+) -> Path:
     """Download a file from a given URL and save it to a specified path using a
     Python interface.
 
     Args:
         url: The URL of the file to be downloaded.
         target_path: The path where the downloaded file will be saved.
+        verbose: If `True`, the function prints messages to the console indicating the
+            download progress. Defaults to `True`.
 
     Returns:
         The path where the downloaded file has been saved.
@@ -204,7 +215,9 @@ def _download_file_python(url: str, target_path: Path | str) -> Path:
                     progress_msg = f"Downloading {url} ... {progress:.2%}"
                 else:
                     progress_msg = f"Downloading {url} ... {progress:.2f} MB"
-                print(progress_msg, end="\r\n")
+
+                if verbose:
+                    print(progress_msg, end="\r\n")
 
             # Move the file when the file is downloaded completely. Since the
             # file used is temporary, in a case of an interruption, the downloaded
