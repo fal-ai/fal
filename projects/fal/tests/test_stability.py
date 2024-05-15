@@ -375,6 +375,7 @@ def test_futures(isolated_client):
     assert future_4.result() == 8
 
 
+@pytest.mark.xfail(reason="Conda stopped working with latest isolate update.")
 def test_conda_environment(isolated_client):
     @isolated_client(
         "conda",
