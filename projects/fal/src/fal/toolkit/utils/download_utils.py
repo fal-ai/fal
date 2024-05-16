@@ -4,7 +4,6 @@ import hashlib
 import shutil
 import subprocess
 import sys
-from functools import lru_cache
 from pathlib import Path, PurePath
 from tempfile import TemporaryDirectory
 from urllib.parse import urlparse
@@ -40,8 +39,10 @@ def _hash_url(url: str) -> str:
     return hashlib.sha256(url.encode("utf-8")).hexdigest()
 
 
-@lru_cache
-def _get_remote_file_properties(url: str) -> tuple[str, int]:
+def _get_remote_file_properties(
+    url: str,
+    request_headers: dict[str, str] | None = None,
+) -> tuple[str, int]:
     """Retrieves the file name and content length of a remote file.
 
     This function sends an HTTP request to the remote URL and retrieves the
@@ -60,11 +61,15 @@ def _get_remote_file_properties(url: str) -> tuple[str, int]:
 
     Args:
         url: The URL of the remote file.
+        request_headers: A dictionary containing additional headers to be included in
+            the HTTP request.
 
     Returns:
         A tuple containing the file name and the content length of the remote file.
     """
-    request = Request(url, headers=TEMP_HEADERS)
+    headers = {**TEMP_HEADERS, **(request_headers or {})}
+    request = Request(url, headers=headers)
+
     with urlopen(request) as response:
         file_name = response.headers.get_filename()
         content_length = int(response.headers.get("Content-Length", -1))
@@ -81,7 +86,9 @@ def _get_remote_file_properties(url: str) -> tuple[str, int]:
     return file_name, content_length
 
 
-def _file_content_length_matches(url: str, file_path: Path) -> bool:
+def _file_content_length_matches(
+    url: str, file_path: Path, request_headers: dict[str, str] | None = None
+) -> bool:
     """Check if the local file's content length matches the expected remote
     file's content length.
 
@@ -95,13 +102,15 @@ def _file_content_length_matches(url: str, file_path: Path) -> bool:
     Args:
         url: The URL of the remote file.
         file_path: The local path to the file being compared.
+        request_headers: A dictionary containing additional headers to be included in
+            the HTTP request.
 
     Returns:
         bool: `True` if the local file's content length matches the remote file's
             content length, `False` otherwise.
     """
     local_file_content_length = file_path.stat().st_size
-    remote_file_content_length = _get_remote_file_properties(url)[1]
+    remote_file_content_length = _get_remote_file_properties(url, request_headers)[1]
 
     return local_file_content_length == remote_file_content_length
 
@@ -111,6 +120,7 @@ def download_file(
     target_dir: str | Path,
     *,
     force: bool = False,
+    request_headers: dict[str, str] | None = None,
 ) -> Path:
     """Downloads a file from the specified URL to the target directory.
 
@@ -134,6 +144,9 @@ def download_file(
         force: If `True`, the file is downloaded even if it already exists locally and
             its content length matches the expected content length from the remote file.
             Defaults to `False`.
+        request_headers: A dictionary containing additional headers to be included in
+            the HTTP request. Defaults to `None`.
+
 
     Returns:
         A Path object representing the full path to the downloaded file.
@@ -142,7 +155,11 @@ def download_file(
         ValueError: If the provided `file_name` contains a forward slash ('/').
         DownloadError: If an error occurs during the download process.
     """
-    file_name = _get_remote_file_properties(url)[0]
+    try:
+        file_name = _get_remote_file_properties(url, request_headers)[0]
+    except Exception as e:
+        raise DownloadError(f"Failed to get remote file properties for {url}") from e
+
     if "/" in file_name:
         raise ValueError(f"File name '{file_name}' cannot contain a slash.")
 
@@ -156,7 +173,7 @@ def download_file(
 
     if (
         target_path.exists()
-        and _file_content_length_matches(url, target_path)
+        and _file_content_length_matches(url, target_path, request_headers)
         and not force
     ):
         return target_path
@@ -170,7 +187,9 @@ def download_file(
     target_path.parent.mkdir(parents=True, exist_ok=True)
 
     try:
-        _download_file_python(url=url, target_path=target_path)
+        _download_file_python(
+            url=url, target_path=target_path, request_headers=request_headers
+        )
     except Exception as e:
         msg = f"Failed to download {url} to {target_path}"
 
@@ -181,13 +200,17 @@ def download_file(
     return target_path
 
 
-def _download_file_python(url: str, target_path: Path | str) -> Path:
+def _download_file_python(
+    url: str, target_path: Path | str, request_headers: dict[str, str] | None = None
+) -> Path:
     """Download a file from a given URL and save it to a specified path using a
     Python interface.
 
     Args:
         url: The URL of the file to be downloaded.
         target_path: The path where the downloaded file will be saved.
+        request_headers: A dictionary containing additional headers to be included in
+            the HTTP request. Defaults to `None`.
 
     Returns:
         The path where the downloaded file has been saved.
@@ -199,11 +222,14 @@ def _download_file_python(url: str, target_path: Path | str) -> Path:
         try:
             file_path = temp_file.name
 
-            for (progress, total_size) in _stream_url_data_to_file(url, temp_file.name):
+            for progress, total_size in _stream_url_data_to_file(
+                url, temp_file.name, request_headers=request_headers
+            ):
                 if total_size:
                     progress_msg = f"Downloading {url} ... {progress:.2%}"
                 else:
                     progress_msg = f"Downloading {url} ... {progress:.2f} MB"
+
                 print(progress_msg, end="\r\n")
 
             # Move the file when the file is downloaded completely. Since the
@@ -219,7 +245,12 @@ def _download_file_python(url: str, target_path: Path | str) -> Path:
     return Path(target_path)
 
 
-def _stream_url_data_to_file(url: str, file_path: str, chunk_size_in_mb: int = 64):
+def _stream_url_data_to_file(
+    url: str,
+    file_path: str,
+    chunk_size_in_mb: int = 64,
+    request_headers: dict[str, str] | None = None,
+):
     """Download data from a URL and stream it to a file.
 
     Note:
@@ -233,6 +264,8 @@ def _stream_url_data_to_file(url: str, file_path: str, chunk_size_in_mb: int = 6
         file_path: The path to the file where the downloaded data will be saved.
         chunk_size_in_mb: The size of each download chunk in megabytes.
             Defaults to 64.
+        request_headers: A dictionary containing additional headers to be included in
+            the HTTP request. Defaults to `None`.
 
     Yields:
         A tuple containing two elements:
@@ -244,7 +277,8 @@ def _stream_url_data_to_file(url: str, file_path: str, chunk_size_in_mb: int = 6
     """
     ONE_MB = 1024**2
 
-    request = Request(url, headers=TEMP_HEADERS)
+    headers = {**TEMP_HEADERS, **(request_headers or {})}
+    request = Request(url, headers=headers)
 
     received_size = 0
     total_size = 0
@@ -267,7 +301,9 @@ def _stream_url_data_to_file(url: str, file_path: str, chunk_size_in_mb: int = 6
         raise DownloadError("Received less data than expected from the server.")
 
 
-def download_model_weights(url: str, force: bool = False):
+def download_model_weights(
+    url: str, force: bool = False, request_headers: dict[str, str] | None = None
+) -> Path:
     """Downloads model weights from the specified URL and saves them to a
     predefined directory.
 
@@ -284,6 +320,8 @@ def download_model_weights(url: str, force: bool = False):
         force: If `True`, the model weights are downloaded even if they already exist
             locally and their content length matches the expected content length from
             the remote file. Defaults to `False`.
+        request_headers: A dictionary containing additional headers to be included in
+            the HTTP request. Defaults to `None`.
 
     Returns:
         A Path object representing the full path to the downloaded model weights.
@@ -303,6 +341,7 @@ def download_model_weights(url: str, force: bool = False):
         url,
         target_dir=weights_dir,
         force=force,
+        request_headers=request_headers,
     )
 
 
