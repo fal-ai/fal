@@ -34,7 +34,6 @@ def load_function_from(
     else:
         app_name = None
 
-    module = runpy.run_path(file_path)
     if function_name not in module:
         raise FalServerlessError(f"Function '{function_name}' not found in module")
 
