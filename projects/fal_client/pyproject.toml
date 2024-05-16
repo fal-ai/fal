@@ -12,7 +12,7 @@ name = "fal_client"
 dynamic = ["version"]
 description = "Python client for fal.ai"
 readme = "README.md"
-authors = [{ name = "fal <hello@fal.ai>" }]
+authors = [{ name = "Features & Labels <support@fal.ai>" }]
 requires-python = ">=3.8"
 dependencies = [
     "httpx>=0.21.0,<1",
