@@ -17,7 +17,7 @@ name = "isolate_proto"
 dynamic = ["version"]
 readme = "README.md"
 description = "(internal) gRPC definitions for Isolate Cloud"
-authors = [{ name = "Features & Labels <hello@fal.ai>" }]
+authors = [{ name = "Features & Labels <support@fal.ai>" }]
 requires-python = ">=3.8"
 dependencies = [
     "grpcio>=1.49",
