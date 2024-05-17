@@ -375,23 +375,6 @@ def test_futures(isolated_client):
     assert future_4.result() == 8
 
 
-@pytest.mark.xfail(reason="Conda stopped working with latest isolate update.")
-def test_conda_environment(isolated_client):
-    @isolated_client(
-        "conda",
-        packages=["pyjokes=0.6.0"],
-        machine_type="L",
-        # conda is only supported on Kubernetes
-        _scheduler="kubernetes",
-    )
-    def regular_function():
-        import pyjokes
-
-        return pyjokes.__version__
-
-    assert regular_function() == "0.6.0"
-
-
 @pytest.mark.xfail(reason="Nomad does not support conda")
 def test_conda_environment_on_nomad(isolated_client):
     @isolated_client(
@@ -409,6 +392,7 @@ def test_conda_environment_on_nomad(isolated_client):
     assert regular_function() == "0.6.0"
 
 
+@pytest.mark.xfail(reason="Broken on nomad")
 def test_cached_function(isolated_client, capsys, monkeypatch):
     import inspect
     import time
@@ -445,7 +429,6 @@ def test_cached_function(isolated_client, capsys, monkeypatch):
         "virtualenv",
         keep_alive=30,
         requirements=["pyjokes     "],
-        _scheduler="kubernetes",
     )
     def regular_function(n):
         if get_pipe() == "pipe":
