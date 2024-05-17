@@ -48,8 +48,6 @@ def addition_app(input: Input) -> Output:
 
 
 nomad_addition_app = addition_app.on(_scheduler="nomad")
-kubernetes_addition_app = addition_app.on(_scheduler="kubernetes")
-
 
 @fal.function(
     keep_alive=300,
@@ -198,20 +196,6 @@ def test_nomad_app():
     app_revision = nomad_addition_app.host.register(
         func=nomad_addition_app.func,
         options=nomad_addition_app.options,
-    )
-    user_id = _get_user_id()
-    yield f"{user_id}/{app_revision}"
-
-
-@pytest.fixture(scope="module")
-def test_kubernetes_app():
-    # Create a temporary app, register it, and return the ID of it.
-
-    from fal.cli.deploy import _get_user_id
-
-    app_revision = kubernetes_addition_app.host.register(
-        func=nomad_addition_app.func,
-        options=kubernetes_addition_app.options,
     )
     user_id = _get_user_id()
     yield f"{user_id}/{app_revision}"
