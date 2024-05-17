@@ -392,6 +392,7 @@ def test_conda_environment_on_nomad(isolated_client):
     assert regular_function() == "0.6.0"
 
 
+@pytest.mark.xfail(reason="Broken on nomad")
 def test_cached_function(isolated_client, capsys, monkeypatch):
     import inspect
     import time
