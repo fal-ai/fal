@@ -51,6 +51,22 @@ class DictAction(argparse.Action):
         setattr(args, self.dest, d)
 
 
+def _find_parser(parser, func):
+    defaults = parser._defaults
+    if not func or func == defaults.get("func"):
+        return parser
+
+    actions = parser._actions
+    for action in actions:
+        if not isinstance(action.choices, dict):
+            continue
+        for subparser in action.choices.values():
+            par = _find_parser(subparser, func)
+            if par:
+                return par
+    return None
+
+
 class FalParser(argparse.ArgumentParser):
     def __init__(self, *args, **kwargs):
         kwargs.setdefault("formatter_class", rich_argparse.RawTextRichHelpFormatter)
@@ -60,6 +76,13 @@ class FalParser(argparse.ArgumentParser):
         if message:
             self._print_message(message, sys.stderr)
         raise FalParserExit(status)
+
+    def parse_args(self, args=None, namespace=None):
+        args, argv = self.parse_known_args(args, namespace)
+        if argv:
+            parser = _find_parser(self, getattr(args, "func", None)) or self
+            parser.error("unrecognized arguments: %s" % " ".join(argv))
+        return args
 
 
 class FalClientParser(FalParser):
