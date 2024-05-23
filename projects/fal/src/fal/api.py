@@ -57,13 +57,6 @@ from fal.sdk import (
     get_default_credentials,
 )
 
-try:
-    from isolate.connections.common import DeserializationError
-except ImportError:
-    # backward compatibility
-    from isolate.connections.common import SerializationError as DeserializationError
-
-
 ArgsT = ParamSpec("ArgsT")
 ReturnT = TypeVar("ReturnT", covariant=True)  # noqa: PLC0105
 
@@ -86,6 +79,11 @@ class FalServerlessError(FalServerlessException):
 @dataclass
 class InternalFalServerlessError(FalServerlessException):
     message: str
+
+
+@dataclass
+class FalMissingDependencyError(FalServerlessError):
+    ...
 
 
 @dataclass
@@ -287,8 +285,7 @@ def _handle_grpc_error():
                 elif e.code() == grpc.StatusCode.INVALID_ARGUMENT and (
                     "The function function could not be deserialized" in e.details()
                 ):
-                    # backward compatibility with isolate server < 0.12.8
-                    raise DeserializationError(e.details())
+                    raise FalMissingDependencyError(e.details()) from None
                 else:
                     raise FalServerlessError(e.details())
 
@@ -1014,7 +1011,7 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
                 args=args,
                 kwargs=kwargs,
             )
-        except DeserializationError as e:
+        except FalMissingDependencyError as e:
             pairs = list(find_missing_dependencies(self.func, self.options.environment))
             if not pairs:
                 raise e
