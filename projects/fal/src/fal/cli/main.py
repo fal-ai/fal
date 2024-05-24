@@ -45,6 +45,10 @@ def parse_args(argv=None):
     return args
 
 
+def _print_error(msg):
+    console.print(f"{CROSS_ICON} {msg}")
+
+
 def main(argv=None) -> int:
     import grpc
 
@@ -65,18 +69,18 @@ def main(argv=None) -> int:
             exc.__traceback__,
         )
         console.print(tb)
-        console.print("Unhandled user exception")
+        _print_error("Unhandled user exception")
     except KeyboardInterrupt:
-        console.print("Aborted.")
+        _print_error("Aborted.")
     except grpc.RpcError as exc:
-        console.print(exc.details())
+        _print_error(exc.details())
     except FalParserExit as exc:
         ret = exc.status
     except Exception as exc:
-        msg = f"{CROSS_ICON} {str(exc)}"
+        msg = str(exc)
         cause = exc.__cause__
         if cause is not None:
             msg += f": {str(cause)}"
-        console.print(msg)
+        _print_error(msg)
 
     return ret
