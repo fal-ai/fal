@@ -20,7 +20,9 @@ class ObjectLifecyclePreference:
     expriation_duration_seconds: int
 
 
-GLOBAL_LIFECYCLE_PREFERENCE = ObjectLifecyclePreference(expriation_duration_seconds=2)
+GLOBAL_LIFECYCLE_PREFERENCE = ObjectLifecyclePreference(
+    expriation_duration_seconds=86400
+)
 
 
 @dataclass
