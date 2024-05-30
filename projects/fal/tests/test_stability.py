@@ -55,7 +55,7 @@ def test_regular_function_on_nomad(isolated_client):
 
     assert mult(5, 2) == 10
 
-
+@pytest.mark.xfail(reason="The support needs to be deployed. See https://github.com/fal-ai/isolate-cloud/pull/1809")
 def test_regular_function_in_a_container(isolated_client):
     @isolated_client("container")
     def regular_function():
@@ -69,7 +69,7 @@ def test_regular_function_in_a_container(isolated_client):
 
     assert mult(5, 2) == 10
 
-
+@pytest.mark.xfail(reason="The support needs to be deployed. See https://github.com/fal-ai/isolate-cloud/pull/1809")
 def test_regular_function_in_a_container_with_custom_image(isolated_client):
     @isolated_client(
         "container",
