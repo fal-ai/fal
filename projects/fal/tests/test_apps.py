@@ -8,6 +8,7 @@ import fal.api as api
 import httpx
 import pytest
 from fal import apps
+from fal.container import ContainerImage
 from fal.rest_client import REST_CLIENT
 from fal.workflows import Workflow
 from fastapi import WebSocket
@@ -48,6 +49,23 @@ def addition_app(input: Input) -> Output:
 
 
 nomad_addition_app = addition_app.on(_scheduler="nomad")
+
+@fal.function(
+    kind="container",
+    image=ContainerImage.from_dockerfile_str("FROM python:3.11"),
+    keep_alive=60,
+    machine_type="S",
+    serve=True,
+    max_concurrency=1,
+)
+def container_addition_app(input: Input) -> Output:
+    print("starting...")
+    for _ in range(input.wait_time):
+        print("sleeping...")
+        time.sleep(1)
+
+    return Output(result=input.lhs + input.rhs)
+
 
 @fal.function(
     keep_alive=300,
@@ -200,6 +218,20 @@ def test_nomad_app():
     user_id = _get_user_id()
     yield f"{user_id}/{app_revision}"
 
+
+@pytest.mark.xfail(reason="The support needs to be deployed. See https://github.com/fal-ai/isolate-cloud/pull/1809")
+@pytest.fixture(scope="module")
+def test_container_app():
+    # Create a temporary app, register it, and return the ID of it.
+
+    from fal.cli.deploy import _get_user_id
+
+    app_revision = container_addition_app.host.register(
+        func=container_addition_app.func,
+        options=container_addition_app.options,
+    )
+    user_id = _get_user_id()
+    yield f"{user_id}/{app_revision}"
 
 @pytest.fixture(scope="module")
 def test_fastapi_app():

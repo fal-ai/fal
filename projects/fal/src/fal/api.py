@@ -42,6 +42,7 @@ from typing_extensions import Concatenate, ParamSpec
 
 import fal.flags as flags
 from fal._serialization import include_modules_from, patch_pickle
+from fal.container import ContainerImage
 from fal.exceptions import FalServerlessException
 from fal.logging.isolate import IsolateLogPrinter
 from fal.sdk import (
@@ -523,9 +524,12 @@ class Options:
             pip_requirements = self.environment.setdefault("requirements", [])
         elif kind == "conda":
             pip_requirements = self.environment.setdefault("pip", [])
+        elif kind == "container":
+            return None
         else:
             raise FalServerlessError(
-                "Only conda and virtualenv is supported as environment options"
+                "Only {conda, virtualenv, container} "
+                "are supported as environment options."
             )
 
         # Already has these.
@@ -743,8 +747,55 @@ def function(
     _scheduler: str | None = None,
 ) -> Callable[
     [Callable[Concatenate[ArgsT], ReturnT]], ServedIsolatedFunction[ArgsT, ReturnT]
-]:
-    ...
+]: ...
+
+
+@overload
+def function(
+    kind: Literal["container"],
+    *,
+    image: ContainerImage | None = None,
+    # Common options
+    host: FalServerlessHost = _DEFAULT_HOST,
+    serve: Literal[False] = False,
+    exposed_port: int | None = None,
+    max_concurrency: int | None = None,
+    # FalServerlessHost options
+    metadata: dict[str, Any] | None = None,
+    machine_type: str = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
+    keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
+    max_multiplexing: int = FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING,
+    min_concurrency: int = FAL_SERVERLESS_DEFAULT_MIN_CONCURRENCY,
+    setup_function: Callable[..., None] | None = None,
+    _base_image: str | None = None,
+    _scheduler: str | None = None,
+) -> Callable[
+    [Callable[Concatenate[ArgsT], ReturnT]], IsolatedFunction[ArgsT, ReturnT]
+]: ...
+
+
+@overload
+def function(
+    kind: Literal["container"],
+    *,
+    image: ContainerImage | None = None,
+    # Common options
+    host: FalServerlessHost = _DEFAULT_HOST,
+    serve: Literal[True],
+    exposed_port: int | None = None,
+    max_concurrency: int | None = None,
+    # FalServerlessHost options
+    metadata: dict[str, Any] | None = None,
+    machine_type: str = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
+    keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
+    max_multiplexing: int = FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING,
+    min_concurrency: int = FAL_SERVERLESS_DEFAULT_MIN_CONCURRENCY,
+    setup_function: Callable[..., None] | None = None,
+    _base_image: str | None = None,
+    _scheduler: str | None = None,
+) -> Callable[
+    [Callable[Concatenate[ArgsT], ReturnT]], ServedIsolatedFunction[ArgsT, ReturnT]
+]: ...
 
 
 # implementation
@@ -1121,4 +1172,3 @@ class Server(uvicorn.Server):
 
     def install_signal_handlers(self) -> None:
         pass
-

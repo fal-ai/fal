@@ -5,6 +5,7 @@ from contextlib import suppress
 import fal
 import pytest
 from fal.api import FalServerlessError, Options
+from fal.container import ContainerImage
 from fal.toolkit.file.file import File
 from pydantic import __version__ as pydantic_version
 
@@ -49,6 +50,40 @@ def test_regular_function_on_nomad(isolated_client):
     assert regular_function() == 42
 
     @isolated_client(_scheduler="nomad")
+    def mult(a, b):
+        return a * b
+
+    assert mult(5, 2) == 10
+
+@pytest.mark.xfail(reason="The support needs to be deployed. See https://github.com/fal-ai/isolate-cloud/pull/1809")
+def test_regular_function_in_a_container(isolated_client):
+    @isolated_client("container")
+    def regular_function():
+        return 42
+
+    assert regular_function() == 42
+
+    @isolated_client("container")
+    def mult(a, b):
+        return a * b
+
+    assert mult(5, 2) == 10
+
+@pytest.mark.xfail(reason="The support needs to be deployed. See https://github.com/fal-ai/isolate-cloud/pull/1809")
+def test_regular_function_in_a_container_with_custom_image(isolated_client):
+    @isolated_client(
+        "container",
+        image=ContainerImage.from_dockerfile_str("FROM python:3.9"),
+    )
+    def regular_function():
+        return 42
+
+    assert regular_function() == 42
+
+    @isolated_client(
+        "container",
+        image=ContainerImage.from_dockerfile_str("FROM python:3.9"),
+    )
     def mult(a, b):
         return a * b
 
