@@ -1,11 +1,11 @@
-# gRPC definitions
+# gRPC definitions for Isolate Controller (this should really be called isolate_controller_proto)
 
 For regenerating definitions:
 
 ```
 $ cd projects/isolate_proto
-$ pip install '.[dev]'
-$ python ../../tools/regen_grpc.py src/isolate_proto/controller.proto <isolate version>
+$ pip install -e '.[dev]'
+$ python ../../tools/regen_grpc.py --isolate-version <isolate version>
 $ pre-commit run --all-files
 ```
 
