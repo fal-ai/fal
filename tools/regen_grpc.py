@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import glob
 import ast
 import os
 import shutil
@@ -131,8 +132,8 @@ def sync_isolate(isolate_version: str, cwd: Path) -> set[str]:
 # first.
 def main() -> None:
     parser = ArgumentParser()
-    parser.add_argument("definition_file", type=Path)
-    parser.add_argument("isolate_version", type=str, nargs="?")
+    parser.add_argument("--definition-file")
+    parser.add_argument("--isolate-version")
 
     options = parser.parse_args()
 
@@ -144,11 +145,19 @@ def main() -> None:
             isolate_imports = {}
             print("No isolate version specified, no imports passed")
 
-        regen_grpc(
-            options.definition_file,
-            link_paths=[tmp_path],
-            known_imports=isolate_imports,
-        )
+        if options.definition_file:
+            files = [options.definition_file]
+        else:
+            files = glob.glob("**/*.proto", recursive=True)
+            if not files:
+                raise Exception("No definition files specified or found.")
+    
+        for file in files:
+            regen_grpc(
+                Path(file),
+                link_paths=[tmp_path],
+                known_imports=isolate_imports,
+            )
 
 
 if __name__ == "__main__":
