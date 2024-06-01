@@ -39,6 +39,15 @@ def test_fal_client(client: fal_client.SyncClient):
     assert isinstance(status_w_logs, fal_client.Completed)
     assert status_w_logs.logs is not None
 
+    output = client.run(
+        "fal-ai/fast-sdxl",
+        arguments={
+            "prompt": "a cat",
+        },
+        hint="lora:a",
+    )
+    assert len(output["images"]) == 1
+
 
 def test_fal_client_streaming(client: fal_client.SyncClient):
     events = []
