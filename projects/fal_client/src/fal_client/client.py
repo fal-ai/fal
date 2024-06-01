@@ -192,6 +192,7 @@ class AsyncClient:
         *,
         path: str = "",
         timeout: float | None = None,
+        hint: str | None = None,
     ) -> AnyJSON:
         """Run an application with the given arguments (which will be JSON serialized). The path parameter can be used to
         specify a subpath when applicable. This method will return the result of the inference call directly.
@@ -201,10 +202,15 @@ class AsyncClient:
         if path:
             url += "/" + path.lstrip("/")
 
+        headers = {}
+        if hint is not None:
+            headers["X-Fal-Runner-Hint"] = hint
+
         response = await self._client.post(
             url,
             json=arguments,
             timeout=timeout,
+            headers=headers,
         )
         response.raise_for_status()
         return response.json()
@@ -215,6 +221,7 @@ class AsyncClient:
         arguments: AnyJSON,
         *,
         path: str = "",
+        hint: str | None = None,
     ) -> AsyncRequestHandle:
         """Submit an application with the given arguments (which will be JSON serialized). The path parameter can be used to
         specify a subpath when applicable. This method will return a handle to the request that can be used to check the status
@@ -224,9 +231,14 @@ class AsyncClient:
         if path:
             url += "/" + path.lstrip("/")
 
+        headers = {}
+        if hint is not None:
+            headers["X-Fal-Runner-Hint"] = hint
+
         response = await self._client.post(
             url,
             json=arguments,
+            timeout=self.default_timeout,
         )
         response.raise_for_status()
 
@@ -325,6 +337,7 @@ class SyncClient:
         *,
         path: str = "",
         timeout: float | None = None,
+        hint: str | None = None,
     ) -> AnyJSON:
         """Run an application with the given arguments (which will be JSON serialized). The path parameter can be used to
         specify a subpath when applicable. This method will return the result of the inference call directly.
@@ -334,10 +347,15 @@ class SyncClient:
         if path:
             url += "/" + path.lstrip("/")
 
+        headers = {}
+        if hint is not None:
+            headers["X-Fal-Runner-Hint"] = hint
+
         response = self._client.post(
             url,
             json=arguments,
             timeout=timeout,
+            headers=headers,
         )
         response.raise_for_status()
         return response.json()
@@ -348,6 +366,7 @@ class SyncClient:
         arguments: AnyJSON,
         *,
         path: str = "",
+        hint: str | None = None,
     ) -> SyncRequestHandle:
         """Submit an application with the given arguments (which will be JSON serialized). The path parameter can be used to
         specify a subpath when applicable. This method will return a handle to the request that can be used to check the status
@@ -357,10 +376,15 @@ class SyncClient:
         if path:
             url += "/" + path.lstrip("/")
 
+        headers = {}
+        if hint is not None:
+            headers["X-Fal-Runner-Hint"] = hint
+
         response = self._client.post(
             url,
             json=arguments,
             timeout=self.default_timeout,
+            headers=headers,
         )
         response.raise_for_status()
 

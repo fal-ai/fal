@@ -39,6 +39,15 @@ async def test_fal_client(client: fal_client.AsyncClient):
     assert isinstance(status_w_logs, fal_client.Completed)
     assert status_w_logs.logs is not None
 
+    output = await client.run(
+        "fal-ai/fast-sdxl",
+        arguments={
+            "prompt": "a cat",
+        },
+        hint="lora:a"
+    )
+    assert len(output["images"]) == 1
+
 
 async def test_fal_client_streaming(client: fal_client.AsyncClient):
     events = []
