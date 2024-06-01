@@ -20,9 +20,11 @@ description = "(internal) gRPC definitions for Isolate Cloud"
 authors = [{ name = "Features & Labels <support@fal.ai>" }]
 requires-python = ">=3.8"
 dependencies = [
-    "grpcio>=1.49",
+    # NOTE: when upgrading grpcio version, make sure you also upgrade grpcio-tools
+    # and re-generate python bindings (see tools/regen_grpc.py).
+    "grpcio==1.64.0",
     "protobuf",
-    "isolate[build]>=0.12.3,<1.0",
+    "isolate[build]>=0.14.0,<1.15.0",
 ]
 
 [project.optional-dependencies]
@@ -34,6 +36,6 @@ dev = [
     "isolate_proto[test]",
     # for tools/regen_grpc.py
     "refactor",
-    "grpcio-tools",
+    "grpcio-tools==1.64.0",
     "mypy-protobuf",
 ]
