@@ -24,7 +24,7 @@ dependencies = [
     # and re-generate python bindings (see tools/regen_grpc.py).
     "grpcio==1.64.0",
     "protobuf",
-    "isolate[build]>=0.14.0,<1.15.0",
+    "isolate[build]>=0.13.0,<1.14.0",
 ]
 
 [project.optional-dependencies]
