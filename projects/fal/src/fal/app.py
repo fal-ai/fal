@@ -47,7 +47,7 @@ def wrap_app(cls: type[App], **kwargs) -> fal.api.IsolatedFunction:
         routes = app.collect_routes()
         realtime_app = any(route.is_websocket for route in routes)
 
-    kind = kwargs.pop("kind", "virtualenv")
+    kind = cls.host_kwargs.pop("kind", "virtualenv")
     wrapper = fal.api.function(
         kind,
         requirements=cls.requirements,
