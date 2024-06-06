@@ -1,5 +1,6 @@
 import json
 import secrets
+import subprocess
 import time
 from contextlib import contextmanager
 from datetime import datetime
@@ -42,6 +43,14 @@ class Output(BaseModel):
 actual_python = active_python()
 
 
+def git_revision_short_hash() -> str:
+    return (
+        subprocess.check_output(["git", "rev-parse", "--short", "HEAD"])
+        .decode("ascii")
+        .strip()
+    )
+
+
 @fal.function(
     keep_alive=60,
     machine_type="S",
@@ -63,7 +72,9 @@ nomad_addition_app = addition_app.on(_scheduler="nomad")
 
 @fal.function(
     kind="container",
-    image=ContainerImage.from_dockerfile_str(f"FROM python:{actual_python}-slim"),
+    image=ContainerImage.from_dockerfile_str(
+        f"FROM python:{actual_python}-slim\n# {git_revision_short_hash()}",
+    ),
     keep_alive=60,
     machine_type="S",
     serve=True,

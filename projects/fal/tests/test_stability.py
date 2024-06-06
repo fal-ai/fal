@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 from contextlib import suppress
 
 import fal
@@ -11,6 +12,14 @@ from isolate.backends.common import active_python
 from pydantic import __version__ as pydantic_version
 
 PACKAGE_NAME = "fall"
+
+
+def git_revision_short_hash() -> str:
+    return (
+        subprocess.check_output(["git", "rev-parse", "--short", "HEAD"])
+        .decode("ascii")
+        .strip()
+    )
 
 
 @pytest.mark.xfail(reason="Temporary mismatch due to grpc version updates. Ping @efiop")
@@ -77,7 +86,9 @@ def test_regular_function_in_a_container_with_custom_image(isolated_client):
 
     @isolated_client(
         "container",
-        image=ContainerImage.from_dockerfile_str(f"FROM python:{actual_python}-slim"),
+        image=ContainerImage.from_dockerfile_str(
+            f"FROM python:{actual_python}-slim\n# {git_revision_short_hash()}"
+        ),
     )
     def regular_function():
         return 42
@@ -86,7 +97,9 @@ def test_regular_function_in_a_container_with_custom_image(isolated_client):
 
     @isolated_client(
         "container",
-        image=ContainerImage.from_dockerfile_str(f"FROM python:{actual_python}-slim"),
+        image=ContainerImage.from_dockerfile_str(
+            f"FROM python:{actual_python}-slim\n# {git_revision_short_hash()}"
+        ),
     )
     def mult(a, b):
         return a * b
