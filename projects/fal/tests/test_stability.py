@@ -7,6 +7,7 @@ import pytest
 from fal.api import FalServerlessError, Options
 from fal.container import ContainerImage
 from fal.toolkit.file import File
+from isolate.backends.common import active_python
 from pydantic import __version__ as pydantic_version
 
 PACKAGE_NAME = "fall"
@@ -72,9 +73,11 @@ def test_regular_function_in_a_container(isolated_client):
 
 
 def test_regular_function_in_a_container_with_custom_image(isolated_client):
+    actual_python = active_python()
+
     @isolated_client(
         "container",
-        image=ContainerImage.from_dockerfile_str("FROM python:3.9"),
+        image=ContainerImage.from_dockerfile_str(f"FROM python:{actual_python}-slim"),
     )
     def regular_function():
         return 42
@@ -83,7 +86,7 @@ def test_regular_function_in_a_container_with_custom_image(isolated_client):
 
     @isolated_client(
         "container",
-        image=ContainerImage.from_dockerfile_str("FROM python:3.9"),
+        image=ContainerImage.from_dockerfile_str(f"FROM python:{actual_python}-slim"),
     )
     def mult(a, b):
         return a * b
