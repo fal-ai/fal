@@ -246,9 +246,6 @@ def test_nomad_app():
     yield f"{user.user_id}/{app_revision}"
 
 
-@pytest.mark.xfail(
-    reason="The support needs to be deployed. See https://github.com/fal-ai/isolate-cloud/pull/1809"
-)
 @pytest.fixture(scope="module")
 def test_container_app():
     # Create a temporary app, register it, and return the ID of it.
