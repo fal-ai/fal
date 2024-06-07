@@ -520,12 +520,10 @@ class Options:
 
     def add_requirements(self, requirements: list[str]):
         kind = self.environment["kind"]
-        if kind == "virtualenv":
+        if kind in ["virtualenv", "container"]:
             pip_requirements = self.environment.setdefault("requirements", [])
         elif kind == "conda":
             pip_requirements = self.environment.setdefault("pip", [])
-        elif kind == "container":
-            return None
         else:
             raise FalServerlessError(
                 "Only {conda, virtualenv, container} "
