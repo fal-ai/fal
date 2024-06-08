@@ -135,6 +135,9 @@ message HostedRunStatus {
     // The state of the run.
     State state = 1;
 
+    // URL for ephemeral service IN_PROGRESS
+    optional string application_url = 2;
+
     // TODO: probably a free form struct for more detailed
     // information (how it crashed, position in queue, etc).
 }
@@ -182,6 +185,7 @@ message RegisterApplicationRequest {
 
 message RegisterApplicationResultType {
     string application_id = 1;
+    optional string application_url = 2;
 }
 
 message RegisterApplicationResult {

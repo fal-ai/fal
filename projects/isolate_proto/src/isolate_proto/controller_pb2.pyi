@@ -326,14 +326,20 @@ class HostedRunStatus(google.protobuf.message.Message):
     """
 
     STATE_FIELD_NUMBER: builtins.int
+    APPLICATION_URL_FIELD_NUMBER: builtins.int
     state: global___HostedRunStatus.State.ValueType
     """The state of the run."""
+    application_url: builtins.str
+    """URL for ephemeral service IN_PROGRESS"""
     def __init__(
         self,
         *,
         state: global___HostedRunStatus.State.ValueType = ...,
+        application_url: builtins.str | None = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing.Literal["state", b"state"]) -> None: ...
+    def HasField(self, field_name: typing.Literal["_application_url", b"_application_url", "application_url", b"application_url"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing.Literal["_application_url", b"_application_url", "application_url", b"application_url", "state", b"state"]) -> None: ...
+    def WhichOneof(self, oneof_group: typing.Literal["_application_url", b"_application_url"]) -> typing.Literal["application_url"] | None: ...
 
 global___HostedRunStatus = HostedRunStatus
 
@@ -471,13 +477,18 @@ class RegisterApplicationResultType(google.protobuf.message.Message):
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
     APPLICATION_ID_FIELD_NUMBER: builtins.int
+    APPLICATION_URL_FIELD_NUMBER: builtins.int
     application_id: builtins.str
+    application_url: builtins.str
     def __init__(
         self,
         *,
         application_id: builtins.str = ...,
+        application_url: builtins.str | None = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing.Literal["application_id", b"application_id"]) -> None: ...
+    def HasField(self, field_name: typing.Literal["_application_url", b"_application_url", "application_url", b"application_url"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing.Literal["_application_url", b"_application_url", "application_id", b"application_id", "application_url", b"application_url"]) -> None: ...
+    def WhichOneof(self, oneof_group: typing.Literal["_application_url", b"_application_url"]) -> typing.Literal["application_url"] | None: ...
 
 global___RegisterApplicationResultType = RegisterApplicationResultType
 
