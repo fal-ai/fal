@@ -224,6 +224,7 @@ class HostedRunResult(Generic[ResultT]):
     status: HostedRunStatus
     logs: list[Log] = field(default_factory=list)
     result: ResultT | None = None
+    stream: Any = None
 
 
 @dataclass
@@ -569,8 +570,11 @@ class FalServerlessConnection:
             request.setup_func.MergeFrom(
                 to_serialized_object(setup_function, serialization_method)
             )
-        for partial_result in self.stub.Run(request):
-            yield from_grpc(partial_result)
+        stream = self.stub.Run(request)
+        for partial_result in stream:
+            res = from_grpc(partial_result)
+            res.stream = stream
+            yield res
 
     def create_alias(
         self,
