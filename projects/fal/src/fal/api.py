@@ -5,11 +5,12 @@ import os
 import sys
 import threading
 from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field, replace
 from functools import wraps
 from os import PathLike
+from queue import Queue
 from typing import (
     Any,
     Callable,
@@ -72,6 +73,8 @@ SERVE_REQUIREMENTS = [
 ]
 
 
+THREAD_POOL = ThreadPoolExecutor()
+
 @dataclass
 class FalServerlessError(FalServerlessException):
     message: str
@@ -85,6 +88,31 @@ class InternalFalServerlessError(FalServerlessException):
 @dataclass
 class FalMissingDependencyError(FalServerlessError):
     ...
+
+
+@dataclass
+class SpawnInfo:
+    future: Future | None = None
+    logs: Queue = field(default_factory=Queue)
+    _url_ready: threading.Event = field(default_factory=threading.Event)
+    _url: str | None = None
+    stream: Any = None
+
+    @property
+    def return_value(self):
+        if self.future is None:
+            raise ValueError
+        return self.future.result()
+
+    @property
+    def url(self):
+        self._url_ready.wait()
+        return self._url
+
+    @url.setter
+    def url(self, value):
+        self._url_ready.set()
+        self._url = value
 
 
 @dataclass
@@ -148,6 +176,15 @@ class Host(Generic[ArgsT, ReturnT]):
         kwargs: dict[str, Any],
     ) -> ReturnT:
         """Run the given function in the isolated environment."""
+        raise NotImplementedError
+
+    def spawn(
+        self,
+        func: Callable[ArgsT, ReturnT],
+        options: Options,
+        args: tuple[Any, ...],
+        kwargs: dict[str, Any],
+    ) -> SpawnInfo:
         raise NotImplementedError
 
 
@@ -444,12 +481,13 @@ class FalServerlessHost(Host):
         return None
 
     @_handle_grpc_error()
-    def run(
+    def _run(
         self,
         func: Callable[..., ReturnT],
         options: Options,
         args: tuple[Any, ...],
         kwargs: dict[str, Any],
+        result_handler: Callable[..., None],
     ) -> ReturnT:
         environment_options = options.environment.copy()
         environment_options.setdefault("python_version", active_python())
@@ -490,8 +528,7 @@ class FalServerlessHost(Host):
             machine_requirements=machine_requirements,
             setup_function=setup_function,
         ):
-            for log in partial_result.logs:
-                self._log_printer.print(log)
+            result_handler(partial_result)
 
             if partial_result.status.state is not HostedRunState.IN_PROGRESS:
                 state = partial_result.status.state
@@ -510,6 +547,47 @@ class FalServerlessHost(Host):
             )
 
         return cast(ReturnT, return_value)
+
+
+    def run(
+        self,
+        func: Callable[..., ReturnT],
+        options: Options,
+        args: tuple[Any, ...],
+        kwargs: dict[str, Any],
+    ) -> ReturnT:
+        def result_handler(partial_result):
+            for log in partial_result.logs:
+                self._log_printer.print(log)
+
+        return self._run(func, options, args, kwargs, result_handler=result_handler)
+
+    def spawn(
+        self,
+        func: Callable[..., ReturnT],
+        options: Options,
+        args: tuple[Any, ...],
+        kwargs: dict[str, Any],
+    ) -> SpawnInfo:
+        ret = SpawnInfo()
+
+        def result_handler(partial_result):
+            ret.stream = partial_result.stream
+            for log in partial_result.logs:
+                if "Access your exposed service at" in log.message:
+                    ret.url = log.message.rsplit()[-1]
+                ret.logs.put(log)
+
+        THREAD_POOL.submit(
+            self._run,
+            func,
+            options,
+            args,
+            kwargs,
+            result_handler=result_handler,
+        )
+
+        return ret
 
 
 @dataclass
@@ -1051,6 +1129,14 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
             kwargs=kwargs,
         )
         return future
+
+    def spawn(self, *args: ArgsT.args, **kwargs: ArgsT.kwargs):
+        return self.host.spawn(
+            self.func,
+            self.options,
+            args,
+            kwargs,
+        )
 
     def __call__(self, *args: ArgsT.args, **kwargs: ArgsT.kwargs) -> ReturnT:
         try:

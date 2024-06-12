@@ -4,10 +4,12 @@ import inspect
 import json
 import os
 import re
+import time
 import typing
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from typing import Any, Callable, ClassVar, TypeVar
 
+import httpx
 from fastapi import FastAPI
 
 import fal.api
@@ -68,6 +70,66 @@ def wrap_app(cls: type[App], **kwargs) -> fal.api.IsolatedFunction:
 
     return fn
 
+
+class EndpointClient:
+    def __init__(self, url, endpoint, signature):
+        self.url = url
+        self.endpoint = endpoint
+        self.signature = signature
+
+        annotations = endpoint.__annotations__ or {}
+        self.return_type = annotations.get("return") or None
+
+    def __call__(self, data):
+        with httpx.Client() as client:
+            resp = client.post(self.url + self.signature.path, json=dict(data))
+            resp.raise_for_status()
+            resp_dict = resp.json()
+
+        if not self.return_type:
+            return resp_dict
+
+        return self.return_type(**resp_dict)
+
+
+class AppClient:
+    def __init__(self, cls, url):
+        self.url = url
+        self.cls = cls
+
+        for name, endpoint in inspect.getmembers(cls, inspect.isfunction):
+            signature = getattr(endpoint, "route_signature", None)
+            if signature is None:
+                continue
+
+            setattr(self, name, EndpointClient(self.url, endpoint, signature))
+
+    @classmethod
+    @contextmanager
+    def connect(cls, app_cls):
+        app = wrap_app(app_cls)
+        info = app.spawn()
+        try:
+            with httpx.Client() as client:
+                retries = 100
+                while retries:
+                    resp = client.get(info.url + "/health")
+                    if resp.is_success:
+                        break
+                    elif resp.status_code != 500:
+                        resp.raise_for_status()
+                    time.sleep(0.1)
+                    retries -= 1
+
+            yield cls(app_cls, info.url)
+        finally:
+            info.stream.cancel()
+
+    def health(self):
+        with httpx.Client() as client:
+            resp = client.get(self.url + "/health")
+            resp.raise_for_status()
+            return resp.json()
 
 
 PART_FINDER_RE = re.compile(r"[A-Z][a-z]*")
