@@ -21,8 +21,7 @@ def _doctor(args):
 
     table.add_row("", "")
     table.add_row("FAL_HOST", fal.flags.GRPC_HOST)
-    FAL_KEY = os.getenv("FAL_KEY", "")
-    table.add_row("FAL_KEY", (FAL_KEY[:9] + "...") if FAL_KEY else "")
+    table.add_row("FAL_KEY", os.getenv("FAL_KEY", "").split(":")[0])
 
     args.console.print(table)
 
