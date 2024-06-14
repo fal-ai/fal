@@ -6,7 +6,7 @@ from fal import __version__
 from fal.console import console
 from fal.console.icons import CROSS_ICON
 
-from . import apps, auth, deploy, keys, run, secrets
+from . import apps, auth, deploy, doctor, keys, run, secrets
 from .debug import debugtools, get_debug_parser
 from .parser import FalParser, FalParserExit
 
@@ -31,7 +31,7 @@ def _get_main_parser() -> argparse.ArgumentParser:
         required=True,
     )
 
-    for cmd in [auth, apps, deploy, run, keys, secrets]:
+    for cmd in [auth, apps, deploy, run, keys, secrets, doctor]:
         cmd.add_parser(subparsers, parents)
 
     return parser
