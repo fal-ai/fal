@@ -67,6 +67,7 @@ def test_gcp_storage_if_available():
     )
 
 
+@pytest.mark.xfail(reason="fal cdn is temporarily broken")
 @pytest.mark.parametrize(
     "repo",
     BUILT_IN_REPOSITORIES.keys(),
