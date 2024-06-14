@@ -18,14 +18,13 @@ else:
     IS_PYDANTIC_V2 = True
 
 from pydantic import BaseModel, Field
-
+from fal.toolkit.file.providers.azure import AzureBlobStorageRepository
 from fal.toolkit.file.providers.fal import (
     FalCDNFileRepository,
     FalFileRepository,
     InMemoryRepository,
 )
 from fal.toolkit.file.providers.gcp import GoogleStorageRepository
-from fal.toolkit.file.providers.azure import AzureBlobStorageRepository
 from fal.toolkit.file.providers.r2 import R2Repository
 from fal.toolkit.file.types import FileData, FileRepository, RepositoryId
 from fal.toolkit.utils.download_utils import download_file

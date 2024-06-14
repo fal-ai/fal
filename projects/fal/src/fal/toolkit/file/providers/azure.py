@@ -5,10 +5,11 @@ import json
 import os
 from dataclasses import dataclass
 
+from azure.storage.blob import (
+    BlobServiceClient
+)
+from azure.identity import DefaultAzureCredential
 from fal.toolkit.file.types import FileData, FileRepository
-from azure.storage.blob import BlobServiceClient, BlobClient, ContainerClient, StorageSharedKeyCredential
-
-DEFAULT_URL_TIMEOUT = 60 * 15  # 15 minutes
 
 @dataclass
 class AzureBlobStorageRepository(FileRepository):
@@ -24,10 +25,11 @@ class AzureBlobStorageRepository(FileRepository):
             account_key = os.environ.get("AZURE_STORAGE_ACCOUNT_KEY")
             if account_key is None:
                 raise Exception("AZURE_STORAGE_ACCOUNT_KEY environment secret is not set")
+        
              
-        account_url = f"https://{self.account_name}.blob.core.windows.net"   
-        credential = StorageSharedKeyCredential(account_url, account_key)
-        blob_service = BlobServiceClient(account_url, credential)
+        account_url = f"https://{self.account_name}.blob.core.windows.net"  
+        default_credential = DefaultAzureCredential() 
+        blob_service = BlobServiceClient(account_url, default_credential)
         container_client = blob_service.get_container_client(self.containter_name)
         self._storage_client = container_client
     @property
