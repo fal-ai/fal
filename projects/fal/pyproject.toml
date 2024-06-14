@@ -63,6 +63,7 @@ test = [
     "pytest-asyncio",
     "pytest-xdist",
     "flaky",
+    "boto3",
 ]
 dev = [
     "fal[test]",

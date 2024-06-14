@@ -4,7 +4,8 @@ import os
 from base64 import b64encode
 
 import pytest
-from fal.toolkit.file.file import File, GoogleStorageRepository
+from fal.toolkit.file.file import BUILT_IN_REPOSITORIES, File, GoogleStorageRepository
+from fal.toolkit.file.types import FileRepository, RepositoryId
 
 
 def test_binary_content_matches():
@@ -64,3 +65,34 @@ def test_gcp_storage_if_available():
     assert file.url.startswith(
         "https://storage.googleapis.com/fal_registry_image_results/"
     )
+
+
+@pytest.mark.parametrize(
+    "repo",
+    BUILT_IN_REPOSITORIES.keys(),
+)
+def test_uniqueness_of_file_name(repo: RepositoryId | FileRepository):
+    if repo == "in_memory":
+        return
+
+    if repo == "gcp_storage":
+        gcp_sa_json = os.environ.get("GCLOUD_SA_JSON")
+        if gcp_sa_json is None:
+            pytest.skip(reason="GCLOUD_SA_JSON environment variable is not set")
+        repo = GoogleStorageRepository(bucket_name="fal_registry_image_results")
+
+    if repo == "r2":
+        r2_account_json = os.environ.get("R2_CREDS_JSON")
+        if r2_account_json is None:
+            pytest.skip(reason="R2_CREDS_JSON environment variable is not set")
+
+    file = File.from_bytes(b"print('Hello!')", repository=repo, file_name="hello.py")
+
+    host_and_path = file.url.split("?")[0]
+    last_path = host_and_path.split("/")[-1]
+    assert (
+        last_path.endswith(".py")
+    ), f"The file name {last_path} should end with the same extension"
+    assert (
+        len(last_path) > 10
+    ), f"There should be a long enough random string in the file name {last_path}"

@@ -98,6 +98,7 @@ class FalCDNFileRepository(FileRepository):
             **self.auth_headers,
             "Accept": "application/json",
             "Content-Type": file.content_type,
+            "X-Fal-File-Name": file.file_name,
             "X-Fal-Object-Lifecycle-Preference": json.dumps(
                 dataclasses.asdict(GLOBAL_LIFECYCLE_PREFERENCE)
             ),
