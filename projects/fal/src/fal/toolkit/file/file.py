@@ -18,6 +18,7 @@ else:
     IS_PYDANTIC_V2 = True
 
 from pydantic import BaseModel, Field
+
 from fal.toolkit.file.providers.azure import AzureBlobStorageRepository
 from fal.toolkit.file.providers.fal import (
     FalCDNFileRepository,
