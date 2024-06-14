@@ -86,6 +86,11 @@ def test_uniqueness_of_file_name(repo: RepositoryId | FileRepository):
         if r2_account_json is None:
             pytest.skip(reason="R2_CREDS_JSON environment variable is not set")
 
+    if repo == "fal":
+        fal_key = os.environ.get("FAL_KEY")
+        if fal_key is None:
+            pytest.skip(reason="FAL_KEY environment variable is not set")
+
     file = File.from_bytes(b"print('Hello!')", repository=repo, file_name="hello.py")
 
     host_and_path = file.url.split("?")[0]
