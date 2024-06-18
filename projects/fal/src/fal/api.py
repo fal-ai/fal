@@ -75,6 +75,7 @@ SERVE_REQUIREMENTS = [
 
 THREAD_POOL = ThreadPoolExecutor()
 
+
 @dataclass
 class FalServerlessError(FalServerlessException):
     message: str
@@ -86,8 +87,7 @@ class InternalFalServerlessError(FalServerlessException):
 
 
 @dataclass
-class FalMissingDependencyError(FalServerlessError):
-    ...
+class FalMissingDependencyError(FalServerlessError): ...
 
 
 @dataclass
@@ -548,7 +548,6 @@ class FalServerlessHost(Host):
 
         return cast(ReturnT, return_value)
 
-
     def run(
         self,
         func: Callable[..., ReturnT],
@@ -644,8 +643,7 @@ def function(
     max_concurrency: int | None = None,
 ) -> Callable[
     [Callable[Concatenate[ArgsT], ReturnT]], IsolatedFunction[ArgsT, ReturnT]
-]:
-    ...
+]: ...
 
 
 @overload
@@ -661,8 +659,7 @@ def function(
     max_concurrency: int | None = None,
 ) -> Callable[
     [Callable[Concatenate[ArgsT], ReturnT]], ServedIsolatedFunction[ArgsT, ReturnT]
-]:
-    ...
+]: ...
 
 
 ### FalServerlessHost
@@ -688,8 +685,7 @@ def function(
     _scheduler: str | None = None,
 ) -> Callable[
     [Callable[Concatenate[ArgsT], ReturnT]], IsolatedFunction[ArgsT, ReturnT]
-]:
-    ...
+]: ...
 
 
 @overload
@@ -714,8 +710,7 @@ def function(
     _scheduler: str | None = None,
 ) -> Callable[
     [Callable[Concatenate[ArgsT], ReturnT]], ServedIsolatedFunction[ArgsT, ReturnT]
-]:
-    ...
+]: ...
 
 
 ## conda
@@ -738,8 +733,7 @@ def function(
     max_concurrency: int | None = None,
 ) -> Callable[
     [Callable[Concatenate[ArgsT], ReturnT]], IsolatedFunction[ArgsT, ReturnT]
-]:
-    ...
+]: ...
 
 
 @overload
@@ -760,8 +754,7 @@ def function(
     max_concurrency: int | None = None,
 ) -> Callable[
     [Callable[Concatenate[ArgsT], ReturnT]], ServedIsolatedFunction[ArgsT, ReturnT]
-]:
-    ...
+]: ...
 
 
 ### FalServerlessHost
@@ -792,8 +785,7 @@ def function(
     _scheduler: str | None = None,
 ) -> Callable[
     [Callable[Concatenate[ArgsT], ReturnT]], IsolatedFunction[ArgsT, ReturnT]
-]:
-    ...
+]: ...
 
 
 @overload
@@ -967,6 +959,9 @@ class BaseServable:
         yield
 
     def _build_app(self) -> FastAPI:
+        import json
+        import traceback
+
         from fastapi import HTTPException, Request
         from fastapi.middleware.cors import CORSMiddleware
         from fastapi.responses import JSONResponse
@@ -1006,6 +1001,15 @@ class BaseServable:
             else:
                 # If it's not a generic 404, just return the original message.
                 return JSONResponse({"detail": exc.detail}, 404)
+
+        @_app.exception_handler(Exception)
+        async def traceback_logging_exception_handler(request: Request, exc: Exception):
+            print(
+                json.dumps(
+                    {"traceback": "".join(traceback.format_exception(exc)[::-1])}  # type: ignore
+                )
+            )
+            return JSONResponse({"detail": "Internal Server Error"}, 500)
 
         routes = self.collect_routes()
         if not routes:
@@ -1056,7 +1060,8 @@ class BaseServable:
             }
 
             _, pending = await asyncio.wait(
-                tasks.keys(), return_when=asyncio.FIRST_COMPLETED,
+                tasks.keys(),
+                return_when=asyncio.FIRST_COMPLETED,
             )
             if not pending:
                 return
@@ -1175,14 +1180,12 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
     @overload
     def on(
         self, host: Host | None = None, *, serve: Literal[False] = False, **config: Any
-    ) -> IsolatedFunction[ArgsT, ReturnT]:
-        ...
+    ) -> IsolatedFunction[ArgsT, ReturnT]: ...
 
     @overload
     def on(
         self, host: Host | None = None, *, serve: Literal[True], **config: Any
-    ) -> ServedIsolatedFunction[ArgsT, ReturnT]:
-        ...
+    ) -> ServedIsolatedFunction[ArgsT, ReturnT]: ...
 
     def on(self, host: Host | None = None, **config: Any):  # type: ignore
         host = host or self.host
@@ -1236,14 +1239,12 @@ class ServedIsolatedFunction(
     @overload  # type: ignore[override,no-overload-impl]
     def on(  # type: ignore[no-overload-impl]
         self, host: Host | None = None, *, serve: Literal[True] = True, **config: Any
-    ) -> ServedIsolatedFunction[ArgsT, ReturnT]:
-        ...
+    ) -> ServedIsolatedFunction[ArgsT, ReturnT]: ...
 
     @overload
     def on(
         self, host: Host | None = None, *, serve: Literal[False], **config: Any
-    ) -> IsolatedFunction[ArgsT, ReturnT]:
-        ...
+    ) -> IsolatedFunction[ArgsT, ReturnT]: ...
 
 
 class Server(uvicorn.Server):
