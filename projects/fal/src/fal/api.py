@@ -1006,7 +1006,7 @@ class BaseServable:
         async def traceback_logging_exception_handler(request: Request, exc: Exception):
             print(
                 json.dumps(
-                    {"traceback": "".join(traceback.format_exception(exc)[::-1])}
+                    {"traceback": "".join(traceback.format_exception(exc)[::-1])}  # type: ignore
                 )
             )
             return JSONResponse({"detail": "Internal Server Error"}, 500)
