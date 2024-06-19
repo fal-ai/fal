@@ -1,3 +1,4 @@
+import argparse
 from pathlib import Path
 
 from .parser import FalClientParser, RefAction
@@ -109,6 +110,11 @@ def _deploy(args):
 def add_parser(main_subparsers, parents):
     from fal.sdk import ALIAS_AUTH_MODES
 
+    def valid_auth_option(option):
+        if option not in ALIAS_AUTH_MODES:
+            raise argparse.ArgumentTypeError(f"{option} is not a auth option")
+        return option
+
     deploy_help = "Deploy a fal application."
     epilog = (
         "Examples:\n"
@@ -139,8 +145,8 @@ def add_parser(main_subparsers, parents):
     )
     parser.add_argument(
         "--auth",
-        choices=ALIAS_AUTH_MODES,
+        type=valid_auth_option,
         default="private",
-        help="Application authentication mode.",
+        help="Application authentication mode (private, public).",
     )
     parser.set_defaults(func=_deploy)
