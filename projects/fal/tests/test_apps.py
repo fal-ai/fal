@@ -1,6 +1,8 @@
+import json
 import secrets
 import time
 from contextlib import contextmanager
+from datetime import datetime
 from typing import Generator
 
 import fal
@@ -49,6 +51,7 @@ def addition_app(input: Input) -> Output:
 
 
 nomad_addition_app = addition_app.on(_scheduler="nomad")
+
 
 @fal.function(
     kind="container",
@@ -129,6 +132,14 @@ class StatefulAdditionApp(fal.App, keep_alive=300, max_concurrency=1):
     def decrement(self, input: StatefulInput) -> Output:
         self.counter -= input.value
         return Output(result=self.counter)
+
+
+class ExceptionApp(fal.App, keep_alive=300, max_concurrency=1):
+    machine_type = "XS"
+
+    @fal.endpoint("/fail")
+    def reset(self) -> Output:
+        raise Exception("this app is designed to fail!")
 
 
 class RTInput(BaseModel):
@@ -219,7 +230,9 @@ def test_nomad_app():
     yield f"{user_id}/{app_revision}"
 
 
-@pytest.mark.xfail(reason="The support needs to be deployed. See https://github.com/fal-ai/isolate-cloud/pull/1809")
+@pytest.mark.xfail(
+    reason="The support needs to be deployed. See https://github.com/fal-ai/isolate-cloud/pull/1809"
+)
 @pytest.fixture(scope="module")
 def test_container_app():
     # Create a temporary app, register it, and return the ID of it.
@@ -232,6 +245,7 @@ def test_container_app():
     )
     user_id = _get_user_id()
     yield f"{user_id}/{app_revision}"
+
 
 @pytest.fixture(scope="module")
 def test_fastapi_app():
@@ -254,6 +268,21 @@ def test_stateful_app():
     from fal.cli.deploy import _get_user_id
 
     app = fal.wrap_app(StatefulAdditionApp)
+    app_revision = app.host.register(
+        func=app.func,
+        options=app.options,
+    )
+    user_id = _get_user_id()
+    yield f"{user_id}/{app_revision}"
+
+
+@pytest.fixture(scope="module")
+def test_exception_app():
+    # Create a temporary app, register it, and return the ID of it.
+
+    from fal.cli.deploy import _get_user_id
+
+    app = fal.wrap_app(ExceptionApp)
     app_revision = app.host.register(
         func=app.func,
         options=app.options,
@@ -574,3 +603,25 @@ def test_workflows(test_app: str):
                 "workflows/" + workflow_id, arguments={"lhs": 2, "rhs": 3}
             )
             assert data["result"] == 10
+
+
+def test_traceback_logs(test_exception_app: str):
+    date = datetime.utcnow().isoformat()
+    with pytest.raises(HTTPStatusError):
+        apps.run(test_exception_app, arguments={}, path="/fail")
+    with httpx.Client(
+        base_url=REST_CLIENT.base_url,
+        headers=REST_CLIENT.get_headers(),
+        timeout=300,
+    ) as client:
+        # Give some time for logs to propagate through the logging subsystem.
+        time.sleep(5)
+        response = client.get(
+            REST_CLIENT.base_url + f"/logs/?traceback=true&limit=10&since={date}"
+        )
+        for log in json.loads(response.text):
+            assert log["message"].count("\n") > 1, "Logs are multi-line"
+            assert '{"traceback":' not in log["message"], "Logs are not JSON-wrapped"
+            assert (
+                "this app is designed to fail" in log["message"]
+            ), "Logs contain the traceback message"
