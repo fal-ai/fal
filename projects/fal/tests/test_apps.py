@@ -135,7 +135,7 @@ class StatefulAdditionApp(fal.App, keep_alive=300, max_concurrency=1):
 
 
 class ExceptionApp(fal.App, keep_alive=300, max_concurrency=1):
-    machine_type = "S"
+    machine_type = "XS"
 
     @fal.endpoint("/fail")
     def reset(self) -> Output:
