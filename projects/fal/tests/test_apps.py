@@ -10,6 +10,7 @@ import fal.api as api
 import httpx
 import pytest
 from fal import apps
+from fal.cli.deploy import _get_user
 from fal.container import ContainerImage
 from fal.rest_client import REST_CLIENT
 from fal.workflows import Workflow
@@ -206,28 +207,24 @@ def aliased_app() -> Generator[tuple[str, str], None, None]:
 def test_app():
     # Create a temporary app, register it, and return the ID of it.
 
-    from fal.cli.deploy import _get_user_id
-
     app_revision = addition_app.host.register(
         func=addition_app.func,
         options=addition_app.options,
     )
-    user_id = _get_user_id()
-    yield f"{user_id}/{app_revision}"
+    user = _get_user()
+    yield f"{user.user_id}/{app_revision}"
 
 
 @pytest.fixture(scope="module")
 def test_nomad_app():
     # Create a temporary app, register it, and return the ID of it.
 
-    from fal.cli.deploy import _get_user_id
-
     app_revision = nomad_addition_app.host.register(
         func=nomad_addition_app.func,
         options=nomad_addition_app.options,
     )
-    user_id = _get_user_id()
-    yield f"{user_id}/{app_revision}"
+    user = _get_user()
+    yield f"{user.user_id}/{app_revision}"
 
 
 @pytest.mark.xfail(
@@ -237,65 +234,55 @@ def test_nomad_app():
 def test_container_app():
     # Create a temporary app, register it, and return the ID of it.
 
-    from fal.cli.deploy import _get_user_id
-
     app_revision = container_addition_app.host.register(
         func=container_addition_app.func,
         options=container_addition_app.options,
     )
-    user_id = _get_user_id()
-    yield f"{user_id}/{app_revision}"
+    user = _get_user()
+    yield f"{user.user_id}/{app_revision}"
 
 
 @pytest.fixture(scope="module")
 def test_fastapi_app():
     # Create a temporary app, register it, and return the ID of it.
 
-    from fal.cli.deploy import _get_user_id
-
     app_revision = calculator_app.host.register(
         func=calculator_app.func,
         options=calculator_app.options,
     )
-    user_id = _get_user_id()
-    yield f"{user_id}/{app_revision}"
+    user = _get_user()
+    yield f"{user.user_id}/{app_revision}"
 
 
 @pytest.fixture(scope="module")
 def test_stateful_app():
     # Create a temporary app, register it, and return the ID of it.
 
-    from fal.cli.deploy import _get_user_id
-
     app = fal.wrap_app(StatefulAdditionApp)
     app_revision = app.host.register(
         func=app.func,
         options=app.options,
     )
-    user_id = _get_user_id()
-    yield f"{user_id}/{app_revision}"
+    user = _get_user()
+    yield f"{user.user_id}/{app_revision}"
 
 
 @pytest.fixture(scope="module")
 def test_exception_app():
     # Create a temporary app, register it, and return the ID of it.
 
-    from fal.cli.deploy import _get_user_id
-
     app = fal.wrap_app(ExceptionApp)
     app_revision = app.host.register(
         func=app.func,
         options=app.options,
     )
-    user_id = _get_user_id()
-    yield f"{user_id}/{app_revision}"
+    user = _get_user()
+    yield f"{user.user_id}/{app_revision}"
 
 
 @pytest.fixture(scope="module")
 def test_realtime_app():
     # Create a temporary app, register it, and return the ID of it.
-
-    from fal.cli.deploy import _get_user_id
 
     app = fal.wrap_app(RealtimeApp)
     app_revision = app.host.register(
@@ -303,8 +290,8 @@ def test_realtime_app():
         options=app.options,
         application_auth_mode="public",
     )
-    user_id = _get_user_id()
-    yield f"{user_id}/{app_revision}"
+    user = _get_user()
+    yield f"{user.user_id}/{app_revision}"
 
 
 def test_app_client(test_app: str, test_nomad_app: str):
