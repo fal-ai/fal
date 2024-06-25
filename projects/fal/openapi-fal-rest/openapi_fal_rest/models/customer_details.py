@@ -16,18 +16,18 @@ class CustomerDetails:
         soft_monthly_budget (Union[Unset, int]):
         hard_monthly_budget (Union[Unset, int]):
         lock_reason (Union[Unset, None, LockReason]): An enumeration.
-        current_balance (Union[Unset, int]):
         is_paying (Union[Unset, bool]):
         is_locked (Union[Unset, bool]):
+        is_eligible_for_extra_credits (Union[Unset, bool]):
     """
 
     user_id: str
     soft_monthly_budget: Union[Unset, int] = UNSET
     hard_monthly_budget: Union[Unset, int] = UNSET
     lock_reason: Union[Unset, None, LockReason] = UNSET
-    current_balance: Union[Unset, int] = 0
     is_paying: Union[Unset, bool] = False
     is_locked: Union[Unset, bool] = False
+    is_eligible_for_extra_credits: Union[Unset, bool] = False
     additional_properties: Dict[str, Any] = attr.ib(init=False, factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -38,9 +38,9 @@ class CustomerDetails:
         if not isinstance(self.lock_reason, Unset):
             lock_reason = self.lock_reason.value if self.lock_reason else None
 
-        current_balance = self.current_balance
         is_paying = self.is_paying
         is_locked = self.is_locked
+        is_eligible_for_extra_credits = self.is_eligible_for_extra_credits
 
         field_dict: Dict[str, Any] = {}
         field_dict.update(self.additional_properties)
@@ -55,12 +55,12 @@ class CustomerDetails:
             field_dict["hard_monthly_budget"] = hard_monthly_budget
         if lock_reason is not UNSET:
             field_dict["lock_reason"] = lock_reason
-        if current_balance is not UNSET:
-            field_dict["current_balance"] = current_balance
         if is_paying is not UNSET:
             field_dict["is_paying"] = is_paying
         if is_locked is not UNSET:
             field_dict["is_locked"] = is_locked
+        if is_eligible_for_extra_credits is not UNSET:
+            field_dict["is_eligible_for_extra_credits"] = is_eligible_for_extra_credits
 
         return field_dict
 
@@ -82,20 +82,20 @@ class CustomerDetails:
         else:
             lock_reason = LockReason(_lock_reason)
 
-        current_balance = d.pop("current_balance", UNSET)
-
         is_paying = d.pop("is_paying", UNSET)
 
         is_locked = d.pop("is_locked", UNSET)
+
+        is_eligible_for_extra_credits = d.pop("is_eligible_for_extra_credits", UNSET)
 
         customer_details = cls(
             user_id=user_id,
             soft_monthly_budget=soft_monthly_budget,
             hard_monthly_budget=hard_monthly_budget,
             lock_reason=lock_reason,
-            current_balance=current_balance,
             is_paying=is_paying,
             is_locked=is_locked,
+            is_eligible_for_extra_credits=is_eligible_for_extra_credits,
         )
 
         customer_details.additional_properties = d

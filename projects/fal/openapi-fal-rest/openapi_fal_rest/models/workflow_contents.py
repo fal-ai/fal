@@ -1,8 +1,11 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Type, TypeVar
+from typing import TYPE_CHECKING, Any, Dict, List, Type, TypeVar, Union
 
 import attr
 
+from ..types import UNSET, Unset
+
 if TYPE_CHECKING:
+    from ..models.workflow_contents_metadata import WorkflowContentsMetadata
     from ..models.workflow_contents_nodes import WorkflowContentsNodes
     from ..models.workflow_contents_output import WorkflowContentsOutput
     from ..models.workflow_schema import WorkflowSchema
@@ -20,6 +23,7 @@ class WorkflowContents:
         output (WorkflowContentsOutput):
         schema (WorkflowSchema):
         version (str):
+        metadata (Union[Unset, WorkflowContentsMetadata]):
     """
 
     name: str
@@ -27,6 +31,7 @@ class WorkflowContents:
     output: "WorkflowContentsOutput"
     schema: "WorkflowSchema"
     version: str
+    metadata: Union[Unset, "WorkflowContentsMetadata"] = UNSET
     additional_properties: Dict[str, Any] = attr.ib(init=False, factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -38,6 +43,9 @@ class WorkflowContents:
         schema = self.schema.to_dict()
 
         version = self.version
+        metadata: Union[Unset, Dict[str, Any]] = UNSET
+        if not isinstance(self.metadata, Unset):
+            metadata = self.metadata.to_dict()
 
         field_dict: Dict[str, Any] = {}
         field_dict.update(self.additional_properties)
@@ -50,11 +58,14 @@ class WorkflowContents:
                 "version": version,
             }
         )
+        if metadata is not UNSET:
+            field_dict["metadata"] = metadata
 
         return field_dict
 
     @classmethod
     def from_dict(cls: Type[T], src_dict: Dict[str, Any]) -> T:
+        from ..models.workflow_contents_metadata import WorkflowContentsMetadata
         from ..models.workflow_contents_nodes import WorkflowContentsNodes
         from ..models.workflow_contents_output import WorkflowContentsOutput
         from ..models.workflow_schema import WorkflowSchema
@@ -70,12 +81,20 @@ class WorkflowContents:
 
         version = d.pop("version")
 
+        _metadata = d.pop("metadata", UNSET)
+        metadata: Union[Unset, WorkflowContentsMetadata]
+        if isinstance(_metadata, Unset):
+            metadata = UNSET
+        else:
+            metadata = WorkflowContentsMetadata.from_dict(_metadata)
+
         workflow_contents = cls(
             name=name,
             nodes=nodes,
             output=output,
             schema=schema,
             version=version,
+            metadata=metadata,
         )
 
         workflow_contents.additional_properties = d

@@ -2,11 +2,11 @@ from typing import Any, Dict, List, Type, TypeVar
 
 import attr
 
-T = TypeVar("T", bound="WorkflowDetailContentsType0")
+T = TypeVar("T", bound="ComfyWorkflowSchemaExtraData")
 
 
 @attr.s(auto_attribs=True)
-class WorkflowDetailContentsType0:
+class ComfyWorkflowSchemaExtraData:
     """ """
 
     additional_properties: Dict[str, Any] = attr.ib(init=False, factory=dict)
@@ -22,10 +22,10 @@ class WorkflowDetailContentsType0:
     @classmethod
     def from_dict(cls: Type[T], src_dict: Dict[str, Any]) -> T:
         d = src_dict.copy()
-        workflow_detail_contents_type_0 = cls()
+        comfy_workflow_schema_extra_data = cls()
 
-        workflow_detail_contents_type_0.additional_properties = d
-        return workflow_detail_contents_type_0
+        comfy_workflow_schema_extra_data.additional_properties = d
+        return comfy_workflow_schema_extra_data
 
     @property
     def additional_keys(self) -> List[str]:
