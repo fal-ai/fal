@@ -98,11 +98,17 @@ def _deploy(args):
     )
 
     if app_id:
+        gateway_host = _remove_http_and_port_from_url(host.url)
+        gateway_host = (
+            gateway_host.replace("api.", "").replace("alpha.", "").replace("ai", "run")
+        )
+
         args.console.print(
             "Registered a new revision for function "
             f"'{app_name}' (revision='{app_id}')."
         )
-        args.console.print(f"URL: https://fal.ai/models/{user.username}/{app_name}")
+        args.console.print(f"Playground: https://fal.ai/models/{user.username}/{app_name}")
+        args.console.print(f"Endpoint: https://{gateway_host}/{user.username}/{app_name}")
 
 
 def add_parser(main_subparsers, parents):
