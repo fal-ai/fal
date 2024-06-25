@@ -1,7 +1,10 @@
 import argparse
+from collections import namedtuple
 from pathlib import Path
 
 from .parser import FalClientParser, RefAction
+
+User = namedtuple("User", ["user_id", "username"])
 
 
 def _remove_http_and_port_from_url(url):
@@ -21,17 +24,17 @@ def _remove_http_and_port_from_url(url):
     return url
 
 
-def _get_user_id() -> str:
+def _get_user() -> User:
     import json
     from http import HTTPStatus
 
-    import openapi_fal_rest.api.billing.get_user_details as get_user_details
+    import openapi_fal_rest.api.users.get_current_user as get_current_user
 
     from fal.api import FalServerlessError
     from fal.rest_client import REST_CLIENT
 
     try:
-        user_details_response = get_user_details.sync_detailed(
+        user_details_response = get_current_user.sync_detailed(
             client=REST_CLIENT,
         )
     except Exception as e:
@@ -52,7 +55,7 @@ def _get_user_id() -> str:
         if not user_id:
             user_id = full_user_id
 
-        return user_id
+        return User(user_id=user_id, username=user_details_response.parsed.nickname)
     except Exception as e:
         raise FalServerlessError(f"Could not parse the user data: {e}")
 
@@ -78,7 +81,7 @@ def _deploy(args):
         [file_path] = options
         file_path = str(file_path)
 
-    user_id = _get_user_id()
+    user = _get_user()
     host = FalServerlessHost(args.host)
     isolated_function, app_name = load_function_from(
         host,
@@ -95,16 +98,11 @@ def _deploy(args):
     )
 
     if app_id:
-        gateway_host = _remove_http_and_port_from_url(host.url)
-        gateway_host = (
-            gateway_host.replace("api.", "").replace("alpha.", "").replace("ai", "run")
-        )
-
         args.console.print(
             "Registered a new revision for function "
             f"'{app_name}' (revision='{app_id}')."
         )
-        args.console.print(f"URL: https://{gateway_host}/{user_id}/{app_name}")
+        args.console.print(f"URL: https://fal.ai/models/{user.username}/{app_name}")
 
 
 def add_parser(main_subparsers, parents):
