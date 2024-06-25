@@ -10,7 +10,7 @@ from typing import Any, Iterator, Union, cast
 import graphlib
 import rich
 from openapi_fal_rest.api.workflows import (
-    create_or_update_workflow_workflows_post as publish_workflow,
+    create_workflow as publish_workflow,
 )
 from openapi_fal_rest.models.http_validation_error import HTTPValidationError
 from pydantic import BaseModel

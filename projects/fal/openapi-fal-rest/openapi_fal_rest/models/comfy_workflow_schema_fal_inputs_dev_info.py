@@ -2,11 +2,11 @@ from typing import Any, Dict, List, Type, TypeVar
 
 import attr
 
-T = TypeVar("T", bound="ExecuteWorkflowWorkflowsUserIdWorkflowNamePostJsonBodyType0")
+T = TypeVar("T", bound="ComfyWorkflowSchemaFalInputsDevInfo")
 
 
 @attr.s(auto_attribs=True)
-class ExecuteWorkflowWorkflowsUserIdWorkflowNamePostJsonBodyType0:
+class ComfyWorkflowSchemaFalInputsDevInfo:
     """ """
 
     additional_properties: Dict[str, Any] = attr.ib(init=False, factory=dict)
@@ -22,10 +22,10 @@ class ExecuteWorkflowWorkflowsUserIdWorkflowNamePostJsonBodyType0:
     @classmethod
     def from_dict(cls: Type[T], src_dict: Dict[str, Any]) -> T:
         d = src_dict.copy()
-        execute_workflow_workflows_user_id_workflow_name_post_json_body_type_0 = cls()
+        comfy_workflow_schema_fal_inputs_dev_info = cls()
 
-        execute_workflow_workflows_user_id_workflow_name_post_json_body_type_0.additional_properties = d
-        return execute_workflow_workflows_user_id_workflow_name_post_json_body_type_0
+        comfy_workflow_schema_fal_inputs_dev_info.additional_properties = d
+        return comfy_workflow_schema_fal_inputs_dev_info
 
     @property
     def additional_keys(self) -> List[str]:

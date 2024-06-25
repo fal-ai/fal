@@ -6,17 +6,19 @@ import httpx
 from ... import errors
 from ...client import Client
 from ...models.http_validation_error import HTTPValidationError
-from ...models.typed_workflow import TypedWorkflow
+from ...models.typed_workflow_update import TypedWorkflowUpdate
 from ...models.workflow_detail import WorkflowDetail
 from ...types import Response
 
 
 def _get_kwargs(
+    user_id: str,
+    workflow_name: str,
     *,
     client: Client,
-    json_body: TypedWorkflow,
+    json_body: TypedWorkflowUpdate,
 ) -> Dict[str, Any]:
-    url = "{}/workflows/".format(client.base_url)
+    url = "{}/workflows/{user_id}/{workflow_name}".format(client.base_url, user_id=user_id, workflow_name=workflow_name)
 
     headers: Dict[str, str] = client.get_headers()
     cookies: Dict[str, Any] = client.get_cookies()
@@ -24,7 +26,7 @@ def _get_kwargs(
     json_json_body = json_body.to_dict()
 
     return {
-        "method": "post",
+        "method": "patch",
         "url": url,
         "headers": headers,
         "cookies": cookies,
@@ -63,14 +65,18 @@ def _build_response(
 
 
 def sync_detailed(
+    user_id: str,
+    workflow_name: str,
     *,
     client: Client,
-    json_body: TypedWorkflow,
+    json_body: TypedWorkflowUpdate,
 ) -> Response[Union[HTTPValidationError, WorkflowDetail]]:
-    """Create Or Update Workflow
+    """Update Workflow
 
     Args:
-        json_body (TypedWorkflow):
+        user_id (str):
+        workflow_name (str):
+        json_body (TypedWorkflowUpdate):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -81,6 +87,8 @@ def sync_detailed(
     """
 
     kwargs = _get_kwargs(
+        user_id=user_id,
+        workflow_name=workflow_name,
         client=client,
         json_body=json_body,
     )
@@ -94,14 +102,18 @@ def sync_detailed(
 
 
 def sync(
+    user_id: str,
+    workflow_name: str,
     *,
     client: Client,
-    json_body: TypedWorkflow,
+    json_body: TypedWorkflowUpdate,
 ) -> Optional[Union[HTTPValidationError, WorkflowDetail]]:
-    """Create Or Update Workflow
+    """Update Workflow
 
     Args:
-        json_body (TypedWorkflow):
+        user_id (str):
+        workflow_name (str):
+        json_body (TypedWorkflowUpdate):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -112,20 +124,26 @@ def sync(
     """
 
     return sync_detailed(
+        user_id=user_id,
+        workflow_name=workflow_name,
         client=client,
         json_body=json_body,
     ).parsed
 
 
 async def asyncio_detailed(
+    user_id: str,
+    workflow_name: str,
     *,
     client: Client,
-    json_body: TypedWorkflow,
+    json_body: TypedWorkflowUpdate,
 ) -> Response[Union[HTTPValidationError, WorkflowDetail]]:
-    """Create Or Update Workflow
+    """Update Workflow
 
     Args:
-        json_body (TypedWorkflow):
+        user_id (str):
+        workflow_name (str):
+        json_body (TypedWorkflowUpdate):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -136,6 +154,8 @@ async def asyncio_detailed(
     """
 
     kwargs = _get_kwargs(
+        user_id=user_id,
+        workflow_name=workflow_name,
         client=client,
         json_body=json_body,
     )
@@ -147,14 +167,18 @@ async def asyncio_detailed(
 
 
 async def asyncio(
+    user_id: str,
+    workflow_name: str,
     *,
     client: Client,
-    json_body: TypedWorkflow,
+    json_body: TypedWorkflowUpdate,
 ) -> Optional[Union[HTTPValidationError, WorkflowDetail]]:
-    """Create Or Update Workflow
+    """Update Workflow
 
     Args:
-        json_body (TypedWorkflow):
+        user_id (str):
+        workflow_name (str):
+        json_body (TypedWorkflowUpdate):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -166,6 +190,8 @@ async def asyncio(
 
     return (
         await asyncio_detailed(
+            user_id=user_id,
+            workflow_name=workflow_name,
             client=client,
             json_body=json_body,
         )
