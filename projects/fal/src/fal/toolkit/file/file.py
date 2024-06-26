@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field
 from fal.toolkit.file.providers.fal import (
     FalCDNFileRepository,
     FalFileRepository,
+    FalFileRepositoryV2,
     InMemoryRepository,
 )
 from fal.toolkit.file.providers.gcp import GoogleStorageRepository
@@ -33,6 +34,7 @@ FileRepositoryFactory = Callable[[], FileRepository]
 
 BUILT_IN_REPOSITORIES: dict[RepositoryId, FileRepositoryFactory] = {
     "fal": lambda: FalFileRepository(),
+    "fal_v2": lambda: FalFileRepositoryV2(),
     "in_memory": lambda: InMemoryRepository(),
     "gcp_storage": lambda: GoogleStorageRepository(),
     "r2": lambda: R2Repository(),

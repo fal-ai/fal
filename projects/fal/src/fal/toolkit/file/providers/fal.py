@@ -13,7 +13,7 @@ from fal.toolkit.exceptions import FileUploadException
 from fal.toolkit.file.types import FileData, FileRepository
 
 _FAL_CDN = "https://fal.media"
-STORAGE_TYPE = "fal-cdn"
+
 
 @dataclass
 class ObjectLifecyclePreference:
@@ -26,8 +26,8 @@ GLOBAL_LIFECYCLE_PREFERENCE = ObjectLifecyclePreference(
 
 
 @dataclass
-class FalFileRepository(FileRepository):
-    def save(self, file: FileData) -> str:
+class FalFileRepositoryBase(FileRepository):
+    def _save(self, file: FileData, storage_type: str) -> str:
         key_creds = key_credentials()
         if not key_creds:
             raise FileUploadException("FAL_KEY must be set")
@@ -41,7 +41,7 @@ class FalFileRepository(FileRepository):
 
         grpc_host = os.environ.get("FAL_HOST", "api.alpha.fal.ai")
         rest_host = grpc_host.replace("api", "rest", 1)
-        storage_url = f"https://{rest_host}/storage/upload/initiate?storage_type={STORAGE_TYPE}"
+        storage_url = f"https://{rest_host}/storage/upload/initiate?storage_type={storage_type}"
 
         try:
             req = Request(
@@ -77,6 +77,18 @@ class FalFileRepository(FileRepository):
 
         with urlopen(req):
             return
+
+
+@dataclass
+class FalFileRepository(FalFileRepositoryBase):
+    def save(self, file: FileData) -> str:
+        return self._save(file, "gcs")
+
+
+@dataclass
+class FalFileRepositoryV2(FalFileRepositoryBase):
+    def save(self, file: FileData) -> str:
+        return self._save(file, "fal-cdn")
 
 
 @dataclass
