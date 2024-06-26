@@ -13,7 +13,7 @@ from fal.toolkit.exceptions import FileUploadException
 from fal.toolkit.file.types import FileData, FileRepository
 
 _FAL_CDN = "https://fal.media"
-
+STORAGE_TYPE = "fal-cdn"
 
 @dataclass
 class ObjectLifecyclePreference:
@@ -41,7 +41,7 @@ class FalFileRepository(FileRepository):
 
         grpc_host = os.environ.get("FAL_HOST", "api.alpha.fal.ai")
         rest_host = grpc_host.replace("api", "rest", 1)
-        storage_url = f"https://{rest_host}/storage/upload/initiate"
+        storage_url = f"https://{rest_host}/storage/upload/initiate?storage_type={STORAGE_TYPE}"
 
         try:
             req = Request(
