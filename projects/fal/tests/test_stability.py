@@ -556,17 +556,22 @@ def test_worker_env_vars(isolated_client):
     assert fal_key_secret, "FAL_KEY_SECRET is not set"
 
 
-def test_fal_storage(isolated_client):
-    url_prefix = "https://fal-cdn.fly.dev/files"
-
-    file = File.from_bytes(b"Hello fal storage from local", repository="fal")
+@pytest.mark.parametrize(
+        "repo_type, url_prefix",
+        [
+            ("fal", "https://storage.googleapis.com/isolate-dev-smiling-shark_toolkit_bucket/"),
+            ("fal_v2", "https://fal-cdn.fly.dev/files"),
+        ]
+)
+def test_fal_storage(isolated_client, repo_type, url_prefix):
+    file = File.from_bytes(b"Hello fal storage from local", repository=repo_type)
     assert file.url.startswith(url_prefix)
     assert file.as_bytes().decode().endswith("local")
 
     @isolated_client(serve=True, requirements=[f"pydantic=={pydantic_version}"])
     def hello_file():
         # Run in the isolated environment
-        return File.from_bytes(b"Hello fal storage from isolated", repository="fal")
+        return File.from_bytes(b"Hello fal storage from isolated", repository=repo_type)
 
     local_fn = hello_file.on(serve=False)
     file = local_fn()

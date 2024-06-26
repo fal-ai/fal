@@ -28,7 +28,7 @@ class FileData:
             self.file_name = file_name
 
 
-RepositoryId = Literal["fal", "in_memory", "gcp_storage", "r2", "cdn"]
+RepositoryId = Literal["fal", "fal_v2", "in_memory", "gcp_storage", "r2", "cdn"]
 
 
 @dataclass
