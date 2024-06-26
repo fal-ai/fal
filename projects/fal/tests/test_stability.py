@@ -6,7 +6,7 @@ import fal
 import pytest
 from fal.api import FalServerlessError, Options
 from fal.container import ContainerImage
-from fal.toolkit.file.file import File
+from fal.toolkit.file import File
 from pydantic import __version__ as pydantic_version
 
 PACKAGE_NAME = "fall"
@@ -557,10 +557,10 @@ def test_worker_env_vars(isolated_client):
 
 
 def test_fal_storage(isolated_client):
+    url_prefix = "https://fal-cdn.fly.dev/files"
+
     file = File.from_bytes(b"Hello fal storage from local", repository="fal")
-    assert file.url.startswith(
-        "https://storage.googleapis.com/isolate-dev-smiling-shark_toolkit_bucket/"
-    )
+    assert file.url.startswith(url_prefix)
     assert file.as_bytes().decode().endswith("local")
 
     @isolated_client(serve=True, requirements=[f"pydantic=={pydantic_version}"])
@@ -570,9 +570,7 @@ def test_fal_storage(isolated_client):
 
     local_fn = hello_file.on(serve=False)
     file = local_fn()
-    assert file.url.startswith(
-        "https://storage.googleapis.com/isolate-dev-smiling-shark_toolkit_bucket/"
-    )
+    assert file.url.startswith(url_prefix)
     assert file.as_bytes().decode().endswith("isolated")
 
 
