@@ -23,6 +23,7 @@ dependencies = [
 test = [
     "pytest",
     "pytest-asyncio",
+    "pillow",
 ]
 dev = [
     "fal_client[test]",
