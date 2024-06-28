@@ -72,7 +72,9 @@ class _BaseRequestHandle:
         elif data["status"] == "IN_PROGRESS":
             return InProgress(logs=data["logs"])
         elif data["status"] == "COMPLETED":
-            return Completed(logs=data["logs"], metrics=data["metrics"])
+            # NOTE: legacy apps might not return metrics
+            metrics = data.get("metrics", {})
+            return Completed(logs=data["logs"], metrics=metrics)
         else:
             raise ValueError(f"Unknown status: {data['status']}")
 
