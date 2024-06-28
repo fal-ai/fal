@@ -22,5 +22,7 @@ jobs:
         pip install --upgrade pip wheel
         pip install -e 'projects/fal_client[test]'
     - name: Run tests
+      env:
+        FAL_KEY: ${{ secrets.FAL_KEY_PROD }}
       run: |
         pytest projects/fal_client/tests
