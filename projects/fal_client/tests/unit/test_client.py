@@ -22,16 +22,22 @@ from fal_client.client import Queued, InProgress, Completed, _BaseRequestHandle
             False,
         ),
         (
-            {"status": "COMPLETED", "logs": [{"msg": "foo"}, {"msg": "bar"}], "metrics": {"m1": "v1", "m2": "v2"}},
-            Completed(logs=[{"msg": "foo"}, {"msg": "bar"}], metrics={"m1": "v1", "m2": "v2"}),
+            {
+                "status": "COMPLETED",
+                "logs": [{"msg": "foo"}, {"msg": "bar"}],
+                "metrics": {"m1": "v1", "m2": "v2"},
+            },
+            Completed(
+                logs=[{"msg": "foo"}, {"msg": "bar"}], metrics={"m1": "v1", "m2": "v2"}
+            ),
             False,
         ),
         (
             {"status": "FOO"},
             ValueError,
             True,
-        )
-    ]
+        ),
+    ],
 )
 def test_parse_status(data, result, raised):
     handle = _BaseRequestHandle("foo", "bar", "baz", "qux")

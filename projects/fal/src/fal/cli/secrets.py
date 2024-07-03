@@ -1,9 +1,9 @@
-
 from .parser import DictAction, FalClientParser
 
 
 def _set(args):
     from fal.sdk import FalServerlessClient
+
     client = FalServerlessClient(args.host)
     with client.connect() as connection:
         for name, value in args.secrets.items():
@@ -12,10 +12,7 @@ def _set(args):
 
 def _add_set_parser(subparsers, parents):
     set_help = "Set a secret."
-    epilog = (
-        "Examples:\n"
-        "  fal secrets set HF_TOKEN=hf_***"
-    )
+    epilog = "Examples:\n" "  fal secrets set HF_TOKEN=hf_***"
 
     parser = subparsers.add_parser(
         "set",
@@ -64,6 +61,7 @@ def _add_list_parser(subparsers, parents):
 
 def _unset(args):
     from fal.sdk import FalServerlessClient
+
     client = FalServerlessClient(args.host)
     with client.connect() as connection:
         connection.delete_secret(args.secret)

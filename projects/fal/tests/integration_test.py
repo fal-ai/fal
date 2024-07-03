@@ -556,7 +556,6 @@ def test_fal_compressed_file(isolated_client):
 
 
 def test_fal_cdn(isolated_client):
-
     @isolated_client(requirements=[f"pydantic=={pydantic_version}"])
     def upload_to_fal_cdn() -> FalImage:
         return FalImage.from_bytes(b"0", "jpeg", repository="cdn")

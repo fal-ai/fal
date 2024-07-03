@@ -31,11 +31,17 @@ def test_set_rev():
 def test_scale():
     args = parse_args(
         [
-            "apps", "scale", "myapp",
-            "--keep-alive", "123",
-            "--max-multiplexing", "321",
-            "--min-concurrency", "7",
-            "--max-concurrency", "10",
+            "apps",
+            "scale",
+            "myapp",
+            "--keep-alive",
+            "123",
+            "--max-multiplexing",
+            "321",
+            "--min-concurrency",
+            "7",
+            "--max-concurrency",
+            "10",
         ]
     )
     assert args.func == _scale
@@ -61,4 +67,3 @@ def test_delete_rev():
     args = parse_args(["apps", "delete-rev", "myrev"])
     assert args.func == _delete_rev
     assert args.app_rev == "myrev"
-

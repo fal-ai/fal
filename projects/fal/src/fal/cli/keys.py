@@ -56,7 +56,10 @@ def _list(args):
         keys = connection.list_user_keys()
         for key in keys:
             table.add_row(
-                key.key_id, str(key.created_at), str(key.scope.value), key.alias,
+                key.key_id,
+                str(key.created_at),
+                str(key.scope.value),
+                key.alias,
             )
 
     args.console.print(table)
