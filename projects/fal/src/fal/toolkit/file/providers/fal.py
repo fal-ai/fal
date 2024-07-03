@@ -41,7 +41,9 @@ class FalFileRepositoryBase(FileRepository):
 
         grpc_host = os.environ.get("FAL_HOST", "api.alpha.fal.ai")
         rest_host = grpc_host.replace("api", "rest", 1)
-        storage_url = f"https://{rest_host}/storage/upload/initiate?storage_type={storage_type}"
+        storage_url = (
+            f"https://{rest_host}/storage/upload/initiate?storage_type={storage_type}"
+        )
 
         try:
             req = Request(

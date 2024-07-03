@@ -44,7 +44,7 @@ async def test_fal_client(client: fal_client.AsyncClient):
         arguments={
             "prompt": "a cat",
         },
-        hint="lora:a"
+        hint="lora:a",
     )
     assert len(output["images"]) == 1
 

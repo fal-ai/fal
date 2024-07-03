@@ -24,8 +24,7 @@ def _backwards_compatible_app_id(app_id: str) -> str:
 
 
 @dataclass
-class _Status:
-    ...
+class _Status: ...
 
 
 @dataclass

@@ -14,10 +14,7 @@ def _run(args):
 
 def add_parser(main_subparsers, parents):
     run_help = "Run fal function."
-    epilog = (
-        "Examples:\n"
-        "  fal run path/to/myfile.py::myfunc"
-    )
+    epilog = "Examples:\n" "  fal run path/to/myfile.py::myfunc"
     parser = main_subparsers.add_parser(
         "run",
         description=run_help,

@@ -186,8 +186,8 @@ def _patch_rlock() -> None:
 
     def pickle_rlock(obj: RLockType) -> tuple[Callable, tuple]:
         r = obj.__repr__()
-        count = int(r.split('count=')[1].split()[0].rstrip('>'))
-        owner = int(r.split('owner=')[1].split()[0])
+        count = int(r.split("count=")[1].split()[0].rstrip(">"))
+        owner = int(r.split("owner=")[1].split()[0])
 
         return create_rlock, (count, owner)
 
@@ -209,7 +209,7 @@ def _patch_console_thread_locals() -> None:
             "buffer": obj.buffer,
             "buffer_index": obj.buffer_index,
         }
-        return create_locals, (kwargs, )
+        return create_locals, (kwargs,)
 
     _register(ConsoleThreadLocals, pickle_locals)
 
@@ -231,4 +231,3 @@ def patch_pickle() -> None:
     _patch_exceptions()
 
     _register_pickle_by_value("fal")
-

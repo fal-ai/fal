@@ -69,9 +69,7 @@ def _deploy(args):
         # Try to find a python file in the current directory
         options = list(Path(".").glob("*.py"))
         if len(options) == 0:
-            raise FalServerlessError(
-                "No python files found in the current directory"
-            )
+            raise FalServerlessError("No python files found in the current directory")
         elif len(options) > 1:
             raise FalServerlessError(
                 "Multiple python files found in the current directory. "
@@ -107,8 +105,12 @@ def _deploy(args):
             "Registered a new revision for function "
             f"'{app_name}' (revision='{app_id}')."
         )
-        args.console.print(f"Playground: https://fal.ai/models/{user.username}/{app_name}")
-        args.console.print(f"Endpoint: https://{gateway_host}/{user.username}/{app_name}")
+        args.console.print(
+            f"Playground: https://fal.ai/models/{user.username}/{app_name}"
+        )
+        args.console.print(
+            f"Endpoint: https://{gateway_host}/{user.username}/{app_name}"
+        )
 
 
 def add_parser(main_subparsers, parents):
@@ -139,8 +141,7 @@ def add_parser(main_subparsers, parents):
         nargs="?",
         action=RefAction,
         help=(
-            "Application reference. "
-            "For example: `myfile.py::MyApp`, `myfile.py`."
+            "Application reference. " "For example: `myfile.py::MyApp`, `myfile.py`."
         ),
     )
     parser.add_argument(

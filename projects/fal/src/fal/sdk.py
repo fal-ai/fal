@@ -277,7 +277,7 @@ class KeyScope(enum.Enum):
 
 @from_grpc.register(isolate_proto.ApplicationInfo)
 def _from_grpc_application_info(
-    message: isolate_proto.ApplicationInfo
+    message: isolate_proto.ApplicationInfo,
 ) -> ApplicationInfo:
     return ApplicationInfo(
         application_id=message.application_id,

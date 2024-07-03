@@ -13,7 +13,6 @@ _renderer = ConsoleRenderer(level_styles=LEVEL_STYLES)
 
 
 class IsolateLogPrinter:
-
     debug: bool
 
     def __init__(self, debug: bool = False) -> None:

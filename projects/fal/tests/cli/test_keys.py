@@ -7,8 +7,10 @@ def test_create():
         [
             "keys",
             "create",
-            "--scope", "API",
-            "--desc", "My test key",
+            "--scope",
+            "API",
+            "--desc",
+            "My test key",
         ]
     )
     assert args.func == _create

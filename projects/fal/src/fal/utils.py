@@ -51,4 +51,3 @@ def load_function_from(
             f"Function '{function_name}' is not a fal.function or a fal.App"
         )
     return target, app_name
-

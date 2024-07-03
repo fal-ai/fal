@@ -203,7 +203,6 @@ def _runners(args):
 
     from fal.sdk import FalServerlessClient
 
-
     client = FalServerlessClient(args.host)
     with client.connect() as connection:
         runners = connection.list_alias_runners(alias=args.app_name)

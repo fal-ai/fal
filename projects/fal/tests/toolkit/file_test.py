@@ -96,8 +96,8 @@ def test_uniqueness_of_file_name(repo: RepositoryId | FileRepository):
 
     host_and_path = file.url.split("?")[0]
     last_path = host_and_path.split("/")[-1]
-    assert (
-        last_path.endswith(".py")
+    assert last_path.endswith(
+        ".py"
     ), f"The file name {last_path} should end with the same extension"
     assert (
         len(last_path) > 10

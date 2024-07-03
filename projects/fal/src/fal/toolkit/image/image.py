@@ -44,6 +44,7 @@ IMAGE_SIZE_PRESETS: dict[ImageSizePreset, ImageSize] = {
 
 ImageSizeInput = Union[ImageSize, ImageSizePreset]
 
+
 def get_image_size(source: ImageSizeInput) -> ImageSize:
     if isinstance(source, ImageSize):
         return source
@@ -62,7 +63,8 @@ class Image(File):
     """
 
     width: Optional[int] = Field(
-        None, description="The width of the image in pixels.",
+        None,
+        description="The width of the image in pixels.",
         examples=[1024],
     )
     height: Optional[int] = Field(
@@ -84,8 +86,8 @@ class Image(File):
             file_name=file_name,
             repository=repository,
         )
-        obj.width=size.width if size else None
-        obj.height=size.height if size else None
+        obj.width = size.width if size else None
+        obj.height = size.height if size else None
         return obj
 
     @classmethod
@@ -120,9 +122,7 @@ class Image(File):
             from PIL import Image as PILImage
             from PIL import ImageOps
         except ImportError:
-            raise ImportError(
-                "The PIL package is required to use Image.to_pil()."
-            )
+            raise ImportError("The PIL package is required to use Image.to_pil().")
 
         # Stream the image data from url to a temp file and convert it to a PIL image
         with NamedTemporaryFile() as temp_file:
@@ -134,4 +134,3 @@ class Image(File):
             img = ImageOps.exif_transpose(img)
 
             return img
-

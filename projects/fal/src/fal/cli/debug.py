@@ -47,11 +47,7 @@ def debugtools(args):
 def get_debug_parser():
     parser = FalParser(add_help=False)
     group = parser.add_argument_group(title="Debug")
-    group.add_argument(
-        "--debug",
-        action="store_true",
-        help="Show verbose errors."
-    )
+    group.add_argument("--debug", action="store_true", help="Show verbose errors.")
     group.add_argument(
         "--pdb",
         action="store_true",

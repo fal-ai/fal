@@ -15,6 +15,7 @@ if not hasattr(pydantic, "__version__") or pydantic.__version__.startswith("1.")
 else:
     from pydantic import GetCoreSchemaHandler
     from pydantic_core import CoreSchema, core_schema
+
     IS_PYDANTIC_V2 = True
 
 from pydantic import BaseModel, Field
