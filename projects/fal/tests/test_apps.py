@@ -137,10 +137,38 @@ class StatefulAdditionApp(fal.App, keep_alive=300, max_concurrency=1):
 
 class ExceptionApp(fal.App, keep_alive=300, max_concurrency=1):
     machine_type = "XS"
+    cancellable_on_disconnect = True
 
     @fal.endpoint("/fail")
     def reset(self) -> Output:
         raise Exception("this app is designed to fail!")
+
+    @fal.endpoint("/long")
+    async def long_running_with_side_effects(
+        self,
+        input: StatefulInput,
+    ) -> Output:
+        """
+        This function run is cancellable by the caller.
+        """
+        import asyncio
+        import os
+
+        file = f"/tmp/cancellable_{input.value}.txt"
+        handler = open(file, "wb")
+        i = 0
+        try:
+            for i in range(input.value):
+                handler.write(b"x")
+                handler.flush()
+                await asyncio.sleep(0.1)
+        except asyncio.CancelledError:
+            # Clean up the file if the function is cancelled.
+            print("Cancelled!")
+            handler.close()
+            os.remove(file)
+
+        return Output(result=i)
 
 
 class RTInput(BaseModel):
@@ -596,6 +624,28 @@ def test_traceback_logs(test_exception_app: str):
     date = datetime.utcnow().isoformat()
     with pytest.raises(HTTPStatusError):
         apps.run(test_exception_app, arguments={}, path="/fail")
+    with httpx.Client(
+        base_url=REST_CLIENT.base_url,
+        headers=REST_CLIENT.get_headers(),
+        timeout=300,
+    ) as client:
+        # Give some time for logs to propagate through the logging subsystem.
+        time.sleep(5)
+        response = client.get(
+            REST_CLIENT.base_url + f"/logs/?traceback=true&limit=10&since={date}"
+        )
+        for log in json.loads(response.text):
+            assert log["message"].count("\n") > 1, "Logs are multi-line"
+            assert '{"traceback":' not in log["message"], "Logs are not JSON-wrapped"
+            assert (
+                "this app is designed to fail" in log["message"]
+            ), "Logs contain the traceback message"
+
+
+def test_cancellating_request(test_exception_app: str):
+    date = datetime.utcnow().isoformat()
+    with pytest.raises(HTTPStatusError):
+        apps.run(test_exception_app, arguments={}, path="/long")
     with httpx.Client(
         base_url=REST_CLIENT.base_url,
         headers=REST_CLIENT.get_headers(),
