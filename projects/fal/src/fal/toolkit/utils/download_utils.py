@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import shutil
 import subprocess
 import sys
 from pathlib import Path, PurePath
-from tempfile import TemporaryDirectory
+from tempfile import NamedTemporaryFile, TemporaryDirectory
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
@@ -215,10 +216,12 @@ def _download_file_python(
     Returns:
         The path where the downloaded file has been saved.
     """
-    import shutil
-    import tempfile
-
-    with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+    # NOTE: using the same directory to avoid potential copies across temp fs and target
+    # fs, and also to be able to atomically rename a downloaded file into place.
+    with NamedTemporaryFile(
+        delete=False,
+        dir=os.path.dirname(target_path),
+    ) as temp_file:
         try:
             file_path = temp_file.name
 
@@ -232,13 +235,14 @@ def _download_file_python(
 
                 print(progress_msg, end="\r\n")
 
-            # Move the file when the file is downloaded completely. Since the
-            # file used is temporary, in a case of an interruption, the downloaded
-            # content will be lost. So, it is safe to redownload the file in such cases.
-            shutil.move(file_path, target_path)
+            # NOTE: Atomically renaming the file into place when the file is downloaded
+            # completely.
+            #
+            # Since the file used is temporary, in a case of an interruption, the
+            # downloaded content will be lost. So, it is safe to redownload the file in
+            # such cases.
+            os.rename(file_path, target_path)
 
-        except Exception as error:
-            raise error
         finally:
             Path(temp_file.name).unlink(missing_ok=True)
 
@@ -403,8 +407,11 @@ def clone_repository(
             print(f"Removing the existing repository: {local_repo_path} ")
             shutil.rmtree(local_repo_path)
 
-    # Temporary directory to download the repo into.
-    temp_dir = TemporaryDirectory()
+    # NOTE: using the target_dir to be able to avoid potential copies across temp fs
+    # and target fs, and also to be able to atomically rename repo_name dir into place
+    # when we are done setting it up.
+    os.makedirs(target_dir, exist_ok=True)  # type: ignore[arg-type]
+    temp_dir = TemporaryDirectory(dir=target_dir)
     temp_dir_path = temp_dir.name
 
     try:
@@ -424,8 +431,9 @@ def clone_repository(
             checkout_command = ["git", "checkout", commit_hash]
             subprocess.check_call(checkout_command, cwd=temp_dir_path)
 
-        # Move the repository when the clone and checkout is finished.
-        shutil.move(temp_dir_path, local_repo_path)
+        # NOTE: Atomically renaming the repository directory into place when the clone
+        # and checkout are done.
+        os.rename(temp_dir_path, local_repo_path)
 
     except Exception as error:
         print(f"{error}\nFailed to clone repository '{https_url}' .")
