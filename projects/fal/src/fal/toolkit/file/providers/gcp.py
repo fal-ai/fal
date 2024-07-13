@@ -3,6 +3,8 @@ from __future__ import annotations
 import datetime
 import json
 import os
+import posixpath
+import uuid
 from dataclasses import dataclass
 
 from fal.toolkit.file.types import FileData, FileRepository
@@ -49,7 +51,10 @@ class GoogleStorageRepository(FileRepository):
         return self._bucket
 
     def save(self, data: FileData) -> str:
-        destination_path = os.path.join(self.folder, data.file_name)
+        destination_path = posixpath.join(
+            self.folder,
+            f"{uuid.uuid4().hex}_{data.file_name}",
+        )
 
         gcp_blob = self.bucket.blob(destination_path)
         gcp_blob.upload_from_string(data.data, content_type=data.content_type)

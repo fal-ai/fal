@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import os
+import posixpath
+import uuid
 from dataclasses import dataclass
 from io import BytesIO
 
@@ -66,7 +68,10 @@ class R2Repository(FileRepository):
         return self._bucket
 
     def save(self, data: FileData) -> str:
-        destination_path = os.path.join(self.key, data.file_name)
+        destination_path = posixpath.join(
+            self.key,
+            f"{uuid.uuid4().hex}_{data.file_name}",
+        )
 
         s3_object = self.bucket.Object(destination_path)
         s3_object.upload_fileobj(
