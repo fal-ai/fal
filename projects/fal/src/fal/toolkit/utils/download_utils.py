@@ -411,35 +411,31 @@ def clone_repository(
     # and target fs, and also to be able to atomically rename repo_name dir into place
     # when we are done setting it up.
     os.makedirs(target_dir, exist_ok=True)  # type: ignore[arg-type]
-    temp_dir = TemporaryDirectory(dir=target_dir)
-    temp_dir_path = temp_dir.name
+    with TemporaryDirectory(dir=target_dir) as temp_dir:
+        try:
+            print(f"Cloning the repository '{https_url}' .")
 
-    try:
-        print(f"Cloning the repository '{https_url}' .")
+            # Clone with disabling the logs and advices for detached HEAD state.
+            clone_command = [
+                "git",
+                "clone",
+                "--recursive",
+                https_url,
+                temp_dir,
+            ]
+            subprocess.check_call(clone_command)
 
-        # Clone with disabling the logs and advices for detached HEAD state.
-        clone_command = [
-            "git",
-            "clone",
-            "--recursive",
-            https_url,
-            temp_dir_path,
-        ]
-        subprocess.check_call(clone_command)
+            if commit_hash:
+                checkout_command = ["git", "checkout", commit_hash]
+                subprocess.check_call(checkout_command, cwd=temp_dir)
 
-        if commit_hash:
-            checkout_command = ["git", "checkout", commit_hash]
-            subprocess.check_call(checkout_command, cwd=temp_dir_path)
+            # NOTE: Atomically renaming the repository directory into place when the
+            # clone and checkout are done.
+            os.rename(temp_dir, local_repo_path)
 
-        # NOTE: Atomically renaming the repository directory into place when the clone
-        # and checkout are done.
-        os.rename(temp_dir_path, local_repo_path)
-
-    except Exception as error:
-        print(f"{error}\nFailed to clone repository '{https_url}' .")
-        temp_dir.cleanup()
-
-        raise error
+        except Exception as error:
+            print(f"{error}\nFailed to clone repository '{https_url}' .")
+            raise error
 
     if include_to_path:
         __add_local_path_to_sys_path(local_repo_path)
