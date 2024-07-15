@@ -17,10 +17,30 @@ class IsolateLogPrinter:
 
     def __init__(self, debug: bool = False) -> None:
         self.debug = debug
+        self._current_source: LogSource | None = None
+
+    def _maybe_print_header(self, source: LogSource):
+        from fal.console import console
+
+        if source == self._current_source:
+            return
+
+        msg = {
+            LogSource.BUILDER: "Building the environment",
+            LogSource.BRIDGE: "Unpacking user code",
+            LogSource.USER: "Running",
+        }.get(source)
+
+        if msg:
+            console.print(f"==> {msg}", style="bold green")
+
+        self._current_source = source
 
     def print(self, log: Log):
         if log.level < LogLevel.INFO and not self.debug:
             return
+
+        self._maybe_print_header(log.source)
 
         if log.source == LogSource.USER:
             stream = sys.stderr if log.level == LogLevel.STDERR else sys.stdout
