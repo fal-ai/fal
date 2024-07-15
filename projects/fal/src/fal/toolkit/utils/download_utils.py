@@ -216,11 +216,13 @@ def _download_file_python(
     Returns:
         The path where the downloaded file has been saved.
     """
+    basename = os.path.basename(target_path)
     # NOTE: using the same directory to avoid potential copies across temp fs and target
     # fs, and also to be able to atomically rename a downloaded file into place.
     with NamedTemporaryFile(
         delete=False,
         dir=os.path.dirname(target_path),
+        prefix=f"{basename}.tmp",
     ) as temp_file:
         try:
             file_path = temp_file.name
@@ -411,7 +413,10 @@ def clone_repository(
     # and target fs, and also to be able to atomically rename repo_name dir into place
     # when we are done setting it up.
     os.makedirs(target_dir, exist_ok=True)  # type: ignore[arg-type]
-    with TemporaryDirectory(dir=target_dir) as temp_dir:
+    with TemporaryDirectory(
+        dir=target_dir,
+        suffix=f"{local_repo_path.name}.tmp",
+    ) as temp_dir:
         try:
             print(f"Cloning the repository '{https_url}' .")
 
