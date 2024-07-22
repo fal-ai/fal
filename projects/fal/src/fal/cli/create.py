@@ -1,4 +1,4 @@
-PROJECT_TYPES = ["project"]
+PROJECT_TYPES = ["app"]
 
 
 def _create_project(project_type: str):
