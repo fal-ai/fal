@@ -7,7 +7,7 @@ import re
 import time
 import typing
 from contextlib import asynccontextmanager, contextmanager
-from typing import Any, Callable, ClassVar, TypeVar
+from typing import Any, Callable, ClassVar, Literal, TypeVar
 
 import httpx
 from fastapi import FastAPI
@@ -152,6 +152,7 @@ class App(fal.api.BaseServable):
         "keep_alive": 60,
     }
     app_name: ClassVar[str]
+    app_auth: ClassVar[Literal["private", "public"]] = "private"
 
     def __init_subclass__(cls, **kwargs):
         app_name = kwargs.pop("name", None) or _to_fal_app_name(cls.__name__)

@@ -81,17 +81,18 @@ def _deploy(args):
 
     user = _get_user()
     host = FalServerlessHost(args.host)
-    isolated_function, app_name = load_function_from(
+    isolated_function, app_name, app_auth = load_function_from(
         host,
         file_path,
         func_name,
     )
     app_name = args.app_name or app_name
+    app_auth = args.auth or app_auth or "private"
     app_id = host.register(
         func=isolated_function.func,
         options=isolated_function.options,
         application_name=app_name,
-        application_auth_mode=args.auth,
+        application_auth_mode=app_auth,
         metadata=isolated_function.options.host.get("metadata", {}),
     )
 
@@ -151,7 +152,6 @@ def add_parser(main_subparsers, parents):
     parser.add_argument(
         "--auth",
         type=valid_auth_option,
-        default="private",
         help="Application authentication mode (private, public).",
     )
     parser.set_defaults(func=_deploy)
