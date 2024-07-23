@@ -10,13 +10,13 @@ def load_function_from(
     host: FalServerlessHost,
     file_path: str,
     function_name: str | None = None,
-) -> tuple[IsolatedFunction, str | None]:
+) -> tuple[IsolatedFunction, str | None, str | None]:
     import runpy
 
     module = runpy.run_path(file_path)
     if function_name is None:
         fal_objects = {
-            obj.app_name: obj_name
+            obj_name: obj
             for obj_name, obj in module.items()
             if isinstance(obj, type)
             and issubclass(obj, fal.App)
@@ -30,9 +30,12 @@ def load_function_from(
                 "Please specify the name of the app."
             )
 
-        [(app_name, function_name)] = fal_objects.items()
+        [(function_name, obj)] = fal_objects.items()
+        app_name = obj.app_name
+        app_auth = obj.app_auth
     else:
         app_name = None
+        app_auth = None
 
     if function_name not in module:
         raise FalServerlessError(f"Function '{function_name}' not found in module")
@@ -44,10 +47,11 @@ def load_function_from(
     target = module[function_name]
     if isinstance(target, type) and issubclass(target, App):
         app_name = target.app_name
+        app_auth = target.app_auth
         target = wrap_app(target, host=host)
 
     if not isinstance(target, IsolatedFunction):
         raise FalServerlessError(
             f"Function '{function_name}' is not a fal.function or a fal.App"
         )
-    return target, app_name
+    return target, app_name, app_auth
