@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from mimetypes import guess_extension, guess_type
+from pathlib import Path
 from typing import Literal
 from uuid import uuid4
 
@@ -34,4 +35,9 @@ RepositoryId = Literal["fal", "fal_v2", "in_memory", "gcp_storage", "r2", "cdn"]
 @dataclass
 class FileRepository:
     def save(self, data: FileData) -> str:
+        raise NotImplementedError()
+
+    def save_file(
+        self, file_path: str | Path, content_type: str, multipart: bool | None = None
+    ) -> str:
         raise NotImplementedError()
