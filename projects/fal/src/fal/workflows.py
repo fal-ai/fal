@@ -5,7 +5,7 @@ import webbrowser
 from argparse import ArgumentParser
 from collections import Counter
 from dataclasses import dataclass, field
-from typing import Any, Iterator, Union, cast
+from typing import Any, Dict, Iterator, List, Union, cast
 
 import graphlib
 import rich
@@ -21,8 +21,8 @@ from fal import flags
 from fal.exceptions import FalServerlessException
 from fal.rest_client import REST_CLIENT
 
-JSONType = Union[dict[str, Any], list[Any], str, int, float, bool, None, "Leaf"]
-SchemaType = dict[str, Any]
+JSONType = Union[Dict[str, Any], List[Any], str, int, float, bool, None, "Leaf"]
+SchemaType = Dict[str, Any]
 
 VARIABLE_PREFIX = "$"
 INPUT_VARIABLE_NAME = "input"

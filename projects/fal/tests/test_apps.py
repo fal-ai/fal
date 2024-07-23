@@ -3,7 +3,7 @@ import secrets
 import time
 from contextlib import contextmanager
 from datetime import datetime
-from typing import Generator
+from typing import Generator, List
 
 import fal
 import fal.api as api
@@ -159,7 +159,7 @@ class RTOutput(BaseModel):
 
 
 class RTOutputs(BaseModel):
-    texts: list[str]
+    texts: List[str]
 
 
 class RealtimeApp(fal.App, keep_alive=300, max_concurrency=1):
