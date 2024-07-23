@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import TYPE_CHECKING
 
 from .parser import FalClientParser
@@ -6,7 +8,7 @@ if TYPE_CHECKING:
     from fal.sdk import AliasInfo, ApplicationInfo
 
 
-def _apps_table(apps: list["AliasInfo"]):
+def _apps_table(apps: list[AliasInfo]):
     from rich.table import Table
 
     table = Table()
@@ -56,7 +58,7 @@ def _add_list_parser(subparsers, parents):
     parser.set_defaults(func=_list)
 
 
-def _app_rev_table(revs: list["ApplicationInfo"]):
+def _app_rev_table(revs: list[ApplicationInfo]):
     from rich.table import Table
 
     table = Table()
