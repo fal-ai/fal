@@ -57,6 +57,7 @@ dependencies = [
     "uvicorn>=0.29.0,<1",
     "cookiecutter",
     "tomli"
+    'graphlib-backport==1.1.0; python_version < "3.9"',
 ]
 
 [project.optional-dependencies]
