@@ -152,7 +152,7 @@ class App(fal.api.BaseServable):
         "keep_alive": 60,
     }
     app_name: ClassVar[str]
-    app_auth: ClassVar[Literal["private", "public"]] = "private"
+    app_auth: ClassVar[Literal["private", "public", "shared"]] = "private"
 
     def __init_subclass__(cls, **kwargs):
         app_name = kwargs.pop("name", None) or _to_fal_app_name(cls.__name__)
