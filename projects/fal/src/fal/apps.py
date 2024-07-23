@@ -173,7 +173,7 @@ def submit(app_id: str, arguments: dict[str, Any], *, path: str = "") -> Request
     app_id = _backwards_compatible_app_id(app_id)
     url = _QUEUE_URL_FORMAT.format(app_id=app_id)
     if path:
-        url += "/" + path.removeprefix("/")
+        url += "/" + path.lstrip("/")
 
     creds = get_default_credentials()
 
@@ -235,7 +235,7 @@ def _connect(app_id: str, *, path: str = "/realtime") -> Iterator[_RealtimeConne
     app_id = _backwards_compatible_app_id(app_id)
     url = _REALTIME_URL_FORMAT.format(app_id=app_id)
     if path:
-        url += "/" + path.removeprefix("/")
+        url += "/" + path.lstrip("/")
 
     creds = get_default_credentials()
 

@@ -50,7 +50,7 @@ def parse_leaf(raw_leaf: str) -> Leaf:
             f"Invalid leaf: {raw_leaf} (must start with a reference)"
         )
 
-    leaf: Leaf = ReferenceLeaf(reference.removeprefix(VARIABLE_PREFIX))
+    leaf: Leaf = ReferenceLeaf(reference.lstrip(VARIABLE_PREFIX))
     for raw_part in raw_parts:
         if raw_part.isdigit():
             leaf = IndexLeaf(leaf, int(raw_part))
