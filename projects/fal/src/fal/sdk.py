@@ -280,13 +280,6 @@ class DeploymentStrategy(enum.Enum):
     ROLLING = "ROLLING"
 
 
-@from_grpc.register(isolate_proto.DeploymentStrategyMessage)
-def _from_grpc_deployment_strategy(
-    message: isolate_proto.DeploymentStrategy,
-) -> DeploymentStrategy:
-    return DeploymentStrategy(message.strategy)
-
-
 @from_grpc.register(isolate_proto.ApplicationInfo)
 def _from_grpc_application_info(
     message: isolate_proto.ApplicationInfo,
