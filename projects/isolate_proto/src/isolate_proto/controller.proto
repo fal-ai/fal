@@ -161,6 +161,11 @@ enum ApplicationAuthMode {
     SHARED = 2;
 }
 
+enum DeploymentStrategy {
+    DEFAULT = 0;
+    ROLLING = 1;
+}
+
 message RegisterApplicationRequest {
     // Environment definitions.
     repeated EnvironmentDefinition environments = 1;
@@ -178,6 +183,8 @@ message RegisterApplicationRequest {
     optional int32 max_concurrency = 7 [deprecated = true];
     // metadata to store with the application
     optional google.protobuf.Struct metadata = 8;
+    // Deployment strategy
+    optional DeploymentStrategy deployment_strategy = 9;
 }
 
 message RegisterApplicationResultType {
