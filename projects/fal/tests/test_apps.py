@@ -192,7 +192,7 @@ def aliased_app() -> Generator[tuple[str, str], None, None]:
 
     import uuid
 
-    app_alias = str(uuid.uuid4()).replace("-", "")[:10]
+    app_alias = str(uuid.uuid4()) + "-alias"
     app_revision = addition_app.host.register(
         func=addition_app.func,
         options=addition_app.options,
@@ -482,15 +482,14 @@ def test_app_set_delete_alias(aliased_app: tuple[str, str]):
         assert found.revision == app_revision
         assert found.auth_mode == "private"
 
-    new_app_alias = f"{app_alias}-new"
     with host._connection as client:
         # Get the registered values
-        res = client.create_alias(new_app_alias, app_revision, "public")
+        res = client.create_alias(app_alias, app_revision, "public")
 
     with host._connection as client:
         # Get the registered values
         res = client.list_aliases()
-        found = next(filter(lambda alias: alias.alias == new_app_alias, res), None)
+        found = next(filter(lambda alias: alias.alias == app_alias, res), None)
         assert found, f"Could not find app {app_alias} in {res}"
         assert found.revision == app_revision
         assert found.auth_mode == "public"
