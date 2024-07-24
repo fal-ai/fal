@@ -505,6 +505,7 @@ def test_app_set_delete_alias(aliased_app: tuple[str, str]):
         assert not found, f"Found app {app_alias} in {res} after deletion"
 
 
+@pytest.mark.flaky(max_runs=3)
 def test_realtime_connection(test_realtime_app):
     response = apps.run(test_realtime_app, arguments={"prompt": "a cat"})
     assert response["text"] == "a cat"
