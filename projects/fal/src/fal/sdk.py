@@ -276,8 +276,30 @@ class KeyScope(enum.Enum):
 
 
 class DeploymentStrategy(enum.Enum):
-    DEFAULT = "DEFAULT"
-    ROLLING = "ROLLING"
+    DEFAULT = "default"
+    ROLLING = "rolling"
+
+    @staticmethod
+    def from_proto(
+        proto: isolate_proto.DeploymentStrategy.ValueType | None,
+    ) -> DeploymentStrategy:
+        if proto is None:
+            return DeploymentStrategy.DEFAULT
+
+        if proto is isolate_proto.DeploymentStrategy.DEFAULT:
+            return DeploymentStrategy.DEFAULT
+        elif proto is isolate_proto.DeploymentStrategy.ROLLING:
+            return DeploymentStrategy.ROLLING
+        else:
+            raise ValueError(f"Unknown DeploymentStrategy: {proto}")
+
+    def to_proto(self) -> isolate_proto.DeploymentStrategy.ValueType:
+        if self is DeploymentStrategy.DEFAULT:
+            return isolate_proto.DeploymentStrategy.DEFAULT
+        elif self is DeploymentStrategy.ROLLING:
+            return isolate_proto.DeploymentStrategy.ROLLING
+        else:
+            raise ValueError(f"Unknown DeploymentStrategy: {self}")
 
 
 @from_grpc.register(isolate_proto.ApplicationInfo)
@@ -462,6 +484,7 @@ class FalServerlessConnection:
         serialization_method: str = _DEFAULT_SERIALIZATION_METHOD,
         machine_requirements: MachineRequirements | None = None,
         metadata: dict[str, Any] | None = None,
+        deployment_strategy: Literal["default", "rolling"] = "default",
     ) -> Iterator[isolate_proto.RegisterApplicationResult]:
         wrapped_function = to_serialized_object(function, serialization_method)
         if machine_requirements:
@@ -493,6 +516,8 @@ class FalServerlessConnection:
             struct_metadata = isolate_proto.Struct()
             struct_metadata.update(metadata)
 
+        deployment_strategy = DeploymentStrategy[deployment_strategy.upper()].to_proto()
+
         request = isolate_proto.RegisterApplicationRequest(
             function=wrapped_function,
             environments=environments,
@@ -500,6 +525,7 @@ class FalServerlessConnection:
             application_name=application_name,
             auth_mode=auth_mode,
             metadata=struct_metadata,
+            deployment_strategy=deployment_strategy,
         )
         for partial_result in self.stub.RegisterApplication(request):
             yield from_grpc(partial_result)
