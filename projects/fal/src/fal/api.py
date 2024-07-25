@@ -1048,7 +1048,9 @@ class BaseServable:
         from uvicorn import Config
 
         app = self._build_app()
-        server = Server(config=Config(app, host="0.0.0.0", port=8080))
+        server = Server(
+            config=Config(app, host="0.0.0.0", port=8080, timeout_keep_alive=300)
+        )
         metrics_app = FastAPI()
         metrics_app.add_route("/metrics", handle_metrics)
         metrics_server = Server(config=Config(metrics_app, host="0.0.0.0", port=9090))
