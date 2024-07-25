@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 import json
 import secrets
 import time
 from contextlib import contextmanager
 from datetime import datetime
-from typing import Generator
+from typing import Generator, List
 
 import fal
 import fal.api as api
@@ -148,7 +150,7 @@ class RTInput(BaseModel):
 
     def can_batch(
         self,
-        other: "RTInput",
+        other: RTInput,
         current_batch_size: int = 1,
     ) -> bool:
         return "don't batch" not in other.prompt
@@ -159,7 +161,7 @@ class RTOutput(BaseModel):
 
 
 class RTOutputs(BaseModel):
-    texts: list[str]
+    texts: List[str]
 
 
 class RealtimeApp(fal.App, keep_alive=300, max_concurrency=1):
