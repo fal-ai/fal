@@ -55,6 +55,7 @@ dependencies = [
     "pillow>=10.2.0,<11",
     "pyjwt[crypto]>=2.8.0,<3",
     "uvicorn>=0.29.0,<1",
+    "cookiecutter",
 ]
 
 [project.optional-dependencies]
