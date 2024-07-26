@@ -23,6 +23,7 @@ from fal.toolkit.utils.download_utils import _get_git_revision_hash, _hash_url
 from pydantic import BaseModel, Field
 from pydantic import __version__ as pydantic_version
 
+EXAMPLE_FILE_URL = "https://raw.githubusercontent.com/fal-ai/fal/main/README.md"
 
 @pytest.mark.flaky(max_runs=3)
 def test_isolated(isolated_client: Callable[..., Callable[..., IsolatedFunction]]):
@@ -197,8 +198,6 @@ def mock_fal_persistent_dirs(monkeypatch):
 def test_download_file(isolated_client, mock_fal_persistent_dirs):
     from fal.toolkit.utils.download_utils import FAL_PERSISTENT_DIR
 
-    EXAMPLE_FILE_URL = "https://raw.githubusercontent.com/fal-ai/isolate/d553f927348206530208442556f481f39b161732/README.md"
-
     relative_directory = "test"
     output_directory = FAL_PERSISTENT_DIR / relative_directory
     expected_path = output_directory / "README.md"
@@ -301,7 +300,6 @@ def test_download_model_weights(isolated_client, mock_fal_persistent_dirs):
 
     print(FAL_MODEL_WEIGHTS_DIR)
 
-    EXAMPLE_FILE_URL = "https://raw.githubusercontent.com/fal-ai/isolate/d553f927348206530208442556f481f39b161732/README.md"
     expected_path = FAL_MODEL_WEIGHTS_DIR / _hash_url(EXAMPLE_FILE_URL) / "README.md"
 
     @isolated_client()
@@ -510,7 +508,7 @@ def test_fal_file_save(isolated_client):
     "file_url, expected_content",
     [
         (
-            "https://raw.githubusercontent.com/fal-ai/fal/fe0e2a1aa4b46a42a93bad0fbd9aca4aefcb4296/README.md",
+            EXAMPLE_FILE_URL,
             "projects/fal/README.md",
         ),
         ("data:text/plain;charset=UTF-8,fal", "fal"),
