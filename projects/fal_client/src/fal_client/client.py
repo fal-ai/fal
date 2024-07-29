@@ -105,8 +105,21 @@ class SyncRequestHandle(_BaseRequestHandle):
         the request is completed. If `with_logs` is True, logs will be included in the response.
         """
 
+        log_fetching = with_logs
         while True:
-            status = self.status(with_logs=with_logs)
+            try:
+                status = self.status(with_logs=with_logs)
+            except httpx.TimeoutException:
+                if with_logs and log_fetching:
+                    log_fetching = False
+                    continue
+
+                raise
+
+            if with_logs and not log_fetching:
+                if hasattr(status, "logs"):
+                    status.logs = []
+
             yield status
             if isinstance(status, Completed):
                 break
@@ -149,8 +162,23 @@ class AsyncRequestHandle(_BaseRequestHandle):
         the request is completed. If `with_logs` is True, logs will be included in the response.
         """
 
+        log_fetching = with_logs
         while True:
-            status = await self.status(with_logs=with_logs)
+            try:
+                status = await self.status(with_logs=log_fetching)
+            except httpx.TimeoutException:
+                if with_logs and log_fetching:
+                    # HACK: Log reading may be slow sometimes, so we stop reading logs if we hit a timeout
+                    log_fetching = False
+                    continue
+
+                raise
+
+            if with_logs and not log_fetching:
+                # If logs should be included, but we are not fetching them, set them to empty list
+                if hasattr(status, "logs"):
+                    status.logs = []
+
             yield status
             if isinstance(status, Completed):
                 break
