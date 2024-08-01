@@ -158,7 +158,7 @@ class App(fal.api.BaseServable):
         app_name = kwargs.pop("name", None) or _to_fal_app_name(cls.__name__)
         parent_settings = getattr(cls, "host_kwargs", {})
         cls.host_kwargs = {**parent_settings, **kwargs}
-        cls.app_name = app_name
+        cls.app_name = getattr(cls, "app_name", app_name)
 
         if cls.__init__ is not App.__init__:
             raise ValueError(
