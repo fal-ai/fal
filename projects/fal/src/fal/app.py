@@ -72,17 +72,22 @@ def wrap_app(cls: type[App], **kwargs) -> fal.api.IsolatedFunction:
 
 
 class EndpointClient:
-    def __init__(self, url, endpoint, signature):
+    def __init__(self, url, endpoint, signature, timeout: int | None = None):
         self.url = url
         self.endpoint = endpoint
         self.signature = signature
+        self.timeout = timeout
 
         annotations = endpoint.__annotations__ or {}
         self.return_type = annotations.get("return") or None
 
     def __call__(self, data):
         with httpx.Client() as client:
-            resp = client.post(self.url + self.signature.path, json=dict(data))
+            resp = client.post(
+                self.url + self.signature.path,
+                json=dict(data),
+                timeout=self.timeout,
+            )
             resp.raise_for_status()
             resp_dict = resp.json()
 
@@ -93,7 +98,7 @@ class EndpointClient:
 
 
 class AppClient:
-    def __init__(self, cls, url):
+    def __init__(self, cls, url, timeout: int | None = None):
         self.url = url
         self.cls = cls
 
@@ -101,8 +106,13 @@ class AppClient:
             signature = getattr(endpoint, "route_signature", None)
             if signature is None:
                 continue
-
-            setattr(self, name, EndpointClient(self.url, endpoint, signature))
+            endpoint_client = EndpointClient(
+                self.url,
+                endpoint,
+                signature,
+                timeout=timeout,
+            )
+            setattr(self, name, endpoint_client)
 
     @classmethod
     @contextmanager
