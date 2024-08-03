@@ -10,8 +10,11 @@ import fal.api as api
 import httpx
 import pytest
 from fal import apps
+from fal.app import AppClient
 from fal.cli.deploy import _get_user
 from fal.container import ContainerImage
+from fal.exceptions import AppException, FieldException
+from fal.exceptions._cuda import _CUDA_OOM_STATUS_CODE
 from fal.rest_client import REST_CLIENT
 from fal.workflows import Workflow
 from fastapi import WebSocket
@@ -136,11 +139,33 @@ class StatefulAdditionApp(fal.App, keep_alive=300, max_concurrency=1):
 
 
 class ExceptionApp(fal.App, keep_alive=300, max_concurrency=1):
-    machine_type = "XS"
+    machine_type = "GPU"
+
+    requirements = ["torch"]
 
     @fal.endpoint("/fail")
-    def reset(self) -> Output:
+    def fail(self) -> Output:
         raise Exception("this app is designed to fail!")
+
+    @fal.endpoint("/app-exception")
+    def app_exception(self) -> Output:
+        raise AppException(message="this app is designed to fail", status_code=401)
+
+    @fal.endpoint("/field-exception")
+    def field_exception(self, input: Input) -> Output:
+        raise FieldException(
+            field="rhs",
+            message="rhs must be an integer",
+        )
+
+    @fal.endpoint("/cuda-exception")
+    def cuda_exception(self) -> Output:
+        import torch
+
+        size = 1024 * 1024 * 1024
+        # This will raise a CUDA out of memory exception
+        # And the exception will be caught by the exception handler
+        torch.rand(size, size, device="cuda")
 
 
 class RTInput(BaseModel):
@@ -270,14 +295,8 @@ def test_stateful_app():
 @pytest.fixture(scope="module")
 def test_exception_app():
     # Create a temporary app, register it, and return the ID of it.
-
-    app = fal.wrap_app(ExceptionApp)
-    app_revision = app.host.register(
-        func=app.func,
-        options=app.options,
-    )
-    user = _get_user()
-    yield f"{user.user_id}/{app_revision}"
+    with AppClient.connect(ExceptionApp) as client:
+        yield client
 
 
 @pytest.fixture(scope="module")
@@ -592,10 +611,12 @@ def test_workflows(test_app: str):
             assert data["result"] == 10
 
 
-def test_traceback_logs(test_exception_app: str):
+def test_traceback_logs(test_exception_app: AppClient):
     date = datetime.utcnow().isoformat()
+
     with pytest.raises(HTTPStatusError):
-        apps.run(test_exception_app, arguments={}, path="/fail")
+        test_exception_app.fail({})
+
     with httpx.Client(
         base_url=REST_CLIENT.base_url,
         headers=REST_CLIENT.get_headers(),
@@ -612,3 +633,20 @@ def test_traceback_logs(test_exception_app: str):
             assert (
                 "this app is designed to fail" in log["message"]
             ), "Logs contain the traceback message"
+
+
+def test_app_exceptions(test_exception_app: AppClient):
+    with pytest.raises(HTTPStatusError) as app_exc:
+        test_exception_app.app_exception({})
+
+    assert app_exc.value.response.status_code == 401
+
+    with pytest.raises(HTTPStatusError) as field_exc:
+        test_exception_app.field_exception({"lhs": 1, "rhs": "2"})
+
+    assert field_exc.value.response.status_code == 422
+
+    with pytest.raises(HTTPStatusError) as cuda_exc:
+        test_exception_app.cuda_exception({})
+
+    assert cuda_exc.value.response.status_code == _CUDA_OOM_STATUS_CODE
