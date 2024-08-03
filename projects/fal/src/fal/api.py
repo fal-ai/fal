@@ -44,7 +44,13 @@ from typing_extensions import Concatenate, ParamSpec
 import fal.flags as flags
 from fal._serialization import include_modules_from, patch_pickle
 from fal.container import ContainerImage
-from fal.exceptions import FalServerlessException
+from fal.exceptions import (
+    AppException,
+    CUDAOutOfMemoryException,
+    FalServerlessException,
+    FieldException,
+    is_cuda_oom_exception,
+)
 from fal.logging.isolate import IsolateLogPrinter
 from fal.sdk import (
     FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
@@ -1002,6 +1008,20 @@ class BaseServable:
                 # If it's not a generic 404, just return the original message.
                 return JSONResponse({"detail": exc.detail}, 404)
 
+        @_app.exception_handler(AppException)
+        async def app_exception_handler(request: Request, exc: AppException):
+            return JSONResponse({"detail": exc.message}, exc.status_code)
+
+        @_app.exception_handler(FieldException)
+        async def field_exception_handler(request: Request, exc: FieldException):
+            return JSONResponse(exc.to_pydantic_format(), exc.status_code)
+
+        @_app.exception_handler(CUDAOutOfMemoryException)
+        async def cuda_out_of_memory_exception_handler(
+            request: Request, exc: CUDAOutOfMemoryException
+        ):
+            return JSONResponse({"detail": exc.message}, exc.status_code)
+
         @_app.exception_handler(Exception)
         async def traceback_logging_exception_handler(request: Request, exc: Exception):
             print(
@@ -1009,6 +1029,12 @@ class BaseServable:
                     {"traceback": "".join(traceback.format_exception(exc)[::-1])}  # type: ignore
                 )
             )
+
+            if is_cuda_oom_exception(exc):
+                return await cuda_out_of_memory_exception_handler(
+                    request, CUDAOutOfMemoryException()
+                )
+
             return JSONResponse({"detail": "Internal Server Error"}, 500)
 
         routes = self.collect_routes()
