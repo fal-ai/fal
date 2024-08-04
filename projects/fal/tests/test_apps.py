@@ -13,7 +13,7 @@ from fal import apps
 from fal.cli.deploy import _get_user
 from fal.container import ContainerImage
 from fal.exceptions import AppException, FieldException
-from fal.exceptions._cuda import _CUDA_OOM_STATUS_CODE
+from fal.exceptions._cuda import _CUDA_OOM_MESSAGE, _CUDA_OOM_STATUS_CODE
 from fal.rest_client import REST_CLIENT
 from fal.workflows import Workflow
 from fastapi import WebSocket
@@ -289,6 +289,8 @@ def test_stateful_app():
 def test_exception_app():
     # Create a temporary app, register it, and return the ID of it.
     app = fal.wrap_app(ExceptionApp)
+    app()
+
     app_revision = app.host.register(
         func=app.func,
         options=app.options,
@@ -652,3 +654,4 @@ def test_app_exceptions(test_exception_app: str):
         apps.run(test_exception_app, arguments={}, path="/cuda-exception")
 
     assert cuda_exc.value.response.status_code == _CUDA_OOM_STATUS_CODE
+    assert cuda_exc.value.response.text == _CUDA_OOM_MESSAGE
