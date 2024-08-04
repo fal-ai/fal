@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 
 from ._base import AppException
@@ -18,12 +20,12 @@ class CUDAOutOfMemoryException(AppException):
 
 
 # based on https://github.com/Lightning-AI/pytorch-lightning/blob/37e04d075a5532c69b8ac7457795b4345cca30cc/src/lightning/pytorch/utilities/memory.py#L49
-def is_cuda_oom_exception(exception: BaseException) -> bool:
-    return is_cuda_out_of_memory(exception) or is_cudnn_snafu(exception)
+def _is_cuda_oom_exception(exception: BaseException) -> bool:
+    return _is_cuda_out_of_memory(exception) or _is_cudnn_snafu(exception)
 
 
 # based on https://github.com/BlackHC/toma/blob/master/toma/torch_cuda_memory.py
-def is_cuda_out_of_memory(exception: BaseException) -> bool:
+def _is_cuda_out_of_memory(exception: BaseException) -> bool:
     return (
         isinstance(exception, RuntimeError)
         and len(exception.args) == 1
@@ -33,7 +35,7 @@ def is_cuda_out_of_memory(exception: BaseException) -> bool:
 
 
 # based on https://github.com/BlackHC/toma/blob/master/toma/torch_cuda_memory.py
-def is_cudnn_snafu(exception: BaseException) -> bool:
+def _is_cudnn_snafu(exception: BaseException) -> bool:
     # For/because of https://github.com/pytorch/pytorch/issues/4107
     return (
         isinstance(exception, RuntimeError)

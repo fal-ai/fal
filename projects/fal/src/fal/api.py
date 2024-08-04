@@ -49,8 +49,8 @@ from fal.exceptions import (
     CUDAOutOfMemoryException,
     FalServerlessException,
     FieldException,
-    is_cuda_oom_exception,
 )
+from fal.exceptions._cuda import _is_cuda_oom_exception
 from fal.logging.isolate import IsolateLogPrinter
 from fal.sdk import (
     FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
@@ -1024,13 +1024,19 @@ class BaseServable:
 
         @_app.exception_handler(Exception)
         async def traceback_logging_exception_handler(request: Request, exc: Exception):
-            print(
-                json.dumps(
-                    {"traceback": "".join(traceback.format_exception(exc)[::-1])}  # type: ignore
-                )
-            )
+            _, MINOR, *_ = sys.version_info
 
-            if is_cuda_oom_exception(exc):
+            # traceback.format_exception() has a different signature in Python >=3.10
+            if MINOR >= 10:
+                formatted_exception = traceback.format_exception(exc)  # type: ignore
+            else:
+                formatted_exception = traceback.format_exception(
+                    type(exc), exc, exc.__traceback__
+                )
+
+            print(json.dumps({"traceback": "".join(formatted_exception[::-1])}))
+
+            if _is_cuda_oom_exception(exc):
                 return await cuda_out_of_memory_exception_handler(
                     request, CUDAOutOfMemoryException()
                 )

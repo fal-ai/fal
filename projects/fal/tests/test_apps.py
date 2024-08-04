@@ -10,6 +10,7 @@ import fal.api as api
 import httpx
 import pytest
 from fal import apps
+from fal.app import AppClient
 from fal.cli.deploy import _get_user
 from fal.container import ContainerImage
 from fal.exceptions import AppException, FieldException
@@ -288,14 +289,8 @@ def test_stateful_app():
 @pytest.fixture(scope="module")
 def test_exception_app():
     # Create a temporary app, register it, and return the ID of it.
-    app = fal.wrap_app(ExceptionApp)
-
-    app_revision = app.host.register(
-        func=app.func,
-        options=app.options,
-    )
-    user = _get_user()
-    yield f"{user.user_id}/{app_revision}"
+    with AppClient.connect(ExceptionApp) as client:
+        yield client
 
 
 @pytest.fixture(scope="module")
@@ -610,11 +605,11 @@ def test_workflows(test_app: str):
             assert data["result"] == 10
 
 
-def test_traceback_logs(test_exception_app: str):
+def test_traceback_logs(test_exception_app: AppClient):
     date = datetime.utcnow().isoformat()
 
     with pytest.raises(HTTPStatusError):
-        apps.run(test_exception_app, arguments={}, path="/fail")
+        test_exception_app.fail({})
 
     with httpx.Client(
         base_url=REST_CLIENT.base_url,
@@ -634,23 +629,19 @@ def test_traceback_logs(test_exception_app: str):
             ), "Logs contain the traceback message"
 
 
-def test_app_exceptions(test_exception_app: str):
+def test_app_exceptions(test_exception_app: AppClient):
     with pytest.raises(HTTPStatusError) as app_exc:
-        apps.run(test_exception_app, arguments={}, path="/app-exception")
+        test_exception_app.app_exception({})
 
     assert app_exc.value.response.status_code == 401
 
     with pytest.raises(HTTPStatusError) as field_exc:
-        apps.run(
-            test_exception_app,
-            arguments={"lhs": 1, "rhs": "2"},
-            path="/field-exception",
-        )
+        test_exception_app.field_exception({"lhs": 1, "rhs": "2"})
 
     assert field_exc.value.response.status_code == 422
 
     with pytest.raises(HTTPStatusError) as cuda_exc:
-        apps.run(test_exception_app, arguments={}, path="/cuda-exception")
+        test_exception_app.cuda_exception({})
 
     assert cuda_exc.value.response.status_code == _CUDA_OOM_STATUS_CODE
-    assert cuda_exc.value.response.text == _CUDA_OOM_MESSAGE
+    assert cuda_exc.value.response.json()["detail"] == _CUDA_OOM_MESSAGE
