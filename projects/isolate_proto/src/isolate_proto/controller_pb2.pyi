@@ -40,6 +40,21 @@ PUBLIC: ApplicationAuthMode.ValueType  # 1
 SHARED: ApplicationAuthMode.ValueType  # 2
 global___ApplicationAuthMode = ApplicationAuthMode
 
+class _DeploymentStrategy:
+    ValueType = typing.NewType("ValueType", builtins.int)
+    V: typing_extensions.TypeAlias = ValueType
+
+class _DeploymentStrategyEnumTypeWrapper(google.protobuf.internal.enum_type_wrapper._EnumTypeWrapper[_DeploymentStrategy.ValueType], builtins.type):
+    DESCRIPTOR: google.protobuf.descriptor.EnumDescriptor
+    DEFAULT: _DeploymentStrategy.ValueType  # 0
+    ROLLING: _DeploymentStrategy.ValueType  # 1
+
+class DeploymentStrategy(_DeploymentStrategy, metaclass=_DeploymentStrategyEnumTypeWrapper): ...
+
+DEFAULT: DeploymentStrategy.ValueType  # 0
+ROLLING: DeploymentStrategy.ValueType  # 1
+global___DeploymentStrategy = DeploymentStrategy
+
 @typing.final
 class HostedMap(google.protobuf.message.Message):
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
@@ -411,12 +426,15 @@ class RegisterApplicationRequest(google.protobuf.message.Message):
     AUTH_MODE_FIELD_NUMBER: builtins.int
     MAX_CONCURRENCY_FIELD_NUMBER: builtins.int
     METADATA_FIELD_NUMBER: builtins.int
+    DEPLOYMENT_STRATEGY_FIELD_NUMBER: builtins.int
     application_name: builtins.str
     """Name of the application"""
     auth_mode: global___ApplicationAuthMode.ValueType
     """If application has alias: auth mode to use"""
     max_concurrency: builtins.int
     """Max concurrency in gateway"""
+    deployment_strategy: global___DeploymentStrategy.ValueType
+    """Deployment strategy"""
     @property
     def environments(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[server_pb2.EnvironmentDefinition]:
         """Environment definitions."""
@@ -448,13 +466,16 @@ class RegisterApplicationRequest(google.protobuf.message.Message):
         auth_mode: global___ApplicationAuthMode.ValueType | None = ...,
         max_concurrency: builtins.int | None = ...,
         metadata: google.protobuf.struct_pb2.Struct | None = ...,
+        deployment_strategy: global___DeploymentStrategy.ValueType | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing.Literal["_application_name", b"_application_name", "_auth_mode", b"_auth_mode", "_machine_requirements", b"_machine_requirements", "_max_concurrency", b"_max_concurrency", "_metadata", b"_metadata", "_setup_func", b"_setup_func", "application_name", b"application_name", "auth_mode", b"auth_mode", "function", b"function", "machine_requirements", b"machine_requirements", "max_concurrency", b"max_concurrency", "metadata", b"metadata", "setup_func", b"setup_func"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing.Literal["_application_name", b"_application_name", "_auth_mode", b"_auth_mode", "_machine_requirements", b"_machine_requirements", "_max_concurrency", b"_max_concurrency", "_metadata", b"_metadata", "_setup_func", b"_setup_func", "application_name", b"application_name", "auth_mode", b"auth_mode", "environments", b"environments", "function", b"function", "machine_requirements", b"machine_requirements", "max_concurrency", b"max_concurrency", "metadata", b"metadata", "setup_func", b"setup_func"]) -> None: ...
+    def HasField(self, field_name: typing.Literal["_application_name", b"_application_name", "_auth_mode", b"_auth_mode", "_deployment_strategy", b"_deployment_strategy", "_machine_requirements", b"_machine_requirements", "_max_concurrency", b"_max_concurrency", "_metadata", b"_metadata", "_setup_func", b"_setup_func", "application_name", b"application_name", "auth_mode", b"auth_mode", "deployment_strategy", b"deployment_strategy", "function", b"function", "machine_requirements", b"machine_requirements", "max_concurrency", b"max_concurrency", "metadata", b"metadata", "setup_func", b"setup_func"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing.Literal["_application_name", b"_application_name", "_auth_mode", b"_auth_mode", "_deployment_strategy", b"_deployment_strategy", "_machine_requirements", b"_machine_requirements", "_max_concurrency", b"_max_concurrency", "_metadata", b"_metadata", "_setup_func", b"_setup_func", "application_name", b"application_name", "auth_mode", b"auth_mode", "deployment_strategy", b"deployment_strategy", "environments", b"environments", "function", b"function", "machine_requirements", b"machine_requirements", "max_concurrency", b"max_concurrency", "metadata", b"metadata", "setup_func", b"setup_func"]) -> None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing.Literal["_application_name", b"_application_name"]) -> typing.Literal["application_name"] | None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing.Literal["_auth_mode", b"_auth_mode"]) -> typing.Literal["auth_mode"] | None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing.Literal["_deployment_strategy", b"_deployment_strategy"]) -> typing.Literal["deployment_strategy"] | None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing.Literal["_machine_requirements", b"_machine_requirements"]) -> typing.Literal["machine_requirements"] | None: ...
     @typing.overload
