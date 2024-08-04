@@ -142,15 +142,14 @@ class AppClient:
         try:
             with httpx.Client() as client:
                 retries = 100
-                while retries:
+                for _ in range(retries):
                     resp = client.get(info.url + "/health")
 
                     if resp.is_success:
                         break
-                    elif resp.status_code != 500:
+                    elif resp.status_code not in (500, 404):
                         resp.raise_for_status()
                     time.sleep(0.1)
-                    retries -= 1
 
             client = cls(app_cls, info.url)
             yield client
