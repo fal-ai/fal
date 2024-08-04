@@ -619,7 +619,7 @@ def test_traceback_logs(test_exception_app: AppClient):
         # Give some time for logs to propagate through the logging subsystem.
         time.sleep(5)
         response = client.get(
-            REST_CLIENT.base_url + f"/logs/?traceback=true&limit=10&since={date}"
+            REST_CLIENT.base_url + f"/logs/?traceback=true&since={date}"
         )
         for log in json.loads(response.text):
             assert log["message"].count("\n") > 1, "Logs are multi-line"
