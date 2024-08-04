@@ -10,7 +10,6 @@ import fal.api as api
 import httpx
 import pytest
 from fal import apps
-from fal.app import AppClient
 from fal.cli.deploy import _get_user
 from fal.container import ContainerImage
 from fal.exceptions import AppException, FieldException
@@ -139,9 +138,7 @@ class StatefulAdditionApp(fal.App, keep_alive=300, max_concurrency=1):
 
 
 class ExceptionApp(fal.App, keep_alive=300, max_concurrency=1):
-    machine_type = "GPU"
-
-    requirements = ["torch"]
+    machine_type = "XS"
 
     @fal.endpoint("/fail")
     def fail(self) -> Output:
@@ -160,12 +157,8 @@ class ExceptionApp(fal.App, keep_alive=300, max_concurrency=1):
 
     @fal.endpoint("/cuda-exception")
     def cuda_exception(self) -> Output:
-        import torch
-
-        size = 1024 * 1024 * 1024
-        # This will raise a CUDA out of memory exception
-        # And the exception will be caught by the exception handler
-        torch.rand(size, size, device="cuda")
+        # mimicking error message from PyTorch (https://github.com/pytorch/pytorch/blob/6c65fd03942415b68040e102c44cf5109d2d851e/c10/cuda/CUDACachingAllocator.cpp#L1234C12-L1234C30)
+        raise RuntimeError("CUDA out of memory")
 
 
 class RTInput(BaseModel):
@@ -295,8 +288,13 @@ def test_stateful_app():
 @pytest.fixture(scope="module")
 def test_exception_app():
     # Create a temporary app, register it, and return the ID of it.
-    with AppClient.connect(ExceptionApp) as client:
-        yield client
+    app = fal.wrap_app(ExceptionApp)
+    app_revision = app.host.register(
+        func=app.func,
+        options=app.options,
+    )
+    user = _get_user()
+    yield f"{user.user_id}/{app_revision}"
 
 
 @pytest.fixture(scope="module")
@@ -611,11 +609,11 @@ def test_workflows(test_app: str):
             assert data["result"] == 10
 
 
-def test_traceback_logs(test_exception_app: AppClient):
+def test_traceback_logs(test_exception_app: str):
     date = datetime.utcnow().isoformat()
 
     with pytest.raises(HTTPStatusError):
-        test_exception_app.fail({})
+        apps.run(test_exception_app, arguments={}, path="/fail")
 
     with httpx.Client(
         base_url=REST_CLIENT.base_url,
@@ -635,18 +633,22 @@ def test_traceback_logs(test_exception_app: AppClient):
             ), "Logs contain the traceback message"
 
 
-def test_app_exceptions(test_exception_app: AppClient):
+def test_app_exceptions(test_exception_app: str):
     with pytest.raises(HTTPStatusError) as app_exc:
-        test_exception_app.app_exception({})
+        apps.run(test_exception_app, arguments={}, path="/app-exception")
 
     assert app_exc.value.response.status_code == 401
 
     with pytest.raises(HTTPStatusError) as field_exc:
-        test_exception_app.field_exception({"lhs": 1, "rhs": "2"})
+        apps.run(
+            test_exception_app,
+            arguments={"lhs": 1, "rhs": "2"},
+            path="/field-exception",
+        )
 
     assert field_exc.value.response.status_code == 422
 
     with pytest.raises(HTTPStatusError) as cuda_exc:
-        test_exception_app.cuda_exception({})
+        apps.run(test_exception_app, arguments={}, path="/cuda-exception")
 
     assert cuda_exc.value.response.status_code == _CUDA_OOM_STATUS_CODE
