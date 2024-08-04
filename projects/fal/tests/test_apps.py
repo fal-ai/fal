@@ -289,7 +289,6 @@ def test_stateful_app():
 def test_exception_app():
     # Create a temporary app, register it, and return the ID of it.
     app = fal.wrap_app(ExceptionApp)
-    app()
 
     app_revision = app.host.register(
         func=app.func,
