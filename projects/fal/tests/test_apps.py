@@ -1,5 +1,6 @@
 import json
 import secrets
+import subprocess
 import time
 from contextlib import contextmanager
 from datetime import datetime
@@ -19,6 +20,7 @@ from fal.rest_client import REST_CLIENT
 from fal.workflows import Workflow
 from fastapi import WebSocket
 from httpx import HTTPStatusError
+from isolate.backends.common import active_python
 from openapi_fal_rest.api.applications import app_metadata
 from pydantic import BaseModel
 from pydantic import __version__ as pydantic_version
@@ -36,6 +38,17 @@ class StatefulInput(BaseModel):
 
 class Output(BaseModel):
     result: int
+
+
+actual_python = active_python()
+
+
+def git_revision_short_hash() -> str:
+    return (
+        subprocess.check_output(["git", "rev-parse", "--short", "HEAD"])
+        .decode("ascii")
+        .strip()
+    )
 
 
 @fal.function(
@@ -59,7 +72,9 @@ nomad_addition_app = addition_app.on(_scheduler="nomad")
 
 @fal.function(
     kind="container",
-    image=ContainerImage.from_dockerfile_str("FROM python:3.11"),
+    image=ContainerImage.from_dockerfile_str(
+        f"FROM python:{actual_python}-slim\n# {git_revision_short_hash()}",
+    ),
     keep_alive=60,
     machine_type="S",
     serve=True,
@@ -246,9 +261,6 @@ def test_nomad_app():
     yield f"{user.user_id}/{app_revision}"
 
 
-@pytest.mark.xfail(
-    reason="The support needs to be deployed. See https://github.com/fal-ai/isolate-cloud/pull/1809"
-)
 @pytest.fixture(scope="module")
 def test_container_app():
     # Create a temporary app, register it, and return the ID of it.
