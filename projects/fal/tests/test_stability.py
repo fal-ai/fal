@@ -68,13 +68,13 @@ def test_regular_function_on_nomad(isolated_client):
 
 
 def test_regular_function_in_a_container(isolated_client):
-    @isolated_client("container")
+    @isolated_client("container", machine_type="GPU")
     def regular_function():
         return 42
 
     assert regular_function() == 42
 
-    @isolated_client("container")
+    @isolated_client("container", machine_type="GPU")
     def mult(a, b):
         return a * b
 
