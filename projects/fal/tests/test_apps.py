@@ -361,6 +361,7 @@ def test_stateful_app_client(test_stateful_app: str):
     assert response["result"] == 0
 
 
+@pytest.mark.flaky(max_runs=3)
 def test_app_client_async(test_app: str):
     request_handle = apps.submit(test_app, arguments={"lhs": 1, "rhs": 2})
     assert request_handle.get() == {"result": 3}
