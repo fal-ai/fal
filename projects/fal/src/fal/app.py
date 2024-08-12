@@ -143,7 +143,7 @@ class AppClient:
             with httpx.Client() as client:
                 retries = 100
                 for _ in range(retries):
-                    resp = client.get(info.url + "/health")
+                    resp = client.get(info.url + "/health", timeout=60)
 
                     if resp.is_success:
                         break
