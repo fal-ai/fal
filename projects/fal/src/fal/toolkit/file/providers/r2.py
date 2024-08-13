@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from io import BytesIO
 
 from fal.toolkit.file.types import FileData, FileRepository
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 DEFAULT_URL_TIMEOUT = 60 * 15  # 15 minutes
 
@@ -67,6 +68,9 @@ class R2Repository(FileRepository):
 
         return self._bucket
 
+    @retry(
+        stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=10)
+    )
     def save(self, data: FileData) -> str:
         destination_path = posixpath.join(
             self.key,
