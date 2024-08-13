@@ -51,7 +51,7 @@ def get_builtin_repository(id: RepositoryId) -> FileRepository:
 
 get_builtin_repository.__module__ = "__main__"
 
-DEFAULT_REPOSITORY: FileRepository | RepositoryId = "fal"
+DEFAULT_REPOSITORY: FileRepository | RepositoryId = "fal_v2"
 
 
 class File(BaseModel):
