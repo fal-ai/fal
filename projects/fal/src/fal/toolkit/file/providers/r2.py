@@ -69,7 +69,9 @@ class R2Repository(FileRepository):
         return self._bucket
 
     @retry(
-        stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=10)
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=10),
+        reraise=True,
     )
     def save(self, data: FileData) -> str:
         destination_path = posixpath.join(

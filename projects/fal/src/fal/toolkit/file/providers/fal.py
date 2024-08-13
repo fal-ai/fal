@@ -29,7 +29,9 @@ GLOBAL_LIFECYCLE_PREFERENCE = ObjectLifecyclePreference(
 @dataclass
 class FalFileRepositoryBase(FileRepository):
     @retry(
-        stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=10)
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=10),
+        reraise=True,
     )
     def _save(self, file: FileData, storage_type: str) -> str:
         key_creds = key_credentials()
@@ -109,7 +111,9 @@ class InMemoryRepository(FileRepository):
 @dataclass
 class FalCDNFileRepository(FileRepository):
     @retry(
-        stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=10)
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=10),
+        reraise=True,
     )
     def save(
         self,
