@@ -1,0 +1,3 @@
+stable-diffusion:
+  loc: inference.py::diffusion
+  auth: shared
