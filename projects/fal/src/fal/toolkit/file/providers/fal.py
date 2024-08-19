@@ -74,7 +74,10 @@ class FalFileRepositoryBase(FileRepository):
             upload_url,
             method="PUT",
             data=file.data,
-            headers={"Content-Type": file.content_type},
+            headers={
+                "Content-Type": file.content_type,
+                "Content-Length": str(file.content_length),
+            },
         )
 
         with urlopen(req):

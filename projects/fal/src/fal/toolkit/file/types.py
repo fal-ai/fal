@@ -15,6 +15,7 @@ class FileData:
         self, data: bytes, content_type: str | None = None, file_name: str | None = None
     ):
         self.data = data
+        self.content_length = len(data)
         if content_type is None and file_name is not None:
             content_type, _ = guess_type(file_name or "")
 
