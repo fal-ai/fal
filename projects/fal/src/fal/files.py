@@ -17,9 +17,7 @@ def _cached_resolve(path: Path) -> Path:
 
 
 @lru_cache
-def find_project_root(
-    srcs: Sequence[str], stdin_filename: Optional[str] = None
-) -> Tuple[Path, str]:
+def find_project_root(srcs: Optional[Sequence[str]]) -> Tuple[Path, str]:
     """Return a directory containing .git, or pyproject.toml.
 
     That directory will be a common parent of all files and directories
@@ -32,8 +30,6 @@ def find_project_root(
     the second element as a string describing the method by which the
     project root was discovered.
     """
-    if stdin_filename is not None:
-        srcs = tuple(stdin_filename if s == "-" else s for s in srcs)
     if not srcs:
         srcs = [str(_cached_resolve(Path.cwd()))]
 
@@ -51,7 +47,6 @@ def find_project_root(
     )
 
     for directory in (common_base, *common_base.parents):
-        print(directory)
         if (directory / ".git").exists():
             return directory, ".git directory"
 
@@ -64,12 +59,11 @@ def find_project_root(
 
 
 def find_pyproject_toml(
-    path_search_start: Tuple[str, ...], stdin_filename: Optional[str] = None
+    path_search_start: Optional[Tuple[str, ...]] = None,
 ) -> Optional[str]:
     """Find the absolute filepath to a pyproject.toml if it exists"""
-    path_project_root, _ = find_project_root(path_search_start, stdin_filename)
+    path_project_root, _ = find_project_root(path_search_start)
     path_pyproject_toml = path_project_root / "pyproject.toml"
-    print("Root:", path_project_root)
 
     if path_pyproject_toml.is_file():
         return str(path_pyproject_toml)

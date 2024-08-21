@@ -1,6 +1,9 @@
 import argparse
 from collections import namedtuple
 from pathlib import Path
+from typing import Optional, Union
+
+from fal.files import find_pyproject_toml, parse_pyproject_toml
 
 from .parser import FalClientParser, RefAction
 
@@ -60,11 +63,42 @@ def _get_user() -> User:
         raise FalServerlessError(f"Could not parse the user data: {e}")
 
 
-def _deploy(args):
+def _deploy_from_toml(app_name, args):
+    toml_path = find_pyproject_toml()
+
+    if toml_path is None:
+        raise ValueError("No pyproject.toml file found.")
+
+    fal_data = parse_pyproject_toml(toml_path)
+    apps = fal_data.get("apps", {})
+
+    try:
+        app_data = apps[app_name]
+    except KeyError:
+        raise ValueError(f"App {app_name} not found in pyproject.toml")
+
+    try:
+        app_ref = app_data["ref"]
+    except KeyError:
+        raise ValueError(f"App {app_name} does not have a ref key in pyproject.toml")
+
+    try:
+        app_auth = app_data["auth"]
+    except KeyError:
+        app_auth = "private"
+
+    file_path, func_name = RefAction.split_ref(app_ref)
+
+    _deploy_from_reference((file_path, func_name), app_name, app_auth, args)
+
+
+def _deploy_from_reference(
+    app_ref: tuple[Optional[Union[Path, str]], ...], app_name: str, auth: str, args
+):
     from fal.api import FalServerlessError, FalServerlessHost
     from fal.utils import load_function_from
 
-    file_path, func_name = args.app_ref
+    file_path, func_name = app_ref
     if file_path is None:
         # Try to find a python file in the current directory
         options = list(Path(".").glob("*.py"))
@@ -77,17 +111,17 @@ def _deploy(args):
             )
 
         [file_path] = options
-        file_path = str(file_path)
+        file_path = str(file_path)  # type: ignore
 
     user = _get_user()
     host = FalServerlessHost(args.host)
-    isolated_function, app_name, app_auth = load_function_from(
+    isolated_function, guessed_app_name, app_auth = load_function_from(
         host,
-        file_path,
-        func_name,
+        file_path,  # type: ignore
+        func_name,  # type: ignore
     )
-    app_name = args.app_name or app_name
-    app_auth = args.auth or app_auth or "private"
+    app_name = app_name or guessed_app_name  # type: ignore
+    app_auth = auth or app_auth or "private"
     app_id = host.register(
         func=isolated_function.func,
         options=isolated_function.options,
@@ -114,6 +148,26 @@ def _deploy(args):
         )
 
 
+def _is_app_name(app_ref):
+    is_single_file = app_ref[1] is None
+    is_python_file = app_ref[0].endswith(".py")
+
+    return is_single_file and not is_python_file
+
+
+def _deploy(args):
+    if _is_app_name(args.app_ref):
+        app_name = args.app_ref[0]
+
+        # we do not allow --app-name and --auth to be used with app name
+        if args.app_name or args.auth:
+            raise ValueError("Cannot use --app-name or --auth with app name reference.")
+
+        _deploy_from_toml(app_name, args)
+    else:
+        _deploy_from_reference(args.app_ref, args.app_name, args.auth, args)
+
+
 def add_parser(main_subparsers, parents):
     from fal.sdk import ALIAS_AUTH_MODES
 
@@ -122,14 +176,22 @@ def add_parser(main_subparsers, parents):
             raise argparse.ArgumentTypeError(f"{option} is not a auth option")
         return option
 
-    deploy_help = "Deploy a fal application."
+    deploy_help = (
+        "Deploy a fal application. "
+        "If no app reference is provided, the command will look for a "
+        "pyproject.toml file with a [tool.fal.apps] section and deploy the "
+        "application specified with the provided app name."
+    )
+
     epilog = (
         "Examples:\n"
         "  fal deploy\n"
         "  fal deploy path/to/myfile.py\n"
         "  fal deploy path/to/myfile.py::MyApp\n"
         "  fal deploy path/to/myfile.py::MyApp --app-name myapp --auth public\n"
+        "  fal deploy my-app\n"
     )
+
     parser = main_subparsers.add_parser(
         "deploy",
         parents=[*parents, FalClientParser(add_help=False)],
@@ -137,21 +199,30 @@ def add_parser(main_subparsers, parents):
         help=deploy_help,
         epilog=epilog,
     )
+
     parser.add_argument(
         "app_ref",
         nargs="?",
         action=RefAction,
         help=(
-            "Application reference. " "For example: `myfile.py::MyApp`, `myfile.py`."
+            "Application reference. Either a file path or a file path and a "
+            "function name separated by '::'. If no reference is provided, the "
+            "command will look for a pyproject.toml file with a [tool.fal.apps] "
+            "section and deploy the application specified with the provided app name.\n"
+            "File path example: path/to/myfile.py::MyApp\n"
+            "App name example: my-app\n"
         ),
     )
+
     parser.add_argument(
         "--app-name",
         help="Application name to deploy with.",
     )
+
     parser.add_argument(
         "--auth",
         type=valid_auth_option,
         help="Application authentication mode (private, public).",
     )
+
     parser.set_defaults(func=_deploy)
