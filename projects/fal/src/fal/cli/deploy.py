@@ -82,10 +82,7 @@ def _deploy_from_toml(app_name, args):
     except KeyError:
         raise ValueError(f"App {app_name} does not have a ref key in pyproject.toml")
 
-    try:
-        app_auth = app_data["auth"]
-    except KeyError:
-        app_auth = "private"
+    app_auth = app_data.get("auth", "private")
 
     file_path, func_name = RefAction.split_ref(app_ref)
 
