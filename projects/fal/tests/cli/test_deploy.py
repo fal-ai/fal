@@ -20,9 +20,9 @@ def mock_parse_pyproject_toml():
                 "ref": "src/my_app/inference.py::MyApp",
                 "auth": "shared",
             },
+            # auth is not provided for another-app
             "another-app": {
-                "ref": "src/another_app/run.py::AnotherApp",
-                "auth": "public",
+                "ref": "src/another_app/inference.py::AnotherApp",
             },
         }
     }
@@ -56,6 +56,25 @@ def test_deploy_with_toml_success(
     # Ensure the correct app is deployed
     mock_deploy_ref.assert_called_once_with(
         ("src/my_app/inference.py", "MyApp"), "my-app", "shared", args
+    )
+
+
+@patch("fal.cli.deploy.find_pyproject_toml", return_value="pyproject.toml")
+@patch("fal.cli.deploy.parse_pyproject_toml")
+@patch("fal.cli.deploy._deploy_from_reference")
+def test_deploy_with_toml_no_auth(
+    mock_deploy_ref, mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml
+):
+    # Mocking the parse_pyproject_toml function to return a predefined dict
+    mock_parse_toml.return_value = mock_parse_pyproject_toml
+
+    args = mock_args(app_ref=("another-app", None))
+
+    _deploy(args)
+
+    # Since auth is not provided for "another-app", it should default to "private"
+    mock_deploy_ref.assert_called_once_with(
+        ("src/another_app/inference.py", "AnotherApp"), "another-app", "private", args
     )
 
 
