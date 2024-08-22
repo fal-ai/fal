@@ -90,13 +90,23 @@ class FalFileRepository(FalFileRepositoryBase):
 
 
 class MultipartUpload:
-    MULTIPART_THRESHOLD = 2**30
+    MULTIPART_THRESHOLD = 100 * 1024 * 1024
+    MULTIPART_CHUNK_SIZE = 100 * 1024 * 1024
+    MULTIPART_MAX_CONCURRENCY = 10
 
-    def __init__(self, file_path: str | Path, content_type: str):
+    def __init__(
+        self,
+        file_path: str | Path,
+        chunk_size: int | None = None,
+        content_type: str | None = None,
+        max_concurrency: int | None = None,
+    ) -> None:
         self.file_path = file_path
-        self.content_type = content_type
+        self.chunk_size = chunk_size or self.MULTIPART_CHUNK_SIZE
+        self.content_type = content_type or "application/octet-stream"
+        self.max_concurrency = max_concurrency or self.MULTIPART_MAX_CONCURRENCY
 
-        self._etags: dict = {}
+        self._parts: list[dict] = []
 
         key_creds = key_credentials()
         if not key_creds:
@@ -104,91 +114,85 @@ class MultipartUpload:
 
         key_id, key_secret = key_creds
 
-        self._headers = {
+        self._auth_headers = {
             "Authorization": f"Key {key_id}:{key_secret}",
-            "Accept": "application/json",
-            "Content-Type": "application/json",
         }
-
         grpc_host = os.environ.get("FAL_HOST", "api.alpha.fal.ai")
         rest_host = grpc_host.replace("api", "rest", 1)
         self._storage_upload_url = f"https://{rest_host}/storage/upload"
 
     def create(self):
-        parts_number = math.ceil(
-            os.path.getsize(self.file_path) / self.MULTIPART_THRESHOLD
-        )
         try:
             req = Request(
-                f"{self._storage_upload_url}/create-multipart",
+                f"{self._storage_upload_url}/initiate-multipart",
+                method="POST",
+                headers={
+                    **self._auth_headers,
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
+                },
                 data=json.dumps(
                     {
                         "file_name": os.path.basename(self.file_path),
                         "content_type": self.content_type,
-                        "parts_number": parts_number,
                     }
                 ).encode(),
-                headers=self._headers,
-                method="POST",
             )
             with urlopen(req) as response:
                 result = json.load(response)
-                self._file_id = result["file_id"]
                 self._upload_id = result["upload_id"]
                 self._file_url = result["file_url"]
-                self._parts = result["parts"]
         except HTTPError as e:
             raise FileUploadException(
                 f"Error initiating upload. Status {e.status}: {e.reason}"
             )
 
-    def _upload_part(self, url: str, part_number: int) -> tuple:
+    def _upload_part(self, url: str, part_number: int) -> dict:
         with open(self.file_path, "rb") as f:
-            start = (part_number - 1) * self.MULTIPART_THRESHOLD
+            start = (part_number - 1) * self.chunk_size
             f.seek(start)
-            data = f.read(self.MULTIPART_THRESHOLD)
+            data = f.read(self.chunk_size)
             req = Request(
                 url,
                 method="PUT",
-                data=data,
                 headers={"Content-Type": self.content_type},
+                data=data,
             )
 
             with urlopen(req) as resp:
-                return part_number, resp.headers["ETag"]
+                return {"part_number": part_number, "etag": resp.headers["ETag"]}
 
     def upload(self) -> None:
         import concurrent.futures
 
-        with concurrent.futures.ThreadPoolExecutor() as executor:
+        parts = math.ceil(os.path.getsize(self.file_path) / self.chunk_size)
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=self.max_concurrency
+        ) as executor:
             futures = []
-            for part in self._parts:
-                part_number = part["part_number"]
-                upload_url = part["upload_url"]
+            for part_number in range(1, parts + 1):
+                upload_url = (
+                    f"{self._file_url}?upload_id={self._upload_id}"
+                    f"&part_number={part_number}"
+                )
                 futures.append(
                     executor.submit(self._upload_part, upload_url, part_number)
                 )
 
             for future in concurrent.futures.as_completed(futures):
-                part_number, etag = future.result()
-                self._etags[part_number] = etag
+                entry = future.result()
+                self._parts.append(entry)
 
     def complete(self):
         try:
             req = Request(
-                f"{self._storage_upload_url}/complete-multipart",
+                f"{self._file_url}?upload_id={self._upload_id}",
                 method="POST",
-                headers=self._headers,
-                data=json.dumps(
-                    {
-                        "file_id": self._file_id,
-                        "upload_id": self._upload_id,
-                        "parts": [
-                            {"part_number": part_number, "etag": etag}
-                            for part_number, etag in self._etags.items()
-                        ],
-                    }
-                ).encode(),
+                headers={
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
+                },
+                data=json.dumps({"parts": self._parts}).encode(),
             )
             with urlopen(req):
                 pass
@@ -205,8 +209,19 @@ class FalFileRepositoryV2(FalFileRepositoryBase):
     def save(self, file: FileData) -> str:
         return self._save(file, "fal-cdn")
 
-    def _save_multipart(self, file_path: str | Path, content_type: str) -> str:
-        multipart = MultipartUpload(file_path, content_type)
+    def _save_multipart(
+        self,
+        file_path: str | Path,
+        chunk_size: int | None = None,
+        content_type: str | None = None,
+        max_concurrency: int | None = None,
+    ) -> str:
+        multipart = MultipartUpload(
+            file_path,
+            chunk_size=chunk_size,
+            content_type=content_type,
+            max_concurrency=max_concurrency,
+        )
         multipart.create()
         multipart.upload()
         return multipart.complete()
@@ -216,12 +231,21 @@ class FalFileRepositoryV2(FalFileRepositoryBase):
         file_path: str | Path,
         content_type: str,
         multipart: bool | None = None,
+        multipart_threshold: int | None = None,
+        multipart_chunk_size: int | None = None,
+        multipart_max_concurrency: int | None = None,
     ) -> str:
         if multipart is None:
-            multipart = os.path.getsize(file_path) > MultipartUpload.MULTIPART_THRESHOLD
+            threshold = multipart_threshold or MultipartUpload.MULTIPART_THRESHOLD
+            multipart = os.path.getsize(file_path) > threshold
 
         if multipart:
-            return self._save_multipart(file_path, content_type=content_type)
+            return self._save_multipart(
+                file_path,
+                chunk_size=multipart_chunk_size,
+                content_type=content_type,
+                max_concurrency=multipart_max_concurrency,
+            )
 
         with open(file_path, "rb") as f:
             data = FileData(
