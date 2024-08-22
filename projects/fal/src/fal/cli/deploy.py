@@ -81,13 +81,14 @@ def _deploy(args):
 
     user = _get_user()
     host = FalServerlessHost(args.host)
-    isolated_function, app_name, app_auth = load_function_from(
+    loaded = load_function_from(
         host,
         file_path,
         func_name,
     )
-    app_name = args.app_name or app_name
-    app_auth = args.auth or app_auth or "private"
+    isolated_function = loaded.function
+    app_name = args.app_name or loaded.app_name
+    app_auth = args.auth or loaded.app_auth or "private"
     app_id = host.register(
         func=isolated_function.func,
         options=isolated_function.options,
@@ -106,12 +107,16 @@ def _deploy(args):
             "Registered a new revision for function "
             f"'{app_name}' (revision='{app_id}')."
         )
-        args.console.print(
-            f"Playground: https://fal.ai/models/{user.username}/{app_name}"
-        )
-        args.console.print(
-            f"Endpoint: https://{gateway_host}/{user.username}/{app_name}"
-        )
+        args.console.print("Playground:")
+        for endpoint in loaded.endpoints:
+            args.console.print(
+                f"\thttps://fal.ai/models/{user.username}/{app_name}{endpoint}"
+            )
+        args.console.print("Endpoints:")
+        for endpoint in loaded.endpoints:
+            args.console.print(
+                f"\thttps://{gateway_host}/{user.username}/{app_name}{endpoint}"
+            )
 
 
 def add_parser(main_subparsers, parents):

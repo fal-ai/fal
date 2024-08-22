@@ -6,7 +6,8 @@ def _run(args):
     from fal.utils import load_function_from
 
     host = FalServerlessHost(args.host)
-    isolated_function, _, _ = load_function_from(host, *args.func_ref)
+    loaded = load_function_from(host, *args.func_ref)
+    isolated_function = loaded.function
     # let our exc handlers handle UserFunctionException
     isolated_function.reraise = False
     isolated_function()
