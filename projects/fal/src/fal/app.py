@@ -205,6 +205,14 @@ class App(fal.api.BaseServable):
                 "Running apps through SDK is not implemented yet."
             )
 
+    @classmethod
+    def get_endpoints(cls) -> list[str]:
+        return [
+            signature.path
+            for _, endpoint in inspect.getmembers(cls, inspect.isfunction)
+            if (signature := getattr(endpoint, "route_signature", None))
+        ]
+
     def collect_routes(self) -> dict[RouteSignature, Callable[..., Any]]:
         return {
             signature: endpoint

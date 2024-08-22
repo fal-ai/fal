@@ -1,16 +1,26 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import fal._serialization
 from fal import App, wrap_app
 
 from .api import FalServerlessError, FalServerlessHost, IsolatedFunction
 
 
+@dataclass
+class LoadedFunction:
+    function: IsolatedFunction
+    endpoints: list[str]
+    app_name: str | None
+    app_auth: str | None
+
+
 def load_function_from(
     host: FalServerlessHost,
     file_path: str,
     function_name: str | None = None,
-) -> tuple[IsolatedFunction, str | None, str | None]:
+) -> LoadedFunction:
     import runpy
 
     module = runpy.run_path(file_path)
@@ -45,6 +55,7 @@ def load_function_from(
     fal._serialization.include_package_from_path(file_path)
 
     target = module[function_name]
+    endpoints = target.get_endpoints() or ["/"]
     if isinstance(target, type) and issubclass(target, App):
         app_name = target.app_name
         app_auth = target.app_auth
@@ -54,4 +65,4 @@ def load_function_from(
         raise FalServerlessError(
             f"Function '{function_name}' is not a fal.function or a fal.App"
         )
-    return target, app_name, app_auth
+    return LoadedFunction(target, endpoints, app_name=app_name, app_auth=app_auth)
