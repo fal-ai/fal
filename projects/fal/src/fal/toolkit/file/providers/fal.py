@@ -142,9 +142,9 @@ class MultipartUpload:
                 result = json.load(response)
                 self._upload_id = result["upload_id"]
                 self._file_url = result["file_url"]
-        except HTTPError as e:
+        except HTTPError as exc:
             raise FileUploadException(
-                f"Error initiating upload. Status {e.status}: {e.reason}"
+                f"Error initiating upload. Status {exc.status}: {exc.reason}"
             )
 
     def _upload_part(self, url: str, part_number: int) -> dict:
@@ -159,8 +159,17 @@ class MultipartUpload:
                 data=data,
             )
 
-            with urlopen(req) as resp:
-                return {"part_number": part_number, "etag": resp.headers["ETag"]}
+            try:
+                with urlopen(req) as resp:
+                    return {
+                        "part_number": part_number,
+                        "etag": resp.headers["ETag"],
+                    }
+            except HTTPError as exc:
+                raise FileUploadException(
+                    f"Error uploading part {part_number} to {url}. "
+                    f"Status {exc.status}: {exc.reason}"
+                )
 
     def upload(self) -> None:
         import concurrent.futures
@@ -184,9 +193,10 @@ class MultipartUpload:
                 self._parts.append(entry)
 
     def complete(self):
+        url = f"{self._file_url}?upload_id={self._upload_id}"
         try:
             req = Request(
-                f"{self._file_url}?upload_id={self._upload_id}",
+                url,
                 method="POST",
                 headers={
                     "Accept": "application/json",
@@ -198,7 +208,7 @@ class MultipartUpload:
                 pass
         except HTTPError as e:
             raise FileUploadException(
-                f"Error completing upload. Status {e.status}: {e.reason}"
+                f"Error completing upload {url}. Status {e.status}: {e.reason}"
             )
 
         return self._file_url
