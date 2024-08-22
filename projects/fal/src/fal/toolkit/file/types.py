@@ -38,12 +38,18 @@ class FileRepository:
         raise NotImplementedError()
 
     def save_file(
-        self, file_path: str | Path, content_type: str, multipart: bool | None = None
-    ) -> str:
+        self,
+        file_path: str | Path,
+        content_type: str,
+        multipart: bool | None = None,
+        multipart_threshold: int | None = None,
+        multipart_chunk_size: int | None = None,
+        multipart_max_concurrency: int | None = None,
+    ) -> tuple[str, FileData | None]:
         if multipart:
             raise NotImplementedError()
 
-        with open(file_path, "rb") as file:
-            data = file.read()
-        fdata = FileData(data, content_type, Path(file_path).name)
-        return self.save(fdata)
+        with open(file_path, "rb") as fobj:
+            data = FileData(fobj.read(), content_type, Path(file_path).name)
+
+        return self.save(data), data

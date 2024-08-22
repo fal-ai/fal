@@ -244,27 +244,29 @@ class FalFileRepositoryV2(FalFileRepositoryBase):
         multipart_threshold: int | None = None,
         multipart_chunk_size: int | None = None,
         multipart_max_concurrency: int | None = None,
-    ) -> str:
+    ) -> tuple[str, FileData | None]:
         if multipart is None:
             threshold = multipart_threshold or MultipartUpload.MULTIPART_THRESHOLD
             multipart = os.path.getsize(file_path) > threshold
 
         if multipart:
-            return self._save_multipart(
+            url = self._save_multipart(
                 file_path,
                 chunk_size=multipart_chunk_size,
                 content_type=content_type,
                 max_concurrency=multipart_max_concurrency,
             )
+            data = None
+        else:
+            with open(file_path, "rb") as f:
+                data = FileData(
+                    f.read(),
+                    content_type=content_type,
+                    file_name=os.path.basename(file_path),
+                )
+            url = self.save(data)
 
-        with open(file_path, "rb") as f:
-            data = FileData(
-                f.read(),
-                content_type=content_type,
-                file_name=os.path.basename(file_path),
-            )
-
-        return self.save(data)
+        return url, data
 
 
 @dataclass

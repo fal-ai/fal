@@ -163,12 +163,14 @@ class File(BaseModel):
 
         content_type = content_type or "application/octet-stream"
 
+        url, data = repo.save_file(
+            file_path,
+            content_type=content_type,
+            multipart=multipart,
+        )
         return cls(
-            url=repo.save_file(
-                file_path,
-                content_type=content_type,
-                multipart=multipart,
-            ),
+            url=url,
+            file_data=data.data if data else None,
             content_type=content_type,
             file_name=file_path.name,
             file_size=file_path.stat().st_size,
