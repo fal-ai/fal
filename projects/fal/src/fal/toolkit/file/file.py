@@ -199,7 +199,7 @@ class File(BaseModel):
                 if isinstance(fallback_repository, FileRepository)
                 else get_builtin_repository(fallback_repository)
             )
-            
+
             url, data = fallback_repo.save_file(
                 file_path,
                 content_type=content_type,
