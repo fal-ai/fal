@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Sequence
 
 
 class FalServerlessException(Exception):
@@ -40,11 +39,13 @@ class FieldException(FalServerlessException):
     status_code: int = 422
     type: str = "value_error"
 
-    def to_pydantic_format(self) -> Sequence[dict]:
-        return [
-            {
-                "loc": ["body", self.field],
-                "msg": self.message,
-                "type": self.type,
-            }
-        ]
+    def to_pydantic_format(self) -> dict[str, list[dict]]:
+        return dict(
+            detail=[
+                {
+                    "loc": ["body", self.field],
+                    "msg": self.message,
+                    "type": self.type,
+                }
+            ]
+        )
