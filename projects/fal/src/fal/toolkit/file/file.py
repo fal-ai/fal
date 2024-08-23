@@ -167,6 +167,7 @@ class File(BaseModel):
         path: str | Path,
         content_type: Optional[str] = None,
         repository: FileRepository | RepositoryId = DEFAULT_REPOSITORY,
+        multipart: bool | None = None,
         fallback_repository: Optional[
             FileRepository | RepositoryId
         ] = FALLBACK_REPOSITORY,
@@ -174,14 +175,43 @@ class File(BaseModel):
         file_path = Path(path)
         if not file_path.exists():
             raise FileNotFoundError(f"File {file_path} does not exist")
-        with open(file_path, "rb") as f:
-            data = f.read()
-        return File.from_bytes(
-            data,
-            content_type,
+
+        repo = (
+            repository
+            if isinstance(repository, FileRepository)
+            else get_builtin_repository(repository)
+        )
+
+        content_type = content_type or "application/octet-stream"
+
+        try:
+            url, data = repo.save_file(
+                file_path,
+                content_type=content_type,
+                multipart=multipart,
+            )
+        except Exception:
+            if not fallback_repository:
+                raise
+
+            fallback_repo = (
+                fallback_repository
+                if isinstance(fallback_repository, FileRepository)
+                else get_builtin_repository(fallback_repository)
+            )
+            
+            url, data = fallback_repo.save_file(
+                file_path,
+                content_type=content_type,
+                multipart=multipart,
+            )
+
+        return cls(
+            url=url,
+            file_data=data.data if data else None,
+            content_type=content_type,
             file_name=file_path.name,
-            repository=repository,
-            fallback_repository=fallback_repository,
+            file_size=file_path.stat().st_size,
         )
 
     def as_bytes(self) -> bytes:
