@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import inspect
 import json
 import os
@@ -9,7 +10,7 @@ import threading
 import time
 import typing
 from contextlib import asynccontextmanager, contextmanager
-from typing import Any, Callable, ClassVar, Literal, TypeVar
+from typing import Any, Awaitable, Callable, ClassVar, Literal, TypeVar
 
 import httpx
 from fastapi import FastAPI
@@ -271,6 +272,15 @@ class App(fal.api.BaseServable):
                     self.__class__.__name__,
                 )
             return response
+
+        @app.exception_handler(RequestCancelled)
+        async def cancelled_error_exception_handler(request, exc: RequestCancelled):
+            from fastapi.responses import JSONResponse
+
+            # A 499 status code is not an officially recognized HTTP status code,
+            # but it is sometimes used by servers to indicate that a client has closed
+            # the connection without receiving a response
+            return JSONResponse({"detail": exc.detail}, 499)
 
     def _add_extra_routes(self, app: FastAPI):
         @app.get("/health")
@@ -535,3 +545,76 @@ def realtime(
         )
 
     return marker_fn
+
+
+async def _disconnect_poller(request):
+    """
+    Poll for a disconnect.
+    If the request disconnects, stop polling and return.
+    """
+    import asyncio
+
+    try:
+        while not await request.is_disconnected():
+            print("Polling")
+            await asyncio.sleep(0.01)
+
+        #  Request disconnected, exiting poller
+    except asyncio.CancelledError:
+        #  Polling loop cancelled
+        pass
+
+
+def cancel_on_disconnect(handler):
+    """Decorator to mark a handler as cancellable on disconnect."""
+
+    if not asyncio.iscoroutinefunction(handler):
+        raise TypeError("Handler must be a coroutine function to be cancellable")
+
+    setattr(handler, "cancel_on_disconnect", True)
+    return handler
+
+
+class CancelOnDisconnect:
+    # NOTE: Taken from
+    # https://github.com/RedRoserade/fastapi-disconnect-example/blob/3e3d9cb75d9200a8e4f131acb244484543d7eeb7/app_alt.py
+    def __init__(self, request) -> None:
+        self.request = request
+
+    async def run(self, awaitable: Awaitable[EndpointT]) -> EndpointT:
+        """Run the awaitable and cancel it if the request disconnects"""
+        import asyncio
+
+        # Create two tasks, one to poll the request and check if the
+        # client disconnected, and another which wraps the awaitable
+        poller_task = asyncio.ensure_future(_disconnect_poller(self.request))
+        handler_task = asyncio.ensure_future(awaitable)
+
+        _, pending = await asyncio.wait(
+            [poller_task, handler_task], return_when=asyncio.FIRST_COMPLETED
+        )
+
+        # Cancel any outstanding tasks
+        for t in pending:
+            t.cancel()
+
+            try:
+                await t
+            except asyncio.CancelledError:
+                print(f"{t} was cancelled")
+            except Exception as exc:
+                print(f"{t} raised {exc} when being cancelled")
+
+        # This will:
+        # - Raise asyncio.CancelledError if the handler was cancelled
+        # - Return the value if it ran to completion
+        # - Raise any other stored exception, if the task raised it
+        return await handler_task
+
+
+class RequestCancelled(Exception):
+    detail: str
+
+    def __init__(self, detail: str = "Request cancelled"):
+        self.detail = detail
+        super().__init__(detail)
