@@ -330,7 +330,6 @@ class MachineRequirements(google.protobuf.message.Message):
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
     MACHINE_TYPE_FIELD_NUMBER: builtins.int
-    MACHINE_TYPES_FIELD_NUMBER: builtins.int
     KEEP_ALIVE_FIELD_NUMBER: builtins.int
     BASE_IMAGE_FIELD_NUMBER: builtins.int
     EXPOSED_PORT_FIELD_NUMBER: builtins.int
@@ -339,16 +338,16 @@ class MachineRequirements(google.protobuf.message.Message):
     MAX_MULTIPLEXING_FIELD_NUMBER: builtins.int
     MAX_CONCURRENCY_FIELD_NUMBER: builtins.int
     MIN_CONCURRENCY_FIELD_NUMBER: builtins.int
+    MACHINE_TYPES_FIELD_NUMBER: builtins.int
+    NUM_GPUS_FIELD_NUMBER: builtins.int
     machine_type: builtins.str
     """Machine type. It is not an enum because we want to be able
     to dynamically add new machine types without regenerating
     both the client and the server. Validation is done at the
     server side.
-    Also, we allow multiple machine types to be specified.
-    You can only set one of machine_type or machine_types.
+    If machine_types is set, machine_type is ignored.
+    deprecated
     """
-    @property
-    def machine_types(self) -> google.protobuf.internal.containers.RepeatedScalarFieldContainer[builtins.str]: ...
     keep_alive: builtins.int
     base_image: builtins.str
     exposed_port: builtins.int
@@ -358,11 +357,14 @@ class MachineRequirements(google.protobuf.message.Message):
     max_multiplexing: builtins.int
     max_concurrency: builtins.int
     min_concurrency: builtins.int
+    @property
+    def machine_types(self) -> google.protobuf.internal.containers.RepeatedScalarFieldContainer[builtins.str]:
+        """machine_type alternative"""
+    num_gpus: builtins.int
     def __init__(
         self,
         *,
-        machine_type: builtins.str = ...,
-        machine_types: collections.abc.Iterable[builtins.str] | None = ...,
+        machine_type: builtins.str | None = ...,
         keep_alive: builtins.int | None = ...,
         base_image: builtins.str | None = ...,
         exposed_port: builtins.int | None = ...,
@@ -371,9 +373,11 @@ class MachineRequirements(google.protobuf.message.Message):
         max_multiplexing: builtins.int | None = ...,
         max_concurrency: builtins.int | None = ...,
         min_concurrency: builtins.int | None = ...,
+        machine_types: collections.abc.Iterable[builtins.str] | None = ...,
+        num_gpus: builtins.int | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing_extensions.Literal["_base_image", b"_base_image", "_exposed_port", b"_exposed_port", "_keep_alive", b"_keep_alive", "_max_concurrency", b"_max_concurrency", "_max_multiplexing", b"_max_multiplexing", "_min_concurrency", b"_min_concurrency", "_scheduler", b"_scheduler", "_scheduler_options", b"_scheduler_options", "base_image", b"base_image", "exposed_port", b"exposed_port", "keep_alive", b"keep_alive", "max_concurrency", b"max_concurrency", "max_multiplexing", b"max_multiplexing", "min_concurrency", b"min_concurrency", "scheduler", b"scheduler", "scheduler_options", b"scheduler_options"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing_extensions.Literal["_base_image", b"_base_image", "_exposed_port", b"_exposed_port", "_keep_alive", b"_keep_alive", "_max_concurrency", b"_max_concurrency", "_max_multiplexing", b"_max_multiplexing", "_min_concurrency", b"_min_concurrency", "_scheduler", b"_scheduler", "_scheduler_options", b"_scheduler_options", "base_image", b"base_image", "exposed_port", b"exposed_port", "keep_alive", b"keep_alive", "machine_type", b"machine_type", "machine_types", b"machine_types", "max_concurrency", b"max_concurrency", "max_multiplexing", b"max_multiplexing", "min_concurrency", b"min_concurrency", "scheduler", b"scheduler", "scheduler_options", b"scheduler_options"]) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["_base_image", b"_base_image", "_exposed_port", b"_exposed_port", "_keep_alive", b"_keep_alive", "_machine_type", b"_machine_type", "_max_concurrency", b"_max_concurrency", "_max_multiplexing", b"_max_multiplexing", "_min_concurrency", b"_min_concurrency", "_num_gpus", b"_num_gpus", "_scheduler", b"_scheduler", "_scheduler_options", b"_scheduler_options", "base_image", b"base_image", "exposed_port", b"exposed_port", "keep_alive", b"keep_alive", "machine_type", b"machine_type", "max_concurrency", b"max_concurrency", "max_multiplexing", b"max_multiplexing", "min_concurrency", b"min_concurrency", "num_gpus", b"num_gpus", "scheduler", b"scheduler", "scheduler_options", b"scheduler_options"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["_base_image", b"_base_image", "_exposed_port", b"_exposed_port", "_keep_alive", b"_keep_alive", "_machine_type", b"_machine_type", "_max_concurrency", b"_max_concurrency", "_max_multiplexing", b"_max_multiplexing", "_min_concurrency", b"_min_concurrency", "_num_gpus", b"_num_gpus", "_scheduler", b"_scheduler", "_scheduler_options", b"_scheduler_options", "base_image", b"base_image", "exposed_port", b"exposed_port", "keep_alive", b"keep_alive", "machine_type", b"machine_type", "machine_types", b"machine_types", "max_concurrency", b"max_concurrency", "max_multiplexing", b"max_multiplexing", "min_concurrency", b"min_concurrency", "num_gpus", b"num_gpus", "scheduler", b"scheduler", "scheduler_options", b"scheduler_options"]) -> None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_base_image", b"_base_image"]) -> typing_extensions.Literal["base_image"] | None: ...
     @typing.overload
@@ -381,11 +385,15 @@ class MachineRequirements(google.protobuf.message.Message):
     @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_keep_alive", b"_keep_alive"]) -> typing_extensions.Literal["keep_alive"] | None: ...
     @typing.overload
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_machine_type", b"_machine_type"]) -> typing_extensions.Literal["machine_type"] | None: ...
+    @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_max_concurrency", b"_max_concurrency"]) -> typing_extensions.Literal["max_concurrency"] | None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_max_multiplexing", b"_max_multiplexing"]) -> typing_extensions.Literal["max_multiplexing"] | None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_min_concurrency", b"_min_concurrency"]) -> typing_extensions.Literal["min_concurrency"] | None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_num_gpus", b"_num_gpus"]) -> typing_extensions.Literal["num_gpus"] | None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_scheduler", b"_scheduler"]) -> typing_extensions.Literal["scheduler"] | None: ...
     @typing.overload
