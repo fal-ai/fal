@@ -389,7 +389,7 @@ def _from_grpc_hosted_run_result(
 
 @dataclass
 class MachineRequirements:
-    machine_type: str
+    machine_types: list[str]
     keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE
     base_image: str | None = None
     exposed_port: int | None = None
@@ -398,6 +398,13 @@ class MachineRequirements:
     max_concurrency: int | None = None
     max_multiplexing: int | None = None
     min_concurrency: int | None = None
+
+    def __post_init__(self):
+        if isinstance(self.machine_types, str):
+            self.machine_types = [self.machine_types]
+
+        if not self.machine_types:
+            raise ValueError("No machine type provided.")
 
 
 @dataclass
@@ -489,7 +496,7 @@ class FalServerlessConnection:
         wrapped_function = to_serialized_object(function, serialization_method)
         if machine_requirements:
             wrapped_requirements = isolate_proto.MachineRequirements(
-                machine_type=machine_requirements.machine_type,
+                machine_types=machine_requirements.machine_types,
                 keep_alive=machine_requirements.keep_alive,
                 base_image=machine_requirements.base_image,
                 exposed_port=machine_requirements.exposed_port,
@@ -579,7 +586,7 @@ class FalServerlessConnection:
         wrapped_function = to_serialized_object(function, serialization_method)
         if machine_requirements:
             wrapped_requirements = isolate_proto.MachineRequirements(
-                machine_type=machine_requirements.machine_type,
+                machine_types=machine_requirements.machine_types,
                 keep_alive=machine_requirements.keep_alive,
                 base_image=machine_requirements.base_image,
                 exposed_port=machine_requirements.exposed_port,
