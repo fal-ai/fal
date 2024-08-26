@@ -198,7 +198,7 @@ class CancellableApp(fal.App, keep_alive=300, max_concurrency=1):
         return Output(result=input.lhs + input.rhs)
 
     @fal.endpoint("/cancel")
-    async def cancel(self) -> Output:
+    async def cancel_handler(self) -> Output:
         if self.task:
             self.task.cancel()
             with suppress(BaseException):
@@ -427,9 +427,9 @@ def test_app_cancellation(test_app: str, test_cancellable_app: str):
     request_handle.cancel()
 
     # should still finish successfully and return 499
-    response = request_handle.get()
-    print(response)
-    assert response.status_code == 499
+    with pytest.raises(HTTPStatusError) as e:
+        request_handle.get()
+    assert e.value.response.status_code == 499
 
     # normal app should just ignore the cancellation
     request_handle = apps.submit(
@@ -441,7 +441,6 @@ def test_app_cancellation(test_app: str, test_cancellable_app: str):
     request_handle.cancel()
 
     response = request_handle.get()
-    assert response.status_code == 200
     assert response == {"result": 3}
 
 
