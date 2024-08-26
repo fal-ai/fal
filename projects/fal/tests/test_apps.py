@@ -201,7 +201,7 @@ class CancellableApp(fal.App, keep_alive=300, max_concurrency=1):
     async def cancel(self) -> Output:
         if self.task:
             self.task.cancel()
-            with suppress(Exception):
+            with suppress(BaseException):
                 await self.task
             self.task = None
 
