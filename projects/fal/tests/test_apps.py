@@ -336,6 +336,7 @@ def test_cancellable_app():
     app_revision = app.host.register(
         func=app.func,
         options=app.options,
+        application_auth_mode="public",
     )
     user = _get_user()
     yield f"{user.user_id}/{app_revision}"
@@ -424,9 +425,9 @@ def test_app_cancellation(test_app: str, test_cancellable_app: str):
 
     # should still finish successfully and return 499
     response = request_handle.get()
-    print(response)
     assert response.status_code == 499
 
+    # normal app should just ignore the cancellation
     request_handle = apps.submit(
         test_app, arguments={"lhs": 1, "rhs": 2, "wait_time": 2}
     )
