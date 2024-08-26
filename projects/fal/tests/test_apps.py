@@ -203,6 +203,7 @@ class CancellableApp(fal.App, keep_alive=300, max_concurrency=1):
             self.task.cancel()
             with suppress(Exception):
                 await self.task
+            self.task = None
 
         return Output(result=0)
 
@@ -427,12 +428,16 @@ def test_app_cancellation(test_app: str, test_cancellable_app: str):
 
     # should still finish successfully and return 499
     response = request_handle.get()
+    print(response)
     assert response.status_code == 499
 
     # normal app should just ignore the cancellation
     request_handle = apps.submit(
-        test_app, arguments={"lhs": 1, "rhs": 2, "wait_time": 2}
+        test_app, arguments={"lhs": 1, "rhs": 2, "wait_time": 10}
     )
+
+    # enough time for it to start
+    time.sleep(8)
     request_handle.cancel()
 
     response = request_handle.get()
