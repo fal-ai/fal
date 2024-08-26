@@ -5,9 +5,6 @@ from fal.api import FalServerlessHost, LocalHost, cached, function
 from fal.api import function as isolated  # noqa: F401
 from fal.app import (  # noqa: F401
     App,
-    CancelOnDisconnect,
-    RequestCancelled,
-    cancel_on_disconnect,
     endpoint,
     realtime,
     wrap_app,
@@ -28,9 +25,6 @@ __all__ = [
     "function",
     "cached",
     "App",
-    "CancelOnDisconnect",
-    "RequestCancelled",
-    "cancel_on_disconnect",
     "endpoint",
     "realtime",
     # "wrap_app",

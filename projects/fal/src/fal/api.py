@@ -50,7 +50,6 @@ from fal.exceptions import (
     CUDAOutOfMemoryException,
     FalServerlessException,
     FieldException,
-    RequestCancelledException,
 )
 from fal.exceptions._cuda import _is_cuda_oom_exception
 from fal.logging.isolate import IsolateLogPrinter
@@ -1009,12 +1008,6 @@ class BaseServable:
             else:
                 # If it's not a generic 404, just return the original message.
                 return JSONResponse({"detail": exc.detail}, 404)
-
-        @_app.exception_handler(RequestCancelledException)
-        async def value_error_exception_handler(
-            request: Request, exc: RequestCancelledException
-        ):
-            return JSONResponse({"detail": str(exc)}, 499)
 
         @_app.exception_handler(AppException)
         async def app_exception_handler(request: Request, exc: AppException):
