@@ -144,7 +144,10 @@ message MachineRequirements {
     // to dynamically add new machine types without regenerating
     // both the client and the server. Validation is done at the
     // server side.
+    // Also, we allow multiple machine types to be specified.
+    // You can only set one of machine_type or machine_types.
     string machine_type = 1;
+    repeated string machine_types = 11;
     optional int32 keep_alive = 2;
     optional string base_image = 3;
     optional int32 exposed_port = 4;
