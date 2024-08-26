@@ -103,7 +103,7 @@ class RequestHandle:
             _QUEUE_URL_FORMAT.format(app_id=self.app_id)
             + f"/requests/{self.request_id}/cancel"
         )
-        response = _HTTP_CLIENT.post(url, headers=self._creds.to_headers())
+        response = _HTTP_CLIENT.put(url, headers=self._creds.to_headers())
         response.raise_for_status()
 
     def iter_events(
