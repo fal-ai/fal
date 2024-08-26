@@ -684,7 +684,7 @@ def function(
     max_concurrency: int | None = None,
     # FalServerlessHost options
     metadata: dict[str, Any] | None = None,
-    machine_type: str = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
+    machine_type: str | list[str] = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
     keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
     max_multiplexing: int = FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING,
     min_concurrency: int = FAL_SERVERLESS_DEFAULT_MIN_CONCURRENCY,
@@ -709,7 +709,7 @@ def function(
     max_concurrency: int | None = None,
     # FalServerlessHost options
     metadata: dict[str, Any] | None = None,
-    machine_type: str = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
+    machine_type: str | list[str] = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
     keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
     max_multiplexing: int = FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING,
     min_concurrency: int = FAL_SERVERLESS_DEFAULT_MIN_CONCURRENCY,
@@ -784,7 +784,7 @@ def function(
     max_concurrency: int | None = None,
     # FalServerlessHost options
     metadata: dict[str, Any] | None = None,
-    machine_type: str = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
+    machine_type: str | list[str] = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
     keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
     max_multiplexing: int = FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING,
     min_concurrency: int = FAL_SERVERLESS_DEFAULT_MIN_CONCURRENCY,
@@ -814,7 +814,7 @@ def function(
     max_concurrency: int | None = None,
     # FalServerlessHost options
     metadata: dict[str, Any] | None = None,
-    machine_type: str = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
+    machine_type: str | list[str] = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
     keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
     max_multiplexing: int = FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING,
     min_concurrency: int = FAL_SERVERLESS_DEFAULT_MIN_CONCURRENCY,
@@ -838,7 +838,7 @@ def function(
     max_concurrency: int | None = None,
     # FalServerlessHost options
     metadata: dict[str, Any] | None = None,
-    machine_type: str = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
+    machine_type: str | list[str] = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
     keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
     max_multiplexing: int = FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING,
     min_concurrency: int = FAL_SERVERLESS_DEFAULT_MIN_CONCURRENCY,
@@ -862,7 +862,7 @@ def function(
     max_concurrency: int | None = None,
     # FalServerlessHost options
     metadata: dict[str, Any] | None = None,
-    machine_type: str = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
+    machine_type: str | list[str] = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
     keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
     max_multiplexing: int = FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING,
     min_concurrency: int = FAL_SERVERLESS_DEFAULT_MIN_CONCURRENCY,
