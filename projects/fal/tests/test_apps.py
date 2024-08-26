@@ -1,8 +1,9 @@
+import asyncio
 import json
 import secrets
 import subprocess
 import time
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from datetime import datetime
 from typing import Generator
 
@@ -14,7 +15,7 @@ from fal import apps
 from fal.app import AppClient
 from fal.cli.deploy import _get_user
 from fal.container import ContainerImage
-from fal.exceptions import AppException, FieldException
+from fal.exceptions import AppException, FieldException, RequestCancelledException
 from fal.exceptions._cuda import _CUDA_OOM_MESSAGE, _CUDA_OOM_STATUS_CODE
 from fal.rest_client import REST_CLIENT
 from fal.workflows import Workflow
@@ -177,6 +178,36 @@ class ExceptionApp(fal.App, keep_alive=300, max_concurrency=1):
         raise RuntimeError("CUDA out of memory")
 
 
+class CancellableApp(fal.App, keep_alive=300, max_concurrency=1):
+    task = None
+
+    @fal.endpoint("/")
+    async def sleep(self, input: Input) -> Output:
+        self.task = asyncio.create_task(asyncio.sleep(input.wait_time))
+        try:
+            await self.task
+        except asyncio.CancelledError:
+            print("Task was cancelled")
+            if not self.task.done():
+                self.task.cancel()
+                with suppress(Exception):
+                    await self.task
+
+            raise RequestCancelledException("Request cancelled by the client.")
+
+        return Output(result=input.lhs + input.rhs)
+
+    @fal.endpoint("/cancel")
+    async def cancel_handler(self) -> Output:
+        if self.task:
+            self.task.cancel()
+            with suppress(BaseException):
+                await self.task
+            self.task = None
+
+        return Output(result=0)
+
+
 class RTInput(BaseModel):
     prompt: str
 
@@ -299,6 +330,20 @@ def test_stateful_app():
 
 
 @pytest.fixture(scope="module")
+def test_cancellable_app():
+    # Create a temporary app, register it, and return the ID of it.
+
+    app = fal.wrap_app(CancellableApp)
+    app_revision = app.host.register(
+        func=app.func,
+        options=app.options,
+        application_auth_mode="public",
+    )
+    user = _get_user()
+    yield f"{user.user_id}/{app_revision}"
+
+
+@pytest.fixture(scope="module")
 def test_exception_app():
     # Create a temporary app, register it, and return the ID of it.
     with AppClient.connect(ExceptionApp) as client:
@@ -371,6 +416,32 @@ def test_stateful_app_client(test_stateful_app: str):
 
     response = apps.run(test_stateful_app, arguments={"value": 2}, path="/decrement")
     assert response["result"] == 0
+
+
+def test_app_cancellation(test_app: str, test_cancellable_app: str):
+    request_handle = apps.submit(
+        test_cancellable_app, arguments={"lhs": 1, "rhs": 2, "wait_time": 10}
+    )
+    # enough time for it to start
+    time.sleep(8)
+    request_handle.cancel()
+
+    # should still finish successfully and return 499
+    with pytest.raises(HTTPStatusError) as e:
+        request_handle.get()
+    assert e.value.response.status_code == 499
+
+    # normal app should just ignore the cancellation
+    request_handle = apps.submit(
+        test_app, arguments={"lhs": 1, "rhs": 2, "wait_time": 10}
+    )
+
+    # enough time for it to start
+    time.sleep(8)
+    request_handle.cancel()
+
+    response = request_handle.get()
+    assert response == {"result": 3}
 
 
 @pytest.mark.flaky(max_runs=3)

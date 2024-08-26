@@ -17,6 +17,7 @@ from fastapi import FastAPI
 import fal.api
 from fal._serialization import include_modules_from
 from fal.api import RouteSignature
+from fal.exceptions import RequestCancelledException
 from fal.logging import get_logger
 from fal.toolkit.file.providers import fal as fal_provider_module
 
@@ -271,6 +272,17 @@ class App(fal.api.BaseServable):
                     self.__class__.__name__,
                 )
             return response
+
+        @app.exception_handler(RequestCancelledException)
+        async def value_error_exception_handler(
+            request, exc: RequestCancelledException
+        ):
+            from fastapi.responses import JSONResponse
+
+            # A 499 status code is not an officially recognized HTTP status code,
+            # but it is sometimes used by servers to indicate that a client has closed
+            # the connection without receiving a response
+            return JSONResponse({"detail": str(exc)}, 499)
 
     def _add_extra_routes(self, app: FastAPI):
         @app.get("/health")
