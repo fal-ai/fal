@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import inspect
 import os
 import sys
@@ -1075,6 +1074,8 @@ class BaseServable:
         return self._build_app().openapi()
 
     def serve(self) -> None:
+        import asyncio
+
         from starlette_exporter import handle_metrics
         from uvicorn import Config
 
