@@ -56,6 +56,7 @@ dependencies = [
     "pyjwt[crypto]>=2.8.0,<3",
     "uvicorn>=0.29.0,<1",
     "cookiecutter",
+    "tomli"
 ]
 
 [project.optional-dependencies]
