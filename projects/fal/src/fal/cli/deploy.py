@@ -3,8 +3,7 @@ from collections import namedtuple
 from pathlib import Path
 from typing import Optional, Union
 
-from fal.files import find_pyproject_toml, parse_pyproject_toml
-
+from ._utils import get_app_data_from_toml, is_app_name
 from .parser import FalClientParser, RefAction
 
 User = namedtuple("User", ["user_id", "username"])
@@ -61,32 +60,6 @@ def _get_user() -> User:
         return User(user_id=user_id, username=user_details_response.parsed.nickname)
     except Exception as e:
         raise FalServerlessError(f"Could not parse the user data: {e}")
-
-
-def _deploy_from_toml(app_name, args):
-    toml_path = find_pyproject_toml()
-
-    if toml_path is None:
-        raise ValueError("No pyproject.toml file found.")
-
-    fal_data = parse_pyproject_toml(toml_path)
-    apps = fal_data.get("apps", {})
-
-    try:
-        app_data = apps[app_name]
-    except KeyError:
-        raise ValueError(f"App {app_name} not found in pyproject.toml")
-
-    try:
-        app_ref = app_data["ref"]
-    except KeyError:
-        raise ValueError(f"App {app_name} does not have a ref key in pyproject.toml")
-
-    app_auth = app_data.get("auth", "private")
-
-    file_path, func_name = RefAction.split_ref(app_ref)
-
-    _deploy_from_reference((file_path, func_name), app_name, app_auth, args)
 
 
 def _deploy_from_reference(
@@ -150,24 +123,24 @@ def _deploy_from_reference(
             )
 
 
-def _is_app_name(app_ref):
-    is_single_file = app_ref[1] is None
-    is_python_file = app_ref[0].endswith(".py")
-
-    return is_single_file and not is_python_file
-
-
 def _deploy(args):
-    if _is_app_name(args.app_ref):
-        app_name = args.app_ref[0]
-
+    # my-app
+    if is_app_name(args.app_ref):
         # we do not allow --app-name and --auth to be used with app name
         if args.app_name or args.auth:
             raise ValueError("Cannot use --app-name or --auth with app name reference.")
 
-        _deploy_from_toml(app_name, args)
+        app_name = args.app_ref[0]
+        app_ref, app_auth = get_app_data_from_toml(app_name)
+        file_path, func_name = RefAction.split_ref(app_ref)
+
+    # path/to/myfile.py::MyApp
     else:
-        _deploy_from_reference(args.app_ref, args.app_name, args.auth, args)
+        file_path, func_name = args.app_ref
+        app_name = args.app_name
+        app_auth = args.auth
+
+    _deploy_from_reference((file_path, func_name), app_name, app_auth, args)
 
 
 def add_parser(main_subparsers, parents):
