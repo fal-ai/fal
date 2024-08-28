@@ -112,19 +112,20 @@ def _deploy_from_reference(
 
     user = _get_user()
     host = FalServerlessHost(args.host)
-    loaded_function = load_function_from(
+    loaded = load_function_from(
         host,
         file_path,  # type: ignore
         func_name,  # type: ignore
     )
-    app_name = app_name or loaded_function.app_name  # type: ignore
-    app_auth = auth or loaded_function.app_auth or "private"
+    isolated_function = loaded.function
+    app_name = app_name or loaded.app_name  # type: ignore
+    app_auth = auth or loaded.app_auth or "private"
     app_id = host.register(
-        func=loaded_function.function.func,
-        options=loaded_function.function.options,
+        func=isolated_function.func,
+        options=isolated_function.options,
         application_name=app_name,
         application_auth_mode=app_auth,
-        metadata=loaded_function.function.options.host.get("metadata", {}),
+        metadata=isolated_function.options.host.get("metadata", {}),
     )
 
     if app_id:
@@ -138,12 +139,12 @@ def _deploy_from_reference(
             f"'{app_name}' (revision='{app_id}')."
         )
         args.console.print("Playground:")
-        for endpoint in loaded_function.endpoints:
+        for endpoint in loaded.endpoints:
             args.console.print(
                 f"\thttps://fal.ai/models/{user.username}/{app_name}{endpoint}"
             )
         args.console.print("Endpoints:")
-        for endpoint in loaded_function.endpoints:
+        for endpoint in loaded.endpoints:
             args.console.print(
                 f"\thttps://{gateway_host}/{user.username}/{app_name}{endpoint}"
             )
