@@ -112,19 +112,19 @@ def _deploy_from_reference(
 
     user = _get_user()
     host = FalServerlessHost(args.host)
-    isolated_function, guessed_app_name, app_auth = load_function_from(
+    loaded_function = load_function_from(
         host,
         file_path,  # type: ignore
         func_name,  # type: ignore
     )
-    app_name = app_name or guessed_app_name  # type: ignore
-    app_auth = auth or app_auth or "private"
+    app_name = app_name or loaded_function.app_name  # type: ignore
+    app_auth = auth or loaded_function.app_auth or "private"
     app_id = host.register(
-        func=isolated_function.func,
-        options=isolated_function.options,
+        func=loaded_function.function.func,
+        options=loaded_function.function.options,
         application_name=app_name,
         application_auth_mode=app_auth,
-        metadata=isolated_function.options.host.get("metadata", {}),
+        metadata=loaded_function.function.options.host.get("metadata", {}),
     )
 
     if app_id:
@@ -137,12 +137,16 @@ def _deploy_from_reference(
             "Registered a new revision for function "
             f"'{app_name}' (revision='{app_id}')."
         )
-        args.console.print(
-            f"Playground: https://fal.ai/models/{user.username}/{app_name}"
-        )
-        args.console.print(
-            f"Endpoint: https://{gateway_host}/{user.username}/{app_name}"
-        )
+        args.console.print("Playground:")
+        for endpoint in loaded_function.endpoints:
+            args.console.print(
+                f"\thttps://fal.ai/models/{user.username}/{app_name}{endpoint}"
+            )
+        args.console.print("Endpoints:")
+        for endpoint in loaded_function.endpoints:
+            args.console.print(
+                f"\thttps://{gateway_host}/{user.username}/{app_name}{endpoint}"
+            )
 
 
 def _is_app_name(app_ref):
