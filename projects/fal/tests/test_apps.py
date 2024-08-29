@@ -54,7 +54,7 @@ def git_revision_short_hash() -> str:
 
 @fal.function(
     keep_alive=60,
-    machine_type=["S", "M"],
+    machine_types=["S", "M"],
     serve=True,
     max_concurrency=1,
     requirements=[f"pydantic=={pydantic_version}"],
