@@ -275,6 +275,33 @@ class KeyScope(enum.Enum):
             raise ValueError(f"Unknown KeyScope: {proto}")
 
 
+class DeploymentStrategy(enum.Enum):
+    RECREATE = "recreate"
+    ROLLING = "rolling"
+
+    @staticmethod
+    def from_proto(
+        proto: isolate_proto.DeploymentStrategy.ValueType | None,
+    ) -> DeploymentStrategy:
+        if proto is None:
+            return DeploymentStrategy.RECREATE
+
+        if proto is isolate_proto.DeploymentStrategy.RECREATE:
+            return DeploymentStrategy.RECREATE
+        elif proto is isolate_proto.DeploymentStrategy.ROLLING:
+            return DeploymentStrategy.ROLLING
+        else:
+            raise ValueError(f"Unknown DeploymentStrategy: {proto}")
+
+    def to_proto(self) -> isolate_proto.DeploymentStrategy.ValueType:
+        if self is DeploymentStrategy.RECREATE:
+            return isolate_proto.DeploymentStrategy.RECREATE
+        elif self is DeploymentStrategy.ROLLING:
+            return isolate_proto.DeploymentStrategy.ROLLING
+        else:
+            raise ValueError(f"Unknown DeploymentStrategy: {self}")
+
+
 @from_grpc.register(isolate_proto.ApplicationInfo)
 def _from_grpc_application_info(
     message: isolate_proto.ApplicationInfo,
@@ -457,6 +484,7 @@ class FalServerlessConnection:
         serialization_method: str = _DEFAULT_SERIALIZATION_METHOD,
         machine_requirements: MachineRequirements | None = None,
         metadata: dict[str, Any] | None = None,
+        deployment_strategy: Literal["recreate", "rolling"] = "recreate",
     ) -> Iterator[isolate_proto.RegisterApplicationResult]:
         wrapped_function = to_serialized_object(function, serialization_method)
         if machine_requirements:
@@ -488,6 +516,10 @@ class FalServerlessConnection:
             struct_metadata = isolate_proto.Struct()
             struct_metadata.update(metadata)
 
+        deployment_strategy_proto = DeploymentStrategy[
+            deployment_strategy.upper()
+        ].to_proto()
+
         request = isolate_proto.RegisterApplicationRequest(
             function=wrapped_function,
             environments=environments,
@@ -495,6 +527,7 @@ class FalServerlessConnection:
             application_name=application_name,
             auth_mode=auth_mode,
             metadata=struct_metadata,
+            deployment_strategy=deployment_strategy_proto,
         )
         for partial_result in self.stub.RegisterApplication(request):
             yield from_grpc(partial_result)
