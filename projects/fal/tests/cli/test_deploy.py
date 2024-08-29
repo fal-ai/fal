@@ -40,8 +40,8 @@ def mock_args(
     return args
 
 
-@patch("fal.cli.deploy.find_pyproject_toml", return_value="pyproject.toml")
-@patch("fal.cli.deploy.parse_pyproject_toml")
+@patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
 @patch("fal.cli.deploy._deploy_from_reference")
 def test_deploy_with_toml_success(
     mock_deploy_ref, mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml
@@ -59,8 +59,8 @@ def test_deploy_with_toml_success(
     )
 
 
-@patch("fal.cli.deploy.find_pyproject_toml", return_value="pyproject.toml")
-@patch("fal.cli.deploy.parse_pyproject_toml")
+@patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
 @patch("fal.cli.deploy._deploy_from_reference")
 def test_deploy_with_toml_no_auth(
     mock_deploy_ref, mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml
@@ -78,8 +78,8 @@ def test_deploy_with_toml_no_auth(
     )
 
 
-@patch("fal.cli.deploy.find_pyproject_toml", return_value="pyproject.toml")
-@patch("fal.cli.deploy.parse_pyproject_toml")
+@patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
 @patch("fal.cli.deploy._deploy_from_reference")
 def test_deploy_with_toml_app_not_found(
     mock_deploy_ref, mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml
@@ -96,8 +96,8 @@ def test_deploy_with_toml_app_not_found(
         _deploy(args)
 
 
-@patch("fal.cli.deploy.find_pyproject_toml", return_value="pyproject.toml")
-@patch("fal.cli.deploy.parse_pyproject_toml")
+@patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
 @patch("fal.cli.deploy._deploy_from_reference")
 def test_deploy_with_toml_missing_ref_key(
     mock_deploy_ref, mock_parse_toml, mock_find_toml
@@ -120,7 +120,7 @@ def test_deploy_with_toml_missing_ref_key(
         _deploy(args)
 
 
-@patch("fal.cli.deploy.find_pyproject_toml", return_value=None)
+@patch("fal.cli._utils.find_pyproject_toml", return_value=None)
 def test_deploy_with_toml_file_not_found(mock_find_toml):
     args = mock_args(app_ref=("my-app", None))
 
@@ -129,8 +129,8 @@ def test_deploy_with_toml_file_not_found(mock_find_toml):
         _deploy(args)
 
 
-@patch("fal.cli.deploy.find_pyproject_toml", return_value="pyproject.toml")
-@patch("fal.cli.deploy.parse_pyproject_toml")
+@patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
 def test_deploy_with_toml_only_app_name_is_provided(
     mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml
 ):
