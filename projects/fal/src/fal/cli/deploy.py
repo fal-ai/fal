@@ -93,12 +93,15 @@ def _deploy_from_reference(
     isolated_function = loaded.function
     app_name = app_name or loaded.app_name  # type: ignore
     app_auth = auth or loaded.app_auth or "private"
+    deployment_strategy = args.strategy or "default"
+
     app_id = host.register(
         func=isolated_function.func,
         options=isolated_function.options,
         application_name=app_name,
         application_auth_mode=app_auth,
         metadata=isolated_function.options.host.get("metadata", {}),
+        deployment_strategy=deployment_strategy,
     )
 
     if app_id:
@@ -198,6 +201,12 @@ def add_parser(main_subparsers, parents):
         "--auth",
         type=valid_auth_option,
         help="Application authentication mode (private, public).",
+    )
+    parser.add_argument(
+        "--strategy",
+        choices=["default", "rolling"],
+        help="Deployment strategy.",
+        default="default",
     )
 
     parser.set_defaults(func=_deploy)
