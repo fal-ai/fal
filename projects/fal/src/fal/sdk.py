@@ -516,9 +516,6 @@ class FalServerlessConnection:
             struct_metadata = isolate_proto.Struct()
             struct_metadata.update(metadata)
 
-        if deployment_strategy == "default":
-            deployment_strategy = "recreate"
-
         deployment_strategy_proto = DeploymentStrategy[
             deployment_strategy.upper()
         ].to_proto()
