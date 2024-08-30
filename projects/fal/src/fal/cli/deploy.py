@@ -1,7 +1,7 @@
 import argparse
 from collections import namedtuple
 from pathlib import Path
-from typing import Optional, Union
+from typing import Literal, Optional, Union
 
 from ._utils import get_app_data_from_toml, is_app_name
 from .parser import FalClientParser, RefAction
@@ -63,7 +63,10 @@ def _get_user() -> User:
 
 
 def _deploy_from_reference(
-    app_ref: tuple[Optional[Union[Path, str]], ...], app_name: str, auth: str, args
+    app_ref: tuple[Optional[Union[Path, str]], ...],
+    app_name: str,
+    auth: Literal["public", "shared", "private"],
+    args,
 ):
     from fal.api import FalServerlessError, FalServerlessHost
     from fal.utils import load_function_from
@@ -93,7 +96,7 @@ def _deploy_from_reference(
     isolated_function = loaded.function
     app_name = app_name or loaded.app_name  # type: ignore
     app_auth = auth or loaded.app_auth or "private"
-    deployment_strategy = args.strategy or "default"
+    deployment_strategy = args.strategy or "recreate"
 
     app_id = host.register(
         func=isolated_function.func,
@@ -204,9 +207,9 @@ def add_parser(main_subparsers, parents):
     )
     parser.add_argument(
         "--strategy",
-        choices=["default", "rolling"],
+        choices=["recreate", "rolling"],
         help="Deployment strategy.",
-        default="default",
+        default="recreate",
     )
 
     parser.set_defaults(func=_deploy)
