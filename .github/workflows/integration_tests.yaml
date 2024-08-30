@@ -46,4 +46,4 @@ jobs:
           FAL_HOST: api.${{ vars.FAL_CLOUD_INTEGRATION_TEST_HOST }}
         timeout-minutes: 30
         run: |
-          pytest -n auto -vv projects/fal/tests
+          pytest -n auto -vv --durations=0 projects/fal/tests
