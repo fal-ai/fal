@@ -55,10 +55,11 @@ def load_function_from(
     fal._serialization.include_package_from_path(file_path)
 
     target = module[function_name]
-    endpoints = target.get_endpoints() or ["/"]
+    endpoints = ["/"]
     if isinstance(target, type) and issubclass(target, App):
         app_name = target.app_name
         app_auth = target.app_auth
+        endpoints = target.get_endpoints() or ["/"]
         target = wrap_app(target, host=host)
 
     if not isinstance(target, IsolatedFunction):
