@@ -44,5 +44,6 @@ jobs:
         env:
           FAL_KEY: ${{ secrets.FAL_CLOUD_KEY_ID }}:${{ secrets.FAL_CLOUD_KEY_SECRET }}
           FAL_HOST: api.${{ vars.FAL_CLOUD_INTEGRATION_TEST_HOST }}
+        timeout-minutes: 30
         run: |
           pytest -n auto -vv projects/fal/tests
