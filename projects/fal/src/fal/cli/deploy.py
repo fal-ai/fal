@@ -1,7 +1,7 @@
 import argparse
 from collections import namedtuple
 from pathlib import Path
-from typing import Literal, Optional, Union
+from typing import Literal, Optional, Tuple, Union
 
 from ._utils import get_app_data_from_toml, is_app_name
 from .parser import FalClientParser, RefAction
@@ -63,7 +63,7 @@ def _get_user() -> User:
 
 
 def _deploy_from_reference(
-    app_ref: tuple[Optional[Union[Path, str]], ...],
+    app_ref: Tuple[Optional[Union[Path, str]], ...],
     app_name: str,
     auth: Literal["public", "shared", "private"],
     args,
