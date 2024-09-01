@@ -108,7 +108,7 @@ def depends(data: JSONType) -> set[str]:
 
 @dataclass
 class Context:
-    vars: dict[str, JSONType]
+    vars: Dict[str, JSONType]
 
     def hydrate(self, input: JSONType) -> JSONType:
         if isinstance(input, dict):
@@ -197,7 +197,7 @@ class Node:
     depends: set[str]
 
     @classmethod
-    def from_json(cls, data: dict[str, Any]) -> Node:
+    def from_json(cls, data: Dict[str, Any]) -> Node:
         type = data.pop("type")
         if type == "display":
             return Display.from_json(data)
@@ -206,7 +206,7 @@ class Node:
         else:
             raise WorkflowSyntaxError(f"Invalid node type: {type}")
 
-    def to_json(self) -> dict[str, Any]:
+    def to_json(self) -> Dict[str, Any]:
         raise NotImplementedError
 
     def execute(self, context: Context) -> JSONType:
@@ -215,17 +215,17 @@ class Node:
 
 @dataclass
 class Display(Node):
-    fields: list[Leaf]
+    fields: List[Leaf]
 
     @classmethod
-    def from_json(cls, data: dict[str, Any]) -> Display:
+    def from_json(cls, data: Dict[str, Any]) -> Display:
         return cls(
             id=data["id"],
             depends=set(data["depends"]),
             fields=import_workflow_json(data["fields"]),  # type: ignore
         )
 
-    def to_json(self) -> dict[str, Any]:
+    def to_json(self) -> Dict[str, Any]:
         return {
             "type": "display",
             "id": self.id,
@@ -247,7 +247,7 @@ class Run(Node):
     input: JSONType
 
     @classmethod
-    def from_json(cls, data: dict[str, Any]) -> Run:
+    def from_json(cls, data: Dict[str, Any]) -> Run:
         return cls(
             id=data["id"],
             depends=set(data["depends"]),
@@ -260,7 +260,7 @@ class Run(Node):
         assert isinstance(input, dict)
         return cast(JSONType, fal.apps.run(self.app, input))
 
-    def to_json(self) -> dict[str, Any]:
+    def to_json(self) -> Dict[str, Any]:
         return {
             "type": "run",
             "id": self.id,
@@ -275,12 +275,12 @@ class Workflow:
     name: str
     input_schema: SchemaType
     output_schema: SchemaType
-    nodes: dict[str, Node] = field(default_factory=dict)
-    output: dict[str, Any] | None = None
+    nodes: Dict[str, Node] = field(default_factory=dict)
+    output: Dict[str, Any] | None = None
     _app_counter: Counter = field(default_factory=Counter)
 
     @classmethod
-    def from_json(cls, data: dict[str, Any]) -> Workflow:
+    def from_json(cls, data: Dict[str, Any]) -> Workflow:
         data = import_workflow_json(data)  # type: ignore
         return cls(
             name=data["name"],
@@ -347,7 +347,7 @@ class Workflow:
     def input(self) -> ReferenceLeaf:
         return ReferenceLeaf(INPUT_VARIABLE_NAME)
 
-    def to_json(self) -> dict[str, JSONType]:
+    def to_json(self) -> Dict[str, JSONType]:
         if not self.output:
             raise WorkflowSyntaxError(
                 "Can't serialize the workflow before the output is set."
