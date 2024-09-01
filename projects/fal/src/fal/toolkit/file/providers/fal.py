@@ -68,7 +68,7 @@ class FalFileRepositoryBase(FileRepository):
             return result["file_url"]
         except HTTPError as e:
             raise FileUploadException(
-                f"Error initiating upload. Status {e.status}: {e.reason}"
+                f"Error initiating upload. Status {e.code}: {e.reason}"
             )
 
     def _upload_file(self, upload_url: str, file: FileData):
@@ -144,7 +144,7 @@ class MultipartUpload:
                 self._file_url = result["file_url"]
         except HTTPError as exc:
             raise FileUploadException(
-                f"Error initiating upload. Status {exc.status}: {exc.reason}"
+                f"Error initiating upload. Status {exc.code}: {exc.reason}"
             )
 
     def _upload_part(self, url: str, part_number: int) -> dict:
@@ -168,7 +168,7 @@ class MultipartUpload:
             except HTTPError as exc:
                 raise FileUploadException(
                     f"Error uploading part {part_number} to {url}. "
-                    f"Status {exc.status}: {exc.reason}"
+                    f"Status {exc.code}: {exc.reason}"
                 )
 
     def upload(self) -> None:
@@ -208,7 +208,7 @@ class MultipartUpload:
                 pass
         except HTTPError as e:
             raise FileUploadException(
-                f"Error completing upload {url}. Status {e.status}: {e.reason}"
+                f"Error completing upload {url}. Status {e.code}: {e.reason}"
             )
 
         return self._file_url
@@ -300,7 +300,7 @@ class FalCDNFileRepository(FileRepository):
                 result = json.load(response)
         except HTTPError as e:
             raise FileUploadException(
-                f"Error initiating upload. Status {e.status}: {e.reason}"
+                f"Error initiating upload. Status {e.code}: {e.reason}"
             )
 
         access_url = result["access_url"]

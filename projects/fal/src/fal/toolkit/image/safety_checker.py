@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Dict, List
 
 import fal
 
@@ -27,8 +27,8 @@ def load_safety_checker():
 
 
 def run_safety_checker(
-    pil_images: list[object],
-) -> list[bool]:
+    pil_images: List[object],
+) -> List[bool]:
     import numpy as np
     import torch
 
@@ -46,7 +46,7 @@ def run_safety_checker(
     return has_nsfw_concept
 
 
-def run_safety_checker_v2(pil_images: list, nsfw_threshold: float = 0.5) -> list[bool]:
+def run_safety_checker_v2(pil_images: List, nsfw_threshold: float = 0.5) -> List[bool]:
     import torch
 
     model, processor = get_model()
@@ -83,11 +83,11 @@ def run_safety_checker_v2(pil_images: list, nsfw_threshold: float = 0.5) -> list
 
 
 def postprocess_images(
-    pil_images: list[object],
+    pil_images: List[object],
     enable_safety_checker: bool = True,
     safety_checker_version: int = 2,
-) -> dict[str, Any]:
-    outputs: dict[str, list[Any]] = {
+) -> Dict[str, Any]:
+    outputs: Dict[str, List[Any]] = {
         "images": pil_images,
     }
 
