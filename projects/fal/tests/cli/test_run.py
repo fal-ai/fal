@@ -1,3 +1,4 @@
+from typing import Tuple
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -33,7 +34,7 @@ def mocked_fal_serverless_host(host):
     return mock
 
 
-def mock_args(host, func_ref: tuple[str]):
+def mock_args(host, func_ref: Tuple[str]):
     args = MagicMock()
     args.host = host
     args.func_ref = func_ref
