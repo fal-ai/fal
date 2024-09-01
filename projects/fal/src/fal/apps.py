@@ -9,6 +9,7 @@ from typing import Any, Iterator
 import httpx
 
 from fal import flags
+from fal._compat import removeprefix
 from fal.sdk import Credentials, get_default_credentials
 
 _QUEUE_URL_FORMAT = f"https://queue.{flags.FAL_RUN_HOST}/{{app_id}}"
@@ -173,7 +174,7 @@ def submit(app_id: str, arguments: dict[str, Any], *, path: str = "") -> Request
     app_id = _backwards_compatible_app_id(app_id)
     url = _QUEUE_URL_FORMAT.format(app_id=app_id)
     if path:
-        url += "/" + path.lstrip("/")
+        url += "/" + removeprefix(path, "/")
 
     creds = get_default_credentials()
 
@@ -235,7 +236,7 @@ def _connect(app_id: str, *, path: str = "/realtime") -> Iterator[_RealtimeConne
     app_id = _backwards_compatible_app_id(app_id)
     url = _REALTIME_URL_FORMAT.format(app_id=app_id)
     if path:
-        url += "/" + path.lstrip("/")
+        url += "/" + removeprefix(path, "/")
 
     creds = get_default_credentials()
 

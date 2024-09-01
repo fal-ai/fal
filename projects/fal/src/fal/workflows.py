@@ -18,6 +18,7 @@ from rich.syntax import Syntax
 
 import fal
 from fal import flags
+from fal._compat import removeprefix
 from fal.exceptions import FalServerlessException
 from fal.rest_client import REST_CLIENT
 
@@ -50,7 +51,7 @@ def parse_leaf(raw_leaf: str) -> Leaf:
             f"Invalid leaf: {raw_leaf} (must start with a reference)"
         )
 
-    leaf: Leaf = ReferenceLeaf(reference.lstrip(VARIABLE_PREFIX))
+    leaf: Leaf = ReferenceLeaf(removeprefix(reference, VARIABLE_PREFIX))
     for raw_part in raw_parts:
         if raw_part.isdigit():
             leaf = IndexLeaf(leaf, int(raw_part))
