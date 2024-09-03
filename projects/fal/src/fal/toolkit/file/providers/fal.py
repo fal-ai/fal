@@ -282,35 +282,32 @@ class InMemoryRepository(FileRepository):
 
 @dataclass
 class FalCDNFileRepository(FileRepository):
+    @retry(max_retries=3, base_delay=1, backoff_type="exponential", jitter=True)
     def save(
         self,
         file: FileData,
     ) -> str:
-        @retry(max_retries=3, base_delay=1, backoff_type="exponential", jitter=True)
-        def _save():
-            headers = {
-                **self.auth_headers,
-                "Accept": "application/json",
-                "Content-Type": file.content_type,
-                "X-Fal-File-Name": file.file_name,
-                "X-Fal-Object-Lifecycle-Preference": json.dumps(
-                    dataclasses.asdict(GLOBAL_LIFECYCLE_PREFERENCE)
-                ),
-            }
-            url = os.getenv("FAL_CDN_HOST", _FAL_CDN) + "/files/upload"
-            request = Request(url, headers=headers, method="POST", data=file.data)
-            try:
-                with urlopen(request) as response:
-                    result = json.load(response)
-            except HTTPError as e:
-                raise FileUploadException(
-                    f"Error initiating upload. Status {e.status}: {e.reason}"
-                )
+        headers = {
+            **self.auth_headers,
+            "Accept": "application/json",
+            "Content-Type": file.content_type,
+            "X-Fal-File-Name": file.file_name,
+            "X-Fal-Object-Lifecycle-Preference": json.dumps(
+                dataclasses.asdict(GLOBAL_LIFECYCLE_PREFERENCE)
+            ),
+        }
+        url = os.getenv("FAL_CDN_HOST", _FAL_CDN) + "/files/upload"
+        request = Request(url, headers=headers, method="POST", data=file.data)
+        try:
+            with urlopen(request) as response:
+                result = json.load(response)
+        except HTTPError as e:
+            raise FileUploadException(
+                f"Error initiating upload. Status {e.status}: {e.reason}"
+            )
 
-            access_url = result["access_url"]
-            return access_url
-
-        return _save()
+        access_url = result["access_url"]
+        return access_url
 
     @property
     def auth_headers(self) -> dict[str, str]:
