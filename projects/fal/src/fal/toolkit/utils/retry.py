@@ -36,7 +36,6 @@ def retry(
                         delay *= random.uniform(0.5, 1.5)
 
                     time.sleep(delay)
-                    print(f"Sleeping for {delay} seconds")
 
         return wrapper
 
