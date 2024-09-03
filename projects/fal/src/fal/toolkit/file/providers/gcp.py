@@ -8,7 +8,7 @@ import uuid
 from dataclasses import dataclass
 
 from fal.toolkit.file.types import FileData, FileRepository
-from tenacity import retry, stop_after_attempt, wait_exponential
+from fal.toolkit.utils.retry import retry
 
 DEFAULT_URL_TIMEOUT = 60 * 15  # 15 minutes
 
@@ -51,11 +51,7 @@ class GoogleStorageRepository(FileRepository):
 
         return self._bucket
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=1, max=10),
-        reraise=True,
-    )
+    @retry(max_retries=3, base_delay=1, backoff_type="exponential", jitter=True)
     def save(self, data: FileData) -> str:
         destination_path = posixpath.join(
             self.folder,

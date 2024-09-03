@@ -13,7 +13,7 @@ from urllib.request import Request, urlopen
 from fal.auth import key_credentials
 from fal.toolkit.exceptions import FileUploadException
 from fal.toolkit.file.types import FileData, FileRepository
-from tenacity import retry, stop_after_attempt, wait_exponential
+from fal.toolkit.utils.retry import retry
 
 _FAL_CDN = "https://fal.media"
 
@@ -30,52 +30,49 @@ GLOBAL_LIFECYCLE_PREFERENCE = ObjectLifecyclePreference(
 
 @dataclass
 class FalFileRepositoryBase(FileRepository):
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=1, max=10),
-        reraise=True,
-    )
     def _save(self, file: FileData, storage_type: str) -> str:
-        key_creds = key_credentials()
-        if not key_creds:
-            raise FileUploadException("FAL_KEY must be set")
+        @retry(max_retries=3, base_delay=1, backoff_type="exponential", jitter=True)
+        def __save():
+            key_creds = key_credentials()
+            if not key_creds:
+                raise FileUploadException("FAL_KEY must be set")
 
-        key_id, key_secret = key_creds
-        headers = {
-            "Authorization": f"Key {key_id}:{key_secret}",
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-        }
+            key_id, key_secret = key_creds
+            headers = {
+                "Authorization": f"Key {key_id}:{key_secret}",
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+            }
 
-        grpc_host = os.environ.get("FAL_HOST", "api.alpha.fal.ai")
-        rest_host = grpc_host.replace("api", "rest", 1)
-        storage_url = (
-            f"https://{rest_host}/storage/upload/initiate?storage_type={storage_type}"
-        )
+            grpc_host = os.environ.get("FAL_HOST", "api.alpha.fal.ai")
+            rest_host = grpc_host.replace("api", "rest", 1)
+            storage_url = f"https://{rest_host}/storage/upload/initiate?storage_type={storage_type}"
 
-        try:
-            req = Request(
-                storage_url,
-                data=json.dumps(
-                    {
-                        "file_name": file.file_name,
-                        "content_type": file.content_type,
-                    }
-                ).encode(),
-                headers=headers,
-                method="POST",
-            )
-            with urlopen(req) as response:
-                result = json.load(response)
+            try:
+                req = Request(
+                    storage_url,
+                    data=json.dumps(
+                        {
+                            "file_name": file.file_name,
+                            "content_type": file.content_type,
+                        }
+                    ).encode(),
+                    headers=headers,
+                    method="POST",
+                )
+                with urlopen(req) as response:
+                    result = json.load(response)
 
-            upload_url = result["upload_url"]
-            self._upload_file(upload_url, file)
+                upload_url = result["upload_url"]
+                self._upload_file(upload_url, file)
 
-            return result["file_url"]
-        except HTTPError as e:
-            raise FileUploadException(
-                f"Error initiating upload. Status {e.status}: {e.reason}"
-            )
+                return result["file_url"]
+            except HTTPError as e:
+                raise FileUploadException(
+                    f"Error initiating upload. Status {e.status}: {e.reason}"
+                )
+
+        return __save()
 
     def _upload_file(self, upload_url: str, file: FileData):
         req = Request(
@@ -286,36 +283,35 @@ class InMemoryRepository(FileRepository):
 
 @dataclass
 class FalCDNFileRepository(FileRepository):
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=1, max=10),
-        reraise=True,
-    )
     def save(
         self,
         file: FileData,
     ) -> str:
-        headers = {
-            **self.auth_headers,
-            "Accept": "application/json",
-            "Content-Type": file.content_type,
-            "X-Fal-File-Name": file.file_name,
-            "X-Fal-Object-Lifecycle-Preference": json.dumps(
-                dataclasses.asdict(GLOBAL_LIFECYCLE_PREFERENCE)
-            ),
-        }
-        url = os.getenv("FAL_CDN_HOST", _FAL_CDN) + "/files/upload"
-        request = Request(url, headers=headers, method="POST", data=file.data)
-        try:
-            with urlopen(request) as response:
-                result = json.load(response)
-        except HTTPError as e:
-            raise FileUploadException(
-                f"Error initiating upload. Status {e.status}: {e.reason}"
-            )
+        @retry(max_retries=3, base_delay=1, backoff_type="exponential", jitter=True)
+        def _save():
+            headers = {
+                **self.auth_headers,
+                "Accept": "application/json",
+                "Content-Type": file.content_type,
+                "X-Fal-File-Name": file.file_name,
+                "X-Fal-Object-Lifecycle-Preference": json.dumps(
+                    dataclasses.asdict(GLOBAL_LIFECYCLE_PREFERENCE)
+                ),
+            }
+            url = os.getenv("FAL_CDN_HOST", _FAL_CDN) + "/files/upload"
+            request = Request(url, headers=headers, method="POST", data=file.data)
+            try:
+                with urlopen(request) as response:
+                    result = json.load(response)
+            except HTTPError as e:
+                raise FileUploadException(
+                    f"Error initiating upload. Status {e.status}: {e.reason}"
+                )
 
-        access_url = result["access_url"]
-        return access_url
+            access_url = result["access_url"]
+            return access_url
+
+        return _save()
 
     @property
     def auth_headers(self) -> dict[str, str]:
