@@ -14,14 +14,18 @@ class RefAction(argparse.Action):
         kwargs.setdefault("default", (None, None))
         super().__init__(*args, **kwargs)
 
-    def __call__(self, parser, args, values, option_string=None):  # noqa: ARG002
-        if isinstance(values, tuple):
-            file_path, obj_path = values
-        elif values.find("::") > 1:
-            file_path, obj_path = values.split("::", 1)
-        else:
-            file_path, obj_path = values, None
+    @classmethod
+    def split_ref(cls, value):
+        if isinstance(value, tuple):
+            return value
 
+        if value.find("::") > 1:
+            return value.split("::", 1)
+
+        return value, None
+
+    def __call__(self, parser, args, values, option_string=None):  # noqa: ARG002
+        file_path, obj_path = self.split_ref(values)
         setattr(args, self.dest, (file_path, obj_path))
 
 

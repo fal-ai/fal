@@ -117,6 +117,10 @@ class Image(File):
             # enough result quickly to utilize the underlying resources
             # efficiently.
             saving_options["compress_level"] = 1
+        elif format == "jpeg":
+            # JPEG quality is set to 95 by default, which is a good balance
+            # between file size and image quality.
+            saving_options["quality"] = 95
 
         with io.BytesIO() as f:
             pil_image.save(f, format=format, **saving_options)

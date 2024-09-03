@@ -144,7 +144,8 @@ message MachineRequirements {
     // to dynamically add new machine types without regenerating
     // both the client and the server. Validation is done at the
     // server side.
-    string machine_type = 1;
+    // If machine_types is set, machine_type is ignored.
+    optional string machine_type = 1 [deprecated = true]; // deprecated
     optional int32 keep_alive = 2;
     optional string base_image = 3;
     optional int32 exposed_port = 4;
@@ -153,12 +154,19 @@ message MachineRequirements {
     optional int32 max_multiplexing = 6;
     optional int32 max_concurrency = 9;
     optional int32 min_concurrency = 10;
+    repeated string machine_types = 11; // machine_type alternative
+    optional int32 num_gpus = 12;
 }
 
 enum ApplicationAuthMode {
     PRIVATE = 0;
     PUBLIC = 1;
     SHARED = 2;
+}
+
+enum DeploymentStrategy {
+    RECREATE = 0;
+    ROLLING = 1;
 }
 
 message RegisterApplicationRequest {
@@ -178,6 +186,8 @@ message RegisterApplicationRequest {
     optional int32 max_concurrency = 7 [deprecated = true];
     // metadata to store with the application
     optional google.protobuf.Struct metadata = 8;
+    // Deployment strategy
+    optional DeploymentStrategy deployment_strategy = 9;
 }
 
 message RegisterApplicationResultType {

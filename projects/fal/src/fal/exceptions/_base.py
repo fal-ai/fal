@@ -49,3 +49,10 @@ class FieldException(FalServerlessException):
                 }
             ]
         )
+
+
+@dataclass
+class RequestCancelledException(FalServerlessException):
+    """Exception raised when the request is cancelled by the client."""
+
+    message: str = "Request cancelled by the client."
