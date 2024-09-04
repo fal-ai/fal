@@ -51,7 +51,8 @@ def get_builtin_repository(id: RepositoryId) -> FileRepository:
 
 get_builtin_repository.__module__ = "__main__"
 
-DEFAULT_REPOSITORY: FileRepository | RepositoryId = "fal"
+DEFAULT_REPOSITORY: FileRepository | RepositoryId = "fal_v2"
+FALLBACK_REPOSITORY: FileRepository | RepositoryId = "cdn"
 
 
 class File(BaseModel):
@@ -126,6 +127,9 @@ class File(BaseModel):
         content_type: Optional[str] = None,
         file_name: Optional[str] = None,
         repository: FileRepository | RepositoryId = DEFAULT_REPOSITORY,
+        fallback_repository: Optional[
+            FileRepository | RepositoryId
+        ] = FALLBACK_REPOSITORY,
     ) -> File:
         repo = (
             repository
@@ -135,8 +139,22 @@ class File(BaseModel):
 
         fdata = FileData(data, content_type, file_name)
 
+        try:
+            url = repo.save(fdata)
+        except Exception:
+            if not fallback_repository:
+                raise
+
+            fallback_repo = (
+                fallback_repository
+                if isinstance(fallback_repository, FileRepository)
+                else get_builtin_repository(fallback_repository)
+            )
+
+            url = fallback_repo.save(fdata)
+
         return cls(
-            url=repo.save(fdata),
+            url=url,
             content_type=fdata.content_type,
             file_name=fdata.file_name,
             file_size=len(data),
@@ -150,6 +168,9 @@ class File(BaseModel):
         content_type: Optional[str] = None,
         repository: FileRepository | RepositoryId = DEFAULT_REPOSITORY,
         multipart: bool | None = None,
+        fallback_repository: Optional[
+            FileRepository | RepositoryId
+        ] = FALLBACK_REPOSITORY,
     ) -> File:
         file_path = Path(path)
         if not file_path.exists():
@@ -163,11 +184,28 @@ class File(BaseModel):
 
         content_type = content_type or "application/octet-stream"
 
-        url, data = repo.save_file(
-            file_path,
-            content_type=content_type,
-            multipart=multipart,
-        )
+        try:
+            url, data = repo.save_file(
+                file_path,
+                content_type=content_type,
+                multipart=multipart,
+            )
+        except Exception:
+            if not fallback_repository:
+                raise
+
+            fallback_repo = (
+                fallback_repository
+                if isinstance(fallback_repository, FileRepository)
+                else get_builtin_repository(fallback_repository)
+            )
+
+            url, data = fallback_repo.save_file(
+                file_path,
+                content_type=content_type,
+                multipart=multipart,
+            )
+
         return cls(
             url=url,
             file_data=data.data if data else None,

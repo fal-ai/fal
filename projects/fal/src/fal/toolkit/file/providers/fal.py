@@ -13,6 +13,7 @@ from urllib.request import Request, urlopen
 from fal.auth import key_credentials
 from fal.toolkit.exceptions import FileUploadException
 from fal.toolkit.file.types import FileData, FileRepository
+from fal.toolkit.utils.retry import retry
 
 _FAL_CDN = "https://fal.media"
 
@@ -29,6 +30,7 @@ GLOBAL_LIFECYCLE_PREFERENCE = ObjectLifecyclePreference(
 
 @dataclass
 class FalFileRepositoryBase(FileRepository):
+    @retry(max_retries=3, base_delay=1, backoff_type="exponential", jitter=True)
     def _save(self, file: FileData, storage_type: str) -> str:
         key_creds = key_credentials()
         if not key_creds:
@@ -280,6 +282,7 @@ class InMemoryRepository(FileRepository):
 
 @dataclass
 class FalCDNFileRepository(FileRepository):
+    @retry(max_retries=3, base_delay=1, backoff_type="exponential", jitter=True)
     def save(
         self,
         file: FileData,

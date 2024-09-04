@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Literal, Optional, Union
 
 from pydantic import BaseModel, Field
 
-from fal.toolkit.file.file import DEFAULT_REPOSITORY, File
+from fal.toolkit.file.file import DEFAULT_REPOSITORY, FALLBACK_REPOSITORY, File
 from fal.toolkit.file.types import FileRepository, RepositoryId
 from fal.toolkit.utils.download_utils import _download_file_python
 
@@ -79,12 +79,16 @@ class Image(File):
         size: ImageSize | None = None,
         file_name: str | None = None,
         repository: FileRepository | RepositoryId = DEFAULT_REPOSITORY,
+        fallback_repository: Optional[
+            FileRepository | RepositoryId
+        ] = FALLBACK_REPOSITORY,
     ) -> Image:
         obj = super().from_bytes(
             data,
             content_type=f"image/{format}",
             file_name=file_name,
             repository=repository,
+            fallback_repository=fallback_repository,
         )
         obj.width = size.width if size else None
         obj.height = size.height if size else None
@@ -97,6 +101,9 @@ class Image(File):
         format: ImageFormat | None = None,
         file_name: str | None = None,
         repository: FileRepository | RepositoryId = DEFAULT_REPOSITORY,
+        fallback_repository: Optional[
+            FileRepository | RepositoryId
+        ] = FALLBACK_REPOSITORY,
     ) -> Image:
         size = ImageSize(width=pil_image.width, height=pil_image.height)
         if format is None:
@@ -119,7 +126,14 @@ class Image(File):
             pil_image.save(f, format=format, **saving_options)
             raw_image = f.getvalue()
 
-        return cls.from_bytes(raw_image, format, size, file_name, repository)
+        return cls.from_bytes(
+            raw_image,
+            format,
+            size,
+            file_name,
+            repository,
+            fallback_repository=fallback_repository,
+        )
 
     def to_pil(self, mode: str = "RGB") -> PILImage.Image:
         try:
