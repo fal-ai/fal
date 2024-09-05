@@ -4,8 +4,10 @@ import dataclasses
 import json
 import math
 import os
+import threading
 from base64 import b64encode
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
@@ -16,6 +18,69 @@ from fal.toolkit.file.types import FileData, FileRepository
 from fal.toolkit.utils.retry import retry
 
 _FAL_CDN = "https://fal.media"
+
+
+@dataclass
+class FalV2Token:
+    token: str
+    token_type: str
+    base_url: str
+    expires_at: datetime
+
+    def is_expired(self) -> bool:
+        return datetime.now(timezone.utc) >= self.expires_at
+
+
+class FalV2TokenManager:
+    def __init__(self):
+        self._token: FalV2Token = FalV2Token(
+            token="",
+            token_type="",
+            base_url="",
+            expires_at=datetime.min.replace(tzinfo=timezone.utc),
+        )
+        self._lock: threading.Lock = threading.Lock()
+
+    def get_token(self) -> FalV2Token:
+        with self._lock:
+            if self._token.is_expired():
+                self._refresh_token()
+            return self._token
+
+    def _refresh_token(self) -> None:
+        key_creds = key_credentials()
+        if not key_creds:
+            raise FileUploadException("FAL_KEY must be set")
+
+        key_id, key_secret = key_creds
+        headers = {
+            "Authorization": f"Key {key_id}:{key_secret}",
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        }
+
+        grpc_host = os.environ.get("FAL_HOST", "api.alpha.fal.ai")
+        rest_host = grpc_host.replace("api", "rest", 1)
+        url = f"https://{rest_host}/storage/auth/token"
+
+        req = Request(
+            url,
+            headers=headers,
+            data=b"{}",
+            method="POST",
+        )
+        with urlopen(req) as response:
+            result = json.load(response)
+
+        self._token = FalV2Token(
+            token=result["token"],
+            token_type=result["token_type"],
+            base_url=result["base_url"],
+            expires_at=datetime.fromisoformat(result["expires_at"]),
+        )
+
+
+fal_v2_token_manager = FalV2TokenManager()
 
 
 @dataclass
@@ -110,26 +175,14 @@ class MultipartUpload:
 
         self._parts: list[dict] = []
 
-        key_creds = key_credentials()
-        if not key_creds:
-            raise FileUploadException("FAL_KEY must be set")
-
-        key_id, key_secret = key_creds
-
-        self._auth_headers = {
-            "Authorization": f"Key {key_id}:{key_secret}",
-        }
-        grpc_host = os.environ.get("FAL_HOST", "api.alpha.fal.ai")
-        rest_host = grpc_host.replace("api", "rest", 1)
-        self._storage_upload_url = f"https://{rest_host}/storage/upload"
-
     def create(self):
+        token = fal_v2_token_manager.get_token()
         try:
             req = Request(
-                f"{self._storage_upload_url}/initiate-multipart",
+                f"{token.base_url}/upload/initiate-multipart",
                 method="POST",
                 headers={
-                    **self._auth_headers,
+                    "Authorization": f"{token.token_type} {token.token}",
                     "Accept": "application/json",
                     "Content-Type": "application/json",
                 },
@@ -218,8 +271,32 @@ class MultipartUpload:
 
 @dataclass
 class FalFileRepositoryV2(FalFileRepositoryBase):
+    @retry(max_retries=3, base_delay=1, backoff_type="exponential", jitter=True)
     def save(self, file: FileData) -> str:
-        return self._save(file, "fal-cdn")
+        token = fal_v2_token_manager.get_token()
+        headers = {
+            "Authorization": f"{token.token_type} {token.token}",
+            "Accept": "application/json",
+            "Content-Type": file.content_type,
+        }
+
+        storage_url = f"{token.base_url}/upload"
+
+        try:
+            req = Request(
+                storage_url,
+                data=file.data,
+                headers=headers,
+                method="PUT",
+            )
+            with urlopen(req) as response:
+                result = json.load(response)
+
+            return result["file_url"]
+        except HTTPError as e:
+            raise FileUploadException(
+                f"Error initiating upload. Status {e.status}: {e.reason}"
+            )
 
     def _save_multipart(
         self,
