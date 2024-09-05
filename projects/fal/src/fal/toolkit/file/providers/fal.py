@@ -277,6 +277,7 @@ class FalFileRepositoryV2(FalFileRepositoryBase):
         headers = {
             "Authorization": f"{token.token_type} {token.token}",
             "Accept": "application/json",
+            "X-Fal-File-Name": file.file_name,
             "Content-Type": file.content_type,
         }
 
