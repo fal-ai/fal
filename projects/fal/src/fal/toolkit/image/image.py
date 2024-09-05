@@ -132,6 +132,7 @@ class Image(File):
             size,
             file_name,
             repository,
+            content_type=f"image/{format}",
             fallback_repository=fallback_repository,
         )
 
