@@ -431,7 +431,7 @@ class FalServerlessHost(Host):
         environment_options.setdefault("python_version", active_python())
         environments = [self._connection.define_environment(**environment_options)]
 
-        machine_type = options.host.get(
+        machine_type: list[str] | str = options.host.get(
             "machine_type", FAL_SERVERLESS_DEFAULT_MACHINE_TYPE
         )
         keep_alive = options.host.get("keep_alive", FAL_SERVERLESS_DEFAULT_KEEP_ALIVE)
@@ -444,7 +444,7 @@ class FalServerlessHost(Host):
         exposed_port = options.get_exposed_port()
 
         machine_requirements = MachineRequirements(
-            machine_type=machine_type,
+            machine_types=machine_type,  # type: ignore
             keep_alive=keep_alive,
             base_image=base_image,
             exposed_port=exposed_port,
@@ -501,7 +501,7 @@ class FalServerlessHost(Host):
         environment_options.setdefault("python_version", active_python())
         environments = [self._connection.define_environment(**environment_options)]
 
-        machine_type = options.host.get(
+        machine_type: list[str] | str = options.host.get(
             "machine_type", FAL_SERVERLESS_DEFAULT_MACHINE_TYPE
         )
         keep_alive = options.host.get("keep_alive", FAL_SERVERLESS_DEFAULT_KEEP_ALIVE)
@@ -515,7 +515,7 @@ class FalServerlessHost(Host):
         setup_function = options.host.get("setup_function", None)
 
         machine_requirements = MachineRequirements(
-            machine_type=machine_type,
+            machine_types=machine_type,  # type: ignore
             keep_alive=keep_alive,
             base_image=base_image,
             exposed_port=exposed_port,
@@ -684,7 +684,8 @@ def function(
     max_concurrency: int | None = None,
     # FalServerlessHost options
     metadata: dict[str, Any] | None = None,
-    machine_type: str = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
+    machine_type: str | list[str] = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
+    num_gpus: int | None = None,
     keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
     max_multiplexing: int = FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING,
     min_concurrency: int = FAL_SERVERLESS_DEFAULT_MIN_CONCURRENCY,
@@ -709,7 +710,8 @@ def function(
     max_concurrency: int | None = None,
     # FalServerlessHost options
     metadata: dict[str, Any] | None = None,
-    machine_type: str = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
+    machine_type: str | list[str] = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
+    num_gpus: int | None = None,
     keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
     max_multiplexing: int = FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING,
     min_concurrency: int = FAL_SERVERLESS_DEFAULT_MIN_CONCURRENCY,
@@ -784,7 +786,8 @@ def function(
     max_concurrency: int | None = None,
     # FalServerlessHost options
     metadata: dict[str, Any] | None = None,
-    machine_type: str = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
+    machine_type: str | list[str] = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
+    num_gpus: int | None = None,
     keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
     max_multiplexing: int = FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING,
     min_concurrency: int = FAL_SERVERLESS_DEFAULT_MIN_CONCURRENCY,
@@ -814,7 +817,8 @@ def function(
     max_concurrency: int | None = None,
     # FalServerlessHost options
     metadata: dict[str, Any] | None = None,
-    machine_type: str = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
+    machine_type: str | list[str] = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
+    num_gpus: int | None = None,
     keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
     max_multiplexing: int = FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING,
     min_concurrency: int = FAL_SERVERLESS_DEFAULT_MIN_CONCURRENCY,
@@ -838,7 +842,8 @@ def function(
     max_concurrency: int | None = None,
     # FalServerlessHost options
     metadata: dict[str, Any] | None = None,
-    machine_type: str = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
+    machine_type: str | list[str] = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
+    num_gpus: int | None = None,
     keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
     max_multiplexing: int = FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING,
     min_concurrency: int = FAL_SERVERLESS_DEFAULT_MIN_CONCURRENCY,
@@ -862,7 +867,8 @@ def function(
     max_concurrency: int | None = None,
     # FalServerlessHost options
     metadata: dict[str, Any] | None = None,
-    machine_type: str = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
+    machine_type: str | list[str] = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
+    num_gpus: int | None = None,
     keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
     max_multiplexing: int = FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING,
     min_concurrency: int = FAL_SERVERLESS_DEFAULT_MIN_CONCURRENCY,

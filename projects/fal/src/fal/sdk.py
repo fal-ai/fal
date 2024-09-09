@@ -389,7 +389,8 @@ def _from_grpc_hosted_run_result(
 
 @dataclass
 class MachineRequirements:
-    machine_type: str
+    machine_types: list[str]
+    num_gpus: int = field(default=None)  # type: ignore
     keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE
     base_image: str | None = None
     exposed_port: int | None = None
@@ -398,6 +399,29 @@ class MachineRequirements:
     max_concurrency: int | None = None
     max_multiplexing: int | None = None
     min_concurrency: int | None = None
+
+    def __post_init__(self):
+        if isinstance(self.machine_types, str):
+            self.machine_types = [self.machine_types]
+
+        if not isinstance(self.machine_types, list):
+            raise ValueError("machine_types must be a list of strings.")
+
+        if not self.machine_types:
+            raise ValueError("No machine type provided.")
+
+        # if any is GPU, num_gpus defaults to 1
+        any_gpu = any(
+            "GPU" in machine_type.upper() for machine_type in self.machine_types
+        )
+        if self.num_gpus is None:
+            if any_gpu:
+                self.num_gpus = 1
+            else:
+                self.num_gpus = 0
+
+        if any_gpu and self.num_gpus == 0:
+            raise ValueError("num_gpus must be greater than 0 for GPU machines.")
 
 
 @dataclass
@@ -489,7 +513,8 @@ class FalServerlessConnection:
         wrapped_function = to_serialized_object(function, serialization_method)
         if machine_requirements:
             wrapped_requirements = isolate_proto.MachineRequirements(
-                machine_type=machine_requirements.machine_type,
+                machine_types=machine_requirements.machine_types,
+                num_gpus=machine_requirements.num_gpus,
                 keep_alive=machine_requirements.keep_alive,
                 base_image=machine_requirements.base_image,
                 exposed_port=machine_requirements.exposed_port,
@@ -579,7 +604,8 @@ class FalServerlessConnection:
         wrapped_function = to_serialized_object(function, serialization_method)
         if machine_requirements:
             wrapped_requirements = isolate_proto.MachineRequirements(
-                machine_type=machine_requirements.machine_type,
+                machine_types=machine_requirements.machine_types,
+                num_gpus=machine_requirements.num_gpus,
                 keep_alive=machine_requirements.keep_alive,
                 base_image=machine_requirements.base_image,
                 exposed_port=machine_requirements.exposed_port,
