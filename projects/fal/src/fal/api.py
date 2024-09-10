@@ -389,6 +389,8 @@ class FalServerlessHost(Host):
     _SUPPORTED_KEYS = frozenset(
         {
             "machine_type",
+            "machine_types",
+            "num_gpus",
             "keep_alive",
             "max_concurrency",
             "min_concurrency",
@@ -445,6 +447,7 @@ class FalServerlessHost(Host):
 
         machine_requirements = MachineRequirements(
             machine_types=machine_type,  # type: ignore
+            num_gpus=options.host.get("num_gpus"),
             keep_alive=keep_alive,
             base_image=base_image,
             exposed_port=exposed_port,
@@ -516,6 +519,7 @@ class FalServerlessHost(Host):
 
         machine_requirements = MachineRequirements(
             machine_types=machine_type,  # type: ignore
+            num_gpus=options.host.get("num_gpus"),
             keep_alive=keep_alive,
             base_image=base_image,
             exposed_port=exposed_port,
