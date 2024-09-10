@@ -500,6 +500,8 @@ class FalServerlessConnection:
         wrapped_function = to_serialized_object(function, serialization_method)
         if machine_requirements:
             wrapped_requirements = isolate_proto.MachineRequirements(
+                # NOTE: backwards compatibility with old API
+                machine_type=machine_requirements.machine_types[0],
                 machine_types=machine_requirements.machine_types,
                 num_gpus=machine_requirements.num_gpus,
                 keep_alive=machine_requirements.keep_alive,
@@ -591,6 +593,8 @@ class FalServerlessConnection:
         wrapped_function = to_serialized_object(function, serialization_method)
         if machine_requirements:
             wrapped_requirements = isolate_proto.MachineRequirements(
+                # NOTE: backwards compatibility with old API
+                machine_type=machine_requirements.machine_types[0],
                 machine_types=machine_requirements.machine_types,
                 num_gpus=machine_requirements.num_gpus,
                 keep_alive=machine_requirements.keep_alive,
