@@ -390,7 +390,7 @@ def _from_grpc_hosted_run_result(
 @dataclass
 class MachineRequirements:
     machine_types: list[str]
-    num_gpus: int = field(default=None)  # type: ignore
+    num_gpus: int | None = field(default=None)
     keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE
     base_image: str | None = None
     exposed_port: int | None = None
@@ -409,19 +409,6 @@ class MachineRequirements:
 
         if not self.machine_types:
             raise ValueError("No machine type provided.")
-
-        # if any is GPU, num_gpus defaults to 1
-        any_gpu = any(
-            "GPU" in machine_type.upper() for machine_type in self.machine_types
-        )
-        if self.num_gpus is None:
-            if any_gpu:
-                self.num_gpus = 1
-            else:
-                self.num_gpus = 0
-
-        if any_gpu and self.num_gpus == 0:
-            raise ValueError("num_gpus must be greater than 0 for GPU machines.")
 
 
 @dataclass
