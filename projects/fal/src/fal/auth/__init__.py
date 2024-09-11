@@ -119,5 +119,9 @@ class UserAccess:
     def bearer_token(self) -> str:
         return "Bearer " + self.access_token
 
+    @property
+    def is_falbot(self) -> bool:
+        return self.info["sub"] == "github|110602490"
+
 
 USER = UserAccess()

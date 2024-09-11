@@ -411,6 +411,41 @@ class MachineRequirements:
             raise ValueError("No machine type provided.")
 
 
+# NOTE: These values need to be in-sync with the values in the serverless API.
+MAX_REGISTERED_MIN_CONCURRENCY = 0
+MAX_REGISTERED_MAX_CONCURRENCY = 2
+
+
+def _get_min_concurrency(min_concurrency) -> int:
+    if USER.is_falbot:
+        return min_concurrency
+
+    if min_concurrency > MAX_REGISTERED_MIN_CONCURRENCY:
+        logger.warning(
+            "min_concurrency must be less than or equal to "
+            f"{MAX_REGISTERED_MIN_CONCURRENCY} for regular users. "
+            f"Setting min_concurrency to {MAX_REGISTERED_MIN_CONCURRENCY}."
+        )
+        return MAX_REGISTERED_MIN_CONCURRENCY
+
+    return min_concurrency
+
+
+def _get_max_concurrency(max_concurrency) -> int:
+    if USER.is_falbot:
+        return max_concurrency
+
+    if max_concurrency > MAX_REGISTERED_MAX_CONCURRENCY:
+        logger.warning(
+            "max_concurrency must be less than or equal to "
+            f"{MAX_REGISTERED_MAX_CONCURRENCY} for regular users. "
+            f"Setting max_concurrency to {MAX_REGISTERED_MAX_CONCURRENCY}."
+        )
+        return MAX_REGISTERED_MAX_CONCURRENCY
+
+    return max_concurrency
+
+
 @dataclass
 class FalServerlessConnection:
     hostname: str
@@ -511,8 +546,12 @@ class FalServerlessConnection:
                 scheduler_options=to_struct(
                     machine_requirements.scheduler_options or {}
                 ),
-                max_concurrency=machine_requirements.max_concurrency,
-                min_concurrency=machine_requirements.min_concurrency,
+                max_concurrency=_get_max_concurrency(
+                    machine_requirements.max_concurrency
+                ),
+                min_concurrency=_get_min_concurrency(
+                    machine_requirements.min_concurrency
+                ),
                 max_multiplexing=machine_requirements.max_multiplexing,
             )
         else:
@@ -561,8 +600,8 @@ class FalServerlessConnection:
             application_name=application_name,
             keep_alive=keep_alive,
             max_multiplexing=max_multiplexing,
-            max_concurrency=max_concurrency,
-            min_concurrency=min_concurrency,
+            max_concurrency=_get_max_concurrency(max_concurrency),
+            min_concurrency=_get_min_concurrency(min_concurrency),
         )
         res: isolate_proto.UpdateApplicationResult = self.stub.UpdateApplication(
             request
@@ -604,9 +643,13 @@ class FalServerlessConnection:
                 scheduler_options=to_struct(
                     machine_requirements.scheduler_options or {}
                 ),
-                max_concurrency=machine_requirements.max_concurrency,
+                max_concurrency=_get_max_concurrency(
+                    machine_requirements.max_concurrency
+                ),
                 max_multiplexing=machine_requirements.max_multiplexing,
-                min_concurrency=machine_requirements.min_concurrency,
+                min_concurrency=_get_min_concurrency(
+                    machine_requirements.min_concurrency
+                ),
             )
         else:
             wrapped_requirements = None
