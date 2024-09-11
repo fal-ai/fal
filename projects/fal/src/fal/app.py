@@ -60,6 +60,7 @@ def wrap_app(cls: type[App], **kwargs) -> fal.api.IsolatedFunction:
         kind,
         requirements=cls.requirements,
         machine_type=cls.machine_type,
+        num_gpus=cls.num_gpus,
         **cls.host_kwargs,
         **kwargs,
         metadata=metadata,
@@ -177,6 +178,7 @@ def _to_fal_app_name(name: str) -> str:
 class App(fal.api.BaseServable):
     requirements: ClassVar[list[str]] = []
     machine_type: ClassVar[str] = "S"
+    num_gpus: ClassVar[int | None] = None
     host_kwargs: ClassVar[dict[str, Any]] = {
         "_scheduler": "nomad",
         "_scheduler_options": {
