@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.error import HTTPError
+from urllib.parse import urlparse, urlunparse
 from urllib.request import Request, urlopen
 
 from fal.auth import key_credentials
@@ -24,7 +25,7 @@ _FAL_CDN = "https://fal.media"
 class FalV2Token:
     token: str
     token_type: str
-    base_url: str
+    base_upload_url: str
     expires_at: datetime
 
     def is_expired(self) -> bool:
@@ -36,7 +37,7 @@ class FalV2TokenManager:
         self._token: FalV2Token = FalV2Token(
             token="",
             token_type="",
-            base_url="",
+            base_upload_url="",
             expires_at=datetime.min.replace(tzinfo=timezone.utc),
         )
         self._lock: threading.Lock = threading.Lock()
@@ -72,10 +73,15 @@ class FalV2TokenManager:
         with urlopen(req) as response:
             result = json.load(response)
 
+        parsed_base_url = urlparse(result["base_url"])
+        base_upload_url = urlunparse(
+            parsed_base_url._replace(netloc="upload." + parsed_base_url.netloc)
+        )
+
         self._token = FalV2Token(
             token=result["token"],
             token_type=result["token_type"],
-            base_url=result["base_url"],
+            base_upload_url=base_upload_url,
             expires_at=datetime.fromisoformat(result["expires_at"]),
         )
 
@@ -179,7 +185,7 @@ class MultipartUpload:
         token = fal_v2_token_manager.get_token()
         try:
             req = Request(
-                f"{token.base_url}/upload/initiate-multipart",
+                f"{token.base_upload_url}/upload/initiate-multipart",
                 method="POST",
                 headers={
                     "Authorization": f"{token.token_type} {token.token}",
@@ -195,7 +201,7 @@ class MultipartUpload:
             )
             with urlopen(req) as response:
                 result = json.load(response)
-                self._upload_id = result["upload_id"]
+                self._upload_url = result["upload_url"]
                 self._file_url = result["file_url"]
         except HTTPError as exc:
             raise FileUploadException(
@@ -235,10 +241,7 @@ class MultipartUpload:
         ) as executor:
             futures = []
             for part_number in range(1, parts + 1):
-                upload_url = (
-                    f"{self._file_url}?upload_id={self._upload_id}"
-                    f"&part_number={part_number}"
-                )
+                upload_url = f"{self._upload_url}&part_number={part_number}"
                 futures.append(
                     executor.submit(self._upload_part, upload_url, part_number)
                 )
@@ -248,7 +251,7 @@ class MultipartUpload:
                 self._parts.append(entry)
 
     def complete(self):
-        url = f"{self._file_url}?upload_id={self._upload_id}"
+        url = self._upload_url
         try:
             req = Request(
                 url,
@@ -281,7 +284,7 @@ class FalFileRepositoryV2(FalFileRepositoryBase):
             "Content-Type": file.content_type,
         }
 
-        storage_url = f"{token.base_url}/upload"
+        storage_url = f"{token.base_upload_url}/upload"
 
         try:
             req = Request(
