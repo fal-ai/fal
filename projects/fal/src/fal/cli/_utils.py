@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fal.files import find_pyproject_toml, parse_pyproject_toml
+from fal.files import find_project_root, find_pyproject_toml, parse_pyproject_toml
 
 
 def is_app_name(app_ref: tuple[str, str | None]) -> bool:
@@ -28,6 +28,10 @@ def get_app_data_from_toml(app_name):
         app_ref = app_data["ref"]
     except KeyError:
         raise ValueError(f"App {app_name} does not have a ref key in pyproject.toml")
+
+    # Convert the app_ref to a path relative to the project root
+    project_root, _ = find_project_root(None)
+    app_ref = str(project_root / app_ref)
 
     app_auth = app_data.get("auth", "private")
 
