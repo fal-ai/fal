@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fal.cli.deploy import _deploy
 from fal.cli.main import parse_args
+from fal.files import find_project_root
 
 
 def test_deploy():
@@ -53,9 +54,14 @@ def test_deploy_with_toml_success(
 
     _deploy(args)
 
+    project_root, _ = find_project_root(None)
+
     # Ensure the correct app is deployed
     mock_deploy_ref.assert_called_once_with(
-        ("src/my_app/inference.py", "MyApp"), "my-app", "shared", args
+        (f"{project_root / 'src/my_app/inference.py'}", "MyApp"),
+        "my-app",
+        "shared",
+        args,
     )
 
 
@@ -72,9 +78,14 @@ def test_deploy_with_toml_no_auth(
 
     _deploy(args)
 
+    project_root, _ = find_project_root(None)
+
     # Since auth is not provided for "another-app", it should default to "private"
     mock_deploy_ref.assert_called_once_with(
-        ("src/another_app/inference.py", "AnotherApp"), "another-app", "private", args
+        (f"{project_root / 'src/another_app/inference.py'}", "AnotherApp"),
+        "another-app",
+        "private",
+        args,
     )
 
 

@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fal.cli.main import parse_args
 from fal.cli.run import _run
+from fal.files import find_project_root
 
 
 def test_run():
@@ -60,9 +61,11 @@ def test_run_with_toml_success(
 
     _run(args)
 
-    # Ensure the correct app is deployed
+    project_root, _ = find_project_root(None)
+
+    # Ensure the correct app is ran
     mock_load_function_from.assert_called_once_with(
-        host, "src/my_app/inference.py", "MyApp"
+        host, f"{project_root / 'src/my_app/inference.py'}", "MyApp"
     )
 
 
