@@ -34,5 +34,6 @@ def get_app_data_from_toml(app_name):
     app_ref = str(project_root / app_ref)
 
     app_auth = app_data.get("auth", "private")
+    app_deployment_strategy = app_data.get("deployment_strategy", "recreate")
 
-    return app_ref, app_auth
+    return app_ref, app_auth, app_deployment_strategy
