@@ -156,6 +156,7 @@ message MachineRequirements {
     optional int32 min_concurrency = 10;
     repeated string machine_types = 11; // machine_type alternative
     optional int32 num_gpus = 12;
+    optional int32 request_timeout = 13;
 }
 
 enum ApplicationAuthMode {
