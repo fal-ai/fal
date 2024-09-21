@@ -20,8 +20,8 @@ def mock_parse_pyproject_toml():
             "my-app": {
                 "ref": "src/my_app/inference.py::MyApp",
                 "auth": "shared",
+                "deployment_strategy": "rolling",
             },
-            # auth is not provided for another-app
             "another-app": {
                 "ref": "src/another_app/inference.py::AnotherApp",
             },
@@ -30,13 +30,17 @@ def mock_parse_pyproject_toml():
 
 
 def mock_args(
-    app_ref: tuple[str], app_name: Optional[str] = None, auth: Optional[str] = None
+    app_ref: tuple[str],
+    app_name: Optional[str] = None,
+    auth: Optional[str] = None,
+    strategy: Optional[str] = None,
 ):
     args = MagicMock()
 
     args.app_ref = app_ref
     args.app_name = app_name
     args.auth = auth
+    args.strategy = strategy
 
     return args
 
@@ -60,8 +64,9 @@ def test_deploy_with_toml_success(
     mock_deploy_ref.assert_called_once_with(
         (f"{project_root / 'src/my_app/inference.py'}", "MyApp"),
         "my-app",
-        "shared",
         args,
+        "shared",
+        "rolling",
     )
 
 
@@ -84,8 +89,9 @@ def test_deploy_with_toml_no_auth(
     mock_deploy_ref.assert_called_once_with(
         (f"{project_root / 'src/another_app/inference.py'}", "AnotherApp"),
         "another-app",
-        "private",
         args,
+        "private",
+        "recreate",
     )
 
 
@@ -157,3 +163,91 @@ def test_deploy_with_toml_only_app_name_is_provided(
         ValueError, match="Cannot use --app-name or --auth with app name reference."
     ):
         _deploy(args)
+
+
+@patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+@patch("fal.cli.deploy._deploy_from_reference")
+def test_deploy_with_toml_deployment_strategy(
+    mock_deploy_ref, mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml
+):
+    mock_parse_toml.return_value = mock_parse_pyproject_toml
+
+    args = mock_args(app_ref=("my-app", None), strategy="rolling")
+
+    _deploy(args)
+
+    project_root, _ = find_project_root(None)
+
+    mock_deploy_ref.assert_called_once_with(
+        (f"{project_root / 'src/my_app/inference.py'}", "MyApp"),
+        "my-app",
+        args,
+        "shared",
+        "rolling",
+    )
+
+
+@patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+@patch("fal.cli.deploy._deploy_from_reference")
+def test_deploy_with_toml_default_deployment_strategy(
+    mock_deploy_ref, mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml
+):
+    mock_parse_toml.return_value = mock_parse_pyproject_toml
+
+    args = mock_args(app_ref=("another-app", None))
+
+    _deploy(args)
+
+    project_root, _ = find_project_root(None)
+
+    mock_deploy_ref.assert_called_once_with(
+        (f"{project_root / 'src/another_app/inference.py'}", "AnotherApp"),
+        "another-app",
+        args,
+        "private",
+        "recreate",
+    )
+
+
+@patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+@patch("fal.cli.deploy._deploy_from_reference")
+def test_deploy_with_cli_auth(
+    mock_deploy_ref, mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml
+):
+    mock_parse_toml.return_value = mock_parse_pyproject_toml
+
+    args = mock_args(app_ref=("src/my_app/inference.py", "MyApp"), auth="shared")
+
+    _deploy(args)
+
+    mock_deploy_ref.assert_called_once_with(
+        ("src/my_app/inference.py", "MyApp"),
+        None,
+        args,
+        "shared",
+        None,
+    )
+
+
+@patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+@patch("fal.cli.deploy._deploy_from_reference")
+def test_deploy_with_cli_deployment_strategy(
+    mock_deploy_ref, mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml
+):
+    mock_parse_toml.return_value = mock_parse_pyproject_toml
+
+    args = mock_args(app_ref=("src/my_app/inference.py", "MyApp"), strategy="rolling")
+
+    _deploy(args)
+
+    mock_deploy_ref.assert_called_once_with(
+        ("src/my_app/inference.py", "MyApp"),
+        None,
+        args,
+        None,
+        "rolling",
+    )

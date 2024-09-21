@@ -65,8 +65,9 @@ def _get_user() -> User:
 def _deploy_from_reference(
     app_ref: Tuple[Optional[Union[Path, str]], ...],
     app_name: str,
-    auth: Literal["public", "shared", "private"],
     args,
+    auth: Optional[Literal["public", "shared", "private"]] = None,
+    deployment_strategy: Optional[Literal["recreate", "rolling"]] = None,
 ):
     from fal.api import FalServerlessError, FalServerlessHost
     from fal.utils import load_function_from
@@ -96,7 +97,7 @@ def _deploy_from_reference(
     isolated_function = loaded.function
     app_name = app_name or loaded.app_name  # type: ignore
     app_auth = auth or loaded.app_auth or "private"
-    deployment_strategy = args.strategy or "recreate"
+    deployment_strategy = deployment_strategy or "recreate"
 
     app_id = host.register(
         func=isolated_function.func,
@@ -137,7 +138,7 @@ def _deploy(args):
             raise ValueError("Cannot use --app-name or --auth with app name reference.")
 
         app_name = args.app_ref[0]
-        app_ref, app_auth = get_app_data_from_toml(app_name)
+        app_ref, app_auth, app_deployment_strategy = get_app_data_from_toml(app_name)
         file_path, func_name = RefAction.split_ref(app_ref)
 
     # path/to/myfile.py::MyApp
@@ -145,8 +146,15 @@ def _deploy(args):
         file_path, func_name = args.app_ref
         app_name = args.app_name
         app_auth = args.auth
+        app_deployment_strategy = args.strategy
 
-    _deploy_from_reference((file_path, func_name), app_name, app_auth, args)
+    _deploy_from_reference(
+        (file_path, func_name),
+        app_name,
+        args,
+        app_auth,
+        app_deployment_strategy,
+    )
 
 
 def add_parser(main_subparsers, parents):
