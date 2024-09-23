@@ -399,6 +399,7 @@ class MachineRequirements:
     max_concurrency: int | None = None
     max_multiplexing: int | None = None
     min_concurrency: int | None = None
+    request_timeout: int | None = None
 
     def __post_init__(self):
         if isinstance(self.machine_types, str):
@@ -514,6 +515,7 @@ class FalServerlessConnection:
                 max_concurrency=machine_requirements.max_concurrency,
                 min_concurrency=machine_requirements.min_concurrency,
                 max_multiplexing=machine_requirements.max_multiplexing,
+                request_timeout=machine_requirements.request_timeout,
             )
         else:
             wrapped_requirements = None
@@ -607,6 +609,7 @@ class FalServerlessConnection:
                 max_concurrency=machine_requirements.max_concurrency,
                 max_multiplexing=machine_requirements.max_multiplexing,
                 min_concurrency=machine_requirements.min_concurrency,
+                request_timeout=machine_requirements.request_timeout,
             )
         else:
             wrapped_requirements = None
