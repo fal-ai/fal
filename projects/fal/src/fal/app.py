@@ -189,7 +189,6 @@ class App(fal.api.BaseServable):
     }
     app_name: ClassVar[str]
     app_auth: ClassVar[Literal["private", "public", "shared"]] = "private"
-    version: ClassVar[str] = "unknown"
     request_timeout: ClassVar[int | None] = None
 
     def __init_subclass__(cls, **kwargs):
