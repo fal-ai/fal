@@ -971,6 +971,8 @@ class RouteSignature(NamedTuple):
 
 
 class BaseServable:
+    version: ClassVar[str] = "unknown"
+
     def collect_routes(self) -> dict[RouteSignature, Callable[..., Any]]:
         raise NotImplementedError
 
@@ -1099,8 +1101,13 @@ class BaseServable:
     def serve(self) -> None:
         import asyncio
 
+        from prometheus_client import Gauge
         from starlette_exporter import handle_metrics
         from uvicorn import Config
+
+        # NOTE: this uses the global prometheus registry
+        app_info = Gauge("fal_app_info", "Fal application information", ["version"])
+        app_info.labels(version=self.version).set(1)
 
         app = self._build_app()
         server = Server(
