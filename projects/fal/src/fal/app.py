@@ -189,6 +189,7 @@ class App(fal.api.BaseServable):
     }
     app_name: ClassVar[str]
     app_auth: ClassVar[Literal["private", "public", "shared"]] = "private"
+    version: ClassVar[str] = "unknown"
     request_timeout: ClassVar[int | None] = None
 
     def __init_subclass__(cls, **kwargs):
@@ -237,7 +238,7 @@ class App(fal.api.BaseServable):
             await _call_any_fn(self.teardown)
 
     def health(self):
-        return {}
+        return {"version": self.version}
 
     def setup(self):
         """Setup the application before serving."""
