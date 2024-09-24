@@ -201,7 +201,7 @@ def test_download_file(isolated_client, mock_fal_persistent_dirs):
 
     relative_directory = "test"
     output_directory = FAL_PERSISTENT_DIR / relative_directory
-    expected_path = output_directory / "README.md"
+    expected_path = output_directory / "cat.png"
 
     @isolated_client()
     def absolute_path_persistent_dir():
@@ -301,7 +301,7 @@ def test_download_model_weights(isolated_client, mock_fal_persistent_dirs):
 
     print(FAL_MODEL_WEIGHTS_DIR)
 
-    expected_path = FAL_MODEL_WEIGHTS_DIR / _hash_url(EXAMPLE_FILE_URL) / "README.md"
+    expected_path = FAL_MODEL_WEIGHTS_DIR / _hash_url(EXAMPLE_FILE_URL) / "cat.png"
 
     @isolated_client()
     def download_weights():
@@ -510,7 +510,7 @@ def test_fal_file_save(isolated_client):
     [
         (
             EXAMPLE_FILE_URL,
-            "projects/fal/README.md",
+            "projects/fal/cat.png",
         ),
         ("data:text/plain;charset=UTF-8,fal", "fal"),
     ],
