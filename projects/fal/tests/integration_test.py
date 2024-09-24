@@ -23,7 +23,8 @@ from fal.toolkit.utils.download_utils import _get_git_revision_hash, _hash_url
 from pydantic import BaseModel, Field
 from pydantic import __version__ as pydantic_version
 
-EXAMPLE_FILE_URL = "https://raw.githubusercontent.com/fal-ai/fal/main/README.md"
+EXAMPLE_FILE_URL = "https://raw.githubusercontent.com/fal-ai/fal/main/projects/fal/tests/assets/cat.png"
+
 
 @pytest.mark.flaky(max_runs=3)
 def test_isolated(isolated_client: Callable[..., Callable[..., IsolatedFunction]]):
