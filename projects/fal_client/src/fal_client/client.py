@@ -26,6 +26,22 @@ CDN_URL = "https://fal.media"
 USER_AGENT = "fal-client/0.2.2 (python)"
 
 
+class FalClientError(Exception):
+    pass
+
+
+def _raise_for_status(response: httpx.Response) -> None:
+    try:
+        response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        try:
+            msg = response.json()["detail"]
+        except (ValueError, KeyError):
+            msg = response.text
+
+        raise FalClientError(msg) from exc
+
+
 @dataclass
 class Status: ...
 
@@ -94,7 +110,7 @@ class SyncRequestHandle(_BaseRequestHandle):
                 "logs": with_logs,
             },
         )
-        response.raise_for_status()
+        _raise_for_status(response)
 
         return self._parse_status(response.json())
 
@@ -119,7 +135,7 @@ class SyncRequestHandle(_BaseRequestHandle):
             continue
 
         response = self.client.get(self.response_url)
-        response.raise_for_status()
+        _raise_for_status(response)
         return response.json()
 
 
@@ -138,7 +154,7 @@ class AsyncRequestHandle(_BaseRequestHandle):
                 "logs": with_logs,
             },
         )
-        response.raise_for_status()
+        _raise_for_status(response)
 
         return self._parse_status(response.json())
 
@@ -163,7 +179,7 @@ class AsyncRequestHandle(_BaseRequestHandle):
             continue
 
         response = await self.client.get(self.response_url)
-        response.raise_for_status()
+        _raise_for_status(response)
         return response.json()
 
 
@@ -214,7 +230,7 @@ class AsyncClient:
             timeout=timeout,
             headers=headers,
         )
-        response.raise_for_status()
+        _raise_for_status(response)
         return response.json()
 
     async def submit(
@@ -242,7 +258,7 @@ class AsyncClient:
             json=arguments,
             timeout=self.default_timeout,
         )
-        response.raise_for_status()
+        _raise_for_status(response)
 
         data = response.json()
         return AsyncRequestHandle(
@@ -291,7 +307,7 @@ class AsyncClient:
             data=data,
             headers={"Content-Type": content_type},
         )
-        response.raise_for_status()
+        _raise_for_status(response)
 
         return response.json()["access_url"]
 
@@ -359,7 +375,7 @@ class SyncClient:
             timeout=timeout,
             headers=headers,
         )
-        response.raise_for_status()
+        _raise_for_status(response)
         return response.json()
 
     def submit(
@@ -388,7 +404,7 @@ class SyncClient:
             timeout=self.default_timeout,
             headers=headers,
         )
-        response.raise_for_status()
+        _raise_for_status(response)
 
         data = response.json()
         return SyncRequestHandle(
@@ -433,7 +449,7 @@ class SyncClient:
             data=data,
             headers={"Content-Type": content_type},
         )
-        response.raise_for_status()
+        _raise_for_status(response)
 
         return response.json()["access_url"]
 
