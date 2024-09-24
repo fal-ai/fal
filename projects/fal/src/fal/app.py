@@ -189,16 +189,11 @@ class App(fal.api.BaseServable):
     }
     app_name: ClassVar[str]
     app_auth: ClassVar[Literal["private", "public", "shared"]] = "private"
-    request_timeout: ClassVar[int | None] = None
 
     def __init_subclass__(cls, **kwargs):
         app_name = kwargs.pop("name", None) or _to_fal_app_name(cls.__name__)
         parent_settings = getattr(cls, "host_kwargs", {})
         cls.host_kwargs = {**parent_settings, **kwargs}
-
-        if cls.request_timeout is not None:
-            cls.host_kwargs["request_timeout"] = cls.request_timeout
-
         cls.app_name = getattr(cls, "app_name", app_name)
 
         if cls.__init__ is not App.__init__:
