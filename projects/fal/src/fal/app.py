@@ -402,7 +402,10 @@ def _fal_websocket_template(
                 batch.append(next_input)
 
             t0 = loop.time()
-            output = await loop.run_in_executor(None, func, self, *batch)  # type: ignore
+            if inspect.iscoroutinefunction(func):
+                output = await func(self, *batch)
+            else:
+                output = await loop.run_in_executor(None, func, self, *batch)  # type: ignore
             total_time = loop.time() - t0
             if not isinstance(output, dict):
                 # Handle pydantic output modal
