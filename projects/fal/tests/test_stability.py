@@ -580,6 +580,7 @@ def test_worker_env_vars(isolated_client):
             "https://storage.googleapis.com/isolate-dev-smiling-shark_toolkit_bucket/",
         ),
         ("fal_v2", "https://v2.fal.media/files"),
+        ("fal_v3", "https://v3.fal.media/files"),
     ],
 )
 def test_fal_storage(isolated_client, repo_type, url_prefix):

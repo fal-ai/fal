@@ -19,6 +19,7 @@ from fal.toolkit.file.types import FileData, FileRepository
 from fal.toolkit.utils.retry import retry
 
 _FAL_CDN = "https://fal.media"
+_FAL_CDN_V3 = "https://v3.fal.media"
 
 
 @dataclass
@@ -399,5 +400,43 @@ class FalCDNFileRepository(FileRepository):
         key_id, key_secret = key_creds
         return {
             "Authorization": f"Bearer {key_id}:{key_secret}",
+            "User-Agent": "fal/0.1.0",
+        }
+
+
+@dataclass
+class FalFileRepositoryV3(FileRepository):
+    @retry(max_retries=3, base_delay=1, backoff_type="exponential", jitter=True)
+    def save(
+        self,
+        file: FileData,
+    ) -> str:
+        headers = {
+            **self.auth_headers,
+            "Accept": "application/json",
+            "Content-Type": file.content_type,
+            "X-Fal-File-Name": file.file_name,
+            "X-Fal-Object-Lifecycle-Preference": json.dumps(
+                dataclasses.asdict(GLOBAL_LIFECYCLE_PREFERENCE)
+            ),
+        }
+        url = os.getenv("FAL_CDN_V3_HOST", _FAL_CDN_V3) + "/files/upload"
+        request = Request(url, headers=headers, method="POST", data=file.data)
+        try:
+            with urlopen(request) as response:
+                result = json.load(response)
+        except HTTPError as e:
+            raise FileUploadException(
+                f"Error initiating upload. Status {e.status}: {e.reason}"
+            )
+
+        access_url = result["access_url"]
+        return access_url
+
+    @property
+    def auth_headers(self) -> dict[str, str]:
+        token = fal_v2_token_manager.get_token()
+        return {
+            "Authorization": f"{token.token_type} {token.token}",
             "User-Agent": "fal/0.1.0",
         }
