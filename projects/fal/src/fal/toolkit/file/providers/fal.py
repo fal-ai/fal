@@ -92,11 +92,11 @@ fal_v2_token_manager = FalV2TokenManager()
 
 @dataclass
 class ObjectLifecyclePreference:
-    expiration_duration_seconds: int | None = None
+    expiration_duration_seconds: int
 
 
 GLOBAL_LIFECYCLE_PREFERENCE = ObjectLifecyclePreference(
-    expiration_duration_seconds=None,
+    expiration_duration_seconds=86400
 )
 
 
