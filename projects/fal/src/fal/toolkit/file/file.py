@@ -144,11 +144,7 @@ class File(BaseModel):
 
         fdata = FileData(data, content_type, file_name)
 
-        object_lifecycle_preference = (
-            request.headers.get(OBJECT_LIFECYCLE_PREFERENCE_KEY)
-            if request is not None
-            else None
-        )
+        object_lifecycle_preference = _get_lifecycle_preference(request)
 
         try:
             url = repo.save(fdata, object_lifecycle_preference)
@@ -195,11 +191,7 @@ class File(BaseModel):
         )
 
         content_type = content_type or "application/octet-stream"
-        object_lifecycle_preference = (
-            request.headers.get(OBJECT_LIFECYCLE_PREFERENCE_KEY)
-            if request is not None
-            else None
-        )
+        object_lifecycle_preference = _get_lifecycle_preference(request)
 
         try:
             url, data = repo.save_file(
@@ -280,3 +272,23 @@ class CompressedFile(File):
     def __del__(self):
         if self.extract_dir:
             shutil.rmtree(self.extract_dir)
+
+
+def _get_lifecycle_preference(request: Request) -> dict[str, str] | None:
+    import json
+
+    preference_str = (
+        request.headers.get(OBJECT_LIFECYCLE_PREFERENCE_KEY)
+        if request is not None
+        else None
+    )
+    if preference_str is None:
+        return None
+
+    object_lifecycle_preference = {}
+    try:
+        object_lifecycle_preference = json.loads(preference_str)
+        return object_lifecycle_preference
+    except Exception as e:
+        print(f"Failed to parse object lifecycle preference: {e}")
+        return None
