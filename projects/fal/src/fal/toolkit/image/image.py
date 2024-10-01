@@ -4,6 +4,7 @@ import io
 from tempfile import NamedTemporaryFile
 from typing import TYPE_CHECKING, Literal, Optional, Union
 
+from fastapi import Request
 from pydantic import BaseModel, Field
 
 from fal.toolkit.file.file import DEFAULT_REPOSITORY, FALLBACK_REPOSITORY, File
@@ -82,6 +83,7 @@ class Image(File):
         fallback_repository: Optional[
             FileRepository | RepositoryId
         ] = FALLBACK_REPOSITORY,
+        request: Optional[Request] = None,
     ) -> Image:
         obj = super().from_bytes(
             data,
@@ -89,6 +91,7 @@ class Image(File):
             file_name=file_name,
             repository=repository,
             fallback_repository=fallback_repository,
+            request=request,
         )
         obj.width = size.width if size else None
         obj.height = size.height if size else None
@@ -104,6 +107,7 @@ class Image(File):
         fallback_repository: Optional[
             FileRepository | RepositoryId
         ] = FALLBACK_REPOSITORY,
+        request: Optional[Request] = None,
     ) -> Image:
         size = ImageSize(width=pil_image.width, height=pil_image.height)
         if format is None:
@@ -133,6 +137,7 @@ class Image(File):
             file_name,
             repository,
             fallback_repository=fallback_repository,
+            request=request,
         )
 
     def to_pil(self, mode: str = "RGB") -> PILImage.Image:

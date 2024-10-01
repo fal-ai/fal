@@ -159,7 +159,9 @@ class FalFileRepositoryBase(FileRepository):
 
 @dataclass
 class FalFileRepository(FalFileRepositoryBase):
-    def save(self, file: FileData) -> str:
+    def save(
+        self, file: FileData, object_lifecycle_preference: dict[str, str] | None = None
+    ) -> str:
         return self._save(file, "gcs")
 
 
@@ -276,7 +278,9 @@ class MultipartUpload:
 @dataclass
 class FalFileRepositoryV2(FalFileRepositoryBase):
     @retry(max_retries=3, base_delay=1, backoff_type="exponential", jitter=True)
-    def save(self, file: FileData) -> str:
+    def save(
+        self, file: FileData, object_lifecycle_preference: dict[str, str] | None = None
+    ) -> str:
         token = fal_v2_token_manager.get_token()
         headers = {
             "Authorization": f"{token.token_type} {token.token}",
@@ -328,6 +332,7 @@ class FalFileRepositoryV2(FalFileRepositoryBase):
         multipart_threshold: int | None = None,
         multipart_chunk_size: int | None = None,
         multipart_max_concurrency: int | None = None,
+        object_lifecycle_preference: dict[str, str] | None = None,
     ) -> tuple[str, FileData | None]:
         if multipart is None:
             threshold = multipart_threshold or MultipartUpload.MULTIPART_THRESHOLD
@@ -348,7 +353,7 @@ class FalFileRepositoryV2(FalFileRepositoryBase):
                     content_type=content_type,
                     file_name=os.path.basename(file_path),
                 )
-            url = self.save(data)
+            url = self.save(data, object_lifecycle_preference)
 
         return url, data
 
@@ -358,6 +363,7 @@ class InMemoryRepository(FileRepository):
     def save(
         self,
         file: FileData,
+        object_lifecycle_preference: dict[str, str] | None = None,
     ) -> str:
         return f'data:{file.content_type};base64,{b64encode(file.data).decode("utf-8")}'
 
@@ -368,6 +374,7 @@ class FalCDNFileRepository(FileRepository):
     def save(
         self,
         file: FileData,
+        object_lifecycle_preference: dict[str, str] | None = None,
     ) -> str:
         headers = {
             **self.auth_headers,
@@ -408,16 +415,25 @@ class FalCDNFileRepository(FileRepository):
 class FalFileRepositoryV3(FileRepository):
     @retry(max_retries=3, base_delay=1, backoff_type="exponential", jitter=True)
     def save(
-        self,
-        file: FileData,
+        self, file: FileData, user_lifecycle_preference: dict[str, str] | None
     ) -> str:
+        object_lifecycle_preference = dataclasses.asdict(GLOBAL_LIFECYCLE_PREFERENCE)
+
+        if user_lifecycle_preference is not None:
+            object_lifecycle_preference = {
+                key: user_lifecycle_preference[key]
+                if key in user_lifecycle_preference
+                else value
+                for key, value in object_lifecycle_preference.items()
+            }
+
         headers = {
             **self.auth_headers,
             "Accept": "application/json",
             "Content-Type": file.content_type,
             "X-Fal-File-Name": file.file_name,
             "X-Fal-Object-Lifecycle-Preference": json.dumps(
-                dataclasses.asdict(GLOBAL_LIFECYCLE_PREFERENCE)
+                object_lifecycle_preference
             ),
         }
         url = os.getenv("FAL_CDN_V3_HOST", _FAL_CDN_V3) + "/files/upload"
