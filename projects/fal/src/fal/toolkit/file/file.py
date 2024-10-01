@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 from zipfile import ZipFile
 
 import pydantic
+from fastapi import Request
 
 # https://github.com/pydantic/pydantic/pull/2573
 if not hasattr(pydantic, "__version__") or pydantic.__version__.startswith("1."):
@@ -55,6 +56,7 @@ get_builtin_repository.__module__ = "__main__"
 
 DEFAULT_REPOSITORY: FileRepository | RepositoryId = "fal_v2"
 FALLBACK_REPOSITORY: FileRepository | RepositoryId = "cdn"
+OBJECT_LIFECYCLE_PREFERENCE_KEY = "x-fal-object-lifecycle-preference"
 
 
 class File(BaseModel):
@@ -132,6 +134,7 @@ class File(BaseModel):
         fallback_repository: Optional[
             FileRepository | RepositoryId
         ] = FALLBACK_REPOSITORY,
+        request: Optional[Request] = None,
     ) -> File:
         repo = (
             repository
@@ -141,8 +144,14 @@ class File(BaseModel):
 
         fdata = FileData(data, content_type, file_name)
 
+        object_lifecycle_preference = (
+            request.headers.get(OBJECT_LIFECYCLE_PREFERENCE_KEY)
+            if request is not None
+            else None
+        )
+
         try:
-            url = repo.save(fdata)
+            url = repo.save(fdata, object_lifecycle_preference)
         except Exception:
             if not fallback_repository:
                 raise
@@ -153,7 +162,7 @@ class File(BaseModel):
                 else get_builtin_repository(fallback_repository)
             )
 
-            url = fallback_repo.save(fdata)
+            url = fallback_repo.save(fdata, object_lifecycle_preference)
 
         return cls(
             url=url,
@@ -173,6 +182,7 @@ class File(BaseModel):
         fallback_repository: Optional[
             FileRepository | RepositoryId
         ] = FALLBACK_REPOSITORY,
+        request: Optional[Request] = None,
     ) -> File:
         file_path = Path(path)
         if not file_path.exists():
@@ -185,12 +195,18 @@ class File(BaseModel):
         )
 
         content_type = content_type or "application/octet-stream"
+        object_lifecycle_preference = (
+            request.headers.get(OBJECT_LIFECYCLE_PREFERENCE_KEY)
+            if request is not None
+            else None
+        )
 
         try:
             url, data = repo.save_file(
                 file_path,
                 content_type=content_type,
                 multipart=multipart,
+                object_lifecycle_preference=object_lifecycle_preference,
             )
         except Exception:
             if not fallback_repository:
@@ -206,6 +222,7 @@ class File(BaseModel):
                 file_path,
                 content_type=content_type,
                 multipart=multipart,
+                object_lifecycle_preference=object_lifecycle_preference,
             )
 
         return cls(
