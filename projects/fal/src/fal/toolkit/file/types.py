@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from mimetypes import guess_extension, guess_type
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Optional
 from uuid import uuid4
 
 
@@ -36,7 +36,11 @@ RepositoryId = Literal[
 
 @dataclass
 class FileRepository:
-    def save(self, data: FileData) -> str:
+    def save(
+        self,
+        data: FileData,
+        object_lifecycle_preference: Optional[dict[str, str]] = None,
+    ) -> str:
         raise NotImplementedError()
 
     def save_file(
@@ -47,6 +51,7 @@ class FileRepository:
         multipart_threshold: int | None = None,
         multipart_chunk_size: int | None = None,
         multipart_max_concurrency: int | None = None,
+        object_lifecycle_preference: Optional[dict[str, str]] = None,
     ) -> tuple[str, FileData | None]:
         if multipart:
             raise NotImplementedError()
@@ -54,4 +59,4 @@ class FileRepository:
         with open(file_path, "rb") as fobj:
             data = FileData(fobj.read(), content_type, Path(file_path).name)
 
-        return self.save(data), data
+        return self.save(data, object_lifecycle_preference), data
