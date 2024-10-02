@@ -1,6 +1,7 @@
 name: Deploy docs to GitHub Pages
 
 on:
+  pull_request:
   push:
     branches: [main]
 
@@ -25,6 +26,7 @@ jobs:
       run: make docs
 
     - name: Deploy to GitHub Pages
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       uses: peaceiris/actions-gh-pages@v3
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
