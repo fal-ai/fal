@@ -25,3 +25,5 @@ dmypy.json
 /coverage.xml
 /.coverage
 tmp/
+
+/docs/
