@@ -20,13 +20,17 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+docs = [
+    "sphinx",
+    "sphinx-autodoc-typehints",
+]
 test = [
     "pytest",
     "pytest-asyncio",
     "pillow",
 ]
 dev = [
-    "fal_client[test]",
+    "fal_client[docs,test]",
 ]
 
 [project.urls]
