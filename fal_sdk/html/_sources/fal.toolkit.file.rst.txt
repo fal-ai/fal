@@ -1,0 +1,29 @@
+fal.toolkit.file package
+========================
+
+Submodules
+----------
+
+fal.toolkit.file.file module
+----------------------------
+
+.. automodule:: fal.toolkit.file.file
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+fal.toolkit.file.types module
+-----------------------------
+
+.. automodule:: fal.toolkit.file.types
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+Module contents
+---------------
+
+.. automodule:: fal.toolkit.file
+   :members:
+   :undoc-members:
+   :show-inheritance:

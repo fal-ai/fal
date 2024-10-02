@@ -1,0 +1,29 @@
+fal.auth package
+================
+
+Submodules
+----------
+
+fal.auth.auth0 module
+---------------------
+
+.. automodule:: fal.auth.auth0
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+fal.auth.local module
+---------------------
+
+.. automodule:: fal.auth.local
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+Module contents
+---------------
+
+.. automodule:: fal.auth
+   :members:
+   :undoc-members:
+   :show-inheritance:

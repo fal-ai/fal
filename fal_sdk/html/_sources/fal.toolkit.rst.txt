@@ -1,0 +1,39 @@
+fal.toolkit package
+===================
+
+Subpackages
+-----------
+
+.. toctree::
+   :maxdepth: 4
+
+   fal.toolkit.file
+   fal.toolkit.image
+   fal.toolkit.utils
+
+Submodules
+----------
+
+fal.toolkit.exceptions module
+-----------------------------
+
+.. automodule:: fal.toolkit.exceptions
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+fal.toolkit.optimize module
+---------------------------
+
+.. automodule:: fal.toolkit.optimize
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+Module contents
+---------------
+
+.. automodule:: fal.toolkit
+   :members:
+   :undoc-members:
+   :show-inheritance:

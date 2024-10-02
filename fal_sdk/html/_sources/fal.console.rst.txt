@@ -1,0 +1,29 @@
+fal.console package
+===================
+
+Submodules
+----------
+
+fal.console.icons module
+------------------------
+
+.. automodule:: fal.console.icons
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+fal.console.ux module
+---------------------
+
+.. automodule:: fal.console.ux
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+Module contents
+---------------
+
+.. automodule:: fal.console
+   :members:
+   :undoc-members:
+   :show-inheritance:

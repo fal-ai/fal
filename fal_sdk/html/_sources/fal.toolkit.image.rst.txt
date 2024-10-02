@@ -1,0 +1,37 @@
+fal.toolkit.image package
+=========================
+
+Subpackages
+-----------
+
+.. toctree::
+   :maxdepth: 4
+
+   fal.toolkit.image.nsfw_filter
+
+Submodules
+----------
+
+fal.toolkit.image.image module
+------------------------------
+
+.. automodule:: fal.toolkit.image.image
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+fal.toolkit.image.safety\_checker module
+----------------------------------------
+
+.. automodule:: fal.toolkit.image.safety_checker
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+Module contents
+---------------
+
+.. automodule:: fal.toolkit.image
+   :members:
+   :undoc-members:
+   :show-inheritance:

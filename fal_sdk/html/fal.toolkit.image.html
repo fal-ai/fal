@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="./">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>fal.toolkit.image package &#8212; fal_sdk  documentation</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=d1102ebc" />
+    <link rel="stylesheet" type="text/css" href="_static/basic.css?v=c058f7c8" />
+    <link rel="stylesheet" type="text/css" href="_static/alabaster.css?v=27fed22d" />
+    <script src="_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="_static/doctools.js?v=9a2dae69"></script>
+    <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="fal.toolkit.image.nsfw_filter package" href="fal.toolkit.image.nsfw_filter.html" />
+    <link rel="prev" title="fal.toolkit.file package" href="fal.toolkit.file.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section id="fal-toolkit-image-package">
+<h1>fal.toolkit.image package<a class="headerlink" href="#fal-toolkit-image-package" title="Link to this heading">¶</a></h1>
+<section id="subpackages">
+<h2>Subpackages<a class="headerlink" href="#subpackages" title="Link to this heading">¶</a></h2>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="fal.toolkit.image.nsfw_filter.html">fal.toolkit.image.nsfw_filter package</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="fal.toolkit.image.nsfw_filter.html#submodules">Submodules</a></li>
+<li class="toctree-l2"><a class="reference internal" href="fal.toolkit.image.nsfw_filter.html#module-fal.toolkit.image.nsfw_filter.env">fal.toolkit.image.nsfw_filter.env module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="fal.toolkit.image.nsfw_filter.html#fal.toolkit.image.nsfw_filter.env.get_requirements"><code class="docutils literal notranslate"><span class="pre">get_requirements()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="fal.toolkit.image.nsfw_filter.html#module-fal.toolkit.image.nsfw_filter.inference">fal.toolkit.image.nsfw_filter.inference module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="fal.toolkit.image.nsfw_filter.html#fal.toolkit.image.nsfw_filter.inference.NSFWImageDetectionInput"><code class="docutils literal notranslate"><span class="pre">NSFWImageDetectionInput</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.toolkit.image.nsfw_filter.html#fal.toolkit.image.nsfw_filter.inference.NSFWImageDetectionInput.image_url"><code class="docutils literal notranslate"><span class="pre">NSFWImageDetectionInput.image_url</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.toolkit.image.nsfw_filter.html#fal.toolkit.image.nsfw_filter.inference.NSFWImageDetectionInput.model_computed_fields"><code class="docutils literal notranslate"><span class="pre">NSFWImageDetectionInput.model_computed_fields</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.toolkit.image.nsfw_filter.html#fal.toolkit.image.nsfw_filter.inference.NSFWImageDetectionInput.model_config"><code class="docutils literal notranslate"><span class="pre">NSFWImageDetectionInput.model_config</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.toolkit.image.nsfw_filter.html#fal.toolkit.image.nsfw_filter.inference.NSFWImageDetectionInput.model_fields"><code class="docutils literal notranslate"><span class="pre">NSFWImageDetectionInput.model_fields</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.toolkit.image.nsfw_filter.html#fal.toolkit.image.nsfw_filter.inference.NSFWImageDetectionOutput"><code class="docutils literal notranslate"><span class="pre">NSFWImageDetectionOutput</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.toolkit.image.nsfw_filter.html#fal.toolkit.image.nsfw_filter.inference.NSFWImageDetectionOutput.model_computed_fields"><code class="docutils literal notranslate"><span class="pre">NSFWImageDetectionOutput.model_computed_fields</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.toolkit.image.nsfw_filter.html#fal.toolkit.image.nsfw_filter.inference.NSFWImageDetectionOutput.model_config"><code class="docutils literal notranslate"><span class="pre">NSFWImageDetectionOutput.model_config</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.toolkit.image.nsfw_filter.html#fal.toolkit.image.nsfw_filter.inference.NSFWImageDetectionOutput.model_fields"><code class="docutils literal notranslate"><span class="pre">NSFWImageDetectionOutput.model_fields</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.toolkit.image.nsfw_filter.html#fal.toolkit.image.nsfw_filter.inference.NSFWImageDetectionOutput.nsfw_probability"><code class="docutils literal notranslate"><span class="pre">NSFWImageDetectionOutput.nsfw_probability</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.toolkit.image.nsfw_filter.html#fal.toolkit.image.nsfw_filter.inference.check_nsfw_content"><code class="docutils literal notranslate"><span class="pre">check_nsfw_content()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal.toolkit.image.nsfw_filter.html#fal.toolkit.image.nsfw_filter.inference.run_nsfw_estimation"><code class="docutils literal notranslate"><span class="pre">run_nsfw_estimation()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="fal.toolkit.image.nsfw_filter.html#module-fal.toolkit.image.nsfw_filter.model">fal.toolkit.image.nsfw_filter.model module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="fal.toolkit.image.nsfw_filter.html#fal.toolkit.image.nsfw_filter.model.get_model"><code class="docutils literal notranslate"><span class="pre">get_model()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="fal.toolkit.image.nsfw_filter.html#module-fal.toolkit.image.nsfw_filter">Module contents</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="fal.toolkit.image.nsfw_filter.html#fal.toolkit.image.nsfw_filter.NSFWImageDetectionInput"><code class="docutils literal notranslate"><span class="pre">NSFWImageDetectionInput</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.toolkit.image.nsfw_filter.html#fal.toolkit.image.nsfw_filter.NSFWImageDetectionInput.image_url"><code class="docutils literal notranslate"><span class="pre">NSFWImageDetectionInput.image_url</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.toolkit.image.nsfw_filter.html#fal.toolkit.image.nsfw_filter.NSFWImageDetectionInput.model_computed_fields"><code class="docutils literal notranslate"><span class="pre">NSFWImageDetectionInput.model_computed_fields</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.toolkit.image.nsfw_filter.html#fal.toolkit.image.nsfw_filter.NSFWImageDetectionInput.model_config"><code class="docutils literal notranslate"><span class="pre">NSFWImageDetectionInput.model_config</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.toolkit.image.nsfw_filter.html#fal.toolkit.image.nsfw_filter.NSFWImageDetectionInput.model_fields"><code class="docutils literal notranslate"><span class="pre">NSFWImageDetectionInput.model_fields</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.toolkit.image.nsfw_filter.html#fal.toolkit.image.nsfw_filter.NSFWImageDetectionOutput"><code class="docutils literal notranslate"><span class="pre">NSFWImageDetectionOutput</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.toolkit.image.nsfw_filter.html#fal.toolkit.image.nsfw_filter.NSFWImageDetectionOutput.model_computed_fields"><code class="docutils literal notranslate"><span class="pre">NSFWImageDetectionOutput.model_computed_fields</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.toolkit.image.nsfw_filter.html#fal.toolkit.image.nsfw_filter.NSFWImageDetectionOutput.model_config"><code class="docutils literal notranslate"><span class="pre">NSFWImageDetectionOutput.model_config</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.toolkit.image.nsfw_filter.html#fal.toolkit.image.nsfw_filter.NSFWImageDetectionOutput.model_fields"><code class="docutils literal notranslate"><span class="pre">NSFWImageDetectionOutput.model_fields</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.toolkit.image.nsfw_filter.html#fal.toolkit.image.nsfw_filter.NSFWImageDetectionOutput.nsfw_probability"><code class="docutils literal notranslate"><span class="pre">NSFWImageDetectionOutput.nsfw_probability</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.toolkit.image.nsfw_filter.html#fal.toolkit.image.nsfw_filter.run_nsfw_estimation"><code class="docutils literal notranslate"><span class="pre">run_nsfw_estimation()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</div>
+</section>
+<section id="submodules">
+<h2>Submodules<a class="headerlink" href="#submodules" title="Link to this heading">¶</a></h2>
+</section>
+<section id="module-fal.toolkit.image.image">
+<span id="fal-toolkit-image-image-module"></span><h2>fal.toolkit.image.image module<a class="headerlink" href="#module-fal.toolkit.image.image" title="Link to this heading">¶</a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.toolkit.image.image.Image">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.toolkit.image.image.</span></span><span class="sig-name descname"><span class="pre">Image</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">data</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.image.image.Image" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="fal.toolkit.file.html#fal.toolkit.file.file.File" title="fal.toolkit.file.file.File"><code class="xref py py-class docutils literal notranslate"><span class="pre">File</span></code></a></p>
+<p>Represents an image file.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.image.image.Image.content_type">
+<span class="sig-name descname"><span class="pre">content_type</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Optional[str]</span></em><a class="headerlink" href="#fal.toolkit.image.image.Image.content_type" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.image.image.Image.file_data">
+<span class="sig-name descname"><span class="pre">file_data</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Optional[bytes]</span></em><a class="headerlink" href="#fal.toolkit.image.image.Image.file_data" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.image.image.Image.file_name">
+<span class="sig-name descname"><span class="pre">file_name</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Optional[str]</span></em><a class="headerlink" href="#fal.toolkit.image.image.Image.file_name" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.image.image.Image.file_size">
+<span class="sig-name descname"><span class="pre">file_size</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Optional[int]</span></em><a class="headerlink" href="#fal.toolkit.image.image.Image.file_size" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.toolkit.image.image.Image.from_bytes">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_bytes</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">format</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">file_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">repository</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'fal_v2'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fallback_repository</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'cdn'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">request</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.image.image.Image.from_bytes" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference internal" href="#fal.toolkit.image.image.Image" title="fal.toolkit.image.image.Image"><code class="xref py py-class docutils literal notranslate"><span class="pre">Image</span></code></a></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.toolkit.image.image.Image.from_pil">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_pil</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pil_image</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">format</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">file_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">repository</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'fal_v2'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fallback_repository</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'cdn'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">request</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.image.image.Image.from_pil" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference internal" href="#fal.toolkit.image.image.Image" title="fal.toolkit.image.image.Image"><code class="xref py py-class docutils literal notranslate"><span class="pre">Image</span></code></a></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.image.image.Image.height">
+<span class="sig-name descname"><span class="pre">height</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Optional[int]</span></em><a class="headerlink" href="#fal.toolkit.image.image.Image.height" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.image.image.Image.model_computed_fields">
+<span class="sig-name descname"><span class="pre">model_computed_fields</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">ClassVar[Dict[str,</span> <span class="pre">ComputedFieldInfo]]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">{}</span></em><a class="headerlink" href="#fal.toolkit.image.image.Image.model_computed_fields" title="Link to this definition">¶</a></dt>
+<dd><p>A dictionary of computed field names and their corresponding <cite>ComputedFieldInfo</cite> objects.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.image.image.Image.model_config">
+<span class="sig-name descname"><span class="pre">model_config</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">ClassVar[ConfigDict]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">{}</span></em><a class="headerlink" href="#fal.toolkit.image.image.Image.model_config" title="Link to this definition">¶</a></dt>
+<dd><p>Configuration for the model, should be a dictionary conforming to [<cite>ConfigDict</cite>][pydantic.config.ConfigDict].</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.image.image.Image.model_fields">
+<span class="sig-name descname"><span class="pre">model_fields</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">ClassVar[Dict[str,</span> <span class="pre">FieldInfo]]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">{'content_type':</span> <span class="pre">FieldInfo(annotation=Union[str,</span> <span class="pre">NoneType],</span> <span class="pre">required=False,</span> <span class="pre">default=None,</span> <span class="pre">description='The</span> <span class="pre">mime</span> <span class="pre">type</span> <span class="pre">of</span> <span class="pre">the</span> <span class="pre">file.',</span> <span class="pre">examples=['image/png']),</span> <span class="pre">'file_data':</span> <span class="pre">FieldInfo(annotation=Union[bytes,</span> <span class="pre">NoneType],</span> <span class="pre">required=False,</span> <span class="pre">default=None,</span> <span class="pre">description='File</span> <span class="pre">data',</span> <span class="pre">exclude=True,</span> <span class="pre">repr=False),</span> <span class="pre">'file_name':</span> <span class="pre">FieldInfo(annotation=Union[str,</span> <span class="pre">NoneType],</span> <span class="pre">required=False,</span> <span class="pre">default=None,</span> <span class="pre">description='The</span> <span class="pre">name</span> <span class="pre">of</span> <span class="pre">the</span> <span class="pre">file.</span> <span class="pre">It</span> <span class="pre">will</span> <span class="pre">be</span> <span class="pre">auto-generated</span> <span class="pre">if</span> <span class="pre">not</span> <span class="pre">provided.',</span> <span class="pre">examples=['z9RV14K95DvU.png']),</span> <span class="pre">'file_size':</span> <span class="pre">FieldInfo(annotation=Union[int,</span> <span class="pre">NoneType],</span> <span class="pre">required=False,</span> <span class="pre">default=None,</span> <span class="pre">description='The</span> <span class="pre">size</span> <span class="pre">of</span> <span class="pre">the</span> <span class="pre">file</span> <span class="pre">in</span> <span class="pre">bytes.',</span> <span class="pre">examples=[4404019]),</span> <span class="pre">'height':</span> <span class="pre">FieldInfo(annotation=Union[int,</span> <span class="pre">NoneType],</span> <span class="pre">required=False,</span> <span class="pre">default=None,</span> <span class="pre">description='The</span> <span class="pre">height</span> <span class="pre">of</span> <span class="pre">the</span> <span class="pre">image</span> <span class="pre">in</span> <span class="pre">pixels.',</span> <span class="pre">examples=[1024]),</span> <span class="pre">'url':</span> <span class="pre">FieldInfo(annotation=str,</span> <span class="pre">required=True,</span> <span class="pre">description='The</span> <span class="pre">URL</span> <span class="pre">where</span> <span class="pre">the</span> <span class="pre">file</span> <span class="pre">can</span> <span class="pre">be</span> <span class="pre">downloaded</span> <span class="pre">from.'),</span> <span class="pre">'width':</span> <span class="pre">FieldInfo(annotation=Union[int,</span> <span class="pre">NoneType],</span> <span class="pre">required=False,</span> <span class="pre">default=None,</span> <span class="pre">description='The</span> <span class="pre">width</span> <span class="pre">of</span> <span class="pre">the</span> <span class="pre">image</span> <span class="pre">in</span> <span class="pre">pixels.',</span> <span class="pre">examples=[1024])}</span></em><a class="headerlink" href="#fal.toolkit.image.image.Image.model_fields" title="Link to this definition">¶</a></dt>
+<dd><p>Metadata about the fields defined on the model,
+mapping of field names to [<cite>FieldInfo</cite>][pydantic.fields.FieldInfo] objects.</p>
+<p>This replaces <cite>Model.__fields__</cite> from Pydantic V1.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.toolkit.image.image.Image.to_pil">
+<span class="sig-name descname"><span class="pre">to_pil</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mode</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'RGB'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.image.image.Image.to_pil" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Image</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.image.image.Image.url">
+<span class="sig-name descname"><span class="pre">url</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#fal.toolkit.image.image.Image.url" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.image.image.Image.width">
+<span class="sig-name descname"><span class="pre">width</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Optional[int]</span></em><a class="headerlink" href="#fal.toolkit.image.image.Image.width" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.toolkit.image.image.ImageSize">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.toolkit.image.image.</span></span><span class="sig-name descname"><span class="pre">ImageSize</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">data</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.image.image.ImageSize" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">BaseModel</span></code></p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.image.image.ImageSize.height">
+<span class="sig-name descname"><span class="pre">height</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><a class="headerlink" href="#fal.toolkit.image.image.ImageSize.height" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.image.image.ImageSize.model_computed_fields">
+<span class="sig-name descname"><span class="pre">model_computed_fields</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">ClassVar[Dict[str,</span> <span class="pre">ComputedFieldInfo]]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">{}</span></em><a class="headerlink" href="#fal.toolkit.image.image.ImageSize.model_computed_fields" title="Link to this definition">¶</a></dt>
+<dd><p>A dictionary of computed field names and their corresponding <cite>ComputedFieldInfo</cite> objects.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.image.image.ImageSize.model_config">
+<span class="sig-name descname"><span class="pre">model_config</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">ClassVar[ConfigDict]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">{}</span></em><a class="headerlink" href="#fal.toolkit.image.image.ImageSize.model_config" title="Link to this definition">¶</a></dt>
+<dd><p>Configuration for the model, should be a dictionary conforming to [<cite>ConfigDict</cite>][pydantic.config.ConfigDict].</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.image.image.ImageSize.model_fields">
+<span class="sig-name descname"><span class="pre">model_fields</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">ClassVar[Dict[str,</span> <span class="pre">FieldInfo]]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">{'height':</span> <span class="pre">FieldInfo(annotation=int,</span> <span class="pre">required=False,</span> <span class="pre">default=512,</span> <span class="pre">description='The</span> <span class="pre">height</span> <span class="pre">of</span> <span class="pre">the</span> <span class="pre">generated</span> <span class="pre">image.',</span> <span class="pre">metadata=[Gt(gt=0),</span> <span class="pre">Le(le=14142)]),</span> <span class="pre">'width':</span> <span class="pre">FieldInfo(annotation=int,</span> <span class="pre">required=False,</span> <span class="pre">default=512,</span> <span class="pre">description='The</span> <span class="pre">width</span> <span class="pre">of</span> <span class="pre">the</span> <span class="pre">generated</span> <span class="pre">image.',</span> <span class="pre">metadata=[Gt(gt=0),</span> <span class="pre">Le(le=14142)])}</span></em><a class="headerlink" href="#fal.toolkit.image.image.ImageSize.model_fields" title="Link to this definition">¶</a></dt>
+<dd><p>Metadata about the fields defined on the model,
+mapping of field names to [<cite>FieldInfo</cite>][pydantic.fields.FieldInfo] objects.</p>
+<p>This replaces <cite>Model.__fields__</cite> from Pydantic V1.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.image.image.ImageSize.width">
+<span class="sig-name descname"><span class="pre">width</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><a class="headerlink" href="#fal.toolkit.image.image.ImageSize.width" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.toolkit.image.image.get_image_size">
+<span class="sig-prename descclassname"><span class="pre">fal.toolkit.image.image.</span></span><span class="sig-name descname"><span class="pre">get_image_size</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">source</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.image.image.get_image_size" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference internal" href="#fal.toolkit.image.image.ImageSize" title="fal.toolkit.image.image.ImageSize"><code class="xref py py-class docutils literal notranslate"><span class="pre">ImageSize</span></code></a></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+<section id="module-fal.toolkit.image.safety_checker">
+<span id="fal-toolkit-image-safety-checker-module"></span><h2>fal.toolkit.image.safety_checker module<a class="headerlink" href="#module-fal.toolkit.image.safety_checker" title="Link to this heading">¶</a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.toolkit.image.safety_checker.load_safety_checker">
+<span class="sig-prename descclassname"><span class="pre">fal.toolkit.image.safety_checker.</span></span><span class="sig-name descname"><span class="pre">load_safety_checker</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.image.safety_checker.load_safety_checker" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.toolkit.image.safety_checker.postprocess_images">
+<span class="sig-prename descclassname"><span class="pre">fal.toolkit.image.safety_checker.</span></span><span class="sig-name descname"><span class="pre">postprocess_images</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pil_images</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">enable_safety_checker</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">safety_checker_version</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">2</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.image.safety_checker.postprocess_images" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code>]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.toolkit.image.safety_checker.run_safety_checker">
+<span class="sig-prename descclassname"><span class="pre">fal.toolkit.image.safety_checker.</span></span><span class="sig-name descname"><span class="pre">run_safety_checker</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pil_images</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.image.safety_checker.run_safety_checker" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.toolkit.image.safety_checker.run_safety_checker_v2">
+<span class="sig-prename descclassname"><span class="pre">fal.toolkit.image.safety_checker.</span></span><span class="sig-name descname"><span class="pre">run_safety_checker_v2</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pil_images</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">nsfw_threshold</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.5</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.image.safety_checker.run_safety_checker_v2" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+<section id="module-fal.toolkit.image">
+<span id="module-contents"></span><h2>Module contents<a class="headerlink" href="#module-fal.toolkit.image" title="Link to this heading">¶</a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.toolkit.image.filter_by">
+<span class="sig-prename descclassname"><span class="pre">fal.toolkit.image.</span></span><span class="sig-name descname"><span class="pre">filter_by</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">has_nsfw_concepts</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">images</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.image.filter_by" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">Image</span></code>]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.toolkit.image.preprocess_image">
+<span class="sig-prename descclassname"><span class="pre">fal.toolkit.image.</span></span><span class="sig-name descname"><span class="pre">preprocess_image</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">image_pil</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">convert_to_rgb</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fix_orientation</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.image.preprocess_image" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.toolkit.image.read_image_from_url">
+<span class="sig-prename descclassname"><span class="pre">fal.toolkit.image.</span></span><span class="sig-name descname"><span class="pre">read_image_from_url</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">url</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">convert_to_rgb</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fix_orientation</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.image.read_image_from_url" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</section>
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="index.html">fal_sdk</a></h1>
+
+
+
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="modules.html">fal</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="fal.html">fal package</a></li>
+</ul>
+</li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+  <li><a href="modules.html">fal</a><ul>
+  <li><a href="fal.html">fal package</a><ul>
+  <li><a href="fal.toolkit.html">fal.toolkit package</a><ul>
+      <li>Previous: <a href="fal.toolkit.file.html" title="previous chapter">fal.toolkit.file package</a></li>
+      <li>Next: <a href="fal.toolkit.image.nsfw_filter.html" title="next chapter">fal.toolkit.image.nsfw_filter package</a></li>
+  </ul></li>
+  </ul></li>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2024, FAL Team.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 8.0.2</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+      |
+      <a href="_sources/fal.toolkit.image.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>

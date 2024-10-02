@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="./">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>fal &#8212; fal_sdk  documentation</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=d1102ebc" />
+    <link rel="stylesheet" type="text/css" href="_static/basic.css?v=c058f7c8" />
+    <link rel="stylesheet" type="text/css" href="_static/alabaster.css?v=27fed22d" />
+    <script src="_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="_static/doctools.js?v=9a2dae69"></script>
+    <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="fal package" href="fal.html" />
+    <link rel="prev" title="fal_sdk documentation" href="index.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section id="fal">
+<h1>fal<a class="headerlink" href="#fal" title="Link to this heading">¶</a></h1>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="fal.html">fal package</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="fal.html#subpackages">Subpackages</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="fal.auth.html">fal.auth package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.auth.html#submodules">Submodules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.auth.html#module-fal.auth.auth0">fal.auth.auth0 module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.auth.html#module-fal.auth.local">fal.auth.local module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.auth.html#module-fal.auth">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.cli.html">fal.cli package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.cli.html#submodules">Submodules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.cli.html#module-fal.cli.apps">fal.cli.apps module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.cli.html#module-fal.cli.auth">fal.cli.auth module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.cli.html#module-fal.cli.create">fal.cli.create module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.cli.html#module-fal.cli.debug">fal.cli.debug module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.cli.html#module-fal.cli.deploy">fal.cli.deploy module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.cli.html#module-fal.cli.doctor">fal.cli.doctor module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.cli.html#module-fal.cli.keys">fal.cli.keys module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.cli.html#module-fal.cli.main">fal.cli.main module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.cli.html#module-fal.cli.parser">fal.cli.parser module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.cli.html#module-fal.cli.run">fal.cli.run module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.cli.html#module-fal.cli.secrets">fal.cli.secrets module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.cli.html#module-fal.cli">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.console.html">fal.console package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.console.html#submodules">Submodules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.console.html#module-fal.console.icons">fal.console.icons module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.console.html#module-fal.console.ux">fal.console.ux module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.console.html#module-fal.console">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.exceptions.html">fal.exceptions package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#submodules">Submodules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#module-fal.exceptions.auth">fal.exceptions.auth module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.exceptions.html#module-fal.exceptions">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.logging.html">fal.logging package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.logging.html#submodules">Submodules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.logging.html#module-fal.logging.isolate">fal.logging.isolate module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.logging.html#module-fal.logging.style">fal.logging.style module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.logging.html#module-fal.logging.trace">fal.logging.trace module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.logging.html#module-fal.logging.user">fal.logging.user module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.logging.html#module-fal.logging">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.toolkit.html">fal.toolkit package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.toolkit.html#subpackages">Subpackages</a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.toolkit.html#submodules">Submodules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.toolkit.html#module-fal.toolkit.exceptions">fal.toolkit.exceptions module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.toolkit.html#module-fal.toolkit.optimize">fal.toolkit.optimize module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.toolkit.html#module-fal.toolkit">Module contents</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="fal.html#submodules">Submodules</a></li>
+<li class="toctree-l2"><a class="reference internal" href="fal.html#module-fal.api">fal.api module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.api.BaseServable"><code class="docutils literal notranslate"><span class="pre">BaseServable</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.api.BaseServable.collect_routes"><code class="docutils literal notranslate"><span class="pre">BaseServable.collect_routes()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.api.BaseServable.lifespan"><code class="docutils literal notranslate"><span class="pre">BaseServable.lifespan()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.api.BaseServable.openapi"><code class="docutils literal notranslate"><span class="pre">BaseServable.openapi()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.api.BaseServable.serve"><code class="docutils literal notranslate"><span class="pre">BaseServable.serve()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.api.BaseServable.version"><code class="docutils literal notranslate"><span class="pre">BaseServable.version</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.api.FalFastAPI"><code class="docutils literal notranslate"><span class="pre">FalFastAPI</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.api.FalFastAPI.openapi"><code class="docutils literal notranslate"><span class="pre">FalFastAPI.openapi()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.api.FalMissingDependencyError"><code class="docutils literal notranslate"><span class="pre">FalMissingDependencyError</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.api.FalServerlessError"><code class="docutils literal notranslate"><span class="pre">FalServerlessError</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.api.FalServerlessError.message"><code class="docutils literal notranslate"><span class="pre">FalServerlessError.message</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.api.FalServerlessHost"><code class="docutils literal notranslate"><span class="pre">FalServerlessHost</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.api.FalServerlessHost.credentials"><code class="docutils literal notranslate"><span class="pre">FalServerlessHost.credentials</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.api.FalServerlessHost.register"><code class="docutils literal notranslate"><span class="pre">FalServerlessHost.register()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.api.FalServerlessHost.run"><code class="docutils literal notranslate"><span class="pre">FalServerlessHost.run()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.api.FalServerlessHost.spawn"><code class="docutils literal notranslate"><span class="pre">FalServerlessHost.spawn()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.api.FalServerlessHost.url"><code class="docutils literal notranslate"><span class="pre">FalServerlessHost.url</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.api.Host"><code class="docutils literal notranslate"><span class="pre">Host</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.api.Host.parse_key"><code class="docutils literal notranslate"><span class="pre">Host.parse_key()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.api.Host.parse_options"><code class="docutils literal notranslate"><span class="pre">Host.parse_options()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.api.Host.register"><code class="docutils literal notranslate"><span class="pre">Host.register()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.api.Host.run"><code class="docutils literal notranslate"><span class="pre">Host.run()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.api.Host.spawn"><code class="docutils literal notranslate"><span class="pre">Host.spawn()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.api.InternalFalServerlessError"><code class="docutils literal notranslate"><span class="pre">InternalFalServerlessError</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.api.InternalFalServerlessError.message"><code class="docutils literal notranslate"><span class="pre">InternalFalServerlessError.message</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.api.IsolatedFunction"><code class="docutils literal notranslate"><span class="pre">IsolatedFunction</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.api.IsolatedFunction.executor"><code class="docutils literal notranslate"><span class="pre">IsolatedFunction.executor</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.api.IsolatedFunction.func"><code class="docutils literal notranslate"><span class="pre">IsolatedFunction.func</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.api.IsolatedFunction.host"><code class="docutils literal notranslate"><span class="pre">IsolatedFunction.host</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.api.IsolatedFunction.on"><code class="docutils literal notranslate"><span class="pre">IsolatedFunction.on()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.api.IsolatedFunction.options"><code class="docutils literal notranslate"><span class="pre">IsolatedFunction.options</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.api.IsolatedFunction.raw_func"><code class="docutils literal notranslate"><span class="pre">IsolatedFunction.raw_func</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.api.IsolatedFunction.reraise"><code class="docutils literal notranslate"><span class="pre">IsolatedFunction.reraise</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.api.IsolatedFunction.spawn"><code class="docutils literal notranslate"><span class="pre">IsolatedFunction.spawn()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.api.IsolatedFunction.submit"><code class="docutils literal notranslate"><span class="pre">IsolatedFunction.submit()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.api.LocalHost"><code class="docutils literal notranslate"><span class="pre">LocalHost</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.api.LocalHost.run"><code class="docutils literal notranslate"><span class="pre">LocalHost.run()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.api.Options"><code class="docutils literal notranslate"><span class="pre">Options</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.api.Options.add_requirements"><code class="docutils literal notranslate"><span class="pre">Options.add_requirements()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.api.Options.environment"><code class="docutils literal notranslate"><span class="pre">Options.environment</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.api.Options.gateway"><code class="docutils literal notranslate"><span class="pre">Options.gateway</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.api.Options.get_exposed_port"><code class="docutils literal notranslate"><span class="pre">Options.get_exposed_port()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.api.Options.host"><code class="docutils literal notranslate"><span class="pre">Options.host</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.api.RouteSignature"><code class="docutils literal notranslate"><span class="pre">RouteSignature</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.api.RouteSignature.buffering"><code class="docutils literal notranslate"><span class="pre">RouteSignature.buffering</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.api.RouteSignature.emit_timings"><code class="docutils literal notranslate"><span class="pre">RouteSignature.emit_timings</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.api.RouteSignature.input_modal"><code class="docutils literal notranslate"><span class="pre">RouteSignature.input_modal</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.api.RouteSignature.is_websocket"><code class="docutils literal notranslate"><span class="pre">RouteSignature.is_websocket</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.api.RouteSignature.max_batch_size"><code class="docutils literal notranslate"><span class="pre">RouteSignature.max_batch_size</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.api.RouteSignature.path"><code class="docutils literal notranslate"><span class="pre">RouteSignature.path</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.api.RouteSignature.session_timeout"><code class="docutils literal notranslate"><span class="pre">RouteSignature.session_timeout</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.api.ServeWrapper"><code class="docutils literal notranslate"><span class="pre">ServeWrapper</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.api.ServeWrapper.collect_routes"><code class="docutils literal notranslate"><span class="pre">ServeWrapper.collect_routes()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.api.ServedIsolatedFunction"><code class="docutils literal notranslate"><span class="pre">ServedIsolatedFunction</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.api.ServedIsolatedFunction.on"><code class="docutils literal notranslate"><span class="pre">ServedIsolatedFunction.on()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.api.Server"><code class="docutils literal notranslate"><span class="pre">Server</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.api.Server.install_signal_handlers"><code class="docutils literal notranslate"><span class="pre">Server.install_signal_handlers()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.api.SpawnInfo"><code class="docutils literal notranslate"><span class="pre">SpawnInfo</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.api.SpawnInfo.future"><code class="docutils literal notranslate"><span class="pre">SpawnInfo.future</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.api.SpawnInfo.logs"><code class="docutils literal notranslate"><span class="pre">SpawnInfo.logs</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.api.SpawnInfo.return_value"><code class="docutils literal notranslate"><span class="pre">SpawnInfo.return_value</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.api.SpawnInfo.stream"><code class="docutils literal notranslate"><span class="pre">SpawnInfo.stream</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.api.SpawnInfo.url"><code class="docutils literal notranslate"><span class="pre">SpawnInfo.url</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.api.UserFunctionException"><code class="docutils literal notranslate"><span class="pre">UserFunctionException</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.api.cached"><code class="docutils literal notranslate"><span class="pre">cached()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.api.find_missing_dependencies"><code class="docutils literal notranslate"><span class="pre">find_missing_dependencies()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.api.function"><code class="docutils literal notranslate"><span class="pre">function()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="fal.html#module-fal.app">fal.app module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.app.App"><code class="docutils literal notranslate"><span class="pre">App</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.app_auth"><code class="docutils literal notranslate"><span class="pre">App.app_auth</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.app_name"><code class="docutils literal notranslate"><span class="pre">App.app_name</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.collect_routes"><code class="docutils literal notranslate"><span class="pre">App.collect_routes()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.get_endpoints"><code class="docutils literal notranslate"><span class="pre">App.get_endpoints()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.health"><code class="docutils literal notranslate"><span class="pre">App.health()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.host_kwargs"><code class="docutils literal notranslate"><span class="pre">App.host_kwargs</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.lifespan"><code class="docutils literal notranslate"><span class="pre">App.lifespan()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.machine_type"><code class="docutils literal notranslate"><span class="pre">App.machine_type</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.num_gpus"><code class="docutils literal notranslate"><span class="pre">App.num_gpus</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.provide_hints"><code class="docutils literal notranslate"><span class="pre">App.provide_hints()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.request_timeout"><code class="docutils literal notranslate"><span class="pre">App.request_timeout</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.requirements"><code class="docutils literal notranslate"><span class="pre">App.requirements</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.setup"><code class="docutils literal notranslate"><span class="pre">App.setup()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.teardown"><code class="docutils literal notranslate"><span class="pre">App.teardown()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.app.AppClient"><code class="docutils literal notranslate"><span class="pre">AppClient</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.AppClient.connect"><code class="docutils literal notranslate"><span class="pre">AppClient.connect()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.AppClient.health"><code class="docutils literal notranslate"><span class="pre">AppClient.health()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.app.EndpointClient"><code class="docutils literal notranslate"><span class="pre">EndpointClient</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.app.endpoint"><code class="docutils literal notranslate"><span class="pre">endpoint()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.app.realtime"><code class="docutils literal notranslate"><span class="pre">realtime()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.app.wrap_app"><code class="docutils literal notranslate"><span class="pre">wrap_app()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="fal.html#module-fal.apps">fal.apps module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.apps.Completed"><code class="docutils literal notranslate"><span class="pre">Completed</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.apps.Completed.logs"><code class="docutils literal notranslate"><span class="pre">Completed.logs</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.apps.InProgress"><code class="docutils literal notranslate"><span class="pre">InProgress</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.apps.InProgress.logs"><code class="docutils literal notranslate"><span class="pre">InProgress.logs</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.apps.Queued"><code class="docutils literal notranslate"><span class="pre">Queued</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.apps.Queued.position"><code class="docutils literal notranslate"><span class="pre">Queued.position</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.apps.RequestHandle"><code class="docutils literal notranslate"><span class="pre">RequestHandle</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.apps.RequestHandle.app_id"><code class="docutils literal notranslate"><span class="pre">RequestHandle.app_id</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.apps.RequestHandle.cancel"><code class="docutils literal notranslate"><span class="pre">RequestHandle.cancel()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.apps.RequestHandle.fetch_result"><code class="docutils literal notranslate"><span class="pre">RequestHandle.fetch_result()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.apps.RequestHandle.get"><code class="docutils literal notranslate"><span class="pre">RequestHandle.get()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.apps.RequestHandle.iter_events"><code class="docutils literal notranslate"><span class="pre">RequestHandle.iter_events()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.apps.RequestHandle.request_id"><code class="docutils literal notranslate"><span class="pre">RequestHandle.request_id</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.apps.RequestHandle.status"><code class="docutils literal notranslate"><span class="pre">RequestHandle.status()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.apps.run"><code class="docutils literal notranslate"><span class="pre">run()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.apps.submit"><code class="docutils literal notranslate"><span class="pre">submit()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="fal.html#module-fal.container">fal.container module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.container.ContainerImage"><code class="docutils literal notranslate"><span class="pre">ContainerImage</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.container.ContainerImage.from_dockerfile"><code class="docutils literal notranslate"><span class="pre">ContainerImage.from_dockerfile()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.container.ContainerImage.from_dockerfile_str"><code class="docutils literal notranslate"><span class="pre">ContainerImage.from_dockerfile_str()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="fal.html#module-fal.files">fal.files module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.files.find_project_root"><code class="docutils literal notranslate"><span class="pre">find_project_root()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.files.find_pyproject_toml"><code class="docutils literal notranslate"><span class="pre">find_pyproject_toml()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.files.parse_pyproject_toml"><code class="docutils literal notranslate"><span class="pre">parse_pyproject_toml()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="fal.html#module-fal.flags">fal.flags module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.flags.bool_envvar"><code class="docutils literal notranslate"><span class="pre">bool_envvar()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="fal.html#module-fal.rest_client">fal.rest_client module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.rest_client.CredentialsClient"><code class="docutils literal notranslate"><span class="pre">CredentialsClient</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.rest_client.CredentialsClient.get_headers"><code class="docutils literal notranslate"><span class="pre">CredentialsClient.get_headers()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="fal.html#module-fal.sdk">fal.sdk module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.sdk.AliasInfo"><code class="docutils literal notranslate"><span class="pre">AliasInfo</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.AliasInfo.active_runners"><code class="docutils literal notranslate"><span class="pre">AliasInfo.active_runners</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.AliasInfo.alias"><code class="docutils literal notranslate"><span class="pre">AliasInfo.alias</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.AliasInfo.auth_mode"><code class="docutils literal notranslate"><span class="pre">AliasInfo.auth_mode</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.AliasInfo.keep_alive"><code class="docutils literal notranslate"><span class="pre">AliasInfo.keep_alive</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.AliasInfo.max_concurrency"><code class="docutils literal notranslate"><span class="pre">AliasInfo.max_concurrency</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.AliasInfo.max_multiplexing"><code class="docutils literal notranslate"><span class="pre">AliasInfo.max_multiplexing</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.AliasInfo.min_concurrency"><code class="docutils literal notranslate"><span class="pre">AliasInfo.min_concurrency</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.AliasInfo.revision"><code class="docutils literal notranslate"><span class="pre">AliasInfo.revision</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.sdk.ApplicationInfo"><code class="docutils literal notranslate"><span class="pre">ApplicationInfo</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.ApplicationInfo.active_runners"><code class="docutils literal notranslate"><span class="pre">ApplicationInfo.active_runners</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.ApplicationInfo.application_id"><code class="docutils literal notranslate"><span class="pre">ApplicationInfo.application_id</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.ApplicationInfo.keep_alive"><code class="docutils literal notranslate"><span class="pre">ApplicationInfo.keep_alive</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.ApplicationInfo.max_concurrency"><code class="docutils literal notranslate"><span class="pre">ApplicationInfo.max_concurrency</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.ApplicationInfo.max_multiplexing"><code class="docutils literal notranslate"><span class="pre">ApplicationInfo.max_multiplexing</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.ApplicationInfo.min_concurrency"><code class="docutils literal notranslate"><span class="pre">ApplicationInfo.min_concurrency</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.sdk.AuthenticatedCredentials"><code class="docutils literal notranslate"><span class="pre">AuthenticatedCredentials</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.AuthenticatedCredentials.to_grpc"><code class="docutils literal notranslate"><span class="pre">AuthenticatedCredentials.to_grpc()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.AuthenticatedCredentials.to_headers"><code class="docutils literal notranslate"><span class="pre">AuthenticatedCredentials.to_headers()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.AuthenticatedCredentials.user"><code class="docutils literal notranslate"><span class="pre">AuthenticatedCredentials.user</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.sdk.Credentials"><code class="docutils literal notranslate"><span class="pre">Credentials</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.Credentials.server_credentials"><code class="docutils literal notranslate"><span class="pre">Credentials.server_credentials</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.Credentials.to_grpc"><code class="docutils literal notranslate"><span class="pre">Credentials.to_grpc()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.Credentials.to_headers"><code class="docutils literal notranslate"><span class="pre">Credentials.to_headers()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.sdk.DeploymentStrategy"><code class="docutils literal notranslate"><span class="pre">DeploymentStrategy</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.DeploymentStrategy.RECREATE"><code class="docutils literal notranslate"><span class="pre">DeploymentStrategy.RECREATE</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.DeploymentStrategy.ROLLING"><code class="docutils literal notranslate"><span class="pre">DeploymentStrategy.ROLLING</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.DeploymentStrategy.from_proto"><code class="docutils literal notranslate"><span class="pre">DeploymentStrategy.from_proto()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.DeploymentStrategy.to_proto"><code class="docutils literal notranslate"><span class="pre">DeploymentStrategy.to_proto()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.sdk.FalServerlessClient"><code class="docutils literal notranslate"><span class="pre">FalServerlessClient</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.FalServerlessClient.connect"><code class="docutils literal notranslate"><span class="pre">FalServerlessClient.connect()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.FalServerlessClient.credentials"><code class="docutils literal notranslate"><span class="pre">FalServerlessClient.credentials</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.FalServerlessClient.hostname"><code class="docutils literal notranslate"><span class="pre">FalServerlessClient.hostname</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.sdk.FalServerlessConnection"><code class="docutils literal notranslate"><span class="pre">FalServerlessConnection</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.FalServerlessConnection.close"><code class="docutils literal notranslate"><span class="pre">FalServerlessConnection.close()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.FalServerlessConnection.create_alias"><code class="docutils literal notranslate"><span class="pre">FalServerlessConnection.create_alias()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.FalServerlessConnection.create_user_key"><code class="docutils literal notranslate"><span class="pre">FalServerlessConnection.create_user_key()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.FalServerlessConnection.credentials"><code class="docutils literal notranslate"><span class="pre">FalServerlessConnection.credentials</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.FalServerlessConnection.define_environment"><code class="docutils literal notranslate"><span class="pre">FalServerlessConnection.define_environment()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.FalServerlessConnection.delete_alias"><code class="docutils literal notranslate"><span class="pre">FalServerlessConnection.delete_alias()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.FalServerlessConnection.delete_application"><code class="docutils literal notranslate"><span class="pre">FalServerlessConnection.delete_application()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.FalServerlessConnection.delete_secret"><code class="docutils literal notranslate"><span class="pre">FalServerlessConnection.delete_secret()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.FalServerlessConnection.hostname"><code class="docutils literal notranslate"><span class="pre">FalServerlessConnection.hostname</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.FalServerlessConnection.list_alias_runners"><code class="docutils literal notranslate"><span class="pre">FalServerlessConnection.list_alias_runners()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.FalServerlessConnection.list_aliases"><code class="docutils literal notranslate"><span class="pre">FalServerlessConnection.list_aliases()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.FalServerlessConnection.list_applications"><code class="docutils literal notranslate"><span class="pre">FalServerlessConnection.list_applications()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.FalServerlessConnection.list_secrets"><code class="docutils literal notranslate"><span class="pre">FalServerlessConnection.list_secrets()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.FalServerlessConnection.list_user_keys"><code class="docutils literal notranslate"><span class="pre">FalServerlessConnection.list_user_keys()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.FalServerlessConnection.register"><code class="docutils literal notranslate"><span class="pre">FalServerlessConnection.register()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.FalServerlessConnection.revoke_user_key"><code class="docutils literal notranslate"><span class="pre">FalServerlessConnection.revoke_user_key()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.FalServerlessConnection.run"><code class="docutils literal notranslate"><span class="pre">FalServerlessConnection.run()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.FalServerlessConnection.scale"><code class="docutils literal notranslate"><span class="pre">FalServerlessConnection.scale()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.FalServerlessConnection.set_secret"><code class="docutils literal notranslate"><span class="pre">FalServerlessConnection.set_secret()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.FalServerlessConnection.stub"><code class="docutils literal notranslate"><span class="pre">FalServerlessConnection.stub</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.FalServerlessConnection.update_application"><code class="docutils literal notranslate"><span class="pre">FalServerlessConnection.update_application()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.sdk.FalServerlessKeyCredentials"><code class="docutils literal notranslate"><span class="pre">FalServerlessKeyCredentials</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.FalServerlessKeyCredentials.key_id"><code class="docutils literal notranslate"><span class="pre">FalServerlessKeyCredentials.key_id</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.FalServerlessKeyCredentials.key_secret"><code class="docutils literal notranslate"><span class="pre">FalServerlessKeyCredentials.key_secret</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.FalServerlessKeyCredentials.to_grpc"><code class="docutils literal notranslate"><span class="pre">FalServerlessKeyCredentials.to_grpc()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.FalServerlessKeyCredentials.to_headers"><code class="docutils literal notranslate"><span class="pre">FalServerlessKeyCredentials.to_headers()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.sdk.HostedRunResult"><code class="docutils literal notranslate"><span class="pre">HostedRunResult</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.HostedRunResult.logs"><code class="docutils literal notranslate"><span class="pre">HostedRunResult.logs</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.HostedRunResult.result"><code class="docutils literal notranslate"><span class="pre">HostedRunResult.result</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.HostedRunResult.run_id"><code class="docutils literal notranslate"><span class="pre">HostedRunResult.run_id</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.HostedRunResult.status"><code class="docutils literal notranslate"><span class="pre">HostedRunResult.status</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.HostedRunResult.stream"><code class="docutils literal notranslate"><span class="pre">HostedRunResult.stream</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.sdk.HostedRunState"><code class="docutils literal notranslate"><span class="pre">HostedRunState</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.HostedRunState.INTERNAL_FAILURE"><code class="docutils literal notranslate"><span class="pre">HostedRunState.INTERNAL_FAILURE</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.HostedRunState.IN_PROGRESS"><code class="docutils literal notranslate"><span class="pre">HostedRunState.IN_PROGRESS</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.HostedRunState.SUCCESS"><code class="docutils literal notranslate"><span class="pre">HostedRunState.SUCCESS</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.sdk.HostedRunStatus"><code class="docutils literal notranslate"><span class="pre">HostedRunStatus</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.HostedRunStatus.state"><code class="docutils literal notranslate"><span class="pre">HostedRunStatus.state</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.sdk.KeyScope"><code class="docutils literal notranslate"><span class="pre">KeyScope</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.KeyScope.ADMIN"><code class="docutils literal notranslate"><span class="pre">KeyScope.ADMIN</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.KeyScope.API"><code class="docutils literal notranslate"><span class="pre">KeyScope.API</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.KeyScope.from_proto"><code class="docutils literal notranslate"><span class="pre">KeyScope.from_proto()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.sdk.LocalCredentials"><code class="docutils literal notranslate"><span class="pre">LocalCredentials</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.LocalCredentials.to_grpc"><code class="docutils literal notranslate"><span class="pre">LocalCredentials.to_grpc()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.sdk.MachineRequirements"><code class="docutils literal notranslate"><span class="pre">MachineRequirements</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.MachineRequirements.base_image"><code class="docutils literal notranslate"><span class="pre">MachineRequirements.base_image</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.MachineRequirements.exposed_port"><code class="docutils literal notranslate"><span class="pre">MachineRequirements.exposed_port</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.MachineRequirements.keep_alive"><code class="docutils literal notranslate"><span class="pre">MachineRequirements.keep_alive</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.MachineRequirements.machine_types"><code class="docutils literal notranslate"><span class="pre">MachineRequirements.machine_types</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.MachineRequirements.max_concurrency"><code class="docutils literal notranslate"><span class="pre">MachineRequirements.max_concurrency</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.MachineRequirements.max_multiplexing"><code class="docutils literal notranslate"><span class="pre">MachineRequirements.max_multiplexing</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.MachineRequirements.min_concurrency"><code class="docutils literal notranslate"><span class="pre">MachineRequirements.min_concurrency</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.MachineRequirements.num_gpus"><code class="docutils literal notranslate"><span class="pre">MachineRequirements.num_gpus</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.MachineRequirements.request_timeout"><code class="docutils literal notranslate"><span class="pre">MachineRequirements.request_timeout</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.MachineRequirements.scheduler"><code class="docutils literal notranslate"><span class="pre">MachineRequirements.scheduler</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.MachineRequirements.scheduler_options"><code class="docutils literal notranslate"><span class="pre">MachineRequirements.scheduler_options</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.sdk.RegisterApplicationResult"><code class="docutils literal notranslate"><span class="pre">RegisterApplicationResult</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.RegisterApplicationResult.logs"><code class="docutils literal notranslate"><span class="pre">RegisterApplicationResult.logs</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.RegisterApplicationResult.result"><code class="docutils literal notranslate"><span class="pre">RegisterApplicationResult.result</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.sdk.RegisterApplicationResultType"><code class="docutils literal notranslate"><span class="pre">RegisterApplicationResultType</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.RegisterApplicationResultType.application_id"><code class="docutils literal notranslate"><span class="pre">RegisterApplicationResultType.application_id</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.sdk.RemoteCredentials"><code class="docutils literal notranslate"><span class="pre">RemoteCredentials</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.RemoteCredentials.to_grpc"><code class="docutils literal notranslate"><span class="pre">RemoteCredentials.to_grpc()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.sdk.RunnerInfo"><code class="docutils literal notranslate"><span class="pre">RunnerInfo</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.RunnerInfo.expiration_countdown"><code class="docutils literal notranslate"><span class="pre">RunnerInfo.expiration_countdown</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.RunnerInfo.in_flight_requests"><code class="docutils literal notranslate"><span class="pre">RunnerInfo.in_flight_requests</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.RunnerInfo.runner_id"><code class="docutils literal notranslate"><span class="pre">RunnerInfo.runner_id</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.RunnerInfo.uptime"><code class="docutils literal notranslate"><span class="pre">RunnerInfo.uptime</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.sdk.ServerCredentials"><code class="docutils literal notranslate"><span class="pre">ServerCredentials</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.ServerCredentials.base_options"><code class="docutils literal notranslate"><span class="pre">ServerCredentials.base_options</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.ServerCredentials.to_grpc"><code class="docutils literal notranslate"><span class="pre">ServerCredentials.to_grpc()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.sdk.ServerlessSecret"><code class="docutils literal notranslate"><span class="pre">ServerlessSecret</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.ServerlessSecret.created_at"><code class="docutils literal notranslate"><span class="pre">ServerlessSecret.created_at</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.ServerlessSecret.name"><code class="docutils literal notranslate"><span class="pre">ServerlessSecret.name</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.sdk.UserKeyInfo"><code class="docutils literal notranslate"><span class="pre">UserKeyInfo</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.UserKeyInfo.alias"><code class="docutils literal notranslate"><span class="pre">UserKeyInfo.alias</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.UserKeyInfo.created_at"><code class="docutils literal notranslate"><span class="pre">UserKeyInfo.created_at</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.UserKeyInfo.key_id"><code class="docutils literal notranslate"><span class="pre">UserKeyInfo.key_id</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.UserKeyInfo.scope"><code class="docutils literal notranslate"><span class="pre">UserKeyInfo.scope</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.sdk.WorkerStatus"><code class="docutils literal notranslate"><span class="pre">WorkerStatus</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.WorkerStatus.duration"><code class="docutils literal notranslate"><span class="pre">WorkerStatus.duration</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.WorkerStatus.end_time"><code class="docutils literal notranslate"><span class="pre">WorkerStatus.end_time</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.WorkerStatus.machine_type"><code class="docutils literal notranslate"><span class="pre">WorkerStatus.machine_type</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.WorkerStatus.start_time"><code class="docutils literal notranslate"><span class="pre">WorkerStatus.start_time</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.WorkerStatus.user_id"><code class="docutils literal notranslate"><span class="pre">WorkerStatus.user_id</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.WorkerStatus.worker_id"><code class="docutils literal notranslate"><span class="pre">WorkerStatus.worker_id</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.sdk.get_agent_credentials"><code class="docutils literal notranslate"><span class="pre">get_agent_credentials()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.sdk.get_default_credentials"><code class="docutils literal notranslate"><span class="pre">get_default_credentials()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.sdk.get_default_server_credentials"><code class="docutils literal notranslate"><span class="pre">get_default_server_credentials()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="fal.html#module-fal.sync">fal.sync module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.sync.sync_dir"><code class="docutils literal notranslate"><span class="pre">sync_dir()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="fal.html#module-fal.utils">fal.utils module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.utils.LoadedFunction"><code class="docutils literal notranslate"><span class="pre">LoadedFunction</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.utils.LoadedFunction.app_auth"><code class="docutils literal notranslate"><span class="pre">LoadedFunction.app_auth</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.utils.LoadedFunction.app_name"><code class="docutils literal notranslate"><span class="pre">LoadedFunction.app_name</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.utils.LoadedFunction.endpoints"><code class="docutils literal notranslate"><span class="pre">LoadedFunction.endpoints</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.utils.LoadedFunction.function"><code class="docutils literal notranslate"><span class="pre">LoadedFunction.function</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.utils.load_function_from"><code class="docutils literal notranslate"><span class="pre">load_function_from()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="fal.html#module-fal.workflows">fal.workflows module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.workflows.AttributeLeaf"><code class="docutils literal notranslate"><span class="pre">AttributeLeaf</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.workflows.AttributeLeaf.attribute"><code class="docutils literal notranslate"><span class="pre">AttributeLeaf.attribute</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.workflows.AttributeLeaf.execute"><code class="docutils literal notranslate"><span class="pre">AttributeLeaf.execute()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.workflows.AttributeLeaf.leaf"><code class="docutils literal notranslate"><span class="pre">AttributeLeaf.leaf</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.workflows.AttributeLeaf.referee"><code class="docutils literal notranslate"><span class="pre">AttributeLeaf.referee</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.workflows.Context"><code class="docutils literal notranslate"><span class="pre">Context</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.workflows.Context.hydrate"><code class="docutils literal notranslate"><span class="pre">Context.hydrate()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.workflows.Context.vars"><code class="docutils literal notranslate"><span class="pre">Context.vars</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.workflows.Display"><code class="docutils literal notranslate"><span class="pre">Display</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.workflows.Display.execute"><code class="docutils literal notranslate"><span class="pre">Display.execute()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.workflows.Display.fields"><code class="docutils literal notranslate"><span class="pre">Display.fields</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.workflows.Display.from_json"><code class="docutils literal notranslate"><span class="pre">Display.from_json()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.workflows.Display.to_json"><code class="docutils literal notranslate"><span class="pre">Display.to_json()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.workflows.IndexLeaf"><code class="docutils literal notranslate"><span class="pre">IndexLeaf</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.workflows.IndexLeaf.execute"><code class="docutils literal notranslate"><span class="pre">IndexLeaf.execute()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.workflows.IndexLeaf.index"><code class="docutils literal notranslate"><span class="pre">IndexLeaf.index</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.workflows.IndexLeaf.leaf"><code class="docutils literal notranslate"><span class="pre">IndexLeaf.leaf</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.workflows.IndexLeaf.referee"><code class="docutils literal notranslate"><span class="pre">IndexLeaf.referee</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.workflows.Leaf"><code class="docutils literal notranslate"><span class="pre">Leaf</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.workflows.Leaf.execute"><code class="docutils literal notranslate"><span class="pre">Leaf.execute()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.workflows.Leaf.referee"><code class="docutils literal notranslate"><span class="pre">Leaf.referee</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.workflows.MisconfiguredGraphError"><code class="docutils literal notranslate"><span class="pre">MisconfiguredGraphError</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.workflows.Node"><code class="docutils literal notranslate"><span class="pre">Node</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.workflows.Node.depends"><code class="docutils literal notranslate"><span class="pre">Node.depends</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.workflows.Node.execute"><code class="docutils literal notranslate"><span class="pre">Node.execute()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.workflows.Node.from_json"><code class="docutils literal notranslate"><span class="pre">Node.from_json()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.workflows.Node.id"><code class="docutils literal notranslate"><span class="pre">Node.id</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.workflows.Node.to_json"><code class="docutils literal notranslate"><span class="pre">Node.to_json()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.workflows.ReferenceLeaf"><code class="docutils literal notranslate"><span class="pre">ReferenceLeaf</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.workflows.ReferenceLeaf.execute"><code class="docutils literal notranslate"><span class="pre">ReferenceLeaf.execute()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.workflows.ReferenceLeaf.id"><code class="docutils literal notranslate"><span class="pre">ReferenceLeaf.id</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.workflows.ReferenceLeaf.referee"><code class="docutils literal notranslate"><span class="pre">ReferenceLeaf.referee</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.workflows.Run"><code class="docutils literal notranslate"><span class="pre">Run</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.workflows.Run.app"><code class="docutils literal notranslate"><span class="pre">Run.app</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.workflows.Run.execute"><code class="docutils literal notranslate"><span class="pre">Run.execute()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.workflows.Run.from_json"><code class="docutils literal notranslate"><span class="pre">Run.from_json()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.workflows.Run.input"><code class="docutils literal notranslate"><span class="pre">Run.input</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.workflows.Run.to_json"><code class="docutils literal notranslate"><span class="pre">Run.to_json()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.workflows.Workflow"><code class="docutils literal notranslate"><span class="pre">Workflow</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.workflows.Workflow.display"><code class="docutils literal notranslate"><span class="pre">Workflow.display()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.workflows.Workflow.execute"><code class="docutils literal notranslate"><span class="pre">Workflow.execute()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.workflows.Workflow.from_json"><code class="docutils literal notranslate"><span class="pre">Workflow.from_json()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.workflows.Workflow.input"><code class="docutils literal notranslate"><span class="pre">Workflow.input</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.workflows.Workflow.input_schema"><code class="docutils literal notranslate"><span class="pre">Workflow.input_schema</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.workflows.Workflow.name"><code class="docutils literal notranslate"><span class="pre">Workflow.name</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.workflows.Workflow.nodes"><code class="docutils literal notranslate"><span class="pre">Workflow.nodes</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.workflows.Workflow.output"><code class="docutils literal notranslate"><span class="pre">Workflow.output</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.workflows.Workflow.output_schema"><code class="docutils literal notranslate"><span class="pre">Workflow.output_schema</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.workflows.Workflow.publish"><code class="docutils literal notranslate"><span class="pre">Workflow.publish()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.workflows.Workflow.run"><code class="docutils literal notranslate"><span class="pre">Workflow.run()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.workflows.Workflow.set_output"><code class="docutils literal notranslate"><span class="pre">Workflow.set_output()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.workflows.Workflow.to_dict"><code class="docutils literal notranslate"><span class="pre">Workflow.to_dict()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.workflows.Workflow.to_json"><code class="docutils literal notranslate"><span class="pre">Workflow.to_json()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.workflows.WorkflowSyntaxError"><code class="docutils literal notranslate"><span class="pre">WorkflowSyntaxError</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.workflows.create_workflow"><code class="docutils literal notranslate"><span class="pre">create_workflow()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.workflows.depends"><code class="docutils literal notranslate"><span class="pre">depends()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.workflows.export_workflow_json"><code class="docutils literal notranslate"><span class="pre">export_workflow_json()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.workflows.import_workflow_json"><code class="docutils literal notranslate"><span class="pre">import_workflow_json()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.workflows.iter_leaves"><code class="docutils literal notranslate"><span class="pre">iter_leaves()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.workflows.main"><code class="docutils literal notranslate"><span class="pre">main()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.workflows.parse_leaf"><code class="docutils literal notranslate"><span class="pre">parse_leaf()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="fal.html#module-fal">Module contents</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.App"><code class="docutils literal notranslate"><span class="pre">App</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.app_auth"><code class="docutils literal notranslate"><span class="pre">App.app_auth</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.app_name"><code class="docutils literal notranslate"><span class="pre">App.app_name</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.collect_routes"><code class="docutils literal notranslate"><span class="pre">App.collect_routes()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.get_endpoints"><code class="docutils literal notranslate"><span class="pre">App.get_endpoints()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.health"><code class="docutils literal notranslate"><span class="pre">App.health()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.host_kwargs"><code class="docutils literal notranslate"><span class="pre">App.host_kwargs</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.lifespan"><code class="docutils literal notranslate"><span class="pre">App.lifespan()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.machine_type"><code class="docutils literal notranslate"><span class="pre">App.machine_type</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.num_gpus"><code class="docutils literal notranslate"><span class="pre">App.num_gpus</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.provide_hints"><code class="docutils literal notranslate"><span class="pre">App.provide_hints()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.request_timeout"><code class="docutils literal notranslate"><span class="pre">App.request_timeout</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.requirements"><code class="docutils literal notranslate"><span class="pre">App.requirements</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.setup"><code class="docutils literal notranslate"><span class="pre">App.setup()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.teardown"><code class="docutils literal notranslate"><span class="pre">App.teardown()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.ContainerImage"><code class="docutils literal notranslate"><span class="pre">ContainerImage</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.ContainerImage.from_dockerfile"><code class="docutils literal notranslate"><span class="pre">ContainerImage.from_dockerfile()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.ContainerImage.from_dockerfile_str"><code class="docutils literal notranslate"><span class="pre">ContainerImage.from_dockerfile_str()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.FalServerlessKeyCredentials"><code class="docutils literal notranslate"><span class="pre">FalServerlessKeyCredentials</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.FalServerlessKeyCredentials.key_id"><code class="docutils literal notranslate"><span class="pre">FalServerlessKeyCredentials.key_id</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.FalServerlessKeyCredentials.key_secret"><code class="docutils literal notranslate"><span class="pre">FalServerlessKeyCredentials.key_secret</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.FalServerlessKeyCredentials.to_grpc"><code class="docutils literal notranslate"><span class="pre">FalServerlessKeyCredentials.to_grpc()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.FalServerlessKeyCredentials.to_headers"><code class="docutils literal notranslate"><span class="pre">FalServerlessKeyCredentials.to_headers()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.cached"><code class="docutils literal notranslate"><span class="pre">cached()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.endpoint"><code class="docutils literal notranslate"><span class="pre">endpoint()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.function"><code class="docutils literal notranslate"><span class="pre">function()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.realtime"><code class="docutils literal notranslate"><span class="pre">realtime()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.sync_dir"><code class="docutils literal notranslate"><span class="pre">sync_dir()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</div>
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="index.html">fal_sdk</a></h1>
+
+
+
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">fal</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="fal.html">fal package</a></li>
+</ul>
+</li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+      <li>Previous: <a href="index.html" title="previous chapter">fal_sdk documentation</a></li>
+      <li>Next: <a href="fal.html" title="next chapter">fal package</a></li>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2024, FAL Team.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 8.0.2</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+      |
+      <a href="_sources/modules.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>

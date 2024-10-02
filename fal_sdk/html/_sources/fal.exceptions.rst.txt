@@ -1,0 +1,21 @@
+fal.exceptions package
+======================
+
+Submodules
+----------
+
+fal.exceptions.auth module
+--------------------------
+
+.. automodule:: fal.exceptions.auth
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+Module contents
+---------------
+
+.. automodule:: fal.exceptions
+   :members:
+   :undoc-members:
+   :show-inheritance:

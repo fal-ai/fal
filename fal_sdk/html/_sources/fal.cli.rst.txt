@@ -1,0 +1,101 @@
+fal.cli package
+===============
+
+Submodules
+----------
+
+fal.cli.apps module
+-------------------
+
+.. automodule:: fal.cli.apps
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+fal.cli.auth module
+-------------------
+
+.. automodule:: fal.cli.auth
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+fal.cli.create module
+---------------------
+
+.. automodule:: fal.cli.create
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+fal.cli.debug module
+--------------------
+
+.. automodule:: fal.cli.debug
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+fal.cli.deploy module
+---------------------
+
+.. automodule:: fal.cli.deploy
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+fal.cli.doctor module
+---------------------
+
+.. automodule:: fal.cli.doctor
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+fal.cli.keys module
+-------------------
+
+.. automodule:: fal.cli.keys
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+fal.cli.main module
+-------------------
+
+.. automodule:: fal.cli.main
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+fal.cli.parser module
+---------------------
+
+.. automodule:: fal.cli.parser
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+fal.cli.run module
+------------------
+
+.. automodule:: fal.cli.run
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+fal.cli.secrets module
+----------------------
+
+.. automodule:: fal.cli.secrets
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+Module contents
+---------------
+
+.. automodule:: fal.cli
+   :members:
+   :undoc-members:
+   :show-inheritance:

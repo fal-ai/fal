@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="./">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>fal.logging package &#8212; fal_sdk  documentation</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=d1102ebc" />
+    <link rel="stylesheet" type="text/css" href="_static/basic.css?v=c058f7c8" />
+    <link rel="stylesheet" type="text/css" href="_static/alabaster.css?v=27fed22d" />
+    <script src="_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="_static/doctools.js?v=9a2dae69"></script>
+    <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="fal.toolkit package" href="fal.toolkit.html" />
+    <link rel="prev" title="fal.exceptions package" href="fal.exceptions.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section id="fal-logging-package">
+<h1>fal.logging package<a class="headerlink" href="#fal-logging-package" title="Link to this heading">¶</a></h1>
+<section id="submodules">
+<h2>Submodules<a class="headerlink" href="#submodules" title="Link to this heading">¶</a></h2>
+</section>
+<section id="module-fal.logging.isolate">
+<span id="fal-logging-isolate-module"></span><h2>fal.logging.isolate module<a class="headerlink" href="#module-fal.logging.isolate" title="Link to this heading">¶</a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.logging.isolate.IsolateLogPrinter">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.logging.isolate.</span></span><span class="sig-name descname"><span class="pre">IsolateLogPrinter</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">debug</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.logging.isolate.IsolateLogPrinter" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.logging.isolate.IsolateLogPrinter.debug">
+<span class="sig-name descname"><span class="pre">debug</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></em><a class="headerlink" href="#fal.logging.isolate.IsolateLogPrinter.debug" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.logging.isolate.IsolateLogPrinter.print">
+<span class="sig-name descname"><span class="pre">print</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">log</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.logging.isolate.IsolateLogPrinter.print" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="module-fal.logging.style">
+<span id="fal-logging-style-module"></span><h2>fal.logging.style module<a class="headerlink" href="#module-fal.logging.style" title="Link to this heading">¶</a></h2>
+</section>
+<section id="module-fal.logging.trace">
+<span id="fal-logging-trace-module"></span><h2>fal.logging.trace module<a class="headerlink" href="#module-fal.logging.trace" title="Link to this heading">¶</a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.logging.trace.TraceContext">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.logging.trace.</span></span><span class="sig-name descname"><span class="pre">TraceContext</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">trace_id</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">span_id</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">invocation_id</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.logging.trace.TraceContext" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.logging.trace.TraceContext.invocation_id">
+<span class="sig-name descname"><span class="pre">invocation_id</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><a class="headerlink" href="#fal.logging.trace.TraceContext.invocation_id" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.logging.trace.TraceContext.span_id">
+<span class="sig-name descname"><span class="pre">span_id</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><a class="headerlink" href="#fal.logging.trace.TraceContext.span_id" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.logging.trace.TraceContext.trace_id">
+<span class="sig-name descname"><span class="pre">trace_id</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><a class="headerlink" href="#fal.logging.trace.TraceContext.trace_id" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.logging.trace.TraceContextInterceptor">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.logging.trace.</span></span><span class="sig-name descname"><span class="pre">TraceContextInterceptor</span></span><a class="headerlink" href="#fal.logging.trace.TraceContextInterceptor" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">ClientInterceptor</span></code></p>
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.logging.trace.TraceContextInterceptor.intercept">
+<span class="sig-name descname"><span class="pre">intercept</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">method</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">request_or_iterator</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">call_details</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.logging.trace.TraceContextInterceptor.intercept" title="Link to this definition">¶</a></dt>
+<dd><p>Override this method to implement a custom interceptor.</p>
+<p>This method is called for all unary and streaming RPCs. The interceptor
+implementation should call <cite>method</cite> using a <cite>grpc.ClientCallDetails</cite> and the
+<cite>request_or_iterator</cite> object as parameters. The <cite>request_or_iterator</cite>
+parameter may be type checked to determine if this is a singluar request
+for unary RPCs or an iterator for client-streaming or client-server streaming
+RPCs.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>method</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Callable</span></code></span>) – A function that proceeds with the invocation by executing the next
+interceptor in the chain or invoking the actual RPC on the underlying
+channel.</p></li>
+<li><p><strong>request_or_iterator</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code></span>) – RPC request message or iterator of request messages
+for streaming requests.</p></li>
+<li><p><strong>call_details</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">ClientCallDetails</span></code></span>) – Describes an RPC to be invoked.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><p>The type of the return should match the type of the return value received
+by calling <cite>method</cite>. This is an object that is both a
+<a class="reference external" href="https://grpc.github.io/grpc/python/grpc.html#grpc.Call">Call</a> for the
+RPC and a
+<a class="reference external" href="https://grpc.github.io/grpc/python/grpc.html#grpc.Future">Future</a>.</p>
+<p>The actual result from the RPC can be got by calling <cite>.result()</cite> on the
+value returned from <cite>method</cite>.</p>
+</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.logging.trace.get_current_span_context">
+<span class="sig-prename descclassname"><span class="pre">fal.logging.trace.</span></span><span class="sig-name descname"><span class="pre">get_current_span_context</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#fal.logging.trace.get_current_span_context" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference internal" href="#fal.logging.trace.TraceContext" title="fal.logging.trace.TraceContext"><code class="xref py py-class docutils literal notranslate"><span class="pre">TraceContext</span></code></a> | <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+<section id="module-fal.logging.user">
+<span id="fal-logging-user-module"></span><h2>fal.logging.user module<a class="headerlink" href="#module-fal.logging.user" title="Link to this heading">¶</a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.logging.user.add_user_id">
+<span class="sig-prename descclassname"><span class="pre">fal.logging.user.</span></span><span class="sig-name descname"><span class="pre">add_user_id</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">logger</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">method_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">event_dict</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.logging.user.add_user_id" title="Link to this definition">¶</a></dt>
+<dd><p>The structlog processor that sends the logged user id on every log</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">MutableMapping</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code>]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+<section id="module-fal.logging">
+<span id="module-contents"></span><h2>Module contents<a class="headerlink" href="#module-fal.logging" title="Link to this heading">¶</a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.logging.DebugConsoleLogProcessor">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.logging.</span></span><span class="sig-name descname"><span class="pre">DebugConsoleLogProcessor</span></span><a class="headerlink" href="#fal.logging.DebugConsoleLogProcessor" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Log processor that prints to the console the well-formatted
+messages only when in debug mode (enabled by the <cite>–debug</cite> flag).</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.logging.DebugConsoleLogProcessor.debug">
+<span class="sig-name descname"><span class="pre">debug</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#fal.logging.DebugConsoleLogProcessor.debug" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.logging.DebugConsoleLogProcessor.renderer">
+<span class="sig-name descname"><span class="pre">renderer</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;structlog.dev.ConsoleRenderer</span> <span class="pre">object&gt;</span></em><a class="headerlink" href="#fal.logging.DebugConsoleLogProcessor.renderer" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.logging.get_logger">
+<span class="sig-prename descclassname"><span class="pre">fal.logging.</span></span><span class="sig-name descname"><span class="pre">get_logger</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">initial_values</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.logging.get_logger" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">BoundLogger</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.logging.set_debug_logging">
+<span class="sig-prename descclassname"><span class="pre">fal.logging.</span></span><span class="sig-name descname"><span class="pre">set_debug_logging</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">debug</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.logging.set_debug_logging" title="Link to this definition">¶</a></dt>
+<dd><p>Enable/disable console log output.</p>
+</dd></dl>
+
+</section>
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="index.html">fal_sdk</a></h1>
+
+
+
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="modules.html">fal</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="fal.html">fal package</a></li>
+</ul>
+</li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+  <li><a href="modules.html">fal</a><ul>
+  <li><a href="fal.html">fal package</a><ul>
+      <li>Previous: <a href="fal.exceptions.html" title="previous chapter">fal.exceptions package</a></li>
+      <li>Next: <a href="fal.toolkit.html" title="next chapter">fal.toolkit package</a></li>
+  </ul></li>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2024, FAL Team.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 8.0.2</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+      |
+      <a href="_sources/fal.logging.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>

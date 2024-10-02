@@ -1,0 +1,114 @@
+fal package
+===========
+
+Subpackages
+-----------
+
+.. toctree::
+   :maxdepth: 4
+
+   fal.auth
+   fal.cli
+   fal.console
+   fal.exceptions
+   fal.logging
+   fal.toolkit
+
+Submodules
+----------
+
+fal.api module
+--------------
+
+.. automodule:: fal.api
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+fal.app module
+--------------
+
+.. automodule:: fal.app
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+fal.apps module
+---------------
+
+.. automodule:: fal.apps
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+fal.container module
+--------------------
+
+.. automodule:: fal.container
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+fal.files module
+----------------
+
+.. automodule:: fal.files
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+fal.flags module
+----------------
+
+.. automodule:: fal.flags
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+fal.rest\_client module
+-----------------------
+
+.. automodule:: fal.rest_client
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+fal.sdk module
+--------------
+
+.. automodule:: fal.sdk
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+fal.sync module
+---------------
+
+.. automodule:: fal.sync
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+fal.utils module
+----------------
+
+.. automodule:: fal.utils
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+fal.workflows module
+--------------------
+
+.. automodule:: fal.workflows
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+Module contents
+---------------
+
+.. automodule:: fal
+   :members:
+   :undoc-members:
+   :show-inheritance:
