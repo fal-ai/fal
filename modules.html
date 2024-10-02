@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="./">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>fal_client &#8212; fal_client  documentation</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=d1102ebc" />
+    <link rel="stylesheet" type="text/css" href="_static/basic.css?v=c058f7c8" />
+    <link rel="stylesheet" type="text/css" href="_static/alabaster.css?v=27fed22d" />
+    <script src="_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="_static/doctools.js?v=9a2dae69"></script>
+    <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="fal_client package" href="fal_client.html" />
+    <link rel="prev" title="fal_client documentation" href="index.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section id="fal-client">
+<h1>fal_client<a class="headerlink" href="#fal-client" title="Link to this heading">¶</a></h1>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="fal_client.html">fal_client package</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="fal_client.html#submodules">Submodules</a></li>
+<li class="toctree-l2"><a class="reference internal" href="fal_client.html#module-fal_client.auth">fal_client.auth module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="fal_client.html#fal_client.auth.MissingCredentialsError"><code class="docutils literal notranslate"><span class="pre">MissingCredentialsError</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal_client.html#fal_client.auth.fetch_credentials"><code class="docutils literal notranslate"><span class="pre">fetch_credentials()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="fal_client.html#module-fal_client.client">fal_client.client module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="fal_client.html#fal_client.client.AsyncClient"><code class="docutils literal notranslate"><span class="pre">AsyncClient</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.client.AsyncClient.default_timeout"><code class="docutils literal notranslate"><span class="pre">AsyncClient.default_timeout</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.client.AsyncClient.key"><code class="docutils literal notranslate"><span class="pre">AsyncClient.key</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.client.AsyncClient.run"><code class="docutils literal notranslate"><span class="pre">AsyncClient.run()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.client.AsyncClient.stream"><code class="docutils literal notranslate"><span class="pre">AsyncClient.stream()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.client.AsyncClient.submit"><code class="docutils literal notranslate"><span class="pre">AsyncClient.submit()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.client.AsyncClient.upload"><code class="docutils literal notranslate"><span class="pre">AsyncClient.upload()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.client.AsyncClient.upload_file"><code class="docutils literal notranslate"><span class="pre">AsyncClient.upload_file()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.client.AsyncClient.upload_image"><code class="docutils literal notranslate"><span class="pre">AsyncClient.upload_image()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal_client.html#fal_client.client.AsyncRequestHandle"><code class="docutils literal notranslate"><span class="pre">AsyncRequestHandle</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.client.AsyncRequestHandle.client"><code class="docutils literal notranslate"><span class="pre">AsyncRequestHandle.client</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.client.AsyncRequestHandle.get"><code class="docutils literal notranslate"><span class="pre">AsyncRequestHandle.get()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.client.AsyncRequestHandle.iter_events"><code class="docutils literal notranslate"><span class="pre">AsyncRequestHandle.iter_events()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.client.AsyncRequestHandle.status"><code class="docutils literal notranslate"><span class="pre">AsyncRequestHandle.status()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal_client.html#fal_client.client.Completed"><code class="docutils literal notranslate"><span class="pre">Completed</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.client.Completed.logs"><code class="docutils literal notranslate"><span class="pre">Completed.logs</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.client.Completed.metrics"><code class="docutils literal notranslate"><span class="pre">Completed.metrics</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal_client.html#fal_client.client.FalClientError"><code class="docutils literal notranslate"><span class="pre">FalClientError</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal_client.html#fal_client.client.InProgress"><code class="docutils literal notranslate"><span class="pre">InProgress</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.client.InProgress.logs"><code class="docutils literal notranslate"><span class="pre">InProgress.logs</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal_client.html#fal_client.client.Queued"><code class="docutils literal notranslate"><span class="pre">Queued</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.client.Queued.position"><code class="docutils literal notranslate"><span class="pre">Queued.position</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal_client.html#fal_client.client.Status"><code class="docutils literal notranslate"><span class="pre">Status</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal_client.html#fal_client.client.SyncClient"><code class="docutils literal notranslate"><span class="pre">SyncClient</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.client.SyncClient.default_timeout"><code class="docutils literal notranslate"><span class="pre">SyncClient.default_timeout</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.client.SyncClient.key"><code class="docutils literal notranslate"><span class="pre">SyncClient.key</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.client.SyncClient.run"><code class="docutils literal notranslate"><span class="pre">SyncClient.run()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.client.SyncClient.stream"><code class="docutils literal notranslate"><span class="pre">SyncClient.stream()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.client.SyncClient.submit"><code class="docutils literal notranslate"><span class="pre">SyncClient.submit()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.client.SyncClient.upload"><code class="docutils literal notranslate"><span class="pre">SyncClient.upload()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.client.SyncClient.upload_file"><code class="docutils literal notranslate"><span class="pre">SyncClient.upload_file()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.client.SyncClient.upload_image"><code class="docutils literal notranslate"><span class="pre">SyncClient.upload_image()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal_client.html#fal_client.client.SyncRequestHandle"><code class="docutils literal notranslate"><span class="pre">SyncRequestHandle</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.client.SyncRequestHandle.client"><code class="docutils literal notranslate"><span class="pre">SyncRequestHandle.client</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.client.SyncRequestHandle.get"><code class="docutils literal notranslate"><span class="pre">SyncRequestHandle.get()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.client.SyncRequestHandle.iter_events"><code class="docutils literal notranslate"><span class="pre">SyncRequestHandle.iter_events()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.client.SyncRequestHandle.status"><code class="docutils literal notranslate"><span class="pre">SyncRequestHandle.status()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal_client.html#fal_client.client.encode"><code class="docutils literal notranslate"><span class="pre">encode()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal_client.html#fal_client.client.encode_file"><code class="docutils literal notranslate"><span class="pre">encode_file()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal_client.html#fal_client.client.encode_image"><code class="docutils literal notranslate"><span class="pre">encode_image()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="fal_client.html#module-fal_client">Module contents</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="fal_client.html#fal_client.AsyncClient"><code class="docutils literal notranslate"><span class="pre">AsyncClient</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.AsyncClient.default_timeout"><code class="docutils literal notranslate"><span class="pre">AsyncClient.default_timeout</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.AsyncClient.key"><code class="docutils literal notranslate"><span class="pre">AsyncClient.key</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.AsyncClient.run"><code class="docutils literal notranslate"><span class="pre">AsyncClient.run()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.AsyncClient.stream"><code class="docutils literal notranslate"><span class="pre">AsyncClient.stream()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.AsyncClient.submit"><code class="docutils literal notranslate"><span class="pre">AsyncClient.submit()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.AsyncClient.upload"><code class="docutils literal notranslate"><span class="pre">AsyncClient.upload()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.AsyncClient.upload_file"><code class="docutils literal notranslate"><span class="pre">AsyncClient.upload_file()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.AsyncClient.upload_image"><code class="docutils literal notranslate"><span class="pre">AsyncClient.upload_image()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal_client.html#fal_client.AsyncRequestHandle"><code class="docutils literal notranslate"><span class="pre">AsyncRequestHandle</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.AsyncRequestHandle.cancel_url"><code class="docutils literal notranslate"><span class="pre">AsyncRequestHandle.cancel_url</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.AsyncRequestHandle.client"><code class="docutils literal notranslate"><span class="pre">AsyncRequestHandle.client</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.AsyncRequestHandle.get"><code class="docutils literal notranslate"><span class="pre">AsyncRequestHandle.get()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.AsyncRequestHandle.iter_events"><code class="docutils literal notranslate"><span class="pre">AsyncRequestHandle.iter_events()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.AsyncRequestHandle.request_id"><code class="docutils literal notranslate"><span class="pre">AsyncRequestHandle.request_id</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.AsyncRequestHandle.response_url"><code class="docutils literal notranslate"><span class="pre">AsyncRequestHandle.response_url</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.AsyncRequestHandle.status"><code class="docutils literal notranslate"><span class="pre">AsyncRequestHandle.status()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.AsyncRequestHandle.status_url"><code class="docutils literal notranslate"><span class="pre">AsyncRequestHandle.status_url</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal_client.html#fal_client.Completed"><code class="docutils literal notranslate"><span class="pre">Completed</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.Completed.logs"><code class="docutils literal notranslate"><span class="pre">Completed.logs</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.Completed.metrics"><code class="docutils literal notranslate"><span class="pre">Completed.metrics</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal_client.html#fal_client.InProgress"><code class="docutils literal notranslate"><span class="pre">InProgress</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.InProgress.logs"><code class="docutils literal notranslate"><span class="pre">InProgress.logs</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal_client.html#fal_client.Queued"><code class="docutils literal notranslate"><span class="pre">Queued</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.Queued.position"><code class="docutils literal notranslate"><span class="pre">Queued.position</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal_client.html#fal_client.Status"><code class="docutils literal notranslate"><span class="pre">Status</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal_client.html#fal_client.SyncClient"><code class="docutils literal notranslate"><span class="pre">SyncClient</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.SyncClient.default_timeout"><code class="docutils literal notranslate"><span class="pre">SyncClient.default_timeout</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.SyncClient.key"><code class="docutils literal notranslate"><span class="pre">SyncClient.key</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.SyncClient.run"><code class="docutils literal notranslate"><span class="pre">SyncClient.run()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.SyncClient.stream"><code class="docutils literal notranslate"><span class="pre">SyncClient.stream()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.SyncClient.submit"><code class="docutils literal notranslate"><span class="pre">SyncClient.submit()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.SyncClient.upload"><code class="docutils literal notranslate"><span class="pre">SyncClient.upload()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.SyncClient.upload_file"><code class="docutils literal notranslate"><span class="pre">SyncClient.upload_file()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.SyncClient.upload_image"><code class="docutils literal notranslate"><span class="pre">SyncClient.upload_image()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal_client.html#fal_client.SyncRequestHandle"><code class="docutils literal notranslate"><span class="pre">SyncRequestHandle</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.SyncRequestHandle.cancel_url"><code class="docutils literal notranslate"><span class="pre">SyncRequestHandle.cancel_url</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.SyncRequestHandle.client"><code class="docutils literal notranslate"><span class="pre">SyncRequestHandle.client</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.SyncRequestHandle.get"><code class="docutils literal notranslate"><span class="pre">SyncRequestHandle.get()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.SyncRequestHandle.iter_events"><code class="docutils literal notranslate"><span class="pre">SyncRequestHandle.iter_events()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.SyncRequestHandle.request_id"><code class="docutils literal notranslate"><span class="pre">SyncRequestHandle.request_id</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.SyncRequestHandle.response_url"><code class="docutils literal notranslate"><span class="pre">SyncRequestHandle.response_url</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.SyncRequestHandle.status"><code class="docutils literal notranslate"><span class="pre">SyncRequestHandle.status()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal_client.html#fal_client.SyncRequestHandle.status_url"><code class="docutils literal notranslate"><span class="pre">SyncRequestHandle.status_url</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal_client.html#fal_client.encode"><code class="docutils literal notranslate"><span class="pre">encode()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal_client.html#fal_client.encode_file"><code class="docutils literal notranslate"><span class="pre">encode_file()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal_client.html#fal_client.encode_image"><code class="docutils literal notranslate"><span class="pre">encode_image()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal_client.html#fal_client.run"><code class="docutils literal notranslate"><span class="pre">run()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal_client.html#fal_client.run_async"><code class="docutils literal notranslate"><span class="pre">run_async()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal_client.html#fal_client.stream"><code class="docutils literal notranslate"><span class="pre">stream()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal_client.html#fal_client.stream_async"><code class="docutils literal notranslate"><span class="pre">stream_async()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal_client.html#fal_client.submit"><code class="docutils literal notranslate"><span class="pre">submit()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal_client.html#fal_client.submit_async"><code class="docutils literal notranslate"><span class="pre">submit_async()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</div>
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="index.html">fal_client</a></h1>
+
+
+
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">fal_client</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="fal_client.html">fal_client package</a></li>
+</ul>
+</li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+      <li>Previous: <a href="index.html" title="previous chapter">fal_client documentation</a></li>
+      <li>Next: <a href="fal_client.html" title="next chapter">fal_client package</a></li>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2024, FAL Team.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 8.0.2</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+      |
+      <a href="_sources/modules.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>
