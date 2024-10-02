@@ -60,6 +60,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+docs = [
+    "sphinx",
+    "sphinx-rtd-theme",
+    "sphinx-autodoc-typehints",
+]
 test = [
     "pytest<8",
     "pytest-asyncio",
@@ -68,7 +73,7 @@ test = [
     "boto3",
 ]
 dev = [
-    "fal[test]",
+    "fal[docs,test]",
     "openapi-python-client>=0.14.1,<1",
 ]
 

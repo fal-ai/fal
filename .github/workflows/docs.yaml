@@ -18,13 +18,14 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
+        pip install -e 'projects/fal[docs]'
         pip install -e 'projects/fal_client[docs]'
 
     - name: Build documentation
-      run: make -C projects/fal_client/docs html
+      run: make docs
 
     - name: Deploy to GitHub Pages
       uses: peaceiris/actions-gh-pages@v3
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
-        publish_dir: projects/fal_client/docs/_build/html
+        publish_dir: docs/_build/html
