@@ -10,7 +10,5 @@ docs:
 	$(MAKE) -C $(FALCLIENTDIR) docs
 	rm -rf docs
 	mkdir -p docs/_build/html
-	mkdir -p docs/_build/html/fal_sdk
-	mkdir -p docs/_build/html/fal_client
-	cp -a $(FALDIR)/docs/_build/html docs/_build/html/fal_sdk
-	cp -a $(FALCLIENTDIR)/docs/_build/html docs/_build/html/fal_client
+	cp -a $(FALDIR)/docs/_build/html docs/_build/html/sdk
+	cp -a $(FALCLIENTDIR)/docs/_build/html docs/_build/html/client
