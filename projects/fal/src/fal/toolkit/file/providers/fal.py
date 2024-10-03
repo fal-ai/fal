@@ -9,6 +9,7 @@ from base64 import b64encode
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 from urllib.error import HTTPError
 from urllib.parse import urlparse, urlunparse
 from urllib.request import Request, urlopen
@@ -93,6 +94,21 @@ fal_v2_token_manager = FalV2TokenManager()
 @dataclass
 class ObjectLifecyclePreference:
     expiration_duration_seconds: int
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ObjectLifecyclePreference:
+        expiration_duration_seconds_raw = data.get("expiration_duration_seconds")
+
+        if expiration_duration_seconds_raw is None:
+            raise ValueError(
+                "expiration_duration_seconds is required and must be provided."
+            )
+        try:
+            expiration_duration_seconds = int(expiration_duration_seconds_raw)
+        except (ValueError, TypeError):
+            raise ValueError("The expiration_duration_seconds must be an integer.")
+
+        return cls(expiration_duration_seconds=expiration_duration_seconds)
 
 
 GLOBAL_LIFECYCLE_PREFERENCE = ObjectLifecyclePreference(

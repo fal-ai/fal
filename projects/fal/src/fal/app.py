@@ -19,6 +19,7 @@ from fal._serialization import include_modules_from
 from fal.api import RouteSignature
 from fal.exceptions import RequestCancelledException
 from fal.logging import get_logger
+from fal.toolkit.file import get_lifecycle_preference
 from fal.toolkit.file.providers import fal as fal_provider_module
 
 REALTIME_APP_REQUIREMENTS = ["websockets", "msgpack"]
@@ -266,11 +267,15 @@ class App(fal.api.BaseServable):
 
         @app.middleware("http")
         async def set_global_object_preference(request, call_next):
-            response = await call_next(request)
             try:
-                fal_provider_module.GLOBAL_LIFECYCLE_PREFERENCE = request.headers.get(
-                    "X-Fal-Object-Lifecycle-Preference"
-                )
+                preference_dict = get_lifecycle_preference(request)
+                if preference_dict is not None:
+                    fal_provider_module.GLOBAL_LIFECYCLE_PREFERENCE = (
+                        fal_provider_module.ObjectLifecyclePreference.from_dict(
+                            preference_dict
+                        )
+                    )
+
             except Exception:
                 from fastapi.logger import logger
 
@@ -278,7 +283,7 @@ class App(fal.api.BaseServable):
                     "Failed set a global lifecycle preference %s",
                     self.__class__.__name__,
                 )
-            return response
+            return await call_next(request)
 
         @app.exception_handler(RequestCancelledException)
         async def value_error_exception_handler(
