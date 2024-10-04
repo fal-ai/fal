@@ -144,7 +144,7 @@ class File(BaseModel):
 
         fdata = FileData(data, content_type, file_name)
 
-        object_lifecycle_preference = _get_lifecycle_preference(request)
+        object_lifecycle_preference = get_lifecycle_preference(request)
 
         try:
             url = repo.save(fdata, object_lifecycle_preference)
@@ -191,7 +191,7 @@ class File(BaseModel):
         )
 
         content_type = content_type or "application/octet-stream"
-        object_lifecycle_preference = _get_lifecycle_preference(request)
+        object_lifecycle_preference = get_lifecycle_preference(request)
 
         try:
             url, data = repo.save_file(
@@ -274,7 +274,7 @@ class CompressedFile(File):
             shutil.rmtree(self.extract_dir)
 
 
-def _get_lifecycle_preference(request: Request) -> dict[str, str] | None:
+def get_lifecycle_preference(request: Request) -> dict[str, str] | None:
     import json
 
     preference_str = (
