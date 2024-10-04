@@ -20,7 +20,7 @@ from fal.api import RouteSignature
 from fal.exceptions import RequestCancelledException
 from fal.logging import get_logger
 from fal.toolkit.file import get_lifecycle_preference
-from fal.toolkit.file.providers import fal as fal_provider_module
+from fal.toolkit.file.providers.fal import GLOBAL_LIFECYCLE_PREFERENCE
 
 REALTIME_APP_REQUIREMENTS = ["websockets", "msgpack"]
 
@@ -268,12 +268,11 @@ class App(fal.api.BaseServable):
         @app.middleware("http")
         async def set_global_object_preference(request, call_next):
             try:
-                preference_dict = get_lifecycle_preference(request)
-                if preference_dict is not None:
-                    fal_provider_module.GLOBAL_LIFECYCLE_PREFERENCE = (
-                        fal_provider_module.ObjectLifecyclePreference.from_dict(
-                            preference_dict
-                        )
+                preference_dict = get_lifecycle_preference(request) or {}
+                expiration_duration = preference_dict.get("expiration_duration_seconds")
+                if expiration_duration is not None:
+                    GLOBAL_LIFECYCLE_PREFERENCE.expiration_duration_seconds = int(
+                        expiration_duration
                     )
 
             except Exception:
