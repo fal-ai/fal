@@ -35,6 +35,9 @@ async def test_fal_client(client: fal_client.AsyncClient):
     assert isinstance(status, fal_client.Completed)
     assert status.logs is None
 
+    new_handle = client.get_handle("fal-ai/fast-sdxl/image-to-image", handle.request_id)
+    assert new_handle == handle
+
     status_w_logs = await handle.status(with_logs=True)
     assert isinstance(status_w_logs, fal_client.Completed)
     assert status_w_logs.logs is not None

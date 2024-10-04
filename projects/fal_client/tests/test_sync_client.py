@@ -39,6 +39,9 @@ def test_fal_client(client: fal_client.SyncClient):
     assert isinstance(status_w_logs, fal_client.Completed)
     assert status_w_logs.logs is not None
 
+    new_handle = client.get_handle("fal-ai/fast-sdxl/image-to-image", handle.request_id)
+    assert new_handle == handle
+
     output = client.run(
         "fal-ai/fast-sdxl",
         arguments={

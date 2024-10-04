@@ -8,7 +8,7 @@ import time
 import base64
 from dataclasses import dataclass, field
 from functools import cached_property
-from typing import Any, AsyncIterator, Iterator, TYPE_CHECKING
+from typing import Any, AsyncIterator, Iterator, TYPE_CHECKING, Optional
 
 import httpx
 from httpx_sse import aconnect_sse, connect_sse
@@ -95,9 +95,70 @@ class _BaseRequestHandle:
             raise ValueError(f"Unknown status: {data['status']}")
 
 
+APP_NAMESPACES = ["workflows", "comfy"]
+
+
+def _ensure_app_id_format(id: str) -> str:
+    import re
+
+    parts = id.split("/")
+    if len(parts) > 1:
+        return id
+
+    match = re.match(r"^([0-9]+)-([a-zA-Z0-9-]+)$", id)
+    if match:
+        app_owner, app_id = match.groups()
+        return f"{app_owner}/{app_id}"
+
+    raise ValueError(f"Invalid app id: {id}. Must be in the format <appOwner>/<appId>")
+
+
+@dataclass(frozen=True)
+class AppId:
+    owner: str
+    alias: str
+    path: Optional[str]
+    namespace: Optional[str]
+
+    @classmethod
+    def from_endpoint_id(cls, endpoint_id: str) -> AppId:
+        normalized_id = _ensure_app_id_format(endpoint_id)
+        parts = normalized_id.split("/")
+
+        if parts[0] in APP_NAMESPACES:
+            return cls(
+                owner=parts[1],
+                alias=parts[2],
+                path="/".join(parts[3:]) or None,
+                namespace=parts[0],
+            )
+
+        return cls(
+            owner=parts[0],
+            alias=parts[1],
+            path="/".join(parts[2:]) or None,
+            namespace=None,
+        )
+
+
 @dataclass(frozen=True)
 class SyncRequestHandle(_BaseRequestHandle):
     client: httpx.Client = field(repr=False)
+
+    @classmethod
+    def from_request_id(
+        cls, client: httpx.Client, application: str, request_id: str
+    ) -> SyncRequestHandle:
+        app_id = AppId.from_endpoint_id(application)
+        prefix = f"{app_id.namespace}/" if app_id.namespace else ""
+        base_url = f"{QUEUE_URL_FORMAT}{prefix}{app_id.owner}/{app_id.alias}/requests/{request_id}"
+        return cls(
+            request_id=request_id,
+            response_url=base_url,
+            status_url=base_url + "/status",
+            cancel_url=base_url + "/cancel",
+            client=client,
+        )
 
     def status(self, *, with_logs: bool = False) -> Status:
         """Returns the status of the request (which can be one of the following:
@@ -142,6 +203,21 @@ class SyncRequestHandle(_BaseRequestHandle):
 @dataclass(frozen=True)
 class AsyncRequestHandle(_BaseRequestHandle):
     client: httpx.AsyncClient = field(repr=False)
+
+    @classmethod
+    def from_request_id(
+        cls, client: httpx.AsyncClient, application: str, request_id: str
+    ) -> AsyncRequestHandle:
+        app_id = AppId.from_endpoint_id(application)
+        prefix = f"{app_id.namespace}/" if app_id.namespace else ""
+        base_url = f"{QUEUE_URL_FORMAT}{prefix}{app_id.owner}/{app_id.alias}/requests/{request_id}"
+        return cls(
+            request_id=request_id,
+            response_url=base_url,
+            status_url=base_url + "/status",
+            cancel_url=base_url + "/cancel",
+            client=client,
+        )
 
     async def status(self, *, with_logs: bool = False) -> Status:
         """Returns the status of the request (which can be one of the following:
@@ -268,6 +344,9 @@ class AsyncClient:
             cancel_url=data["cancel_url"],
             client=self._client,
         )
+
+    def get_handle(self, application: str, request_id: str) -> AsyncRequestHandle:
+        return AsyncRequestHandle.from_request_id(self._client, application, request_id)
 
     async def stream(
         self,
@@ -414,6 +493,9 @@ class SyncClient:
             cancel_url=data["cancel_url"],
             client=self._client,
         )
+
+    def get_handle(self, application: str, request_id: str) -> SyncRequestHandle:
+        return SyncRequestHandle.from_request_id(self._client, application, request_id)
 
     def stream(
         self,
