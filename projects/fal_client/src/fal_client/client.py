@@ -348,6 +348,16 @@ class AsyncClient:
     def get_handle(self, application: str, request_id: str) -> AsyncRequestHandle:
         return AsyncRequestHandle.from_request_id(self._client, application, request_id)
 
+    async def status(
+        self, application: str, request_id: str, *, with_logs: bool = False
+    ) -> Status:
+        handle = self.get_handle(application, request_id)
+        return await handle.status(with_logs=with_logs)
+
+    async def result(self, application: str, request_id: str) -> AnyJSON:
+        handle = self.get_handle(application, request_id)
+        return await handle.get()
+
     async def stream(
         self,
         application: str,
@@ -496,6 +506,16 @@ class SyncClient:
 
     def get_handle(self, application: str, request_id: str) -> SyncRequestHandle:
         return SyncRequestHandle.from_request_id(self._client, application, request_id)
+
+    def status(
+        self, application: str, request_id: str, *, with_logs: bool = False
+    ) -> Status:
+        handle = self.get_handle(application, request_id)
+        return handle.status(with_logs=with_logs)
+
+    def result(self, application: str, request_id: str) -> AnyJSON:
+        handle = self.get_handle(application, request_id)
+        return handle.get()
 
     def stream(
         self,

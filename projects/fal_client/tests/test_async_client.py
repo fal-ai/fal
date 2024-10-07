@@ -31,6 +31,11 @@ async def test_fal_client(client: fal_client.AsyncClient):
     result = await handle.get()
     assert result["seed"] == 42
 
+    assert (
+        await client.result("fal-ai/fast-sdxl/image-to-image", handle.request_id)
+        == result
+    )
+
     status = await handle.status(with_logs=False)
     assert isinstance(status, fal_client.Completed)
     assert status.logs is None
@@ -41,6 +46,14 @@ async def test_fal_client(client: fal_client.AsyncClient):
     status_w_logs = await handle.status(with_logs=True)
     assert isinstance(status_w_logs, fal_client.Completed)
     assert status_w_logs.logs is not None
+
+    assert (
+        await client.status(
+            "fal-ai/fast-sdxl/image-to-image",
+            handle.request_id,
+        )
+        == status
+    )
 
     output = await client.run(
         "fal-ai/fast-sdxl",
