@@ -345,6 +345,28 @@ class AsyncClient:
             client=self._client,
         )
 
+    async def subscribe(
+        self,
+        application: str,
+        arguments: AnyJSON,
+        *,
+        path: str = "",
+        hint: str | None = None,
+        with_logs: bool = False,
+        on_enqueue: Optional[callable[[Queued], None]] = None,
+        on_queue_update: Optional[callable[[Status], None]] = None,
+    ) -> AnyJSON:
+        handle = await self.submit(application, arguments, path=path, hint=hint)
+
+        if on_enqueue is not None:
+            on_enqueue(handle.request_id)
+
+        if on_queue_update is not None:
+            async for event in handle.iter_events(with_logs=with_logs):
+                on_queue_update(event)
+
+        return await handle.get()
+
     def get_handle(self, application: str, request_id: str) -> AsyncRequestHandle:
         return AsyncRequestHandle.from_request_id(self._client, application, request_id)
 
@@ -503,6 +525,28 @@ class SyncClient:
             cancel_url=data["cancel_url"],
             client=self._client,
         )
+
+    def subscribe(
+        self,
+        application: str,
+        arguments: AnyJSON,
+        *,
+        path: str = "",
+        hint: str | None = None,
+        with_logs: bool = False,
+        on_enqueue: Optional[callable[[Queued], None]] = None,
+        on_queue_update: Optional[callable[[Status], None]] = None,
+    ) -> AnyJSON:
+        handle = self.submit(application, arguments, path=path, hint=hint)
+
+        if on_enqueue is not None:
+            on_enqueue(handle.request_id)
+
+        if on_queue_update is not None:
+            for event in handle.iter_events(with_logs=with_logs):
+                on_queue_update(event)
+
+        return handle.get()
 
     def get_handle(self, application: str, request_id: str) -> SyncRequestHandle:
         return SyncRequestHandle.from_request_id(self._client, application, request_id)

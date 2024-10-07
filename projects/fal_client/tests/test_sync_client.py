@@ -46,6 +46,15 @@ def test_fal_client(client: fal_client.SyncClient):
 
     assert client.status("fal-ai/fast-sdxl/image-to-image", handle.request_id) == status
 
+    output = client.subscribe(
+        "fal-ai/fast-sdxl",
+        arguments={
+            "prompt": "a cat",
+        },
+        hint="lora:a",
+    )
+    assert len(output["images"]) == 1
+
     output = client.run(
         "fal-ai/fast-sdxl",
         arguments={

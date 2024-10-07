@@ -55,6 +55,15 @@ async def test_fal_client(client: fal_client.AsyncClient):
         == status
     )
 
+    output = await client.subscribe(
+        "fal-ai/fast-sdxl",
+        arguments={
+            "prompt": "a cat",
+        },
+        hint="lora:a",
+    )
+    assert len(output["images"]) == 1
+
     output = await client.run(
         "fal-ai/fast-sdxl",
         arguments={
