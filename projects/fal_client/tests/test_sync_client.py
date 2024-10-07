@@ -31,6 +31,8 @@ def test_fal_client(client: fal_client.SyncClient):
     result = handle.get()
     assert result["seed"] == 42
 
+    assert client.result("fal-ai/fast-sdxl/image-to-image", handle.request_id) == result
+
     status = handle.status(with_logs=False)
     assert isinstance(status, fal_client.Completed)
     assert status.logs is None
@@ -41,6 +43,17 @@ def test_fal_client(client: fal_client.SyncClient):
 
     new_handle = client.get_handle("fal-ai/fast-sdxl/image-to-image", handle.request_id)
     assert new_handle == handle
+
+    assert client.status("fal-ai/fast-sdxl/image-to-image", handle.request_id) == status
+
+    output = client.subscribe(
+        "fal-ai/fast-sdxl",
+        arguments={
+            "prompt": "a cat",
+        },
+        hint="lora:a",
+    )
+    assert len(output["images"]) == 1
 
     output = client.run(
         "fal-ai/fast-sdxl",
