@@ -93,7 +93,12 @@ class EndpointClient:
                 json=data.dict() if hasattr(data, "dict") else dict(data),
                 timeout=self.timeout,
             )
-            resp.raise_for_status()
+            try:
+                resp.raise_for_status()
+            except httpx.HTTPStatusError:
+                # allow logs to be printed before raising the exception
+                time.sleep(1)
+                raise
             resp_dict = resp.json()
 
         if not self.return_type:
