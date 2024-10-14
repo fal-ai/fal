@@ -12,7 +12,7 @@ import fal.api as api
 import httpx
 import pytest
 from fal import apps
-from fal.app import AppClient
+from fal.app import AppClient, AppClientError
 from fal.cli.deploy import _get_user
 from fal.container import ContainerImage
 from fal.exceptions import AppException, FieldException, RequestCancelledException
@@ -692,7 +692,7 @@ def test_workflows(test_app: str):
 def test_traceback_logs(test_exception_app: AppClient):
     date = datetime.utcnow().isoformat()
 
-    with pytest.raises(HTTPStatusError):
+    with pytest.raises(AppClientError):
         test_exception_app.fail({})
 
     with httpx.Client(
@@ -714,18 +714,18 @@ def test_traceback_logs(test_exception_app: AppClient):
 
 
 def test_app_exceptions(test_exception_app: AppClient):
-    with pytest.raises(HTTPStatusError) as app_exc:
+    with pytest.raises(AppClientError) as app_exc:
         test_exception_app.app_exception({})
 
-    assert app_exc.value.response.status_code == 401
+    assert app_exc.value.status_code == 401
 
-    with pytest.raises(HTTPStatusError) as field_exc:
+    with pytest.raises(AppClientError) as field_exc:
         test_exception_app.field_exception({"lhs": 1, "rhs": "2"})
 
-    assert field_exc.value.response.status_code == 422
+    assert field_exc.value.status_code == 422
 
-    with pytest.raises(HTTPStatusError) as cuda_exc:
+    with pytest.raises(AppClientError) as cuda_exc:
         test_exception_app.cuda_exception({})
 
-    assert cuda_exc.value.response.status_code == _CUDA_OOM_STATUS_CODE
-    assert cuda_exc.value.response.json()["detail"] == _CUDA_OOM_MESSAGE
+    assert cuda_exc.value.status_code == _CUDA_OOM_STATUS_CODE
+    assert _CUDA_OOM_MESSAGE in cuda_exc.value.message
