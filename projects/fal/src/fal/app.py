@@ -9,6 +9,7 @@ import threading
 import time
 import typing
 from contextlib import asynccontextmanager, contextmanager
+from dataclasses import dataclass
 from typing import Any, Callable, ClassVar, Literal, TypeVar
 
 import httpx
@@ -17,7 +18,7 @@ from fastapi import FastAPI
 import fal.api
 from fal._serialization import include_modules_from
 from fal.api import RouteSignature
-from fal.exceptions import RequestCancelledException
+from fal.exceptions import FalServerlessException, RequestCancelledException
 from fal.logging import get_logger
 from fal.toolkit.file import get_lifecycle_preference
 from fal.toolkit.file.providers.fal import GLOBAL_LIFECYCLE_PREFERENCE
@@ -76,6 +77,12 @@ def wrap_app(cls: type[App], **kwargs) -> fal.api.IsolatedFunction:
     return fn
 
 
+@dataclass
+class AppClientError(FalServerlessException):
+    message: str
+    status_code: int
+
+
 class EndpointClient:
     def __init__(self, url, endpoint, signature, timeout: int | None = None):
         self.url = url
@@ -88,17 +95,19 @@ class EndpointClient:
 
     def __call__(self, data):
         with httpx.Client() as client:
+            url = self.url + self.signature.path
             resp = client.post(
                 self.url + self.signature.path,
                 json=data.dict() if hasattr(data, "dict") else dict(data),
                 timeout=self.timeout,
             )
-            try:
-                resp.raise_for_status()
-            except httpx.HTTPStatusError:
+            if not resp.is_success:
                 # allow logs to be printed before raising the exception
                 time.sleep(1)
-                raise
+                raise AppClientError(
+                    f"Failed to POST {url}: {resp.status_code} {resp.text}",
+                    status_code=resp.status_code,
+                )
             resp_dict = resp.json()
 
         if not self.return_type:
@@ -151,12 +160,16 @@ class AppClient:
             with httpx.Client() as client:
                 retries = 100
                 for _ in range(retries):
-                    resp = client.get(info.url + "/health", timeout=60)
+                    url = info.url + "/health"
+                    resp = client.get(url, timeout=60)
 
                     if resp.is_success:
                         break
                     elif resp.status_code not in (500, 404):
-                        resp.raise_for_status()
+                        raise AppClientError(
+                            f"Failed to GET {url}: {resp.status_code} {resp.text}",
+                            status_code=resp.status_code,
+                        )
                     time.sleep(0.1)
 
             client = cls(app_cls, info.url)
