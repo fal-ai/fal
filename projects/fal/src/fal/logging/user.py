@@ -18,6 +18,8 @@ def add_user_info(
         # this is expected to happen only when user is logged out
         # or there's no internet connection
         pass
+
     event_dict["usr.id"] = user_id
     event_dict["usr.name"] = user_name
+
     return event_dict
