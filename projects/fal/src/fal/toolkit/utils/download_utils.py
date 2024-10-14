@@ -74,6 +74,8 @@ def _get_remote_file_properties(
     with urlopen(request) as response:
         file_name = response.headers.get_filename()
         content_length = int(response.headers.get("Content-Length", -1))
+        # file name can contain a forward slash
+        file_name = Path(file_name).name
 
     if not file_name:
         parsed_url = urlparse(url)
