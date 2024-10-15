@@ -31,6 +31,7 @@ REQUEST_ID_KEY = "x-fal-request-id"
 
 EndpointT = TypeVar("EndpointT", bound=Callable[..., Any])
 logger = get_logger(__name__)
+GRPC_PORT = os.environ.get("NOMAD_ALLOC_PORT_grpc")
 
 
 async def _call_any_fn(fn, *args, **kwargs):
@@ -78,12 +79,21 @@ class IsolateChannel:
             self._stack = None
 
 
-async def _set_logger_labels(logger_labels: dict[str, str]):
-    grpc_port = os.environ.get("NOMAD_ALLOC_PORT_grpc")
+@asynccontextmanager
+async def assure_isolate_channel(channel: typing.Optional[IsolateChannel] = None):
+    if channel is None:
+        async with IsolateChannel(f"localhost:{GRPC_PORT}") as new_channel:
+            yield new_channel
+    else:
+        yield channel
 
+
+async def _set_logger_labels(
+    logger_labels: dict[str, str], channel: typing.Optional[IsolateChannel] = None
+):
     try:
-        async with IsolateChannel(f"localhost:{grpc_port}") as channel:
-            isolate = definitions.IsolateStub(channel)
+        async with assure_isolate_channel(channel) as assured_channel:
+            isolate = definitions.IsolateStub(assured_channel)
             isolate_request = definitions.SetMetadataRequest(
                 task_id="RUN",
                 metadata=definitions.TaskMetadata(logger_labels=logger_labels),
@@ -269,6 +279,8 @@ class App(fal.api.BaseServable):
     app_auth: ClassVar[Literal["private", "public", "shared"]] = "private"
     request_timeout: ClassVar[int | None] = None
 
+    isolate_channel: IsolateChannel | None = None
+
     def __init_subclass__(cls, **kwargs):
         app_name = kwargs.pop("name", None) or _to_fal_app_name(cls.__name__)
         parent_settings = getattr(cls, "host_kwargs", {})
@@ -369,6 +381,34 @@ class App(fal.api.BaseServable):
             await _set_logger_labels({})
 
             return response
+
+        @app.middleware("http")
+        async def set_request_id(request, call_next):
+            if self.isolate_channel is None:
+                async with assure_isolate_channel() as channel:
+                    self.isolate_channel = channel
+
+            request_id = request.headers.get(REQUEST_ID_KEY)
+            if request_id is not None:
+                await _set_logger_labels(
+                    {"fal_request_id": request_id}, channel=self.isolate_channel
+                )
+
+            response = None
+            exception = None
+            try:
+                response = await call_next(request)
+            except BaseException as e:
+                exception = e
+            finally:
+                await _set_logger_labels({}, channel=self.isolate_channel)
+
+            if response is not None:
+                return response
+            elif exception is not None:
+                raise exception
+
+            raise Exception("Both response and exception are None.")
 
         @app.exception_handler(RequestCancelledException)
         async def value_error_exception_handler(
