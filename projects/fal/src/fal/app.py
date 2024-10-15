@@ -362,7 +362,7 @@ class App(fal.api.BaseServable):
 
             request_id = request.headers.get(REQUEST_ID_KEY)
             if request_id is not None:
-                await _set_logger_labels({"request_id": request_id})
+                await _set_logger_labels({"fal_request_id": request_id})
 
             response = await call_next(request)
 
