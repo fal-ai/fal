@@ -11,7 +11,6 @@ import time
 import typing
 from contextlib import AsyncExitStack, asynccontextmanager, contextmanager
 from dataclasses import dataclass
-from functools import cache
 from typing import Any, Callable, ClassVar, Literal, TypeVar
 
 import grpc.aio as async_grpc
@@ -39,11 +38,6 @@ async def _call_any_fn(fn, *args, **kwargs):
         return await fn(*args, **kwargs)
     else:
         return fn(*args, **kwargs)
-
-
-@cache
-def get_grpc_port() -> str | None:
-    return os.environ.get("NOMAD_ALLOC_PORT_grpc")
 
 
 async def open_isolate_channel(address: str) -> async_grpc.Channel:
@@ -360,8 +354,9 @@ class App(fal.api.BaseServable):
         @app.middleware("http")
         async def set_request_id(request, call_next):
             if self.isolate_channel is None:
+                grpc_port = os.environ.get("NOMAD_ALLOC_PORT_grpc")
                 self.isolate_channel = await open_isolate_channel(
-                    f"localhost:{get_grpc_port()}"
+                    f"localhost:{grpc_port}"
                 )
 
             request_id = request.headers.get(REQUEST_ID_KEY)
