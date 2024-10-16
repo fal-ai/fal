@@ -552,16 +552,15 @@ class FalCDNFileRepository(FileRepository):
 class FalFileRepositoryV3(FileRepository):
     @retry(max_retries=3, base_delay=1, backoff_type="exponential", jitter=True)
     def save(
-        self, file: FileData, user_lifecycle_preference: dict[str, str] | None
+        self, file: FileData, object_lifecycle_preference: dict[str, str] | None
     ) -> str:
-        object_lifecycle_preference = dataclasses.asdict(GLOBAL_LIFECYCLE_PREFERENCE)
-
-        if user_lifecycle_preference is not None:
-            object_lifecycle_preference = {
-                key: user_lifecycle_preference[key]
-                if key in user_lifecycle_preference
+        lifecycle = dataclasses.asdict(GLOBAL_LIFECYCLE_PREFERENCE)
+        if object_lifecycle_preference is not None:
+            lifecycle = {
+                key: object_lifecycle_preference[key]
+                if key in object_lifecycle_preference
                 else value
-                for key, value in object_lifecycle_preference.items()
+                for key, value in lifecycle.items()
             }
 
         headers = {
@@ -569,9 +568,7 @@ class FalFileRepositoryV3(FileRepository):
             "Accept": "application/json",
             "Content-Type": file.content_type,
             "X-Fal-File-Name": file.file_name,
-            "X-Fal-Object-Lifecycle-Preference": json.dumps(
-                object_lifecycle_preference
-            ),
+            "X-Fal-Object-Lifecycle-Preference": json.dumps(lifecycle),
         }
         url = os.getenv("FAL_CDN_V3_HOST", _FAL_CDN_V3) + "/files/upload"
         request = Request(url, headers=headers, method="POST", data=file.data)
