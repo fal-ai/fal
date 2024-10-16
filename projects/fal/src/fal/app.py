@@ -57,7 +57,7 @@ async def open_isolate_channel(address: str) -> async_grpc.Channel:
 
     channel_status = channel.channel_ready()
     try:
-        await asyncio.wait_for(channel_status, timeout=60)
+        await asyncio.wait_for(channel_status, timeout=1)
     except asyncio.TimeoutError:
         await _stack.aclose()
         raise Exception("Timed out trying to connect to local isolate")

@@ -76,6 +76,7 @@ SERVE_REQUIREMENTS = [
     f"pydantic=={pydantic_version}",
     "uvicorn",
     "starlette_exporter",
+    "structlog",
 ]
 
 
