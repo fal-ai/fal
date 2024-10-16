@@ -6,6 +6,7 @@ import os
 import posixpath
 import uuid
 from dataclasses import dataclass
+from typing import Optional
 
 from fal.toolkit.file.types import FileData, FileRepository
 from fal.toolkit.utils.retry import retry
@@ -52,7 +53,11 @@ class GoogleStorageRepository(FileRepository):
         return self._bucket
 
     @retry(max_retries=3, base_delay=1, backoff_type="exponential", jitter=True)
-    def save(self, data: FileData) -> str:
+    def save(
+        self,
+        data: FileData,
+        object_lifecycle_preference: Optional[dict[str, str]] = None,
+    ) -> str:
         destination_path = posixpath.join(
             self.folder,
             f"{uuid.uuid4().hex}_{data.file_name}",
