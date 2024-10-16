@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import inspect
 import json
 import os
@@ -8,12 +9,14 @@ import re
 import threading
 import time
 import typing
-from contextlib import asynccontextmanager, contextmanager
+from contextlib import AsyncExitStack, asynccontextmanager, contextmanager
 from dataclasses import dataclass
 from typing import Any, Callable, ClassVar, Literal, TypeVar
 
+import grpc.aio as async_grpc
 import httpx
 from fastapi import FastAPI
+from isolate.server import definitions
 
 import fal.api
 from fal._serialization import include_modules_from
@@ -24,6 +27,7 @@ from fal.toolkit.file import get_lifecycle_preference
 from fal.toolkit.file.providers.fal import GLOBAL_LIFECYCLE_PREFERENCE
 
 REALTIME_APP_REQUIREMENTS = ["websockets", "msgpack"]
+REQUEST_ID_KEY = "x-fal-request-id"
 
 EndpointT = TypeVar("EndpointT", bound=Callable[..., Any])
 logger = get_logger(__name__)
@@ -34,6 +38,48 @@ async def _call_any_fn(fn, *args, **kwargs):
         return await fn(*args, **kwargs)
     else:
         return fn(*args, **kwargs)
+
+
+async def open_isolate_channel(address: str) -> async_grpc.Channel:
+    _stack = AsyncExitStack()
+    channel = await _stack.enter_async_context(
+        async_grpc.insecure_channel(
+            address,
+            options=[
+                ("grpc.max_send_message_length", -1),
+                ("grpc.max_receive_message_length", -1),
+                ("grpc.min_reconnect_backoff_ms", 0),
+                ("grpc.max_reconnect_backoff_ms", 100),
+                ("grpc.dns_min_time_between_resolutions_ms", 100),
+            ],
+        )
+    )
+
+    channel_status = channel.channel_ready()
+    try:
+        await asyncio.wait_for(channel_status, timeout=1)
+    except asyncio.TimeoutError:
+        await _stack.aclose()
+        raise Exception("Timed out trying to connect to local isolate")
+
+    return channel
+
+
+async def _set_logger_labels(
+    logger_labels: dict[str, str], channel: async_grpc.Channel
+):
+    try:
+        isolate = definitions.IsolateStub(channel)
+        isolate_request = definitions.SetMetadataRequest(
+            # TODO: when submit is shipped, get task_id from an env var
+            task_id="RUN",
+            metadata=definitions.TaskMetadata(logger_labels=logger_labels),
+        )
+        res = isolate.SetMetadata(isolate_request)
+        code = await res.code()
+        assert str(code) == "StatusCode.OK"
+    except BaseException:
+        logger.exception("Failed to set logger labels")
 
 
 def wrap_app(cls: type[App], **kwargs) -> fal.api.IsolatedFunction:
@@ -210,6 +256,8 @@ class App(fal.api.BaseServable):
     app_auth: ClassVar[Literal["private", "public", "shared"]] = "private"
     request_timeout: ClassVar[int | None] = None
 
+    isolate_channel: async_grpc.Channel | None = None
+
     def __init_subclass__(cls, **kwargs):
         app_name = kwargs.pop("name", None) or _to_fal_app_name(cls.__name__)
         parent_settings = getattr(cls, "host_kwargs", {})
@@ -300,7 +348,26 @@ class App(fal.api.BaseServable):
                     "Failed set a global lifecycle preference %s",
                     self.__class__.__name__,
                 )
+
             return await call_next(request)
+
+        @app.middleware("http")
+        async def set_request_id(request, call_next):
+            if self.isolate_channel is None:
+                grpc_port = os.environ.get("NOMAD_ALLOC_PORT_grpc")
+                self.isolate_channel = await open_isolate_channel(
+                    f"localhost:{grpc_port}"
+                )
+
+            request_id = request.headers.get(REQUEST_ID_KEY)
+            if request_id is not None:
+                await _set_logger_labels(
+                    {"fal_request_id": request_id}, channel=self.isolate_channel
+                )
+            try:
+                return await call_next(request)
+            finally:
+                await _set_logger_labels({}, channel=self.isolate_channel)
 
         @app.exception_handler(RequestCancelledException)
         async def value_error_exception_handler(
