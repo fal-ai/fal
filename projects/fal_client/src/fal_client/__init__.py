@@ -22,6 +22,8 @@ __all__ = [
     "SyncRequestHandle",
     "AsyncRequestHandle",
     "run",
+    "subscribe_async",
+    "subscribe",
     "submit",
     "stream",
     "run_async",
