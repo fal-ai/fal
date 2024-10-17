@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import tempfile
+import unittest.mock
 from pathlib import Path
 from typing import Callable
 from uuid import uuid4
@@ -562,3 +563,21 @@ def test_fal_cdn(isolated_client):
     uploaded_image = upload_to_fal_cdn()
 
     assert uploaded_image
+
+
+def test_download_file_with_slash_in_filename():
+    from fal.toolkit.utils.download_utils import _get_remote_file_properties
+
+    test_url = "https://example.com/file/with/slash.txt"
+
+    with unittest.mock.patch(
+        "fal.toolkit.utils.download_utils.urlopen"
+    ) as mock_urlopen:
+        # urlopen is a context manager, so we need to mock the __enter__ method
+        mock_response = mock_urlopen.return_value.__enter__.return_value
+        mock_response.headers.get_filename.return_value = "file/with/slash.txt"
+        mock_response.headers.get.return_value = "100"
+
+        file_name, _ = _get_remote_file_properties(test_url)
+
+    assert "/" not in file_name
