@@ -316,6 +316,7 @@ class AsyncClient:
         *,
         path: str = "",
         hint: str | None = None,
+        webhook_url: str | None = None,
     ) -> AsyncRequestHandle:
         """Submit an application with the given arguments (which will be JSON serialized). The path parameter can be used to
         specify a subpath when applicable. This method will return a handle to the request that can be used to check the status
@@ -324,6 +325,9 @@ class AsyncClient:
         url = QUEUE_URL_FORMAT + application
         if path:
             url += "/" + path.lstrip("/")
+
+        if webhook_url is not None:
+            url += f"?fal_webhook={webhook_url}"
 
         headers = {}
         if hint is not None:
@@ -496,6 +500,7 @@ class SyncClient:
         *,
         path: str = "",
         hint: str | None = None,
+        webhook_url: str | None = None,
     ) -> SyncRequestHandle:
         """Submit an application with the given arguments (which will be JSON serialized). The path parameter can be used to
         specify a subpath when applicable. This method will return a handle to the request that can be used to check the status
@@ -504,6 +509,9 @@ class SyncClient:
         url = QUEUE_URL_FORMAT + application
         if path:
             url += "/" + path.lstrip("/")
+
+        if webhook_url is not None:
+            url += f"?fal_webhook={webhook_url}"
 
         headers = {}
         if hint is not None:
