@@ -84,6 +84,9 @@ def _get_remote_file_properties(
             url_path = parsed_url.path
             file_name = Path(url_path).name or _hash_url(url)
 
+    # file name can still contain a forward slash if the server returns a relative path
+    file_name = Path(file_name).name
+
     return file_name, content_length
 
 
@@ -159,6 +162,7 @@ def download_file(
     try:
         file_name = _get_remote_file_properties(url, request_headers)[0]
     except Exception as e:
+        print(f"GOt error: {e}")
         raise DownloadError(f"Failed to get remote file properties for {url}") from e
 
     if "/" in file_name:
