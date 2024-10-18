@@ -189,6 +189,7 @@ message RegisterApplicationRequest {
     optional google.protobuf.Struct metadata = 8;
     // Deployment strategy
     optional DeploymentStrategy deployment_strategy = 9;
+    optional bool scale = 10;
 }
 
 message RegisterApplicationResultType {
