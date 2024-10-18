@@ -106,6 +106,7 @@ def _deploy_from_reference(
         application_auth_mode=app_auth,
         metadata=isolated_function.options.host.get("metadata", {}),
         deployment_strategy=deployment_strategy,
+        scale=not args.no_scale,
     )
 
     if app_id:
@@ -218,6 +219,15 @@ def add_parser(main_subparsers, parents):
         choices=["recreate", "rolling"],
         help="Deployment strategy.",
         default="recreate",
+    )
+    parser.add_argument(
+        "--no-scale",
+        action="store_true",
+        help=(
+            "Use min_concurrency/max_concurrency/max_multiplexing from previous "
+            "deployment of application with this name, if exists. Otherwise will "
+            "use the values from the application code."
+        ),
     )
 
     parser.set_defaults(func=_deploy)
