@@ -135,6 +135,8 @@ class File(BaseModel):
             FileRepository | RepositoryId
         ] = FALLBACK_REPOSITORY,
         request: Optional[Request] = None,
+        save_kwargs: Optional[dict] = None,
+        fallback_save_kwargs: Optional[dict] = None,
     ) -> File:
         repo = (
             repository
@@ -142,12 +144,15 @@ class File(BaseModel):
             else get_builtin_repository(repository)
         )
 
+        save_kwargs = save_kwargs or {}
+        fallback_save_kwargs = fallback_save_kwargs or {}
+
         fdata = FileData(data, content_type, file_name)
 
         object_lifecycle_preference = get_lifecycle_preference(request)
 
         try:
-            url = repo.save(fdata, object_lifecycle_preference)
+            url = repo.save(fdata, object_lifecycle_preference, **save_kwargs)
         except Exception:
             if not fallback_repository:
                 raise
@@ -158,7 +163,9 @@ class File(BaseModel):
                 else get_builtin_repository(fallback_repository)
             )
 
-            url = fallback_repo.save(fdata, object_lifecycle_preference)
+            url = fallback_repo.save(
+                fdata, object_lifecycle_preference, **fallback_save_kwargs
+            )
 
         return cls(
             url=url,
@@ -179,6 +186,8 @@ class File(BaseModel):
             FileRepository | RepositoryId
         ] = FALLBACK_REPOSITORY,
         request: Optional[Request] = None,
+        save_kwargs: Optional[dict] = None,
+        fallback_save_kwargs: Optional[dict] = None,
     ) -> File:
         file_path = Path(path)
         if not file_path.exists():
@@ -190,6 +199,9 @@ class File(BaseModel):
             else get_builtin_repository(repository)
         )
 
+        save_kwargs = save_kwargs or {}
+        fallback_save_kwargs = fallback_save_kwargs or {}
+
         content_type = content_type or "application/octet-stream"
         object_lifecycle_preference = get_lifecycle_preference(request)
 
@@ -199,6 +211,7 @@ class File(BaseModel):
                 content_type=content_type,
                 multipart=multipart,
                 object_lifecycle_preference=object_lifecycle_preference,
+                **save_kwargs,
             )
         except Exception:
             if not fallback_repository:
@@ -215,6 +228,7 @@ class File(BaseModel):
                 content_type=content_type,
                 multipart=multipart,
                 object_lifecycle_preference=object_lifecycle_preference,
+                **fallback_save_kwargs,
             )
 
         return cls(
