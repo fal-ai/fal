@@ -316,6 +316,7 @@ class AsyncClient:
         *,
         path: str = "",
         hint: str | None = None,
+        webhook: str | None = None,
     ) -> AsyncRequestHandle:
         """Submit an application with the given arguments (which will be JSON serialized). The path parameter can be used to
         specify a subpath when applicable. This method will return a handle to the request that can be used to check the status
@@ -329,10 +330,16 @@ class AsyncClient:
         if hint is not None:
             headers["X-Fal-Runner-Hint"] = hint
 
+        parameters = {}
+        if webhook is not None:
+            parameters["fal_webhook"] = webhook
+
         response = await self._client.post(
             url,
             json=arguments,
             timeout=self.default_timeout,
+            headers=headers,
+            params=parameters,
         )
         _raise_for_status(response)
 
@@ -496,6 +503,7 @@ class SyncClient:
         *,
         path: str = "",
         hint: str | None = None,
+        webhook: str | None = None,
     ) -> SyncRequestHandle:
         """Submit an application with the given arguments (which will be JSON serialized). The path parameter can be used to
         specify a subpath when applicable. This method will return a handle to the request that can be used to check the status
@@ -509,11 +517,16 @@ class SyncClient:
         if hint is not None:
             headers["X-Fal-Runner-Hint"] = hint
 
+        parameters = {}
+        if webhook is not None:
+            parameters["fal_webhook"] = webhook
+
         response = self._client.post(
             url,
             json=arguments,
             timeout=self.default_timeout,
             headers=headers,
+            params=parameters,
         )
         _raise_for_status(response)
 
