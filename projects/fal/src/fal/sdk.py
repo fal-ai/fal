@@ -5,7 +5,7 @@ from contextlib import ExitStack
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Any, Callable, Generic, Iterator, Literal, TypeVar
+from typing import Any, Callable, Generic, Iterator, Literal, Optional, TypeVar
 
 import grpc
 import isolate_proto
@@ -214,7 +214,7 @@ class AliasInfo:
 class RunnerInfo:
     runner_id: str
     in_flight_requests: int
-    expiration_countdown: int
+    expiration_countdown: Optional[int]
     uptime: timedelta
 
 
@@ -344,7 +344,9 @@ def _from_grpc_runner_info(message: isolate_proto.RunnerInfo) -> RunnerInfo:
     return RunnerInfo(
         runner_id=message.runner_id,
         in_flight_requests=message.in_flight_requests,
-        expiration_countdown=message.expiration_countdown,
+        expiration_countdown=message.expiration_countdown
+        if message.HasField("expiration_countdown")
+        else None,
         uptime=timedelta(seconds=message.uptime),
     )
 
