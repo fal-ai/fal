@@ -221,7 +221,7 @@ def _runners(args):
             str(runner.in_flight_requests),
             (
                 "N/A (active)"
-                if not runner.expiration_countdown
+                if runner.expiration_countdown is None
                 else f"{runner.expiration_countdown}s"
             ),
             f"{runner.uptime} ({runner.uptime.total_seconds()}s)",

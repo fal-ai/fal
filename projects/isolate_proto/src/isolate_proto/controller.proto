@@ -309,6 +309,6 @@ message ListAliasRunnersResponse {
 message RunnerInfo {
     string runner_id = 1;
     int32 in_flight_requests = 2;
-    int32 expiration_countdown = 3;
+    optional int32 expiration_countdown = 3;
     float uptime = 4;
 }
