@@ -499,6 +499,7 @@ class FalServerlessConnection:
         machine_requirements: MachineRequirements | None = None,
         metadata: dict[str, Any] | None = None,
         deployment_strategy: Literal["recreate", "rolling"] = "recreate",
+        scale: bool = True,
     ) -> Iterator[isolate_proto.RegisterApplicationResult]:
         wrapped_function = to_serialized_object(function, serialization_method)
         if machine_requirements:
@@ -546,6 +547,7 @@ class FalServerlessConnection:
             auth_mode=auth_mode,
             metadata=struct_metadata,
             deployment_strategy=deployment_strategy_proto,
+            scale=scale,
         )
         for partial_result in self.stub.RegisterApplication(request):
             yield from_grpc(partial_result)

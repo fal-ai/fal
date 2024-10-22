@@ -516,6 +516,48 @@ def test_404_response(test_app: str, request: pytest.FixtureRequest):
         apps.run(test_app, path="/other", arguments={"lhs": 1, "rhs": 2})
 
 
+def test_app_deploy_scale(aliased_app: tuple[str, str]):
+    import uuid
+    from dataclasses import replace
+
+    app_alias = str(uuid.uuid4()) + "-alias"
+    app_revision = addition_app.host.register(
+        func=addition_app.func,
+        options=addition_app.options,
+        application_name=app_alias,
+        application_auth_mode="private",
+    )
+
+    host: api.FalServerlessHost = addition_app.host  # type: ignore
+    options = replace(
+        addition_app.options, host={**addition_app.options.host, "max_multiplexing": 30}
+    )
+    kwargs = dict(
+        func=addition_app.func,
+        options=options,
+        application_name=app_alias,
+        application_auth_mode="private",
+    )
+
+    app_revision = addition_app.host.register(**kwargs, scale=False)
+
+    with host._connection as client:
+        res = client.list_aliases()
+        found = next(filter(lambda alias: alias.alias == app_alias, res), None)
+        assert found, f"Could not find app {app_alias} in {res}"
+        assert found.revision == app_revision
+        assert found.max_multiplexing == 1
+
+    app_revision = addition_app.host.register(**kwargs, scale=True)
+
+    with host._connection as client:
+        res = client.list_aliases()
+        found = next(filter(lambda alias: alias.alias == app_alias, res), None)
+        assert found, f"Could not find app {app_alias} in {res}"
+        assert found.revision == app_revision
+        assert found.max_multiplexing == 30
+
+
 def test_app_update_app(aliased_app: tuple[str, str]):
     app_revision, app_alias = aliased_app
 

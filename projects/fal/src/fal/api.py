@@ -171,6 +171,7 @@ class Host(Generic[ArgsT, ReturnT]):
         application_name: str | None = None,
         application_auth_mode: Literal["public", "shared", "private"] | None = None,
         metadata: dict[str, Any] | None = None,
+        scale: bool = True,
     ) -> str | None:
         """Register the given function on the host for API call execution."""
         raise NotImplementedError
@@ -430,6 +431,7 @@ class FalServerlessHost(Host):
         application_auth_mode: Literal["public", "shared", "private"] | None = None,
         metadata: dict[str, Any] | None = None,
         deployment_strategy: Literal["recreate", "rolling"] = "recreate",
+        scale: bool = True,
     ) -> str | None:
         environment_options = options.environment.copy()
         environment_options.setdefault("python_version", active_python())
@@ -439,15 +441,14 @@ class FalServerlessHost(Host):
             "machine_type", FAL_SERVERLESS_DEFAULT_MACHINE_TYPE
         )
         keep_alive = options.host.get("keep_alive", FAL_SERVERLESS_DEFAULT_KEEP_ALIVE)
-        max_concurrency = options.host.get("max_concurrency")
-        min_concurrency = options.host.get("min_concurrency")
-        max_multiplexing = options.host.get("max_multiplexing")
         base_image = options.host.get("_base_image", None)
         scheduler = options.host.get("_scheduler", None)
         scheduler_options = options.host.get("_scheduler_options", None)
+        max_concurrency = options.host.get("max_concurrency")
+        min_concurrency = options.host.get("min_concurrency")
+        max_multiplexing = options.host.get("max_multiplexing")
         exposed_port = options.get_exposed_port()
         request_timeout = options.host.get("request_timeout")
-
         machine_requirements = MachineRequirements(
             machine_types=machine_type,  # type: ignore
             num_gpus=options.host.get("num_gpus"),
@@ -486,6 +487,7 @@ class FalServerlessHost(Host):
             machine_requirements=machine_requirements,
             metadata=metadata,
             deployment_strategy=deployment_strategy,
+            scale=scale,
         ):
             for log in partial_result.logs:
                 self._log_printer.print(log)
