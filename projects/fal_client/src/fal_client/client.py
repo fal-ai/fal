@@ -8,7 +8,7 @@ import time
 import base64
 from dataclasses import dataclass, field
 from functools import cached_property
-from typing import Any, AsyncIterator, Iterator, TYPE_CHECKING, Optional
+from typing import Any, AsyncIterator, Iterator, TYPE_CHECKING, Optional, Literal
 
 import httpx
 from httpx_sse import aconnect_sse, connect_sse
@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from PIL import Image
 
 AnyJSON = dict[str, Any]
+Priority = Literal["normal", "low"]
 
 RUN_URL_FORMAT = f"https://{FAL_RUN_HOST}/"
 QUEUE_URL_FORMAT = f"https://queue.{FAL_RUN_HOST}/"
@@ -317,6 +318,7 @@ class AsyncClient:
         path: str = "",
         hint: str | None = None,
         webhook_url: str | None = None,
+        priority: Optional[Priority] = None,
     ) -> AsyncRequestHandle:
         """Submit an application with the given arguments (which will be JSON serialized). The path parameter can be used to
         specify a subpath when applicable. This method will return a handle to the request that can be used to check the status
@@ -332,6 +334,9 @@ class AsyncClient:
         headers = {}
         if hint is not None:
             headers["X-Fal-Runner-Hint"] = hint
+
+        if priority is not None:
+            headers["X-Fal-Queue-Priority"] = priority
 
         response = await self._client.post(
             url,
@@ -359,8 +364,15 @@ class AsyncClient:
         with_logs: bool = False,
         on_enqueue: Optional[callable[[Queued], None]] = None,
         on_queue_update: Optional[callable[[Status], None]] = None,
+        priority: Optional[Priority] = None,
     ) -> AnyJSON:
-        handle = await self.submit(application, arguments, path=path, hint=hint)
+        handle = await self.submit(
+            application,
+            arguments,
+            path=path,
+            hint=hint,
+            priority=priority,
+        )
 
         if on_enqueue is not None:
             on_enqueue(handle.request_id)
@@ -501,6 +513,7 @@ class SyncClient:
         path: str = "",
         hint: str | None = None,
         webhook_url: str | None = None,
+        priority: Optional[Priority] = None,
     ) -> SyncRequestHandle:
         """Submit an application with the given arguments (which will be JSON serialized). The path parameter can be used to
         specify a subpath when applicable. This method will return a handle to the request that can be used to check the status
@@ -516,6 +529,9 @@ class SyncClient:
         headers = {}
         if hint is not None:
             headers["X-Fal-Runner-Hint"] = hint
+
+        if priority is not None:
+            headers["X-Fal-Queue-Priority"] = priority
 
         response = self._client.post(
             url,
@@ -544,8 +560,15 @@ class SyncClient:
         with_logs: bool = False,
         on_enqueue: Optional[callable[[Queued], None]] = None,
         on_queue_update: Optional[callable[[Status], None]] = None,
+        priority: Optional[Priority] = None,
     ) -> AnyJSON:
-        handle = self.submit(application, arguments, path=path, hint=hint)
+        handle = self.submit(
+            application,
+            arguments,
+            path=path,
+            hint=hint,
+            priority=priority,
+        )
 
         if on_enqueue is not None:
             on_enqueue(handle.request_id)
