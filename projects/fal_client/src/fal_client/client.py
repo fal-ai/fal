@@ -288,6 +288,11 @@ class SyncRequestHandle(_BaseRequestHandle):
         _raise_for_status(response)
         return response.json()
 
+    def cancel(self) -> None:
+        """Cancel the request."""
+        response = self.client.put(self.cancel_url)
+        _raise_for_status(response)
+
 
 @dataclass(frozen=True)
 class AsyncRequestHandle(_BaseRequestHandle):
@@ -346,6 +351,11 @@ class AsyncRequestHandle(_BaseRequestHandle):
         response = await self.client.get(self.response_url)
         _raise_for_status(response)
         return response.json()
+
+    async def cancel(self) -> None:
+        """Cancel the request."""
+        response = await self.client.put(self.cancel_url)
+        _raise_for_status(response)
 
 
 @dataclass(frozen=True)
@@ -498,6 +508,10 @@ class AsyncClient:
     async def result(self, application: str, request_id: str) -> AnyJSON:
         handle = self.get_handle(application, request_id)
         return await handle.get()
+
+    async def cancel(self, application: str, request_id: str) -> None:
+        handle = self.get_handle(application, request_id)
+        await handle.cancel()
 
     async def stream(
         self,
@@ -720,6 +734,10 @@ class SyncClient:
     def result(self, application: str, request_id: str) -> AnyJSON:
         handle = self.get_handle(application, request_id)
         return handle.get()
+
+    def cancel(self, application: str, request_id: str) -> None:
+        handle = self.get_handle(application, request_id)
+        handle.cancel()
 
     def stream(
         self,
