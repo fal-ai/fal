@@ -114,6 +114,16 @@
 <dt class="sig sig-object py" id="fal_client.client.AsyncClient">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal_client.client.</span></span><span class="sig-name descname"><span class="pre">AsyncClient</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">key</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">default_timeout</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">120.0</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal_client.client.AsyncClient" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dl class="py method">
+<dt class="sig sig-object py" id="fal_client.client.AsyncClient.cancel">
+<em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">cancel</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">application</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">request_id</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal_client.client.AsyncClient.cancel" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
 <dl class="py attribute">
 <dt class="sig sig-object py" id="fal_client.client.AsyncClient.default_timeout">
 <span class="sig-name descname"><span class="pre">default_timeout</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">120.0</span></em><a class="headerlink" href="#fal_client.client.AsyncClient.default_timeout" title="Link to this definition">¶</a></dt>
@@ -238,6 +248,17 @@ as the second argument. Use upload_file or upload_image for convenience.</p>
 <dt class="sig sig-object py" id="fal_client.client.AsyncRequestHandle">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal_client.client.</span></span><span class="sig-name descname"><span class="pre">AsyncRequestHandle</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">request_id</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">response_url</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">status_url</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cancel_url</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">client</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal_client.client.AsyncRequestHandle" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">_BaseRequestHandle</span></code></p>
+<dl class="py method">
+<dt class="sig sig-object py" id="fal_client.client.AsyncRequestHandle.cancel">
+<em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">cancel</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#fal_client.client.AsyncRequestHandle.cancel" title="Link to this definition">¶</a></dt>
+<dd><p>Cancel the request.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
 <dl class="py attribute">
 <dt class="sig sig-object py" id="fal_client.client.AsyncRequestHandle.client">
 <span class="sig-name descname"><span class="pre">client</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">AsyncClient</span></code></em><a class="headerlink" href="#fal_client.client.AsyncRequestHandle.client" title="Link to this definition">¶</a></dt>
@@ -406,6 +427,16 @@ field indicates the relative position in the queue (0-indexed).</p>
 <dt class="sig sig-object py" id="fal_client.client.SyncClient">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal_client.client.</span></span><span class="sig-name descname"><span class="pre">SyncClient</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">key</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">default_timeout</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">120.0</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal_client.client.SyncClient" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dl class="py method">
+<dt class="sig sig-object py" id="fal_client.client.SyncClient.cancel">
+<span class="sig-name descname"><span class="pre">cancel</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">application</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">request_id</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal_client.client.SyncClient.cancel" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
 <dl class="py attribute">
 <dt class="sig sig-object py" id="fal_client.client.SyncClient.default_timeout">
 <span class="sig-name descname"><span class="pre">default_timeout</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">120.0</span></em><a class="headerlink" href="#fal_client.client.SyncClient.default_timeout" title="Link to this definition">¶</a></dt>
@@ -530,6 +561,17 @@ as the second argument. Use upload_file or upload_image for convenience.</p>
 <dt class="sig sig-object py" id="fal_client.client.SyncRequestHandle">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal_client.client.</span></span><span class="sig-name descname"><span class="pre">SyncRequestHandle</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">request_id</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">response_url</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">status_url</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cancel_url</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">client</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal_client.client.SyncRequestHandle" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">_BaseRequestHandle</span></code></p>
+<dl class="py method">
+<dt class="sig sig-object py" id="fal_client.client.SyncRequestHandle.cancel">
+<span class="sig-name descname"><span class="pre">cancel</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#fal_client.client.SyncRequestHandle.cancel" title="Link to this definition">¶</a></dt>
+<dd><p>Cancel the request.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
 <dl class="py attribute">
 <dt class="sig sig-object py" id="fal_client.client.SyncRequestHandle.client">
 <span class="sig-name descname"><span class="pre">client</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">Client</span></code></em><a class="headerlink" href="#fal_client.client.SyncRequestHandle.client" title="Link to this definition">¶</a></dt>
@@ -623,6 +665,16 @@ for InProgress and Completed statuses.</p>
 <dt class="sig sig-object py" id="fal_client.AsyncClient">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal_client.</span></span><span class="sig-name descname"><span class="pre">AsyncClient</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">key</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">default_timeout</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">120.0</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal_client.AsyncClient" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dl class="py method">
+<dt class="sig sig-object py" id="fal_client.AsyncClient.cancel">
+<em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">cancel</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">application</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">request_id</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal_client.AsyncClient.cancel" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
 <dl class="py attribute">
 <dt class="sig sig-object py" id="fal_client.AsyncClient.default_timeout">
 <span class="sig-name descname"><span class="pre">default_timeout</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">120.0</span></em><a class="headerlink" href="#fal_client.AsyncClient.default_timeout" title="Link to this definition">¶</a></dt>
@@ -747,6 +799,17 @@ as the second argument. Use upload_file or upload_image for convenience.</p>
 <dt class="sig sig-object py" id="fal_client.AsyncRequestHandle">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal_client.</span></span><span class="sig-name descname"><span class="pre">AsyncRequestHandle</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">request_id</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">response_url</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">status_url</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cancel_url</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">client</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal_client.AsyncRequestHandle" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">_BaseRequestHandle</span></code></p>
+<dl class="py method">
+<dt class="sig sig-object py" id="fal_client.AsyncRequestHandle.cancel">
+<em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">cancel</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#fal_client.AsyncRequestHandle.cancel" title="Link to this definition">¶</a></dt>
+<dd><p>Cancel the request.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
 <dl class="py attribute">
 <dt class="sig sig-object py" id="fal_client.AsyncRequestHandle.cancel_url">
 <span class="sig-name descname"><span class="pre">cancel_url</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><a class="headerlink" href="#fal_client.AsyncRequestHandle.cancel_url" title="Link to this definition">¶</a></dt>
@@ -877,6 +940,16 @@ field indicates the relative position in the queue (0-indexed).</p>
 <dt class="sig sig-object py" id="fal_client.SyncClient">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal_client.</span></span><span class="sig-name descname"><span class="pre">SyncClient</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">key</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">default_timeout</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">120.0</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal_client.SyncClient" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dl class="py method">
+<dt class="sig sig-object py" id="fal_client.SyncClient.cancel">
+<span class="sig-name descname"><span class="pre">cancel</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">application</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">request_id</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal_client.SyncClient.cancel" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
 <dl class="py attribute">
 <dt class="sig sig-object py" id="fal_client.SyncClient.default_timeout">
 <span class="sig-name descname"><span class="pre">default_timeout</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">120.0</span></em><a class="headerlink" href="#fal_client.SyncClient.default_timeout" title="Link to this definition">¶</a></dt>
@@ -1001,6 +1074,17 @@ as the second argument. Use upload_file or upload_image for convenience.</p>
 <dt class="sig sig-object py" id="fal_client.SyncRequestHandle">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal_client.</span></span><span class="sig-name descname"><span class="pre">SyncRequestHandle</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">request_id</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">response_url</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">status_url</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cancel_url</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">client</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal_client.SyncRequestHandle" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">_BaseRequestHandle</span></code></p>
+<dl class="py method">
+<dt class="sig sig-object py" id="fal_client.SyncRequestHandle.cancel">
+<span class="sig-name descname"><span class="pre">cancel</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#fal_client.SyncRequestHandle.cancel" title="Link to this definition">¶</a></dt>
+<dd><p>Cancel the request.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
 <dl class="py attribute">
 <dt class="sig sig-object py" id="fal_client.SyncRequestHandle.cancel_url">
 <span class="sig-name descname"><span class="pre">cancel_url</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><a class="headerlink" href="#fal_client.SyncRequestHandle.cancel_url" title="Link to this definition">¶</a></dt>
@@ -1075,6 +1159,26 @@ for InProgress and Completed statuses.</p>
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="fal_client.cancel">
+<span class="sig-prename descclassname"><span class="pre">fal_client.</span></span><span class="sig-name descname"><span class="pre">cancel</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">application</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">request_id</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal_client.cancel" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal_client.cancel_async">
+<em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal_client.</span></span><span class="sig-name descname"><span class="pre">cancel_async</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">application</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">request_id</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal_client.cancel_async" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="fal_client.encode">
 <span class="sig-prename descclassname"><span class="pre">fal_client.</span></span><span class="sig-name descname"><span class="pre">encode</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">content_type</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal_client.encode" title="Link to this definition">¶</a></dt>
 <dd><p>Encode the given data blob to a data URL with the specified content type.</p>
@@ -1108,6 +1212,26 @@ for InProgress and Completed statuses.</p>
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="fal_client.result">
+<span class="sig-prename descclassname"><span class="pre">fal_client.</span></span><span class="sig-name descname"><span class="pre">result</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">application</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">request_id</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal_client.result" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code>]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal_client.result_async">
+<em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal_client.</span></span><span class="sig-name descname"><span class="pre">result_async</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">application</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">request_id</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal_client.result_async" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code>]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="fal_client.run">
 <span class="sig-prename descclassname"><span class="pre">fal_client.</span></span><span class="sig-name descname"><span class="pre">run</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">application</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">arguments</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">timeout</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">hint</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal_client.run" title="Link to this definition">¶</a></dt>
 <dd><p>Run an application with the given arguments (which will be JSON serialized). The path parameter can be used to
@@ -1127,6 +1251,26 @@ specify a subpath when applicable. This method will return the result of the inf
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code>]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal_client.status">
+<span class="sig-prename descclassname"><span class="pre">fal_client.</span></span><span class="sig-name descname"><span class="pre">status</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">application</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">request_id</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">with_logs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal_client.status" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference internal" href="#fal_client.client.Status" title="fal_client.client.Status"><code class="xref py py-class docutils literal notranslate"><span class="pre">Status</span></code></a></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal_client.status_async">
+<em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal_client.</span></span><span class="sig-name descname"><span class="pre">status_async</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">application</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">request_id</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">with_logs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal_client.status_async" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference internal" href="#fal_client.client.Status" title="fal_client.client.Status"><code class="xref py py-class docutils literal notranslate"><span class="pre">Status</span></code></a></span></p>
 </dd>
 </dl>
 </dd></dl>
