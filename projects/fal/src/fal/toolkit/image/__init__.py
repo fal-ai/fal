@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import urllib.request
 from functools import lru_cache
 from typing import TYPE_CHECKING
-from urllib.request import Request, urlopen
 
 from .image import *  # noqa: F403
 
@@ -62,8 +62,8 @@ def read_image_from_url(
     }
 
     try:
-        request = Request(url, headers=TEMP_HEADERS)
-        response = urlopen(request)
+        request = urllib.request.Request(url, headers=TEMP_HEADERS)
+        response = urllib.request.urlopen(request)
         image_pil = Image.open(response)
     except Exception:
         import traceback
