@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from dataclasses import dataclass, field
 from functools import cached_property
 from typing import Any, AsyncIterator, Iterator, TYPE_CHECKING, Optional, Literal
+from urllib.parse import urlencode
 
 import httpx
 from httpx_sse import aconnect_sse, connect_sse
@@ -442,7 +443,7 @@ class AsyncClient:
             url += "/" + path.lstrip("/")
 
         if webhook_url is not None:
-            url += f"?fal_webhook={webhook_url}"
+            url += "?" + urlencode({"fal_webhook": webhook_url})
 
         headers = {}
         if hint is not None:
@@ -667,7 +668,7 @@ class SyncClient:
             url += "/" + path.lstrip("/")
 
         if webhook_url is not None:
-            url += f"?fal_webhook={webhook_url}"
+            url += "?" + urlencode({"fal_webhook": webhook_url})
 
         headers = {}
         if hint is not None:
