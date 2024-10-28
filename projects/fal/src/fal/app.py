@@ -78,8 +78,8 @@ async def _set_logger_labels(
         res = isolate.SetMetadata(isolate_request)
         code = await res.code()
         assert str(code) == "StatusCode.OK"
-    except BaseException:
-        logger.debug("Failed to set logger labels", exc_info=True)
+    except BaseException as e:
+        logger.debug("Failed to set logger labels: %s", e)
 
 
 def wrap_app(cls: type[App], **kwargs) -> fal.api.IsolatedFunction:
