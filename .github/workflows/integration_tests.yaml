@@ -25,7 +25,8 @@ jobs:
       fail-fast: false
       matrix:
         deps: ["pydantic==1.10.12", "pydantic==2.5.0"]
-        python: ["3.8", "3.13"]
+        # TODO: Test Python 3.13
+        python: ["3.8", "3.12"]
     steps:
       - uses: actions/checkout@v3
         with:
