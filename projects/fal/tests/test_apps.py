@@ -92,7 +92,7 @@ def container_addition_app(input: Input) -> Output:
 
 @fal.function(
     keep_alive=300,
-    requirements=["fastapi", "uvicorn", "pydantic==1.10.12"],
+    requirements=["fastapi", "uvicorn", "pydantic==1.10.18"],
     machine_type="S",
     max_concurrency=1,
     max_multiplexing=30,
