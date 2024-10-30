@@ -40,7 +40,8 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --upgrade pip wheel
-          pip install -e 'projects/fal[test]' ${{ matrix.deps }}
+          # TODO: should we include graphlib as a project dependency?
+          pip install -e 'projects/fal[test]' graphlib ${{ matrix.deps }}
 
       - name: Run integration tests
         env:
