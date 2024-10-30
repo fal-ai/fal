@@ -5,7 +5,7 @@ import subprocess
 import time
 from contextlib import contextmanager, suppress
 from datetime import datetime
-from typing import Generator
+from typing import Generator, List, Tuple
 
 import fal
 import fal.api as api
@@ -224,7 +224,7 @@ class RTOutput(BaseModel):
 
 
 class RTOutputs(BaseModel):
-    texts: list[str]
+    texts: List[str]
 
 
 class RealtimeApp(fal.App, keep_alive=300, max_concurrency=1):
@@ -252,7 +252,7 @@ class RealtimeApp(fal.App, keep_alive=300, max_concurrency=1):
 
 
 @pytest.fixture(scope="module")
-def aliased_app() -> Generator[tuple[str, str], None, None]:
+def aliased_app() -> Generator[Tuple[str, str], None, None]:
     # Create a temporary app, register it, and return the ID of it.
 
     import uuid
@@ -516,7 +516,7 @@ def test_404_response(test_app: str, request: pytest.FixtureRequest):
         apps.run(test_app, path="/other", arguments={"lhs": 1, "rhs": 2})
 
 
-def test_app_deploy_scale(aliased_app: tuple[str, str]):
+def test_app_deploy_scale(aliased_app: Tuple[str, str]):
     import uuid
     from dataclasses import replace
 
@@ -558,7 +558,7 @@ def test_app_deploy_scale(aliased_app: tuple[str, str]):
         assert found.max_multiplexing == 30
 
 
-def test_app_update_app(aliased_app: tuple[str, str]):
+def test_app_update_app(aliased_app: Tuple[str, str]):
     app_revision, app_alias = aliased_app
 
     host: api.FalServerlessHost = addition_app.host  # type: ignore
@@ -608,7 +608,7 @@ def test_app_update_app(aliased_app: tuple[str, str]):
         assert res.max_multiplexing == new_max_multiplexing
 
 
-def test_app_set_delete_alias(aliased_app: tuple[str, str]):
+def test_app_set_delete_alias(aliased_app: Tuple[str, str]):
     app_revision, app_alias = aliased_app
 
     host: api.FalServerlessHost = addition_app.host  # type: ignore
