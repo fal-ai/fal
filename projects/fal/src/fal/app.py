@@ -69,6 +69,12 @@ async def _set_logger_labels(
     logger_labels: dict[str, str], channel: async_grpc.Channel
 ):
     try:
+        import sys
+
+        # Flush any prints that were buffered before setting the logger labels
+        sys.stderr.flush()
+        sys.stdout.flush()
+
         isolate = definitions.IsolateStub(channel)
         isolate_request = definitions.SetMetadataRequest(
             # TODO: when submit is shipped, get task_id from an env var
@@ -77,9 +83,11 @@ async def _set_logger_labels(
         )
         res = isolate.SetMetadata(isolate_request)
         code = await res.code()
-        assert str(code) == "StatusCode.OK"
+        assert str(code) == "StatusCode.OK", str(code)
     except BaseException:
-        logger.debug("Failed to set logger labels", exc_info=True)
+        # NOTE hiding this for now to not print on every request
+        # logger.debug("Failed to set logger labels", exc_info=True)
+        pass
 
 
 def wrap_app(cls: type[App], **kwargs) -> fal.api.IsolatedFunction:
