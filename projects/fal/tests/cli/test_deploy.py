@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Tuple
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -30,7 +30,7 @@ def mock_parse_pyproject_toml():
 
 
 def mock_args(
-    app_ref: tuple[str],
+    app_ref: Tuple[str, Optional[str]],
     app_name: Optional[str] = None,
     auth: Optional[str] = None,
     strategy: Optional[str] = None,

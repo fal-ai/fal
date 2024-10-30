@@ -24,7 +24,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        deps: ["pydantic==1.10.12", "pydantic==2.5.0"]
+        deps: ["pydantic==1.10.18", "pydantic==2.5.0"]
+        # TODO: Test Python 3.13
+        python: ["3.8", "3.12"]
     steps:
       - uses: actions/checkout@v3
         with:
@@ -32,13 +34,14 @@ jobs:
 
       - uses: actions/setup-python@v4
         with:
-          python-version: "3.9"
-          cache: 'pip'
+          python-version: ${{ matrix.python }}
+          cache: pip
 
       - name: Install dependencies
         run: |
           pip install --upgrade pip wheel
-          pip install -e 'projects/fal[test]' ${{ matrix.deps }}
+          # TODO: should we include graphlib as a project dependency?
+          pip install -e 'projects/fal[test]' graphlib ${{ matrix.deps }}
 
       - name: Run integration tests
         env:

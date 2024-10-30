@@ -10,7 +10,7 @@ import threading
 from datetime import datetime, timezone
 from dataclasses import dataclass, field
 from functools import cached_property
-from typing import Any, AsyncIterator, Iterator, TYPE_CHECKING, Optional, Literal
+from typing import Any, AsyncIterator, Dict, Iterator, TYPE_CHECKING, Optional, Literal
 from urllib.parse import urlencode
 
 import httpx
@@ -20,7 +20,7 @@ from fal_client.auth import FAL_RUN_HOST, fetch_credentials
 if TYPE_CHECKING:
     from PIL import Image
 
-AnyJSON = dict[str, Any]
+AnyJSON = Dict[str, Any]
 Priority = Literal["normal", "low"]
 
 RUN_URL_FORMAT = f"https://{FAL_RUN_HOST}/"
