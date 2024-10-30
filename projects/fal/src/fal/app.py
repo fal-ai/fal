@@ -69,6 +69,12 @@ async def _set_logger_labels(
     logger_labels: dict[str, str], channel: async_grpc.Channel
 ):
     try:
+        import sys
+
+        # Flush any prints that were buffered before setting the logger labels
+        sys.stderr.flush()
+        sys.stdout.flush()
+
         isolate = definitions.IsolateStub(channel)
         isolate_request = definitions.SetMetadataRequest(
             # TODO: when submit is shipped, get task_id from an env var
