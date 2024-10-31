@@ -88,7 +88,7 @@ class AsyncCDNTokenManager:
             base_upload_url="",
             expires_at=datetime.min.replace(tzinfo=timezone.utc),
         )
-        self._lock: threading.Lock = threading.Lock()
+        self._lock: asyncio.Lock = asyncio.Lock()
         self._url = f"{REST_URL}/storage/auth/token?storage_type=fal-cdn-v3"
         self._headers = {
             "Authorization": f"Key {self._key}",
@@ -110,7 +110,7 @@ class AsyncCDNTokenManager:
         )
 
     async def get_token(self) -> CDNToken:
-        with self._lock:
+        async with self._lock:
             if self._token.is_expired():
                 self._token = await self._refresh_token()
             return self._token
