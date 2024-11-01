@@ -40,6 +40,8 @@ service IsolateController {
     rpc ListSecrets (ListSecretsRequest) returns (ListSecretsResponse) {}
     // List alias runners in detail
     rpc ListAliasRunners (ListAliasRunnersRequest) returns (ListAliasRunnersResponse) {}
+    // Kill a runner
+    rpc KillRunner (KillRunnerRequest) returns (KillRunnerResponse) {}
 }
 
 message HostedMap {
@@ -311,4 +313,12 @@ message RunnerInfo {
     int32 in_flight_requests = 2;
     optional int32 expiration_countdown = 3;
     float uptime = 4;
+}
+
+message KillRunnerRequest {
+    string runner_id = 1;
+}
+
+message KillRunnerResponse {
+    // Empty. For future use.
 }
