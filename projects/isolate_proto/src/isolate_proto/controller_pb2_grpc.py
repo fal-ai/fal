@@ -114,6 +114,11 @@ class IsolateControllerStub(object):
                 request_serializer=controller__pb2.ListAliasRunnersRequest.SerializeToString,
                 response_deserializer=controller__pb2.ListAliasRunnersResponse.FromString,
                 _registered_method=True)
+        self.KillRunner = channel.unary_unary(
+                '/controller.IsolateController/KillRunner',
+                request_serializer=controller__pb2.KillRunnerRequest.SerializeToString,
+                response_deserializer=controller__pb2.KillRunnerResponse.FromString,
+                _registered_method=True)
 
 
 class IsolateControllerServicer(object):
@@ -225,6 +230,13 @@ class IsolateControllerServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def KillRunner(self, request, context):
+        """Kill a runner
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_IsolateControllerServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -302,6 +314,11 @@ def add_IsolateControllerServicer_to_server(servicer, server):
                     servicer.ListAliasRunners,
                     request_deserializer=controller__pb2.ListAliasRunnersRequest.FromString,
                     response_serializer=controller__pb2.ListAliasRunnersResponse.SerializeToString,
+            ),
+            'KillRunner': grpc.unary_unary_rpc_method_handler(
+                    servicer.KillRunner,
+                    request_deserializer=controller__pb2.KillRunnerRequest.FromString,
+                    response_serializer=controller__pb2.KillRunnerResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -709,6 +726,33 @@ class IsolateController(object):
             '/controller.IsolateController/ListAliasRunners',
             controller__pb2.ListAliasRunnersRequest.SerializeToString,
             controller__pb2.ListAliasRunnersResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def KillRunner(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/controller.IsolateController/KillRunner',
+            controller__pb2.KillRunnerRequest.SerializeToString,
+            controller__pb2.KillRunnerResponse.FromString,
             options,
             channel_credentials,
             insecure,
