@@ -513,7 +513,7 @@ def test_app_no_serve_spec_metadata(
 
 
 def test_404_response(test_app: str, request: pytest.FixtureRequest):
-    with pytest.raises(HTTPStatusError, match="Path /other not found"):
+    with pytest.raises(HTTPStatusError, match="Path /.*other not found"):
         apps.run(test_app, path="/other", arguments={"lhs": 1, "rhs": 2})
 
 
