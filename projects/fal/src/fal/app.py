@@ -383,7 +383,10 @@ class App(fal.api.BaseServable):
 
             try:
                 response: fastapi.responses.Response = await call_next(request)
-
+            except BaseException:
+                await _unset_at_end()
+                raise
+            else:
                 # We need to wait for the entire response to be sent before
                 # we can set the logger labels back to the default.
                 background_tasks = fastapi.BackgroundTasks()
@@ -394,9 +397,6 @@ class App(fal.api.BaseServable):
                 response.background = background_tasks
 
                 return response
-            except BaseException:
-                await _unset_at_end()
-                raise
 
         @app.exception_handler(RequestCancelledException)
         async def value_error_exception_handler(
