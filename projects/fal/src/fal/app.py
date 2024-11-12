@@ -396,6 +396,7 @@ class App(fal.api.BaseServable):
                 return response
             except BaseException:
                 await _unset_at_end()
+                raise
 
         @app.exception_handler(RequestCancelledException)
         async def value_error_exception_handler(
