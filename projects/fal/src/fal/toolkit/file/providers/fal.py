@@ -298,7 +298,7 @@ class MultipartUpload:
         return self._file_url
 
 
-class MultipartUploadV3:
+class InternalMultipartUploadV3:
     MULTIPART_THRESHOLD = 100 * 1024 * 1024
     MULTIPART_CHUNK_SIZE = 10 * 1024 * 1024
     MULTIPART_MAX_CONCURRENCY = 10
@@ -314,8 +314,8 @@ class MultipartUploadV3:
         self.chunk_size = chunk_size or self.MULTIPART_CHUNK_SIZE
         self.content_type = content_type or "application/octet-stream"
         self.max_concurrency = max_concurrency or self.MULTIPART_MAX_CONCURRENCY
-        self.access_url = None
-        self.upload_id = None
+        self.access_url: str | None = None
+        self.upload_id: str | None = None
 
         self._parts: list[dict] = []
 
@@ -613,7 +613,7 @@ class InternalFalFileRepositoryV3(FileRepository):
         content_type: str | None = None,
         max_concurrency: int | None = None,
     ) -> str:
-        multipart = MultipartUploadV3(
+        multipart = InternalMultipartUploadV3(
             file_path,
             chunk_size=chunk_size,
             content_type=content_type,
