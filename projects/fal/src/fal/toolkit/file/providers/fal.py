@@ -180,6 +180,14 @@ class FalFileRepository(FalFileRepositoryBase):
         return self._save(file, "gcs")
 
 
+@dataclass
+class FalFileRepositoryV3(FalFileRepositoryBase):
+    def save(
+        self, file: FileData, object_lifecycle_preference: dict[str, str] | None = None
+    ) -> str:
+        return self._save(file, "fal-cdn-v3")
+
+
 class MultipartUpload:
     MULTIPART_THRESHOLD = 100 * 1024 * 1024
     MULTIPART_CHUNK_SIZE = 100 * 1024 * 1024
@@ -548,8 +556,15 @@ class FalCDNFileRepository(FileRepository):
         }
 
 
+# This is only available for internal users to have long-lived access tokens
 @dataclass
-class FalFileRepositoryV3(FileRepository):
+class InternalFalFileRepositoryV3(FileRepository):
+    """
+    InternalFalFileRepositoryV3 is a file repository that uses the FAL CDN V3.
+    But generates and uses long-lived access tokens.
+    That way it can avoid the need to refresh the token for every upload.
+    """
+
     @retry(max_retries=3, base_delay=1, backoff_type="exponential", jitter=True)
     def save(
         self, file: FileData, object_lifecycle_preference: dict[str, str] | None
