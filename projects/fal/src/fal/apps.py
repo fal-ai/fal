@@ -261,7 +261,7 @@ class _WSConnection:
     _ws: Connection
     _buffer: str | bytes | None = None
 
-    def run(self, arguments: dict[str, Any]) -> dict[str, Any]:
+    def run(self, arguments: dict[str, Any]) -> bytes:
         """Run an inference task on the app and return the result."""
         self.send(arguments)
         return self.recv()
@@ -318,40 +318,45 @@ class _WSConnection:
 
             return json_payload
 
-    def _recv_response(self) -> Any:
-        import msgpack
-
-        body: bytes = b""
+    def _recv_response(self) -> Iterator[str | bytes]:
         while True:
             try:
                 with self._recv() as res:
                     if self._is_meta(res):
-                        # Keep the meta message for later
+                        # Raise so we dont consume the message
                         raise _MetaMessageFound()
 
-                    if isinstance(res, str):
-                        return res
-                    else:
-                        body += res
+                    yield res
             except _MetaMessageFound:
                 break
 
-        if not body:
-            raise ValueError("Empty response body")
-
-        return msgpack.unpackb(body)
-
-    def recv(self) -> Any:
+    def recv(self) -> bytes:
         start = self._recv_meta("start")
         request_id = start["request_id"]
 
-        response = self._recv_response()
+        response = b""
+        for part in self._recv_response():
+            if isinstance(part, str):
+                response += part.encode()
+            else:
+                response += part
 
         end = self._recv_meta("end")
         if end["request_id"] != request_id:
             raise ValueError("Mismatched request_id in end message")
 
         return response
+
+    def stream(self) -> Iterator[str | bytes]:
+        start = self._recv_meta("start")
+        request_id = start["request_id"]
+
+        yield from self._recv_response()
+
+        # Make sure we consume the end message
+        end = self._recv_meta("end")
+        if end["request_id"] != request_id:
+            raise ValueError("Mismatched request_id in end message")
 
 
 @contextmanager
