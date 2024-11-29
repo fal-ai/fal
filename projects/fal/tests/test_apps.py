@@ -395,6 +395,21 @@ def test_app_client(test_app: str, test_nomad_app: str):
     assert response["result"] == 5
 
 
+def test_ws_client(test_app: str):
+    with apps.ws(test_app) as connection:
+        for i in range(3):
+            response = json.loads(connection.run({"lhs": 1, "rhs": i}))
+            assert response["result"] == 1 + i
+
+        for i in range(3):
+            connection.send({"lhs": 2, "rhs": i})
+
+        for i in range(3):
+            # they should be in order
+            response = json.loads(connection.recv())
+            assert response["result"] == 2 + i
+
+
 def test_app_client_old_format(test_app: str):
     assert test_app.count("/") == 1, "Test app should be in new format"
     old_format = test_app.replace("/", "-")
