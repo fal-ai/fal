@@ -686,3 +686,7 @@ class FalServerlessConnection:
             )
             for secret in response.secrets
         ]
+
+    def kill_runner(self, runner_id: str) -> None:
+        request = isolate_proto.KillRunnerRequest(runner_id=runner_id)
+        self.stub.KillRunner(request)

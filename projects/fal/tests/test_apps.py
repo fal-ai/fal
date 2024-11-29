@@ -154,6 +154,23 @@ class StatefulAdditionApp(fal.App, keep_alive=300, max_concurrency=1):
         return Output(result=self.counter)
 
 
+class SleepInput(BaseModel):
+    wait_time: int
+
+
+class SleepOutput(BaseModel):
+    pass
+
+
+class SleepApp(fal.App, keep_alive=300, max_concurrency=1):
+    machine_type = "XS"
+
+    @fal.endpoint("/")
+    async def sleep(self, input: SleepInput) -> SleepOutput:
+        await asyncio.sleep(input.wait_time)
+        return SleepOutput()
+
+
 class ExceptionApp(fal.App, keep_alive=300, max_concurrency=1):
     machine_type = "XS"
 
@@ -772,3 +789,42 @@ def test_app_exceptions(test_exception_app: AppClient):
 
     assert cuda_exc.value.status_code == _CUDA_OOM_STATUS_CODE
     assert _CUDA_OOM_MESSAGE in cuda_exc.value.message
+
+
+def test_kill_runner():
+    import uuid
+
+    app_alias = str(uuid.uuid4()) + "-sleep-alias"
+    app = fal.wrap_app(SleepApp)
+    app_revision = app.host.register(
+        func=app.func,
+        options=app.options,
+        application_name=app_alias,
+        application_auth_mode="private",
+    )
+
+    host: api.FalServerlessHost = app.host  # type: ignore
+
+    user = _get_user()
+
+    handle = apps.submit(f"{user.user_id}/{app_revision}", arguments={"wait_time": 10})
+
+    while True:
+        status = handle.status()
+        if isinstance(status, apps.InProgress):
+            break
+        elif isinstance(status, apps.Queued):
+            time.sleep(1)
+        else:
+            raise Exception(f"Failed to start the app: {status}")
+
+    with host._connection as client:
+        try:
+            client.kill_runner("1234567890")
+        except Exception as e:
+            assert "not found" in str(e).lower()
+
+        runners = client.list_alias_runners(app_alias)
+        assert len(runners) == 1
+
+        client.kill_runner(runners[0].runner_id)
