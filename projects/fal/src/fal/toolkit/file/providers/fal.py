@@ -298,7 +298,7 @@ class MultipartUpload:
         return self._file_url
 
 
-class MultipartUploadV3:
+class InternalMultipartUploadV3:
     MULTIPART_THRESHOLD = 100 * 1024 * 1024
     MULTIPART_CHUNK_SIZE = 10 * 1024 * 1024
     MULTIPART_MAX_CONCURRENCY = 10
@@ -314,10 +314,22 @@ class MultipartUploadV3:
         self.chunk_size = chunk_size or self.MULTIPART_CHUNK_SIZE
         self.content_type = content_type or "application/octet-stream"
         self.max_concurrency = max_concurrency or self.MULTIPART_MAX_CONCURRENCY
-        self.access_url = None
-        self.upload_id = None
+        self._access_url: str | None = None
+        self._upload_id: str | None = None
 
         self._parts: list[dict] = []
+
+    @property
+    def access_url(self) -> str:
+        if not self._access_url:
+            raise FileUploadException("Upload not initiated")
+        return self._access_url
+
+    @property
+    def upload_id(self) -> str:
+        if not self._upload_id:
+            raise FileUploadException("Upload not initiated")
+        return self._upload_id
 
     @property
     def auth_headers(self) -> dict[str, str]:
@@ -342,8 +354,9 @@ class MultipartUploadV3:
             )
             with urlopen(req) as response:
                 result = json.load(response)
-                self.access_url = result["access_url"]
-                self.upload_id = result["uploadId"]
+                self._access_url = result["access_url"]
+                self._upload_id = result["uploadId"]
+
         except HTTPError as exc:
             raise FileUploadException(
                 f"Error initiating upload. Status {exc.status}: {exc.reason}"
@@ -397,7 +410,7 @@ class MultipartUploadV3:
                 entry = future.result()
                 self._parts.append(entry)
 
-    def complete(self):
+    def complete(self) -> str:
         url = f"{self.access_url}/multipart/{self.upload_id}/complete"
         try:
             req = Request(
@@ -613,7 +626,7 @@ class InternalFalFileRepositoryV3(FileRepository):
         content_type: str | None = None,
         max_concurrency: int | None = None,
     ) -> str:
-        multipart = MultipartUploadV3(
+        multipart = InternalMultipartUploadV3(
             file_path,
             chunk_size=chunk_size,
             content_type=content_type,
