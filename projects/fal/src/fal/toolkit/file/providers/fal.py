@@ -8,6 +8,7 @@ from base64 import b64encode
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Generic, TypeVar
 from urllib.error import HTTPError
 from urllib.parse import urlparse, urlunparse
 from urllib.request import Request, urlopen
@@ -104,14 +105,21 @@ fal_v2_token_manager = FalV2TokenManager()
 fal_v3_token_manager = FalV3TokenManager()
 
 
-@dataclass
-class ObjectLifecyclePreference:
-    expiration_duration_seconds: int
+VariableType = TypeVar("VariableType")
 
 
-GLOBAL_LIFECYCLE_PREFERENCE = ObjectLifecyclePreference(
-    expiration_duration_seconds=86400
-)
+class VariableReference(Generic[VariableType]):
+    def __init__(self, value: VariableType) -> None:
+        self.set(value)
+
+    def get(self) -> VariableType:
+        return self.value
+
+    def set(self, value: VariableType) -> None:
+        self.value = value
+
+
+LIFECYCLE_PREFERENCE: VariableReference[dict[str, str] | None] = VariableReference(None)
 
 
 @dataclass
