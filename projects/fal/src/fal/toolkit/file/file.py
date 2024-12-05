@@ -22,6 +22,7 @@ else:
 from pydantic import BaseModel, Field
 
 from fal.toolkit.file.providers.fal import (
+    LIFECYCLE_PREFERENCE,
     FalCDNFileRepository,
     FalFileRepository,
     FalFileRepositoryV2,
@@ -149,7 +150,9 @@ class File(BaseModel):
 
         fdata = FileData(data, content_type, file_name)
 
-        object_lifecycle_preference = get_lifecycle_preference(request)
+        object_lifecycle_preference = (
+            request_lifecycle_repference(request) or LIFECYCLE_PREFERENCE.get()
+        )
 
         try:
             url = repo.save(fdata, object_lifecycle_preference, **save_kwargs)
@@ -203,7 +206,9 @@ class File(BaseModel):
         fallback_save_kwargs = fallback_save_kwargs or {}
 
         content_type = content_type or "application/octet-stream"
-        object_lifecycle_preference = get_lifecycle_preference(request)
+        object_lifecycle_preference = (
+            request_lifecycle_repference(request) or LIFECYCLE_PREFERENCE.get()
+        )
 
         try:
             url, data = repo.save_file(
@@ -288,21 +293,18 @@ class CompressedFile(File):
             shutil.rmtree(self.extract_dir)
 
 
-def get_lifecycle_preference(request: Request) -> dict[str, str] | None:
+def request_lifecycle_repference(request: Optional[Request]) -> dict[str, str] | None:
     import json
 
-    preference_str = (
-        request.headers.get(OBJECT_LIFECYCLE_PREFERENCE_KEY)
-        if request is not None
-        else None
-    )
+    if request is None:
+        return None
+
+    preference_str = request.headers.get(OBJECT_LIFECYCLE_PREFERENCE_KEY)
     if preference_str is None:
         return None
 
-    object_lifecycle_preference = {}
     try:
-        object_lifecycle_preference = json.loads(preference_str)
-        return object_lifecycle_preference
+        return json.loads(preference_str)
     except Exception as e:
         print(f"Failed to parse object lifecycle preference: {e}")
         return None
