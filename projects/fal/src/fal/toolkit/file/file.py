@@ -288,21 +288,18 @@ class CompressedFile(File):
             shutil.rmtree(self.extract_dir)
 
 
-def get_lifecycle_preference(request: Request) -> dict[str, str] | None:
+def get_lifecycle_preference(request: Optional[Request]) -> dict[str, str] | None:
     import json
 
-    preference_str = (
-        request.headers.get(OBJECT_LIFECYCLE_PREFERENCE_KEY)
-        if request is not None
-        else None
-    )
+    if request is None:
+        return None
+
+    preference_str = request.headers.get(OBJECT_LIFECYCLE_PREFERENCE_KEY)
     if preference_str is None:
         return None
 
-    object_lifecycle_preference = {}
     try:
-        object_lifecycle_preference = json.loads(preference_str)
-        return object_lifecycle_preference
+        return json.loads(preference_str)
     except Exception as e:
         print(f"Failed to parse object lifecycle preference: {e}")
         return None
