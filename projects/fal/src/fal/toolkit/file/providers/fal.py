@@ -601,10 +601,7 @@ class InternalFalFileRepositoryV3(FileRepository):
         object_lifecycle_preference: dict[str, str] | None,
     ):
         if object_lifecycle_preference:
-            if "expiration_duration_seconds" in object_lifecycle_preference:
-                headers["X-Fal-Object-Lifecycle-Expiration-Duration-Seconds"] = (
-                    object_lifecycle_preference["expiration_duration_seconds"]
-                )
+            headers["X-Fal-Object-Lifecycle"] = json.dumps(object_lifecycle_preference)
 
     @retry(max_retries=3, base_delay=1, backoff_type="exponential", jitter=True)
     def save(
