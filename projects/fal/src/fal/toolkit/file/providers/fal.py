@@ -535,6 +535,16 @@ class InMemoryRepository(FileRepository):
 
 @dataclass
 class FalCDNFileRepository(FileRepository):
+    def _object_lifecycle_headers(
+        self,
+        headers: dict[str, str],
+        object_lifecycle_preference: dict[str, str] | None,
+    ):
+        if object_lifecycle_preference:
+            headers["X-Fal-Object-Lifecycle-Preference"] = json.dumps(
+                object_lifecycle_preference
+            )
+
     @retry(max_retries=3, base_delay=1, backoff_type="exponential", jitter=True)
     def save(
         self,
@@ -548,10 +558,7 @@ class FalCDNFileRepository(FileRepository):
             "X-Fal-File-Name": file.file_name,
         }
 
-        if object_lifecycle_preference:
-            headers["X-Fal-Object-Lifecycle-Preference"] = json.dumps(
-                object_lifecycle_preference
-            )
+        self._object_lifecycle_headers(headers, object_lifecycle_preference)
 
         url = os.getenv("FAL_CDN_HOST", _FAL_CDN) + "/files/upload"
         request = Request(url, headers=headers, method="POST", data=file.data)
@@ -588,6 +595,17 @@ class InternalFalFileRepositoryV3(FileRepository):
     That way it can avoid the need to refresh the token for every upload.
     """
 
+    def _object_lifecycle_headers(
+        self,
+        headers: dict[str, str],
+        object_lifecycle_preference: dict[str, str] | None,
+    ):
+        if object_lifecycle_preference:
+            if "expiration_duration_seconds" in object_lifecycle_preference:
+                headers["X-Fal-Object-Lifecycle-Expiration-Duration-Seconds"] = (
+                    object_lifecycle_preference["expiration_duration_seconds"]
+                )
+
     @retry(max_retries=3, base_delay=1, backoff_type="exponential", jitter=True)
     def save(
         self, file: FileData, object_lifecycle_preference: dict[str, str] | None
@@ -599,10 +617,7 @@ class InternalFalFileRepositoryV3(FileRepository):
             "X-Fal-File-Name": file.file_name,
         }
 
-        if object_lifecycle_preference:
-            headers["X-Fal-Object-Lifecycle-Preference"] = json.dumps(
-                object_lifecycle_preference
-            )
+        self._object_lifecycle_headers(headers, object_lifecycle_preference)
 
         url = os.getenv("FAL_CDN_V3_HOST", _FAL_CDN_V3) + "/files/upload"
         request = Request(url, headers=headers, method="POST", data=file.data)
