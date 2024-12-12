@@ -23,7 +23,7 @@ from fal._serialization import include_modules_from
 from fal.api import RouteSignature
 from fal.exceptions import FalServerlessException, RequestCancelledException
 from fal.logging import get_logger
-from fal.toolkit.file import request_lifecycle_repference
+from fal.toolkit.file import request_lifecycle_preference
 from fal.toolkit.file.providers.fal import LIFECYCLE_PREFERENCE
 
 REALTIME_APP_REQUIREMENTS = ["websockets", "msgpack"]
@@ -342,7 +342,7 @@ class App(fal.api.BaseServable):
         @app.middleware("http")
         async def set_global_object_preference(request, call_next):
             try:
-                preference_dict = request_lifecycle_repference(request)
+                preference_dict = request_lifecycle_preference(request)
                 if preference_dict is not None:
                     # This will not work properly for apps with multiplexing enabled
                     # we may mix up the preferences between requests
