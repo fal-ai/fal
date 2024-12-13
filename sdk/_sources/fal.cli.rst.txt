@@ -60,14 +60,6 @@ fal.cli.keys module
    :undoc-members:
    :show-inheritance:
 
-fal.cli.machine module
-----------------------
-
-.. automodule:: fal.cli.machine
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 fal.cli.main module
 -------------------
 
@@ -88,6 +80,14 @@ fal.cli.run module
 ------------------
 
 .. automodule:: fal.cli.run
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+fal.cli.runners module
+----------------------
+
+.. automodule:: fal.cli.runners
    :members:
    :undoc-members:
    :show-inheritance:
