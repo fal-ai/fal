@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import dataclasses
 import json
 import math
 import os
@@ -9,6 +8,7 @@ from base64 import b64encode
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Generic, TypeVar
 from urllib.error import HTTPError
 from urllib.parse import urlparse, urlunparse
 from urllib.request import Request, urlopen
@@ -105,14 +105,21 @@ fal_v2_token_manager = FalV2TokenManager()
 fal_v3_token_manager = FalV3TokenManager()
 
 
-@dataclass
-class ObjectLifecyclePreference:
-    expiration_duration_seconds: int
+VariableType = TypeVar("VariableType")
 
 
-GLOBAL_LIFECYCLE_PREFERENCE = ObjectLifecyclePreference(
-    expiration_duration_seconds=86400
-)
+class VariableReference(Generic[VariableType]):
+    def __init__(self, value: VariableType) -> None:
+        self.set(value)
+
+    def get(self) -> VariableType:
+        return self.value
+
+    def set(self, value: VariableType) -> None:
+        self.value = value
+
+
+LIFECYCLE_PREFERENCE: VariableReference[dict[str, str] | None] = VariableReference(None)
 
 
 @dataclass
@@ -178,6 +185,14 @@ class FalFileRepository(FalFileRepositoryBase):
         self, file: FileData, object_lifecycle_preference: dict[str, str] | None = None
     ) -> str:
         return self._save(file, "gcs")
+
+
+@dataclass
+class FalFileRepositoryV3(FalFileRepositoryBase):
+    def save(
+        self, file: FileData, object_lifecycle_preference: dict[str, str] | None = None
+    ) -> str:
+        return self._save(file, "fal-cdn-v3")
 
 
 class MultipartUpload:
@@ -290,7 +305,7 @@ class MultipartUpload:
         return self._file_url
 
 
-class MultipartUploadV3:
+class InternalMultipartUploadV3:
     MULTIPART_THRESHOLD = 100 * 1024 * 1024
     MULTIPART_CHUNK_SIZE = 10 * 1024 * 1024
     MULTIPART_MAX_CONCURRENCY = 10
@@ -306,10 +321,22 @@ class MultipartUploadV3:
         self.chunk_size = chunk_size or self.MULTIPART_CHUNK_SIZE
         self.content_type = content_type or "application/octet-stream"
         self.max_concurrency = max_concurrency or self.MULTIPART_MAX_CONCURRENCY
-        self.access_url = None
-        self.upload_id = None
+        self._access_url: str | None = None
+        self._upload_id: str | None = None
 
         self._parts: list[dict] = []
+
+    @property
+    def access_url(self) -> str:
+        if not self._access_url:
+            raise FileUploadException("Upload not initiated")
+        return self._access_url
+
+    @property
+    def upload_id(self) -> str:
+        if not self._upload_id:
+            raise FileUploadException("Upload not initiated")
+        return self._upload_id
 
     @property
     def auth_headers(self) -> dict[str, str]:
@@ -334,8 +361,9 @@ class MultipartUploadV3:
             )
             with urlopen(req) as response:
                 result = json.load(response)
-                self.access_url = result["access_url"]
-                self.upload_id = result["uploadId"]
+                self._access_url = result["access_url"]
+                self._upload_id = result["uploadId"]
+
         except HTTPError as exc:
             raise FileUploadException(
                 f"Error initiating upload. Status {exc.status}: {exc.reason}"
@@ -389,7 +417,7 @@ class MultipartUploadV3:
                 entry = future.result()
                 self._parts.append(entry)
 
-    def complete(self):
+    def complete(self) -> str:
         url = f"{self.access_url}/multipart/{self.upload_id}/complete"
         try:
             req = Request(
@@ -507,6 +535,16 @@ class InMemoryRepository(FileRepository):
 
 @dataclass
 class FalCDNFileRepository(FileRepository):
+    def _object_lifecycle_headers(
+        self,
+        headers: dict[str, str],
+        object_lifecycle_preference: dict[str, str] | None,
+    ):
+        if object_lifecycle_preference:
+            headers["X-Fal-Object-Lifecycle-Preference"] = json.dumps(
+                object_lifecycle_preference
+            )
+
     @retry(max_retries=3, base_delay=1, backoff_type="exponential", jitter=True)
     def save(
         self,
@@ -518,10 +556,10 @@ class FalCDNFileRepository(FileRepository):
             "Accept": "application/json",
             "Content-Type": file.content_type,
             "X-Fal-File-Name": file.file_name,
-            "X-Fal-Object-Lifecycle-Preference": json.dumps(
-                dataclasses.asdict(GLOBAL_LIFECYCLE_PREFERENCE)
-            ),
         }
+
+        self._object_lifecycle_headers(headers, object_lifecycle_preference)
+
         url = os.getenv("FAL_CDN_HOST", _FAL_CDN) + "/files/upload"
         request = Request(url, headers=headers, method="POST", data=file.data)
         try:
@@ -548,28 +586,36 @@ class FalCDNFileRepository(FileRepository):
         }
 
 
+# This is only available for internal users to have long-lived access tokens
 @dataclass
-class FalFileRepositoryV3(FileRepository):
+class InternalFalFileRepositoryV3(FileRepository):
+    """
+    InternalFalFileRepositoryV3 is a file repository that uses the FAL CDN V3.
+    But generates and uses long-lived access tokens.
+    That way it can avoid the need to refresh the token for every upload.
+    """
+
+    def _object_lifecycle_headers(
+        self,
+        headers: dict[str, str],
+        object_lifecycle_preference: dict[str, str] | None,
+    ):
+        if object_lifecycle_preference:
+            headers["X-Fal-Object-Lifecycle"] = json.dumps(object_lifecycle_preference)
+
     @retry(max_retries=3, base_delay=1, backoff_type="exponential", jitter=True)
     def save(
         self, file: FileData, object_lifecycle_preference: dict[str, str] | None
     ) -> str:
-        lifecycle = dataclasses.asdict(GLOBAL_LIFECYCLE_PREFERENCE)
-        if object_lifecycle_preference is not None:
-            lifecycle = {
-                key: object_lifecycle_preference[key]
-                if key in object_lifecycle_preference
-                else value
-                for key, value in lifecycle.items()
-            }
-
         headers = {
             **self.auth_headers,
             "Accept": "application/json",
             "Content-Type": file.content_type,
             "X-Fal-File-Name": file.file_name,
-            "X-Fal-Object-Lifecycle-Preference": json.dumps(lifecycle),
         }
+
+        self._object_lifecycle_headers(headers, object_lifecycle_preference)
+
         url = os.getenv("FAL_CDN_V3_HOST", _FAL_CDN_V3) + "/files/upload"
         request = Request(url, headers=headers, method="POST", data=file.data)
         try:
@@ -598,7 +644,7 @@ class FalFileRepositoryV3(FileRepository):
         content_type: str | None = None,
         max_concurrency: int | None = None,
     ) -> str:
-        multipart = MultipartUploadV3(
+        multipart = InternalMultipartUploadV3(
             file_path,
             chunk_size=chunk_size,
             content_type=content_type,

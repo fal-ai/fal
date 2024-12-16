@@ -23,8 +23,8 @@ from fal._serialization import include_modules_from
 from fal.api import RouteSignature
 from fal.exceptions import FalServerlessException, RequestCancelledException
 from fal.logging import get_logger
-from fal.toolkit.file import get_lifecycle_preference
-from fal.toolkit.file.providers.fal import GLOBAL_LIFECYCLE_PREFERENCE
+from fal.toolkit.file import request_lifecycle_repference
+from fal.toolkit.file.providers.fal import LIFECYCLE_PREFERENCE
 
 REALTIME_APP_REQUIREMENTS = ["websockets", "msgpack"]
 REQUEST_ID_KEY = "x-fal-request-id"
@@ -342,13 +342,11 @@ class App(fal.api.BaseServable):
         @app.middleware("http")
         async def set_global_object_preference(request, call_next):
             try:
-                preference_dict = get_lifecycle_preference(request) or {}
-                expiration_duration = preference_dict.get("expiration_duration_seconds")
-                if expiration_duration is not None:
-                    GLOBAL_LIFECYCLE_PREFERENCE.expiration_duration_seconds = int(
-                        expiration_duration
-                    )
-
+                preference_dict = request_lifecycle_repference(request)
+                if preference_dict is not None:
+                    # This will not work properly for apps with multiplexing enabled
+                    # we may mix up the preferences between requests
+                    LIFECYCLE_PREFERENCE.set(preference_dict)
             except Exception:
                 from fastapi.logger import logger
 
@@ -357,7 +355,12 @@ class App(fal.api.BaseServable):
                     self.__class__.__name__,
                 )
 
-            return await call_next(request)
+            try:
+                return await call_next(request)
+            finally:
+                # We may miss the global preference if there are operations
+                # being done in the background that go beyond the request
+                LIFECYCLE_PREFERENCE.set(None)
 
         @app.middleware("http")
         async def set_request_id(request, call_next):
