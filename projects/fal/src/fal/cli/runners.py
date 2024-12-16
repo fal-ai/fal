@@ -10,7 +10,7 @@ def _kill(args):
 
 
 def _add_kill_parser(subparsers, parents):
-    kill_help = "Kill a machine."
+    kill_help = "Kill a runner."
     parser = subparsers.add_parser(
         "kill",
         description=kill_help,
@@ -25,12 +25,13 @@ def _add_kill_parser(subparsers, parents):
 
 
 def add_parser(main_subparsers, parents):
-    machine_help = "Manage fal machines."
+    runners_help = "Manage fal runners."
     parser = main_subparsers.add_parser(
-        "machine",
-        description=machine_help,
-        help=machine_help,
+        "runners",
+        description=runners_help,
+        help=runners_help,
         parents=parents,
+        aliases=["machine"],  # backwards compatibility
     )
 
     subparsers = parser.add_subparsers(
