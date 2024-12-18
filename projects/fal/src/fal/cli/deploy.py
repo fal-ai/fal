@@ -68,6 +68,7 @@ def _deploy_from_reference(
     args,
     auth: Optional[Literal["public", "shared", "private"]] = None,
     deployment_strategy: Optional[Literal["recreate", "rolling"]] = None,
+    no_scale: bool = False,
 ):
     from fal.api import FalServerlessError, FalServerlessHost
     from fal.utils import load_function_from
@@ -106,7 +107,7 @@ def _deploy_from_reference(
         application_auth_mode=app_auth,
         metadata=isolated_function.options.host.get("metadata", {}),
         deployment_strategy=deployment_strategy,
-        scale=not args.no_scale,
+        scale=not no_scale,
     )
 
     if app_id:
@@ -139,7 +140,9 @@ def _deploy(args):
             raise ValueError("Cannot use --app-name or --auth with app name reference.")
 
         app_name = args.app_ref[0]
-        app_ref, app_auth, app_deployment_strategy = get_app_data_from_toml(app_name)
+        app_ref, app_auth, app_deployment_strategy, app_no_scale = (
+            get_app_data_from_toml(app_name)
+        )
         file_path, func_name = RefAction.split_ref(app_ref)
 
     # path/to/myfile.py::MyApp
@@ -148,6 +151,7 @@ def _deploy(args):
         app_name = args.app_name
         app_auth = args.auth
         app_deployment_strategy = args.strategy
+        app_no_scale = args.no_scale
 
     _deploy_from_reference(
         (file_path, func_name),
@@ -155,6 +159,7 @@ def _deploy(args):
         args,
         app_auth,
         app_deployment_strategy,
+        app_no_scale,
     )
 
 
