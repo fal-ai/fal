@@ -151,7 +151,7 @@ class File(BaseModel):
         fdata = FileData(data, content_type, file_name)
 
         object_lifecycle_preference = (
-            request_lifecycle_repference(request) or LIFECYCLE_PREFERENCE.get()
+            request_lifecycle_preference(request) or LIFECYCLE_PREFERENCE.get()
         )
 
         try:
@@ -207,7 +207,7 @@ class File(BaseModel):
 
         content_type = content_type or "application/octet-stream"
         object_lifecycle_preference = (
-            request_lifecycle_repference(request) or LIFECYCLE_PREFERENCE.get()
+            request_lifecycle_preference(request) or LIFECYCLE_PREFERENCE.get()
         )
 
         try:
@@ -293,7 +293,7 @@ class CompressedFile(File):
             shutil.rmtree(self.extract_dir)
 
 
-def request_lifecycle_repference(request: Optional[Request]) -> dict[str, str] | None:
+def request_lifecycle_preference(request: Optional[Request]) -> dict[str, str] | None:
     import json
 
     if request is None:
