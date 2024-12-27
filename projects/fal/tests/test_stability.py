@@ -87,7 +87,11 @@ def test_regular_function_in_a_container_with_custom_image(isolated_client):
     @isolated_client(
         "container",
         image=ContainerImage.from_dockerfile_str(
-            f"FROM python:{actual_python}-slim\n# {git_revision_short_hash()}"
+            f"""
+            FROM python:{actual_python}-slim
+            # {git_revision_short_hash()}
+            RUN env
+            """
         ),
     )
     def regular_function():
