@@ -5,10 +5,11 @@ from io import BytesIO
 from typing import Literal, overload
 
 import pytest
-from fal.toolkit import Image
 from PIL import Image as PILImage
 from pydantic import BaseModel, Field
 from pydantic import __version__ as pydantic_version
+
+from fal.toolkit import Image
 
 
 @overload

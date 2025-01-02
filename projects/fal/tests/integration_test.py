@@ -6,8 +6,11 @@ from pathlib import Path
 from typing import Callable
 from uuid import uuid4
 
-import fal
 import pytest
+from pydantic import BaseModel, Field
+from pydantic import __version__ as pydantic_version
+
+import fal
 from fal import FalServerlessHost, FalServerlessKeyCredentials, local, sync_dir
 from fal.api import FalServerlessError, IsolatedFunction
 from fal.toolkit import (
@@ -21,8 +24,6 @@ from fal.toolkit import (
 )
 from fal.toolkit.file.file import CompressedFile
 from fal.toolkit.utils.download_utils import _get_git_revision_hash, _hash_url
-from pydantic import BaseModel, Field
-from pydantic import __version__ as pydantic_version
 
 EXAMPLE_FILE_URL = "https://raw.githubusercontent.com/fal-ai/fal/main/projects/fal/tests/assets/cat.png"
 

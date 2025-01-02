@@ -3,13 +3,14 @@ from __future__ import annotations
 import subprocess
 from contextlib import suppress
 
-import fal
 import pytest
+from isolate.backends.common import active_python
+from pydantic import __version__ as pydantic_version
+
+import fal
 from fal.api import FalServerlessError, Options
 from fal.container import ContainerImage
 from fal.toolkit.file import File
-from isolate.backends.common import active_python
-from pydantic import __version__ as pydantic_version
 
 PACKAGE_NAME = "fall"
 

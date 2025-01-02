@@ -2,6 +2,7 @@ from typing import Optional, Tuple
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from fal.cli.deploy import _deploy
 from fal.cli.main import parse_args
 from fal.files import find_project_root
