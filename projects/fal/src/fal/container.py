@@ -3,7 +3,7 @@ class ContainerImage:
     from a Dockerfile.
     """
 
-    _known_keys = {"dockerfile_str", "build_env", "build_args", "registries"}
+    _known_keys = {"dockerfile_str", "build_args", "registries"}
 
     @classmethod
     def from_dockerfile_str(cls, text: str, **kwargs):
