@@ -87,5 +87,8 @@ target-version = "py38"
 [tool.ruff.lint]
 select = ["E", "F", "W", "PLC", "PLE", "PLW", "I", "UP"]
 
+[tool.ruff.lint.isort]
+known-first-party = ["fal"]
+
 [tool.ruff.lint.pyupgrade]
 keep-runtime-typing = true

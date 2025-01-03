@@ -3,13 +3,14 @@ from __future__ import annotations
 import subprocess
 from contextlib import suppress
 
-import fal
 import pytest
+from isolate.backends.common import active_python
+from pydantic import __version__ as pydantic_version
+
+import fal
 from fal.api import FalServerlessError, Options
 from fal.container import ContainerImage
 from fal.toolkit.file import File
-from isolate.backends.common import active_python
-from pydantic import __version__ as pydantic_version
 
 PACKAGE_NAME = "fall"
 
@@ -87,7 +88,11 @@ def test_regular_function_in_a_container_with_custom_image(isolated_client):
     @isolated_client(
         "container",
         image=ContainerImage.from_dockerfile_str(
-            f"FROM python:{actual_python}-slim\n# {git_revision_short_hash()}"
+            f"""
+            FROM python:{actual_python}-slim
+            # {git_revision_short_hash()}
+            RUN env
+            """
         ),
     )
     def regular_function():

@@ -7,10 +7,17 @@ from contextlib import contextmanager, suppress
 from datetime import datetime
 from typing import Generator, List, Tuple
 
-import fal
-import fal.api as api
 import httpx
 import pytest
+from fastapi import WebSocket
+from httpx import HTTPStatusError
+from isolate.backends.common import active_python
+from openapi_fal_rest.api.applications import app_metadata
+from pydantic import BaseModel
+from pydantic import __version__ as pydantic_version
+
+import fal
+import fal.api as api
 from fal import apps
 from fal.app import AppClient, AppClientError
 from fal.cli.deploy import _get_user
@@ -19,12 +26,6 @@ from fal.exceptions import AppException, FieldException, RequestCancelledExcepti
 from fal.exceptions._cuda import _CUDA_OOM_MESSAGE, _CUDA_OOM_STATUS_CODE
 from fal.rest_client import REST_CLIENT
 from fal.workflows import Workflow
-from fastapi import WebSocket
-from httpx import HTTPStatusError
-from isolate.backends.common import active_python
-from openapi_fal_rest.api.applications import app_metadata
-from pydantic import BaseModel
-from pydantic import __version__ as pydantic_version
 
 
 class Input(BaseModel):
@@ -88,6 +89,26 @@ def container_addition_app(input: Input) -> Output:
         time.sleep(1)
 
     return Output(result=input.lhs + input.rhs)
+
+
+@fal.function(
+    kind="container",
+    image=ContainerImage.from_dockerfile_str(
+        f"""FROM python:{actual_python}-slim\n# {git_revision_short_hash()}
+ARG OUTPUT="built incorrectly"
+ENV OUTPUT="$OUTPUT"
+""",
+        build_args={"OUTPUT": "built with build args"},
+    ),
+    keep_alive=60,
+    machine_type="S",
+    serve=True,
+    max_concurrency=1,
+)
+def container_build_args_app() -> str:
+    import os
+
+    return os.environ["OUTPUT"]
 
 
 @fal.function(
@@ -316,6 +337,18 @@ def test_container_app():
     app_revision = container_addition_app.host.register(
         func=container_addition_app.func,
         options=container_addition_app.options,
+    )
+    user = _get_user()
+    yield f"{user.user_id}/{app_revision}"
+
+
+@pytest.fixture(scope="module")
+def test_container_build_args_app():
+    # Create a temporary app, register it, and return the ID of it.
+
+    app_revision = container_build_args_app.host.register(
+        func=container_build_args_app.func,
+        options=container_build_args_app.options,
     )
     user = _get_user()
     yield f"{user.user_id}/{app_revision}"
@@ -843,3 +876,13 @@ def test_kill_runner():
         assert len(runners) == 1
 
         client.kill_runner(runners[0].runner_id)
+
+
+def test_container_app_client(test_container_app: str):
+    response = apps.run(test_container_app, arguments={"lhs": 1, "rhs": 2})
+    assert response["result"] == 3
+
+
+def test_container_build_args_app_client(test_container_build_args_app: str):
+    response = apps.run(test_container_build_args_app, {})
+    assert response == "built with build args"
