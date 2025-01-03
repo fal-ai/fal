@@ -4,6 +4,7 @@ import sys
 from functools import partial
 
 import pytest
+
 from fal import function
 from fal.flags import GRPC_HOST
 from fal.sdk import get_default_credentials
