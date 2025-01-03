@@ -35,6 +35,7 @@ def mock_args(
     app_name: Optional[str] = None,
     auth: Optional[str] = None,
     strategy: Optional[str] = None,
+    no_scale: bool = False,
 ):
     args = MagicMock()
 
@@ -42,6 +43,8 @@ def mock_args(
     args.app_name = app_name
     args.auth = auth
     args.strategy = strategy
+
+    args.no_scale = no_scale
 
     return args
 
@@ -68,6 +71,7 @@ def test_deploy_with_toml_success(
         args,
         "shared",
         "rolling",
+        False,
     )
 
 
@@ -93,6 +97,7 @@ def test_deploy_with_toml_no_auth(
         args,
         "private",
         "recreate",
+        False,
     )
 
 
@@ -186,6 +191,7 @@ def test_deploy_with_toml_deployment_strategy(
         args,
         "shared",
         "rolling",
+        False,
     )
 
 
@@ -209,6 +215,7 @@ def test_deploy_with_toml_default_deployment_strategy(
         args,
         "private",
         "recreate",
+        False,
     )
 
 
@@ -230,6 +237,7 @@ def test_deploy_with_cli_auth(
         args,
         "shared",
         None,
+        False,
     )
 
 
@@ -251,4 +259,49 @@ def test_deploy_with_cli_deployment_strategy(
         args,
         None,
         "rolling",
+        False,
+    )
+
+
+@patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+@patch("fal.cli.deploy._deploy_from_reference")
+def test_deploy_with_cli_no_scale(
+    mock_deploy_ref, mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml
+):
+    mock_parse_toml.return_value = mock_parse_pyproject_toml
+
+    args = mock_args(app_ref=("src/my_app/inference.py", "MyApp"), no_scale=True)
+
+    _deploy(args)
+
+    mock_deploy_ref.assert_called_once_with(
+        ("src/my_app/inference.py", "MyApp"),
+        None,
+        args,
+        None,
+        None,
+        True,
+    )
+
+
+@patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+@patch("fal.cli.deploy._deploy_from_reference")
+def test_deploy_with_cli_scale(
+    mock_deploy_ref, mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml
+):
+    mock_parse_toml.return_value = mock_parse_pyproject_toml
+
+    args = mock_args(app_ref=("src/my_app/inference.py", "MyApp"))
+
+    _deploy(args)
+
+    mock_deploy_ref.assert_called_once_with(
+        ("src/my_app/inference.py", "MyApp"),
+        None,
+        args,
+        None,
+        None,
+        False,
     )
