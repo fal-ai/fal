@@ -56,7 +56,7 @@ FAL_RUN_HOST = os.environ.get("FAL_RUN_HOST", "fal.run")
 def fetch_credentials() -> str:
     if colab_token := get_colab_token():
         return colab_token
-    elif key := os.getenv("FAL_KEY"):
+    if key := os.getenv("FAL_KEY"):
         return key
     elif (key_id := os.getenv("FAL_KEY_ID")) and (
         fal_key_secret := os.getenv("FAL_KEY_SECRET")
