@@ -15,7 +15,9 @@ _colab_state = GoogleColabState()
 
 def is_google_colab() -> bool:
     try:
-        return "google.colab" in str(get_ipython())  # noqa
+        from IPython import get_ipython
+
+        return "google.colab" in str(get_ipython())
     except NameError:
         return False
 
@@ -50,11 +52,8 @@ FAL_RUN_HOST = os.environ.get("FAL_RUN_HOST", "fal.run")
 
 
 def fetch_credentials() -> str:
-    # First check for Colab token
     if colab_token := get_colab_token():
         return colab_token
-
-    # Then check environment variables
     elif key := os.getenv("FAL_KEY"):
         return key
     elif (key_id := os.getenv("FAL_KEY_ID")) and (
