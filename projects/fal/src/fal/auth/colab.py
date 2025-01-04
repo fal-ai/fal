@@ -16,7 +16,9 @@ _colab_state = GoogleColabState()
 
 def is_google_colab() -> bool:
     try:
-        return "google.colab" in str(get_ipython())  # noqa
+        from IPython import get_ipython
+
+        return "google.colab" in str(get_ipython())
     except NameError:
         return False
 
