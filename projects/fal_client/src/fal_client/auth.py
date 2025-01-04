@@ -18,6 +18,8 @@ def is_google_colab() -> bool:
         from IPython import get_ipython
 
         return "google.colab" in str(get_ipython())
+    except ModuleNotFoundError:
+        return False
     except NameError:
         return False
 
