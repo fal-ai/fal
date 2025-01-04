@@ -15,7 +15,11 @@ def key_credentials() -> tuple[str, str] | None:
     # Load token from colab secrets if running in colab
     token = colab.get_token()
     if token is not None:
-        return token
+        try:
+            key_id, key_secret = token.split(":", 1)
+            return (key_id, key_secret)
+        except ValueError:
+            return None
 
     # Ignore key credentials when the user forces auth by user.
     if os.environ.get("FAL_FORCE_AUTH_BY_USER") == "1":
