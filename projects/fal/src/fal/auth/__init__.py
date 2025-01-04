@@ -5,22 +5,13 @@ from dataclasses import dataclass, field
 
 import click
 
-from fal.auth import auth0, colab, local
+from fal.auth import auth0, local
 from fal.console import console
 from fal.console.icons import CHECK_ICON
 from fal.exceptions.auth import UnauthenticatedException
 
 
 def key_credentials() -> tuple[str, str] | None:
-    # Load token from colab secrets if running in colab
-    token = colab.get_token()
-    if token is not None:
-        try:
-            key_id, key_secret = token.split(":", 1)
-            return (key_id, key_secret)
-        except ValueError:
-            return None
-
     # Ignore key credentials when the user forces auth by user.
     if os.environ.get("FAL_FORCE_AUTH_BY_USER") == "1":
         return None
