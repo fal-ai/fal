@@ -35,5 +35,6 @@ def get_app_data_from_toml(app_name):
 
     app_auth = app_data.get("auth", "private")
     app_deployment_strategy = app_data.get("deployment_strategy", "recreate")
+    app_no_scale = app_data.get("no_scale", False)
 
-    return app_ref, app_auth, app_deployment_strategy
+    return app_ref, app_auth, app_deployment_strategy, app_no_scale
