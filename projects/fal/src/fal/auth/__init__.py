@@ -8,6 +8,7 @@ from typing import Optional
 import click
 
 from fal.auth import auth0, local
+from fal.config import Config
 from fal.console import console
 from fal.console.icons import CHECK_ICON
 from fal.exceptions.auth import UnauthenticatedException
@@ -61,7 +62,9 @@ def key_credentials() -> tuple[str, str] | None:
     if os.environ.get("FAL_FORCE_AUTH_BY_USER") == "1":
         return None
 
-    key = os.environ.get("FAL_KEY") or get_colab_token()
+    config = Config()
+
+    key = os.environ.get("FAL_KEY") or config.get("key") or get_colab_token()
     if key:
         key_id, key_secret = key.split(":", 1)
         return (key_id, key_secret)
