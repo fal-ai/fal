@@ -248,6 +248,14 @@ def _to_fal_app_name(name: str) -> str:
     return "-".join(part.lower() for part in PART_FINDER_RE.findall(name))
 
 
+def _print_python_packages() -> None:
+    from pkg_resources import working_set
+
+    packages = [f"{package.key}=={package.version}" for package in working_set]
+
+    print("[debug] Python packages installed:", ", ".join(packages))
+
+
 class App(fal.api.BaseServable):
     requirements: ClassVar[list[str]] = []
     machine_type: ClassVar[str] = "S"
@@ -305,6 +313,7 @@ class App(fal.api.BaseServable):
 
     @asynccontextmanager
     async def lifespan(self, app: fastapi.FastAPI):
+        _print_python_packages()
         await _call_any_fn(self.setup)
         try:
             yield
