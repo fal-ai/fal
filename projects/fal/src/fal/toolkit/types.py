@@ -1,8 +1,13 @@
 import re
-from typing import Any, Dict, Union
+import tempfile
+from contextlib import contextmanager
+from pathlib import Path
+from typing import Any, Dict, Generator, Union
 
 import pydantic
 from pydantic.utils import update_not_none
+
+from fal.toolkit.utils.download_utils import download_file
 
 # https://github.com/pydantic/pydantic/pull/2573
 if not hasattr(pydantic, "__version__") or pydantic.__version__.startswith("1."):
@@ -18,7 +23,26 @@ HTTP_URL_REGEX = (
 )
 
 
-class DataUri(str):
+class DownloadFileMixin:
+    @contextmanager
+    def as_file(self) -> Generator[Path, None, None]:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            yield download_file(str(self), temp_dir)
+
+
+class DownloadImageMixin(DownloadFileMixin):
+    @contextmanager
+    def as_pil_image(self):
+        try:
+            from PIL import Image
+        except ImportError:
+            raise ImportError("PIL package not found.")
+
+        with self.as_file() as f:
+            yield Image.open(f)
+
+
+class DataUri(DownloadFileMixin, str):
     if IS_PYDANTIC_V2:
 
         @classmethod
@@ -62,7 +86,7 @@ class DataUri(str):
             update_not_none(field_schema, format="data-uri")
 
 
-class HttpsUrl(str):
+class HttpsUrl(DownloadFileMixin, str):
     if IS_PYDANTIC_V2:
 
         @classmethod
@@ -109,6 +133,19 @@ class HttpsUrl(str):
         def __modify_schema__(cls, field_schema: Dict[str, Any]) -> None:
             update_not_none(field_schema, format="https-url")
 
+    @contextmanager
+    def as_file(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            yield download_file(self, temp_dir)
+
+
+class ImageHttpsUrl(DownloadImageMixin, HttpsUrl):
+    pass
+
+
+class ImageDataUri(DownloadImageMixin, DataUri):
+    pass
+
 
 FileInput = Union[HttpsUrl, DataUri]
-ImageInput = Union[HttpsUrl, DataUri]
+ImageInput = Union[ImageHttpsUrl, ImageDataUri]
