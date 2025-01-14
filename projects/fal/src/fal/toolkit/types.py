@@ -7,6 +7,7 @@ from typing import Any, Dict, Generator, Union
 import pydantic
 from pydantic.utils import update_not_none
 
+from fal.toolkit.image import read_image_from_url
 from fal.toolkit.utils.download_utils import download_file
 
 # https://github.com/pydantic/pydantic/pull/2573
@@ -30,16 +31,10 @@ class DownloadFileMixin:
             yield download_file(str(self), temp_dir)
 
 
-class DownloadImageMixin(DownloadFileMixin):
+class DownloadImageMixin:
     @contextmanager
     def as_pil_image(self):
-        try:
-            from PIL import Image
-        except ImportError:
-            raise ImportError("PIL package not found.")
-
-        with self.as_file() as f:
-            yield Image.open(f)
+        yield read_image_from_url(str(self))
 
 
 class DataUri(DownloadFileMixin, str):
