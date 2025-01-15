@@ -26,15 +26,14 @@ HTTP_URL_REGEX = (
 
 class DownloadFileMixin:
     @contextmanager
-    def as_file(self) -> Generator[Path, None, None]:
+    def as_temp_file(self) -> Generator[Path, None, None]:
         with tempfile.TemporaryDirectory() as temp_dir:
             yield download_file(str(self), temp_dir)
 
 
 class DownloadImageMixin:
-    @contextmanager
-    def as_pil_image(self):
-        yield read_image_from_url(str(self))
+    def to_pil(self):
+        return read_image_from_url(str(self))
 
 
 class DataUri(DownloadFileMixin, str):
@@ -127,11 +126,6 @@ class HttpsUrl(DownloadFileMixin, str):
         @classmethod
         def __modify_schema__(cls, field_schema: Dict[str, Any]) -> None:
             update_not_none(field_schema, format="https-url")
-
-    @contextmanager
-    def as_file(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            yield download_file(self, temp_dir)
 
 
 class ImageHttpsUrl(DownloadImageMixin, HttpsUrl):
