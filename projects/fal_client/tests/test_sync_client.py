@@ -7,7 +7,12 @@ from PIL import Image
 
 @pytest.fixture
 def client() -> fal_client.SyncClient:
-    return fal_client.SyncClient()
+    client = fal_client.SyncClient()
+    try:
+        client._get_key()
+    except fal_client.auth.MissingCredentialsError:
+        pytest.skip("Missing credentials")
+    return client
 
 
 def test_fal_client(client: fal_client.SyncClient):
