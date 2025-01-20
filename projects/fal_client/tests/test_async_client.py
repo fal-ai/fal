@@ -7,7 +7,12 @@ from PIL import Image
 
 @pytest.fixture
 async def client() -> fal_client.AsyncClient:
-    return fal_client.AsyncClient()
+    client = fal_client.AsyncClient()
+    try:
+        client._get_key()
+    except fal_client.auth.MissingCredentialsError:
+        pytest.skip("No credentials found")
+    return client
 
 
 async def test_fal_client(client: fal_client.AsyncClient):
