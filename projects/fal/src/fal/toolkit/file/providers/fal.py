@@ -159,24 +159,27 @@ class FalFileRepositoryBase(FileRepository):
                 result = json.load(response)
 
             upload_url = result["upload_url"]
-            self._upload_file(upload_url, file)
-
-            return result["file_url"]
         except HTTPError as e:
             raise FileUploadException(
                 f"Error initiating upload. Status {e.status}: {e.reason}"
             )
 
-    def _upload_file(self, upload_url: str, file: FileData):
-        req = Request(
-            upload_url,
-            method="PUT",
-            data=file.data,
-            headers={"Content-Type": file.content_type},
-        )
+        try:
+            req = Request(
+                upload_url,
+                method="PUT",
+                data=file.data,
+                headers={"Content-Type": file.content_type},
+            )
 
-        with urlopen(req):
-            return
+            with urlopen(req):
+                pass
+
+            return result["file_url"]
+        except HTTPError as e:
+            raise FileUploadException(
+                f"Error uploading file. Status {e.status}: {e.reason}"
+            )
 
 
 @dataclass

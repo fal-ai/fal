@@ -1,6 +1,7 @@
 import functools
 import random
 import time
+import traceback
 from typing import Any, Callable, Literal
 
 BackoffType = Literal["exponential", "fixed"]
@@ -25,6 +26,8 @@ def retry(
                     print(f"Retrying {retries} of {max_retries}...")
                     if retries == max_retries:
                         print(f"Max retries reached. Raising exception: {e}")
+                        traceback.print_exc()
+
                         raise e
 
                     if backoff_type == "exponential":
