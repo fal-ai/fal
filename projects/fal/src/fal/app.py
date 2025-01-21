@@ -249,9 +249,9 @@ def _to_fal_app_name(name: str) -> str:
 
 
 def _print_python_packages() -> None:
-    from pkg_resources import working_set
+    from importlib.metadata import distributions
 
-    packages = [f"{package.key}=={package.version}" for package in working_set]
+    packages = [f"{dist.metadata['Name']}=={dist.version}" for dist in distributions()]
 
     print("[debug] Python packages installed:", ", ".join(packages))
 
