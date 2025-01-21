@@ -47,7 +47,10 @@ BUILT_IN_REPOSITORIES: dict[RepositoryId, FileRepositoryFactory] = {
 }
 
 
-def get_builtin_repository(id: RepositoryId) -> FileRepository:
+def get_builtin_repository(id: RepositoryId | FileRepository) -> FileRepository:
+    if isinstance(id, FileRepository):
+        return id
+
     if id not in BUILT_IN_REPOSITORIES.keys():
         raise ValueError(f'"{id}" is not a valid built-in file repository')
     return BUILT_IN_REPOSITORIES[id]()
@@ -140,11 +143,7 @@ class File(BaseModel):
         save_kwargs: Optional[dict] = None,
         fallback_save_kwargs: Optional[dict] = None,
     ) -> File:
-        repo = (
-            repository
-            if isinstance(repository, FileRepository)
-            else get_builtin_repository(repository)
-        )
+        repo = get_builtin_repository(repository)
 
         save_kwargs = save_kwargs or {}
         fallback_save_kwargs = fallback_save_kwargs or {}
@@ -161,11 +160,7 @@ class File(BaseModel):
             if not fallback_repository:
                 raise
 
-            fallback_repo = (
-                fallback_repository
-                if isinstance(fallback_repository, FileRepository)
-                else get_builtin_repository(fallback_repository)
-            )
+            fallback_repo = get_builtin_repository(fallback_repository)
 
             url = fallback_repo.save(
                 fdata, object_lifecycle_preference, **fallback_save_kwargs
@@ -197,11 +192,7 @@ class File(BaseModel):
         if not file_path.exists():
             raise FileNotFoundError(f"File {file_path} does not exist")
 
-        repo = (
-            repository
-            if isinstance(repository, FileRepository)
-            else get_builtin_repository(repository)
-        )
+        repo = get_builtin_repository(repository)
 
         save_kwargs = save_kwargs or {}
         fallback_save_kwargs = fallback_save_kwargs or {}
@@ -223,11 +214,7 @@ class File(BaseModel):
             if not fallback_repository:
                 raise
 
-            fallback_repo = (
-                fallback_repository
-                if isinstance(fallback_repository, FileRepository)
-                else get_builtin_repository(fallback_repository)
-            )
+            fallback_repo = get_builtin_repository(fallback_repository)
 
             url, data = fallback_repo.save_file(
                 file_path,
