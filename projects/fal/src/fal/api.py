@@ -77,7 +77,6 @@ SERVE_REQUIREMENTS = [
     "uvicorn",
     "starlette_exporter",
     "structlog",
-    "tomli",
 ]
 
 
