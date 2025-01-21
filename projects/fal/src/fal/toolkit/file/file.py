@@ -122,7 +122,8 @@ class File(BaseModel):
             url=url,
             content_type=None,
             file_name=None,
-            repository=DEFAULT_REPOSITORY,
+            file_size=None,
+            file_data=None,
         )
 
     @classmethod
