@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+from threading import Lock
+from typing import Optional
 
 import click
 
@@ -11,13 +13,56 @@ from fal.console.icons import CHECK_ICON
 from fal.exceptions.auth import UnauthenticatedException
 
 
+class GoogleColabState:
+    def __init__(self):
+        self.is_checked = False
+        self.lock = Lock()
+        self.secret: Optional[str] = None
+
+
+_colab_state = GoogleColabState()
+
+
+def is_google_colab() -> bool:
+    try:
+        from IPython import get_ipython
+
+        return "google.colab" in str(get_ipython())
+    except ModuleNotFoundError:
+        return False
+    except NameError:
+        return False
+
+
+def get_colab_token() -> Optional[str]:
+    if not is_google_colab():
+        return None
+    with _colab_state.lock:
+        if _colab_state.is_checked:  # request access only once
+            return _colab_state.secret
+
+        try:
+            from google.colab import userdata  # noqa: I001
+        except ImportError:
+            return None
+
+        try:
+            token = userdata.get("FAL_KEY")
+            _colab_state.secret = token.strip()
+        except Exception:
+            _colab_state.secret = None
+
+        _colab_state.is_checked = True
+        return _colab_state.secret
+
+
 def key_credentials() -> tuple[str, str] | None:
     # Ignore key credentials when the user forces auth by user.
     if os.environ.get("FAL_FORCE_AUTH_BY_USER") == "1":
         return None
 
-    if "FAL_KEY" in os.environ:
-        key = os.environ["FAL_KEY"]
+    key = os.environ.get("FAL_KEY") or get_colab_token()
+    if key:
         key_id, key_secret = key.split(":", 1)
         return (key_id, key_secret)
     elif "FAL_KEY_ID" in os.environ and "FAL_KEY_SECRET" in os.environ:
