@@ -595,7 +595,9 @@ def test_fal_storage(isolated_client, repo_type, url_prefix):
     assert file.url.startswith(url_prefix)
     assert file.as_bytes().decode().endswith("local")
 
-    @isolated_client(serve=True, requirements=[f"pydantic=={pydantic_version}"])
+    @isolated_client(
+        serve=True, requirements=[f"pydantic=={pydantic_version}", "tomli"]
+    )
     def hello_file():
         # Run in the isolated environment
         return File.from_bytes(
