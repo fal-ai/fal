@@ -41,6 +41,14 @@ fal.apps module
    :undoc-members:
    :show-inheritance:
 
+fal.config module
+-----------------
+
+.. automodule:: fal.config
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 fal.container module
 --------------------
 
