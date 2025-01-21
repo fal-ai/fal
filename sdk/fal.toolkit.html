@@ -193,6 +193,60 @@ quantization techniques. Only applicable under fal’s cloud environment.</p>
 </dd></dl>
 
 </section>
+<section id="module-fal.toolkit.types">
+<span id="fal-toolkit-types-module"></span><h2>fal.toolkit.types module<a class="headerlink" href="#module-fal.toolkit.types" title="Link to this heading">¶</a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.toolkit.types.DataUri">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.toolkit.types.</span></span><span class="sig-name descname"><span class="pre">DataUri</span></span><a class="headerlink" href="#fal.toolkit.types.DataUri" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#fal.toolkit.types.DownloadFileMixin" title="fal.toolkit.types.DownloadFileMixin"><code class="xref py py-class docutils literal notranslate"><span class="pre">DownloadFileMixin</span></code></a>, <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></p>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.toolkit.types.DownloadFileMixin">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.toolkit.types.</span></span><span class="sig-name descname"><span class="pre">DownloadFileMixin</span></span><a class="headerlink" href="#fal.toolkit.types.DownloadFileMixin" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.toolkit.types.DownloadFileMixin.as_temp_file">
+<span class="sig-name descname"><span class="pre">as_temp_file</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.types.DownloadFileMixin.as_temp_file" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Generator</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">Path</span></code>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code>]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.toolkit.types.DownloadImageMixin">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.toolkit.types.</span></span><span class="sig-name descname"><span class="pre">DownloadImageMixin</span></span><a class="headerlink" href="#fal.toolkit.types.DownloadImageMixin" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.toolkit.types.DownloadImageMixin.to_pil">
+<span class="sig-name descname"><span class="pre">to_pil</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.types.DownloadImageMixin.to_pil" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.toolkit.types.HttpsUrl">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.toolkit.types.</span></span><span class="sig-name descname"><span class="pre">HttpsUrl</span></span><a class="headerlink" href="#fal.toolkit.types.HttpsUrl" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#fal.toolkit.types.DownloadFileMixin" title="fal.toolkit.types.DownloadFileMixin"><code class="xref py py-class docutils literal notranslate"><span class="pre">DownloadFileMixin</span></code></a>, <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></p>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.toolkit.types.ImageDataUri">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.toolkit.types.</span></span><span class="sig-name descname"><span class="pre">ImageDataUri</span></span><a class="headerlink" href="#fal.toolkit.types.ImageDataUri" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#fal.toolkit.types.DownloadImageMixin" title="fal.toolkit.types.DownloadImageMixin"><code class="xref py py-class docutils literal notranslate"><span class="pre">DownloadImageMixin</span></code></a>, <a class="reference internal" href="#fal.toolkit.types.DataUri" title="fal.toolkit.types.DataUri"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataUri</span></code></a></p>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.toolkit.types.ImageHttpsUrl">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.toolkit.types.</span></span><span class="sig-name descname"><span class="pre">ImageHttpsUrl</span></span><a class="headerlink" href="#fal.toolkit.types.ImageHttpsUrl" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#fal.toolkit.types.DownloadImageMixin" title="fal.toolkit.types.DownloadImageMixin"><code class="xref py py-class docutils literal notranslate"><span class="pre">DownloadImageMixin</span></code></a>, <a class="reference internal" href="#fal.toolkit.types.HttpsUrl" title="fal.toolkit.types.HttpsUrl"><code class="xref py py-class docutils literal notranslate"><span class="pre">HttpsUrl</span></code></a></p>
+</dd></dl>
+
+</section>
 <section id="module-fal.toolkit">
 <span id="module-contents"></span><h2>Module contents<a class="headerlink" href="#module-fal.toolkit" title="Link to this heading">¶</a></h2>
 <dl class="py class">

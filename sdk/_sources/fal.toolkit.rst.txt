@@ -30,6 +30,14 @@ fal.toolkit.optimize module
    :undoc-members:
    :show-inheritance:
 
+fal.toolkit.types module
+------------------------
+
+.. automodule:: fal.toolkit.types
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 Module contents
 ---------------
 
