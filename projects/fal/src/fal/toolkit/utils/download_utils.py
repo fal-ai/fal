@@ -389,7 +389,11 @@ def clone_repository(
         A Path object representing the full path to the cloned Git repository.
     """
     target_dir = target_dir or FAL_REPOSITORY_DIR  # type: ignore[assignment]
-    repo_name = repo_name or Path(https_url).stem
+
+    if repo_name is None:
+        repo_name = Path(https_url).stem
+        if commit_hash:
+            repo_name += f"-{commit_hash[:8]}"
 
     local_repo_path = Path(target_dir) / repo_name  # type: ignore[arg-type]
 
