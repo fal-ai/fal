@@ -7,6 +7,7 @@ import asyncio
 import time
 import base64
 import threading
+import logging
 from datetime import datetime, timezone
 from dataclasses import dataclass, field
 from functools import cached_property
@@ -16,6 +17,8 @@ from urllib.parse import urlencode
 import httpx
 from httpx_sse import aconnect_sse, connect_sse
 from fal_client.auth import FAL_RUN_HOST, fetch_credentials
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from PIL import Image
@@ -231,6 +234,65 @@ class AppId:
         )
 
 
+def _request(
+    client: httpx.Client, method: str, url: str, **kwargs: Any
+) -> httpx.Response:
+    response = client.request(method, url, **kwargs)
+    _raise_for_status(response)
+    return response
+
+
+async def _async_request(
+    client: httpx.AsyncClient, method: str, url: str, **kwargs: Any
+) -> httpx.Response:
+    response = await client.request(method, url, **kwargs)
+    _raise_for_status(response)
+    return response
+
+
+def _should_retry(status_code: int) -> bool:
+    if status_code in [408, 409, 429] or status_code >= 500:
+        return True
+    return False
+
+
+MAX_RETRIES = 3
+
+
+def _maybe_retry_request(
+    client: httpx.Client, method: str, url: str, **kwargs: Any
+) -> httpx.Response:
+    retries = MAX_RETRIES
+    while retries > 0:
+        try:
+            return _request(client, method, url, **kwargs)
+        except httpx.HTTPStatusError as exc:
+            if _should_retry(exc.response.status_code):
+                logger.debug(
+                    f"Retrying request to {url} due to {exc} ({retries} retries left)"
+                )
+                retries -= 1
+                continue
+            raise
+
+
+async def _async_maybe_retry_request(
+    client: httpx.AsyncClient, method: str, url: str, **kwargs: Any
+) -> httpx.Response:
+    retries = MAX_RETRIES
+    while retries > 0:
+        try:
+            return await _async_request(client, method, url, **kwargs)
+        except httpx.HTTPStatusError as exc:
+            if _should_retry(exc.response.status_code):
+                logger.debug(
+                    f"Retrying request to {url} due to {exc} ({retries} retries left)"
+                )
+                retries -= 1
+                continue
+            raise
+
+
 @dataclass(frozen=True)
 class SyncRequestHandle(_BaseRequestHandle):
     client: httpx.Client = field(repr=False)
@@ -255,7 +317,9 @@ class SyncRequestHandle(_BaseRequestHandle):
         Queued, InProgress, Completed). If `with_logs` is True, logs will be included
         for InProgress and Completed statuses."""
 
-        response = self.client.get(
+        response = _maybe_retry_request(
+            self.client,
+            "GET",
             self.status_url,
             params={
                 "logs": with_logs,
@@ -285,13 +349,13 @@ class SyncRequestHandle(_BaseRequestHandle):
         for _ in self.iter_events(with_logs=False):
             continue
 
-        response = self.client.get(self.response_url)
+        response = _maybe_retry_request(self.client, "GET", self.response_url)
         _raise_for_status(response)
         return response.json()
 
     def cancel(self) -> None:
         """Cancel the request."""
-        response = self.client.put(self.cancel_url)
+        response = _maybe_retry_request(self.client, "PUT", self.cancel_url)
         _raise_for_status(response)
 
 
@@ -319,7 +383,9 @@ class AsyncRequestHandle(_BaseRequestHandle):
         Queued, InProgress, Completed). If `with_logs` is True, logs will be included
         for InProgress and Completed statuses."""
 
-        response = await self.client.get(
+        response = await _async_maybe_retry_request(
+            self.client,
+            "GET",
             self.status_url,
             params={
                 "logs": with_logs,
@@ -349,13 +415,15 @@ class AsyncRequestHandle(_BaseRequestHandle):
         async for _ in self.iter_events(with_logs=False):
             continue
 
-        response = await self.client.get(self.response_url)
+        response = await _async_maybe_retry_request(
+            self.client, "GET", self.response_url
+        )
         _raise_for_status(response)
         return response.json()
 
     async def cancel(self) -> None:
         """Cancel the request."""
-        response = await self.client.put(self.cancel_url)
+        response = await _async_maybe_retry_request(self.client, "PUT", self.cancel_url)
         _raise_for_status(response)
 
 
@@ -415,7 +483,9 @@ class AsyncClient:
         if hint is not None:
             headers["X-Fal-Runner-Hint"] = hint
 
-        response = await self._client.post(
+        response = await _async_maybe_retry_request(
+            self._client,
+            "POST",
             url,
             json=arguments,
             timeout=timeout,
@@ -452,7 +522,9 @@ class AsyncClient:
         if priority is not None:
             headers["X-Fal-Queue-Priority"] = priority
 
-        response = await self._client.post(
+        response = await _async_maybe_retry_request(
+            self._client,
+            "POST",
             url,
             json=arguments,
             timeout=self.default_timeout,
@@ -640,7 +712,9 @@ class SyncClient:
         if hint is not None:
             headers["X-Fal-Runner-Hint"] = hint
 
-        response = self._client.post(
+        response = _maybe_retry_request(
+            self._client,
+            "POST",
             url,
             json=arguments,
             timeout=timeout,
@@ -677,7 +751,9 @@ class SyncClient:
         if priority is not None:
             headers["X-Fal-Queue-Priority"] = priority
 
-        response = self._client.post(
+        response = _maybe_retry_request(
+            self._client,
+            "POST",
             url,
             json=arguments,
             timeout=self.default_timeout,
