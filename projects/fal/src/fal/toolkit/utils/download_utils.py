@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import errno
 import hashlib
 import os
 import shutil
@@ -444,7 +445,15 @@ def clone_repository(
 
             # NOTE: Atomically renaming the repository directory into place when the
             # clone and checkout are done.
-            os.rename(temp_dir, local_repo_path)
+            try:
+                os.rename(temp_dir, local_repo_path)
+            except OSError as error:
+                shutil.rmtree(temp_dir)
+
+                # someone beat us to it, assume it's good
+                if error.errno != errno.ENOTEMPTY:
+                    raise
+                print(f"{local_repo_path} already exists, skipping rename")
 
         except Exception as error:
             print(f"{error}\nFailed to clone repository '{https_url}' .")
