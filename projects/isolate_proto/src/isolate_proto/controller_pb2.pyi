@@ -559,6 +559,7 @@ class UpdateApplicationRequest(google.protobuf.message.Message):
     MAX_CONCURRENCY_FIELD_NUMBER: builtins.int
     MIN_CONCURRENCY_FIELD_NUMBER: builtins.int
     VALID_REGIONS_FIELD_NUMBER: builtins.int
+    MACHINE_TYPES_FIELD_NUMBER: builtins.int
     application_name: builtins.str
     keep_alive: builtins.int
     max_multiplexing: builtins.int
@@ -566,6 +567,8 @@ class UpdateApplicationRequest(google.protobuf.message.Message):
     min_concurrency: builtins.int
     @property
     def valid_regions(self) -> google.protobuf.internal.containers.RepeatedScalarFieldContainer[builtins.str]: ...
+    @property
+    def machine_types(self) -> google.protobuf.internal.containers.RepeatedScalarFieldContainer[builtins.str]: ...
     def __init__(
         self,
         *,
@@ -575,9 +578,10 @@ class UpdateApplicationRequest(google.protobuf.message.Message):
         max_concurrency: builtins.int | None = ...,
         min_concurrency: builtins.int | None = ...,
         valid_regions: collections.abc.Iterable[builtins.str] | None = ...,
+        machine_types: collections.abc.Iterable[builtins.str] | None = ...,
     ) -> None: ...
     def HasField(self, field_name: typing.Literal["_keep_alive", b"_keep_alive", "_max_concurrency", b"_max_concurrency", "_max_multiplexing", b"_max_multiplexing", "_min_concurrency", b"_min_concurrency", "keep_alive", b"keep_alive", "max_concurrency", b"max_concurrency", "max_multiplexing", b"max_multiplexing", "min_concurrency", b"min_concurrency"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing.Literal["_keep_alive", b"_keep_alive", "_max_concurrency", b"_max_concurrency", "_max_multiplexing", b"_max_multiplexing", "_min_concurrency", b"_min_concurrency", "application_name", b"application_name", "keep_alive", b"keep_alive", "max_concurrency", b"max_concurrency", "max_multiplexing", b"max_multiplexing", "min_concurrency", b"min_concurrency", "valid_regions", b"valid_regions"]) -> None: ...
+    def ClearField(self, field_name: typing.Literal["_keep_alive", b"_keep_alive", "_max_concurrency", b"_max_concurrency", "_max_multiplexing", b"_max_multiplexing", "_min_concurrency", b"_min_concurrency", "application_name", b"application_name", "keep_alive", b"keep_alive", "machine_types", b"machine_types", "max_concurrency", b"max_concurrency", "max_multiplexing", b"max_multiplexing", "min_concurrency", b"min_concurrency", "valid_regions", b"valid_regions"]) -> None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing.Literal["_keep_alive", b"_keep_alive"]) -> typing.Literal["keep_alive"] | None: ...
     @typing.overload
@@ -628,12 +632,15 @@ class ApplicationInfo(google.protobuf.message.Message):
     KEEP_ALIVE_FIELD_NUMBER: builtins.int
     ACTIVE_RUNNERS_FIELD_NUMBER: builtins.int
     MIN_CONCURRENCY_FIELD_NUMBER: builtins.int
+    MACHINE_TYPES_FIELD_NUMBER: builtins.int
     application_id: builtins.str
     max_concurrency: builtins.int
     max_multiplexing: builtins.int
     keep_alive: builtins.int
     active_runners: builtins.int
     min_concurrency: builtins.int
+    @property
+    def machine_types(self) -> google.protobuf.internal.containers.RepeatedScalarFieldContainer[builtins.str]: ...
     def __init__(
         self,
         *,
@@ -643,8 +650,9 @@ class ApplicationInfo(google.protobuf.message.Message):
         keep_alive: builtins.int = ...,
         active_runners: builtins.int = ...,
         min_concurrency: builtins.int = ...,
+        machine_types: collections.abc.Iterable[builtins.str] | None = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing.Literal["active_runners", b"active_runners", "application_id", b"application_id", "keep_alive", b"keep_alive", "max_concurrency", b"max_concurrency", "max_multiplexing", b"max_multiplexing", "min_concurrency", b"min_concurrency"]) -> None: ...
+    def ClearField(self, field_name: typing.Literal["active_runners", b"active_runners", "application_id", b"application_id", "keep_alive", b"keep_alive", "machine_types", b"machine_types", "max_concurrency", b"max_concurrency", "max_multiplexing", b"max_multiplexing", "min_concurrency", b"min_concurrency"]) -> None: ...
 
 global___ApplicationInfo = ApplicationInfo
 
