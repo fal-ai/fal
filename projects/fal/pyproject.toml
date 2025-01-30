@@ -58,7 +58,7 @@ dependencies = [
     "uvicorn>=0.29.0,<1",
     "cookiecutter",
     "tomli",
-    "nested-cli-json",
+    "cli-nested-json",
 ]
 
 [project.optional-dependencies]
