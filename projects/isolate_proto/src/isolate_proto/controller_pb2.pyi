@@ -558,11 +558,14 @@ class UpdateApplicationRequest(google.protobuf.message.Message):
     MAX_MULTIPLEXING_FIELD_NUMBER: builtins.int
     MAX_CONCURRENCY_FIELD_NUMBER: builtins.int
     MIN_CONCURRENCY_FIELD_NUMBER: builtins.int
+    VALID_REGIONS_FIELD_NUMBER: builtins.int
     application_name: builtins.str
     keep_alive: builtins.int
     max_multiplexing: builtins.int
     max_concurrency: builtins.int
     min_concurrency: builtins.int
+    @property
+    def valid_regions(self) -> google.protobuf.internal.containers.RepeatedScalarFieldContainer[builtins.str]: ...
     def __init__(
         self,
         *,
@@ -571,9 +574,10 @@ class UpdateApplicationRequest(google.protobuf.message.Message):
         max_multiplexing: builtins.int | None = ...,
         max_concurrency: builtins.int | None = ...,
         min_concurrency: builtins.int | None = ...,
+        valid_regions: collections.abc.Iterable[builtins.str] | None = ...,
     ) -> None: ...
     def HasField(self, field_name: typing.Literal["_keep_alive", b"_keep_alive", "_max_concurrency", b"_max_concurrency", "_max_multiplexing", b"_max_multiplexing", "_min_concurrency", b"_min_concurrency", "keep_alive", b"keep_alive", "max_concurrency", b"max_concurrency", "max_multiplexing", b"max_multiplexing", "min_concurrency", b"min_concurrency"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing.Literal["_keep_alive", b"_keep_alive", "_max_concurrency", b"_max_concurrency", "_max_multiplexing", b"_max_multiplexing", "_min_concurrency", b"_min_concurrency", "application_name", b"application_name", "keep_alive", b"keep_alive", "max_concurrency", b"max_concurrency", "max_multiplexing", b"max_multiplexing", "min_concurrency", b"min_concurrency"]) -> None: ...
+    def ClearField(self, field_name: typing.Literal["_keep_alive", b"_keep_alive", "_max_concurrency", b"_max_concurrency", "_max_multiplexing", b"_max_multiplexing", "_min_concurrency", b"_min_concurrency", "application_name", b"application_name", "keep_alive", b"keep_alive", "max_concurrency", b"max_concurrency", "max_multiplexing", b"max_multiplexing", "min_concurrency", b"min_concurrency", "valid_regions", b"valid_regions"]) -> None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing.Literal["_keep_alive", b"_keep_alive"]) -> typing.Literal["keep_alive"] | None: ...
     @typing.overload

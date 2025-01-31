@@ -209,6 +209,7 @@ message UpdateApplicationRequest {
     optional int32 max_multiplexing = 3;
     optional int32 max_concurrency = 4;
     optional int32 min_concurrency = 5;
+    repeated string valid_regions = 6;
 }
 
 message UpdateApplicationResult {
