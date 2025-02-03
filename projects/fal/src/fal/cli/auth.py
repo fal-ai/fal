@@ -10,9 +10,9 @@ def _logout(args):
 
 
 def _whoami(args):
-    user_name = USER.info["name"]
-    sub = USER.info["sub"]
-    args.console.print(f"Hello, {user_name} - '{sub}'")
+    user_name = USER.info.name
+    id = USER.info.id
+    args.console.print(f"Hello, {user_name} - '{id}'")
 
 
 def add_parser(main_subparsers, parents):

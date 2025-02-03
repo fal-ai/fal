@@ -11,7 +11,7 @@ def add_user_id(
     """The structlog processor that sends the logged user id on every log"""
     user_id: str | None = None
     try:
-        user_id = USER.info.get("sub")
+        user_id = USER.info.id
     except Exception:
         # logs are fail-safe, so any exception is safe to ignore
         # this is expected to happen only when user is logged out

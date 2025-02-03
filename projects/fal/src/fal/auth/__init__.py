@@ -7,7 +7,7 @@ from typing import Optional
 
 import click
 
-from fal.auth import auth0, local
+from fal.auth import auth0, local, workos_auth
 from fal.config import Config
 from fal.console import console
 from fal.console.icons import CHECK_ICON
@@ -74,19 +74,30 @@ def key_credentials() -> tuple[str, str] | None:
         return None
 
 
-def login():
-    token_data = auth0.login()
+def login() -> None:
+    if os.environ.get("FAL_USE_AUTH0") == "true":
+        auth_config = auth0.login()
+    else:
+        auth_config = workos_auth.login()
+
     with local.lock_token():
-        local.save_token(token_data["refresh_token"])
+        local.save_auth_config(auth_config)
 
     USER.invalidate()
 
 
 def logout():
-    refresh_token, _ = local.load_token()
-    if refresh_token is None:
+    auth_token = local.load_auth_config()
+    if auth_token is None:
         raise click.ClickException(message="You're not logged in")
-    auth0.revoke(refresh_token)
+
+    if auth_token.provider == "auth0":
+        auth0.revoke(auth_token.refresh_token)
+    if auth_token.provider == "workos":
+        # We should always have an access token for WorkOS
+        if auth_token.access_token:
+            workos_auth.revoke(auth_token.access_token)
+
     with local.lock_token():
         local.delete_token()
 
@@ -94,74 +105,104 @@ def logout():
     console.print(f"{CHECK_ICON} Logged out of [cyan bold]fal[/]. Bye!")
 
 
-def _fetch_access_token() -> str:
+def _fetch_auth_config(
+    force_refresh: bool = False,
+) -> tuple[local.ActiveAuthConfig, local.UserInfo | None]:
     """
-    Load the refresh token, request a new access_token (refreshing the refresh token)
-    and return the access_token.
+    Load the config, request a new access_token (refreshing the refresh token),
+    save and return the updated config.
     """
     # We need to lock both read and write access because we could be reading a soon
     # invalid refresh_token
     with local.lock_token():
-        refresh_token, access_token = local.load_token()
+        auth_config = local.load_auth_config()
 
-        if refresh_token is None:
+        if auth_config is None:
             raise UnauthenticatedException()
 
-        if access_token is not None:
+        if not force_refresh and auth_config.access_token is not None:
             try:
-                auth0.verify_access_token_expiration(access_token)
-                return access_token
+                local.verify_access_token_expiration(auth_config.access_token)
+                return local.ActiveAuthConfig(
+                    provider=auth_config.provider,
+                    access_token=auth_config.access_token,
+                    refresh_token=auth_config.refresh_token,
+                ), None
             except Exception:
                 # access_token expired, will refresh
                 pass
 
+        # Refresh the token
+        # NOTE: Both Auth0 and WorkOS rotate refresh tokens
+        # so we have to save the new one
         try:
-            token_data = auth0.refresh(refresh_token)
+            if auth_config.provider == "auth0":
+                active_config = auth0.refresh(auth_config.refresh_token)
+                user_info = None
+            else:
+                active_config, user_info = workos_auth.refresh(
+                    auth_config.refresh_token
+                )
 
-            # NOTE: Auth0 Refresh Token Rotation enabled
-            # So the old refresh_token is no longer valid
-            local.save_token(token_data["refresh_token"], token_data["access_token"])
+            local.save_auth_config(active_config)
+
+            return active_config, user_info
         except:
             local.delete_token()
             raise
 
-        return token_data["access_token"]
-
 
 @dataclass
 class UserAccess:
-    _access_token: str | None = field(repr=False, default=None)
-    _user_info: dict | None = field(repr=False, default=None)
+    _auth_config: local.ActiveAuthConfig | None = field(repr=False, default=None)
+    _user_info: local.UserInfo | None = field(repr=False, default=None)
     _exc: Exception | None = field(repr=False, default=None)
 
     def invalidate(self) -> None:
-        self._access_token = None
+        self._auth_config = None
         self._user_info = None
         self._exc = None
 
     @property
-    def info(self) -> dict:
-        if self._user_info is None:
-            self._user_info = auth0.get_user_info(self.bearer_token)
-
-        return self._user_info
-
-    @property
-    def access_token(self) -> str:
+    def auth_config(self) -> local.ActiveAuthConfig:
         if self._exc is not None:
             # We access this several times, so we want to raise the
             # original exception instead of the newer exceptions we
             # would get from the effects of the original exception.
             raise self._exc
 
-        if self._access_token is None:
+        if self._auth_config is None:
             try:
-                self._access_token = _fetch_access_token()
+                self._auth_config, user_info = _fetch_auth_config()
+                if user_info:
+                    self._user_info = user_info
             except Exception as e:
                 self._exc = e
                 raise
 
-        return self._access_token
+        return self._auth_config
+
+    @property
+    def info(self) -> local.UserInfo:
+        # Fetch the auth config which may populate the user info
+        auth_config = self.auth_config
+
+        if self._user_info is None:
+            if auth_config.provider == "auth0":
+                self._user_info = auth0.get_user_info(self.bearer_token)
+            else:
+                # For WorkOS we can only get the user info by refreshing the token
+                self._auth_config, self._user_info = _fetch_auth_config(
+                    force_refresh=True
+                )
+                if not self._user_info:
+                    raise click.ClickException("Failed to get user info")
+
+        return self._user_info
+
+    @property
+    def access_token(self) -> str:
+        return self.auth_config.access_token
 
     @property
     def bearer_token(self) -> str:

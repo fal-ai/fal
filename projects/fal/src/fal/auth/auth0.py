@@ -7,9 +7,9 @@ import warnings
 import click
 import httpx
 
+from fal.auth.local import ActiveAuthConfig, UserInfo, open_browser
 from fal.console import console
 from fal.console.icons import CHECK_ICON
-from fal.console.ux import maybe_open_browser_tab
 
 WEBSITE_URL = "https://fal.ai"
 
@@ -26,24 +26,9 @@ def logout_url(return_url: str):
     return f"https://{AUTH0_DOMAIN}/v2/logout?client_id={AUTH0_CLIENT_ID}&returnTo={return_url}"
 
 
-def _open_browser(url: str, code: str | None) -> None:
-    maybe_open_browser_tab(url)
-
-    console.print(
-        "If browser didn't open automatically, "
-        "on your computer or mobile device navigate to"
-    )
-    console.print(url)
-
-    if code:
-        console.print(
-            f"\nConfirm it shows the following code: [markdown.code]{code}[/]\n"
-        )
-
-
-def login() -> dict:
+def login() -> ActiveAuthConfig:
     """
-    Runs the device authorization flow and stores the user object in memory
+    Runs the device authorization flow and returns the auth config
     """
     device_code_payload = {
         "audience": AUTH0_FAL_API_AUDIENCE_ID,
@@ -63,7 +48,7 @@ def login() -> dict:
 
     url = logout_url(device_confirmation_url)
 
-    _open_browser(url, device_user_code)
+    open_browser(url, device_user_code)
 
     # This is needed to suppress the ResourceWarning emitted
     # when the process is waiting for user confirmation
@@ -86,9 +71,15 @@ def login() -> dict:
                 status.update(spinner=None)
                 console.print(f"{CHECK_ICON} Authenticated successfully, welcome!")
 
-                validate_id_token(token_data["id_token"])
+                access_token = token_data["id_token"]
 
-                return token_data
+                validate_id_token(access_token)
+
+                return ActiveAuthConfig(
+                    provider="auth0",
+                    refresh_token=token_data["refresh_token"],
+                    access_token=access_token,
+                )
 
             elif token_data["error"] not in ("authorization_pending", "slow_down"):
                 status.update(spinner=None)
@@ -98,7 +89,7 @@ def login() -> dict:
                 time.sleep(device_code_data["interval"])
 
 
-def refresh(token: str) -> dict:
+def refresh(token: str) -> ActiveAuthConfig:
     token_payload = {
         "grant_type": "refresh_token",
         "client_id": AUTH0_CLIENT_ID,
@@ -113,12 +104,16 @@ def refresh(token: str) -> dict:
     if token_response.status_code == 200:
         validate_id_token(token_data["id_token"])
 
-        return token_data
+        return ActiveAuthConfig(
+            provider="auth0",
+            refresh_token=token_data["refresh_token"],
+            access_token=token_data["id_token"],
+        )
     else:
         raise click.ClickException(token_data["error_description"])
 
 
-def revoke(token: str):
+def revoke(token: str) -> None:
     token_payload = {
         "client_id": AUTH0_CLIENT_ID,
         "token": token,
@@ -132,10 +127,10 @@ def revoke(token: str):
         token_data = token_response.json()
         raise click.ClickException(token_data["error_description"])
 
-    _open_browser(logout_url(WEBSITE_URL), None)
+    open_browser(logout_url(WEBSITE_URL), None)
 
 
-def get_user_info(bearer_token: str) -> dict:
+def get_user_info(bearer_token: str) -> UserInfo:
     userinfo_response = httpx.post(
         f"https://{AUTH0_DOMAIN}/userinfo",
         headers={"Authorization": bearer_token},
@@ -144,7 +139,12 @@ def get_user_info(bearer_token: str) -> dict:
     if userinfo_response.status_code != 200:
         raise click.ClickException(userinfo_response.content.decode("utf-8"))
 
-    return userinfo_response.json()
+    data = userinfo_response.json()
+
+    return UserInfo(
+        name=data["name"],
+        id=data["sub"],
+    )
 
 
 @functools.lru_cache
@@ -177,15 +177,4 @@ def validate_id_token(token: str):
             "verify_aud": True,
             "verify_iss": True,
         },
-    )
-
-
-def verify_access_token_expiration(token: str):
-    from jwt import decode
-
-    leeway = 30 * 60  # 30 minutes
-    decode(
-        token,
-        leeway=-leeway,  # negative to consider expired before actual expiration
-        options={"verify_exp": True, "verify_signature": False},
     )
