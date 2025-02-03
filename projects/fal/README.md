@@ -10,11 +10,13 @@ With fal, you can build pipelines, serve ML models and scale them up to many use
 ## Quickstart
 
 First, you need to install the `fal` package. You can do so using pip:
+
 ```shell
 pip install fal
 ```
 
 Then you need to authenticate:
+
 ```shell
 fal auth login
 ```
@@ -63,7 +65,7 @@ pytest
 
 ### Pre-commit
 
-```
+```bash
 cd projects/fal
 pre-commit install
 ```
