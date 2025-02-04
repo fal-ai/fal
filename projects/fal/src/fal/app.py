@@ -374,6 +374,11 @@ class App(fal.api.BaseServable):
         @app.middleware("http")
         async def set_request_id(request, call_next):
             # NOTE: Setting request_id is not supported for websocket/realtime endpoints
+            if not os.getenv("IS_ISOLATE_AGENT") or not os.environ.get(
+                "NOMAD_ALLOC_PORT_grpc"
+            ):
+                # If not running in the expected environment, skip setting request_id
+                return await call_next(request)
 
             if self.isolate_channel is None:
                 grpc_port = os.environ.get("NOMAD_ALLOC_PORT_grpc")
