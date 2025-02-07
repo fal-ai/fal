@@ -368,6 +368,7 @@ class MachineRequirements(google.protobuf.message.Message):
     MACHINE_TYPES_FIELD_NUMBER: builtins.int
     NUM_GPUS_FIELD_NUMBER: builtins.int
     REQUEST_TIMEOUT_FIELD_NUMBER: builtins.int
+    STARTUP_TIMEOUT_FIELD_NUMBER: builtins.int
     machine_type: builtins.str
     """Machine type. It is not an enum because we want to be able
     to dynamically add new machine types without regenerating
@@ -385,6 +386,7 @@ class MachineRequirements(google.protobuf.message.Message):
     min_concurrency: builtins.int
     num_gpus: builtins.int
     request_timeout: builtins.int
+    startup_timeout: builtins.int
     @property
     def scheduler_options(self) -> google.protobuf.struct_pb2.Struct: ...
     @property
@@ -406,9 +408,10 @@ class MachineRequirements(google.protobuf.message.Message):
         machine_types: collections.abc.Iterable[builtins.str] | None = ...,
         num_gpus: builtins.int | None = ...,
         request_timeout: builtins.int | None = ...,
+        startup_timeout: builtins.int | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing.Literal["_base_image", b"_base_image", "_exposed_port", b"_exposed_port", "_keep_alive", b"_keep_alive", "_machine_type", b"_machine_type", "_max_concurrency", b"_max_concurrency", "_max_multiplexing", b"_max_multiplexing", "_min_concurrency", b"_min_concurrency", "_num_gpus", b"_num_gpus", "_request_timeout", b"_request_timeout", "_scheduler", b"_scheduler", "_scheduler_options", b"_scheduler_options", "base_image", b"base_image", "exposed_port", b"exposed_port", "keep_alive", b"keep_alive", "machine_type", b"machine_type", "max_concurrency", b"max_concurrency", "max_multiplexing", b"max_multiplexing", "min_concurrency", b"min_concurrency", "num_gpus", b"num_gpus", "request_timeout", b"request_timeout", "scheduler", b"scheduler", "scheduler_options", b"scheduler_options"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing.Literal["_base_image", b"_base_image", "_exposed_port", b"_exposed_port", "_keep_alive", b"_keep_alive", "_machine_type", b"_machine_type", "_max_concurrency", b"_max_concurrency", "_max_multiplexing", b"_max_multiplexing", "_min_concurrency", b"_min_concurrency", "_num_gpus", b"_num_gpus", "_request_timeout", b"_request_timeout", "_scheduler", b"_scheduler", "_scheduler_options", b"_scheduler_options", "base_image", b"base_image", "exposed_port", b"exposed_port", "keep_alive", b"keep_alive", "machine_type", b"machine_type", "machine_types", b"machine_types", "max_concurrency", b"max_concurrency", "max_multiplexing", b"max_multiplexing", "min_concurrency", b"min_concurrency", "num_gpus", b"num_gpus", "request_timeout", b"request_timeout", "scheduler", b"scheduler", "scheduler_options", b"scheduler_options"]) -> None: ...
+    def HasField(self, field_name: typing.Literal["_base_image", b"_base_image", "_exposed_port", b"_exposed_port", "_keep_alive", b"_keep_alive", "_machine_type", b"_machine_type", "_max_concurrency", b"_max_concurrency", "_max_multiplexing", b"_max_multiplexing", "_min_concurrency", b"_min_concurrency", "_num_gpus", b"_num_gpus", "_request_timeout", b"_request_timeout", "_scheduler", b"_scheduler", "_scheduler_options", b"_scheduler_options", "_startup_timeout", b"_startup_timeout", "base_image", b"base_image", "exposed_port", b"exposed_port", "keep_alive", b"keep_alive", "machine_type", b"machine_type", "max_concurrency", b"max_concurrency", "max_multiplexing", b"max_multiplexing", "min_concurrency", b"min_concurrency", "num_gpus", b"num_gpus", "request_timeout", b"request_timeout", "scheduler", b"scheduler", "scheduler_options", b"scheduler_options", "startup_timeout", b"startup_timeout"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing.Literal["_base_image", b"_base_image", "_exposed_port", b"_exposed_port", "_keep_alive", b"_keep_alive", "_machine_type", b"_machine_type", "_max_concurrency", b"_max_concurrency", "_max_multiplexing", b"_max_multiplexing", "_min_concurrency", b"_min_concurrency", "_num_gpus", b"_num_gpus", "_request_timeout", b"_request_timeout", "_scheduler", b"_scheduler", "_scheduler_options", b"_scheduler_options", "_startup_timeout", b"_startup_timeout", "base_image", b"base_image", "exposed_port", b"exposed_port", "keep_alive", b"keep_alive", "machine_type", b"machine_type", "machine_types", b"machine_types", "max_concurrency", b"max_concurrency", "max_multiplexing", b"max_multiplexing", "min_concurrency", b"min_concurrency", "num_gpus", b"num_gpus", "request_timeout", b"request_timeout", "scheduler", b"scheduler", "scheduler_options", b"scheduler_options", "startup_timeout", b"startup_timeout"]) -> None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing.Literal["_base_image", b"_base_image"]) -> typing.Literal["base_image"] | None: ...
     @typing.overload
@@ -431,6 +434,8 @@ class MachineRequirements(google.protobuf.message.Message):
     def WhichOneof(self, oneof_group: typing.Literal["_scheduler", b"_scheduler"]) -> typing.Literal["scheduler"] | None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing.Literal["_scheduler_options", b"_scheduler_options"]) -> typing.Literal["scheduler_options"] | None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing.Literal["_startup_timeout", b"_startup_timeout"]) -> typing.Literal["startup_timeout"] | None: ...
 
 global___MachineRequirements = MachineRequirements
 
