@@ -3,7 +3,6 @@ syntax = "proto3";
 import "common.proto";
 import "server.proto";
 import "google/protobuf/timestamp.proto";
-import "google/protobuf/duration.proto";
 import "google/protobuf/struct.proto";
 
 package controller;
@@ -317,6 +316,7 @@ message RunnerInfo {
     int32 in_flight_requests = 2;
     optional int32 expiration_countdown = 3;
     float uptime = 4;
+    optional google.protobuf.Struct external_metadata = 5;
 }
 
 message KillRunnerRequest {
