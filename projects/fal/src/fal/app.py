@@ -271,6 +271,7 @@ class App(fal.api.BaseServable):
     app_name: ClassVar[str]
     app_auth: ClassVar[Literal["private", "public", "shared"]] = "private"
     request_timeout: ClassVar[int | None] = None
+    startup_timeout: ClassVar[int | None] = None
 
     isolate_channel: async_grpc.Channel | None = None
 
@@ -281,6 +282,9 @@ class App(fal.api.BaseServable):
 
         if cls.request_timeout is not None:
             cls.host_kwargs["request_timeout"] = cls.request_timeout
+
+        if cls.startup_timeout is not None:
+            cls.host_kwargs["startup_timeout"] = cls.startup_timeout
 
         cls.app_name = getattr(cls, "app_name", app_name)
 
