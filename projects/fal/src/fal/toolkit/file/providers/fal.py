@@ -1098,11 +1098,13 @@ class InternalFalFileRepositoryV3(FileRepository):
         object_lifecycle_preference: dict[str, str] | None = None,
     ) -> tuple[str, FileData | None]:
         if multipart is None:
-            threshold = multipart_threshold or MultipartUpload.MULTIPART_THRESHOLD
+            threshold = (
+                multipuuart_threshold or InternalMultipartUploadV3.MULTIPART_THRESHOLD
+            )
             multipart = os.path.getsize(file_path) > threshold
 
         if multipart:
-            url = MultipartUpload.save_file(
+            url = InternalMultipartUploadV3.save_file(
                 file_path,
                 chunk_size=multipart_chunk_size,
                 content_type=content_type,
