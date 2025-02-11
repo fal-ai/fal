@@ -1099,7 +1099,7 @@ class InternalFalFileRepositoryV3(FileRepository):
     ) -> tuple[str, FileData | None]:
         if multipart is None:
             threshold = (
-                multipuuart_threshold or InternalMultipartUploadV3.MULTIPART_THRESHOLD
+                multipart_threshold or InternalMultipartUploadV3.MULTIPART_THRESHOLD
             )
             multipart = os.path.getsize(file_path) > threshold
 
