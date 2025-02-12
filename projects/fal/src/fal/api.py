@@ -142,6 +142,8 @@ class Host(Generic[ArgsT, ReturnT]):
             # Conda environment definition should be parsed before sending to serverless
             with open(value) as f:
                 return "env_dict", yaml.safe_load(f)
+        elif key == "image" and isinstance(value, ContainerImage):
+            return "image", value.to_dict()
         else:
             return key, value
 
