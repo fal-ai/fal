@@ -196,6 +196,9 @@ class ApplicationInfo:
     max_multiplexing: int
     active_runners: int
     min_concurrency: int
+    machine_types: list[str]
+    request_timeout: int
+    startup_timeout: int
 
 
 @dataclass
@@ -208,6 +211,9 @@ class AliasInfo:
     max_multiplexing: int
     active_runners: int
     min_concurrency: int
+    machine_types: list[str]
+    request_timeout: int
+    startup_timeout: int
 
 
 @dataclass
@@ -313,6 +319,9 @@ def _from_grpc_application_info(
         max_multiplexing=message.max_multiplexing,
         active_runners=message.active_runners,
         min_concurrency=message.min_concurrency,
+        machine_types=message.machine_types,
+        request_timeout=message.request_timeout,
+        startup_timeout=message.startup_timeout,
     )
 
 
@@ -336,6 +345,9 @@ def _from_grpc_alias_info(message: isolate_proto.AliasInfo) -> AliasInfo:
         max_multiplexing=message.max_multiplexing,
         active_runners=message.active_runners,
         min_concurrency=message.min_concurrency,
+        machine_types=message.machine_types,
+        request_timeout=message.request_timeout,
+        startup_timeout=message.startup_timeout,
     )
 
 
