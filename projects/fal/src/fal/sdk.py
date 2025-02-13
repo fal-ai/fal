@@ -582,7 +582,9 @@ class FalServerlessConnection:
         min_concurrency: int | None = None,
         request_timeout: int | None = None,
         startup_timeout: int | None = None,
+        machine_types: list[str] | None = None,
     ) -> AliasInfo:
+        print(machine_types)
         request = isolate_proto.UpdateApplicationRequest(
             application_name=application_name,
             keep_alive=keep_alive,
@@ -591,6 +593,7 @@ class FalServerlessConnection:
             min_concurrency=min_concurrency,
             request_timeout=request_timeout,
             startup_timeout=startup_timeout,
+            machine_types=machine_types,
         )
         res: isolate_proto.UpdateApplicationResult = self.stub.UpdateApplication(
             request
