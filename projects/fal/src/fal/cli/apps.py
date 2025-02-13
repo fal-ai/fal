@@ -114,6 +114,8 @@ def _scale(args):
             and args.max_multiplexing is None
             and args.max_concurrency is None
             and args.min_concurrency is None
+            and args.request_timeout is None
+            and args.startup_timeout is None
         ):
             args.console.log("No parameters for update were provided, ignoring.")
             return
@@ -124,6 +126,8 @@ def _scale(args):
             max_multiplexing=args.max_multiplexing,
             max_concurrency=args.max_concurrency,
             min_concurrency=args.min_concurrency,
+            request_timeout=args.request_timeout,
+            startup_timeout=args.startup_timeout,
         )
         table = _apps_table([alias_info])
 
@@ -161,6 +165,16 @@ def _add_scale_parser(subparsers, parents):
         "--min-concurrency",
         type=int,
         help="Minimum concurrency",
+    )
+    parser.add_argument(
+        "--request-timeout",
+        type=int,
+        help="Request timeout (seconds).",
+    )
+    parser.add_argument(
+        "--startup-timeout",
+        type=int,
+        help="Startup timeout (seconds).",
     )
     parser.set_defaults(func=_scale)
 
