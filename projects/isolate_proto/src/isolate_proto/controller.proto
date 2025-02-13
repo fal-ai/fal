@@ -211,6 +211,8 @@ message UpdateApplicationRequest {
     optional int32 min_concurrency = 5;
     repeated string valid_regions = 6;
     repeated string machine_types = 7;
+    optional int32 request_timeout = 8;
+    optional int32 startup_timeout = 9;
 }
 
 message UpdateApplicationResult {
@@ -229,6 +231,8 @@ message ApplicationInfo {
     int32 active_runners = 6;
     int32 min_concurrency = 7;
     repeated string machine_types = 8;
+    optional int32 request_timeout = 9;
+    optional int32 startup_timeout = 10;
 }
 
 message ListApplicationsResult {
@@ -278,6 +282,9 @@ message AliasInfo {
     int32 keep_alive = 6;
     int32 active_runners = 7;
     int32 min_concurrency = 8;
+    repeated string machine_types = 9;
+    optional int32 request_timeout = 10;
+    optional int32 startup_timeout = 11;
 }
 
 message SetSecretRequest {
