@@ -128,6 +128,7 @@ def _scale(args):
             and args.min_concurrency is None
             and args.request_timeout is None
             and args.startup_timeout is None
+            and args.machine_types is None
         ):
             args.console.log("No parameters for update were provided, ignoring.")
             return
@@ -140,6 +141,7 @@ def _scale(args):
             min_concurrency=args.min_concurrency,
             request_timeout=args.request_timeout,
             startup_timeout=args.startup_timeout,
+            machine_types=args.machine_types,
         )
         table = _apps_table([alias_info])
 
@@ -187,6 +189,13 @@ def _add_scale_parser(subparsers, parents):
         "--startup-timeout",
         type=int,
         help="Startup timeout (seconds).",
+    )
+    parser.add_argument(
+        "--machine-type",
+        type=str,
+        action="append",
+        dest="machine_types",
+        help="Machine type.",
     )
     parser.set_defaults(func=_scale)
 
