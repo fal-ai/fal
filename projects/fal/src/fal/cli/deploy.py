@@ -111,10 +111,16 @@ def _deploy_from_reference(
     )
 
     if app_id:
-        gateway_host = _remove_http_and_port_from_url(host.url)
-        gateway_host = (
-            gateway_host.replace("api.", "").replace("alpha.", "").replace("ai", "run")
-        )
+        env_host = _remove_http_and_port_from_url(host.url)
+        env_host = env_host.replace("api.", "").replace("alpha.", "")
+
+        env_host_parts = env_host.split(".")
+
+        # keep the last 3 parts
+        playground_host = ".".join(env_host_parts[-3:])
+
+        # just replace .ai for .run
+        endpoint_host = env_host.replace(".ai", ".run")
 
         args.console.print(
             "Registered a new revision for function "
@@ -123,12 +129,12 @@ def _deploy_from_reference(
         args.console.print("Playground:")
         for endpoint in loaded.endpoints:
             args.console.print(
-                f"\thttps://fal.ai/models/{user.username}/{app_name}{endpoint}"
+                f"\thttps://{playground_host}/models/{user.username}/{app_name}{endpoint}"
             )
         args.console.print("Endpoints:")
         for endpoint in loaded.endpoints:
             args.console.print(
-                f"\thttps://{gateway_host}/{user.username}/{app_name}{endpoint}"
+                f"\thttps://{endpoint_host}/{user.username}/{app_name}{endpoint}"
             )
 
 
