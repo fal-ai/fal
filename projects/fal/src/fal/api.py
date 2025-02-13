@@ -403,6 +403,7 @@ class FalServerlessHost(Host):
             "setup_function",
             "metadata",
             "request_timeout",
+            "startup_timeout",
             "_base_image",
             "_scheduler",
             "_scheduler_options",
@@ -452,6 +453,7 @@ class FalServerlessHost(Host):
         max_multiplexing = options.host.get("max_multiplexing")
         exposed_port = options.get_exposed_port()
         request_timeout = options.host.get("request_timeout")
+        startup_timeout = options.host.get("startup_timeout")
         machine_requirements = MachineRequirements(
             machine_types=machine_type,  # type: ignore
             num_gpus=options.host.get("num_gpus"),
@@ -464,6 +466,7 @@ class FalServerlessHost(Host):
             max_concurrency=max_concurrency,
             min_concurrency=min_concurrency,
             request_timeout=request_timeout,
+            startup_timeout=startup_timeout,
         )
 
         partial_func = _prepare_partial_func(func)
@@ -526,7 +529,7 @@ class FalServerlessHost(Host):
         exposed_port = options.get_exposed_port()
         setup_function = options.host.get("setup_function", None)
         request_timeout = options.host.get("request_timeout")
-
+        startup_timeout = options.host.get("startup_timeout")
         machine_requirements = MachineRequirements(
             machine_types=machine_type,  # type: ignore
             num_gpus=options.host.get("num_gpus"),
@@ -539,6 +542,7 @@ class FalServerlessHost(Host):
             max_concurrency=max_concurrency,
             min_concurrency=min_concurrency,
             request_timeout=request_timeout,
+            startup_timeout=startup_timeout,
         )
 
         return_value = _UNSET
@@ -705,6 +709,7 @@ def function(
     max_multiplexing: int = FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING,
     min_concurrency: int = FAL_SERVERLESS_DEFAULT_MIN_CONCURRENCY,
     request_timeout: int | None = None,
+    startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
     _base_image: str | None = None,
     _scheduler: str | None = None,
@@ -732,6 +737,7 @@ def function(
     max_multiplexing: int = FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING,
     min_concurrency: int = FAL_SERVERLESS_DEFAULT_MIN_CONCURRENCY,
     request_timeout: int | None = None,
+    startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
     _base_image: str | None = None,
     _scheduler: str | None = None,
@@ -809,6 +815,7 @@ def function(
     max_multiplexing: int = FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING,
     min_concurrency: int = FAL_SERVERLESS_DEFAULT_MIN_CONCURRENCY,
     request_timeout: int | None = None,
+    startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
     _base_image: str | None = None,
     _scheduler: str | None = None,
@@ -841,6 +848,7 @@ def function(
     max_multiplexing: int = FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING,
     min_concurrency: int = FAL_SERVERLESS_DEFAULT_MIN_CONCURRENCY,
     request_timeout: int | None = None,
+    startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
     _base_image: str | None = None,
     _scheduler: str | None = None,
@@ -867,6 +875,7 @@ def function(
     max_multiplexing: int = FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING,
     min_concurrency: int = FAL_SERVERLESS_DEFAULT_MIN_CONCURRENCY,
     request_timeout: int | None = None,
+    startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
     _base_image: str | None = None,
     _scheduler: str | None = None,
@@ -893,6 +902,7 @@ def function(
     max_multiplexing: int = FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING,
     min_concurrency: int = FAL_SERVERLESS_DEFAULT_MIN_CONCURRENCY,
     request_timeout: int | None = None,
+    startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
     _base_image: str | None = None,
     _scheduler: str | None = None,
