@@ -416,7 +416,11 @@ def clone_repository(
                     f"Forcing re-download."
                 )
             print(f"Removing the existing repository: {local_repo_path} ")
-            shutil.rmtree(local_repo_path)
+            with TemporaryDirectory(
+                dir=target_dir, suffix=f"{local_repo_path.name}.tmp.old"
+            ) as tmp_dir:
+                os.rename(local_repo_path, tmp_dir)
+                shutil.rmtree(tmp_dir)
 
     # NOTE: using the target_dir to be able to avoid potential copies across temp fs
     # and target fs, and also to be able to atomically rename repo_name dir into place
