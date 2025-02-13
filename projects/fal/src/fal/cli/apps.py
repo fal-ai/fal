@@ -19,6 +19,9 @@ def _apps_table(apps: list[AliasInfo]):
     table.add_column("Max Concurrency")
     table.add_column("Max Multiplexing")
     table.add_column("Keep Alive")
+    table.add_column("Request Timeout")
+    table.add_column("Startup Timeout")
+    table.add_column("Machine Type")
     table.add_column("Active Workers")
 
     for app in apps:
@@ -30,6 +33,9 @@ def _apps_table(apps: list[AliasInfo]):
             str(app.max_concurrency),
             str(app.max_multiplexing),
             str(app.keep_alive),
+            str(app.request_timeout),
+            str(app.startup_timeout),
+            " ".join(app.machine_types),
             str(app.active_runners),
         )
 
@@ -67,6 +73,9 @@ def _app_rev_table(revs: list[ApplicationInfo]):
     table.add_column("Max Concurrency")
     table.add_column("Max Multiplexing")
     table.add_column("Keep Alive")
+    table.add_column("Request Timeout")
+    table.add_column("Startup Timeout")
+    table.add_column("Machine Type")
     table.add_column("Active Workers")
 
     for rev in revs:
@@ -76,6 +85,9 @@ def _app_rev_table(revs: list[ApplicationInfo]):
             str(rev.max_concurrency),
             str(rev.max_multiplexing),
             str(rev.keep_alive),
+            str(rev.request_timeout),
+            str(rev.startup_timeout),
+            " ".join(rev.machine_types),
             str(rev.active_runners),
         )
 
@@ -114,6 +126,8 @@ def _scale(args):
             and args.max_multiplexing is None
             and args.max_concurrency is None
             and args.min_concurrency is None
+            and args.request_timeout is None
+            and args.startup_timeout is None
         ):
             args.console.log("No parameters for update were provided, ignoring.")
             return
@@ -124,6 +138,8 @@ def _scale(args):
             max_multiplexing=args.max_multiplexing,
             max_concurrency=args.max_concurrency,
             min_concurrency=args.min_concurrency,
+            request_timeout=args.request_timeout,
+            startup_timeout=args.startup_timeout,
         )
         table = _apps_table([alias_info])
 
@@ -161,6 +177,16 @@ def _add_scale_parser(subparsers, parents):
         "--min-concurrency",
         type=int,
         help="Minimum concurrency",
+    )
+    parser.add_argument(
+        "--request-timeout",
+        type=int,
+        help="Request timeout (seconds).",
+    )
+    parser.add_argument(
+        "--startup-timeout",
+        type=int,
+        help="Startup timeout (seconds).",
     )
     parser.set_defaults(func=_scale)
 
