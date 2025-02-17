@@ -255,6 +255,24 @@ def _runners(args):
 
     args.console.print(table)
 
+    requests_table = Table()
+    requests_table.add_column("Runner ID")
+    requests_table.add_column("Request ID")
+    requests_table.add_column("Caller ID")
+
+    for runner in runners:
+        for lease in runner.external_metadata.get("leases", []):
+            if not (req_id := lease.get("request_id")):
+                continue
+
+            requests_table.add_row(
+                runner.runner_id,
+                req_id,
+                lease.get("caller_user_id") or "",
+            )
+
+    args.console.print(requests_table)
+
 
 def _add_runners_parser(subparsers, parents):
     runners_help = "List application runners."
