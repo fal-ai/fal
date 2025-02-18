@@ -73,6 +73,10 @@ class R2Repository(FileRepository):
     def save(
         self,
         data: FileData,
+        multipart: bool | None = None,
+        multipart_threshold: int | None = None,
+        multipart_chunk_size: int | None = None,
+        multipart_max_concurrency: int | None = None,
         object_lifecycle_preference: Optional[dict[str, str]] = None,
     ) -> str:
         destination_path = posixpath.join(

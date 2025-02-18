@@ -39,6 +39,10 @@ class FileRepository:
     def save(
         self,
         data: FileData,
+        multipart: bool | None = None,
+        multipart_threshold: int | None = None,
+        multipart_chunk_size: int | None = None,
+        multipart_max_concurrency: int | None = None,
         object_lifecycle_preference: Optional[dict[str, str]] = None,
     ) -> str:
         raise NotImplementedError()
@@ -59,4 +63,11 @@ class FileRepository:
         with open(file_path, "rb") as fobj:
             data = FileData(fobj.read(), content_type, Path(file_path).name)
 
-        return self.save(data, object_lifecycle_preference), data
+        return self.save(
+            data,
+            multipart=multipart,
+            multipart_threshold=multipart_threshold,
+            multipart_chunk_size=multipart_chunk_size,
+            multipart_max_concurrency=multipart_max_concurrency,
+            object_lifecycle_preference=object_lifecycle_preference,
+        ), data

@@ -603,6 +603,13 @@ def test_fal_storage(isolated_client, repo_type, url_prefix):
         return File.from_bytes(
             b"Hello fal storage from isolated",
             repository=repo_type,
+            save_kwargs={
+                "multipart": False,
+                "multipart_threshold": 1024 * 1024,
+                "multipart_chunk_size": 1024 * 1024,
+                "multipart_max_concurrency": 10,
+                "object_lifecycle_preference": {},
+            },
             fallback_repository=None,
         )
 

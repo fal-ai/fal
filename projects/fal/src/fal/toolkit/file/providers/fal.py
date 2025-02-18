@@ -185,7 +185,13 @@ class FalFileRepositoryBase(FileRepository):
 @dataclass
 class FalFileRepository(FalFileRepositoryBase):
     def save(
-        self, file: FileData, object_lifecycle_preference: dict[str, str] | None = None
+        self,
+        file: FileData,
+        multipart: bool | None = None,
+        multipart_threshold: int | None = None,
+        multipart_chunk_size: int | None = None,
+        multipart_max_concurrency: int | None = None,
+        object_lifecycle_preference: dict[str, str] | None = None,
     ) -> str:
         return self._save(file, "gcs")
 
@@ -834,7 +840,10 @@ class FalFileRepositoryV2(FalFileRepositoryBase):
                     content_type=content_type,
                     file_name=os.path.basename(file_path),
                 )
-            url = self.save(data, object_lifecycle_preference)
+            url = self.save(
+                data,
+                object_lifecycle_preference=object_lifecycle_preference,
+            )
 
         return url, data
 
@@ -844,6 +853,10 @@ class InMemoryRepository(FileRepository):
     def save(
         self,
         file: FileData,
+        multipart: bool | None = None,
+        multipart_threshold: int | None = None,
+        multipart_chunk_size: int | None = None,
+        multipart_max_concurrency: int | None = None,
         object_lifecycle_preference: dict[str, str] | None = None,
     ) -> str:
         return f'data:{file.content_type};base64,{b64encode(file.data).decode("utf-8")}'
@@ -865,6 +878,10 @@ class FalCDNFileRepository(FileRepository):
     def save(
         self,
         file: FileData,
+        multipart: bool | None = None,
+        multipart_threshold: int | None = None,
+        multipart_chunk_size: int | None = None,
+        multipart_max_concurrency: int | None = None,
         object_lifecycle_preference: dict[str, str] | None = None,
     ) -> str:
         headers = {
@@ -1013,7 +1030,10 @@ class FalFileRepositoryV3(FileRepository):
                     content_type=content_type,
                     file_name=os.path.basename(file_path),
                 )
-            url = self.save(data, object_lifecycle_preference)
+            url = self.save(
+                data,
+                object_lifecycle_preference=object_lifecycle_preference,
+            )
 
         return url, data
 
@@ -1119,6 +1139,9 @@ class InternalFalFileRepositoryV3(FileRepository):
                     content_type=content_type,
                     file_name=os.path.basename(file_path),
                 )
-            url = self.save(data, object_lifecycle_preference)
+            url = self.save(
+                data,
+                object_lifecycle_preference=object_lifecycle_preference,
+            )
 
         return url, data
