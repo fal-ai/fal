@@ -212,11 +212,13 @@ class File(BaseModel):
             "object_lifecycle_preference", object_lifecycle_preference
         )
 
+        save_kwargs.setdefault("multipart", multipart)
+        fallback_save_kwargs.setdefault("multipart", multipart)
+
         try:
             url, data = repo.save_file(
                 file_path,
                 content_type=content_type,
-                multipart=multipart,
                 **save_kwargs,
             )
         except Exception:
@@ -228,7 +230,6 @@ class File(BaseModel):
             url, data = fallback_repo.save_file(
                 file_path,
                 content_type=content_type,
-                multipart=multipart,
                 **fallback_save_kwargs,
             )
 
