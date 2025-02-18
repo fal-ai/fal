@@ -62,7 +62,7 @@ dependencies = [
 
 [project.optional-dependencies]
 docs = [
-    "sphinx",
+    "sphinx<8.2.0",
     "sphinx-rtd-theme",
     "sphinx-autodoc-typehints",
 ]
