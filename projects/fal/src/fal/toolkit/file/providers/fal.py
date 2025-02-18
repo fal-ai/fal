@@ -414,6 +414,7 @@ class MultipartUploadV3:
                 method="POST",
                 headers={
                     **self.auth_headers,
+                    "Content-Type": "application/json",
                     "Accept": "application/json",
                 },
                 data=json.dumps(
