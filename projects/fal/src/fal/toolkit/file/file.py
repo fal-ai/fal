@@ -153,9 +153,12 @@ class File(BaseModel):
         object_lifecycle_preference = (
             request_lifecycle_preference(request) or LIFECYCLE_PREFERENCE.get()
         )
+        save_kwargs.setdefault(
+            "object_lifecycle_preference", object_lifecycle_preference
+        )
 
         try:
-            url = repo.save(fdata, object_lifecycle_preference, **save_kwargs)
+            url = repo.save(fdata, **save_kwargs)
         except Exception:
             if not fallback_repository:
                 raise
