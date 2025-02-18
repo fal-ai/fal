@@ -166,7 +166,9 @@ class File(BaseModel):
             fallback_repo = get_builtin_repository(fallback_repository)
 
             url = fallback_repo.save(
-                fdata, object_lifecycle_preference, **fallback_save_kwargs
+                fdata,
+                object_lifecycle_preference=object_lifecycle_preference,
+                **fallback_save_kwargs,
             )
 
         return cls(
