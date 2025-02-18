@@ -59,7 +59,7 @@ def get_builtin_repository(id: RepositoryId | FileRepository) -> FileRepository:
 get_builtin_repository.__module__ = "__main__"
 
 DEFAULT_REPOSITORY: FileRepository | RepositoryId = "fal_v3"
-FALLBACK_REPOSITORY: FileRepository | RepositoryId = "cdn"
+FALLBACK_REPOSITORY: FileRepository | RepositoryId = "fal"
 OBJECT_LIFECYCLE_PREFERENCE_KEY = "x-fal-object-lifecycle-preference"
 
 
