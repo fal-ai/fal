@@ -156,6 +156,9 @@ class File(BaseModel):
         save_kwargs.setdefault(
             "object_lifecycle_preference", object_lifecycle_preference
         )
+        fallback_save_kwargs.setdefault(
+            "object_lifecycle_preference", object_lifecycle_preference
+        )
 
         try:
             url = repo.save(fdata, **save_kwargs)
@@ -165,11 +168,7 @@ class File(BaseModel):
 
             fallback_repo = get_builtin_repository(fallback_repository)
 
-            url = fallback_repo.save(
-                fdata,
-                object_lifecycle_preference=object_lifecycle_preference,
-                **fallback_save_kwargs,
-            )
+            url = fallback_repo.save(fdata, **fallback_save_kwargs)
 
         return cls(
             url=url,
@@ -206,13 +205,20 @@ class File(BaseModel):
         object_lifecycle_preference = (
             request_lifecycle_preference(request) or LIFECYCLE_PREFERENCE.get()
         )
+        save_kwargs.setdefault(
+            "object_lifecycle_preference", object_lifecycle_preference
+        )
+        fallback_save_kwargs.setdefault(
+            "object_lifecycle_preference", object_lifecycle_preference
+        )
+
+        save_kwargs.setdefault("multipart", multipart)
+        fallback_save_kwargs.setdefault("multipart", multipart)
 
         try:
             url, data = repo.save_file(
                 file_path,
                 content_type=content_type,
-                multipart=multipart,
-                object_lifecycle_preference=object_lifecycle_preference,
                 **save_kwargs,
             )
         except Exception:
@@ -224,8 +230,6 @@ class File(BaseModel):
             url, data = fallback_repo.save_file(
                 file_path,
                 content_type=content_type,
-                multipart=multipart,
-                object_lifecycle_preference=object_lifecycle_preference,
                 **fallback_save_kwargs,
             )
 
