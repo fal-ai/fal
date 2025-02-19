@@ -11,6 +11,7 @@ import grpc
 import isolate_proto
 from isolate.connections.common import is_agent
 from isolate.logs import Log
+from isolate.server import definitions as worker_definitions
 from isolate.server.interface import from_grpc, to_serialized_object, to_struct
 from isolate_proto.configuration import GRPC_OPTIONS
 
@@ -222,6 +223,7 @@ class RunnerInfo:
     in_flight_requests: int
     expiration_countdown: Optional[int]
     uptime: timedelta
+    external_metadata: dict[str, Any]
 
 
 @dataclass
@@ -353,6 +355,7 @@ def _from_grpc_alias_info(message: isolate_proto.AliasInfo) -> AliasInfo:
 
 @from_grpc.register(isolate_proto.RunnerInfo)
 def _from_grpc_runner_info(message: isolate_proto.RunnerInfo) -> RunnerInfo:
+    external_metadata = worker_definitions.struct_to_dict(message.external_metadata)
     return RunnerInfo(
         runner_id=message.runner_id,
         in_flight_requests=message.in_flight_requests,
@@ -360,6 +363,7 @@ def _from_grpc_runner_info(message: isolate_proto.RunnerInfo) -> RunnerInfo:
         if message.HasField("expiration_countdown")
         else None,
         uptime=timedelta(seconds=message.uptime),
+        external_metadata=external_metadata,
     )
 
 
