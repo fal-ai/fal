@@ -22,7 +22,7 @@ authors = [{ name = "Features & Labels <support@fal.ai>"}]
 readme = "README.md"
 requires-python = ">=3.8"
 dependencies = [
-    "isolate[build]>=0.15.0,<0.16.0",
+    "isolate[build]>=0.16.1,<0.17.0",
     "isolate-proto>=0.6.6,<0.7.0",
     "grpcio==1.64.0",
     "dill==0.3.7",
