@@ -26,8 +26,8 @@ class IsolateLogPrinter:
             return
 
         msg = {
-            LogSource.BUILDER: "Building the environment",
-            LogSource.BRIDGE: "Unpacking user code",
+            LogSource.BUILDER: "Preparing the environment",
+            LogSource.BRIDGE: "Setting up runtime",
             LogSource.USER: "Running",
         }.get(source)
 
