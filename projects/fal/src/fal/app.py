@@ -9,7 +9,7 @@ import re
 import threading
 import time
 import typing
-from contextlib import AsyncExitStack, asynccontextmanager, contextmanager
+from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass
 from typing import Any, Callable, ClassVar, Literal, TypeVar
 
@@ -40,27 +40,26 @@ async def _call_any_fn(fn, *args, **kwargs):
         return fn(*args, **kwargs)
 
 
-async def open_isolate_channel(address: str) -> async_grpc.Channel:
-    _stack = AsyncExitStack()
-    channel = await _stack.enter_async_context(
-        async_grpc.insecure_channel(
-            address,
-            options=[
-                ("grpc.max_send_message_length", -1),
-                ("grpc.max_receive_message_length", -1),
-                ("grpc.min_reconnect_backoff_ms", 0),
-                ("grpc.max_reconnect_backoff_ms", 100),
-                ("grpc.dns_min_time_between_resolutions_ms", 100),
-            ],
-        )
+async def open_isolate_channel(address: str) -> async_grpc.Channel | None:
+    channel = async_grpc.insecure_channel(
+        address,
+        options=[
+            ("grpc.max_send_message_length", -1),
+            ("grpc.max_receive_message_length", -1),
+            ("grpc.min_reconnect_backoff_ms", 0),
+            ("grpc.max_reconnect_backoff_ms", 100),
+            ("grpc.dns_min_time_between_resolutions_ms", 100),
+        ],
     )
 
-    channel_status = channel.channel_ready()
     try:
+        channel_status = channel.channel_ready()
+
         await asyncio.wait_for(channel_status, timeout=1)
     except asyncio.TimeoutError:
-        await _stack.aclose()
-        raise Exception("Timed out trying to connect to local isolate")
+        await channel.close(None)
+        print("[DEBUG] Timed out trying to connect to local isolate")
+        return None
 
     return channel
 
@@ -390,9 +389,11 @@ class App(fal.api.BaseServable):
                     f"localhost:{grpc_port}"
                 )
 
+            if self.isolate_channel is None:
+                return await call_next(request)
+
             request_id = request.headers.get(REQUEST_ID_KEY)
             if request_id is None:
-                # Cut it short
                 return await call_next(request)
 
             await _set_logger_labels(
