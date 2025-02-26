@@ -79,6 +79,7 @@ def _app_rev_table(revs: list[ApplicationInfo]):
     table.add_column("Startup Timeout")
     table.add_column("Machine Type")
     table.add_column("Active Workers")
+    table.add_column("Regions")
 
     for rev in revs:
         table.add_row(
@@ -91,6 +92,7 @@ def _app_rev_table(revs: list[ApplicationInfo]):
             str(rev.startup_timeout),
             " ".join(rev.machine_types),
             str(rev.active_runners),
+            " ".join(rev.valid_regions),
         )
 
     return table
