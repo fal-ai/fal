@@ -195,16 +195,16 @@ def _add_scale_parser(subparsers, parents):
         help="Startup timeout (seconds).",
     )
     parser.add_argument(
-        "--machine-type",
+        "--machine-types",
         type=str,
-        action="append",
+        nargs="+",
         dest="machine_types",
-        help="Machine type.",
+        help="Machine type (pass several items to set multiple).",
     )
     parser.add_argument(
         "--regions",
         nargs="+",
-        help="Valid regions.",
+        help="Valid regions (pass several items to set multiple).",
     )
     parser.set_defaults(func=_scale)
 
