@@ -585,7 +585,6 @@ class FalServerlessConnection:
         valid_regions: list[str] | None = None,
         machine_types: list[str] | None = None,
     ) -> AliasInfo:
-        print(machine_types)
         request = isolate_proto.UpdateApplicationRequest(
             application_name=application_name,
             keep_alive=keep_alive,
