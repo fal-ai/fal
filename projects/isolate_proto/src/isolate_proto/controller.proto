@@ -233,6 +233,7 @@ message ApplicationInfo {
     repeated string machine_types = 8;
     optional int32 request_timeout = 9;
     optional int32 startup_timeout = 10;
+    repeated string valid_regions = 11;
 }
 
 message ListApplicationsResult {
@@ -285,6 +286,7 @@ message AliasInfo {
     repeated string machine_types = 9;
     optional int32 request_timeout = 10;
     optional int32 startup_timeout = 11;
+    repeated string valid_regions = 12;
 }
 
 message SetSecretRequest {

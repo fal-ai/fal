@@ -23,6 +23,7 @@ def _apps_table(apps: list[AliasInfo]):
     table.add_column("Startup Timeout")
     table.add_column("Machine Type")
     table.add_column("Active Workers")
+    table.add_column("Regions")
 
     for app in apps:
         table.add_row(
@@ -37,6 +38,7 @@ def _apps_table(apps: list[AliasInfo]):
             str(app.startup_timeout),
             " ".join(app.machine_types),
             str(app.active_runners),
+            " ".join(app.valid_regions),
         )
 
     return table
@@ -77,6 +79,7 @@ def _app_rev_table(revs: list[ApplicationInfo]):
     table.add_column("Startup Timeout")
     table.add_column("Machine Type")
     table.add_column("Active Workers")
+    table.add_column("Regions")
 
     for rev in revs:
         table.add_row(
@@ -89,6 +92,7 @@ def _app_rev_table(revs: list[ApplicationInfo]):
             str(rev.startup_timeout),
             " ".join(rev.machine_types),
             str(rev.active_runners),
+            " ".join(rev.valid_regions),
         )
 
     return table
@@ -129,6 +133,7 @@ def _scale(args):
             and args.request_timeout is None
             and args.startup_timeout is None
             and args.machine_types is None
+            and args.regions is None
         ):
             args.console.log("No parameters for update were provided, ignoring.")
             return
@@ -142,6 +147,7 @@ def _scale(args):
             request_timeout=args.request_timeout,
             startup_timeout=args.startup_timeout,
             machine_types=args.machine_types,
+            valid_regions=args.regions,
         )
         table = _apps_table([alias_info])
 
@@ -191,11 +197,16 @@ def _add_scale_parser(subparsers, parents):
         help="Startup timeout (seconds).",
     )
     parser.add_argument(
-        "--machine-type",
+        "--machine-types",
         type=str,
-        action="append",
+        nargs="+",
         dest="machine_types",
-        help="Machine type.",
+        help="Machine types (pass several items to set multiple).",
+    )
+    parser.add_argument(
+        "--regions",
+        nargs="+",
+        help="Valid regions (pass several items to set multiple).",
     )
     parser.set_defaults(func=_scale)
 

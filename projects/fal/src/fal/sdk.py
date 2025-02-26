@@ -200,6 +200,7 @@ class ApplicationInfo:
     machine_types: list[str]
     request_timeout: int
     startup_timeout: int
+    valid_regions: list[str]
 
 
 @dataclass
@@ -215,6 +216,7 @@ class AliasInfo:
     machine_types: list[str]
     request_timeout: int
     startup_timeout: int
+    valid_regions: list[str]
 
 
 @dataclass
@@ -321,9 +323,10 @@ def _from_grpc_application_info(
         max_multiplexing=message.max_multiplexing,
         active_runners=message.active_runners,
         min_concurrency=message.min_concurrency,
-        machine_types=message.machine_types,
+        machine_types=list(message.machine_types),
         request_timeout=message.request_timeout,
         startup_timeout=message.startup_timeout,
+        valid_regions=[],  # list(message.valid_regions),
     )
 
 
@@ -347,9 +350,10 @@ def _from_grpc_alias_info(message: isolate_proto.AliasInfo) -> AliasInfo:
         max_multiplexing=message.max_multiplexing,
         active_runners=message.active_runners,
         min_concurrency=message.min_concurrency,
-        machine_types=message.machine_types,
+        machine_types=list(message.machine_types),
         request_timeout=message.request_timeout,
         startup_timeout=message.startup_timeout,
+        valid_regions=[],  # list(message.valid_regions),
     )
 
 
@@ -359,9 +363,11 @@ def _from_grpc_runner_info(message: isolate_proto.RunnerInfo) -> RunnerInfo:
     return RunnerInfo(
         runner_id=message.runner_id,
         in_flight_requests=message.in_flight_requests,
-        expiration_countdown=message.expiration_countdown
-        if message.HasField("expiration_countdown")
-        else None,
+        expiration_countdown=(
+            message.expiration_countdown
+            if message.HasField("expiration_countdown")
+            else None
+        ),
         uptime=timedelta(seconds=message.uptime),
         external_metadata=external_metadata,
     )
@@ -582,9 +588,9 @@ class FalServerlessConnection:
         min_concurrency: int | None = None,
         request_timeout: int | None = None,
         startup_timeout: int | None = None,
+        valid_regions: list[str] | None = None,
         machine_types: list[str] | None = None,
     ) -> AliasInfo:
-        print(machine_types)
         request = isolate_proto.UpdateApplicationRequest(
             application_name=application_name,
             keep_alive=keep_alive,
@@ -593,6 +599,7 @@ class FalServerlessConnection:
             min_concurrency=min_concurrency,
             request_timeout=request_timeout,
             startup_timeout=startup_timeout,
+            valid_regions=valid_regions,
             machine_types=machine_types,
         )
         res: isolate_proto.UpdateApplicationResult = self.stub.UpdateApplication(
