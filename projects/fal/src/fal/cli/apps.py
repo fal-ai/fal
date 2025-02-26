@@ -23,6 +23,7 @@ def _apps_table(apps: list[AliasInfo]):
     table.add_column("Startup Timeout")
     table.add_column("Machine Type")
     table.add_column("Active Workers")
+    table.add_column("Regions")
 
     for app in apps:
         table.add_row(
@@ -37,6 +38,7 @@ def _apps_table(apps: list[AliasInfo]):
             str(app.startup_timeout),
             " ".join(app.machine_types),
             str(app.active_runners),
+            " ".join(app.valid_regions),
         )
 
     return table

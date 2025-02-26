@@ -215,6 +215,7 @@ class AliasInfo:
     machine_types: list[str]
     request_timeout: int
     startup_timeout: int
+    valid_regions: list[str]
 
 
 @dataclass
@@ -347,9 +348,10 @@ def _from_grpc_alias_info(message: isolate_proto.AliasInfo) -> AliasInfo:
         max_multiplexing=message.max_multiplexing,
         active_runners=message.active_runners,
         min_concurrency=message.min_concurrency,
-        machine_types=message.machine_types,
+        machine_types=list(message.machine_types),
         request_timeout=message.request_timeout,
         startup_timeout=message.startup_timeout,
+        valid_regions=list(message.valid_regions),
     )
 
 
