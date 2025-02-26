@@ -129,6 +129,7 @@ def _scale(args):
             and args.request_timeout is None
             and args.startup_timeout is None
             and args.machine_types is None
+            and args.regions is None
         ):
             args.console.log("No parameters for update were provided, ignoring.")
             return
@@ -142,6 +143,7 @@ def _scale(args):
             request_timeout=args.request_timeout,
             startup_timeout=args.startup_timeout,
             machine_types=args.machine_types,
+            valid_regions=args.regions,
         )
         table = _apps_table([alias_info])
 
@@ -196,6 +198,11 @@ def _add_scale_parser(subparsers, parents):
         action="append",
         dest="machine_types",
         help="Machine type.",
+    )
+    parser.add_argument(
+        "--regions",
+        nargs="+",
+        help="Valid regions.",
     )
     parser.set_defaults(func=_scale)
 
