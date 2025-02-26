@@ -273,6 +273,7 @@ def _runners(args):
             f"{runner.uptime} ({runner.uptime.total_seconds()}s)",
         )
 
+    args.console.print(f"Runners: {len(runners)}")
     args.console.print(table)
 
     requests_table = Table()
@@ -291,6 +292,7 @@ def _runners(args):
                 lease.get("caller_user_id") or "",
             )
 
+    args.console.print(f"Requests: {len(requests_table.rows)}")
     args.console.print(requests_table)
 
 
