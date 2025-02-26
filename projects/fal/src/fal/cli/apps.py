@@ -22,7 +22,7 @@ def _apps_table(apps: list[AliasInfo]):
     table.add_column("Request Timeout")
     table.add_column("Startup Timeout")
     table.add_column("Machine Type")
-    table.add_column("Active Workers")
+    table.add_column("Runners")
     table.add_column("Regions")
 
     for app in apps:
@@ -78,7 +78,7 @@ def _app_rev_table(revs: list[ApplicationInfo]):
     table.add_column("Request Timeout")
     table.add_column("Startup Timeout")
     table.add_column("Machine Type")
-    table.add_column("Active Workers")
+    table.add_column("Runners")
     table.add_column("Regions")
 
     for rev in revs:

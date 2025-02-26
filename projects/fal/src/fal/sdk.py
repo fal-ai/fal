@@ -326,7 +326,7 @@ def _from_grpc_application_info(
         machine_types=list(message.machine_types),
         request_timeout=message.request_timeout,
         startup_timeout=message.startup_timeout,
-        valid_regions=[],  # list(message.valid_regions),
+        valid_regions=list(message.valid_regions),
     )
 
 
@@ -353,7 +353,7 @@ def _from_grpc_alias_info(message: isolate_proto.AliasInfo) -> AliasInfo:
         machine_types=list(message.machine_types),
         request_timeout=message.request_timeout,
         startup_timeout=message.startup_timeout,
-        valid_regions=[],  # list(message.valid_regions),
+        valid_regions=list(message.valid_regions),
     )
 
 
