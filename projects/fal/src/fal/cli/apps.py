@@ -199,7 +199,7 @@ def _add_scale_parser(subparsers, parents):
         type=str,
         nargs="+",
         dest="machine_types",
-        help="Machine type (pass several items to set multiple).",
+        help="Machine types (pass several items to set multiple).",
     )
     parser.add_argument(
         "--regions",
