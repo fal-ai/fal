@@ -9,10 +9,9 @@ SETTINGS_SECTION = "__internal__"
 
 class Config:
     _config: dict[str, dict[str, str]]
-    _profile: str
+    _profile: Optional[str]
 
     DEFAULT_CONFIG_PATH = "~/.fal/config.toml"
-    DEFAULT_PROFILE = "default"
 
     def __init__(self):
         self.config_path = os.path.expanduser(
@@ -28,14 +27,19 @@ class Config:
         profile = os.getenv("FAL_PROFILE")
         if not profile:
             profile = self.get_internal("profile")
-        if not profile:
-            profile = self.DEFAULT_PROFILE
 
-        self._profile = profile
+        self.profile = profile
 
     @property
-    def profile(self):
+    def profile(self) -> Optional[str]:
         return self._profile
+
+    @profile.setter
+    def profile(self, value: Optional[str]):
+        if value and value not in self._config:
+            self._config[value] = {}
+
+        self._profile = value
 
     def profiles(self):
         keys = []
@@ -50,13 +54,16 @@ class Config:
             tomli_w.dump(self._config, file)
 
     def get(self, key: str) -> Optional[str]:
-        return self._config.get(self._profile, {}).get(key)
+        if not self.profile:
+            return None
+
+        return self._config.get(self.profile, {}).get(key)
 
     def set(self, key: str, value: str):
-        if self._profile not in self._config:
-            self._config[self._profile] = {}
+        if not self.profile:
+            raise ValueError("No profile set.")
 
-        self._config[self._profile][key] = value
+        self._config[self.profile][key] = value
 
     def get_internal(self, key):
         if SETTINGS_SECTION not in self._config:
@@ -68,4 +75,10 @@ class Config:
         if SETTINGS_SECTION not in self._config:
             self._config[SETTINGS_SECTION] = {}
 
-        self._config[SETTINGS_SECTION][key] = value
+        if value is None:
+            del self._config[SETTINGS_SECTION][key]
+        else:
+            self._config[SETTINGS_SECTION][key] = value
+
+    def delete(self, profile):
+        del self._config[profile]
