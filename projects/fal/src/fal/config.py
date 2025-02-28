@@ -1,19 +1,18 @@
 import os
-from typing import Optional
-
-import tomli
-import tomli_w
+from typing import Dict, List, Optional
 
 SETTINGS_SECTION = "__internal__"
 
 
 class Config:
-    _config: dict[str, dict[str, str]]
+    _config: Dict[str, Dict[str, str]]
     _profile: Optional[str]
 
     DEFAULT_CONFIG_PATH = "~/.fal/config.toml"
 
     def __init__(self):
+        import tomli
+
         self.config_path = os.path.expanduser(
             os.getenv("FAL_CONFIG_PATH", self.DEFAULT_CONFIG_PATH)
         )
@@ -35,13 +34,13 @@ class Config:
         return self._profile
 
     @profile.setter
-    def profile(self, value: Optional[str]):
+    def profile(self, value: Optional[str]) -> None:
         if value and value not in self._config:
             self._config[value] = {}
 
         self._profile = value
 
-    def profiles(self):
+    def profiles(self) -> List[str]:
         keys = []
         for key in self._config:
             if key != SETTINGS_SECTION:
@@ -49,7 +48,9 @@ class Config:
 
         return keys
 
-    def save(self):
+    def save(self) -> None:
+        import tomli_w
+
         with open(self.config_path, "wb") as file:
             tomli_w.dump(self._config, file)
 
@@ -59,19 +60,19 @@ class Config:
 
         return self._config.get(self.profile, {}).get(key)
 
-    def set(self, key: str, value: str):
+    def set(self, key: str, value: str) -> None:
         if not self.profile:
             raise ValueError("No profile set.")
 
         self._config[self.profile][key] = value
 
-    def get_internal(self, key):
+    def get_internal(self, key: str) -> Optional[str]:
         if SETTINGS_SECTION not in self._config:
             self._config[SETTINGS_SECTION] = {}
 
         return self._config[SETTINGS_SECTION].get(key)
 
-    def set_internal(self, key, value):
+    def set_internal(self, key: str, value: Optional[str]) -> None:
         if SETTINGS_SECTION not in self._config:
             self._config[SETTINGS_SECTION] = {}
 
@@ -80,5 +81,5 @@ class Config:
         else:
             self._config[SETTINGS_SECTION][key] = value
 
-    def delete(self, profile):
+    def delete(self, profile: str) -> None:
         del self._config[profile]
