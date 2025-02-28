@@ -125,7 +125,9 @@ LIFECYCLE_PREFERENCE: VariableReference[dict[str, str] | None] = VariableReferen
 @dataclass
 class FalFileRepositoryBase(FileRepository):
     @retry(max_retries=3, base_delay=1, backoff_type="exponential", jitter=True)
-    def _save(self, file: FileData, storage_type: str) -> str:
+    def _save(
+        self, file: FileData, storage_type: str, headers: dict[str, str] | None = None
+    ) -> str:
         key_creds = key_credentials()
         if not key_creds:
             raise FileUploadException("FAL_KEY must be set")
@@ -135,6 +137,7 @@ class FalFileRepositoryBase(FileRepository):
             "Authorization": f"Key {key_id}:{key_secret}",
             "Accept": "application/json",
             "Content-Type": "application/json",
+            **(headers or {}),
         }
 
         grpc_host = os.environ.get("FAL_HOST", "api.alpha.fal.ai")
@@ -193,7 +196,11 @@ class FalFileRepository(FalFileRepositoryBase):
         multipart_max_concurrency: int | None = None,
         object_lifecycle_preference: dict[str, str] | None = None,
     ) -> str:
-        return self._save(file, "gcs")
+        headers = {}
+        if object_lifecycle_preference:
+            headers["X-Fal-Object-Lifecycle"] = json.dumps(object_lifecycle_preference)
+
+        return self._save(file, "gcs", headers=headers)
 
 
 class MultipartUpload:
