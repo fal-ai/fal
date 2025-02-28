@@ -76,6 +76,14 @@ fal.cli.parser module
    :undoc-members:
    :show-inheritance:
 
+fal.cli.profile module
+----------------------
+
+.. automodule:: fal.cli.profile
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 fal.cli.run module
 ------------------
 
