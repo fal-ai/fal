@@ -78,6 +78,7 @@ SERVE_REQUIREMENTS = [
     "starlette_exporter",
     "structlog",
     "tomli",
+    "tomli-w",
 ]
 
 
