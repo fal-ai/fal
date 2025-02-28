@@ -1,9 +1,6 @@
 import os
 from typing import Dict, List, Optional
 
-import tomli
-import tomli_w
-
 SETTINGS_SECTION = "__internal__"
 
 
@@ -14,6 +11,8 @@ class Config:
     DEFAULT_CONFIG_PATH = "~/.fal/config.toml"
 
     def __init__(self):
+        import tomli
+
         self.config_path = os.path.expanduser(
             os.getenv("FAL_CONFIG_PATH", self.DEFAULT_CONFIG_PATH)
         )
@@ -50,6 +49,8 @@ class Config:
         return keys
 
     def save(self) -> None:
+        import tomli_w
+
         with open(self.config_path, "wb") as file:
             tomli_w.dump(self._config, file)
 
