@@ -26,6 +26,10 @@ def _set(args):
     config.set_internal("profile", args.PROFILE)
     args.console.print(f"Default profile set to [cyan]{args.PROFILE}[/].")
     config.profile = args.PROFILE
+    if not config.get("key"):
+        args.console.print(
+            "No key set for profile. Use [bold]fal profile key[/] to set a key."
+        )
     config.save()
 
 
@@ -39,8 +43,16 @@ def _unset(args):
 
 def _key_set(args):
     config = Config()
-    key_id, key_secret = args.KEY.split(":", 1)
-    config.set("key", f"{key_id}:{key_secret}")
+
+    while True:
+        key = input("Enter the key: ")
+        if ":" in key:
+            break
+        args.console.print(
+            "[red]Invalid key. The key must be in the format [bold]key:value[/].[/]"
+        )
+
+    config.set("key", key)
     args.console.print(f"Key set for profile [cyan]{config.profile}[/].")
     config.save()
 
@@ -108,10 +120,6 @@ def add_parser(main_subparsers, parents):
         description=key_set_help,
         help=key_set_help,
         parents=parents,
-    )
-    key_set_parser.add_argument(
-        "KEY",
-        help="Key ID and secret separated by a colon.",
     )
     key_set_parser.set_defaults(func=_key_set)
 
