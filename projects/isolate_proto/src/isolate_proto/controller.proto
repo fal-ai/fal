@@ -159,6 +159,7 @@ message MachineRequirements {
     optional int32 num_gpus = 12;
     optional int32 request_timeout = 13;
     optional int32 startup_timeout = 14;
+    optional int32 concurrency_buffer = 15;
 }
 
 enum ApplicationAuthMode {
@@ -213,6 +214,7 @@ message UpdateApplicationRequest {
     repeated string machine_types = 7;
     optional int32 request_timeout = 8;
     optional int32 startup_timeout = 9;
+    optional int32 concurrency_buffer = 10;
 }
 
 message UpdateApplicationResult {
@@ -234,6 +236,7 @@ message ApplicationInfo {
     optional int32 request_timeout = 9;
     optional int32 startup_timeout = 10;
     repeated string valid_regions = 11;
+    optional int32 concurrency_buffer = 12;
 }
 
 message ListApplicationsResult {
@@ -287,6 +290,7 @@ message AliasInfo {
     optional int32 request_timeout = 10;
     optional int32 startup_timeout = 11;
     repeated string valid_regions = 12;
+    optional int32 concurrency_buffer = 13;
 }
 
 message SetSecretRequest {

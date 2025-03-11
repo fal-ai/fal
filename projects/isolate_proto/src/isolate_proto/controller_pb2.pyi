@@ -357,6 +357,7 @@ class MachineRequirements(google.protobuf.message.Message):
     NUM_GPUS_FIELD_NUMBER: builtins.int
     REQUEST_TIMEOUT_FIELD_NUMBER: builtins.int
     STARTUP_TIMEOUT_FIELD_NUMBER: builtins.int
+    CONCURRENCY_BUFFER_FIELD_NUMBER: builtins.int
     machine_type: builtins.str
     """Machine type. It is not an enum because we want to be able
     to dynamically add new machine types without regenerating
@@ -380,6 +381,7 @@ class MachineRequirements(google.protobuf.message.Message):
     num_gpus: builtins.int
     request_timeout: builtins.int
     startup_timeout: builtins.int
+    concurrency_buffer: builtins.int
     def __init__(
         self,
         *,
@@ -396,11 +398,14 @@ class MachineRequirements(google.protobuf.message.Message):
         num_gpus: builtins.int | None = ...,
         request_timeout: builtins.int | None = ...,
         startup_timeout: builtins.int | None = ...,
+        concurrency_buffer: builtins.int | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing_extensions.Literal["_base_image", b"_base_image", "_exposed_port", b"_exposed_port", "_keep_alive", b"_keep_alive", "_machine_type", b"_machine_type", "_max_concurrency", b"_max_concurrency", "_max_multiplexing", b"_max_multiplexing", "_min_concurrency", b"_min_concurrency", "_num_gpus", b"_num_gpus", "_request_timeout", b"_request_timeout", "_scheduler", b"_scheduler", "_scheduler_options", b"_scheduler_options", "_startup_timeout", b"_startup_timeout", "base_image", b"base_image", "exposed_port", b"exposed_port", "keep_alive", b"keep_alive", "machine_type", b"machine_type", "max_concurrency", b"max_concurrency", "max_multiplexing", b"max_multiplexing", "min_concurrency", b"min_concurrency", "num_gpus", b"num_gpus", "request_timeout", b"request_timeout", "scheduler", b"scheduler", "scheduler_options", b"scheduler_options", "startup_timeout", b"startup_timeout"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing_extensions.Literal["_base_image", b"_base_image", "_exposed_port", b"_exposed_port", "_keep_alive", b"_keep_alive", "_machine_type", b"_machine_type", "_max_concurrency", b"_max_concurrency", "_max_multiplexing", b"_max_multiplexing", "_min_concurrency", b"_min_concurrency", "_num_gpus", b"_num_gpus", "_request_timeout", b"_request_timeout", "_scheduler", b"_scheduler", "_scheduler_options", b"_scheduler_options", "_startup_timeout", b"_startup_timeout", "base_image", b"base_image", "exposed_port", b"exposed_port", "keep_alive", b"keep_alive", "machine_type", b"machine_type", "machine_types", b"machine_types", "max_concurrency", b"max_concurrency", "max_multiplexing", b"max_multiplexing", "min_concurrency", b"min_concurrency", "num_gpus", b"num_gpus", "request_timeout", b"request_timeout", "scheduler", b"scheduler", "scheduler_options", b"scheduler_options", "startup_timeout", b"startup_timeout"]) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["_base_image", b"_base_image", "_concurrency_buffer", b"_concurrency_buffer", "_exposed_port", b"_exposed_port", "_keep_alive", b"_keep_alive", "_machine_type", b"_machine_type", "_max_concurrency", b"_max_concurrency", "_max_multiplexing", b"_max_multiplexing", "_min_concurrency", b"_min_concurrency", "_num_gpus", b"_num_gpus", "_request_timeout", b"_request_timeout", "_scheduler", b"_scheduler", "_scheduler_options", b"_scheduler_options", "_startup_timeout", b"_startup_timeout", "base_image", b"base_image", "concurrency_buffer", b"concurrency_buffer", "exposed_port", b"exposed_port", "keep_alive", b"keep_alive", "machine_type", b"machine_type", "max_concurrency", b"max_concurrency", "max_multiplexing", b"max_multiplexing", "min_concurrency", b"min_concurrency", "num_gpus", b"num_gpus", "request_timeout", b"request_timeout", "scheduler", b"scheduler", "scheduler_options", b"scheduler_options", "startup_timeout", b"startup_timeout"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["_base_image", b"_base_image", "_concurrency_buffer", b"_concurrency_buffer", "_exposed_port", b"_exposed_port", "_keep_alive", b"_keep_alive", "_machine_type", b"_machine_type", "_max_concurrency", b"_max_concurrency", "_max_multiplexing", b"_max_multiplexing", "_min_concurrency", b"_min_concurrency", "_num_gpus", b"_num_gpus", "_request_timeout", b"_request_timeout", "_scheduler", b"_scheduler", "_scheduler_options", b"_scheduler_options", "_startup_timeout", b"_startup_timeout", "base_image", b"base_image", "concurrency_buffer", b"concurrency_buffer", "exposed_port", b"exposed_port", "keep_alive", b"keep_alive", "machine_type", b"machine_type", "machine_types", b"machine_types", "max_concurrency", b"max_concurrency", "max_multiplexing", b"max_multiplexing", "min_concurrency", b"min_concurrency", "num_gpus", b"num_gpus", "request_timeout", b"request_timeout", "scheduler", b"scheduler", "scheduler_options", b"scheduler_options", "startup_timeout", b"startup_timeout"]) -> None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_base_image", b"_base_image"]) -> typing_extensions.Literal["base_image"] | None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_concurrency_buffer", b"_concurrency_buffer"]) -> typing_extensions.Literal["concurrency_buffer"] | None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_exposed_port", b"_exposed_port"]) -> typing_extensions.Literal["exposed_port"] | None: ...
     @typing.overload
@@ -549,6 +554,7 @@ class UpdateApplicationRequest(google.protobuf.message.Message):
     MACHINE_TYPES_FIELD_NUMBER: builtins.int
     REQUEST_TIMEOUT_FIELD_NUMBER: builtins.int
     STARTUP_TIMEOUT_FIELD_NUMBER: builtins.int
+    CONCURRENCY_BUFFER_FIELD_NUMBER: builtins.int
     application_name: builtins.str
     keep_alive: builtins.int
     max_multiplexing: builtins.int
@@ -560,6 +566,7 @@ class UpdateApplicationRequest(google.protobuf.message.Message):
     def machine_types(self) -> google.protobuf.internal.containers.RepeatedScalarFieldContainer[builtins.str]: ...
     request_timeout: builtins.int
     startup_timeout: builtins.int
+    concurrency_buffer: builtins.int
     def __init__(
         self,
         *,
@@ -572,9 +579,12 @@ class UpdateApplicationRequest(google.protobuf.message.Message):
         machine_types: collections.abc.Iterable[builtins.str] | None = ...,
         request_timeout: builtins.int | None = ...,
         startup_timeout: builtins.int | None = ...,
+        concurrency_buffer: builtins.int | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing_extensions.Literal["_keep_alive", b"_keep_alive", "_max_concurrency", b"_max_concurrency", "_max_multiplexing", b"_max_multiplexing", "_min_concurrency", b"_min_concurrency", "_request_timeout", b"_request_timeout", "_startup_timeout", b"_startup_timeout", "keep_alive", b"keep_alive", "max_concurrency", b"max_concurrency", "max_multiplexing", b"max_multiplexing", "min_concurrency", b"min_concurrency", "request_timeout", b"request_timeout", "startup_timeout", b"startup_timeout"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing_extensions.Literal["_keep_alive", b"_keep_alive", "_max_concurrency", b"_max_concurrency", "_max_multiplexing", b"_max_multiplexing", "_min_concurrency", b"_min_concurrency", "_request_timeout", b"_request_timeout", "_startup_timeout", b"_startup_timeout", "application_name", b"application_name", "keep_alive", b"keep_alive", "machine_types", b"machine_types", "max_concurrency", b"max_concurrency", "max_multiplexing", b"max_multiplexing", "min_concurrency", b"min_concurrency", "request_timeout", b"request_timeout", "startup_timeout", b"startup_timeout", "valid_regions", b"valid_regions"]) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["_concurrency_buffer", b"_concurrency_buffer", "_keep_alive", b"_keep_alive", "_max_concurrency", b"_max_concurrency", "_max_multiplexing", b"_max_multiplexing", "_min_concurrency", b"_min_concurrency", "_request_timeout", b"_request_timeout", "_startup_timeout", b"_startup_timeout", "concurrency_buffer", b"concurrency_buffer", "keep_alive", b"keep_alive", "max_concurrency", b"max_concurrency", "max_multiplexing", b"max_multiplexing", "min_concurrency", b"min_concurrency", "request_timeout", b"request_timeout", "startup_timeout", b"startup_timeout"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["_concurrency_buffer", b"_concurrency_buffer", "_keep_alive", b"_keep_alive", "_max_concurrency", b"_max_concurrency", "_max_multiplexing", b"_max_multiplexing", "_min_concurrency", b"_min_concurrency", "_request_timeout", b"_request_timeout", "_startup_timeout", b"_startup_timeout", "application_name", b"application_name", "concurrency_buffer", b"concurrency_buffer", "keep_alive", b"keep_alive", "machine_types", b"machine_types", "max_concurrency", b"max_concurrency", "max_multiplexing", b"max_multiplexing", "min_concurrency", b"min_concurrency", "request_timeout", b"request_timeout", "startup_timeout", b"startup_timeout", "valid_regions", b"valid_regions"]) -> None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_concurrency_buffer", b"_concurrency_buffer"]) -> typing_extensions.Literal["concurrency_buffer"] | None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_keep_alive", b"_keep_alive"]) -> typing_extensions.Literal["keep_alive"] | None: ...
     @typing.overload
@@ -633,6 +643,7 @@ class ApplicationInfo(google.protobuf.message.Message):
     REQUEST_TIMEOUT_FIELD_NUMBER: builtins.int
     STARTUP_TIMEOUT_FIELD_NUMBER: builtins.int
     VALID_REGIONS_FIELD_NUMBER: builtins.int
+    CONCURRENCY_BUFFER_FIELD_NUMBER: builtins.int
     application_id: builtins.str
     max_concurrency: builtins.int
     max_multiplexing: builtins.int
@@ -645,6 +656,7 @@ class ApplicationInfo(google.protobuf.message.Message):
     startup_timeout: builtins.int
     @property
     def valid_regions(self) -> google.protobuf.internal.containers.RepeatedScalarFieldContainer[builtins.str]: ...
+    concurrency_buffer: builtins.int
     def __init__(
         self,
         *,
@@ -658,9 +670,12 @@ class ApplicationInfo(google.protobuf.message.Message):
         request_timeout: builtins.int | None = ...,
         startup_timeout: builtins.int | None = ...,
         valid_regions: collections.abc.Iterable[builtins.str] | None = ...,
+        concurrency_buffer: builtins.int | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing_extensions.Literal["_request_timeout", b"_request_timeout", "_startup_timeout", b"_startup_timeout", "request_timeout", b"request_timeout", "startup_timeout", b"startup_timeout"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing_extensions.Literal["_request_timeout", b"_request_timeout", "_startup_timeout", b"_startup_timeout", "active_runners", b"active_runners", "application_id", b"application_id", "keep_alive", b"keep_alive", "machine_types", b"machine_types", "max_concurrency", b"max_concurrency", "max_multiplexing", b"max_multiplexing", "min_concurrency", b"min_concurrency", "request_timeout", b"request_timeout", "startup_timeout", b"startup_timeout", "valid_regions", b"valid_regions"]) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["_concurrency_buffer", b"_concurrency_buffer", "_request_timeout", b"_request_timeout", "_startup_timeout", b"_startup_timeout", "concurrency_buffer", b"concurrency_buffer", "request_timeout", b"request_timeout", "startup_timeout", b"startup_timeout"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["_concurrency_buffer", b"_concurrency_buffer", "_request_timeout", b"_request_timeout", "_startup_timeout", b"_startup_timeout", "active_runners", b"active_runners", "application_id", b"application_id", "concurrency_buffer", b"concurrency_buffer", "keep_alive", b"keep_alive", "machine_types", b"machine_types", "max_concurrency", b"max_concurrency", "max_multiplexing", b"max_multiplexing", "min_concurrency", b"min_concurrency", "request_timeout", b"request_timeout", "startup_timeout", b"startup_timeout", "valid_regions", b"valid_regions"]) -> None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_concurrency_buffer", b"_concurrency_buffer"]) -> typing_extensions.Literal["concurrency_buffer"] | None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_request_timeout", b"_request_timeout"]) -> typing_extensions.Literal["request_timeout"] | None: ...
     @typing.overload
@@ -818,6 +833,7 @@ class AliasInfo(google.protobuf.message.Message):
     REQUEST_TIMEOUT_FIELD_NUMBER: builtins.int
     STARTUP_TIMEOUT_FIELD_NUMBER: builtins.int
     VALID_REGIONS_FIELD_NUMBER: builtins.int
+    CONCURRENCY_BUFFER_FIELD_NUMBER: builtins.int
     alias: builtins.str
     revision: builtins.str
     auth_mode: global___ApplicationAuthMode.ValueType
@@ -832,6 +848,7 @@ class AliasInfo(google.protobuf.message.Message):
     startup_timeout: builtins.int
     @property
     def valid_regions(self) -> google.protobuf.internal.containers.RepeatedScalarFieldContainer[builtins.str]: ...
+    concurrency_buffer: builtins.int
     def __init__(
         self,
         *,
@@ -847,9 +864,12 @@ class AliasInfo(google.protobuf.message.Message):
         request_timeout: builtins.int | None = ...,
         startup_timeout: builtins.int | None = ...,
         valid_regions: collections.abc.Iterable[builtins.str] | None = ...,
+        concurrency_buffer: builtins.int | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing_extensions.Literal["_request_timeout", b"_request_timeout", "_startup_timeout", b"_startup_timeout", "request_timeout", b"request_timeout", "startup_timeout", b"startup_timeout"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing_extensions.Literal["_request_timeout", b"_request_timeout", "_startup_timeout", b"_startup_timeout", "active_runners", b"active_runners", "alias", b"alias", "auth_mode", b"auth_mode", "keep_alive", b"keep_alive", "machine_types", b"machine_types", "max_concurrency", b"max_concurrency", "max_multiplexing", b"max_multiplexing", "min_concurrency", b"min_concurrency", "request_timeout", b"request_timeout", "revision", b"revision", "startup_timeout", b"startup_timeout", "valid_regions", b"valid_regions"]) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["_concurrency_buffer", b"_concurrency_buffer", "_request_timeout", b"_request_timeout", "_startup_timeout", b"_startup_timeout", "concurrency_buffer", b"concurrency_buffer", "request_timeout", b"request_timeout", "startup_timeout", b"startup_timeout"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["_concurrency_buffer", b"_concurrency_buffer", "_request_timeout", b"_request_timeout", "_startup_timeout", b"_startup_timeout", "active_runners", b"active_runners", "alias", b"alias", "auth_mode", b"auth_mode", "concurrency_buffer", b"concurrency_buffer", "keep_alive", b"keep_alive", "machine_types", b"machine_types", "max_concurrency", b"max_concurrency", "max_multiplexing", b"max_multiplexing", "min_concurrency", b"min_concurrency", "request_timeout", b"request_timeout", "revision", b"revision", "startup_timeout", b"startup_timeout", "valid_regions", b"valid_regions"]) -> None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_concurrency_buffer", b"_concurrency_buffer"]) -> typing_extensions.Literal["concurrency_buffer"] | None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_request_timeout", b"_request_timeout"]) -> typing_extensions.Literal["request_timeout"] | None: ...
     @typing.overload

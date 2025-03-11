@@ -37,5 +37,5 @@ dev = [
     # for tools/regen_grpc.py
     "refactor",
     "grpcio-tools==1.64.0",
-    "mypy-protobuf",
+    "mypy-protobuf==3.5.0",
 ]
