@@ -17,6 +17,7 @@ def _apps_table(apps: list[AliasInfo]):
     table.add_column("Auth")
     table.add_column("Min Concurrency")
     table.add_column("Max Concurrency")
+    table.add_column("Concurrency Buffer")
     table.add_column("Max Multiplexing")
     table.add_column("Keep Alive")
     table.add_column("Request Timeout")
@@ -32,6 +33,7 @@ def _apps_table(apps: list[AliasInfo]):
             app.auth_mode,
             str(app.min_concurrency),
             str(app.max_concurrency),
+            str(app.concurrency_buffer),
             str(app.max_multiplexing),
             str(app.keep_alive),
             str(app.request_timeout),
@@ -130,6 +132,7 @@ def _scale(args):
             and args.max_multiplexing is None
             and args.max_concurrency is None
             and args.min_concurrency is None
+            and args.concurrency_buffer is None
             and args.request_timeout is None
             and args.startup_timeout is None
             and args.machine_types is None
@@ -144,6 +147,7 @@ def _scale(args):
             max_multiplexing=args.max_multiplexing,
             max_concurrency=args.max_concurrency,
             min_concurrency=args.min_concurrency,
+            concurrency_buffer=args.concurrency_buffer,
             request_timeout=args.request_timeout,
             startup_timeout=args.startup_timeout,
             machine_types=args.machine_types,
@@ -185,6 +189,11 @@ def _add_scale_parser(subparsers, parents):
         "--min-concurrency",
         type=int,
         help="Minimum concurrency",
+    )
+    parser.add_argument(
+        "--concurrency-buffer",
+        type=int,
+        help="Concurrency buffer",
     )
     parser.add_argument(
         "--request-timeout",
@@ -258,13 +267,23 @@ def _runners(args):
     table = Table()
     table.add_column("Runner ID")
     table.add_column("In Flight Requests")
-    table.add_column("Expires in")
+    table.add_column("Missing Leases")
+    table.add_column("Expires In")
     table.add_column("Uptime")
 
     for runner in runners:
+        num_leases_with_request = len(
+            [
+                lease
+                for lease in runner.external_metadata.get("leases", [])
+                if lease.get("request_id") is not None
+            ]
+        )
+
         table.add_row(
             runner.runner_id,
             str(runner.in_flight_requests),
+            str(runner.in_flight_requests - num_leases_with_request),
             (
                 "N/A (active)"
                 if runner.expiration_countdown is None

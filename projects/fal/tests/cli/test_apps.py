@@ -42,6 +42,8 @@ def test_scale():
             "7",
             "--max-concurrency",
             "10",
+            "--concurrency-buffer",
+            "3",
         ]
     )
     assert args.func == _scale
@@ -50,6 +52,7 @@ def test_scale():
     assert args.max_multiplexing == 321
     assert args.min_concurrency == 7
     assert args.max_concurrency == 10
+    assert args.concurrency_buffer == 3
 
 
 def test_runners():
