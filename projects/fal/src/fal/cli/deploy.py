@@ -235,9 +235,9 @@ def add_parser(main_subparsers, parents):
         "--no-scale",
         action="store_true",
         help=(
-            "Use min_concurrency/max_concurrency/max_multiplexing from previous "
-            "deployment of application with this name, if exists. Otherwise will "
-            "use the values from the application code."
+            "Use min_concurrency/max_concurrency/concurrency_buffer/max_multiplexing "
+            "from previous deployment of application with this name, if exists. "
+            "Otherwise will use the values from the application code."
         ),
     )
 

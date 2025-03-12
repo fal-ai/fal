@@ -29,6 +29,7 @@ _DEFAULT_SERIALIZATION_METHOD = "cloudpickle"
 FAL_SERVERLESS_DEFAULT_KEEP_ALIVE = 10
 FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING = 1
 FAL_SERVERLESS_DEFAULT_MIN_CONCURRENCY = 0
+FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER = 0
 ALIAS_AUTH_MODES = ["public", "private", "shared"]
 
 logger = get_logger(__name__)
@@ -197,6 +198,7 @@ class ApplicationInfo:
     max_multiplexing: int
     active_runners: int
     min_concurrency: int
+    concurrency_buffer: int
     machine_types: list[str]
     request_timeout: int
     startup_timeout: int
@@ -213,6 +215,7 @@ class AliasInfo:
     max_multiplexing: int
     active_runners: int
     min_concurrency: int
+    concurrency_buffer: int
     machine_types: list[str]
     request_timeout: int
     startup_timeout: int
@@ -323,6 +326,7 @@ def _from_grpc_application_info(
         max_multiplexing=message.max_multiplexing,
         active_runners=message.active_runners,
         min_concurrency=message.min_concurrency,
+        concurrency_buffer=message.concurrency_buffer,
         machine_types=list(message.machine_types),
         request_timeout=message.request_timeout,
         startup_timeout=message.startup_timeout,
@@ -350,6 +354,7 @@ def _from_grpc_alias_info(message: isolate_proto.AliasInfo) -> AliasInfo:
         max_multiplexing=message.max_multiplexing,
         active_runners=message.active_runners,
         min_concurrency=message.min_concurrency,
+        concurrency_buffer=message.concurrency_buffer,
         machine_types=list(message.machine_types),
         request_timeout=message.request_timeout,
         startup_timeout=message.startup_timeout,
@@ -423,6 +428,7 @@ class MachineRequirements:
     max_concurrency: int | None = None
     max_multiplexing: int | None = None
     min_concurrency: int | None = None
+    concurrency_buffer: int | None = None
     request_timeout: int | None = None
     startup_timeout: int | None = None
 
@@ -540,6 +546,7 @@ class FalServerlessConnection:
                 ),
                 max_concurrency=machine_requirements.max_concurrency,
                 min_concurrency=machine_requirements.min_concurrency,
+                concurrency_buffer=machine_requirements.concurrency_buffer,
                 max_multiplexing=machine_requirements.max_multiplexing,
                 request_timeout=machine_requirements.request_timeout,
                 startup_timeout=machine_requirements.startup_timeout,
@@ -586,6 +593,7 @@ class FalServerlessConnection:
         max_multiplexing: int | None = None,
         max_concurrency: int | None = None,
         min_concurrency: int | None = None,
+        concurrency_buffer: int | None = None,
         request_timeout: int | None = None,
         startup_timeout: int | None = None,
         valid_regions: list[str] | None = None,
@@ -597,6 +605,7 @@ class FalServerlessConnection:
             max_multiplexing=max_multiplexing,
             max_concurrency=max_concurrency,
             min_concurrency=min_concurrency,
+            concurrency_buffer=concurrency_buffer,
             request_timeout=request_timeout,
             startup_timeout=startup_timeout,
             valid_regions=valid_regions,
@@ -645,6 +654,7 @@ class FalServerlessConnection:
                 max_concurrency=machine_requirements.max_concurrency,
                 max_multiplexing=machine_requirements.max_multiplexing,
                 min_concurrency=machine_requirements.min_concurrency,
+                concurrency_buffer=machine_requirements.concurrency_buffer,
                 request_timeout=machine_requirements.request_timeout,
                 startup_timeout=machine_requirements.startup_timeout,
             )
