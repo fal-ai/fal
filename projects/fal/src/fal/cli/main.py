@@ -6,7 +6,19 @@ from fal import __version__
 from fal.console import console
 from fal.console.icons import CROSS_ICON
 
-from . import apps, auth, create, deploy, doctor, keys, profile, run, runners, secrets
+from . import (
+    api,
+    apps,
+    auth,
+    create,
+    deploy,
+    doctor,
+    keys,
+    profile,
+    run,
+    runners,
+    secrets,
+)
 from .debug import debugtools, get_debug_parser
 from .parser import FalParser, FalParserExit
 
@@ -32,6 +44,7 @@ def _get_main_parser() -> argparse.ArgumentParser:
     )
 
     for cmd in [
+        api,
         auth,
         apps,
         deploy,
