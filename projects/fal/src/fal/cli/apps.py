@@ -52,6 +52,15 @@ def _list(args):
     client = FalServerlessClient(args.host)
     with client.connect() as connection:
         apps = connection.list_aliases()
+
+        if args.filter:
+            apps = [app for app in apps if args.filter in app.alias]
+
+        if args.sort_by_runners:
+            apps.sort(key=lambda x: x.active_runners)
+        else:
+            apps.sort(key=lambda x: x.alias)
+
         table = _apps_table(apps)
 
     args.console.print(table)
@@ -64,6 +73,16 @@ def _add_list_parser(subparsers, parents):
         description=list_help,
         help=list_help,
         parents=parents,
+    )
+    parser.add_argument(
+        "--sort-by-runners",
+        action="store_true",
+        help="Sort by number of runners ascending",
+    )
+    parser.add_argument(
+        "--filter",
+        type=str,
+        help="Filter applications by alias contents",
     )
     parser.set_defaults(func=_list)
 
