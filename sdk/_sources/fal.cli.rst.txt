@@ -4,6 +4,14 @@ fal.cli package
 Submodules
 ----------
 
+fal.cli.api module
+------------------
+
+.. automodule:: fal.cli.api
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 fal.cli.apps module
 -------------------
 
@@ -16,6 +24,14 @@ fal.cli.auth module
 -------------------
 
 .. automodule:: fal.cli.auth
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+fal.cli.cli\_nested\_json module
+--------------------------------
+
+.. automodule:: fal.cli.cli_nested_json
    :members:
    :undoc-members:
    :show-inheritance:

@@ -38,6 +38,15 @@
 <section id="submodules">
 <h2>Submodules<a class="headerlink" href="#submodules" title="Link to this heading">¶</a></h2>
 </section>
+<section id="module-fal.cli.api">
+<span id="fal-cli-api-module"></span><h2>fal.cli.api module<a class="headerlink" href="#module-fal.cli.api" title="Link to this heading">¶</a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.cli.api.add_parser">
+<span class="sig-prename descclassname"><span class="pre">fal.cli.api.</span></span><span class="sig-name descname"><span class="pre">add_parser</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">main_subparsers</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">parents</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.cli.api.add_parser" title="Link to this definition">¶</a></dt>
+<dd><p>Add the api command to the main parser.</p>
+</dd></dl>
+
+</section>
 <section id="module-fal.cli.apps">
 <span id="fal-cli-apps-module"></span><h2>fal.cli.apps module<a class="headerlink" href="#module-fal.cli.apps" title="Link to this heading">¶</a></h2>
 <dl class="py function">
@@ -51,6 +60,223 @@
 <dl class="py function">
 <dt class="sig sig-object py" id="fal.cli.auth.add_parser">
 <span class="sig-prename descclassname"><span class="pre">fal.cli.auth.</span></span><span class="sig-name descname"><span class="pre">add_parser</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">main_subparsers</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">parents</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.cli.auth.add_parser" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</section>
+<section id="module-fal.cli.cli_nested_json">
+<span id="fal-cli-cli-nested-json-module"></span><h2>fal.cli.cli_nested_json module<a class="headerlink" href="#module-fal.cli.cli_nested_json" title="Link to this heading">¶</a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.cli.cli_nested_json.NestedJSONArray">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.cli.cli_nested_json.</span></span><span class="sig-name descname"><span class="pre">NestedJSONArray</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">iterable</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">()</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">/</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.cli.cli_nested_json.NestedJSONArray" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code></p>
+<p>Denotes a top-level JSON array.</p>
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="fal.cli.cli_nested_json.NestedJSONSyntaxError">
+<em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.cli.cli_nested_json.</span></span><span class="sig-name descname"><span class="pre">NestedJSONSyntaxError</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">source</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">token</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">message</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">message_kind</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'Syntax'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.cli.cli_nested_json.NestedJSONSyntaxError" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">ValueError</span></code></p>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.cli.cli_nested_json.Path">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.cli.cli_nested_json.</span></span><span class="sig-name descname"><span class="pre">Path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">kind</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">accessor</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tokens</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">is_root</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.cli.cli_nested_json.Path" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.cli.cli_nested_json.Path.reconstruct">
+<span class="sig-name descname"><span class="pre">reconstruct</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#fal.cli.cli_nested_json.Path.reconstruct" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.cli.cli_nested_json.PathAction">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.cli.cli_nested_json.</span></span><span class="sig-name descname"><span class="pre">PathAction</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">names</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">module</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">qualname</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">start</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">boundary</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.cli.cli_nested_json.PathAction" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Enum</span></code></p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.cli.cli_nested_json.PathAction.APPEND">
+<span class="sig-name descname"><span class="pre">APPEND</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">3</span></em><a class="headerlink" href="#fal.cli.cli_nested_json.PathAction.APPEND" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.cli.cli_nested_json.PathAction.INDEX">
+<span class="sig-name descname"><span class="pre">INDEX</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">2</span></em><a class="headerlink" href="#fal.cli.cli_nested_json.PathAction.INDEX" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.cli.cli_nested_json.PathAction.KEY">
+<span class="sig-name descname"><span class="pre">KEY</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">1</span></em><a class="headerlink" href="#fal.cli.cli_nested_json.PathAction.KEY" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.cli.cli_nested_json.PathAction.SET">
+<span class="sig-name descname"><span class="pre">SET</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">4</span></em><a class="headerlink" href="#fal.cli.cli_nested_json.PathAction.SET" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.cli.cli_nested_json.PathAction.to_string">
+<span class="sig-name descname"><span class="pre">to_string</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#fal.cli.cli_nested_json.PathAction.to_string" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.cli.cli_nested_json.Token">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.cli.cli_nested_json.</span></span><span class="sig-name descname"><span class="pre">Token</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">kind</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">value</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">start</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">end</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.cli.cli_nested_json.Token" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">NamedTuple</span></code></p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.cli.cli_nested_json.Token.end">
+<span class="sig-name descname"><span class="pre">end</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></em><a class="headerlink" href="#fal.cli.cli_nested_json.Token.end" title="Link to this definition">¶</a></dt>
+<dd><p>Alias for field number 3</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.cli.cli_nested_json.Token.kind">
+<span class="sig-name descname"><span class="pre">kind</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#fal.cli.cli_nested_json.TokenKind" title="fal.cli.cli_nested_json.TokenKind"><code class="xref py py-class docutils literal notranslate"><span class="pre">TokenKind</span></code></a></em><a class="headerlink" href="#fal.cli.cli_nested_json.Token.kind" title="Link to this definition">¶</a></dt>
+<dd><p>Alias for field number 0</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.cli.cli_nested_json.Token.start">
+<span class="sig-name descname"><span class="pre">start</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></em><a class="headerlink" href="#fal.cli.cli_nested_json.Token.start" title="Link to this definition">¶</a></dt>
+<dd><p>Alias for field number 2</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.cli.cli_nested_json.Token.value">
+<span class="sig-name descname"><span class="pre">value</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code> <span class="pre">|</span> <code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></em><a class="headerlink" href="#fal.cli.cli_nested_json.Token.value" title="Link to this definition">¶</a></dt>
+<dd><p>Alias for field number 1</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.cli.cli_nested_json.TokenKind">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.cli.cli_nested_json.</span></span><span class="sig-name descname"><span class="pre">TokenKind</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">names</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">module</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">qualname</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">start</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">boundary</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.cli.cli_nested_json.TokenKind" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Enum</span></code></p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.cli.cli_nested_json.TokenKind.LEFT_BRACKET">
+<span class="sig-name descname"><span class="pre">LEFT_BRACKET</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">3</span></em><a class="headerlink" href="#fal.cli.cli_nested_json.TokenKind.LEFT_BRACKET" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.cli.cli_nested_json.TokenKind.NUMBER">
+<span class="sig-name descname"><span class="pre">NUMBER</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">2</span></em><a class="headerlink" href="#fal.cli.cli_nested_json.TokenKind.NUMBER" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.cli.cli_nested_json.TokenKind.PSEUDO">
+<span class="sig-name descname"><span class="pre">PSEUDO</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">5</span></em><a class="headerlink" href="#fal.cli.cli_nested_json.TokenKind.PSEUDO" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.cli.cli_nested_json.TokenKind.RIGHT_BRACKET">
+<span class="sig-name descname"><span class="pre">RIGHT_BRACKET</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">4</span></em><a class="headerlink" href="#fal.cli.cli_nested_json.TokenKind.RIGHT_BRACKET" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.cli.cli_nested_json.TokenKind.TEXT">
+<span class="sig-name descname"><span class="pre">TEXT</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">1</span></em><a class="headerlink" href="#fal.cli.cli_nested_json.TokenKind.TEXT" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.cli.cli_nested_json.TokenKind.to_name">
+<span class="sig-name descname"><span class="pre">to_name</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#fal.cli.cli_nested_json.TokenKind.to_name" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.cli.cli_nested_json.assert_cant_happen">
+<span class="sig-prename descclassname"><span class="pre">fal.cli.cli_nested_json.</span></span><span class="sig-name descname"><span class="pre">assert_cant_happen</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#fal.cli.cli_nested_json.assert_cant_happen" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.cli.cli_nested_json.check_escaped_int">
+<span class="sig-prename descclassname"><span class="pre">fal.cli.cli_nested_json.</span></span><span class="sig-name descname"><span class="pre">check_escaped_int</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.cli.cli_nested_json.check_escaped_int" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.cli.cli_nested_json.interpret">
+<span class="sig-prename descclassname"><span class="pre">fal.cli.cli_nested_json.</span></span><span class="sig-name descname"><span class="pre">interpret</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">context</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">key</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">value</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.cli.cli_nested_json.interpret" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.cli.cli_nested_json.interpret_nested_json">
+<span class="sig-prename descclassname"><span class="pre">fal.cli.cli_nested_json.</span></span><span class="sig-name descname"><span class="pre">interpret_nested_json</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pairs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.cli.cli_nested_json.interpret_nested_json" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.cli.cli_nested_json.parse">
+<span class="sig-prename descclassname"><span class="pre">fal.cli.cli_nested_json.</span></span><span class="sig-name descname"><span class="pre">parse</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">source</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.cli.cli_nested_json.parse" title="Link to this definition">¶</a></dt>
+<dd><p>start: root_path path*
+root_path: (literal | index_path | append_path)
+literal: TEXT | NUMBER</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Iterator</span></code>[<a class="reference internal" href="#fal.cli.cli_nested_json.Path" title="fal.cli.cli_nested_json.Path"><code class="xref py py-class docutils literal notranslate"><span class="pre">Path</span></code></a>]</span></p>
+</dd>
+</dl>
+<dl class="simple">
+<dt>path:</dt><dd><p>key_path
+| index_path
+| append_path</p>
+</dd>
+</dl>
+<p>key_path: LEFT_BRACKET TEXT RIGHT_BRACKET
+index_path: LEFT_BRACKET NUMBER RIGHT_BRACKET
+append_path: LEFT_BRACKET RIGHT_BRACKET</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.cli.cli_nested_json.tokenize">
+<span class="sig-prename descclassname"><span class="pre">fal.cli.cli_nested_json.</span></span><span class="sig-name descname"><span class="pre">tokenize</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">source</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.cli.cli_nested_json.tokenize" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Iterator</span></code>[<a class="reference internal" href="#fal.cli.cli_nested_json.Token" title="fal.cli.cli_nested_json.Token"><code class="xref py py-class docutils literal notranslate"><span class="pre">Token</span></code></a>]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.cli.cli_nested_json.unwrap_top_level_list_if_needed">
+<span class="sig-prename descclassname"><span class="pre">fal.cli.cli_nested_json.</span></span><span class="sig-name descname"><span class="pre">unwrap_top_level_list_if_needed</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.cli.cli_nested_json.unwrap_top_level_list_if_needed" title="Link to this definition">¶</a></dt>
+<dd><p>Propagate the top-level list, if that’s what we got.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.cli.cli_nested_json.wrap_with_dict">
+<span class="sig-prename descclassname"><span class="pre">fal.cli.cli_nested_json.</span></span><span class="sig-name descname"><span class="pre">wrap_with_dict</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">context</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.cli.cli_nested_json.wrap_with_dict" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 </section>
