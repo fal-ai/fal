@@ -3,6 +3,7 @@ import json
 import secrets
 import subprocess
 import time
+import uuid
 from contextlib import contextmanager, suppress
 from datetime import datetime, timedelta
 from typing import Generator, List, Tuple
@@ -295,8 +296,6 @@ class RealtimeApp(fal.App, keep_alive=300, max_concurrency=1):
 def aliased_app() -> Generator[Tuple[str, str], None, None]:
     # Create a temporary app, register it, and return the ID of it.
 
-    import uuid
-
     app_alias = str(uuid.uuid4()) + "-alias"
     app_revision = addition_app.host.register(
         func=addition_app.func,
@@ -514,8 +513,6 @@ def test_app_cancellation(test_app: str, test_cancellable_app: str):
 
 @pytest.mark.flaky(max_runs=3)
 def test_app_client_async():
-    import uuid
-
     app_alias = str(uuid.uuid4()) + "-client-async-alias"
 
     app = fal.wrap_app(SleepApp)
@@ -548,11 +545,11 @@ def test_app_client_async():
         elif isinstance(event, apps.Queued):
             assert event.position == 0
 
-    status = handle.status(logs=True)
-    assert isinstance(status, apps.Completed)
-    if not status.logs:
-        # Sometimes fetching logs times out to get faster results
+    for _ in range(10):
         status = handle.status(logs=True)
+        assert isinstance(status, apps.Completed)
+        if status.logs:
+            break
 
     assert status.logs, "Logs missing from Completed status"
     assert any("sleeping..." in log["message"] for log in status.logs)
@@ -609,7 +606,6 @@ def test_404_response(test_app: str, request: pytest.FixtureRequest):
 
 
 def test_app_deploy_scale(aliased_app: Tuple[str, str]):
-    import uuid
     from dataclasses import replace
 
     app_alias = str(uuid.uuid4()) + "-alias"
@@ -844,22 +840,18 @@ def test_traceback_logs(test_exception_app: AppClient):
             )
 
             logs = response.json()
-            if len(logs) == 0:
-                continue
+            if len(logs) > 0:
+                break
 
-            assert len(logs) > 0
-            for log in logs:
-                assert log["message"].count("\n") > 1, "Logs should be multi-line"
-                assert (
-                    '{"traceback":' not in log["message"]
-                ), "Logs should not be JSON-wrapped"
-                assert (
-                    "this app is designed to fail" in log["message"]
-                ), "Logs should contain the traceback message"
-
-            break
-        else:
-            raise Exception("No logs found")
+        assert len(logs) > 0
+        for log in logs:
+            assert log["message"].count("\n") > 1, "Logs should be multi-line"
+            assert (
+                '{"traceback":' not in log["message"]
+            ), "Logs should not be JSON-wrapped"
+            assert (
+                "this app is designed to fail" in log["message"]
+            ), "Logs should contain the traceback message"
 
 
 def test_app_exceptions(test_exception_app: AppClient):
@@ -881,8 +873,6 @@ def test_app_exceptions(test_exception_app: AppClient):
 
 
 def test_kill_runner():
-    import uuid
-
     app_alias = str(uuid.uuid4()) + "-sleep-alias"
     app = fal.wrap_app(SleepApp)
     app_revision = app.host.register(
