@@ -837,7 +837,7 @@ def test_traceback_logs(test_exception_app: AppClient):
         timeout=300,
     ) as client:
         # Give some time for logs to propagate through the logging subsystem.
-        for _ in range(5):
+        for _ in range(10):
             time.sleep(2)
             response = client.get(
                 REST_CLIENT.base_url + f"/logs/?traceback=true&since={date}"
