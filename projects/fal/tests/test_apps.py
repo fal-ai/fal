@@ -4,7 +4,7 @@ import secrets
 import subprocess
 import time
 from contextlib import contextmanager, suppress
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Generator, List, Tuple
 
 import httpx
@@ -823,8 +823,10 @@ def test_workflows(test_app: str):
             assert data["result"] == 10
 
 
+# If the logging subsystem is not working for some nodes, this test will flake
+@pytest.mark.flaky(max_runs=5)
 def test_traceback_logs(test_exception_app: AppClient):
-    date = datetime.utcnow().isoformat()
+    date = (datetime.utcnow() - timedelta(seconds=1)).isoformat()
 
     with pytest.raises(AppClientError):
         test_exception_app.fail({})
@@ -835,16 +837,29 @@ def test_traceback_logs(test_exception_app: AppClient):
         timeout=300,
     ) as client:
         # Give some time for logs to propagate through the logging subsystem.
-        time.sleep(5)
-        response = client.get(
-            REST_CLIENT.base_url + f"/logs/?traceback=true&since={date}"
-        )
-        for log in json.loads(response.text):
-            assert log["message"].count("\n") > 1, "Logs are multi-line"
-            assert '{"traceback":' not in log["message"], "Logs are not JSON-wrapped"
-            assert (
-                "this app is designed to fail" in log["message"]
-            ), "Logs contain the traceback message"
+        for _ in range(5):
+            time.sleep(2)
+            response = client.get(
+                REST_CLIENT.base_url + f"/logs/?traceback=true&since={date}"
+            )
+
+            logs = response.json()
+            if len(logs) == 0:
+                continue
+
+            assert len(logs) > 0
+            for log in logs:
+                assert log["message"].count("\n") > 1, "Logs should be multi-line"
+                assert (
+                    '{"traceback":' not in log["message"]
+                ), "Logs should not be JSON-wrapped"
+                assert (
+                    "this app is designed to fail" in log["message"]
+                ), "Logs should contain the traceback message"
+
+            break
+        else:
+            raise Exception("No logs found")
 
 
 def test_app_exceptions(test_exception_app: AppClient):
