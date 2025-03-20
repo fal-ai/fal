@@ -26,6 +26,10 @@ def mock_parse_pyproject_toml():
             "another-app": {
                 "ref": "src/another_app/inference.py::AnotherApp",
             },
+            "app-with-extras": {
+                "ref": "src/app_with_extras/inference.py::AppWithExtras",
+                "extra_key": "extra_value",
+            },
         }
     }
 
@@ -139,6 +143,23 @@ def test_deploy_with_toml_missing_ref_key(
     # Expect a ValueError since "ref" key is missing
     with pytest.raises(
         ValueError, match="App my-app does not have a ref key in pyproject.toml"
+    ):
+        _deploy(args)
+
+
+@patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+@patch("fal.cli.deploy._deploy_from_reference")
+def test_deploy_with_toml_extra_keys_in_toml(
+    mock_deploy_ref, mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml
+):
+    mock_parse_toml.return_value = mock_parse_pyproject_toml
+
+    args = mock_args(app_ref=("app-with-extras", None))
+
+    with pytest.raises(
+        ValueError,
+        match="Found unexpected keys in pyproject.toml: {'extra_key': 'extra_value'}",
     ):
         _deploy(args)
 

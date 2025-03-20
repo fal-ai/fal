@@ -25,7 +25,7 @@ def get_app_data_from_toml(app_name):
         raise ValueError(f"App {app_name} not found in pyproject.toml")
 
     try:
-        app_ref = app_data["ref"]
+        app_ref = app_data.pop("ref")
     except KeyError:
         raise ValueError(f"App {app_name} does not have a ref key in pyproject.toml")
 
@@ -33,8 +33,11 @@ def get_app_data_from_toml(app_name):
     project_root, _ = find_project_root(None)
     app_ref = str(project_root / app_ref)
 
-    app_auth = app_data.get("auth", "private")
-    app_deployment_strategy = app_data.get("deployment_strategy", "recreate")
-    app_no_scale = app_data.get("no_scale", False)
+    app_auth = app_data.pop("auth", "private")
+    app_deployment_strategy = app_data.pop("deployment_strategy", "recreate")
+    app_no_scale = app_data.pop("no_scale", False)
+
+    if len(app_data) > 0:
+        raise ValueError(f"Found unexpected keys in pyproject.toml: {app_data}")
 
     return app_ref, app_auth, app_deployment_strategy, app_no_scale
