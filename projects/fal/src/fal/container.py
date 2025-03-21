@@ -4,6 +4,8 @@ from typing import Dict, Literal
 Builder = Literal["depot", "service", "worker"]
 BUILDERS = {"depot", "service", "worker"}
 DEFAULT_BUILDER: Builder = "depot"
+DEFAULT_COMPRESSION: str = "zstd"
+DEFAULT_FORCE_COMPRESSION: bool = False
 
 
 @dataclass
@@ -16,6 +18,8 @@ class ContainerImage:
     build_args: Dict[str, str] = field(default_factory=dict)
     registries: Dict[str, Dict[str, str]] = field(default_factory=dict)
     builder: Builder = field(default=DEFAULT_BUILDER)
+    compression: str = DEFAULT_COMPRESSION
+    force_compression: bool = DEFAULT_FORCE_COMPRESSION
 
     def __post_init__(self) -> None:
         if self.registries:
@@ -46,4 +50,6 @@ class ContainerImage:
             "build_args": self.build_args,
             "registries": self.registries,
             "builder": self.builder,
+            "compression": self.compression,
+            "force_compression": self.force_compression,
         }
