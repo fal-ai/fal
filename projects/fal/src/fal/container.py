@@ -4,7 +4,7 @@ from typing import Dict, Literal
 Builder = Literal["depot", "service", "worker"]
 BUILDERS = {"depot", "service", "worker"}
 DEFAULT_BUILDER: Builder = "depot"
-DEFAULT_COMPRESSION: str = "zstd"
+DEFAULT_COMPRESSION: str = "gzip"
 DEFAULT_FORCE_COMPRESSION: bool = False
 
 
