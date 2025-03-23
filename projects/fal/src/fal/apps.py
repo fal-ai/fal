@@ -55,6 +55,10 @@ class Completed(_Status):
     logs: list[dict[str, Any]] | None = field()
 
 
+def _get_client() -> httpx.Client:
+    return httpx.Client(headers={"User-Agent": "Fal/Python"})
+
+
 @dataclass
 class RequestHandle:
     """A handle to an async inference request."""
@@ -75,6 +79,8 @@ class RequestHandle:
 
         self.app_id = "/".join(parts)
 
+        self._client = _get_client()
+
     def status(self, *, logs: bool = False) -> _Status:
         """Check the status of an async inference request."""
 
@@ -82,7 +88,7 @@ class RequestHandle:
             _QUEUE_URL_FORMAT.format(app_id=self.app_id)
             + f"/requests/{self.request_id}/status/"
         )
-        response = _HTTP_CLIENT.get(
+        response = self._client.get(
             url,
             headers=self._creds.to_headers(),
             params={"logs": int(logs)},
@@ -107,7 +113,7 @@ class RequestHandle:
             _QUEUE_URL_FORMAT.format(app_id=self.app_id)
             + f"/requests/{self.request_id}/cancel"
         )
-        response = _HTTP_CLIENT.put(url, headers=self._creds.to_headers())
+        response = self._client.put(url, headers=self._creds.to_headers())
         response.raise_for_status()
 
     def iter_events(
@@ -134,7 +140,7 @@ class RequestHandle:
             _QUEUE_URL_FORMAT.format(app_id=self.app_id)
             + f"/requests/{self.request_id}/"
         )
-        response = _HTTP_CLIENT.get(url, headers=self._creds.to_headers())
+        response = self._client.get(url, headers=self._creds.to_headers())
         try:
             response.raise_for_status()
         except httpx.HTTPStatusError as e:
@@ -159,9 +165,6 @@ class RequestHandle:
         return self.fetch_result()
 
 
-_HTTP_CLIENT = httpx.Client(headers={"User-Agent": "Fal/Python"})
-
-
 def run(app_id: str, arguments: dict[str, Any], *, path: str = "") -> dict[str, Any]:
     """Run an inference task on a Fal app and return the result."""
 
@@ -182,7 +185,7 @@ def submit(app_id: str, arguments: dict[str, Any], *, path: str = "") -> Request
 
     creds = get_default_credentials()
 
-    response = _HTTP_CLIENT.post(
+    response = _get_client().post(
         url,
         json=arguments,
         headers=creds.to_headers(),
