@@ -484,13 +484,19 @@ def test_stateful_app_client(test_stateful_app: str):
     assert response["result"] == 0
 
 
-@pytest.mark.flaky(max_runs=3)
 def test_app_cancellation(test_app: str, test_cancellable_app: str):
     request_handle = apps.submit(
         test_cancellable_app, arguments={"lhs": 1, "rhs": 2, "wait_time": 10}
     )
-    # enough time for it to start
-    time.sleep(8)
+
+    while True:
+        status = request_handle.status()
+        time.sleep(0.5)
+        if isinstance(status, apps.InProgress):
+            # The app is running
+            break
+
+    # cancel the request
     request_handle.cancel()
 
     # should still finish successfully and return 499
@@ -503,8 +509,14 @@ def test_app_cancellation(test_app: str, test_cancellable_app: str):
         test_app, arguments={"lhs": 1, "rhs": 2, "wait_time": 10}
     )
 
-    # enough time for it to start
-    time.sleep(8)
+    while True:
+        status = request_handle.status()
+        time.sleep(0.5)
+        if isinstance(status, apps.InProgress):
+            # The app is running
+            break
+
+    # cancel the request
     request_handle.cancel()
 
     response = request_handle.get()
