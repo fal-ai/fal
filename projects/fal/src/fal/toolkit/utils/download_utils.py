@@ -126,11 +126,12 @@ def download_file(
     *,
     force: bool = False,
     request_headers: dict[str, str] | None = None,
+    filesize_limit: int | None = None,
 ) -> Path:
     """Downloads a file from the specified URL to the target directory.
 
     The function downloads the file from the given URL and saves it in the specified
-    target directory.
+    target directory, provided it is below the given filesize limit.
 
     It also checks whether the local file already exists and whether its content length
     matches the expected content length from the remote file. If the local file already
@@ -151,6 +152,8 @@ def download_file(
             Defaults to `False`.
         request_headers: A dictionary containing additional headers to be included in
             the HTTP request. Defaults to `None`.
+        filesize_limit: An integer specifying the maximum downloadable size,
+            in megabytes. Defaults to `None`.
 
 
     Returns:
@@ -160,11 +163,21 @@ def download_file(
         ValueError: If the provided `file_name` contains a forward slash ('/').
         DownloadError: If an error occurs during the download process.
     """
+    ONE_MB = 1024**2
+
     try:
-        file_name = _get_remote_file_properties(url, request_headers)[0]
+        file_name, expected_filesize = _get_remote_file_properties(url, request_headers)
     except Exception as e:
-        print(f"GOt error: {e}")
+        print(f"Got error: {e}")
         raise DownloadError(f"Failed to get remote file properties for {url}") from e
+
+    expected_filesize_mb = expected_filesize / ONE_MB
+
+    if filesize_limit is not None and expected_filesize_mb > filesize_limit:
+        raise DownloadError(
+            f"""File to be downloaded is of size {expected_filesize_mb},
+                which is over the limit of {filesize_limit}"""
+        )
 
     if "/" in file_name:
         raise ValueError(f"File name '{file_name}' cannot contain a slash.")
@@ -194,7 +207,10 @@ def download_file(
 
     try:
         _download_file_python(
-            url=url, target_path=target_path, request_headers=request_headers
+            url=url,
+            target_path=target_path,
+            request_headers=request_headers,
+            filesize_limit=filesize_limit,
         )
     except Exception as e:
         msg = f"Failed to download {url} to {target_path}"
@@ -207,7 +223,10 @@ def download_file(
 
 
 def _download_file_python(
-    url: str, target_path: Path | str, request_headers: dict[str, str] | None = None
+    url: str,
+    target_path: Path | str,
+    request_headers: dict[str, str] | None = None,
+    filesize_limit: int | None = None,
 ) -> Path:
     """Download a file from a given URL and save it to a specified path using a
     Python interface.
@@ -217,6 +236,8 @@ def _download_file_python(
         target_path: The path where the downloaded file will be saved.
         request_headers: A dictionary containing additional headers to be included in
             the HTTP request. Defaults to `None`.
+        filesize_limit: A integer value specifying how many megabytes can be
+            downloaded at maximum. Defaults to `None`.
 
     Returns:
         The path where the downloaded file has been saved.
@@ -233,7 +254,10 @@ def _download_file_python(
             file_path = temp_file.name
 
             for progress, total_size in _stream_url_data_to_file(
-                url, temp_file.name, request_headers=request_headers
+                url,
+                temp_file.name,
+                request_headers=request_headers,
+                filesize_limit=filesize_limit,
             ):
                 if total_size:
                     progress_msg = f"Downloading {url} ... {progress:.2%}"
@@ -261,6 +285,7 @@ def _stream_url_data_to_file(
     file_path: str,
     chunk_size_in_mb: int = 64,
     request_headers: dict[str, str] | None = None,
+    filesize_limit: int | None = None,
 ):
     """Download data from a URL and stream it to a file.
 
@@ -277,6 +302,8 @@ def _stream_url_data_to_file(
             Defaults to 64.
         request_headers: A dictionary containing additional headers to be included in
             the HTTP request. Defaults to `None`.
+        filesize_limit: An integer specifying how many megabytes can be
+            downloaded at maximum. Defaults to `None`.
 
     Yields:
         A tuple containing two elements:
@@ -300,6 +327,11 @@ def _stream_url_data_to_file(
             f_stream.write(data)
 
             received_size = f_stream.tell()
+            if filesize_limit is not None and received_size > filesize_limit:
+                raise DownloadError(
+                    f"""Attempted to download more data {received_size}
+                        than the set limit of {filesize_limit}"""
+                )
 
             if total_size:
                 progress = received_size / total_size
