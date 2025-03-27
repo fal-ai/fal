@@ -998,11 +998,15 @@ class RunnerInfo(google.protobuf.message.Message):
     IN_FLIGHT_REQUESTS_FIELD_NUMBER: builtins.int
     EXPIRATION_COUNTDOWN_FIELD_NUMBER: builtins.int
     UPTIME_FIELD_NUMBER: builtins.int
+    REVISION_FIELD_NUMBER: builtins.int
+    ALIAS_FIELD_NUMBER: builtins.int
     EXTERNAL_METADATA_FIELD_NUMBER: builtins.int
     runner_id: builtins.str
     in_flight_requests: builtins.int
     expiration_countdown: builtins.int
     uptime: builtins.float
+    revision: builtins.str
+    alias: builtins.str
     @property
     def external_metadata(self) -> google.protobuf.struct_pb2.Struct: ...
     def __init__(
@@ -1012,10 +1016,12 @@ class RunnerInfo(google.protobuf.message.Message):
         in_flight_requests: builtins.int = ...,
         expiration_countdown: builtins.int | None = ...,
         uptime: builtins.float = ...,
+        revision: builtins.str = ...,
+        alias: builtins.str = ...,
         external_metadata: google.protobuf.struct_pb2.Struct | None = ...,
     ) -> None: ...
     def HasField(self, field_name: typing_extensions.Literal["_expiration_countdown", b"_expiration_countdown", "_external_metadata", b"_external_metadata", "expiration_countdown", b"expiration_countdown", "external_metadata", b"external_metadata"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing_extensions.Literal["_expiration_countdown", b"_expiration_countdown", "_external_metadata", b"_external_metadata", "expiration_countdown", b"expiration_countdown", "external_metadata", b"external_metadata", "in_flight_requests", b"in_flight_requests", "runner_id", b"runner_id", "uptime", b"uptime"]) -> None: ...
+    def ClearField(self, field_name: typing_extensions.Literal["_expiration_countdown", b"_expiration_countdown", "_external_metadata", b"_external_metadata", "alias", b"alias", "expiration_countdown", b"expiration_countdown", "external_metadata", b"external_metadata", "in_flight_requests", b"in_flight_requests", "revision", b"revision", "runner_id", b"runner_id", "uptime", b"uptime"]) -> None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_expiration_countdown", b"_expiration_countdown"]) -> typing_extensions.Literal["expiration_countdown"] | None: ...
     @typing.overload
@@ -1037,6 +1043,34 @@ class KillRunnerRequest(google.protobuf.message.Message):
     def ClearField(self, field_name: typing_extensions.Literal["runner_id", b"runner_id"]) -> None: ...
 
 global___KillRunnerRequest = KillRunnerRequest
+
+@typing_extensions.final
+class ListRunnersRequest(google.protobuf.message.Message):
+    """Empty. For future use."""
+
+    DESCRIPTOR: google.protobuf.descriptor.Descriptor
+
+    def __init__(
+        self,
+    ) -> None: ...
+
+global___ListRunnersRequest = ListRunnersRequest
+
+@typing_extensions.final
+class ListRunnersResponse(google.protobuf.message.Message):
+    DESCRIPTOR: google.protobuf.descriptor.Descriptor
+
+    RUNNERS_FIELD_NUMBER: builtins.int
+    @property
+    def runners(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[global___RunnerInfo]: ...
+    def __init__(
+        self,
+        *,
+        runners: collections.abc.Iterable[global___RunnerInfo] | None = ...,
+    ) -> None: ...
+    def ClearField(self, field_name: typing_extensions.Literal["runners", b"runners"]) -> None: ...
+
+global___ListRunnersResponse = ListRunnersResponse
 
 @typing_extensions.final
 class KillRunnerResponse(google.protobuf.message.Message):
