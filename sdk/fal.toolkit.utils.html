@@ -80,10 +80,10 @@ Defaults to <cite>False</cite>.</p></li>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="fal.toolkit.utils.download_utils.download_file">
-<span class="sig-prename descclassname"><span class="pre">fal.toolkit.utils.download_utils.</span></span><span class="sig-name descname"><span class="pre">download_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">url</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_dir</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">force</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">request_headers</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.utils.download_utils.download_file" title="Link to this definition">¶</a></dt>
+<span class="sig-prename descclassname"><span class="pre">fal.toolkit.utils.download_utils.</span></span><span class="sig-name descname"><span class="pre">download_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">url</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_dir</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">force</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">request_headers</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filesize_limit</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.utils.download_utils.download_file" title="Link to this definition">¶</a></dt>
 <dd><p>Downloads a file from the specified URL to the target directory.</p>
 <p>The function downloads the file from the given URL and saves it in the specified
-target directory.</p>
+target directory, provided it is below the given filesize limit.</p>
 <p>It also checks whether the local file already exists and whether its content length
 matches the expected content length from the remote file. If the local file already
 exists and its content length matches the expected content length from the remote
@@ -103,6 +103,8 @@ its content length matches the expected content length from the remote file.
 Defaults to <cite>False</cite>.</p></li>
 <li><p><strong>request_headers</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>] | <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span>) – A dictionary containing additional headers to be included in
 the HTTP request. Defaults to <cite>None</cite>.</p></li>
+<li><p><strong>filesize_limit</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code> | <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span>) – An integer specifying the maximum downloadable size,
+in megabytes. Defaults to <cite>None</cite>.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
