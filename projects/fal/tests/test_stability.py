@@ -559,6 +559,8 @@ def test_serve_on_off(isolated_client):
 
 
 def test_worker_env_vars(isolated_client):
+    from fal.flags import GRPC_HOST
+
     @isolated_client("virtualenv", keep_alive=5)
     def get_env_var(name: str) -> str | None:
         import os
@@ -567,8 +569,8 @@ def test_worker_env_vars(isolated_client):
 
     fal_host = get_env_var("FAL_HOST")
     assert fal_host, "FAL_HOST is not set"
-    assert fal_host.startswith("api.")
-    assert fal_host.endswith(".shark.fal.ai")
+    assert fal_host == GRPC_HOST, "FAL_HOST is not set to the correct value"
+    print(f"FAL_HOST: {fal_host}, GRPC_HOST: {GRPC_HOST}")
 
     fal_key_id = get_env_var("FAL_KEY_ID")
     assert fal_key_id, "FAL_KEY_ID is not set"
