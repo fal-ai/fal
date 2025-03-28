@@ -64,8 +64,10 @@
 <li class="toctree-l3"><a class="reference internal" href="fal.auth.html#fal.auth.UserAccess"><code class="docutils literal notranslate"><span class="pre">UserAccess</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="fal.auth.html#fal.auth.UserAccess.access_token"><code class="docutils literal notranslate"><span class="pre">UserAccess.access_token</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.auth.html#fal.auth.UserAccess.bearer_token"><code class="docutils literal notranslate"><span class="pre">UserAccess.bearer_token</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.auth.html#fal.auth.UserAccess.get_team"><code class="docutils literal notranslate"><span class="pre">UserAccess.get_team()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.auth.html#fal.auth.UserAccess.info"><code class="docutils literal notranslate"><span class="pre">UserAccess.info</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.auth.html#fal.auth.UserAccess.invalidate"><code class="docutils literal notranslate"><span class="pre">UserAccess.invalidate()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.auth.html#fal.auth.UserAccess.teams"><code class="docutils literal notranslate"><span class="pre">UserAccess.teams</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="fal.auth.html#fal.auth.get_colab_token"><code class="docutils literal notranslate"><span class="pre">get_colab_token()</span></code></a></li>
@@ -192,6 +194,10 @@
 </li>
 <li class="toctree-l2"><a class="reference internal" href="fal.cli.html#module-fal.cli.secrets">fal.cli.secrets module</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="fal.cli.html#fal.cli.secrets.add_parser"><code class="docutils literal notranslate"><span class="pre">add_parser()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="fal.cli.html#module-fal.cli.teams">fal.cli.teams module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="fal.cli.html#fal.cli.teams.add_parser"><code class="docutils literal notranslate"><span class="pre">add_parser()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="fal.cli.html#module-fal.cli">Module contents</a></li>
@@ -820,7 +826,7 @@ cancellation or with an event, like aiohttp.</p>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="fal.api.function">
-<span class="sig-prename descclassname"><span class="pre">fal.api.</span></span><span class="sig-name descname"><span class="pre">function</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">kind='virtualenv'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">host=FalServerlessHost(url='api.alpha.fal.ai'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">credentials=AuthenticatedCredentials()</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">_lock=&lt;unlocked</span> <span class="pre">_thread.lock</span> <span class="pre">object&gt;)</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">**config</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.function" title="Link to this definition">¶</a></dt>
+<span class="sig-prename descclassname"><span class="pre">fal.api.</span></span><span class="sig-name descname"><span class="pre">function</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">kind='virtualenv'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">host=FalServerlessHost(url='api.alpha.fal.ai'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">credentials=AuthenticatedCredentials(team_id=None)</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">_lock=&lt;unlocked</span> <span class="pre">_thread.lock</span> <span class="pre">object&gt;)</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">**config</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.function" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 </section>
@@ -1185,6 +1191,11 @@ experimental API, use it at your own risk.</p>
 </dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="fal.config.Config.edit">
+<span class="sig-name descname"><span class="pre">edit</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#fal.config.Config.edit" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="fal.config.Config.get">
 <span class="sig-name descname"><span class="pre">get</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">key</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.config.Config.get" title="Link to this definition">¶</a></dt>
 <dd><dl class="field-list simple">
@@ -1242,6 +1253,16 @@ experimental API, use it at your own risk.</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="fal.config.Config.set_internal">
 <span class="sig-name descname"><span class="pre">set_internal</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">key</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">value</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.config.Config.set_internal" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.config.Config.unset">
+<span class="sig-name descname"><span class="pre">unset</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">key</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.config.Config.unset" title="Link to this definition">¶</a></dt>
 <dd><dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
@@ -1531,8 +1552,13 @@ project root was discovered.</p>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="fal.sdk.AuthenticatedCredentials">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.sdk.</span></span><span class="sig-name descname"><span class="pre">AuthenticatedCredentials</span></span><a class="headerlink" href="#fal.sdk.AuthenticatedCredentials" title="Link to this definition">¶</a></dt>
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.sdk.</span></span><span class="sig-name descname"><span class="pre">AuthenticatedCredentials</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">team_id</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.AuthenticatedCredentials" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <a class="reference internal" href="#fal.sdk.Credentials" title="fal.sdk.Credentials"><code class="xref py py-class docutils literal notranslate"><span class="pre">Credentials</span></code></a></p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.sdk.AuthenticatedCredentials.team_id">
+<span class="sig-name descname"><span class="pre">team_id</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code> <span class="pre">|</span> <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.sdk.AuthenticatedCredentials.team_id" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
 <dl class="py method">
 <dt class="sig sig-object py" id="fal.sdk.AuthenticatedCredentials.to_grpc">
 <span class="sig-name descname"><span class="pre">to_grpc</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.AuthenticatedCredentials.to_grpc" title="Link to this definition">¶</a></dt>
@@ -2253,7 +2279,7 @@ instead of the user provided ones.</p>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="fal.sdk.get_default_credentials">
-<span class="sig-prename descclassname"><span class="pre">fal.sdk.</span></span><span class="sig-name descname"><span class="pre">get_default_credentials</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.get_default_credentials" title="Link to this definition">¶</a></dt>
+<span class="sig-prename descclassname"><span class="pre">fal.sdk.</span></span><span class="sig-name descname"><span class="pre">get_default_credentials</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">team</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.get_default_credentials" title="Link to this definition">¶</a></dt>
 <dd><dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference internal" href="#fal.sdk.Credentials" title="fal.sdk.Credentials"><code class="xref py py-class docutils literal notranslate"><span class="pre">Credentials</span></code></a></span></p>
@@ -3019,7 +3045,7 @@ from a Dockerfile.</p>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="fal.function">
-<span class="sig-prename descclassname"><span class="pre">fal.</span></span><span class="sig-name descname"><span class="pre">function</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">kind='virtualenv'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">host=FalServerlessHost(url='api.alpha.fal.ai'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">credentials=AuthenticatedCredentials()</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">_lock=&lt;unlocked</span> <span class="pre">_thread.lock</span> <span class="pre">object&gt;)</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">**config</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.function" title="Link to this definition">¶</a></dt>
+<span class="sig-prename descclassname"><span class="pre">fal.</span></span><span class="sig-name descname"><span class="pre">function</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">kind='virtualenv'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">host=FalServerlessHost(url='api.alpha.fal.ai'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">credentials=AuthenticatedCredentials(team_id=None)</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">_lock=&lt;unlocked</span> <span class="pre">_thread.lock</span> <span class="pre">object&gt;)</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">**config</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.function" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py function">

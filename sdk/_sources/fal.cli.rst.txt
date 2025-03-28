@@ -124,6 +124,14 @@ fal.cli.secrets module
    :undoc-members:
    :show-inheritance:
 
+fal.cli.teams module
+--------------------
+
+.. automodule:: fal.cli.teams
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 Module contents
 ---------------
 
