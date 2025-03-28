@@ -754,3 +754,8 @@ class FalServerlessConnection:
     def kill_runner(self, runner_id: str) -> None:
         request = isolate_proto.KillRunnerRequest(runner_id=runner_id)
         self.stub.KillRunner(request)
+
+    def list_runners(self) -> list[RunnerInfo]:
+        request = isolate_proto.ListRunnersRequest()
+        response = self.stub.ListRunners(request)
+        return [from_grpc(runner) for runner in response.runners]
