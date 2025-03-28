@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import fal.cli.runners as runners
+
 from ._utils import get_client
 from .parser import FalClientParser
 
@@ -268,61 +270,17 @@ def _add_set_rev_parser(subparsers, parents):
 
 
 def _runners(args):
-    from rich.table import Table
-
     client = get_client(args.host, args.team)
     with client.connect() as connection:
-        runners = connection.list_alias_runners(alias=args.app_name)
+        alias_runners = connection.list_alias_runners(alias=args.app_name)
 
-    table = Table()
-    table.add_column("Runner ID")
-    table.add_column("In Flight Requests")
-    table.add_column("Missing Leases")
-    table.add_column("Expires In")
-    table.add_column("Uptime")
-    table.add_column("Revision")
+    runners_table = runners.runners_table(alias_runners)
+    args.console.print(f"Runners: {len(alias_runners)}")
+    # Drop the alias column, which is the first column
+    runners_table.columns.pop(0)
+    args.console.print(runners_table)
 
-    for runner in runners:
-        num_leases_with_request = len(
-            [
-                lease
-                for lease in runner.external_metadata.get("leases", [])
-                if lease.get("request_id") is not None
-            ]
-        )
-
-        table.add_row(
-            runner.runner_id,
-            str(runner.in_flight_requests),
-            str(runner.in_flight_requests - num_leases_with_request),
-            (
-                "N/A (active)"
-                if runner.expiration_countdown is None
-                else f"{runner.expiration_countdown}s"
-            ),
-            f"{runner.uptime} ({runner.uptime.total_seconds()}s)",
-            runner.revision,
-        )
-
-    args.console.print(f"Runners: {len(runners)}")
-    args.console.print(table)
-
-    requests_table = Table()
-    requests_table.add_column("Runner ID")
-    requests_table.add_column("Request ID")
-    requests_table.add_column("Caller ID")
-
-    for runner in runners:
-        for lease in runner.external_metadata.get("leases", []):
-            if not (req_id := lease.get("request_id")):
-                continue
-
-            requests_table.add_row(
-                runner.runner_id,
-                req_id,
-                lease.get("caller_user_id") or "",
-            )
-
+    requests_table = runners.runners_requests_table(alias_runners)
     args.console.print(f"Requests: {len(requests_table.rows)}")
     args.console.print(requests_table)
 
