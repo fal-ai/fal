@@ -280,6 +280,7 @@ def _runners(args):
     table.add_column("Missing Leases")
     table.add_column("Expires In")
     table.add_column("Uptime")
+    table.add_column("Revision")
 
     for runner in runners:
         num_leases_with_request = len(
@@ -300,6 +301,7 @@ def _runners(args):
                 else f"{runner.expiration_countdown}s"
             ),
             f"{runner.uptime} ({runner.uptime.total_seconds()}s)",
+            runner.revision,
         )
 
     args.console.print(f"Runners: {len(runners)}")

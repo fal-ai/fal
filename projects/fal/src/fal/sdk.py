@@ -246,6 +246,8 @@ class RunnerInfo:
     expiration_countdown: Optional[int]
     uptime: timedelta
     external_metadata: dict[str, Any]
+    revision: str
+    alias: str
 
 
 @dataclass
@@ -392,6 +394,8 @@ def _from_grpc_runner_info(message: isolate_proto.RunnerInfo) -> RunnerInfo:
         ),
         uptime=timedelta(seconds=message.uptime),
         external_metadata=external_metadata,
+        revision=message.revision,
+        alias=message.alias,
     )
 
 
