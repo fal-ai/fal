@@ -1,10 +1,9 @@
+from ._utils import get_client
 from .parser import DictAction, FalClientParser
 
 
 def _set(args):
-    from fal.sdk import FalServerlessClient
-
-    client = FalServerlessClient(args.host)
+    client = get_client(args.host, args.team)
     with client.connect() as connection:
         for name, value in args.secrets.items():
             connection.set_secret(name, value)
@@ -34,13 +33,11 @@ def _add_set_parser(subparsers, parents):
 def _list(args):
     from rich.table import Table
 
-    from fal.sdk import FalServerlessClient
-
     table = Table()
     table.add_column("Secret Name")
     table.add_column("Created At")
 
-    client = FalServerlessClient(args.host)
+    client = get_client(args.host, args.team)
     with client.connect() as connection:
         for secret in connection.list_secrets():
             table.add_row(secret.name, str(secret.created_at))
@@ -60,9 +57,7 @@ def _add_list_parser(subparsers, parents):
 
 
 def _unset(args):
-    from fal.sdk import FalServerlessClient
-
-    client = FalServerlessClient(args.host)
+    client = get_client(args.host, args.team)
     with client.connect() as connection:
         connection.delete_secret(args.secret)
 

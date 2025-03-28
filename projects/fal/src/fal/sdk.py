@@ -129,12 +129,22 @@ class FalServerlessKeyCredentials(Credentials):
 @dataclass
 class AuthenticatedCredentials(Credentials):
     user = USER
+    team_id: str | None = None
 
     def to_grpc(self) -> grpc.ChannelCredentials:
-        return grpc.composite_channel_credentials(
+        creds = [
             self.server_credentials.to_grpc(),
             grpc.access_token_call_credentials(USER.access_token),
-        )
+        ]
+
+        if self.team_id:
+            creds.append(
+                grpc.metadata_call_credentials(
+                    _GRPCMetadata("fal-user-id", self.team_id)
+                )
+            )
+
+        return grpc.composite_channel_credentials(*creds)
 
     def to_headers(self) -> dict[str, str]:
         token = USER.bearer_token
@@ -158,16 +168,23 @@ def get_agent_credentials(original_credentials: Credentials) -> Credentials:
         return original_credentials
 
 
-def get_default_credentials() -> Credentials:
+def get_default_credentials(team: str | None = None) -> Credentials:
+    from fal.config import Config
+
     if flags.AUTH_DISABLED:
         return Credentials()
 
     key_creds = key_credentials()
     if key_creds:
         logger.debug("Using key credentials")
+        if team:
+            raise ValueError("Using explicit team with key credentials is not allowed")
         return FalServerlessKeyCredentials(key_creds[0], key_creds[1])
     else:
-        return AuthenticatedCredentials()
+        config = Config()
+        team = team or config.get("team")
+        team_id = USER.get_team(team)["user_id"] if team else None
+        return AuthenticatedCredentials(team_id=team_id)
 
 
 @dataclass

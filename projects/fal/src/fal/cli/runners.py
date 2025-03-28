@@ -1,10 +1,9 @@
+from ._utils import get_client
 from .parser import FalClientParser
 
 
 def _kill(args):
-    from fal.sdk import FalServerlessClient
-
-    client = FalServerlessClient(args.host)
+    client = get_client(args.host, args.team)
     with client.connect() as connection:
         connection.kill_runner(args.id)
 

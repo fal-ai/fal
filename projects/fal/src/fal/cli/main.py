@@ -18,6 +18,7 @@ from . import (
     run,
     runners,
     secrets,
+    teams,
 )
 from .debug import debugtools, get_debug_parser
 from .parser import FalParser, FalParserExit
@@ -55,6 +56,7 @@ def _get_main_parser() -> argparse.ArgumentParser:
         doctor,
         create,
         runners,
+        teams,
     ]:
         cmd.add_parser(subparsers, parents)
 

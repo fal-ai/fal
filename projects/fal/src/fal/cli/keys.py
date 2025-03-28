@@ -1,12 +1,11 @@
 from fal.sdk import KeyScope
 
+from ._utils import get_client
 from .parser import FalClientParser
 
 
 def _create(args):
-    from fal.sdk import FalServerlessClient
-
-    client = FalServerlessClient(args.host)
+    client = get_client(args.host, args.team)
     with client.connect() as connection:
         parsed_scope = KeyScope(args.scope)
         result = connection.create_user_key(parsed_scope, args.desc)
@@ -43,15 +42,13 @@ def _add_create_parser(subparsers, parents):
 def _list(args):
     from rich.table import Table
 
-    from fal.sdk import FalServerlessClient
-
-    client = FalServerlessClient(args.host)
     table = Table()
     table.add_column("Key ID")
     table.add_column("Created At")
     table.add_column("Scope")
     table.add_column("Description")
 
+    client = get_client(args.host, args.team)
     with client.connect() as connection:
         keys = connection.list_user_keys()
         for key in keys:
@@ -77,9 +74,7 @@ def _add_list_parser(subparsers, parents):
 
 
 def _revoke(args):
-    from fal.sdk import FalServerlessClient
-
-    client = FalServerlessClient(args.host)
+    client = get_client(args.host, args.team)
     with client.connect() as connection:
         connection.revoke_user_key(args.key_id)
 

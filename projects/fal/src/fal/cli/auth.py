@@ -2,11 +2,38 @@ from fal.auth import USER, login, logout
 
 
 def _login(args):
+    from rich.prompt import Prompt
+
+    from fal.config import Config
+
     login()
+    teams = [team["nickname"].lower() for team in USER.teams]
+    if not teams:
+        return
+
+    team = Prompt.ask(
+        "\nPlease choose a team account to use or leave blank to "
+        "use your personal account:",
+        choices=teams,
+        default=None,
+    )
+    with Config().edit() as config:
+        if team:
+            args.console.print(
+                f"Setting team to [cyan]{team}[/]. "
+                "You can change this later with [bold]fal team set[/]."
+            )
+            config.set("team", team)
+        else:
+            config.unset("team")
 
 
 def _logout(args):
+    from fal.config import Config
+
     logout()
+    with Config().edit() as config:
+        config.unset("team")
 
 
 def _whoami(args):
