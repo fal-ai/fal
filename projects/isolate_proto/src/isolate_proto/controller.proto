@@ -41,6 +41,8 @@ service IsolateController {
     rpc ListAliasRunners (ListAliasRunnersRequest) returns (ListAliasRunnersResponse) {}
     // Kill a runner
     rpc KillRunner (KillRunnerRequest) returns (KillRunnerResponse) {}
+    // List all runners
+    rpc ListRunners (ListRunnersRequest) returns (ListRunnersResponse) {}
 }
 
 message HostedMap {
@@ -329,11 +331,21 @@ message RunnerInfo {
     int32 in_flight_requests = 2;
     optional int32 expiration_countdown = 3;
     float uptime = 4;
+    string revision = 6;
+    string alias = 7;
     optional google.protobuf.Struct external_metadata = 5;
 }
 
 message KillRunnerRequest {
     string runner_id = 1;
+}
+
+message ListRunnersRequest {
+    // Empty. For future use.
+}
+
+message ListRunnersResponse {
+    repeated RunnerInfo runners = 1;
 }
 
 message KillRunnerResponse {
