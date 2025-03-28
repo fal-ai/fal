@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ._utils import get_client
 from .parser import FalClientParser
 
 if TYPE_CHECKING:
@@ -47,9 +48,7 @@ def _apps_table(apps: list[AliasInfo]):
 
 
 def _list(args):
-    from fal.sdk import FalServerlessClient
-
-    client = FalServerlessClient(args.host)
+    client = get_client(args.host, args.team)
     with client.connect() as connection:
         apps = connection.list_aliases()
 
@@ -120,9 +119,7 @@ def _app_rev_table(revs: list[ApplicationInfo]):
 
 
 def _list_rev(args):
-    from fal.sdk import FalServerlessClient
-
-    client = FalServerlessClient(args.host)
+    client = get_client(args.host, args.team)
     with client.connect() as connection:
         revs = connection.list_applications()
         table = _app_rev_table(revs)
@@ -142,9 +139,7 @@ def _add_list_rev_parser(subparsers, parents):
 
 
 def _scale(args):
-    from fal.sdk import FalServerlessClient
-
-    client = FalServerlessClient(args.host)
+    client = get_client(args.host, args.team)
     with client.connect() as connection:
         if (
             args.keep_alive is None
@@ -240,9 +235,7 @@ def _add_scale_parser(subparsers, parents):
 
 
 def _set_rev(args):
-    from fal.sdk import FalServerlessClient
-
-    client = FalServerlessClient(args.host)
+    client = get_client(args.host, args.team)
     with client.connect() as connection:
         connection.create_alias(args.app_name, args.app_rev, args.auth)
 
@@ -277,9 +270,7 @@ def _add_set_rev_parser(subparsers, parents):
 def _runners(args):
     from rich.table import Table
 
-    from fal.sdk import FalServerlessClient
-
-    client = FalServerlessClient(args.host)
+    client = get_client(args.host, args.team)
     with client.connect() as connection:
         runners = connection.list_alias_runners(alias=args.app_name)
 
@@ -350,9 +341,7 @@ def _add_runners_parser(subparsers, parents):
 
 
 def _delete(args):
-    from fal.sdk import FalServerlessClient
-
-    client = FalServerlessClient(args.host)
+    client = get_client(args.host, args.team)
     with client.connect() as connection:
         connection.delete_alias(args.app_name)
 
@@ -373,9 +362,7 @@ def _add_delete_parser(subparsers, parents):
 
 
 def _delete_rev(args):
-    from fal.sdk import FalServerlessClient
-
-    client = FalServerlessClient(args.host)
+    client = get_client(args.host, args.team)
     with client.connect() as connection:
         connection.delete_application(args.app_rev)
 

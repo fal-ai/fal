@@ -4,13 +4,12 @@ from fal.config import Config
 
 
 def _list(args):
-    config = Config()
-
     table = Table()
     table.add_column("Default")
     table.add_column("Profile")
     table.add_column("Settings")
 
+    config = Config()
     for profile in config.profiles():
         table.add_row(
             "*" if profile == config._profile else "",
@@ -22,28 +21,24 @@ def _list(args):
 
 
 def _set(args):
-    config = Config()
-    config.set_internal("profile", args.PROFILE)
-    args.console.print(f"Default profile set to [cyan]{args.PROFILE}[/].")
-    config.profile = args.PROFILE
-    if not config.get("key"):
-        args.console.print(
-            "No key set for profile. Use [bold]fal profile key[/] to set a key."
-        )
-    config.save()
+    with Config().edit() as config:
+        config.set_internal("profile", args.PROFILE)
+        args.console.print(f"Default profile set to [cyan]{args.PROFILE}[/].")
+        config.profile = args.PROFILE
+        if not config.get("key"):
+            args.console.print(
+                "No key set for profile. Use [bold]fal profile key[/] to set a key."
+            )
 
 
 def _unset(args):
-    config = Config()
-    config.set_internal("profile", None)
-    args.console.print("Default profile unset.")
-    config.profile = None
-    config.save()
+    with Config().edit() as config:
+        config.set_internal("profile", None)
+        args.console.print("Default profile unset.")
+        config.profile = None
 
 
 def _key_set(args):
-    config = Config()
-
     while True:
         key = input("Enter the key: ")
         if ":" in key:
@@ -52,25 +47,25 @@ def _key_set(args):
             "[red]Invalid key. The key must be in the format [bold]key:value[/].[/]"
         )
 
-    config.set("key", key)
-    args.console.print(f"Key set for profile [cyan]{config.profile}[/].")
-    config.save()
+    with Config().edit() as config:
+        config.set("key", key)
+        args.console.print(f"Key set for profile [cyan]{config.profile}[/].")
 
 
 def _delete(args):
-    config = Config()
-    if config.profile == args.PROFILE:
-        config.set_internal("profile", None)
+    with Config().edit() as config:
+        if config.profile == args.PROFILE:
+            config.set_internal("profile", None)
 
-    config.delete(args.PROFILE)
-    args.console.print(f"Profile [cyan]{args.PROFILE}[/] deleted.")
-    config.save()
+        config.delete(args.PROFILE)
+        args.console.print(f"Profile [cyan]{args.PROFILE}[/] deleted.")
 
 
 def add_parser(main_subparsers, parents):
     auth_help = "Profile management."
     parser = main_subparsers.add_parser(
         "profile",
+        aliases=["profiles"],
         description=auth_help,
         help=auth_help,
         parents=parents,

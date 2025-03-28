@@ -3,6 +3,13 @@ from __future__ import annotations
 from fal.files import find_project_root, find_pyproject_toml, parse_pyproject_toml
 
 
+def get_client(host: str, team: str | None = None):
+    from fal.sdk import FalServerlessClient, get_default_credentials
+
+    credentials = get_default_credentials(team=team)
+    return FalServerlessClient(host, credentials)
+
+
 def is_app_name(app_ref: tuple[str, str | None]) -> bool:
     is_single_file = app_ref[1] is None
     is_python_file = app_ref[0].endswith(".py")

@@ -1,7 +1,9 @@
 import os
+from contextlib import contextmanager
 from typing import Dict, List, Optional
 
-SETTINGS_SECTION = "__internal__"
+SETTINGS_SECTION = "__internal__"  # legacy
+DEFAULT_PROFILE = "default"
 
 
 class Config:
@@ -23,9 +25,9 @@ class Config:
         except FileNotFoundError:
             self._config = {}
 
-        profile = os.getenv("FAL_PROFILE")
-        if not profile:
-            profile = self.get_internal("profile")
+        profile = (
+            os.getenv("FAL_PROFILE") or self.get_internal("profile") or DEFAULT_PROFILE
+        )
 
         self.profile = profile
 
@@ -66,6 +68,12 @@ class Config:
 
         self._config[self.profile][key] = value
 
+    def unset(self, key: str) -> None:
+        if not self.profile:
+            raise ValueError("No profile set.")
+
+        del self._config[self.profile][key]
+
     def get_internal(self, key: str) -> Optional[str]:
         if SETTINGS_SECTION not in self._config:
             self._config[SETTINGS_SECTION] = {}
@@ -83,3 +91,8 @@ class Config:
 
     def delete(self, profile: str) -> None:
         del self._config[profile]
+
+    @contextmanager
+    def edit(self):
+        yield self
+        self.save()

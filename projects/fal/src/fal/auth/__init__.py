@@ -128,16 +128,40 @@ def _fetch_access_token() -> str:
         return token_data["access_token"]
 
 
+def _fetch_teams(bearer_token: str) -> list[dict]:
+    import json
+    from urllib.error import HTTPError
+    from urllib.request import Request, urlopen
+
+    from fal.exceptions import FalServerlessException
+    from fal.flags import REST_URL
+
+    request = Request(
+        method="GET",
+        url=f"{REST_URL}/users/teams",
+        headers={"Authorization": bearer_token},
+    )
+    try:
+        with urlopen(request) as response:
+            teams = json.load(response)
+    except HTTPError as exc:
+        raise FalServerlessException("Failed to fetch teams") from exc
+
+    return [team for team in teams if not team["is_personal"]]
+
+
 @dataclass
 class UserAccess:
     _access_token: str | None = field(repr=False, default=None)
     _user_info: dict | None = field(repr=False, default=None)
     _exc: Exception | None = field(repr=False, default=None)
+    _teams: list[dict] | None = field(repr=False, default=None)
 
     def invalidate(self) -> None:
         self._access_token = None
         self._user_info = None
         self._exc = None
+        self._teams = None
 
     @property
     def info(self) -> dict:
@@ -166,6 +190,18 @@ class UserAccess:
     @property
     def bearer_token(self) -> str:
         return "Bearer " + self.access_token
+
+    @property
+    def teams(self) -> list[dict]:
+        if self._teams is None:
+            self._teams = _fetch_teams(self.bearer_token)
+        return self._teams
+
+    def get_team(self, team: str) -> dict:
+        for t in self.teams:
+            if t["nickname"].lower() == team.lower():
+                return t
+        raise ValueError(f"Team {team} not found")
 
 
 USER = UserAccess()
