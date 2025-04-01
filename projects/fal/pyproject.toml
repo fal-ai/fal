@@ -28,7 +28,6 @@ dependencies = [
     "dill==0.3.7",
     "cloudpickle==3.0.0",
     "typing-extensions>=4.7.1,<5",
-    "click>=8.1.3,<9",
     "structlog>=22.3.0,<23",
     "opentelemetry-api>=1.15.0,<2",
     "opentelemetry-sdk>=1.15.0,<2",

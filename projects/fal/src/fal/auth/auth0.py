@@ -4,12 +4,12 @@ import functools
 import time
 import warnings
 
-import click
 import httpx
 
 from fal.console import console
 from fal.console.icons import CHECK_ICON
 from fal.console.ux import maybe_open_browser_tab
+from fal.exceptions import FalServerlessException
 
 WEBSITE_URL = "https://fal.ai"
 
@@ -55,7 +55,7 @@ def login() -> dict:
     )
 
     if device_code_response.status_code != 200:
-        raise click.ClickException("Error generating the device code")
+        raise FalServerlessException("Error generating the device code")
 
     device_code_data = device_code_response.json()
     device_user_code = device_code_data["user_code"]
@@ -92,7 +92,7 @@ def login() -> dict:
 
             elif token_data["error"] not in ("authorization_pending", "slow_down"):
                 status.update(spinner=None)
-                raise click.ClickException(token_data["error_description"])
+                raise FalServerlessException(token_data["error_description"])
 
             else:
                 time.sleep(device_code_data["interval"])
@@ -115,7 +115,7 @@ def refresh(token: str) -> dict:
 
         return token_data
     else:
-        raise click.ClickException(token_data["error_description"])
+        raise FalServerlessException(token_data["error_description"])
 
 
 def revoke(token: str):
@@ -130,7 +130,7 @@ def revoke(token: str):
 
     if token_response.status_code != 200:
         token_data = token_response.json()
-        raise click.ClickException(token_data["error_description"])
+        raise FalServerlessException(token_data["error_description"])
 
     _open_browser(logout_url(WEBSITE_URL), None)
 
@@ -142,7 +142,7 @@ def get_user_info(bearer_token: str) -> dict:
     )
 
     if userinfo_response.status_code != 200:
-        raise click.ClickException(userinfo_response.content.decode("utf-8"))
+        raise FalServerlessException(userinfo_response.content.decode("utf-8"))
 
     return userinfo_response.json()
 
