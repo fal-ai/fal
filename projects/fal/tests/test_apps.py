@@ -652,6 +652,18 @@ def test_404_response(test_app: str, request: pytest.FixtureRequest):
         apps.run(test_app, path="/other", arguments={"lhs": 1, "rhs": 2})
 
 
+def test_app_no_auth():
+    # This will just pass for users with shared apps access
+    app_alias = str(uuid.uuid4()) + "-alias"
+    with pytest.raises(HTTPStatusError, match="application_auth_mode must be provided"):
+        addition_app.host.register(
+            func=addition_app.func,
+            options=addition_app.options,
+            # random enough
+            application_name=app_alias,
+        )
+
+
 def test_app_deploy_scale(aliased_app: Tuple[str, str]):
     from dataclasses import replace
 
