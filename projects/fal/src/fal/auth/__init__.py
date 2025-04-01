@@ -5,12 +5,11 @@ from dataclasses import dataclass, field
 from threading import Lock
 from typing import Optional
 
-import click
-
 from fal.auth import auth0, local
 from fal.config import Config
 from fal.console import console
 from fal.console.icons import CHECK_ICON
+from fal.exceptions import FalServerlessException
 from fal.exceptions.auth import UnauthenticatedException
 
 
@@ -85,7 +84,7 @@ def login():
 def logout():
     refresh_token, _ = local.load_token()
     if refresh_token is None:
-        raise click.ClickException(message="You're not logged in")
+        raise FalServerlessException("You're not logged in")
     auth0.revoke(refresh_token)
     with local.lock_token():
         local.delete_token()
