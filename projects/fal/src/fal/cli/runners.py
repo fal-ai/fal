@@ -1,10 +1,14 @@
+from __future__ import annotations
+
+from typing import List
+
 from fal.sdk import RunnerInfo
 
 from ._utils import get_client
 from .parser import FalClientParser
 
 
-def runners_table(runners: list[RunnerInfo]):
+def runners_table(runners: List[RunnerInfo]):
     from rich.table import Table
 
     table = Table()
