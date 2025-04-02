@@ -49,4 +49,4 @@ jobs:
           FAL_KEY: ${{ secrets.FAL_CLOUD_KEY_ID }}:${{ secrets.FAL_CLOUD_KEY_SECRET }}
           FAL_HOST: api.${{ vars.FAL_CLOUD_INTEGRATION_TEST_HOST }}
         run: |
-          pytest -n auto -v projects/fal/tests
+          pytest -n 16 -v projects/fal/tests
