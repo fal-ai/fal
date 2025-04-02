@@ -655,7 +655,7 @@ def test_404_response(test_app: str, request: pytest.FixtureRequest):
 def test_app_no_auth():
     # This will just pass for users with shared apps access
     app_alias = str(uuid.uuid4()) + "-alias"
-    with pytest.raises(HTTPStatusError, match="application_auth_mode must be provided"):
+    with pytest.raises(api.FalServerlessError, match="Must specify auth_mode"):
         addition_app.host.register(
             func=addition_app.func,
             options=addition_app.options,
