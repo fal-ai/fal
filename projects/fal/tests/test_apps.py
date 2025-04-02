@@ -484,6 +484,7 @@ def test_stateful_app_client(test_stateful_app: str):
     assert response["result"] == 0
 
 
+@pytest.mark.timeout(300)
 def test_app_cancellation(test_app: str, test_cancellable_app: str):
     request_handle = apps.submit(
         test_cancellable_app, arguments={"lhs": 1, "rhs": 2, "wait_time": 10}
@@ -524,6 +525,7 @@ def test_app_cancellation(test_app: str, test_cancellable_app: str):
 
 
 @pytest.mark.flaky(max_runs=3)
+@pytest.mark.timeout(300)
 def test_app_client_async():
     app_alias = str(uuid.uuid4()) + "-client-async-alias"
 
@@ -833,6 +835,7 @@ def test_workflows(test_app: str):
 
 # If the logging subsystem is not working for some nodes, this test will flake
 @pytest.mark.flaky(max_runs=5)
+@pytest.mark.timeout(600)
 def test_traceback_logs(test_exception_app: AppClient):
     date = (datetime.utcnow() - timedelta(seconds=1)).isoformat()
 
@@ -845,7 +848,7 @@ def test_traceback_logs(test_exception_app: AppClient):
         timeout=300,
     ) as client:
         # Give some time for logs to propagate through the logging subsystem.
-        for _ in range(10):
+        for _ in range(30):
             time.sleep(2)
             response = client.get(
                 REST_CLIENT.base_url + f"/logs/?traceback=true&since={date}"
@@ -866,6 +869,7 @@ def test_traceback_logs(test_exception_app: AppClient):
             ), "Logs should contain the traceback message"
 
 
+@pytest.mark.timeout(300)
 def test_app_exceptions(test_exception_app: AppClient):
     with pytest.raises(AppClientError) as app_exc:
         test_exception_app.app_exception({})
@@ -884,6 +888,7 @@ def test_app_exceptions(test_exception_app: AppClient):
     assert _CUDA_OOM_MESSAGE in cuda_exc.value.message
 
 
+@pytest.mark.timeout(300)
 def test_kill_runner():
     app_alias = str(uuid.uuid4()) + "-sleep-alias"
     app = fal.wrap_app(SleepApp)
