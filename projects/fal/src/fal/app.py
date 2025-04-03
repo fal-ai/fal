@@ -268,7 +268,7 @@ class App(fal.api.BaseServable):
         "keep_alive": 60,
     }
     app_name: ClassVar[str]
-    app_auth: ClassVar[Literal["private", "public", "shared"]] = "private"
+    app_auth: ClassVar[Literal["private", "public", "shared", None]] = None
     request_timeout: ClassVar[int | None] = None
     startup_timeout: ClassVar[int | None] = None
 

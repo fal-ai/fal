@@ -97,7 +97,7 @@ def _deploy_from_reference(
     )
     isolated_function = loaded.function
     app_name = app_name or loaded.app_name  # type: ignore
-    app_auth = auth or loaded.app_auth or "private"
+    app_auth = auth or loaded.app_auth
     deployment_strategy = deployment_strategy or "recreate"
 
     app_id = host.register(
