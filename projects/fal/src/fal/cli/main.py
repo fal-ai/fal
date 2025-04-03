@@ -2,7 +2,7 @@ import argparse
 
 import rich
 
-from fal import __version__
+from fal._version import __version__
 from fal.console import console
 from fal.console.icons import CROSS_ICON
 
