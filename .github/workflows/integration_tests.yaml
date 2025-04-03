@@ -50,4 +50,4 @@ jobs:
           FAL_HOST: api.${{ vars.FAL_CLOUD_INTEGRATION_TEST_HOST }}
         run: |
           # Don't exaggerate the parallelism, since this job runs a matrix
-          pytest -n 4 -v projects/fal/tests
+          pytest -n 8 -v projects/fal/tests

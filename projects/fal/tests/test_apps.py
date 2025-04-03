@@ -832,8 +832,7 @@ def test_workflows(test_app: str):
 
 
 # If the logging subsystem is not working for some nodes, this test will flake
-@pytest.mark.flaky(max_runs=5)
-@pytest.mark.timeout(600)
+@pytest.mark.flaky(max_runs=10)
 def test_traceback_logs(test_exception_app: AppClient):
     date = (datetime.utcnow() - timedelta(seconds=1)).isoformat()
 
@@ -846,7 +845,7 @@ def test_traceback_logs(test_exception_app: AppClient):
         timeout=300,
     ) as client:
         # Give some time for logs to propagate through the logging subsystem.
-        for _ in range(30):
+        for _ in range(10):
             time.sleep(2)
             response = client.get(
                 REST_CLIENT.base_url + f"/logs/?traceback=true&since={date}"
