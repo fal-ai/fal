@@ -190,6 +190,8 @@
 </li>
 <li class="toctree-l2"><a class="reference internal" href="fal.cli.html#module-fal.cli.runners">fal.cli.runners module</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="fal.cli.html#fal.cli.runners.add_parser"><code class="docutils literal notranslate"><span class="pre">add_parser()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal.cli.html#fal.cli.runners.runners_requests_table"><code class="docutils literal notranslate"><span class="pre">runners_requests_table()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal.cli.html#fal.cli.runners.runners_table"><code class="docutils literal notranslate"><span class="pre">runners_table()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="fal.cli.html#module-fal.cli.secrets">fal.cli.secrets module</a><ul>
@@ -1794,6 +1796,16 @@ project root was discovered.</p>
 </dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="fal.sdk.FalServerlessConnection.list_runners">
+<span class="sig-name descname"><span class="pre">list_runners</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.FalServerlessConnection.list_runners" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<a class="reference internal" href="#fal.sdk.RunnerInfo" title="fal.sdk.RunnerInfo"><code class="xref py py-class docutils literal notranslate"><span class="pre">RunnerInfo</span></code></a>]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="fal.sdk.FalServerlessConnection.list_secrets">
 <span class="sig-name descname"><span class="pre">list_secrets</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.FalServerlessConnection.list_secrets" title="Link to this definition">¶</a></dt>
 <dd><dl class="field-list simple">
@@ -2137,8 +2149,13 @@ project root was discovered.</p>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="fal.sdk.RunnerInfo">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.sdk.</span></span><span class="sig-name descname"><span class="pre">RunnerInfo</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">runner_id</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">in_flight_requests</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">expiration_countdown</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">uptime</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">external_metadata</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.RunnerInfo" title="Link to this definition">¶</a></dt>
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.sdk.</span></span><span class="sig-name descname"><span class="pre">RunnerInfo</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">runner_id</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">in_flight_requests</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">expiration_countdown</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">uptime</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">external_metadata</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">revision</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alias</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.RunnerInfo" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.sdk.RunnerInfo.alias">
+<span class="sig-name descname"><span class="pre">alias</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><a class="headerlink" href="#fal.sdk.RunnerInfo.alias" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
 <dl class="py attribute">
 <dt class="sig sig-object py" id="fal.sdk.RunnerInfo.expiration_countdown">
 <span class="sig-name descname"><span class="pre">expiration_countdown</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code><span class="pre">]</span></em><a class="headerlink" href="#fal.sdk.RunnerInfo.expiration_countdown" title="Link to this definition">¶</a></dt>
@@ -2152,6 +2169,11 @@ project root was discovered.</p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="fal.sdk.RunnerInfo.in_flight_requests">
 <span class="sig-name descname"><span class="pre">in_flight_requests</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></em><a class="headerlink" href="#fal.sdk.RunnerInfo.in_flight_requests" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.sdk.RunnerInfo.revision">
+<span class="sig-name descname"><span class="pre">revision</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><a class="headerlink" href="#fal.sdk.RunnerInfo.revision" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
