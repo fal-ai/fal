@@ -575,11 +575,12 @@ class FalServerlessConnection:
         else:
             wrapped_requirements = None
 
+        auth_mode = None
         if application_auth_mode == "public":
             auth_mode = isolate_proto.ApplicationAuthMode.PUBLIC
         elif application_auth_mode == "shared":
             auth_mode = isolate_proto.ApplicationAuthMode.SHARED
-        else:
+        elif application_auth_mode == "private":
             auth_mode = isolate_proto.ApplicationAuthMode.PRIVATE
 
         struct_metadata = None
