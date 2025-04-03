@@ -576,6 +576,41 @@ def test_app_client_async():
     assert result == {"slept": True}
 
 
+# If the logging subsystem is not working for some nodes, this test will flake
+@pytest.mark.flaky(max_runs=10)
+def test_traceback_logs(test_exception_app: AppClient):
+    date = (datetime.utcnow() - timedelta(seconds=1)).isoformat()
+
+    with pytest.raises(AppClientError):
+        test_exception_app.fail({})
+
+    with httpx.Client(
+        base_url=REST_CLIENT.base_url,
+        headers=REST_CLIENT.get_headers(),
+        timeout=300,
+    ) as client:
+        # Give some time for logs to propagate through the logging subsystem.
+        for _ in range(10):
+            time.sleep(2)
+            response = client.get(
+                REST_CLIENT.base_url + f"/logs/?traceback=true&since={date}"
+            )
+
+            logs = response.json()
+            if len(logs) > 0:
+                break
+
+        assert len(logs) > 0
+        for log in logs:
+            assert log["message"].count("\n") > 1, "Logs should be multi-line"
+            assert (
+                '{"traceback":' not in log["message"]
+            ), "Logs should not be JSON-wrapped"
+            assert (
+                "this app is designed to fail" in log["message"]
+            ), "Logs should contain the traceback message"
+
+
 def test_app_openapi_spec_metadata(test_app: str, request: pytest.FixtureRequest):
     user_id, _, app_id = test_app.partition("/")
     res = app_metadata.sync_detailed(
@@ -829,41 +864,6 @@ def test_workflows(test_app: str):
                 "workflows/" + workflow_id, arguments={"lhs": 2, "rhs": 3}
             )
             assert data["result"] == 10
-
-
-# If the logging subsystem is not working for some nodes, this test will flake
-@pytest.mark.flaky(max_runs=10)
-def test_traceback_logs(test_exception_app: AppClient):
-    date = (datetime.utcnow() - timedelta(seconds=1)).isoformat()
-
-    with pytest.raises(AppClientError):
-        test_exception_app.fail({})
-
-    with httpx.Client(
-        base_url=REST_CLIENT.base_url,
-        headers=REST_CLIENT.get_headers(),
-        timeout=300,
-    ) as client:
-        # Give some time for logs to propagate through the logging subsystem.
-        for _ in range(10):
-            time.sleep(2)
-            response = client.get(
-                REST_CLIENT.base_url + f"/logs/?traceback=true&since={date}"
-            )
-
-            logs = response.json()
-            if len(logs) > 0:
-                break
-
-        assert len(logs) > 0
-        for log in logs:
-            assert log["message"].count("\n") > 1, "Logs should be multi-line"
-            assert (
-                '{"traceback":' not in log["message"]
-            ), "Logs should not be JSON-wrapped"
-            assert (
-                "this app is designed to fail" in log["message"]
-            ), "Logs should contain the traceback message"
 
 
 def test_app_exceptions(test_exception_app: AppClient):
