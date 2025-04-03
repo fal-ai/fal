@@ -693,6 +693,8 @@ def test_app_deploy_scale(aliased_app: Tuple[str, str]):
         assert found.max_multiplexing == 30
 
 
+# List aliases is taking long
+@pytest.mark.timeout(600)
 def test_app_update_app(aliased_app: Tuple[str, str]):
     app_revision, app_alias = aliased_app
 
@@ -743,6 +745,8 @@ def test_app_update_app(aliased_app: Tuple[str, str]):
         assert res.max_multiplexing == new_max_multiplexing
 
 
+# List aliases is taking long
+@pytest.mark.timeout(600)
 def test_app_set_delete_alias(aliased_app: Tuple[str, str]):
     app_revision, app_alias = aliased_app
 
