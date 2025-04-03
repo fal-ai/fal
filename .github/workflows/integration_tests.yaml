@@ -21,6 +21,7 @@ concurrency:
 jobs:
   run:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -48,4 +49,5 @@ jobs:
           FAL_KEY: ${{ secrets.FAL_CLOUD_KEY_ID }}:${{ secrets.FAL_CLOUD_KEY_SECRET }}
           FAL_HOST: api.${{ vars.FAL_CLOUD_INTEGRATION_TEST_HOST }}
         run: |
-          pytest -n auto -v projects/fal/tests
+          # Don't exaggerate the parallelism, since this job runs a matrix
+          pytest -n 8 -v projects/fal/tests

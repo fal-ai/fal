@@ -70,6 +70,7 @@ test = [
     "pytest<8",
     "pytest-asyncio",
     "pytest-xdist",
+    "pytest-timeout",
     "flaky",
     "boto3",
 ]
@@ -92,3 +93,6 @@ known-first-party = ["fal"]
 
 [tool.ruff.lint.pyupgrade]
 keep-runtime-typing = true
+
+[tool.pytest.ini_options]
+timeout = 300

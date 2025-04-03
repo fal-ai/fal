@@ -1088,7 +1088,10 @@ class BaseServable:
                     type(exc), exc, exc.__traceback__
                 )
 
-            print(json.dumps({"traceback": "".join(formatted_exception[::-1])}))
+            print(
+                json.dumps({"traceback": "".join(formatted_exception[::-1])}),
+                flush=True,
+            )
 
             if _is_cuda_oom_exception(exc):
                 return await cuda_out_of_memory_exception_handler(
