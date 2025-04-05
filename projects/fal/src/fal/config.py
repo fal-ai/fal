@@ -72,7 +72,7 @@ class Config:
         if not self.profile:
             raise ValueError("No profile set.")
 
-        del self._config[self.profile][key]
+        self._config.get(self.profile, {}).pop(key, None)
 
     def get_internal(self, key: str) -> Optional[str]:
         if SETTINGS_SECTION not in self._config:
