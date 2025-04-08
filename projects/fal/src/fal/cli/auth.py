@@ -143,3 +143,26 @@ def add_parser(main_subparsers, parents):
         parents=parents,
     )
     whoami_parser.set_defaults(func=_whoami)
+
+    account_list_help = "List available accounts."
+    account_list_parser = subparsers.add_parser(
+        "list",
+        description=account_list_help,
+        help=account_list_help,
+        parents=parents,
+    )
+    account_list_parser.set_defaults(func=_list_accounts)
+
+    account_help = "Set the current account."
+    account_parser = subparsers.add_parser(
+        "account",
+        description=account_help,
+        help=account_help,
+        parents=parents,
+    )
+    account_parser.add_argument(
+        "account",
+        help="The account to set.",
+        nargs="?",
+    )
+    account_parser.set_defaults(func=_set_account)
