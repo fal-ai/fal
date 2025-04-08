@@ -75,9 +75,15 @@ def _set_account(args):
             account = USER.get_account(acc_choice)
 
     if account["is_personal"]:
-        args.console.print(f"Using personal account {account['nickname']}")
+        args.console.print(
+            f"Using personal account [cyan]{account['nickname']}[/]. "
+            "You can change this later with [bold]fal team set[/]"
+        )
     else:
-        args.console.print(f"Using team account {account['nickname']}")
+        args.console.print(
+            f"Using team account [cyan]{account['nickname']}[/]. "
+            "You can change this later with [bold]fal team set[/]"
+        )
 
     with Config().edit() as config:
         config.set("team", account["nickname"])
