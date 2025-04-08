@@ -1,39 +1,4 @@
-def _list(args):
-    from rich.table import Table
-
-    from fal.auth import USER
-    from fal.config import Config
-
-    table = Table()
-    table.add_column("Default")
-    table.add_column("Team")
-    table.add_column("Full Name")
-    table.add_column("ID")
-
-    default_team = Config().get("team")
-
-    for team in USER.teams:
-        default = default_team and default_team.lower() == team["nickname"].lower()
-        table.add_row(
-            "*" if default else "", team["nickname"], team["full_name"], team["user_id"]
-        )
-
-    args.console.print(table)
-
-
-def _set(args):
-    from fal.config import Config
-    from fal.sdk import USER
-
-    team = args.team.lower()
-    for team_info in USER.teams:
-        if team_info["nickname"].lower() == team:
-            break
-    else:
-        raise ValueError(f"Team {args.team} not found")
-
-    with Config().edit() as config:
-        config.set("team", team)
+from fal.cli.auth import _list_accounts, _set_account
 
 
 def _unset(args):
@@ -67,7 +32,7 @@ def add_parser(main_subparsers, parents):
         help=list_help,
         parents=parents,
     )
-    list_parser.set_defaults(func=_list)
+    list_parser.set_defaults(func=_list_accounts)
 
     set_help = "Set the current team."
     set_parser = subparsers.add_parser(
@@ -76,8 +41,8 @@ def add_parser(main_subparsers, parents):
         help=set_help,
         parents=parents,
     )
-    set_parser.add_argument("team", help="The team to set.")
-    set_parser.set_defaults(func=_set)
+    set_parser.add_argument("account", help="The team to set.")
+    set_parser.set_defaults(func=_set_account)
 
     unset_help = "Unset the current team."
     unset_parser = subparsers.add_parser(

@@ -142,11 +142,9 @@ def _fetch_teams(bearer_token: str) -> list[dict]:
     )
     try:
         with urlopen(request) as response:
-            teams = json.load(response)
+            return json.load(response)
     except HTTPError as exc:
         raise FalServerlessException("Failed to fetch teams") from exc
-
-    return [team for team in teams if not team["is_personal"]]
 
 
 @dataclass
@@ -154,13 +152,13 @@ class UserAccess:
     _access_token: str | None = field(repr=False, default=None)
     _user_info: dict | None = field(repr=False, default=None)
     _exc: Exception | None = field(repr=False, default=None)
-    _teams: list[dict] | None = field(repr=False, default=None)
+    _accounts: list[dict] | None = field(repr=False, default=None)
 
     def invalidate(self) -> None:
         self._access_token = None
         self._user_info = None
         self._exc = None
-        self._teams = None
+        self._accounts = None
 
     @property
     def info(self) -> dict:
@@ -191,13 +189,17 @@ class UserAccess:
         return "Bearer " + self.access_token
 
     @property
-    def teams(self) -> list[dict]:
-        if self._teams is None:
-            self._teams = _fetch_teams(self.bearer_token)
-        return self._teams
+    def accounts(self) -> list[dict]:
+        if self._accounts is None:
+            self._accounts = _fetch_teams(self.bearer_token)
+            self._accounts = sorted(
+                self._accounts, key=lambda x: (not x["is_personal"], x["nickname"])
+            )
 
-    def get_team(self, team: str) -> dict:
-        for t in self.teams:
+        return self._accounts
+
+    def get_account(self, team: str) -> dict:
+        for t in self.accounts:
             if t["nickname"].lower() == team.lower():
                 return t
         raise ValueError(f"Team {team} not found")
