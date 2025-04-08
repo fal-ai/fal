@@ -35,10 +35,11 @@ def _list_accounts(args):
     table.add_column("Type")
 
     for idx, account in enumerate(USER.accounts):
-        color = "bold yellow" if account["nickname"] == current_account else None
+        selected = account["nickname"] == current_account
+        color = "bold yellow" if selected else None
 
         table.add_row(
-            f"{idx + 1}",
+            f"* {idx + 1}" if selected else f"  {idx + 1}",
             account["nickname"],
             "Personal" if account["is_personal"] else "Team",
             style=color,
