@@ -89,6 +89,9 @@ class Config:
         else:
             self._config[SETTINGS_SECTION][key] = value
 
+    def unset_internal(self, key: str) -> None:
+        self._config.get(SETTINGS_SECTION, {}).pop(key, None)
+
     def delete(self, profile: str) -> None:
         del self._config[profile]
 
