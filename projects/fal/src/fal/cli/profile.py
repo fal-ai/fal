@@ -33,7 +33,7 @@ def _set(args):
 
 def _unset(args):
     with Config().edit() as config:
-        config.set_internal("profile", None)
+        config.unset_internal("profile")
         args.console.print("Default profile unset.")
         config.profile = None
 
