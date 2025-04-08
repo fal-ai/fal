@@ -183,7 +183,7 @@ def get_default_credentials(team: str | None = None) -> Credentials:
     else:
         config = Config()
         team = team or config.get("team")
-        team_id = USER.get_team(team)["user_id"] if team else None
+        team_id = USER.get_account(team)["user_id"] if team else None
         return AuthenticatedCredentials(team_id=team_id)
 
 

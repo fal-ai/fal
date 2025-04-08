@@ -3,44 +3,13 @@ from fal.auth import USER, login, logout
 
 def _login(args):
     from fal.config import Config
-    from fal.console.prompt import prompt
 
     login()
 
-    teams = [team["nickname"].lower() for team in USER.teams]
-    if not teams:
-        return
-
-    args.console.print("")
-    args.console.print(
-        f"You ({USER.info['name']}) are a member of the following teams:\n",
-    )
-    for idx, team in enumerate(USER.teams):
-        args.console.print(f"  {idx + 1}. {team['nickname']}")
-    args.console.print("")
-
-    team_choice = prompt(
-        args.console,
-        "Pick a team account to use (leave blank for personal account)",
-        choices=teams,
-        show_choices=False,
-        default=None,
-    )
-    args.console.print("")
-
     with Config().edit() as config:
-        if team_choice:
-            args.console.print(
-                f"Setting team to [cyan]{team}[/]. "
-                "You can change this later with [bold]fal team set[/]."
-            )
-            config.set("team", team)
-        else:
-            args.console.print(
-                "Using your personal account. "
-                "You can change this later with [bold]fal team set[/]."
-            )
-            config.unset("team")
+        config.unset("team")
+
+    _set_account(args)
 
 
 def _logout(args):
@@ -51,10 +20,84 @@ def _logout(args):
         config.unset("team")
 
 
+def _list_accounts(args):
+    from rich.style import Style
+    from rich.table import Table
+
+    from fal.config import Config
+
+    config = Config()
+    current_account = config.get("team") or USER.info["nickname"]
+
+    table = Table(border_style=Style(frame=False), show_header=False)
+    table.add_column("#")
+    table.add_column("Nickname")
+    table.add_column("Type")
+
+    for idx, account in enumerate(USER.accounts):
+        color = "bold yellow" if account["nickname"] == current_account else None
+
+        table.add_row(
+            f"{idx + 1}",
+            account["nickname"],
+            "Personal" if account["is_personal"] else "Team",
+            style=color,
+        )
+
+    args.console.print(table)
+
+
+def _set_account(args):
+    from rich.prompt import Prompt
+
+    from fal.config import Config
+
+    if hasattr(args, "account") and args.account:
+        if args.account.isdigit():
+            acc_index = int(args.account) - 1
+            account = USER.accounts[acc_index]
+        else:
+            account = USER.get_account(args.account)
+    else:
+        _list_accounts(args)
+        indices = list(map(str, range(1, len(USER.accounts) + 1)))
+        team_names = [account["nickname"] for account in USER.accounts]
+        acc_choice = Prompt.ask(
+            "Select an account by number",
+            choices=indices + team_names,
+            show_choices=False,
+        )
+        if acc_choice in indices:
+            acc_index = int(acc_choice) - 1
+            account = USER.accounts[acc_index]
+        else:
+            account = USER.get_account(acc_choice)
+
+    if account["is_personal"]:
+        args.console.print(f"Using personal account {account['nickname']}")
+    else:
+        args.console.print(f"Using team account {account['nickname']}")
+
+    with Config().edit() as config:
+        config.set("team", account["nickname"])
+
+
 def _whoami(args):
-    user_name = USER.info["name"]
-    sub = USER.info["sub"]
-    args.console.print(f"Hello, {user_name} - '{sub}'")
+    from fal.config import Config
+
+    config = Config()
+
+    team = config.get("team")
+    if team:
+        account = USER.get_account(team)
+    else:
+        account = USER.get_account(USER.info["nickname"])
+
+    nickname = account["nickname"]
+    full_name = account["full_name"]
+    user_id = account["user_id"]
+
+    args.console.print(f"Hello, {full_name}: {nickname!r} - {user_id!r}")
 
 
 def add_parser(main_subparsers, parents):
