@@ -129,7 +129,7 @@ class FalServerlessKeyCredentials(Credentials):
 @dataclass
 class AuthenticatedCredentials(Credentials):
     user = USER
-    team_id: str | None = None
+    team: str | None = None
 
     def to_grpc(self) -> grpc.ChannelCredentials:
         creds = [
@@ -137,11 +137,10 @@ class AuthenticatedCredentials(Credentials):
             grpc.access_token_call_credentials(USER.access_token),
         ]
 
-        if self.team_id:
+        if self.team:
+            team_id = USER.get_account(self.team)["user_id"]
             creds.append(
-                grpc.metadata_call_credentials(
-                    _GRPCMetadata("fal-user-id", self.team_id)
-                )
+                grpc.metadata_call_credentials(_GRPCMetadata("fal-user-id", team_id))
             )
 
         return grpc.composite_channel_credentials(*creds)
@@ -183,8 +182,7 @@ def get_default_credentials(team: str | None = None) -> Credentials:
     else:
         config = Config()
         team = team or config.get("team")
-        team_id = USER.get_account(team)["user_id"] if team else None
-        return AuthenticatedCredentials(team_id=team_id)
+        return AuthenticatedCredentials(team=team)
 
 
 @dataclass
