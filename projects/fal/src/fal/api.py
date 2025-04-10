@@ -83,9 +83,6 @@ SERVE_REQUIREMENTS = [
 ]
 
 
-THREAD_POOL = ThreadPoolExecutor()
-
-
 @dataclass
 class FalServerlessError(FalServerlessException):
     message: str
@@ -419,6 +416,8 @@ class FalServerlessHost(Host):
 
     _log_printer = IsolateLogPrinter(debug=flags.DEBUG)
 
+    _thread_pool: ThreadPoolExecutor = field(default_factory=ThreadPoolExecutor)
+
     def __setstate__(self, state: dict[str, Any]) -> None:
         self.__dict__.update(state)
         self.credentials = get_agent_credentials(self.credentials)
@@ -611,7 +610,7 @@ class FalServerlessHost(Host):
                     ret.url = log.message.rsplit()[-1]
                 ret.logs.put(log)
 
-        THREAD_POOL.submit(
+        self._thread_pool.submit(
             self._run,
             func,
             options,
