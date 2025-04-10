@@ -1,8 +1,15 @@
 def _login(args):
     from fal.auth import login
     from fal.config import Config
+    from fal.console.icons import CHECK_ICON, CROSS_ICON
+    from fal.exceptions import FalServerlessException
 
-    login()
+    try:
+        login(args.console)
+        args.console.print(f"{CHECK_ICON} Authenticated successfully, welcome!")
+    except FalServerlessException as e:
+        args.console.print(f"{CROSS_ICON} {e}")
+        return
 
     with Config().edit() as config:
         config.unset("team")
@@ -13,8 +20,15 @@ def _login(args):
 def _logout(args):
     from fal.auth import logout
     from fal.config import Config
+    from fal.console.icons import CHECK_ICON, CROSS_ICON
+    from fal.exceptions import FalServerlessException
 
-    logout()
+    try:
+        logout(args.console)
+        args.console.print(f"{CHECK_ICON} Logged out of [cyan bold]fal[/]. Bye!")
+    except FalServerlessException as e:
+        args.console.print(f"{CROSS_ICON} {e}")
+        return
 
     with Config().edit() as config:
         config.unset("team")
