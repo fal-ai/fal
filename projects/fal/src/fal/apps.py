@@ -4,6 +4,7 @@ import json
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from functools import lru_cache
 from typing import TYPE_CHECKING, Any, Iterator
 
 import httpx
@@ -56,12 +57,19 @@ class Completed(_Status):
     logs: list[dict[str, Any]] | None = field()
 
 
+@lru_cache(maxsize=1)
+def _get_http_client() -> httpx.Client:
+    return httpx.Client(headers={"User-Agent": "Fal/Python"})
+
+
 @dataclass
 class RequestHandle:
     """A handle to an async inference request."""
 
     app_id: str
     request_id: str
+
+    _client: httpx.Client = field(default_factory=_get_http_client)
 
     # Use the credentials that were used to submit the request by default.
     _creds: Credentials = field(default_factory=get_default_credentials, repr=False)
@@ -83,7 +91,7 @@ class RequestHandle:
             _QUEUE_URL_FORMAT.format(app_id=self.app_id)
             + f"/requests/{self.request_id}/status/"
         )
-        response = _HTTP_CLIENT.get(
+        response = self._client.get(
             url,
             headers=self._creds.to_headers(),
             params={"logs": int(logs)},
@@ -108,7 +116,7 @@ class RequestHandle:
             _QUEUE_URL_FORMAT.format(app_id=self.app_id)
             + f"/requests/{self.request_id}/cancel"
         )
-        response = _HTTP_CLIENT.put(url, headers=self._creds.to_headers())
+        response = self._client.put(url, headers=self._creds.to_headers())
         response.raise_for_status()
 
     def iter_events(
@@ -135,7 +143,7 @@ class RequestHandle:
             _QUEUE_URL_FORMAT.format(app_id=self.app_id)
             + f"/requests/{self.request_id}/"
         )
-        response = _HTTP_CLIENT.get(url, headers=self._creds.to_headers())
+        response = self._client.get(url, headers=self._creds.to_headers())
         try:
             response.raise_for_status()
         except httpx.HTTPStatusError as e:
@@ -160,9 +168,6 @@ class RequestHandle:
         return self.fetch_result()
 
 
-_HTTP_CLIENT = httpx.Client(headers={"User-Agent": "Fal/Python"})
-
-
 def stream(
     app_id: str, arguments: dict[str, Any], *, path: str = ""
 ) -> Iterator[str | bytes]:
@@ -175,8 +180,9 @@ def stream(
         url += "/" + _path
 
     creds = get_default_credentials()
+    client = _get_http_client()
 
-    response = _HTTP_CLIENT.post(
+    response = client.post(
         url,
         json=arguments,
         headers=creds.to_headers(),
@@ -210,8 +216,9 @@ def submit(app_id: str, arguments: dict[str, Any], *, path: str = "") -> Request
         url += "/" + _path
 
     creds = get_default_credentials()
+    client = _get_http_client()
 
-    response = _HTTP_CLIENT.post(
+    response = client.post(
         url,
         json=arguments,
         headers=creds.to_headers(),
@@ -223,6 +230,7 @@ def submit(app_id: str, arguments: dict[str, Any], *, path: str = "") -> Request
         app_id=app_id,
         request_id=data["request_id"],
         _creds=creds,
+        _client=client,
     )
 
 
