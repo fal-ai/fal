@@ -1,10 +1,9 @@
-from fal.auth import USER, login, logout
-
-
 def _login(args):
+    from fal.auth import UserAccess
     from fal.config import Config
 
-    login()
+    user_access = UserAccess()
+    user_access.login()
 
     with Config().edit() as config:
         config.unset("team")
@@ -13,9 +12,11 @@ def _login(args):
 
 
 def _logout(args):
+    from fal.auth import UserAccess
     from fal.config import Config
 
-    logout()
+    user_access = UserAccess()
+    user_access.logout()
     with Config().edit() as config:
         config.unset("team")
 
@@ -24,17 +25,19 @@ def _list_accounts(args):
     from rich.style import Style
     from rich.table import Table
 
+    from fal.auth import UserAccess
     from fal.config import Config
 
+    user_access = UserAccess()
     config = Config()
-    current_account = config.get("team") or USER.info["nickname"]
+    current_account = config.get("team") or user_access.info["nickname"]
 
     table = Table(border_style=Style(frame=False), show_header=False)
     table.add_column("#")
     table.add_column("Nickname")
     table.add_column("Type")
 
-    for idx, account in enumerate(USER.accounts):
+    for idx, account in enumerate(user_access.accounts):
         selected = account["nickname"] == current_account
         color = "bold yellow" if selected else None
 
@@ -51,18 +54,21 @@ def _list_accounts(args):
 def _set_account(args):
     from rich.prompt import Prompt
 
+    from fal.auth import UserAccess
     from fal.config import Config
+
+    user_access = UserAccess()
 
     if hasattr(args, "account") and args.account:
         if args.account.isdigit():
             acc_index = int(args.account) - 1
-            account = USER.accounts[acc_index]
+            account = user_access.accounts[acc_index]
         else:
-            account = USER.get_account(args.account)
+            account = user_access.get_account(args.account)
     else:
         _list_accounts(args)
-        indices = list(map(str, range(1, len(USER.accounts) + 1)))
-        team_names = [account["nickname"] for account in USER.accounts]
+        indices = list(map(str, range(1, len(user_access.accounts) + 1)))
+        team_names = [account["nickname"] for account in user_access.accounts]
         acc_choice = Prompt.ask(
             "Select an account by number",
             choices=indices + team_names,
@@ -70,9 +76,9 @@ def _set_account(args):
         )
         if acc_choice in indices:
             acc_index = int(acc_choice) - 1
-            account = USER.accounts[acc_index]
+            account = user_access.accounts[acc_index]
         else:
-            account = USER.get_account(acc_choice)
+            account = user_access.get_account(acc_choice)
 
     if account["is_personal"]:
         args.console.print(
@@ -90,15 +96,17 @@ def _set_account(args):
 
 
 def _whoami(args):
+    from fal.auth import UserAccess
     from fal.config import Config
 
+    user_access = UserAccess()
     config = Config()
 
     team = config.get("team")
     if team:
-        account = USER.get_account(team)
+        account = user_access.get_account(team)
     else:
-        account = USER.get_account(USER.info["nickname"])
+        account = user_access.get_account(user_access.info["nickname"])
 
     nickname = account["nickname"]
     full_name = account["full_name"]
