@@ -68,13 +68,13 @@
 <li class="toctree-l4"><a class="reference internal" href="fal.auth.html#fal.auth.UserAccess.get_account"><code class="docutils literal notranslate"><span class="pre">UserAccess.get_account()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.auth.html#fal.auth.UserAccess.info"><code class="docutils literal notranslate"><span class="pre">UserAccess.info</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.auth.html#fal.auth.UserAccess.invalidate"><code class="docutils literal notranslate"><span class="pre">UserAccess.invalidate()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.auth.html#fal.auth.UserAccess.login"><code class="docutils literal notranslate"><span class="pre">UserAccess.login()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.auth.html#fal.auth.UserAccess.logout"><code class="docutils literal notranslate"><span class="pre">UserAccess.logout()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="fal.auth.html#fal.auth.get_colab_token"><code class="docutils literal notranslate"><span class="pre">get_colab_token()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="fal.auth.html#fal.auth.is_google_colab"><code class="docutils literal notranslate"><span class="pre">is_google_colab()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="fal.auth.html#fal.auth.key_credentials"><code class="docutils literal notranslate"><span class="pre">key_credentials()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="fal.auth.html#fal.auth.login"><code class="docutils literal notranslate"><span class="pre">login()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="fal.auth.html#fal.auth.logout"><code class="docutils literal notranslate"><span class="pre">logout()</span></code></a></li>
 </ul>
 </li>
 </ul>
@@ -252,7 +252,7 @@
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="fal.logging.html#module-fal.logging.user">fal.logging.user module</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="fal.logging.html#fal.logging.user.add_user_id"><code class="docutils literal notranslate"><span class="pre">add_user_id()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal.logging.html#fal.logging.user.AddUserIdProcessor"><code class="docutils literal notranslate"><span class="pre">AddUserIdProcessor</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="fal.logging.html#module-fal.logging">Module contents</a><ul>
@@ -830,7 +830,7 @@ cancellation or with an event, like aiohttp.</p>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="fal.api.function">
-<span class="sig-prename descclassname"><span class="pre">fal.api.</span></span><span class="sig-name descname"><span class="pre">function</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">kind='virtualenv'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">host=FalServerlessHost(url='api.alpha.fal.ai'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">credentials=AuthenticatedCredentials(team=None)</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">_lock=&lt;unlocked</span> <span class="pre">_thread.lock</span> <span class="pre">object&gt;)</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">**config</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.function" title="Link to this definition">¶</a></dt>
+<span class="sig-prename descclassname"><span class="pre">fal.api.</span></span><span class="sig-name descname"><span class="pre">function</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">kind='virtualenv'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">host=FalServerlessHost(url='api.alpha.fal.ai'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">credentials=AuthenticatedCredentials(user=UserAccess()</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">team=None)</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">_lock=&lt;unlocked</span> <span class="pre">_thread.lock</span> <span class="pre">object&gt;)</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">**config</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.function" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 </section>
@@ -1577,7 +1577,7 @@ project root was discovered.</p>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="fal.sdk.AuthenticatedCredentials">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.sdk.</span></span><span class="sig-name descname"><span class="pre">AuthenticatedCredentials</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">team</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.AuthenticatedCredentials" title="Link to this definition">¶</a></dt>
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.sdk.</span></span><span class="sig-name descname"><span class="pre">AuthenticatedCredentials</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">user=&lt;factory&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">team=None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.AuthenticatedCredentials" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <a class="reference internal" href="#fal.sdk.Credentials" title="fal.sdk.Credentials"><code class="xref py py-class docutils literal notranslate"><span class="pre">Credentials</span></code></a></p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="fal.sdk.AuthenticatedCredentials.team">
@@ -1606,7 +1606,7 @@ project root was discovered.</p>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="fal.sdk.AuthenticatedCredentials.user">
-<span class="sig-name descname"><span class="pre">user</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">UserAccess()</span></em><a class="headerlink" href="#fal.sdk.AuthenticatedCredentials.user" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">user</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="fal.auth.html#fal.auth.UserAccess" title="fal.auth.UserAccess"><code class="xref py py-class docutils literal notranslate"><span class="pre">UserAccess</span></code></a></em><a class="headerlink" href="#fal.sdk.AuthenticatedCredentials.user" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 </dd></dl>
@@ -3090,7 +3090,7 @@ from a Dockerfile.</p>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="fal.function">
-<span class="sig-prename descclassname"><span class="pre">fal.</span></span><span class="sig-name descname"><span class="pre">function</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">kind='virtualenv'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">host=FalServerlessHost(url='api.alpha.fal.ai'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">credentials=AuthenticatedCredentials(team=None)</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">_lock=&lt;unlocked</span> <span class="pre">_thread.lock</span> <span class="pre">object&gt;)</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">**config</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.function" title="Link to this definition">¶</a></dt>
+<span class="sig-prename descclassname"><span class="pre">fal.</span></span><span class="sig-name descname"><span class="pre">function</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">kind='virtualenv'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">host=FalServerlessHost(url='api.alpha.fal.ai'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">credentials=AuthenticatedCredentials(user=UserAccess()</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">team=None)</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">_lock=&lt;unlocked</span> <span class="pre">_thread.lock</span> <span class="pre">object&gt;)</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">**config</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.function" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py function">
