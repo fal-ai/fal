@@ -83,6 +83,8 @@
 <li class="toctree-l2"><a class="reference internal" href="fal.cli.html#submodules">Submodules</a></li>
 <li class="toctree-l2"><a class="reference internal" href="fal.cli.html#module-fal.cli.api">fal.cli.api module</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="fal.cli.html#fal.cli.api.add_parser"><code class="docutils literal notranslate"><span class="pre">add_parser()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal.cli.html#fal.cli.api.queue_run"><code class="docutils literal notranslate"><span class="pre">queue_run()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal.cli.html#fal.cli.api.stream_run"><code class="docutils literal notranslate"><span class="pre">stream_run()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="fal.cli.html#module-fal.cli.apps">fal.cli.apps module</a><ul>
@@ -1141,6 +1143,17 @@ of the request until it is completed.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code>]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.apps.stream">
+<span class="sig-prename descclassname"><span class="pre">fal.apps.</span></span><span class="sig-name descname"><span class="pre">stream</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">app_id</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">arguments</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.apps.stream" title="Link to this definition">¶</a></dt>
+<dd><p>Stream an inference task on a Fal app.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Iterator</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code> | <code class="xref py py-class docutils literal notranslate"><span class="pre">bytes</span></code>]</span></p>
 </dd>
 </dl>
 </dd></dl>
