@@ -17,7 +17,7 @@ from isolate_proto.configuration import GRPC_OPTIONS
 
 from fal import flags
 from fal._serialization import patch_pickle
-from fal.auth import USER, key_credentials
+from fal.auth import UserAccess, key_credentials
 from fal.logging import get_logger
 from fal.logging.trace import TraceContextInterceptor
 
@@ -128,17 +128,17 @@ class FalServerlessKeyCredentials(Credentials):
 
 @dataclass
 class AuthenticatedCredentials(Credentials):
-    user = USER
+    user: UserAccess = field(default_factory=UserAccess)
     team: str | None = None
 
     def to_grpc(self) -> grpc.ChannelCredentials:
         creds = [
             self.server_credentials.to_grpc(),
-            grpc.access_token_call_credentials(USER.access_token),
+            grpc.access_token_call_credentials(self.user.access_token),
         ]
 
         if self.team:
-            team_id = USER.get_account(self.team)["user_id"]
+            team_id = self.user.get_account(self.team)["user_id"]
             creds.append(
                 grpc.metadata_call_credentials(_GRPCMetadata("fal-user-id", team_id))
             )
@@ -146,7 +146,7 @@ class AuthenticatedCredentials(Credentials):
         return grpc.composite_channel_credentials(*creds)
 
     def to_headers(self) -> dict[str, str]:
-        token = USER.bearer_token
+        token = self.user.bearer_token
         return {"Authorization": token}
 
 

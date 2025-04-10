@@ -73,26 +73,6 @@ def key_credentials() -> tuple[str, str] | None:
         return None
 
 
-def login():
-    token_data = auth0.login()
-    with local.lock_token():
-        local.save_token(token_data["refresh_token"])
-
-    USER.invalidate()
-
-
-def logout():
-    refresh_token, _ = local.load_token()
-    if refresh_token is None:
-        raise FalServerlessException("You're not logged in")
-    auth0.revoke(refresh_token)
-    with local.lock_token():
-        local.delete_token()
-
-    USER.invalidate()
-    console.print(f"{CHECK_ICON} Logged out of [cyan bold]fal[/]. Bye!")
-
-
 def _fetch_access_token() -> str:
     """
     Load the refresh token, request a new access_token (refreshing the refresh token)
@@ -154,6 +134,24 @@ class UserAccess:
     _exc: Exception | None = field(repr=False, default=None)
     _accounts: list[dict] | None = field(repr=False, default=None)
 
+    def login(self):
+        token_data = auth0.login()
+        with local.lock_token():
+            local.save_token(token_data["refresh_token"])
+
+        self.invalidate()
+
+    def logout(self):
+        refresh_token, _ = local.load_token()
+        if refresh_token is None:
+            raise FalServerlessException("You're not logged in")
+        auth0.revoke(refresh_token)
+        with local.lock_token():
+            local.delete_token()
+
+        self.invalidate()
+        console.print(f"{CHECK_ICON} Logged out of [cyan bold]fal[/]. Bye!")
+
     def invalidate(self) -> None:
         self._access_token = None
         self._user_info = None
@@ -203,6 +201,3 @@ class UserAccess:
             if t["nickname"].lower() == team.lower():
                 return t
         raise ValueError(f"Team {team} not found")
-
-
-USER = UserAccess()
