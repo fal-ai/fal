@@ -6,8 +6,6 @@ import warnings
 
 import httpx
 
-from fal.console import console
-from fal.console.icons import CHECK_ICON
 from fal.console.ux import maybe_open_browser_tab
 from fal.exceptions import FalServerlessException
 
@@ -26,7 +24,7 @@ def logout_url(return_url: str):
     return f"https://{AUTH0_DOMAIN}/v2/logout?client_id={AUTH0_CLIENT_ID}&returnTo={return_url}"
 
 
-def _open_browser(url: str, code: str | None) -> None:
+def _open_browser(url: str, code: str | None, console) -> None:
     maybe_open_browser_tab(url)
 
     console.print(
@@ -41,7 +39,7 @@ def _open_browser(url: str, code: str | None) -> None:
         )
 
 
-def login() -> dict:
+def login(console) -> dict:
     """
     Runs the device authorization flow and stores the user object in memory
     """
@@ -63,7 +61,7 @@ def login() -> dict:
 
     url = logout_url(device_confirmation_url)
 
-    _open_browser(url, device_user_code)
+    _open_browser(url, device_user_code, console)
 
     # This is needed to suppress the ResourceWarning emitted
     # when the process is waiting for user confirmation
@@ -84,7 +82,6 @@ def login() -> dict:
             token_data = token_response.json()
             if token_response.status_code == 200:
                 status.update(spinner=None)
-                console.print(f"{CHECK_ICON} Authenticated successfully, welcome!")
 
                 validate_id_token(token_data["id_token"])
 
@@ -118,7 +115,7 @@ def refresh(token: str) -> dict:
         raise FalServerlessException(token_data["error_description"])
 
 
-def revoke(token: str):
+def revoke(token: str, console):
     token_payload = {
         "client_id": AUTH0_CLIENT_ID,
         "token": token,
@@ -132,7 +129,7 @@ def revoke(token: str):
         token_data = token_response.json()
         raise FalServerlessException(token_data["error_description"])
 
-    _open_browser(logout_url(WEBSITE_URL), None)
+    _open_browser(logout_url(WEBSITE_URL), None, console)
 
 
 def get_user_info(bearer_token: str) -> dict:

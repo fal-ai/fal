@@ -7,8 +7,6 @@ from typing import Optional
 
 from fal.auth import auth0, local
 from fal.config import Config
-from fal.console import console
-from fal.console.icons import CHECK_ICON
 from fal.exceptions import FalServerlessException
 from fal.exceptions.auth import UnauthenticatedException
 
@@ -127,21 +125,19 @@ def _fetch_teams(bearer_token: str) -> list[dict]:
         raise FalServerlessException("Failed to fetch teams") from exc
 
 
-def login():
-    token_data = auth0.login()
+def login(console):
+    token_data = auth0.login(console)
     with local.lock_token():
         local.save_token(token_data["refresh_token"])
 
 
-def logout():
+def logout(console):
     refresh_token, _ = local.load_token()
     if refresh_token is None:
         raise FalServerlessException("You're not logged in")
-    auth0.revoke(refresh_token)
+    auth0.revoke(refresh_token, console)
     with local.lock_token():
         local.delete_token()
-
-    console.print(f"{CHECK_ICON} Logged out of [cyan bold]fal[/]. Bye!")
 
 
 @dataclass
