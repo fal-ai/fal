@@ -10,19 +10,38 @@ KV_SPLIT_RE = re.compile(r"(=|:=)")
 
 def _api(args):
     """Handle the api command execution."""
+    from . import cli_nested_json
+
+    params_split = [KV_SPLIT_RE.split(param) for param in args.params]
+    params = cli_nested_json.interpret_nested_json(  # type: ignore
+        [(key, value) for key, _, value in params_split]
+    )
+
+    if args.model_id.endswith("/stream"):
+        stream_run(args.model_id, params)
+    else:
+        queue_run(args.model_id, params)
+
+
+def stream_run(model_id: str, params: dict):
+    res = fal.apps.stream(model_id, params)  # type: ignore
+    for line in res:
+        if isinstance(line, str):
+            rich.print(line)
+        else:
+            if isinstance(line, memoryview):
+                rich.print(line.tobytes().decode())
+            else:
+                rich.print(line.decode())
+
+
+def queue_run(model_id: str, params: dict):
     from rich.console import Group
     from rich.live import Live
     from rich.panel import Panel
     from rich.text import Text
 
-    from . import cli_nested_json
-
-    params = [KV_SPLIT_RE.split(param) for param in args.params]
-    params = cli_nested_json.interpret_nested_json(  # type: ignore
-        [(key, value) for key, _, value in params]
-    )
-
-    handle = fal.apps.submit(args.model_id, params)  # type: ignore
+    handle = fal.apps.submit(model_id, params)  # type: ignore
     logs = []  # type: ignore
 
     with Live(auto_refresh=False) as live:

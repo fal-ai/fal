@@ -14,6 +14,7 @@ from fal.sdk import Credentials, get_default_credentials
 if TYPE_CHECKING:
     from websockets.sync.connection import Connection
 
+_STREAM_URL_FORMAT = f"https://{flags.FAL_RUN_HOST}/{{app_id}}"
 _QUEUE_URL_FORMAT = f"https://queue.{flags.FAL_RUN_HOST}/{{app_id}}"
 _REALTIME_URL_FORMAT = f"wss://{flags.FAL_RUN_HOST}/{{app_id}}"
 _WS_URL_FORMAT = f"wss://ws.{flags.FAL_RUN_HOST}/{{app_id}}"
@@ -160,6 +161,34 @@ class RequestHandle:
 
 
 _HTTP_CLIENT = httpx.Client(headers={"User-Agent": "Fal/Python"})
+
+
+def stream(
+    app_id: str, arguments: dict[str, Any], *, path: str = ""
+) -> Iterator[str | bytes]:
+    """Stream an inference task on a Fal app."""
+
+    app_id = _backwards_compatible_app_id(app_id)
+    url = _STREAM_URL_FORMAT.format(app_id=app_id)
+    if path:
+        _path = path[len("/") :] if path.startswith("/") else path
+        url += "/" + _path
+
+    creds = get_default_credentials()
+
+    response = _HTTP_CLIENT.post(
+        url,
+        json=arguments,
+        headers=creds.to_headers(),
+    )
+    response.raise_for_status()
+
+    if response.headers["Content-Type"].startswith("text/event-stream"):
+        for line in response.iter_lines():
+            if line:
+                yield line
+    else:
+        yield from response.iter_bytes()
 
 
 def run(app_id: str, arguments: dict[str, Any], *, path: str = "") -> dict[str, Any]:
