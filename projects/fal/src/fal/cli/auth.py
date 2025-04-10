@@ -1,9 +1,8 @@
 def _login(args):
-    from fal.auth import UserAccess
+    from fal.auth import login
     from fal.config import Config
 
-    user_access = UserAccess()
-    user_access.login()
+    login()
 
     with Config().edit() as config:
         config.unset("team")
@@ -12,11 +11,11 @@ def _login(args):
 
 
 def _logout(args):
-    from fal.auth import UserAccess
+    from fal.auth import logout
     from fal.config import Config
 
-    user_access = UserAccess()
-    user_access.logout()
+    logout()
+
     with Config().edit() as config:
         config.unset("team")
 

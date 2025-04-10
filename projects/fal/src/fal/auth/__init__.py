@@ -127,36 +127,29 @@ def _fetch_teams(bearer_token: str) -> list[dict]:
         raise FalServerlessException("Failed to fetch teams") from exc
 
 
+def login():
+    token_data = auth0.login()
+    with local.lock_token():
+        local.save_token(token_data["refresh_token"])
+
+
+def logout():
+    refresh_token, _ = local.load_token()
+    if refresh_token is None:
+        raise FalServerlessException("You're not logged in")
+    auth0.revoke(refresh_token)
+    with local.lock_token():
+        local.delete_token()
+
+    console.print(f"{CHECK_ICON} Logged out of [cyan bold]fal[/]. Bye!")
+
+
 @dataclass
 class UserAccess:
     _access_token: str | None = field(repr=False, default=None)
     _user_info: dict | None = field(repr=False, default=None)
     _exc: Exception | None = field(repr=False, default=None)
     _accounts: list[dict] | None = field(repr=False, default=None)
-
-    def login(self):
-        token_data = auth0.login()
-        with local.lock_token():
-            local.save_token(token_data["refresh_token"])
-
-        self.invalidate()
-
-    def logout(self):
-        refresh_token, _ = local.load_token()
-        if refresh_token is None:
-            raise FalServerlessException("You're not logged in")
-        auth0.revoke(refresh_token)
-        with local.lock_token():
-            local.delete_token()
-
-        self.invalidate()
-        console.print(f"{CHECK_ICON} Logged out of [cyan bold]fal[/]. Bye!")
-
-    def invalidate(self) -> None:
-        self._access_token = None
-        self._user_info = None
-        self._exc = None
-        self._accounts = None
 
     @property
     def info(self) -> dict:
