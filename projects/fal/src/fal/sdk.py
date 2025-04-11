@@ -5,21 +5,29 @@ from contextlib import ExitStack
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Any, Callable, Generic, Iterator, Literal, Optional, TypeVar
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Generic,
+    Iterator,
+    Literal,
+    Optional,
+    TypeVar,
+)
 
 import grpc
 import isolate_proto
-from isolate.connections.common import is_agent
-from isolate.logs import Log
-from isolate.server import definitions as worker_definitions
 from isolate.server.interface import from_grpc, to_serialized_object, to_struct
-from isolate_proto.configuration import GRPC_OPTIONS
 
 from fal import flags
 from fal._serialization import patch_pickle
 from fal.auth import UserAccess, key_credentials
 from fal.logging import get_logger
 from fal.logging.trace import TraceContextInterceptor
+
+if TYPE_CHECKING:
+    from isolate.logs import Log
 
 ResultT = TypeVar("ResultT")
 InputT = TypeVar("InputT")
@@ -44,6 +52,8 @@ class ServerCredentials:
     @property
     def base_options(self) -> dict[str, str | int]:
         import json
+
+        from isolate_proto.configuration import GRPC_OPTIONS
 
         grpc_ops: dict[str, str | int] = dict(GRPC_OPTIONS)
         grpc_ops["grpc.enable_retries"] = 1
@@ -159,6 +169,8 @@ class ServerlessSecret:
 def get_agent_credentials(original_credentials: Credentials) -> Credentials:
     """If running inside a fal Serverless box, use the preconfigured credentials
     instead of the user provided ones."""
+
+    from isolate.connections.common import is_agent
 
     key_creds = key_credentials()
     if is_agent() and key_creds:
@@ -381,6 +393,8 @@ def _from_grpc_alias_info(message: isolate_proto.AliasInfo) -> AliasInfo:
 
 @from_grpc.register(isolate_proto.RunnerInfo)
 def _from_grpc_runner_info(message: isolate_proto.RunnerInfo) -> RunnerInfo:
+    from isolate.server import definitions as worker_definitions
+
     external_metadata = worker_definitions.struct_to_dict(message.external_metadata)
     return RunnerInfo(
         runner_id=message.runner_id,
