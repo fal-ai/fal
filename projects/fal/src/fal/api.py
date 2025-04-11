@@ -653,7 +653,6 @@ class Options:
             return self.gateway.get("exposed_port")
 
 
-_DEFAULT_HOST = FalServerlessHost()
 _SERVE_PORT = 8080
 
 # Overload @function to help users identify the correct signature.
@@ -703,7 +702,7 @@ def function(
     python_version: str | None = None,
     requirements: list[str] | None = None,
     # Common options
-    host: FalServerlessHost = _DEFAULT_HOST,
+    host: FalServerlessHost | None = None,
     serve: Literal[False] = False,
     exposed_port: int | None = None,
     max_concurrency: int | None = None,
@@ -732,7 +731,7 @@ def function(
     python_version: str | None = None,
     requirements: list[str] | None = None,
     # Common options
-    host: FalServerlessHost = _DEFAULT_HOST,
+    host: FalServerlessHost | None = None,
     serve: Literal[True],
     exposed_port: int | None = None,
     max_concurrency: int | None = None,
@@ -811,7 +810,7 @@ def function(
     pip: list[str] | None = None,
     channels: list[str] | None = None,
     # Common options
-    host: FalServerlessHost = _DEFAULT_HOST,
+    host: FalServerlessHost | None = None,
     serve: Literal[False] = False,
     exposed_port: int | None = None,
     max_concurrency: int | None = None,
@@ -845,7 +844,7 @@ def function(
     pip: list[str] | None = None,
     channels: list[str] | None = None,
     # Common options
-    host: FalServerlessHost = _DEFAULT_HOST,
+    host: FalServerlessHost | None = None,
     serve: Literal[True],
     exposed_port: int | None = None,
     max_concurrency: int | None = None,
@@ -873,7 +872,7 @@ def function(
     *,
     image: ContainerImage | None = None,
     # Common options
-    host: FalServerlessHost = _DEFAULT_HOST,
+    host: FalServerlessHost | None = None,
     serve: Literal[False] = False,
     exposed_port: int | None = None,
     max_concurrency: int | None = None,
@@ -901,7 +900,7 @@ def function(
     *,
     image: ContainerImage | None = None,
     # Common options
-    host: FalServerlessHost = _DEFAULT_HOST,
+    host: FalServerlessHost | None = None,
     serve: Literal[True],
     exposed_port: int | None = None,
     max_concurrency: int | None = None,
@@ -927,9 +926,11 @@ def function(
 def function(  # type: ignore
     kind: str = "virtualenv",
     *,
-    host: Host = _DEFAULT_HOST,
+    host: Host | None = None,
     **config: Any,
 ):
+    if host is None:
+        host = FalServerlessHost()
     options = host.parse_options(kind=kind, **config)
 
     def wrapper(func: Callable[ArgsT, ReturnT]):
