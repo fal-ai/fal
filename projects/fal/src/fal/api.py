@@ -12,6 +12,7 @@ from functools import wraps
 from os import PathLike
 from queue import Queue
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     ClassVar,
@@ -27,15 +28,11 @@ from typing import (
 
 import cloudpickle
 import grpc
-import isolate
 import tblib
 import uvicorn
 import yaml
 from fastapi import FastAPI
 from fastapi import __version__ as fastapi_version
-from isolate.backends.common import active_python
-from isolate.backends.settings import DEFAULT_SETTINGS
-from isolate.connections import PythonIPC
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 from pydantic import __version__ as pydantic_version
@@ -65,6 +62,9 @@ from fal.sdk import (
     get_agent_credentials,
     get_default_credentials,
 )
+
+if TYPE_CHECKING:
+    from isolate.backends import BaseEnvironment
 
 ArgsT = ParamSpec("ArgsT")
 ReturnT = TypeVar("ReturnT", covariant=True)  # noqa: PLC0105
@@ -219,8 +219,9 @@ def cached(func: Callable[ArgsT, ReturnT]) -> Callable[ArgsT, ReturnT]:
     ) -> ReturnT:
         from functools import lru_cache
 
-        # HACK: Using the isolate module as a global cache.
         import isolate
+
+        # HACK: Using the isolate module as a global cache.
 
         if not hasattr(isolate, "__cached_functions__"):
             isolate.__cached_functions__ = {}
@@ -266,17 +267,23 @@ def _prepare_partial_func(
     return wrapper
 
 
-@dataclass
-class LocalHost(Host):
-    # The environment which provides the default set of
-    # packages for isolate agent to run.
-    _AGENT_ENVIRONMENT = isolate.prepare_environment(
+def _prepare_environment() -> BaseEnvironment:
+    import isolate
+
+    return isolate.prepare_environment(
         "virtualenv",
         requirements=[
             f"cloudpickle=={cloudpickle.__version__}",
             f"tblib=={tblib.__version__}",
         ],
     )
+
+
+@dataclass
+class LocalHost(Host):
+    # The environment which provides the default set of
+    # packages for isolate agent to run.
+    _AGENT_ENVIRONMENT: BaseEnvironment = field(default_factory=_prepare_environment)
     _log_printer = IsolateLogPrinter(debug=flags.DEBUG)
 
     def run(
@@ -286,6 +293,10 @@ class LocalHost(Host):
         args: tuple[Any, ...],
         kwargs: dict[str, Any],
     ) -> ReturnT:
+        import isolate
+        from isolate.backends.settings import DEFAULT_SETTINGS
+        from isolate.connections import PythonIPC
+
         settings = replace(
             DEFAULT_SETTINGS,
             serialization_method="cloudpickle",
@@ -418,8 +429,14 @@ class FalServerlessHost(Host):
 
     _thread_pool: ThreadPoolExecutor = field(default_factory=ThreadPoolExecutor)
 
+    def __getstate__(self) -> dict[str, Any]:
+        state = self.__dict__.copy()
+        state["_thread_pool"] = None
+        return state
+
     def __setstate__(self, state: dict[str, Any]) -> None:
         self.__dict__.update(state)
+        self._thread_pool = ThreadPoolExecutor()
         self.credentials = get_agent_credentials(self.credentials)
 
     @property
@@ -439,6 +456,8 @@ class FalServerlessHost(Host):
         deployment_strategy: Literal["recreate", "rolling"] = "recreate",
         scale: bool = True,
     ) -> str | None:
+        from isolate.backends.common import active_python
+
         environment_options = options.environment.copy()
         environment_options.setdefault("python_version", active_python())
         environments = [self._connection.define_environment(**environment_options)]
@@ -516,6 +535,8 @@ class FalServerlessHost(Host):
         kwargs: dict[str, Any],
         result_handler: Callable[..., None],
     ) -> ReturnT:
+        from isolate.backends.common import active_python
+
         environment_options = options.environment.copy()
         environment_options.setdefault("python_version", active_python())
         environments = [self._connection.define_environment(**environment_options)]
@@ -653,7 +674,6 @@ class Options:
             return self.gateway.get("exposed_port")
 
 
-_DEFAULT_HOST = FalServerlessHost()
 _SERVE_PORT = 8080
 
 # Overload @function to help users identify the correct signature.
@@ -703,7 +723,7 @@ def function(
     python_version: str | None = None,
     requirements: list[str] | None = None,
     # Common options
-    host: FalServerlessHost = _DEFAULT_HOST,
+    host: FalServerlessHost | None = None,
     serve: Literal[False] = False,
     exposed_port: int | None = None,
     max_concurrency: int | None = None,
@@ -732,7 +752,7 @@ def function(
     python_version: str | None = None,
     requirements: list[str] | None = None,
     # Common options
-    host: FalServerlessHost = _DEFAULT_HOST,
+    host: FalServerlessHost | None = None,
     serve: Literal[True],
     exposed_port: int | None = None,
     max_concurrency: int | None = None,
@@ -811,7 +831,7 @@ def function(
     pip: list[str] | None = None,
     channels: list[str] | None = None,
     # Common options
-    host: FalServerlessHost = _DEFAULT_HOST,
+    host: FalServerlessHost | None = None,
     serve: Literal[False] = False,
     exposed_port: int | None = None,
     max_concurrency: int | None = None,
@@ -845,7 +865,7 @@ def function(
     pip: list[str] | None = None,
     channels: list[str] | None = None,
     # Common options
-    host: FalServerlessHost = _DEFAULT_HOST,
+    host: FalServerlessHost | None = None,
     serve: Literal[True],
     exposed_port: int | None = None,
     max_concurrency: int | None = None,
@@ -873,7 +893,7 @@ def function(
     *,
     image: ContainerImage | None = None,
     # Common options
-    host: FalServerlessHost = _DEFAULT_HOST,
+    host: FalServerlessHost | None = None,
     serve: Literal[False] = False,
     exposed_port: int | None = None,
     max_concurrency: int | None = None,
@@ -901,7 +921,7 @@ def function(
     *,
     image: ContainerImage | None = None,
     # Common options
-    host: FalServerlessHost = _DEFAULT_HOST,
+    host: FalServerlessHost | None = None,
     serve: Literal[True],
     exposed_port: int | None = None,
     max_concurrency: int | None = None,
@@ -927,15 +947,17 @@ def function(
 def function(  # type: ignore
     kind: str = "virtualenv",
     *,
-    host: Host = _DEFAULT_HOST,
+    host: Host | None = None,
     **config: Any,
 ):
+    if host is None:
+        host = FalServerlessHost()
     options = host.parse_options(kind=kind, **config)
 
     def wrapper(func: Callable[ArgsT, ReturnT]):
         include_modules_from(func)
         proxy = IsolatedFunction(
-            host=host,
+            host=host,  # type: ignore
             raw_func=func,  # type: ignore
             options=options,
         )

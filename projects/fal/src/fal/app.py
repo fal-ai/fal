@@ -16,11 +16,17 @@ from typing import Any, Callable, ClassVar, Literal, TypeVar
 import fastapi
 import grpc.aio as async_grpc
 import httpx
-from isolate.server import definitions
 
-import fal.api
 from fal._serialization import include_modules_from
-from fal.api import RouteSignature
+from fal.api import (
+    SERVE_REQUIREMENTS,
+    BaseServable,
+    IsolatedFunction,
+    RouteSignature,
+)
+from fal.api import (
+    function as fal_function,
+)
 from fal.exceptions import FalServerlessException, RequestCancelledException
 from fal.logging import get_logger
 from fal.toolkit.file import request_lifecycle_preference
@@ -70,6 +76,8 @@ async def _set_logger_labels(
     try:
         import sys
 
+        from isolate.server import definitions
+
         # Flush any prints that were buffered before setting the logger labels
         sys.stderr.flush()
         sys.stdout.flush()
@@ -89,7 +97,7 @@ async def _set_logger_labels(
         pass
 
 
-def wrap_app(cls: type[App], **kwargs) -> fal.api.IsolatedFunction:
+def wrap_app(cls: type[App], **kwargs) -> IsolatedFunction:
     include_modules_from(cls)
 
     def initialize_and_serve():
@@ -111,7 +119,7 @@ def wrap_app(cls: type[App], **kwargs) -> fal.api.IsolatedFunction:
     if kind == "container":
         cls.host_kwargs.pop("resolver", None)
 
-    wrapper = fal.api.function(
+    wrapper = fal_function(
         kind,
         requirements=cls.requirements,
         machine_type=cls.machine_type,
@@ -123,7 +131,7 @@ def wrap_app(cls: type[App], **kwargs) -> fal.api.IsolatedFunction:
         serve=False,
     )
     fn = wrapper(initialize_and_serve)
-    fn.options.add_requirements(fal.api.SERVE_REQUIREMENTS)
+    fn.options.add_requirements(SERVE_REQUIREMENTS)
     if realtime_app:
         fn.options.add_requirements(REALTIME_APP_REQUIREMENTS)
 
@@ -255,7 +263,7 @@ def _print_python_packages() -> None:
     print("[debug] Python packages installed:", ", ".join(packages))
 
 
-class App(fal.api.BaseServable):
+class App(BaseServable):
     requirements: ClassVar[list[str]] = []
     machine_type: ClassVar[str] = "S"
     num_gpus: ClassVar[int | None] = None

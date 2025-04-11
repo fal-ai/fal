@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import sys
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
-from isolate.logs import Log, LogLevel, LogSource
 from structlog.dev import ConsoleRenderer
 from structlog.typing import EventDict
 
 from .style import LEVEL_STYLES
+
+if TYPE_CHECKING:
+    from isolate.logs import Log, LogSource
 
 _renderer = ConsoleRenderer(level_styles=LEVEL_STYLES)
 
@@ -20,6 +23,8 @@ class IsolateLogPrinter:
         self._current_source: LogSource | None = None
 
     def _maybe_print_header(self, source: LogSource):
+        from isolate.logs import LogSource
+
         from fal.console import console
 
         if source == self._current_source:
@@ -37,6 +42,8 @@ class IsolateLogPrinter:
         self._current_source = source
 
     def print(self, log: Log):
+        from isolate.logs import LogLevel, LogSource
+
         if log.level < LogLevel.INFO and not self.debug:
             return
 
