@@ -26,9 +26,11 @@ USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36 Edg/91.0.864.59",
 ]
 
+
 def get_random_user_agent() -> str:
     """Return a random user agent from the list of common user agents."""
     return random.choice(USER_AGENTS)
+
 
 # Default headers with random user agent
 TEMP_HEADERS = {
