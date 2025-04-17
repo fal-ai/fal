@@ -508,33 +508,40 @@ def _raise_for_status(response: httpx.Response) -> None:
 @dataclass
 class LogMessage:
     """Represents a single log message in the fal.ai system"""
+
     timestamp: datetime
-    level: Literal["INFO", "WARNING", "ERROR", "DEBUG"]
+    level: str  # Changed from Literal to str to be more lenient
     message: str
     source: str
     metadata: Optional[dict[str, Any]] = None
 
     def __post_init__(self):
         """Validate the log level after initialization"""
+        # Make validation more lenient by converting to uppercase
+        self.level = self.level.upper()
         valid_levels = ["INFO", "WARNING", "ERROR", "DEBUG"]
         if self.level not in valid_levels:
-            raise ValueError(f"Invalid log level: {self.level}. Must be one of {valid_levels}")
+            # Default to INFO if level is invalid
+            self.level = "INFO"
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "LogMessage":
         """Convert a dictionary to a LogMessage object"""
         return cls(
-            timestamp=datetime.fromisoformat(data["timestamp"]) if "timestamp" in data else datetime.now(),
+            timestamp=datetime.fromisoformat(data["timestamp"])
+            if "timestamp" in data
+            else datetime.now(),
             level=data.get("level", "INFO"),
             message=data.get("message", ""),
             source=data.get("source", "unknown"),
-            metadata=data.get("metadata")
+            metadata=data.get("metadata"),
         )
 
 
 @dataclass
 class Status:
     """Base class for all status types"""
+
     pass
 
 
@@ -542,6 +549,7 @@ class Status:
 class Queued(Status):
     """Indicates the request is enqueued and waiting to be processed. The position
     field indicates the relative position in the queue (0-indexed)."""
+
     position: int = field()
 
 
@@ -550,6 +558,7 @@ class InProgress(Status):
     """Indicates the request is currently being processed. If the status operation called
     with the `with_logs` parameter set to True, the logs field will be a list of
     log objects."""
+
     logs: list[LogMessage] | None = field()
 
 
@@ -559,6 +568,7 @@ class Completed(Status):
     contain the logs if the status operation was called with the `with_logs` parameter set to True. Metrics
     might contain the inference time, and other internal metadata (number of tokens
     processed, etc.)."""
+
     logs: list[LogMessage] | None = field()
     metrics: dict[str, Any] = field()
 
@@ -574,12 +584,24 @@ class _BaseRequestHandle:
         if data["status"] == "IN_QUEUE":
             return Queued(position=data["queue_position"])
         elif data["status"] == "IN_PROGRESS":
-            logs = [LogMessage.from_dict(log) for log in data["logs"]] if data.get("logs") else None
+            logs = None
+            if data.get("logs"):
+                try:
+                    logs = [LogMessage.from_dict(log) for log in data["logs"]]
+                except Exception:
+                    # If log parsing fails, set logs to None
+                    logs = None
             return InProgress(logs=logs)
         elif data["status"] == "COMPLETED":
             # NOTE: legacy apps might not return metrics
             metrics = data.get("metrics", {})
-            logs = [LogMessage.from_dict(log) for log in data["logs"]] if data.get("logs") else None
+            logs = None
+            if data.get("logs"):
+                try:
+                    logs = [LogMessage.from_dict(log) for log in data["logs"]]
+                except Exception:
+                    # If log parsing fails, set logs to None
+                    logs = None
             return Completed(logs=logs, metrics=metrics)
         else:
             raise ValueError(f"Unknown status: {data['status']}")
