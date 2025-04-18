@@ -506,7 +506,69 @@ def _raise_for_status(response: httpx.Response) -> None:
 
 
 @dataclass
-class Status: ...
+class LogMessage:
+    """Represents a single log message in the fal.ai system"""
+
+    timestamp: datetime
+    level: str  # Changed from Literal to str to be more lenient
+    message: str
+    source: str
+    metadata: Optional[dict[str, Any]] = None
+
+    def __post_init__(self):
+        """Validate the log level after initialization"""
+        # Make validation more lenient by converting to uppercase
+        self.level = self.level.upper()
+        valid_levels = ["INFO", "WARNING", "ERROR", "DEBUG"]
+        if self.level not in valid_levels:
+            # Default to INFO if level is invalid
+            self.level = "INFO"
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "LogMessage":
+        """Convert a dictionary to a LogMessage object"""
+        timestamp = data.get("timestamp")
+        if timestamp is None:
+            timestamp = datetime.now()
+        elif isinstance(timestamp, str):
+            timestamp = datetime.fromisoformat(timestamp)
+        elif not isinstance(timestamp, datetime):
+            raise TypeError(f"timestamp must be str or datetime, got {type(timestamp)}")
+
+        return cls(
+            timestamp=timestamp,
+            level=data.get("level", "INFO"),
+            message=data.get("message", ""),
+            source=data.get("source", "unknown"),
+            metadata=data.get("metadata"),
+        )
+
+    def dict(self) -> dict[str, Any]:
+        """Convert the LogMessage object to a dictionary"""
+        return {
+            "timestamp": self.timestamp.isoformat(),
+            "level": self.level,
+            "message": self.message,
+            "source": self.source,
+            "metadata": self.metadata,
+        }
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, LogMessage):
+            return False
+        return (
+            self.level == other.level
+            and self.message == other.message
+            and self.source == other.source
+            and self.metadata == other.metadata
+        )
+
+
+@dataclass
+class Status:
+    """Base class for all status types"""
+
+    pass
 
 
 @dataclass
@@ -514,7 +576,7 @@ class Queued(Status):
     """Indicates the request is enqueued and waiting to be processed. The position
     field indicates the relative position in the queue (0-indexed)."""
 
-    position: int
+    position: int = field()
 
 
 @dataclass
@@ -523,8 +585,7 @@ class InProgress(Status):
     with the `with_logs` parameter set to True, the logs field will be a list of
     log objects."""
 
-    # TODO: Type the log object structure so we can offer editor completion
-    logs: list[dict[str, Any]] | None = field()
+    logs: list[LogMessage] | None = field()
 
 
 @dataclass
@@ -534,7 +595,7 @@ class Completed(Status):
     might contain the inference time, and other internal metadata (number of tokens
     processed, etc.)."""
 
-    logs: list[dict[str, Any]] | None = field()
+    logs: list[LogMessage] | None = field()
     metrics: dict[str, Any] = field()
 
 
@@ -549,11 +610,25 @@ class _BaseRequestHandle:
         if data["status"] == "IN_QUEUE":
             return Queued(position=data["queue_position"])
         elif data["status"] == "IN_PROGRESS":
-            return InProgress(logs=data["logs"])
+            logs = None
+            if data.get("logs"):
+                try:
+                    logs = [LogMessage.from_dict(log) for log in data["logs"]]
+                except Exception:
+                    # If log parsing fails, set logs to None
+                    logs = None
+            return InProgress(logs=logs)
         elif data["status"] == "COMPLETED":
             # NOTE: legacy apps might not return metrics
             metrics = data.get("metrics", {})
-            return Completed(logs=data["logs"], metrics=metrics)
+            logs = None
+            if data.get("logs"):
+                try:
+                    logs = [LogMessage.from_dict(log) for log in data["logs"]]
+                except Exception:
+                    # If log parsing fails, set logs to None
+                    logs = None
+            return Completed(logs=logs, metrics=metrics)
         else:
             raise ValueError(f"Unknown status: {data['status']}")
 
@@ -898,6 +973,7 @@ class AsyncClient:
             url,
             json=arguments,
             timeout=self.default_timeout,
+            headers=headers,
         )
         _raise_for_status(response)
 
