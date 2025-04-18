@@ -527,14 +527,40 @@ class LogMessage:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "LogMessage":
         """Convert a dictionary to a LogMessage object"""
+        timestamp = data.get("timestamp")
+        if timestamp is None:
+            timestamp = datetime.now()
+        elif isinstance(timestamp, str):
+            timestamp = datetime.fromisoformat(timestamp)
+        elif not isinstance(timestamp, datetime):
+            raise TypeError(f"timestamp must be str or datetime, got {type(timestamp)}")
+
         return cls(
-            timestamp=datetime.fromisoformat(data["timestamp"])
-            if "timestamp" in data
-            else datetime.now(),
+            timestamp=timestamp,
             level=data.get("level", "INFO"),
             message=data.get("message", ""),
             source=data.get("source", "unknown"),
             metadata=data.get("metadata"),
+        )
+
+    def dict(self) -> dict[str, Any]:
+        """Convert the LogMessage object to a dictionary"""
+        return {
+            "timestamp": self.timestamp.isoformat(),
+            "level": self.level,
+            "message": self.message,
+            "source": self.source,
+            "metadata": self.metadata,
+        }
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, LogMessage):
+            return False
+        return (
+            self.level == other.level
+            and self.message == other.message
+            and self.source == other.source
+            and self.metadata == other.metadata
         )
 
 
