@@ -1320,3 +1320,54 @@ def encode_image(image: Image.Image, format: str = "jpeg") -> str:
     with io.BytesIO() as buffer:
         image.save(buffer, format=format)
         return encode(buffer.getvalue(), f"image/{format}")
+
+
+@dataclass
+class LogMessage:
+    """A log message from the server."""
+
+    level: str
+    message: str
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+
+    VALID_LEVELS = {"debug", "info", "warning", "error", "critical"}
+
+    def __post_init__(self):
+        if self.level not in self.VALID_LEVELS:
+            raise ValueError(
+                f"Invalid log level: {self.level}. Must be one of {self.VALID_LEVELS}"
+            )
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> LogMessage:
+        """Create a LogMessage from a dictionary."""
+        level = str(data.get("level", "info"))
+        message = str(data.get("message", ""))
+        timestamp = data.get("timestamp")
+        if timestamp:
+            if isinstance(timestamp, str):
+                try:
+                    timestamp = datetime.fromisoformat(timestamp)
+                except ValueError:
+                    timestamp = datetime.now(timezone.utc)
+            elif not isinstance(timestamp, datetime):
+                timestamp = datetime.now(timezone.utc)
+        else:
+            timestamp = datetime.now(timezone.utc)
+        return cls(level=level, message=message, timestamp=timestamp)
+
+    def dict(self) -> dict[str, Any]:
+        """Convert the LogMessage to a dictionary."""
+        return {
+            "level": self.level,
+            "message": self.message,
+            "timestamp": self.timestamp.isoformat(),
+        }
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, LogMessage):
+            return False
+        return (
+            self.level == other.level and self.message == other.message
+            # Ignore timestamp in equality comparison
+        )
