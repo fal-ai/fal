@@ -289,6 +289,7 @@ class RealtimeApp(fal.App, keep_alive=300, max_concurrency=1):
     @fal.realtime("/realtime/batched", buffering=10, max_batch_size=4)
     def generate_rt_batched(self, input: RTInput, *inputs: RTInput) -> RTOutputs:
         time.sleep(2)  # fixed cost
+        print(f"generate_rt_batched {input.prompt} {inputs}")
         return RTOutputs(texts=[input.prompt] + [i.prompt for i in inputs])
 
 
