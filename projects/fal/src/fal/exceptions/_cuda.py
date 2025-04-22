@@ -26,12 +26,19 @@ def _is_cuda_oom_exception(exception: BaseException) -> bool:
 
 # based on https://github.com/BlackHC/toma/blob/master/toma/torch_cuda_memory.py
 def _is_cuda_out_of_memory(exception: BaseException) -> bool:
-    return (
-        isinstance(exception, RuntimeError)
-        and len(exception.args) == 1
-        and "CUDA" in exception.args[0]
-        and "out of memory" in exception.args[0]
-    )
+    if not isinstance(exception, RuntimeError) or len(exception.args) != 1:
+        return False
+
+    msg = exception.args[0]
+
+    if "CUDA" in msg and "out of memory" in msg:
+        return True
+
+    # https://github.com/pytorch/pytorch/issues/112377
+    if "NVML_SUCCESS == r INTERNAL ASSERT FAILED" in msg:
+        return True
+
+    return False
 
 
 # based on https://github.com/BlackHC/toma/blob/master/toma/torch_cuda_memory.py
