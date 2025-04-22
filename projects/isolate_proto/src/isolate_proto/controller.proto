@@ -256,7 +256,7 @@ message DeleteApplicationResult {
 message SetAliasRequest {
     string alias = 1;
     string revision = 2;
-    ApplicationAuthMode auth_mode = 3;
+    optional ApplicationAuthMode auth_mode = 3;
 }
 
 message SetAliasResult {
