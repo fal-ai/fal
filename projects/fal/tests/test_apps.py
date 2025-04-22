@@ -218,6 +218,11 @@ class ExceptionApp(fal.App, keep_alive=300, max_concurrency=1):
         # mimicking error message from PyTorch (https://github.com/pytorch/pytorch/blob/6c65fd03942415b68040e102c44cf5109d2d851e/c10/cuda/CUDACachingAllocator.cpp#L1234C12-L1234C30)
         raise RuntimeError("CUDA out of memory")
 
+    @fal.endpoint("/cuda-exception-2")
+    def cuda_exception_2(self) -> Output:
+        # https://github.com/pytorch/pytorch/issues/112377
+        raise RuntimeError("NVML_SUCCESS == r INTERNAL ASSERT FAILED")
+
 
 class CancellableApp(fal.App, keep_alive=300, max_concurrency=1):
     task = None
@@ -895,6 +900,12 @@ def test_app_exceptions(test_exception_app: AppClient):
 
     with pytest.raises(AppClientError) as cuda_exc:
         test_exception_app.cuda_exception({})
+
+    assert cuda_exc.value.status_code == _CUDA_OOM_STATUS_CODE
+    assert _CUDA_OOM_MESSAGE in cuda_exc.value.message
+
+    with pytest.raises(AppClientError) as cuda_exc:
+        test_exception_app.cuda_exception_2({})
 
     assert cuda_exc.value.status_code == _CUDA_OOM_STATUS_CODE
     assert _CUDA_OOM_MESSAGE in cuda_exc.value.message
