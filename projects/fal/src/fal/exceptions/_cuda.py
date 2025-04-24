@@ -38,6 +38,9 @@ def _is_cuda_out_of_memory(exception: BaseException) -> bool:
     if "NVML_SUCCESS == r INTERNAL ASSERT FAILED" in msg:
         return True
 
+    if "CUDNN_STATUS_INTERNAL_ERROR" in msg:
+        return True
+
     return False
 
 
