@@ -223,6 +223,10 @@ class ExceptionApp(fal.App, keep_alive=300, max_concurrency=1):
         # https://github.com/pytorch/pytorch/issues/112377
         raise RuntimeError("NVML_SUCCESS == r INTERNAL ASSERT FAILED")
 
+    @fal.endpoint("/cuda-exception-3")
+    def cuda_exception_3(self) -> Output:
+        raise RuntimeError("cuDNN error: CUDNN_STATUS_INTERNAL_ERROR")
+
 
 class CancellableApp(fal.App, keep_alive=300, max_concurrency=1):
     task = None
@@ -906,6 +910,12 @@ def test_app_exceptions(test_exception_app: AppClient):
 
     with pytest.raises(AppClientError) as cuda_exc:
         test_exception_app.cuda_exception_2({})
+
+    assert cuda_exc.value.status_code == _CUDA_OOM_STATUS_CODE
+    assert _CUDA_OOM_MESSAGE in cuda_exc.value.message
+
+    with pytest.raises(AppClientError) as cuda_exc:
+        test_exception_app.cuda_exception_3({})
 
     assert cuda_exc.value.status_code == _CUDA_OOM_STATUS_CODE
     assert _CUDA_OOM_MESSAGE in cuda_exc.value.message
