@@ -345,7 +345,25 @@ class App(BaseServable):
         async def provide_hints_headers(request, call_next):
             response = await call_next(request)
             try:
-                response.headers["X-Fal-Runner-Hints"] = ",".join(self.provide_hints())
+                # make sure the hints can be encoded in latin-1, so we don't crash
+                # when serving.
+                # https://github.com/encode/starlette/blob/a766a58d14007f07c0b5782fa78cdc370b892796/starlette/datastructures.py#L568
+                hints = []
+                for hint in self.provide_hints():
+                    try:
+                        _ = hint.encode("latin-1")
+                        hints.append(hint)
+                    except UnicodeEncodeError:
+                        from fastapi.logger import logger
+
+                        logger.warning(
+                            "Ignoring hint %s for %s because it can't be encoded in "
+                            "latin-1",
+                            hint,
+                            self.__class__.__name__,
+                        )
+
+                response.headers["X-Fal-Runner-Hints"] = ",".join(hints)
             except NotImplementedError:
                 # This lets us differentiate between apps that don't provide hints
                 # and apps that provide empty hints.
