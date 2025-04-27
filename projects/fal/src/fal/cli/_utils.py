@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fal.files import find_project_root, find_pyproject_toml, parse_pyproject_toml
+from fal.project import find_project_root, find_pyproject_toml, parse_pyproject_toml
 
 
 def get_client(host: str, team: str | None = None):
