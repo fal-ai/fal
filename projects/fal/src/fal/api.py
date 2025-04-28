@@ -1168,9 +1168,7 @@ class BaseServable:
         )
         metrics_app = FastAPI()
         metrics_app.add_route("/metrics", handle_metrics)
-        metrics_server = Server(
-            config=Config(metrics_app, host="0.0.0.0", port=9090, access_log=False)
-        )
+        metrics_server = Server(config=Config(metrics_app, host="0.0.0.0", port=9090))
 
         async def _serve() -> None:
             tasks = {
