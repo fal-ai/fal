@@ -329,21 +329,21 @@ def register_app(host: api.FalServerlessHost, app: fal.App, suffix: str = ""):
 
 
 @pytest.fixture(scope="module")
-def base_app(host: api.FalServerlessHost, user: User):
+def base_app(host: api.FalServerlessHost):
     # running apps without aliases is no longer supported
     # so we need to create an alias for the app
     with register_app(host, addition_app) as (app_alias, app_revision):
-        yield user.username, app_alias, app_revision
+        yield app_alias, app_revision
 
 
 @pytest.fixture(scope="module")
 def aliased_app(base_app: Tuple[str, str, str]):
-    yield base_app[2], base_app[1]
+    yield base_app[1], base_app[0]
 
 
 @pytest.fixture(scope="module")
-def test_app(base_app: Tuple[str, str, str]):
-    yield f"{base_app[0]}/{base_app[1]}"
+def test_app(base_app: Tuple[str, str, str], user: User):
+    yield f"{user.username}/{base_app[1]}"
 
 
 @pytest.fixture(scope="module")
@@ -433,13 +433,9 @@ def test_ws_client(test_app: str):
             assert response["result"] == 2 + i
 
 
-def test_app_client_old_format(test_app: str):
-    assert test_app.count("/") == 1, "Test app should be in new format"
-    old_format = test_app.replace("/", "-")
-    assert test_app.count("-") + 1 == old_format.count(
-        "-"
-    ), "Old format should have one more hyphen"
-
+def test_app_client_old_format(base_app: Tuple[str, str], user: User):
+    app_alias, _ = base_app
+    old_format = f"{user.user_id}-{app_alias}"
     response = apps.run(old_format, arguments={"lhs": 1, "rhs": 2})
     assert response["result"] == 3
 
