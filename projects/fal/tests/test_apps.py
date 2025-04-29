@@ -390,6 +390,13 @@ def test_exception_app():
 
 
 @pytest.fixture(scope="module")
+def test_sleep_app(host: api.FalServerlessHost, user: User):
+    sleep_app = fal.wrap_app(SleepApp)
+    with register_app(host, sleep_app) as (app_alias, _app_revision):
+        yield f"{user.username}/{app_alias}"
+
+
+@pytest.fixture(scope="module")
 def test_realtime_app(host: api.FalServerlessHost, user: User):
     realtime_app = fal.wrap_app(RealtimeApp)
     with register_app(host, realtime_app) as (app_alias, _app_revision):
@@ -505,30 +512,19 @@ def test_app_cancellation(test_app: str, test_cancellable_app: str):
 
 
 @pytest.mark.flaky(max_runs=3)
-def test_app_client_async():
-    app_alias = str(uuid.uuid4()) + "-client-async-alias"
-
-    app = fal.wrap_app(SleepApp)
-    app_revision = app.host.register(
-        func=app.func,
-        options=app.options,
-        application_name=app_alias,
-        application_auth_mode="private",
-    )
-
-    user = _get_user()
-
-    handle = apps.submit(f"{user.user_id}/{app_revision}", arguments={"wait_time": 1})
+def test_app_client_async(test_sleep_app: str):
+    handle = apps.submit(test_sleep_app, arguments={"wait_time": 1})
     with pytest.raises(HTTPStatusError) as e:
         # Not yet completed
         handle.fetch_result()
+
     assert e.value.response.status_code == 400
 
     # Wait until the app is completed
     assert handle.get() == {"slept": True}
 
     # New request
-    handle = apps.submit(f"{user.user_id}/{app_revision}", arguments={"wait_time": 5})
+    handle = apps.submit(test_sleep_app, arguments={"wait_time": 5})
 
     for event in handle.iter_events(logs=True):
         assert isinstance(event, (apps.Queued, apps.InProgress))
@@ -892,21 +888,8 @@ def test_app_exceptions(test_exception_app: AppClient):
     assert _CUDA_OOM_MESSAGE in cuda_exc.value.message
 
 
-def test_kill_runner():
-    app_alias = str(uuid.uuid4()) + "-sleep-alias"
-    app = fal.wrap_app(SleepApp)
-    app_revision = app.host.register(
-        func=app.func,
-        options=app.options,
-        application_name=app_alias,
-        application_auth_mode="private",
-    )
-
-    host: api.FalServerlessHost = app.host  # type: ignore
-
-    user = _get_user()
-
-    handle = apps.submit(f"{user.user_id}/{app_revision}", arguments={"wait_time": 10})
+def test_kill_runner(host: api.FalServerlessHost, test_sleep_app: str):
+    handle = apps.submit(test_sleep_app, arguments={"wait_time": 10})
 
     while True:
         status = handle.status()
@@ -918,15 +901,19 @@ def test_kill_runner():
             raise Exception(f"Failed to start the app: {status}")
 
     with host._connection as client:
-        try:
+        with pytest.raises(Exception) as e:
             client.kill_runner("1234567890")
-        except Exception as e:
-            assert "not found" in str(e).lower()
 
+        assert "not found" in str(e).lower()
+
+        _, _, app_alias = test_sleep_app.partition("/")
         runners = client.list_alias_runners(app_alias)
         assert len(runners) == 1
 
         client.kill_runner(runners[0].runner_id)
+
+        runners = client.list_alias_runners(app_alias)
+        assert len(runners) == 0
 
 
 def test_container_app_client(test_container_app: str):
