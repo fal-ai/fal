@@ -14,7 +14,6 @@ from fastapi import WebSocket
 from httpx import HTTPStatusError
 from isolate.backends.common import active_python
 from openapi_fal_rest.api.applications import app_metadata
-from projects.fal.src.fal.cli.deploy import User
 from pydantic import BaseModel
 from pydantic import __version__ as pydantic_version
 
@@ -22,7 +21,7 @@ import fal
 import fal.api as api
 from fal import apps
 from fal.app import AppClient, AppClientError
-from fal.cli.deploy import _get_user
+from fal.cli.deploy import User, _get_user
 from fal.container import ContainerImage
 from fal.exceptions import AppException, FieldException, RequestCancelledException
 from fal.exceptions._cuda import _CUDA_OOM_MESSAGE, _CUDA_OOM_STATUS_CODE
@@ -313,24 +312,28 @@ def user() -> Generator[User, None, None]:
     yield user
 
 
+@contextmanager
+def register_app(host: api.FalServerlessHost, app: fal.App, suffix: str = ""):
+    app_alias = str(uuid.uuid4()) + "-test-alias" + ("-" + suffix if suffix else "")
+    app_revision = host.register(
+        func=app.func,
+        options=app.options,
+        application_name=app_alias,
+        application_auth_mode="private",
+    )
+    try:
+        yield app_alias, app_revision
+    finally:
+        with host._connection as client:
+            client.delete_alias(app_alias)
+
+
 @pytest.fixture(scope="module")
 def base_app(host: api.FalServerlessHost, user: User):
     # running apps without aliases is no longer supported
     # so we need to create an alias for the app
-
-    app_alias = str(uuid.uuid4()) + "-test-alias"
-    app_revision = host.register(
-        func=addition_app.func,
-        options=addition_app.options,
-        application_name=app_alias,
-        application_auth_mode="private",
-    )
-
-    try:
+    with register_app(host, addition_app) as (app_alias, app_revision):
         yield user.username, app_alias, app_revision
-    finally:
-        with host._connection as client:
-            client.delete_alias(app_alias)
 
 
 @pytest.fixture(scope="module")
@@ -344,99 +347,53 @@ def test_app(base_app: Tuple[str, str, str]):
 
 
 @pytest.fixture(scope="module")
-def test_nomad_app():
-    # Create a temporary app, register it, and return the ID of it.
-
-    app_revision = nomad_addition_app.host.register(
-        func=nomad_addition_app.func,
-        options=nomad_addition_app.options,
-    )
-    user = _get_user()
-    yield f"{user.user_id}/{app_revision}"
+def test_nomad_app(host: api.FalServerlessHost, user: User):
+    with register_app(host, nomad_addition_app) as (app_alias, _app_revision):
+        yield f"{user.username}/{app_alias}"
 
 
 @pytest.fixture(scope="module")
-def test_container_app():
-    # Create a temporary app, register it, and return the ID of it.
-
-    app_revision = container_addition_app.host.register(
-        func=container_addition_app.func,
-        options=container_addition_app.options,
-    )
-    user = _get_user()
-    yield f"{user.user_id}/{app_revision}"
+def test_container_app(host: api.FalServerlessHost, user: User):
+    with register_app(host, container_addition_app) as (app_alias, _app_revision):
+        yield f"{user.username}/{app_alias}"
 
 
 @pytest.fixture(scope="module")
-def test_container_build_args_app():
-    # Create a temporary app, register it, and return the ID of it.
-
-    app_revision = container_build_args_app.host.register(
-        func=container_build_args_app.func,
-        options=container_build_args_app.options,
-    )
-    user = _get_user()
-    yield f"{user.user_id}/{app_revision}"
+def test_container_build_args_app(host: api.FalServerlessHost, user: User):
+    with register_app(host, container_build_args_app) as (app_alias, _app_revision):
+        yield f"{user.username}/{app_alias}"
 
 
 @pytest.fixture(scope="module")
-def test_fastapi_app():
-    # Create a temporary app, register it, and return the ID of it.
-
-    app_revision = calculator_app.host.register(
-        func=calculator_app.func,
-        options=calculator_app.options,
-    )
-    user = _get_user()
-    yield f"{user.user_id}/{app_revision}"
+def test_fastapi_app(host: api.FalServerlessHost, user: User):
+    with register_app(host, calculator_app) as (app_alias, _app_revision):
+        yield f"{user.username}/{app_alias}"
 
 
 @pytest.fixture(scope="module")
-def test_stateful_app():
-    # Create a temporary app, register it, and return the ID of it.
-
-    app = fal.wrap_app(StatefulAdditionApp)
-    app_revision = app.host.register(
-        func=app.func,
-        options=app.options,
-    )
-    user = _get_user()
-    yield f"{user.user_id}/{app_revision}"
+def test_stateful_app(host: api.FalServerlessHost, user: User):
+    with register_app(host, StatefulAdditionApp) as (app_alias, _app_revision):
+        yield f"{user.username}/{app_alias}"
 
 
 @pytest.fixture(scope="module")
-def test_cancellable_app():
-    # Create a temporary app, register it, and return the ID of it.
-
-    app = fal.wrap_app(CancellableApp)
-    app_revision = app.host.register(
-        func=app.func,
-        options=app.options,
-        application_auth_mode="public",
-    )
-    user = _get_user()
-    yield f"{user.user_id}/{app_revision}"
+def test_cancellable_app(host: api.FalServerlessHost, user: User):
+    cancellable_app = fal.wrap_app(CancellableApp)
+    with register_app(host, cancellable_app) as (app_alias, _app_revision):
+        yield f"{user.username}/{app_alias}"
 
 
 @pytest.fixture(scope="module")
 def test_exception_app():
-    # Create a temporary app, register it, and return the ID of it.
     with AppClient.connect(ExceptionApp) as client:
         yield client
 
 
 @pytest.fixture(scope="module")
-def test_realtime_app():
-    # Create a temporary app, register it, and return the ID of it.
-
-    app = fal.wrap_app(RealtimeApp)
-    app_revision = app.host.register(
-        func=app.func,
-        options=app.options,
-        application_auth_mode="public",
-    )
-    user = _get_user()
-    yield f"{user.user_id}/{app_revision}"
+def test_realtime_app(host: api.FalServerlessHost, user: User):
+    realtime_app = fal.wrap_app(RealtimeApp)
+    with register_app(host, realtime_app) as (app_alias, _app_revision):
+        yield f"{user.username}/{app_alias}"
 
 
 def test_app_client(test_app: str, test_nomad_app: str):
