@@ -372,7 +372,8 @@ def test_fastapi_app(host: api.FalServerlessHost, user: User):
 
 @pytest.fixture(scope="module")
 def test_stateful_app(host: api.FalServerlessHost, user: User):
-    with register_app(host, StatefulAdditionApp) as (app_alias, _app_revision):
+    stateful_app = fal.wrap_app(StatefulAdditionApp)
+    with register_app(host, stateful_app) as (app_alias, _app_revision):
         yield f"{user.username}/{app_alias}"
 
 
