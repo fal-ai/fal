@@ -47,7 +47,7 @@ jobs:
       - name: Run integration tests
         env:
           FAL_KEY: ${{ secrets.FAL_CLOUD_KEY_ID }}:${{ secrets.FAL_CLOUD_KEY_SECRET }}
-          FAL_HOST: api.pr3597.preview.shark.fal.ai
+          FAL_HOST: api.${{ vars.FAL_CLOUD_INTEGRATION_TEST_HOST }}
         run: |
           # Don't exaggerate the parallelism, since this job runs a matrix
           pytest -n 8 -v projects/fal/tests
