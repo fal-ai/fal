@@ -14,6 +14,7 @@ from fastapi import WebSocket
 from httpx import HTTPStatusError
 from isolate.backends.common import active_python
 from openapi_fal_rest.api.applications import app_metadata
+from projects.fal.src.fal.cli.deploy import User
 from pydantic import BaseModel
 from pydantic import __version__ as pydantic_version
 
@@ -302,30 +303,44 @@ class RealtimeApp(fal.App, keep_alive=300, max_concurrency=1):
 
 
 @pytest.fixture(scope="module")
-def aliased_app() -> Generator[Tuple[str, str], None, None]:
-    # Create a temporary app, register it, and return the ID of it.
-
-    app_alias = str(uuid.uuid4()) + "-alias"
-    app_revision = addition_app.host.register(
-        func=addition_app.func,
-        options=addition_app.options,
-        # random enough
-        application_name=app_alias,
-        application_auth_mode="private",
-    )
-    yield app_revision, app_alias  # type: ignore
+def host() -> Generator[api.FalServerlessHost, None, None]:
+    yield addition_app.host
 
 
 @pytest.fixture(scope="module")
-def test_app():
-    # Create a temporary app, register it, and return the ID of it.
+def user() -> Generator[User, None, None]:
+    user = _get_user()
+    yield user
 
-    app_revision = addition_app.host.register(
+
+@pytest.fixture(scope="module")
+def base_app(host: api.FalServerlessHost, user: User):
+    # running apps without aliases is no longer supported
+    # so we need to create an alias for the app
+
+    app_alias = str(uuid.uuid4()) + "-test-alias"
+    app_revision = host.register(
         func=addition_app.func,
         options=addition_app.options,
+        application_name=app_alias,
+        application_auth_mode="private",
     )
-    user = _get_user()
-    yield f"{user.user_id}/{app_revision}"
+
+    try:
+        yield user.username, app_alias, app_revision
+    finally:
+        with host._connection as client:
+            client.delete_alias(app_alias)
+
+
+@pytest.fixture(scope="module")
+def aliased_app(base_app: Tuple[str, str, str]):
+    yield base_app[2], base_app[1]
+
+
+@pytest.fixture(scope="module")
+def test_app(base_app: Tuple[str, str, str]):
+    yield f"{base_app[0]}/{base_app[1]}"
 
 
 @pytest.fixture(scope="module")
@@ -673,7 +688,7 @@ def test_app_no_auth():
         )
 
 
-def test_app_deploy_scale(aliased_app: Tuple[str, str]):
+def test_app_deploy_scale(host: api.FalServerlessHost):
     from dataclasses import replace
 
     app_alias = str(uuid.uuid4()) + "-alias"
@@ -684,7 +699,6 @@ def test_app_deploy_scale(aliased_app: Tuple[str, str]):
         application_auth_mode="private",
     )
 
-    host: api.FalServerlessHost = addition_app.host  # type: ignore
     options = replace(
         addition_app.options, host={**addition_app.options.host, "max_multiplexing": 30}
     )
