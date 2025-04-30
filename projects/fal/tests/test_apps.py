@@ -343,7 +343,7 @@ def aliased_app(base_app: Tuple[str, str, str]):
 
 @pytest.fixture(scope="module")
 def test_app(base_app: Tuple[str, str, str], user: User):
-    yield f"{user.username}/{base_app[1]}"
+    yield f"{user.username}/{base_app[0]}"
 
 
 @pytest.fixture(scope="module")
