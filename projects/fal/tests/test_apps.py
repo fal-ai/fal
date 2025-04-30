@@ -927,6 +927,18 @@ class HintsApp(fal.App, keep_alive=300, max_concurrency=1):
     machine_type = "S"
 
     def provide_hints(self) -> List[str]:
+        print("HIT PROVIDE HINTS")
+        return ["hint-1", "hint-2"]
+
+    @fal.endpoint("/add")
+    def add(self, input: Input) -> Output:
+        return Output(result=input.lhs + input.rhs)
+
+
+class NotEncodableHintsApp(fal.App, keep_alive=300, max_concurrency=1):
+    machine_type = "S"
+
+    def provide_hints(self) -> List[str]:
         return ["é", "😀"]
 
     @fal.endpoint("/add")
@@ -949,3 +961,17 @@ def test_hints_encoding():
             )
             assert resp.is_success
             assert resp.json()["result"] == 3
+
+
+def test_hints():
+    with AppClient.connect(HintsApp) as client:
+        with httpx.Client() as httpx_client:
+            url = client.url + "/add"
+            resp = httpx_client.post(
+                url,
+                json={"lhs": 1, "rhs": 2},
+                timeout=30,
+            )
+            assert resp.is_success
+            assert resp.json()["result"] == 3
+            assert resp.headers["x-fal-runner-hints"] == "hint-1,hint-2"
