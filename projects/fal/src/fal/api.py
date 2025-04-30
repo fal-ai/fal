@@ -1119,6 +1119,11 @@ class BaseServable:
                     request, CUDAOutOfMemoryException()
                 )
 
+            # last line of defense against misc GPU errors that could indicate a bad
+            # worker
+            if any(marker in str(exc).lower() for marker in ["cuda", "cudnn", "nvml"]):
+                return JSONResponse({"detail": "GPU error"}, 503)
+
             return JSONResponse({"detail": "Internal Server Error"}, 500)
 
         routes = self.collect_routes()
