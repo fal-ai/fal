@@ -322,7 +322,7 @@ def register_app(host: api.FalServerlessHost, app: fal.App, suffix: str = ""):
         application_auth_mode="private",
     )
     try:
-        yield app_alias, uuid.UUID(app_revision)
+        yield app_alias, app_revision
     finally:
         with host._connection as client:
             client.delete_alias(app_alias)
@@ -581,7 +581,7 @@ def test_traceback_logs(test_exception_app: AppClient):
             ), "Logs should contain the traceback message"
 
 
-def test_app_openapi_spec_metadata(base_app: Tuple[str, uuid.UUID], user: User):
+def test_app_openapi_spec_metadata(base_app: Tuple[str, str], user: User):
     app_alias, _ = base_app
     res = app_metadata.sync_detailed(
         app_alias_or_id=app_alias, app_user_id=user.user_id, client=REST_CLIENT
@@ -674,7 +674,7 @@ def test_app_deploy_scale(host: api.FalServerlessHost):
 
 # List aliases is taking long
 @pytest.mark.timeout(600)
-def test_app_update_app(base_app: Tuple[str, uuid.UUID]):
+def test_app_update_app(base_app: Tuple[str, str]):
     app_alias, app_revision = base_app
 
     host: api.FalServerlessHost = addition_app.host  # type: ignore
@@ -726,7 +726,7 @@ def test_app_update_app(base_app: Tuple[str, uuid.UUID]):
 
 # List aliases is taking long
 @pytest.mark.timeout(600)
-def test_app_set_delete_alias(base_app: Tuple[str, uuid.UUID]):
+def test_app_set_delete_alias(base_app: Tuple[str, str]):
     app_alias, app_revision = base_app
 
     host: api.FalServerlessHost = addition_app.host  # type: ignore
