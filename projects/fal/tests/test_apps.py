@@ -322,7 +322,7 @@ def register_app(host: api.FalServerlessHost, app: fal.App, suffix: str = ""):
         application_auth_mode="private",
     )
     try:
-        yield app_alias, app_revision
+        yield app_alias, uuid.UUID(app_revision)
     finally:
         with host._connection as client:
             client.delete_alias(app_alias)
@@ -332,55 +332,51 @@ def register_app(host: api.FalServerlessHost, app: fal.App, suffix: str = ""):
 def base_app(host: api.FalServerlessHost):
     # running apps without aliases is no longer supported
     # so we need to create an alias for the app
-    with register_app(host, addition_app) as (app_alias, app_revision):
+    with register_app(host, addition_app, "base") as (app_alias, app_revision):
         yield app_alias, app_revision
 
 
 @pytest.fixture(scope="module")
-def aliased_app(base_app: Tuple[str, str, str]):
-    yield base_app[1], base_app[0]
-
-
-@pytest.fixture(scope="module")
-def test_app(base_app: Tuple[str, str, str], user: User):
-    yield f"{user.username}/{base_app[0]}"
+def test_app(host: api.FalServerlessHost, user: User):
+    with register_app(host, addition_app, "addition") as (app_alias, _):
+        yield f"{user.username}/{app_alias}"
 
 
 @pytest.fixture(scope="module")
 def test_nomad_app(host: api.FalServerlessHost, user: User):
-    with register_app(host, nomad_addition_app) as (app_alias, _app_revision):
+    with register_app(host, nomad_addition_app, "nomad") as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
 
 @pytest.fixture(scope="module")
 def test_container_app(host: api.FalServerlessHost, user: User):
-    with register_app(host, container_addition_app) as (app_alias, _app_revision):
+    with register_app(host, container_addition_app, "container") as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
 
 @pytest.fixture(scope="module")
 def test_container_build_args_app(host: api.FalServerlessHost, user: User):
-    with register_app(host, container_build_args_app) as (app_alias, _app_revision):
+    with register_app(host, container_build_args_app, "build-args") as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
 
 @pytest.fixture(scope="module")
 def test_fastapi_app(host: api.FalServerlessHost, user: User):
-    with register_app(host, calculator_app) as (app_alias, _app_revision):
+    with register_app(host, calculator_app, "fastapi") as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
 
 @pytest.fixture(scope="module")
 def test_stateful_app(host: api.FalServerlessHost, user: User):
     stateful_app = fal.wrap_app(StatefulAdditionApp)
-    with register_app(host, stateful_app) as (app_alias, _app_revision):
+    with register_app(host, stateful_app, "stateful") as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
 
 @pytest.fixture(scope="module")
 def test_cancellable_app(host: api.FalServerlessHost, user: User):
     cancellable_app = fal.wrap_app(CancellableApp)
-    with register_app(host, cancellable_app) as (app_alias, _app_revision):
+    with register_app(host, cancellable_app, "cancellable") as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
 
@@ -393,14 +389,14 @@ def test_exception_app():
 @pytest.fixture(scope="module")
 def test_sleep_app(host: api.FalServerlessHost, user: User):
     sleep_app = fal.wrap_app(SleepApp)
-    with register_app(host, sleep_app) as (app_alias, _app_revision):
+    with register_app(host, sleep_app, "sleep") as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
 
 @pytest.fixture(scope="module")
 def test_realtime_app(host: api.FalServerlessHost, user: User):
     realtime_app = fal.wrap_app(RealtimeApp)
-    with register_app(host, realtime_app) as (app_alias, _app_revision):
+    with register_app(host, realtime_app, "realtime") as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
 
@@ -585,14 +581,14 @@ def test_traceback_logs(test_exception_app: AppClient):
             ), "Logs should contain the traceback message"
 
 
-def test_app_openapi_spec_metadata(test_app: str, request: pytest.FixtureRequest):
-    user_id, _, app_id = test_app.partition("/")
+def test_app_openapi_spec_metadata(base_app: Tuple[str, uuid.UUID], user: User):
+    app_alias, _ = base_app
     res = app_metadata.sync_detailed(
-        app_alias_or_id=app_id, app_user_id=user_id, client=REST_CLIENT
+        app_alias_or_id=app_alias, app_user_id=user.user_id, client=REST_CLIENT
     )
 
-    assert res.status_code == 200, f"Failed to fetch metadata for app {test_app}"
-    assert res.parsed, f"Failed to parse metadata for app {test_app}"
+    assert res.status_code == 200, f"Failed to fetch metadata for app {app_alias}"
+    assert res.parsed, f"Failed to parse metadata for app {app_alias}"
 
     metadata = res.parsed.to_dict()
     assert "openapi" in metadata, f"openapi key missing from metadata {metadata}"
@@ -601,9 +597,7 @@ def test_app_openapi_spec_metadata(test_app: str, request: pytest.FixtureRequest
         assert key in openapi_spec, f"{key} key missing from openapi {openapi_spec}"
 
 
-def test_app_no_serve_spec_metadata(
-    test_fastapi_app: str, request: pytest.FixtureRequest
-):
+def test_app_no_serve_spec_metadata(test_fastapi_app: str):
     # We do not store the openapi spec for apps that do not use serve=True
     user_id, _, app_id = test_fastapi_app.partition("/")
     res = app_metadata.sync_detailed(
@@ -680,8 +674,8 @@ def test_app_deploy_scale(host: api.FalServerlessHost):
 
 # List aliases is taking long
 @pytest.mark.timeout(600)
-def test_app_update_app(aliased_app: Tuple[str, str]):
-    app_revision, app_alias = aliased_app
+def test_app_update_app(base_app: Tuple[str, uuid.UUID]):
+    app_alias, app_revision = base_app
 
     host: api.FalServerlessHost = addition_app.host  # type: ignore
     with host._connection as client:
@@ -732,8 +726,8 @@ def test_app_update_app(aliased_app: Tuple[str, str]):
 
 # List aliases is taking long
 @pytest.mark.timeout(600)
-def test_app_set_delete_alias(aliased_app: Tuple[str, str]):
-    app_revision, app_alias = aliased_app
+def test_app_set_delete_alias(base_app: Tuple[str, uuid.UUID]):
+    app_alias, app_revision = base_app
 
     host: api.FalServerlessHost = addition_app.host  # type: ignore
 
