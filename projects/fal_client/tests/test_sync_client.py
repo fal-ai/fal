@@ -4,6 +4,8 @@ import fal_client
 import httpx
 from PIL import Image
 
+from fal_client.client import _maybe_retry_request
+
 
 @pytest.fixture
 def client() -> fal_client.SyncClient:
@@ -129,3 +131,72 @@ def test_fal_client_encode(client: fal_client.SyncClient, tmp_path):
     assert len(response["images"]) == 1
     assert response["images"][0]["width"] == 1024
     assert response["images"][0]["height"] == 1024
+
+
+@pytest.mark.parametrize(
+    "exc, retried",
+    [
+        # not retryable
+        (Exception("test"), False),
+        (httpx.RequestError(message="test"), False),
+        (
+            httpx.HTTPStatusError(
+                message="test",
+                request=httpx.Request("GET", "https://example.com"),
+                response=httpx.Response(status_code=400),
+            ),
+            False,
+        ),
+        # retryable
+        (httpx.TimeoutException(message="test"), True),
+        (httpx.ConnectTimeout(message="test"), True),
+        (httpx.ReadTimeout(message="test"), True),
+        (httpx.WriteTimeout(message="test"), True),
+        (httpx.PoolTimeout(message="test"), True),
+        (httpx.NetworkError(message="test"), True),
+        (httpx.ConnectError(message="test"), True),
+        (httpx.ReadError(message="test"), True),
+        (httpx.WriteError(message="test"), True),
+        (httpx.CloseError(message="test"), True),
+        (httpx.ProtocolError(message="test"), True),
+        (httpx.LocalProtocolError(message="test"), True),
+        (httpx.RemoteProtocolError(message="test"), True),
+        (httpx.ProxyError(message="test"), True),
+        (httpx.UnsupportedProtocol(message="test"), True),
+        (
+            httpx.HTTPStatusError(
+                message="test",
+                request=httpx.Request("GET", "https://example.com"),
+                response=httpx.Response(status_code=408),
+            ),
+            True,
+        ),
+        (
+            httpx.HTTPStatusError(
+                message="test",
+                request=httpx.Request("GET", "https://example.com"),
+                response=httpx.Response(status_code=409),
+            ),
+            True,
+        ),
+        (
+            httpx.HTTPStatusError(
+                message="test",
+                request=httpx.Request("GET", "https://example.com"),
+                response=httpx.Response(status_code=429),
+            ),
+            True,
+        ),
+    ],
+)
+def test_retry(mocker, exc, retried):
+    httpx_client = mocker.Mock()
+    httpx_client.request = mocker.Mock(side_effect=exc)
+
+    with pytest.raises(Exception):
+        _maybe_retry_request(httpx_client, "GET", "https://example.com")
+
+    if retried:
+        assert httpx_client.request.call_count == 4
+    else:
+        assert httpx_client.request.call_count == 1
