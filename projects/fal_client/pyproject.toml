@@ -28,6 +28,7 @@ docs = [
 test = [
     "pytest",
     "pytest-asyncio",
+    "pytest-mock",
     "pillow",
 ]
 dev = [
