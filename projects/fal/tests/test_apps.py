@@ -552,7 +552,9 @@ def test_app_client_async(test_sleep_app: str):
 # If the logging subsystem is not working for some nodes, this test will flake
 @pytest.mark.flaky(max_runs=10)
 def test_traceback_logs(test_exception_app: AppClient):
-    date = (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=1)).isoformat()
+    date = (
+        datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=1)
+    ).isoformat()
 
     with pytest.raises(AppClientError):
         test_exception_app.fail({})
