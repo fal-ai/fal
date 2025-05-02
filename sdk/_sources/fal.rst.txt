@@ -73,6 +73,14 @@ fal.flags module
    :undoc-members:
    :show-inheritance:
 
+fal.project module
+------------------
+
+.. automodule:: fal.project
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 fal.rest\_client module
 -----------------------
 

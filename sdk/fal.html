@@ -1420,6 +1420,50 @@ project root was discovered.</p>
 <dd></dd></dl>
 
 </section>
+<section id="module-fal.project">
+<span id="fal-project-module"></span><h2>fal.project module<a class="headerlink" href="#module-fal.project" title="Link to this heading">¶</a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.project.find_project_root">
+<span class="sig-prename descclassname"><span class="pre">fal.project.</span></span><span class="sig-name descname"><span class="pre">find_project_root</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">srcs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.project.find_project_root" title="Link to this definition">¶</a></dt>
+<dd><p>Return a directory containing .git, or pyproject.toml.</p>
+<p>That directory will be a common parent of all files and directories
+passed in <cite>srcs</cite>.</p>
+<p>If no directory in the tree contains a marker that would specify it’s the
+project root, the root of the file system is returned.</p>
+<p>Returns a two-tuple with the first element as the project root path and
+the second element as a string describing the method by which the
+project root was discovered.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Tuple</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">Path</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.project.find_pyproject_toml">
+<span class="sig-prename descclassname"><span class="pre">fal.project.</span></span><span class="sig-name descname"><span class="pre">find_pyproject_toml</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path_search_start</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.project.find_pyproject_toml" title="Link to this definition">¶</a></dt>
+<dd><p>Find the absolute filepath to a pyproject.toml if it exists</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.project.parse_pyproject_toml">
+<span class="sig-prename descclassname"><span class="pre">fal.project.</span></span><span class="sig-name descname"><span class="pre">parse_pyproject_toml</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path_config</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.project.parse_pyproject_toml" title="Link to this definition">¶</a></dt>
+<dd><p>Parse a pyproject toml file, pulling out relevant parts for fal.</p>
+<p>If parsing fails, will raise a tomli.TOMLDecodeError.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code>]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
 <section id="module-fal.rest_client">
 <span id="fal-rest-client-module"></span><h2>fal.rest_client module<a class="headerlink" href="#module-fal.rest_client" title="Link to this heading">¶</a></h2>
 <dl class="py class">
