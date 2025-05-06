@@ -1,11 +1,4 @@
-from fal.cli.auth import _list_accounts, _set_account
-
-
-def _unset(args):
-    from fal.config import Config
-
-    with Config().edit() as config:
-        config.unset("team")
+from fal.cli.auth import _list_accounts, _set_account, _unset_account
 
 
 def add_parser(main_subparsers, parents):
@@ -51,4 +44,4 @@ def add_parser(main_subparsers, parents):
         help=unset_help,
         parents=parents,
     )
-    unset_parser.set_defaults(func=_unset)
+    unset_parser.set_defaults(func=_unset_account)

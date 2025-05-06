@@ -1,6 +1,8 @@
+from fal.cli import profile
+
+
 def _login(args):
     from fal.auth import login
-    from fal.config import Config
     from fal.console.icons import CHECK_ICON, CROSS_ICON
     from fal.exceptions import FalServerlessException
 
@@ -11,15 +13,12 @@ def _login(args):
         args.console.print(f"{CROSS_ICON} {e}")
         return
 
-    with Config().edit() as config:
-        config.unset("team")
-
+    _unset_account(args)
     _set_account(args)
 
 
 def _logout(args):
     from fal.auth import logout
-    from fal.config import Config
     from fal.console.icons import CHECK_ICON, CROSS_ICON
     from fal.exceptions import FalServerlessException
 
@@ -30,8 +29,7 @@ def _logout(args):
         args.console.print(f"{CROSS_ICON} {e}")
         return
 
-    with Config().edit() as config:
-        config.unset("team")
+    _unset_account(args)
 
 
 def _list_accounts(args):
@@ -62,6 +60,13 @@ def _list_accounts(args):
         )
 
     args.console.print(table)
+
+
+def _unset_account(args):
+    from fal.config import Config
+
+    with Config().edit() as config:
+        config.unset_internal("team")
 
 
 def _set_account(args):
@@ -105,7 +110,15 @@ def _set_account(args):
         )
 
     with Config().edit() as config:
-        config.set("team", account["nickname"])
+        config.set_internal("team", account["nickname"])
+
+        # Unset the profile if set
+        if current_profile := config.get_internal("profile"):
+            args.console.print(
+                f"\n[yellow]Unsetting profile [cyan]{current_profile}[/] "
+                "to make team selection effective.[/]"
+            )
+            profile._unset(args)
 
 
 def _whoami(args):
