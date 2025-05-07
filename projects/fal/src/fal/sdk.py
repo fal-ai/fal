@@ -157,7 +157,15 @@ class AuthenticatedCredentials(Credentials):
 
     def to_headers(self) -> dict[str, str]:
         token = self.user.bearer_token
-        return {"Authorization": token}
+        headers = {
+            "Authorization": token,
+        }
+
+        if self.team:
+            team_id = self.user.get_account(self.team)["user_id"]
+            headers["X-Fal-User-Id"] = team_id
+
+        return headers
 
 
 @dataclass
@@ -193,7 +201,7 @@ def get_default_credentials(team: str | None = None) -> Credentials:
         return FalServerlessKeyCredentials(key_creds[0], key_creds[1])
     else:
         config = Config()
-        team = team or config.get("team")
+        team = team or config.get_internal("team")
         return AuthenticatedCredentials(team=team)
 
 

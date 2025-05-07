@@ -1,4 +1,6 @@
+from fal.auth import current_user_info
 from fal.cli import profile
+from fal.sdk import get_default_credentials
 
 
 def _login(args):
@@ -41,7 +43,7 @@ def _list_accounts(args):
 
     user_access = UserAccess()
     config = Config()
-    current_account = config.get("team") or user_access.info["nickname"]
+    current_account_name = config.get_internal("team") or user_access.info["nickname"]
 
     table = Table(border_style=Style(frame=False), show_header=False)
     table.add_column("#")
@@ -49,7 +51,7 @@ def _list_accounts(args):
     table.add_column("Type")
 
     for idx, account in enumerate(user_access.accounts):
-        selected = account["nickname"] == current_account
+        selected = account["nickname"] == current_account_name
         color = "bold yellow" if selected else None
 
         table.add_row(
@@ -118,25 +120,16 @@ def _set_account(args):
                 f"\n[yellow]Unsetting profile [cyan]{current_profile}[/] "
                 "to make team selection effective.[/]"
             )
-            profile._unset(args)
+            profile._unset(args, config=config)
 
 
 def _whoami(args):
-    from fal.auth import UserAccess
-    from fal.config import Config
+    creds = get_default_credentials()
+    user_info = current_user_info(creds.to_headers())
 
-    user_access = UserAccess()
-    config = Config()
-
-    team = config.get("team")
-    if team:
-        account = user_access.get_account(team)
-    else:
-        account = user_access.get_account(user_access.info["nickname"])
-
-    nickname = account["nickname"]
-    full_name = account["full_name"]
-    user_id = account["user_id"]
+    full_name = user_info["full_name"]
+    nickname = user_info["nickname"]
+    user_id = user_info["user_id"]
 
     args.console.print(f"Hello, {full_name}: {nickname!r} - {user_id!r}")
 
