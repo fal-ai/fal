@@ -125,6 +125,26 @@ def _fetch_teams(bearer_token: str) -> list[dict]:
         raise FalServerlessException("Failed to fetch teams") from exc
 
 
+def current_user_info(headers: dict[str, str]) -> dict:
+    import json
+    from urllib.error import HTTPError
+    from urllib.request import Request, urlopen
+
+    from fal.exceptions import FalServerlessException
+    from fal.flags import REST_URL
+
+    request = Request(
+        method="GET",
+        url=f"{REST_URL}/users/current",
+        headers=headers,
+    )
+    try:
+        with urlopen(request) as response:
+            return json.load(response)
+    except HTTPError as exc:
+        raise FalServerlessException("Failed to fetch user info") from exc
+
+
 def login(console):
     token_data = auth0.login(console)
     with local.lock_token():

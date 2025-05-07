@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from rich.table import Table
 
 from fal.config import Config
@@ -31,11 +33,12 @@ def _set(args):
             )
 
 
-def _unset(args):
-    with Config().edit() as config:
-        config.unset_internal("profile")
-        args.console.print("Default profile unset.")
+def _unset(args, config: Config | None = None):
+    config = config or Config()
+
+    with config.edit() as config:
         config.profile = None
+        args.console.print("Default profile unset.")
 
 
 def _key_set(args):
