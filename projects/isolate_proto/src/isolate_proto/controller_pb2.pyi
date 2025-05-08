@@ -619,13 +619,18 @@ global___UpdateApplicationResult = UpdateApplicationResult
 
 @typing_extensions.final
 class ListApplicationsRequest(google.protobuf.message.Message):
-    """Empty. For future use."""
-
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
+    APPLICATION_NAME_FIELD_NUMBER: builtins.int
+    application_name: builtins.str
     def __init__(
         self,
+        *,
+        application_name: builtins.str | None = ...,
     ) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["_application_name", b"_application_name", "application_name", b"application_name"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["_application_name", b"_application_name", "application_name", b"application_name"]) -> None: ...
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_application_name", b"_application_name"]) -> typing_extensions.Literal["application_name"] | None: ...
 
 global___ListApplicationsRequest = ListApplicationsRequest
 
