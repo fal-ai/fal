@@ -224,7 +224,7 @@ message UpdateApplicationResult {
 }
 
 message ListApplicationsRequest {
-    // Empty. For future use.
+    optional string application_name = 1;
 }
 
 message ApplicationInfo {
