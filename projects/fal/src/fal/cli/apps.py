@@ -123,7 +123,7 @@ def _app_rev_table(revs: list[ApplicationInfo]):
 def _list_rev(args):
     client = get_client(args.host, args.team)
     with client.connect() as connection:
-        revs = connection.list_applications()
+        revs = connection.list_applications(args.app_name)
         table = _app_rev_table(revs)
 
     args.console.print(table)
@@ -136,6 +136,11 @@ def _add_list_rev_parser(subparsers, parents):
         description=list_help,
         help=list_help,
         parents=parents,
+    )
+    parser.add_argument(
+        "app_name",
+        nargs="?",
+        help="Application name.",
     )
     parser.set_defaults(func=_list_rev)
 

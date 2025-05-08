@@ -658,8 +658,12 @@ class FalServerlessConnection:
         )
         return from_grpc(res.alias_info)
 
-    def list_applications(self) -> list[ApplicationInfo]:
-        request = isolate_proto.ListApplicationsRequest()
+    def list_applications(
+        self, application_name: str | None = None
+    ) -> list[ApplicationInfo]:
+        request = isolate_proto.ListApplicationsRequest(
+            application_name=application_name
+        )
         res: isolate_proto.ListApplicationsResult = self.stub.ListApplications(request)
         return [from_grpc(app) for app in res.applications]
 
