@@ -5,13 +5,15 @@ import math
 import os
 import threading
 from base64 import b64encode
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Generic, TypeVar
+from typing import Generator, Generic, TypeVar
 from urllib.error import HTTPError
 from urllib.parse import urlparse, urlunparse
 from urllib.request import Request, urlopen
+from urllib.response import addinfourl
 
 from fal.auth import key_credentials
 from fal.toolkit.exceptions import FileUploadException
@@ -20,6 +22,17 @@ from fal.toolkit.utils.retry import retry
 
 _FAL_CDN = "https://fal.media"
 _FAL_CDN_V3 = "https://v3.fal.media"
+
+DEFAULT_REQUEST_TIMEOUT = 10
+PUT_REQUEST_TIMEOUT = 5 * 60
+
+
+@contextmanager
+def _urlopen(
+    request: Request, timeout: int = DEFAULT_REQUEST_TIMEOUT
+) -> Generator[addinfourl, None, None]:
+    with urlopen(request, timeout=timeout) as response:
+        yield response
 
 
 @dataclass
@@ -79,7 +92,7 @@ class FalV2TokenManager:
             data=b"{}",
             method="POST",
         )
-        with urlopen(req) as response:
+        with _urlopen(req) as response:
             result = json.load(response)
 
         parsed_base_url = urlparse(result["base_url"])
@@ -158,7 +171,7 @@ class FalFileRepositoryBase(FileRepository):
                 headers=headers,
                 method="POST",
             )
-            with urlopen(req) as response:
+            with _urlopen(req) as response:
                 result = json.load(response)
 
             upload_url = result["upload_url"]
@@ -175,7 +188,7 @@ class FalFileRepositoryBase(FileRepository):
                 headers={"Content-Type": file.content_type},
             )
 
-            with urlopen(req):
+            with _urlopen(req, timeout=PUT_REQUEST_TIMEOUT):
                 pass
 
             return result["file_url"]
@@ -252,7 +265,7 @@ class MultipartUploadGCS:
                 ).encode(),
             )
 
-            with urlopen(req) as response:
+            with _urlopen(req) as response:
                 result = json.load(response)
                 self._access_url = result["file_url"]
                 self._upload_url = result["upload_url"]
@@ -272,7 +285,7 @@ class MultipartUploadGCS:
         )
 
         try:
-            with urlopen(req) as response:
+            with _urlopen(req) as response:
                 result = json.load(response)
                 upload_url = result["upload_url"]
         except HTTPError as exc:
@@ -288,7 +301,7 @@ class MultipartUploadGCS:
         )
 
         try:
-            with urlopen(req) as resp:
+            with _urlopen(req, timeout=PUT_REQUEST_TIMEOUT) as resp:
                 self._parts.append(
                     {
                         "part_number": part_number,
@@ -318,7 +331,7 @@ class MultipartUploadGCS:
                     }
                 ).encode(),
             )
-            with urlopen(req):
+            with _urlopen(req):
                 pass
         except HTTPError as e:
             raise FileUploadException(
@@ -523,7 +536,7 @@ class MultipartUpload:
                     }
                 ).encode(),
             )
-            with urlopen(req) as response:
+            with _urlopen(req) as response:
                 result = json.load(response)
                 self._upload_url = result["upload_url"]
                 self._file_url = result["file_url"]
@@ -543,7 +556,7 @@ class MultipartUpload:
         )
 
         try:
-            with urlopen(req) as resp:
+            with _urlopen(req, timeout=PUT_REQUEST_TIMEOUT) as resp:
                 self._parts.append(
                     {
                         "part_number": part_number,
@@ -568,7 +581,7 @@ class MultipartUpload:
                 },
                 data=json.dumps({"parts": self._parts}).encode(),
             )
-            with urlopen(req):
+            with _urlopen(req):
                 pass
         except HTTPError as e:
             raise FileUploadException(
@@ -721,7 +734,7 @@ class MultipartUploadV3:
                 ).encode(),
             )
 
-            with urlopen(req) as response:
+            with _urlopen(req) as response:
                 result = json.load(response)
                 self._access_url = result["file_url"]
                 self._upload_url = result["upload_url"]
@@ -747,7 +760,7 @@ class MultipartUploadV3:
         )
 
         try:
-            with urlopen(req) as resp:
+            with _urlopen(req, timeout=PUT_REQUEST_TIMEOUT) as resp:
                 self._parts.append(
                     {
                         "partNumber": part_number,
@@ -775,7 +788,7 @@ class MultipartUploadV3:
                 },
                 data=json.dumps({"parts": self._parts}).encode(),
             )
-            with urlopen(req):
+            with _urlopen(req):
                 pass
         except HTTPError as e:
             raise FileUploadException(
@@ -915,7 +928,7 @@ class InternalMultipartUploadV3:
                     "X-Fal-File-Name": self.file_name,
                 },
             )
-            with urlopen(req) as response:
+            with _urlopen(req) as response:
                 result = json.load(response)
                 self._access_url = result["access_url"]
                 self._upload_id = result["uploadId"]
@@ -940,7 +953,7 @@ class InternalMultipartUploadV3:
         )
 
         try:
-            with urlopen(req) as resp:
+            with _urlopen(req, timeout=PUT_REQUEST_TIMEOUT) as resp:
                 self._parts.append(
                     {
                         "partNumber": part_number,
@@ -966,7 +979,7 @@ class InternalMultipartUploadV3:
                 },
                 data=json.dumps({"parts": self._parts}).encode(),
             )
-            with urlopen(req):
+            with _urlopen(req):
                 pass
         except HTTPError as e:
             raise FileUploadException(
@@ -1092,7 +1105,7 @@ class FalFileRepositoryV2(FalFileRepositoryBase):
                 headers=headers,
                 method="PUT",
             )
-            with urlopen(req) as response:
+            with _urlopen(req, timeout=PUT_REQUEST_TIMEOUT) as response:
                 result = json.load(response)
 
             return result["file_url"]
@@ -1186,7 +1199,7 @@ class FalCDNFileRepository(FileRepository):
         url = os.getenv("FAL_CDN_HOST", _FAL_CDN) + "/files/upload"
         request = Request(url, headers=headers, method="POST", data=file.data)
         try:
-            with urlopen(request) as response:
+            with _urlopen(request) as response:
                 result = json.load(response)
         except HTTPError as e:
             raise FileUploadException(
@@ -1266,7 +1279,7 @@ class FalFileRepositoryV3(FileRepository):
             ).encode(),
         )
         try:
-            with urlopen(request) as response:
+            with _urlopen(request) as response:
                 result = json.load(response)
                 file_url = result["file_url"]
                 upload_url = result["upload_url"]
@@ -1282,7 +1295,7 @@ class FalFileRepositoryV3(FileRepository):
             data=file.data,
         )
         try:
-            with urlopen(request):
+            with _urlopen(request, timeout=PUT_REQUEST_TIMEOUT):
                 pass
         except HTTPError as e:
             raise FileUploadException(
@@ -1380,7 +1393,7 @@ class InternalFalFileRepositoryV3(FileRepository):
         url = os.getenv("FAL_CDN_V3_HOST", _FAL_CDN_V3) + "/files/upload"
         request = Request(url, headers=headers, method="POST", data=file.data)
         try:
-            with urlopen(request) as response:
+            with _urlopen(request) as response:
                 result = json.load(response)
         except HTTPError as e:
             raise FileUploadException(
