@@ -58,6 +58,7 @@ dependencies = [
     "cookiecutter",
     "tomli>2,<3",
     "tomli-w>=1,<2",
+    "fsspec",
 ]
 
 [project.optional-dependencies]

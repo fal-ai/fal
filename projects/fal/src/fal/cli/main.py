@@ -13,6 +13,7 @@ from . import (
     create,
     deploy,
     doctor,
+    files,
     keys,
     profile,
     run,
@@ -57,6 +58,7 @@ def _get_main_parser() -> argparse.ArgumentParser:
         create,
         runners,
         teams,
+        files,
     ]:
         cmd.add_parser(subparsers, parents)
 
