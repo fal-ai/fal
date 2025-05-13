@@ -5,7 +5,7 @@ import pytest
 
 from fal.cli.deploy import _deploy
 from fal.cli.main import parse_args
-from fal.files import find_project_root
+from fal.project import find_project_root
 
 
 def test_deploy():
