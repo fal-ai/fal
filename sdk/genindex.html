@@ -84,6 +84,8 @@
 </li>
         <li><a href="fal.cli.html#fal.cli.doctor.add_parser">(in module fal.cli.doctor)</a>
 </li>
+        <li><a href="fal.cli.html#fal.cli.files.add_parser">(in module fal.cli.files)</a>
+</li>
         <li><a href="fal.cli.html#fal.cli.keys.add_parser">(in module fal.cli.keys)</a>
 </li>
         <li><a href="fal.cli.html#fal.cli.profile.add_parser">(in module fal.cli.profile)</a>
@@ -113,10 +115,10 @@
       </ul></li>
       <li><a href="fal.html#fal.sdk.AliasInfo">AliasInfo (class in fal.sdk)</a>
 </li>
-      <li><a href="fal.html#fal.sdk.KeyScope.API">API (fal.sdk.KeyScope attribute)</a>
-</li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="fal.html#fal.sdk.KeyScope.API">API (fal.sdk.KeyScope attribute)</a>
+</li>
       <li><a href="fal.html#fal.App">App (class in fal)</a>
 
       <ul>
@@ -580,6 +582,13 @@
 </li>
       </ul></li>
       <li>
+    fal.cli.files
+
+      <ul>
+        <li><a href="fal.cli.html#module-fal.cli.files">module</a>
+</li>
+      </ul></li>
+      <li>
     fal.cli.keys
 
       <ul>
@@ -682,6 +691,13 @@
 
       <ul>
         <li><a href="fal.exceptions.html#module-fal.exceptions.auth">module</a>
+</li>
+      </ul></li>
+      <li>
+    fal.files
+
+      <ul>
+        <li><a href="fal.html#module-fal.files">module</a>
 </li>
       </ul></li>
       <li>
@@ -893,6 +909,8 @@
 </li>
       <li><a href="fal.html#fal.api.FalFastAPI">FalFastAPI (class in fal.api)</a>
 </li>
+      <li><a href="fal.html#fal.files.FalFileSystem">FalFileSystem (class in fal.files)</a>
+</li>
       <li><a href="fal.html#fal.api.FalMissingDependencyError">FalMissingDependencyError</a>
 </li>
       <li><a href="fal.cli.html#fal.cli.parser.FalParser">FalParser (class in fal.cli.parser)</a>
@@ -1077,6 +1095,8 @@
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="fal.html#fal.api.Options.get_exposed_port">get_exposed_port() (fal.api.Options method)</a>
 </li>
+      <li><a href="fal.html#fal.files.FalFileSystem.get_file">get_file() (fal.files.FalFileSystem method)</a>
+</li>
       <li><a href="fal.html#fal.rest_client.CredentialsClient.get_headers">get_headers() (fal.rest_client.CredentialsClient method)</a>
 </li>
       <li><a href="fal.toolkit.html#fal.toolkit.get_image_size">get_image_size() (in module fal.toolkit)</a>
@@ -1201,16 +1221,18 @@
 </li>
       <li><a href="fal.auth.html#fal.auth.UserAccess.info">info (fal.auth.UserAccess property)</a>
 </li>
+      <li><a href="fal.html#fal.files.FalFileSystem.info">info() (fal.files.FalFileSystem method)</a>
+</li>
       <li><a href="fal.html#fal.apps.InProgress">InProgress (class in fal.apps)</a>
 </li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="fal.html#fal.workflows.Run.input">input (fal.workflows.Run attribute)</a>
 
       <ul>
         <li><a href="fal.html#fal.workflows.Workflow.input">(fal.workflows.Workflow property)</a>
 </li>
       </ul></li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="fal.html#fal.api.RouteSignature.input_modal">input_modal (fal.api.RouteSignature attribute)</a>
 </li>
       <li><a href="fal.html#fal.workflows.Workflow.input_schema">input_schema (fal.workflows.Workflow attribute)</a>
@@ -1325,10 +1347,10 @@
 </li>
       <li><a href="fal.html#fal.utils.load_function_from">load_function_from() (in module fal.utils)</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="fal.toolkit.image.html#fal.toolkit.image.safety_checker.load_safety_checker">load_safety_checker() (in module fal.toolkit.image.safety_checker)</a>
 </li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="fal.auth.html#fal.auth.local.load_token">load_token() (in module fal.auth.local)</a>
 </li>
       <li><a href="fal.html#fal.utils.LoadedFunction">LoadedFunction (class in fal.utils)</a>
@@ -1361,6 +1383,8 @@
         <li><a href="fal.html#fal.sdk.RegisterApplicationResult.logs">(fal.sdk.RegisterApplicationResult attribute)</a>
 </li>
       </ul></li>
+      <li><a href="fal.html#fal.files.FalFileSystem.ls">ls() (fal.files.FalFileSystem method)</a>
+</li>
   </ul></td>
 </tr></table>
 
@@ -1489,6 +1513,8 @@
 </li>
         <li><a href="fal.cli.html#module-fal.cli.doctor">fal.cli.doctor</a>
 </li>
+        <li><a href="fal.cli.html#module-fal.cli.files">fal.cli.files</a>
+</li>
         <li><a href="fal.cli.html#module-fal.cli.keys">fal.cli.keys</a>
 </li>
         <li><a href="fal.cli.html#module-fal.cli.main">fal.cli.main</a>
@@ -1518,6 +1544,8 @@
         <li><a href="fal.exceptions.html#module-fal.exceptions">fal.exceptions</a>
 </li>
         <li><a href="fal.exceptions.html#module-fal.exceptions.auth">fal.exceptions.auth</a>
+</li>
+        <li><a href="fal.html#module-fal.files">fal.files</a>
 </li>
         <li><a href="fal.html#module-fal.flags">fal.flags</a>
 </li>
@@ -1716,6 +1744,8 @@
 </li>
       <li><a href="fal.html#fal.workflows.Workflow.publish">publish() (fal.workflows.Workflow method)</a>
 </li>
+      <li><a href="fal.html#fal.files.FalFileSystem.put_file">put_file() (fal.files.FalFileSystem method)</a>
+</li>
   </ul></td>
 </tr></table>
 
@@ -1835,6 +1865,8 @@
       <li><a href="fal.html#fal.sdk.FalServerlessConnection.revoke_user_key">revoke_user_key() (fal.sdk.FalServerlessConnection method)</a>
 </li>
       <li><a href="fal.cli.html#fal.cli.cli_nested_json.TokenKind.RIGHT_BRACKET">RIGHT_BRACKET (fal.cli.cli_nested_json.TokenKind attribute)</a>
+</li>
+      <li><a href="fal.html#fal.files.FalFileSystem.rm">rm() (fal.files.FalFileSystem method)</a>
 </li>
       <li><a href="fal.html#fal.sdk.DeploymentStrategy.ROLLING">ROLLING (fal.sdk.DeploymentStrategy attribute)</a>
 </li>
