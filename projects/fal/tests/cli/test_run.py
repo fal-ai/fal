@@ -5,7 +5,7 @@ import pytest
 
 from fal.cli.main import parse_args
 from fal.cli.run import _run
-from fal.files import find_project_root
+from fal.project import find_project_root
 
 
 def test_run():
