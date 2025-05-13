@@ -504,6 +504,9 @@ def test_app_cancellation(test_app: str, test_cancellable_app: str):
     assert response == {"result": 3}
 
 
+@pytest.mark.xfail(
+    reason="Temporary disabled while investigating backend issue. Ping @efiop"
+)
 @pytest.mark.flaky(max_runs=3)
 def test_app_client_async(test_sleep_app: str):
     handle = apps.submit(test_sleep_app, arguments={"wait_time": 1})
