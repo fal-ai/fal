@@ -57,14 +57,6 @@ fal.container module
    :undoc-members:
    :show-inheritance:
 
-fal.files module
-----------------
-
-.. automodule:: fal.files
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 fal.flags module
 ----------------
 
