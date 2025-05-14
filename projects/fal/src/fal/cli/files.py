@@ -18,14 +18,14 @@ def _download(args):
     from fal.files import FalFileSystem
 
     fs = FalFileSystem()
-    fs.get(args.remote_path, args.local_path)
+    fs.get(args.remote_path, args.local_path, recursive=True)
 
 
 def _upload(args):
     from fal.files import FalFileSystem
 
     fs = FalFileSystem()
-    fs.put(args.local_path, args.remote_path)
+    fs.put(args.local_path, args.remote_path, recursive=True)
 
 
 def add_parser(main_subparsers, parents):
