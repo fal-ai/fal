@@ -1,3 +1,4 @@
+import os
 import posixpath
 from functools import cached_property
 from typing import TYPE_CHECKING
@@ -28,14 +29,16 @@ class FalFileSystem(AbstractFileSystem):
         )
 
     def ls(self, path, detail=True, **kwargs):
-        response = self._client.get(f"/files/list/{path.lstrip('/')}")
-        response.raise_for_status()
-        files = response.json()
-        if detail:
-            return sorted(
+        if path in self.dircache:
+            entries = self.dircache[path]
+        else:
+            response = self._client.get(f"/files/list/{path.lstrip('/')}")
+            response.raise_for_status()
+            files = response.json()
+            entries = sorted(
                 (
                     {
-                        "name": entry["path"],
+                        "name": entry["path"].lstrip("/data/"),
                         "size": entry["size"],
                         "type": "file" if entry["is_file"] else "directory",
                         "mtime": entry["updated_time"],
@@ -44,8 +47,12 @@ class FalFileSystem(AbstractFileSystem):
                 ),
                 key=lambda x: x["name"],
             )
-        else:
-            return sorted(entry["path"] for entry in files)
+        self.dircache[path] = entries
+
+        if detail:
+            return entries
+
+        return [entry["name"] for entry in entries]
 
     def info(self, path, **kwargs):
         parent = posixpath.dirname(path)
@@ -56,19 +63,28 @@ class FalFileSystem(AbstractFileSystem):
         raise FileNotFoundError(f"File not found: {path}")
 
     def get_file(self, rpath, lpath, **kwargs):
+        if self.isdir(rpath):
+            os.makedirs(lpath, exist_ok=True)
+            return
+
         with open(lpath, "wb") as fobj:
             response = self._client.get(f"/files/file/{rpath.lstrip('/')}")
             response.raise_for_status()
             fobj.write(response.content)
 
     def put_file(self, lpath, rpath, mode="overwrite", **kwargs):
+        if os.path.isdir(lpath):
+            return
+
         with open(lpath, "rb") as fobj:
             response = self._client.post(
                 f"/files/file/local/{rpath.lstrip('/')}",
                 files={"file_upload": (posixpath.basename(lpath), fobj, "text/plain")},
             )
             response.raise_for_status()
+        self.dircache.clear()
 
     def rm(self, path, **kwargs):
         response = self._client.delete(f"/files/file/{path.lstrip('/')}")
         response.raise_for_status()
+        self.dircache.clear()
