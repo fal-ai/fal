@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 
+from fal.config import Config
+
 
 def bool_envvar(name: str):
     if name in os.environ:
@@ -14,7 +16,10 @@ DEBUG = bool_envvar("DEBUG")
 TEST_MODE = bool_envvar("ISOLATE_TEST_MODE")
 AUTH_DISABLED = bool_envvar("ISOLATE_AUTH_DISABLED")
 
-GRPC_HOST = os.getenv("FAL_HOST", "api.alpha.fal.ai")
+config = Config()
+config_host = config.get("host")
+
+GRPC_HOST = config_host or os.getenv("FAL_HOST") or "api.alpha.fal.ai"
 if not TEST_MODE:
     assert GRPC_HOST.startswith("api"), "FAL_HOST must start with 'api'"
 
