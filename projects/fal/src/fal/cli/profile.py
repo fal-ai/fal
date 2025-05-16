@@ -66,7 +66,7 @@ def _delete(args):
         if config.profile == args.PROFILE:
             config.set_internal("profile", None)
 
-        config.delete(args.PROFILE)
+        config.delete_profile(args.PROFILE)
         args.console.print(f"Profile [cyan]{args.PROFILE}[/] deleted.")
 
 
