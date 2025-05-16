@@ -122,6 +122,7 @@ def wrap_app(cls: type[App], **kwargs) -> IsolatedFunction:
     wrapper = fal_function(
         kind,
         requirements=cls.requirements,
+        local_python_modules=cls.local_python_modules,
         machine_type=cls.machine_type,
         num_gpus=cls.num_gpus,
         **cls.host_kwargs,
@@ -265,6 +266,7 @@ def _print_python_packages() -> None:
 
 class App(BaseServable):
     requirements: ClassVar[list[str]] = []
+    local_python_modules: ClassVar[list[str]] = []
     machine_type: ClassVar[str] = "S"
     num_gpus: ClassVar[int | None] = None
     host_kwargs: ClassVar[dict[str, Any]] = {
