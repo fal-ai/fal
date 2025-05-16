@@ -6,7 +6,7 @@ import time
 import uuid
 from contextlib import contextmanager, suppress
 from datetime import datetime, timedelta
-from typing import Generator, List, NamedTuple, Tuple
+from typing import Generator, List, Tuple
 
 import httpx
 import pytest
@@ -306,21 +306,12 @@ class RealtimeApp(fal.App, keep_alive=300, max_concurrency=1):
         return RTOutputs(texts=[input.prompt] + [i.prompt for i in inputs])
 
 
-class TestTuple(NamedTuple):
-    value: int
-    message: str
-
-
 class BrokenApp(fal.App, keep_alive=300, max_concurrency=1):
     machine_type = "S"
 
-    @property
-    def prop(self) -> TestTuple:
-        return TestTuple(value=42, message="hello")
-
     @fal.endpoint("/")
-    def broken(self) -> TestTuple:
-        return self.prop
+    def broken(self) -> Exception:
+        raise Exception("this app is designed to fail")
 
 
 @pytest.fixture(scope="module")
@@ -423,10 +414,9 @@ def test_realtime_app(host: api.FalServerlessHost, user: User):
 
 
 def test_broken_app_failure(host: api.FalServerlessHost, user: User):
-    broken_app = fal.wrap_app(BrokenApp)
     with pytest.raises(FalServerlessException) as e:
-        with register_app(host, broken_app, "broken"):
-            pass
+        fal.wrap_app(BrokenApp)
+
     assert "Failed to generate OpenAPI" in str(e)
 
 
