@@ -6,7 +6,7 @@ import time
 import uuid
 from contextlib import contextmanager, suppress
 from datetime import datetime, timedelta
-from typing import Generator, List, Tuple
+from typing import Generator, List, NamedTuple, Tuple
 
 import httpx
 import pytest
@@ -23,7 +23,12 @@ from fal import apps
 from fal.app import AppClient, AppClientError
 from fal.cli.deploy import User, _get_user
 from fal.container import ContainerImage
-from fal.exceptions import AppException, FieldException, RequestCancelledException
+from fal.exceptions import (
+    AppException,
+    FalServerlessException,
+    FieldException,
+    RequestCancelledException,
+)
 from fal.exceptions._cuda import _CUDA_OOM_MESSAGE, _CUDA_OOM_STATUS_CODE
 from fal.rest_client import REST_CLIENT
 from fal.workflows import Workflow
@@ -301,6 +306,23 @@ class RealtimeApp(fal.App, keep_alive=300, max_concurrency=1):
         return RTOutputs(texts=[input.prompt] + [i.prompt for i in inputs])
 
 
+class TestTuple(NamedTuple):
+    value: int
+    message: str
+
+
+class BrokenApp(fal.App, keep_alive=300, max_concurrency=1):
+    machine_type = "S"
+
+    @property
+    def prop(self) -> TestTuple:
+        return TestTuple(value=42, message="hello")
+
+    @fal.endpoint("/")
+    def broken(self) -> TestTuple:
+        return self.prop
+
+
 @pytest.fixture(scope="module")
 def host() -> Generator[api.FalServerlessHost, None, None]:
     yield addition_app.host
@@ -398,6 +420,14 @@ def test_realtime_app(host: api.FalServerlessHost, user: User):
     realtime_app = fal.wrap_app(RealtimeApp)
     with register_app(host, realtime_app, "realtime") as (app_alias, _):
         yield f"{user.username}/{app_alias}"
+
+
+def test_broken_app_failure(host: api.FalServerlessHost, user: User):
+    broken_app = fal.wrap_app(BrokenApp)
+    with pytest.raises(FalServerlessException) as e:
+        with register_app(host, broken_app, "broken"):
+            pass
+    assert "Failed to generate OpenAPI" in str(e)
 
 
 def test_app_client(test_app: str, test_nomad_app: str):
