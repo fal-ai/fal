@@ -507,6 +507,10 @@ class FalServerlessHost(Host):
                 print(
                     f"[warning] Failed to generate OpenAPI metadata for function: {e}"
                 )
+                raise FalServerlessException(
+                    "Failed to generate OpenAPI metadata for function. "
+                    "Please fix the OpenAPI generation to be make deployments work."
+                ) from e
 
         for partial_result in self._connection.register(
             partial_func,
