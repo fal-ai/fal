@@ -6,7 +6,7 @@ from typing import Any, Callable
 import cloudpickle
 
 
-def _register_pickle_by_value(name) -> None:
+def include_module(name) -> None:
     # cloudpickle.register_pickle_by_value wants an imported module object,
     # but there is really no reason to go through that complication, as
     # it might be prone to errors.
@@ -22,7 +22,7 @@ def include_package_from_path(raw_path: str) -> None:
         parent = parent.parent
 
     if parent != path:
-        _register_pickle_by_value(parent.name)
+        include_module(parent.name)
 
 
 def include_modules_from(obj: Any) -> None:
@@ -33,7 +33,7 @@ def include_modules_from(obj: Any) -> None:
     if "." in module_name:
         # Just include the whole package
         package_name, *_ = module_name.partition(".")
-        _register_pickle_by_value(package_name)
+        include_module(package_name)
         return
 
     if module_name == "__main__":
@@ -44,7 +44,7 @@ def include_modules_from(obj: Any) -> None:
         include_package_from_path(__main__.__file__)
         return
 
-    _register_pickle_by_value(module_name)
+    include_module(module_name)
 
 
 def _register(cls: Any, func: Callable) -> None:
@@ -230,4 +230,4 @@ def patch_pickle() -> None:
     _patch_console_thread_locals()
     _patch_exceptions()
 
-    _register_pickle_by_value("fal")
+    include_module("fal")

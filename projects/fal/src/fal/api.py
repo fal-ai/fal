@@ -39,7 +39,7 @@ from pydantic import __version__ as pydantic_version
 from typing_extensions import Concatenate, ParamSpec
 
 import fal.flags as flags
-from fal._serialization import include_modules_from, patch_pickle
+from fal._serialization import include_module, include_modules_from, patch_pickle
 from fal.container import ContainerImage
 from fal.exceptions import (
     AppException,
@@ -694,6 +694,7 @@ def function(
     serve: Literal[False] = False,
     exposed_port: int | None = None,
     max_concurrency: int | None = None,
+    local_python_modules: list[str] | None = None,
 ) -> Callable[
     [Callable[Concatenate[ArgsT], ReturnT]], IsolatedFunction[ArgsT, ReturnT]
 ]: ...
@@ -710,6 +711,7 @@ def function(
     serve: Literal[True],
     exposed_port: int | None = None,
     max_concurrency: int | None = None,
+    local_python_modules: list[str] | None = None,
 ) -> Callable[
     [Callable[Concatenate[ArgsT], ReturnT]], ServedIsolatedFunction[ArgsT, ReturnT]
 ]: ...
@@ -727,6 +729,7 @@ def function(
     serve: Literal[False] = False,
     exposed_port: int | None = None,
     max_concurrency: int | None = None,
+    local_python_modules: list[str] | None = None,
     # FalServerlessHost options
     metadata: dict[str, Any] | None = None,
     machine_type: str | list[str] = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
@@ -756,6 +759,7 @@ def function(
     serve: Literal[True],
     exposed_port: int | None = None,
     max_concurrency: int | None = None,
+    local_python_modules: list[str] | None = None,
     # FalServerlessHost options
     metadata: dict[str, Any] | None = None,
     machine_type: str | list[str] = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
@@ -792,6 +796,7 @@ def function(
     serve: Literal[False] = False,
     exposed_port: int | None = None,
     max_concurrency: int | None = None,
+    local_python_modules: list[str] | None = None,
 ) -> Callable[
     [Callable[Concatenate[ArgsT], ReturnT]], IsolatedFunction[ArgsT, ReturnT]
 ]: ...
@@ -813,6 +818,7 @@ def function(
     serve: Literal[True],
     exposed_port: int | None = None,
     max_concurrency: int | None = None,
+    local_python_modules: list[str] | None = None,
 ) -> Callable[
     [Callable[Concatenate[ArgsT], ReturnT]], ServedIsolatedFunction[ArgsT, ReturnT]
 ]: ...
@@ -835,6 +841,7 @@ def function(
     serve: Literal[False] = False,
     exposed_port: int | None = None,
     max_concurrency: int | None = None,
+    local_python_modules: list[str] | None = None,
     # FalServerlessHost options
     metadata: dict[str, Any] | None = None,
     machine_type: str | list[str] = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
@@ -869,6 +876,7 @@ def function(
     serve: Literal[True],
     exposed_port: int | None = None,
     max_concurrency: int | None = None,
+    local_python_modules: list[str] | None = None,
     # FalServerlessHost options
     metadata: dict[str, Any] | None = None,
     machine_type: str | list[str] = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
@@ -897,6 +905,7 @@ def function(
     serve: Literal[False] = False,
     exposed_port: int | None = None,
     max_concurrency: int | None = None,
+    local_python_modules: list[str] | None = None,
     # FalServerlessHost options
     metadata: dict[str, Any] | None = None,
     machine_type: str | list[str] = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
@@ -925,6 +934,7 @@ def function(
     serve: Literal[True],
     exposed_port: int | None = None,
     max_concurrency: int | None = None,
+    local_python_modules: list[str] | None = None,
     # FalServerlessHost options
     metadata: dict[str, Any] | None = None,
     machine_type: str | list[str] = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
@@ -948,6 +958,7 @@ def function(  # type: ignore
     kind: str = "virtualenv",
     *,
     host: Host | None = None,
+    local_python_modules: list[str] | None = None,
     **config: Any,
 ):
     if host is None:
@@ -956,6 +967,10 @@ def function(  # type: ignore
 
     def wrapper(func: Callable[ArgsT, ReturnT]):
         include_modules_from(func)
+
+        for module_name in local_python_modules or []:
+            include_module(module_name)
+
         proxy = IsolatedFunction(
             host=host,  # type: ignore
             raw_func=func,  # type: ignore
