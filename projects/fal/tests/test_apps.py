@@ -23,7 +23,12 @@ from fal import apps
 from fal.app import AppClient, AppClientError
 from fal.cli.deploy import User, _get_user
 from fal.container import ContainerImage
-from fal.exceptions import AppException, FieldException, RequestCancelledException
+from fal.exceptions import (
+    AppException,
+    FalServerlessException,
+    FieldException,
+    RequestCancelledException,
+)
 from fal.exceptions._cuda import _CUDA_OOM_MESSAGE, _CUDA_OOM_STATUS_CODE
 from fal.rest_client import REST_CLIENT
 from fal.workflows import Workflow
@@ -301,6 +306,14 @@ class RealtimeApp(fal.App, keep_alive=300, max_concurrency=1):
         return RTOutputs(texts=[input.prompt] + [i.prompt for i in inputs])
 
 
+class BrokenApp(fal.App, keep_alive=300, max_concurrency=1):
+    machine_type = "S"
+
+    @fal.endpoint("/")
+    def broken(self) -> Exception:
+        raise Exception("this app is designed to fail")
+
+
 @pytest.fixture(scope="module")
 def host() -> Generator[api.FalServerlessHost, None, None]:
     yield addition_app.host
@@ -398,6 +411,13 @@ def test_realtime_app(host: api.FalServerlessHost, user: User):
     realtime_app = fal.wrap_app(RealtimeApp)
     with register_app(host, realtime_app, "realtime") as (app_alias, _):
         yield f"{user.username}/{app_alias}"
+
+
+def test_broken_app_failure(host: api.FalServerlessHost, user: User):
+    with pytest.raises(FalServerlessException) as e:
+        fal.wrap_app(BrokenApp)
+
+    assert "Failed to generate OpenAPI" in str(e)
 
 
 def test_app_client(test_app: str, test_nomad_app: str):

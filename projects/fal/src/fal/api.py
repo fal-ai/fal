@@ -501,12 +501,7 @@ class FalServerlessHost(Host):
         if isinstance(func, ServeWrapper):
             # Assigning in a separate property leaving a place for the user
             # to add more metadata in the future
-            try:
-                metadata["openapi"] = func.openapi()
-            except Exception as e:
-                print(
-                    f"[warning] Failed to generate OpenAPI metadata for function: {e}"
-                )
+            metadata["openapi"] = func.openapi()
 
         for partial_result in self._connection.register(
             partial_func,
@@ -1169,7 +1164,12 @@ class BaseServable:
         Build the OpenAPI specification for the served function.
         Attach needed metadata for a better integration to fal.
         """
-        return self._build_app().openapi()
+        try:
+            return self._build_app().openapi()
+        except Exception as e:
+            raise FalServerlessException(
+                "Failed to generate OpenAPI metadata for function"
+            ) from e
 
     def serve(self) -> None:
         import asyncio

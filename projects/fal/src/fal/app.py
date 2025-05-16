@@ -105,15 +105,12 @@ def wrap_app(cls: type[App], **kwargs) -> IsolatedFunction:
         app.serve()
 
     metadata = {}
-    try:
-        app = cls(_allow_init=True)
-        metadata["openapi"] = app.openapi()
-    except Exception:
-        logger.warning("Failed to build OpenAPI specification for %s", cls.__name__)
-        realtime_app = False
-    else:
-        routes = app.collect_routes()
-        realtime_app = any(route.is_websocket for route in routes)
+    app = cls(_allow_init=True)
+
+    metadata["openapi"] = app.openapi()
+
+    routes = app.collect_routes()
+    realtime_app = any(route.is_websocket for route in routes)
 
     kind = cls.host_kwargs.pop("kind", "virtualenv")
     if kind == "container":
