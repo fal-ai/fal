@@ -10,7 +10,7 @@ from typing import Generator, List, Tuple
 
 import httpx
 import pytest
-from fastapi import WebSocket
+from fastapi import Request, WebSocket
 from httpx import HTTPStatusError
 from isolate.backends.common import active_python
 from openapi_fal_rest.api.applications import app_metadata
@@ -31,6 +31,7 @@ from fal.exceptions import (
 )
 from fal.exceptions._cuda import _CUDA_OOM_MESSAGE, _CUDA_OOM_STATUS_CODE
 from fal.rest_client import REST_CLIENT
+from fal.toolkit.utils.endpoint import cancel_on_disconnect
 from fal.workflows import Workflow
 
 
@@ -233,13 +234,17 @@ class ExceptionApp(fal.App, keep_alive=300, max_concurrency=1):
         raise RuntimeError("cuDNN error: CUDNN_STATUS_INTERNAL_ERROR")
 
 
-class CancellableApp(fal.App, keep_alive=300, max_concurrency=1):
+class CancellableApp(fal.App, keep_alive=300, max_concurrency=1, request_timeout=10):
     task = None
+    running = 0
 
-    @fal.endpoint("/")
-    async def sleep(self, input: Input) -> Output:
+    async def _sleep(self, input: Input):
+        if self.running > 0:
+            raise Exception("App is already running")
+
         self.task = asyncio.create_task(asyncio.sleep(input.wait_time))
         try:
+            self.running += 1
             await self.task
         except asyncio.CancelledError:
             print("Task was cancelled")
@@ -249,8 +254,19 @@ class CancellableApp(fal.App, keep_alive=300, max_concurrency=1):
                     await self.task
 
             raise RequestCancelledException("Request cancelled by the client.")
-
+        finally:
+            self.task = None
+            self.running -= 1
         return Output(result=input.lhs + input.rhs)
+
+    @fal.endpoint("/")
+    async def sleep(self, input: Input) -> Output:
+        return await self._sleep(input)
+
+    @fal.endpoint("/well-handled")
+    async def well_handled(self, input: Input, request: Request) -> Output:
+        async with cancel_on_disconnect(request):
+            return await self._sleep(input)
 
     @fal.endpoint("/cancel")
     async def cancel_handler(self) -> Output:
@@ -487,7 +503,7 @@ def test_stateful_app_client(test_stateful_app: str):
 
 def test_app_cancellation(test_app: str, test_cancellable_app: str):
     request_handle = apps.submit(
-        test_cancellable_app, arguments={"lhs": 1, "rhs": 2, "wait_time": 10}
+        test_cancellable_app, arguments={"lhs": 1, "rhs": 2, "wait_time": 5}
     )
 
     while True:
@@ -507,7 +523,7 @@ def test_app_cancellation(test_app: str, test_cancellable_app: str):
 
     # normal app should just ignore the cancellation
     request_handle = apps.submit(
-        test_app, arguments={"lhs": 1, "rhs": 2, "wait_time": 10}
+        test_app, arguments={"lhs": 1, "rhs": 2, "wait_time": 5}
     )
 
     while True:
@@ -522,6 +538,44 @@ def test_app_cancellation(test_app: str, test_cancellable_app: str):
 
     response = request_handle.get()
     assert response == {"result": 3}
+
+
+def test_app_disconnect_behavior(test_app: str, test_cancellable_app: str):
+    with pytest.raises(HTTPStatusError) as e:
+        apps.run(
+            test_cancellable_app,
+            arguments={"lhs": 1, "rhs": 2, "wait_time": 20},
+            path="/well-handled",
+        )
+    assert (
+        e.value.response.status_code == 504
+    ), "Expected Gateway Timeout even though the app handled it"
+
+    # and running it again shows the app "handled" it
+    response = apps.run(
+        test_cancellable_app,
+        arguments={"lhs": 1, "rhs": 2, "wait_time": 1},
+        path="/well-handled",
+    )
+    assert response == {"result": 3}
+
+    # vs on an unhandled one
+
+    with pytest.raises(HTTPStatusError) as e:
+        apps.run(
+            test_cancellable_app,
+            arguments={"lhs": 1, "rhs": 2, "wait_time": 20},
+        )
+    assert (
+        e.value.response.status_code == 504
+    ), "Expected Gateway Timeout even though the app handled it"
+
+    with pytest.raises(HTTPStatusError) as e:
+        apps.run(
+            test_cancellable_app,
+            arguments={"lhs": 1, "rhs": 2, "wait_time": 1},
+        )
+    assert e.value.response.status_code == 500
 
 
 @pytest.mark.xfail(
