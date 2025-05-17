@@ -564,7 +564,7 @@ def test_app_disconnect_behavior(test_app: str, test_cancellable_app: str):
     with pytest.raises(HTTPStatusError) as e:
         apps.run(
             test_cancellable_app,
-            arguments={"lhs": 1, "rhs": 2, "wait_time": 1},
+            arguments={"lhs": 1, "rhs": 2, "wait_time": 20},
         )
     assert (
         e.value.response.status_code == 504
