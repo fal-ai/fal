@@ -21,17 +21,21 @@ def runners_table(runners: List[RunnerInfo]):
     table.add_column("Revision")
 
     for runner in runners:
+        external_metadata = runner.external_metadata
+        present = external_metadata.get("present_in_group", True)
+
         num_leases_with_request = len(
             [
                 lease
-                for lease in runner.external_metadata.get("leases", [])
+                for lease in external_metadata.get("leases", [])
                 if lease.get("request_id") is not None
             ]
         )
 
         table.add_row(
             runner.alias,
-            runner.runner_id,
+            # Mark lost runners in red
+            runner.runner_id if present else f"[red]{runner.runner_id}[/]",
             str(runner.in_flight_requests),
             str(runner.in_flight_requests - num_leases_with_request),
             (
