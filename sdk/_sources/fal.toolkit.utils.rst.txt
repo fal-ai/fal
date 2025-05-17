@@ -12,6 +12,14 @@ fal.toolkit.utils.download\_utils module
    :undoc-members:
    :show-inheritance:
 
+fal.toolkit.utils.endpoint module
+---------------------------------
+
+.. automodule:: fal.toolkit.utils.endpoint
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 fal.toolkit.utils.retry module
 ------------------------------
 
