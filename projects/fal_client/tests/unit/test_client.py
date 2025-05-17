@@ -1,6 +1,13 @@
 import pytest
+from datetime import datetime
 
-from fal_client.client import Queued, InProgress, Completed, _BaseRequestHandle
+from fal_client.client import (
+    Queued,
+    InProgress,
+    Completed,
+    _BaseRequestHandle,
+    LogMessage,
+)
 
 
 @pytest.mark.parametrize(
@@ -12,23 +19,68 @@ from fal_client.client import Queued, InProgress, Completed, _BaseRequestHandle
             False,
         ),
         (
-            {"status": "IN_PROGRESS", "logs": [{"msg": "foo"}, {"msg": "bar"}]},
-            InProgress(logs=[{"msg": "foo"}, {"msg": "bar"}]),
+            {"status": "IN_PROGRESS", "logs": [{"message": "foo"}, {"message": "bar"}]},
+            InProgress(
+                logs=[
+                    LogMessage(
+                        timestamp=datetime.now(),
+                        level="INFO",
+                        message="foo",
+                        source="unknown",
+                    ),
+                    LogMessage(
+                        timestamp=datetime.now(),
+                        level="INFO",
+                        message="bar",
+                        source="unknown",
+                    ),
+                ]
+            ),
             False,
         ),
         (
-            {"status": "COMPLETED", "logs": [{"msg": "foo"}, {"msg": "bar"}]},
-            Completed(logs=[{"msg": "foo"}, {"msg": "bar"}], metrics={}),
+            {"status": "COMPLETED", "logs": [{"message": "foo"}, {"message": "bar"}]},
+            Completed(
+                logs=[
+                    LogMessage(
+                        timestamp=datetime.now(),
+                        level="INFO",
+                        message="foo",
+                        source="unknown",
+                    ),
+                    LogMessage(
+                        timestamp=datetime.now(),
+                        level="INFO",
+                        message="bar",
+                        source="unknown",
+                    ),
+                ],
+                metrics={},
+            ),
             False,
         ),
         (
             {
                 "status": "COMPLETED",
-                "logs": [{"msg": "foo"}, {"msg": "bar"}],
+                "logs": [{"message": "foo"}, {"message": "bar"}],
                 "metrics": {"m1": "v1", "m2": "v2"},
             },
             Completed(
-                logs=[{"msg": "foo"}, {"msg": "bar"}], metrics={"m1": "v1", "m2": "v2"}
+                logs=[
+                    LogMessage(
+                        timestamp=datetime.now(),
+                        level="INFO",
+                        message="foo",
+                        source="unknown",
+                    ),
+                    LogMessage(
+                        timestamp=datetime.now(),
+                        level="INFO",
+                        message="bar",
+                        source="unknown",
+                    ),
+                ],
+                metrics={"m1": "v1", "m2": "v2"},
             ),
             False,
         ),
@@ -46,4 +98,16 @@ def test_parse_status(data, result, raised):
         with pytest.raises(result):
             handle._parse_status(data)
     else:
-        assert handle._parse_status(data) == result
+        actual = handle._parse_status(data)
+        if isinstance(actual, (InProgress, Completed)) and actual.logs:
+            # For log messages, we only compare the message field since timestamp will be different
+            assert len(actual.logs) == len(result.logs)
+            for actual_log, expected_log in zip(actual.logs, result.logs):
+                assert actual_log.message == expected_log.message
+                assert actual_log.level == expected_log.level
+                assert actual_log.source == expected_log.source
+            # Compare metrics separately for Completed status
+            if isinstance(actual, Completed):
+                assert actual.metrics == result.metrics
+        else:
+            assert actual == result

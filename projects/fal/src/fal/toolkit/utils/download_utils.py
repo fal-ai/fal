@@ -3,6 +3,7 @@ from __future__ import annotations
 import errno
 import hashlib
 import os
+import random
 import shutil
 import subprocess
 import sys
@@ -15,13 +16,29 @@ FAL_PERSISTENT_DIR = PurePath("/data")
 FAL_REPOSITORY_DIR = FAL_PERSISTENT_DIR / ".fal" / "repos"
 FAL_MODEL_WEIGHTS_DIR = FAL_PERSISTENT_DIR / ".fal" / "model_weights"
 
+# List of common browser user agents for rotation
+USER_AGENTS = [
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.8; rv:21.0) "
+    "Gecko/20100101 Firefox/21.0",
+    "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/36.0.1985.67 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 6.1; WOW64; rv:31.0) " "Gecko/20100101 Firefox/31.0",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_9_3) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/35.0.1916.47 Safari/537.36",
+]
+
+
+def get_random_user_agent() -> str:
+    """Get a random user agent from the list of common browser user agents."""
+    if os.getenv("FAL_TEST_MODE"):
+        # In test mode, always return the first user agent for consistency
+        return USER_AGENTS[0]
+    return random.choice(USER_AGENTS)
+
 
 # TODO: how can we randomize the user agent to avoid being blocked?
 TEMP_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Macintosh; "
-        "Intel Mac OS X 10.8; rv:21.0) Gecko/20100101 Firefox/21.0"
-    ),
+    "User-Agent": get_random_user_agent(),
 }
 
 
