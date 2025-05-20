@@ -75,10 +75,10 @@ def test_fal_client(client: fal_client.SyncClient):
 def test_fal_client_streaming(client: fal_client.SyncClient):
     events = []
     for event in client.stream(
-        "fal-ai/llavav15-13b",
+        "fal-ai/any-llm",
         arguments={
-            "image_url": "https://llava-vl.github.io/static/images/monalisa.jpg",
-            "prompt": "Do you know who drew this painting?",
+            "model": "google/gemini-flash-1.5",
+            "prompt": "Tell me a joke",
         },
     ):
         events.append(event)
