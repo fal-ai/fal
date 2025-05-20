@@ -189,7 +189,11 @@ def test_fal_client_encode(client: fal_client.SyncClient, tmp_path):
         ),
     ],
 )
-def test_retry(mocker, exc, retried):
+def test_retry(mocker, exc, retried, monkeypatch):
+    monkeypatch.setattr(fal_client.client, "MAX_ATTEMPTS", 4)
+    monkeypatch.setattr(fal_client.client, "BASE_DELAY", 0.1)
+    monkeypatch.setattr(fal_client.client, "MAX_DELAY", 0.1)
+
     httpx_client = mocker.Mock()
     httpx_client.request = mocker.Mock(side_effect=exc)
 
