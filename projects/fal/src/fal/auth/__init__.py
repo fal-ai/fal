@@ -63,8 +63,13 @@ def key_credentials() -> tuple[str, str] | None:
 
     key = os.environ.get("FAL_KEY") or config.get("key") or get_colab_token()
     if key:
-        key_id, key_secret = key.split(":", 1)
-        return (key_id, key_secret)
+        try:
+            key_id, key_secret = key.split(":", 1)
+            return (key_id, key_secret)
+        except ValueError:
+            print(f"Invalid key format: {key}")
+            return None
+
     elif "FAL_KEY_ID" in os.environ and "FAL_KEY_SECRET" in os.environ:
         return (os.environ["FAL_KEY_ID"], os.environ["FAL_KEY_SECRET"])
     else:

@@ -621,7 +621,9 @@ async def _async_request(
     return response
 
 
-MAX_ATTEMPTS = 4
+MAX_ATTEMPTS = 10
+BASE_DELAY = 0.1
+MAX_DELAY = 30
 RETRY_CODES = [408, 409, 429]
 
 
@@ -664,7 +666,9 @@ def _maybe_retry_request(
             return _request(client, method, url, **kwargs)
         except httpx.HTTPError as exc:
             if _should_retry(exc) and attempt < MAX_ATTEMPTS:
-                delay = _get_retry_delay(attempt, 0.1, 10, "exponential", True)
+                delay = _get_retry_delay(
+                    attempt, BASE_DELAY, MAX_DELAY, "exponential", True
+                )
                 logger.debug(
                     f"Retrying request to {url} due to {exc} ({MAX_ATTEMPTS - attempt} attempts left)"
                 )

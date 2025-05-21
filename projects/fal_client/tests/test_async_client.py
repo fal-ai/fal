@@ -84,10 +84,10 @@ async def test_fal_client(client: fal_client.AsyncClient):
 async def test_fal_client_streaming(client: fal_client.AsyncClient):
     events = []
     async for event in client.stream(
-        "fal-ai/llavav15-13b",
+        "fal-ai/any-llm",
         arguments={
-            "image_url": "https://llava-vl.github.io/static/images/monalisa.jpg",
-            "prompt": "Do you know who drew this painting?",
+            "model": "google/gemini-flash-1.5",
+            "prompt": "Tell me a joke",
         },
     ):
         events.append(event)
@@ -185,7 +185,11 @@ async def test_fal_client_upload(
         ),
     ],
 )
-async def test_retry(mocker, exc, retried):
+async def test_retry(mocker, exc, retried, monkeypatch):
+    monkeypatch.setattr(fal_client.client, "MAX_ATTEMPTS", 4)
+    monkeypatch.setattr(fal_client.client, "BASE_DELAY", 0.1)
+    monkeypatch.setattr(fal_client.client, "MAX_DELAY", 0.1)
+
     httpx_client = mocker.Mock()
     httpx_client.request = mocker.Mock(side_effect=exc)
 

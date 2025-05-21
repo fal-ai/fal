@@ -55,12 +55,18 @@ def _key_set(args):
         args.console.print(f"Key set for profile [cyan]{config.profile}[/].")
 
 
+def _host_set(args):
+    with Config().edit() as config:
+        config.set("host", args.HOST)
+        args.console.print(f"Fal host set to [cyan]{args.HOST}[/].")
+
+
 def _delete(args):
     with Config().edit() as config:
         if config.profile == args.PROFILE:
             config.set_internal("profile", None)
 
-        config.delete(args.PROFILE)
+        config.delete_profile(args.PROFILE)
         args.console.print(f"Profile [cyan]{args.PROFILE}[/] deleted.")
 
 
@@ -120,6 +126,19 @@ def add_parser(main_subparsers, parents):
         parents=parents,
     )
     key_set_parser.set_defaults(func=_key_set)
+
+    host_set_help = "Set fal host."
+    host_set_parser = subparsers.add_parser(
+        "host",
+        description=host_set_help,
+        help=host_set_help,
+        parents=parents,
+    )
+    host_set_parser.add_argument(
+        "HOST",
+        help="Fal host.",
+    )
+    host_set_parser.set_defaults(func=_host_set)
 
     delete_help = "Delete profile."
     delete_parser = subparsers.add_parser(
