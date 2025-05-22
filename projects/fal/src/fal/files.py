@@ -81,7 +81,7 @@ class FalFileSystem(AbstractFileSystem):
             return
 
         with open(lpath, "wb") as fobj:
-            response = self._client.get(f"/files/file/{rpath.lstrip('/')}")
+            response = self._client.get(f"/files/file/{rpath}")
             response.raise_for_status()
             fobj.write(response.content)
 
@@ -91,13 +91,13 @@ class FalFileSystem(AbstractFileSystem):
 
         with open(lpath, "rb") as fobj:
             response = self._client.post(
-                f"/files/file/local/{rpath.lstrip('/')}",
+                f"/files/file/local/{rpath}",
                 files={"file_upload": (posixpath.basename(lpath), fobj, "text/plain")},
             )
             response.raise_for_status()
         self.dircache.clear()
 
     def rm(self, path, **kwargs):
-        response = self._client.delete(f"/files/file/{path.lstrip('/')}")
+        response = self._client.delete(f"/files/file/{path}")
         response.raise_for_status()
         self.dircache.clear()
