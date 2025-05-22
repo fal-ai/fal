@@ -29,7 +29,7 @@ class FalFileSystem(AbstractFileSystem):
         )
 
     def _ls(self, path):
-        response = self._client.get(f"/files/list//{path}")
+        response = self._client.get(f"/files/list/{path}")
         response.raise_for_status()
         files = response.json()
         return sorted(
