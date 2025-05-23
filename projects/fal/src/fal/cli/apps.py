@@ -102,6 +102,7 @@ def _app_rev_table(revs: list[ApplicationInfo]):
     table.add_column("Machine Type")
     table.add_column("Runners")
     table.add_column("Regions")
+    table.add_column("Created")
 
     for rev in revs:
         table.add_row(
@@ -115,6 +116,7 @@ def _app_rev_table(revs: list[ApplicationInfo]):
             " ".join(rev.machine_types),
             str(rev.active_runners),
             " ".join(rev.valid_regions),
+            str(rev.created_at),
         )
 
     return table
