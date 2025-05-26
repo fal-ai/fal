@@ -28,26 +28,50 @@ class FalFileSystem(AbstractFileSystem):
             },
         )
 
+    def _request(self, method, path, **kwargs):
+        from fal.exceptions import FalServerlessException
+
+        response = self._client.request(method, path, **kwargs)
+        if response.status_code != 200:
+            try:
+                detail = response.json()["detail"]
+            except Exception:
+                detail = response.text
+            raise FalServerlessException(detail)
+        return response
+
+    def _ls(self, path):
+        response = self._request("GET", f"/files/list/{path}")
+        files = response.json()
+        return sorted(
+            (
+                {
+                    "name": entry["path"],
+                    "size": entry["size"],
+                    "type": "file" if entry["is_file"] else "directory",
+                    "mtime": entry["updated_time"],
+                }
+                for entry in files
+            ),
+            key=lambda x: x["name"],
+        )
+
     def ls(self, path, detail=True, **kwargs):
-        if path in self.dircache:
-            entries = self.dircache[path]
+        abs_path = "/" + path.lstrip("/")
+        if abs_path in self.dircache:
+            entries = self.dircache[abs_path]
+        elif abs_path in ["/", "", "."]:
+            entries = [
+                {
+                    "name": "/data",
+                    "size": 0,
+                    "type": "directory",
+                    "mtime": 0,
+                }
+            ]
         else:
-            response = self._client.get(f"/files/list/{path.lstrip('/')}")
-            response.raise_for_status()
-            files = response.json()
-            entries = sorted(
-                (
-                    {
-                        "name": entry["path"].lstrip("/data/"),
-                        "size": entry["size"],
-                        "type": "file" if entry["is_file"] else "directory",
-                        "mtime": entry["updated_time"],
-                    }
-                    for entry in files
-                ),
-                key=lambda x: x["name"],
-            )
-        self.dircache[path] = entries
+            entries = self._ls(abs_path)
+        self.dircache[abs_path] = entries
 
         if detail:
             return entries
@@ -68,8 +92,7 @@ class FalFileSystem(AbstractFileSystem):
             return
 
         with open(lpath, "wb") as fobj:
-            response = self._client.get(f"/files/file/{rpath.lstrip('/')}")
-            response.raise_for_status()
+            response = self._request("GET", f"/files/file/{rpath}")
             fobj.write(response.content)
 
     def put_file(self, lpath, rpath, mode="overwrite", **kwargs):
@@ -77,14 +100,24 @@ class FalFileSystem(AbstractFileSystem):
             return
 
         with open(lpath, "rb") as fobj:
-            response = self._client.post(
-                f"/files/file/local/{rpath.lstrip('/')}",
+            self._request(
+                "POST",
+                f"/files/file/local/{rpath}",
                 files={"file_upload": (posixpath.basename(lpath), fobj, "text/plain")},
             )
-            response.raise_for_status()
+        self.dircache.clear()
+
+    def put_file_from_url(self, url, rpath, mode="overwrite", **kwargs):
+        self._request(
+            "POST",
+            f"/files/file/url/{rpath}",
+            json={"url": url},
+        )
         self.dircache.clear()
 
     def rm(self, path, **kwargs):
-        response = self._client.delete(f"/files/file/{path.lstrip('/')}")
-        response.raise_for_status()
+        self._request(
+            "DELETE",
+            f"/files/file/{path}",
+        )
         self.dircache.clear()

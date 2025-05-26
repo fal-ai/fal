@@ -28,6 +28,13 @@ def _upload(args):
     fs.put(args.local_path, args.remote_path, recursive=True)
 
 
+def _upload_url(args):
+    from fal.files import FalFileSystem
+
+    fs = FalFileSystem()
+    fs.put_file_from_url(args.url, args.remote_path)
+
+
 def add_parser(main_subparsers, parents):
     files_help = "Manage fal files."
     parser = main_subparsers.add_parser(
@@ -68,3 +75,10 @@ def add_parser(main_subparsers, parents):
     upload_parser.add_argument("local_path", type=str, help="Local path to upload")
     upload_parser.add_argument("remote_path", type=str, help="Remote path to upload to")
     upload_parser.set_defaults(func=_upload)
+
+    upload_url_parser = subparsers.add_parser("upload-url", parents=parents)
+    upload_url_parser.add_argument("url", type=str, help="URL to upload")
+    upload_url_parser.add_argument(
+        "remote_path", type=str, help="Remote path to upload to"
+    )
+    upload_url_parser.set_defaults(func=_upload_url)

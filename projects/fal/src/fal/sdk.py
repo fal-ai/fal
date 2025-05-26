@@ -238,6 +238,7 @@ class ApplicationInfo:
     request_timeout: int
     startup_timeout: int
     valid_regions: list[str]
+    created_at: datetime
 
 
 @dataclass
@@ -368,6 +369,7 @@ def _from_grpc_application_info(
         request_timeout=message.request_timeout,
         startup_timeout=message.startup_timeout,
         valid_regions=list(message.valid_regions),
+        created_at=isolate_proto.datetime_from_timestamp(message.created_at),
     )
 
 
