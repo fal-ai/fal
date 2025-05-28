@@ -43,7 +43,12 @@
 <li class="toctree-l2"><a class="reference internal" href="fal.toolkit.audio.html#submodules">Submodules</a></li>
 <li class="toctree-l2"><a class="reference internal" href="fal.toolkit.audio.html#module-fal.toolkit.audio.audio">fal.toolkit.audio.audio module</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="fal.toolkit.audio.html#fal.toolkit.audio.audio.Audio"><code class="docutils literal notranslate"><span class="pre">Audio</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.toolkit.audio.html#fal.toolkit.audio.audio.Audio.content_type"><code class="docutils literal notranslate"><span class="pre">Audio.content_type</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.toolkit.audio.html#fal.toolkit.audio.audio.Audio.file_data"><code class="docutils literal notranslate"><span class="pre">Audio.file_data</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.toolkit.audio.html#fal.toolkit.audio.audio.Audio.file_name"><code class="docutils literal notranslate"><span class="pre">Audio.file_name</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.toolkit.audio.html#fal.toolkit.audio.audio.Audio.file_size"><code class="docutils literal notranslate"><span class="pre">Audio.file_size</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.toolkit.audio.html#fal.toolkit.audio.audio.Audio.model_config"><code class="docutils literal notranslate"><span class="pre">Audio.model_config</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.toolkit.audio.html#fal.toolkit.audio.audio.Audio.url"><code class="docutils literal notranslate"><span class="pre">Audio.url</span></code></a></li>
 </ul>
 </li>
 </ul>
@@ -174,7 +179,12 @@
 <li class="toctree-l2"><a class="reference internal" href="fal.toolkit.video.html#submodules">Submodules</a></li>
 <li class="toctree-l2"><a class="reference internal" href="fal.toolkit.video.html#module-fal.toolkit.video.video">fal.toolkit.video.video module</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="fal.toolkit.video.html#fal.toolkit.video.video.Video"><code class="docutils literal notranslate"><span class="pre">Video</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.toolkit.video.html#fal.toolkit.video.video.Video.content_type"><code class="docutils literal notranslate"><span class="pre">Video.content_type</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.toolkit.video.html#fal.toolkit.video.video.Video.file_data"><code class="docutils literal notranslate"><span class="pre">Video.file_data</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.toolkit.video.html#fal.toolkit.video.video.Video.file_name"><code class="docutils literal notranslate"><span class="pre">Video.file_name</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.toolkit.video.html#fal.toolkit.video.video.Video.file_size"><code class="docutils literal notranslate"><span class="pre">Video.file_size</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.toolkit.video.html#fal.toolkit.video.video.Video.model_config"><code class="docutils literal notranslate"><span class="pre">Video.model_config</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.toolkit.video.html#fal.toolkit.video.video.Video.url"><code class="docutils literal notranslate"><span class="pre">Video.url</span></code></a></li>
 </ul>
 </li>
 </ul>
@@ -277,6 +287,18 @@ quantization techniques. Only applicable under fal’s cloud environment.</p>
 </section>
 <section id="module-fal.toolkit">
 <span id="module-contents"></span><h2>Module contents<a class="headerlink" href="#module-fal.toolkit" title="Link to this heading">¶</a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.toolkit.Audio">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.toolkit.</span></span><span class="sig-name descname"><span class="pre">Audio</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">data</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.Audio" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="fal.toolkit.file.html#fal.toolkit.file.file.File" title="fal.toolkit.file.file.File"><code class="xref py py-class docutils literal notranslate"><span class="pre">File</span></code></a></p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.Audio.model_config">
+<span class="sig-name descname"><span class="pre">model_config</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">ClassVar[ConfigDict]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">{}</span></em><a class="headerlink" href="#fal.toolkit.Audio.model_config" title="Link to this definition">¶</a></dt>
+<dd><p>Configuration for the model, should be a dictionary conforming to [<cite>ConfigDict</cite>][pydantic.config.ConfigDict].</p>
+</dd></dl>
+
+</dd></dl>
+
 <dl class="py class">
 <dt class="sig sig-object py" id="fal.toolkit.CompressedFile">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.toolkit.</span></span><span class="sig-name descname"><span class="pre">CompressedFile</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">data</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.CompressedFile" title="Link to this definition">¶</a></dt>
@@ -426,6 +448,18 @@ quantization techniques. Only applicable under fal’s cloud environment.</p>
 <dt class="sig sig-object py" id="fal.toolkit.Image.width">
 <span class="sig-name descname"><span class="pre">width</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Optional[int]</span></em><a class="headerlink" href="#fal.toolkit.Image.width" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.toolkit.Video">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.toolkit.</span></span><span class="sig-name descname"><span class="pre">Video</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">data</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.Video" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="fal.toolkit.file.html#fal.toolkit.file.file.File" title="fal.toolkit.file.file.File"><code class="xref py py-class docutils literal notranslate"><span class="pre">File</span></code></a></p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.Video.model_config">
+<span class="sig-name descname"><span class="pre">model_config</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">ClassVar[ConfigDict]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">{}</span></em><a class="headerlink" href="#fal.toolkit.Video.model_config" title="Link to this definition">¶</a></dt>
+<dd><p>Configuration for the model, should be a dictionary conforming to [<cite>ConfigDict</cite>][pydantic.config.ConfigDict].</p>
+</dd></dl>
 
 </dd></dl>
 
