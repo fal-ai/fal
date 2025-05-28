@@ -7,9 +7,11 @@ Subpackages
 .. toctree::
    :maxdepth: 4
 
+   fal.toolkit.audio
    fal.toolkit.file
    fal.toolkit.image
    fal.toolkit.utils
+   fal.toolkit.video
 
 Submodules
 ----------

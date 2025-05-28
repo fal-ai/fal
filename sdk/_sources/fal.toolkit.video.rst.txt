@@ -1,0 +1,21 @@
+fal.toolkit.video package
+=========================
+
+Submodules
+----------
+
+fal.toolkit.video.video module
+------------------------------
+
+.. automodule:: fal.toolkit.video.video
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+Module contents
+---------------
+
+.. automodule:: fal.toolkit.video
+   :members:
+   :undoc-members:
+   :show-inheritance:

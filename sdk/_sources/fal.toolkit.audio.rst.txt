@@ -1,0 +1,21 @@
+fal.toolkit.audio package
+=========================
+
+Submodules
+----------
+
+fal.toolkit.audio.audio module
+------------------------------
+
+.. automodule:: fal.toolkit.audio.audio
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+Module contents
+---------------
+
+.. automodule:: fal.toolkit.audio
+   :members:
+   :undoc-members:
+   :show-inheritance:
