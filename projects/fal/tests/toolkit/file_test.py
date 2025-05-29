@@ -4,6 +4,7 @@ import os
 from base64 import b64encode
 
 import pytest
+from pydantic import BaseModel
 
 from fal.toolkit.file.file import File, GoogleStorageRepository
 
@@ -65,3 +66,27 @@ def test_gcp_storage_if_available():
     assert file.url.startswith(
         "https://storage.googleapis.com/fal_registry_image_results/"
     )
+
+
+def test_load_nested():
+    class Input(BaseModel):
+        file: File
+
+    assert (
+        Input(file="https://example.com/somefile.txt").file.url
+        == "https://example.com/somefile.txt"
+    )
+
+    with pytest.raises(ValueError, match="value must be a valid URL"):
+        Input(file="not_a_valid_url")
+
+    file_dict = {
+        "url": "https://example.com/somefile.txt",
+        "content_type": "text/plain",
+        "file_name": "somefile.txt",
+    }
+
+    parsed_input = Input(file=file_dict)
+    assert parsed_input.file.url == file_dict["url"]
+    assert parsed_input.file.content_type == file_dict["content_type"]
+    assert parsed_input.file.file_name == file_dict["file_name"]

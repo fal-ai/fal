@@ -103,7 +103,14 @@ class File(BaseModel):
     else:
 
         @classmethod
+        def __convert_from_dict(cls, value: Any):
+            if isinstance(value, dict):
+                return cls(**value)
+            return value
+
+        @classmethod
         def __get_validators__(cls):
+            yield cls.__convert_from_dict
             yield cls.__convert_from_str
 
     @classmethod
