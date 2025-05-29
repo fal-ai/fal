@@ -7,7 +7,12 @@ from typing import TYPE_CHECKING, Literal, Optional, Union
 from fastapi import Request
 from pydantic import BaseModel, Field
 
-from fal.toolkit.file.file import DEFAULT_REPOSITORY, FALLBACK_REPOSITORY, File
+from fal.toolkit.file.file import (
+    DEFAULT_REPOSITORY,
+    FALLBACK_REPOSITORY,
+    IS_PYDANTIC_V2,
+    File,
+)
 from fal.toolkit.file.types import FileRepository, RepositoryId
 from fal.toolkit.utils.download_utils import _download_file_python
 
@@ -71,6 +76,15 @@ class Image(File):
     height: Optional[int] = Field(
         None, description="The height of the image in pixels.", examples=[1024]
     )
+
+    if IS_PYDANTIC_V2:
+        model_config = {"json_schema_extra": {"ui": {"field": "image"}}}
+    else:
+
+        class Config:
+            @staticmethod
+            def schema_extra(schema, model_type):
+                schema.setdefault("ui", {})["field"] = "image"
 
     @classmethod
     def from_bytes(  # type: ignore[override]
