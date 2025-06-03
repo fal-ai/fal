@@ -49,19 +49,20 @@ def _should_retry(exc: Exception) -> bool:
 
 
 @contextmanager
-@retry(
-    max_retries=MAX_ATTEMPTS,
-    base_delay=BASE_DELAY,
-    max_delay=MAX_DELAY,
-    backoff_type="exponential",
-    jitter=True,
-    should_retry=_should_retry,
-)
 def _maybe_retry_request(
     request: Request,
     **kwargs: Any,
 ) -> Generator[addinfourl, None, None]:
-    with _urlopen(request, **kwargs) as response:
+    _urlopen_with_retry = retry(
+        max_retries=MAX_ATTEMPTS,
+        base_delay=BASE_DELAY,
+        max_delay=MAX_DELAY,
+        backoff_type="exponential",
+        jitter=True,
+        should_retry=_should_retry,
+    )(_urlopen)
+
+    with _urlopen_with_retry(request, **kwargs) as response:
         yield response
 
 
