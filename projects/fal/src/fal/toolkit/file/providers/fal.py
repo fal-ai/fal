@@ -3,14 +3,13 @@ from __future__ import annotations
 import json
 import math
 import os
-import random
 import threading
 from base64 import b64encode
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Generator, Generic, Literal, TypeVar
+from typing import Any, Generator, Generic, TypeVar
 from urllib.error import HTTPError
 from urllib.parse import urlparse, urlunparse
 from urllib.request import Request, urlopen
@@ -19,6 +18,7 @@ from urllib.response import addinfourl
 from fal.auth import key_credentials
 from fal.toolkit.exceptions import FileUploadException
 from fal.toolkit.file.types import FileData, FileRepository
+from fal.toolkit.utils.retry import retry
 
 _FAL_CDN = "https://fal.media"
 _FAL_CDN_V3 = "https://v3.fal.media"
@@ -26,7 +26,7 @@ _FAL_CDN_V3 = "https://v3.fal.media"
 DEFAULT_REQUEST_TIMEOUT = 10
 PUT_REQUEST_TIMEOUT = 5 * 60
 
-MAX_ATTEMPTS = 10
+MAX_ATTEMPTS = 5
 BASE_DELAY = 0.1
 MAX_DELAY = 30
 RETRY_CODES = [408, 409, 429]
@@ -41,55 +41,28 @@ def _urlopen(
         yield response
 
 
-def _should_retry(exc: HTTPError) -> bool:
+def _should_retry(exc: Exception) -> bool:
     if isinstance(exc, HTTPError) and exc.code in RETRY_CODES:
         return True
 
     return False
 
 
-def _get_retry_delay(
-    num_retry: int,
-    base_delay: float,
-    max_delay: float,
-    backoff_type: Literal["exponential", "fixed"] = "exponential",
-    jitter: bool = False,
-) -> float:
-    if backoff_type == "exponential":
-        delay = min(base_delay * (2 ** (num_retry - 1)), max_delay)
-    else:
-        delay = min(base_delay, max_delay)
-
-    if jitter:
-        delay *= random.uniform(0.5, 1.5)
-
-    return min(delay, max_delay)
-
-
 @contextmanager
+@retry(
+    max_retries=MAX_ATTEMPTS,
+    base_delay=BASE_DELAY,
+    max_delay=MAX_DELAY,
+    backoff_type="exponential",
+    jitter=True,
+    should_retry=_should_retry,
+)
 def _maybe_retry_request(
     request: Request,
     **kwargs: Any,
 ) -> Generator[addinfourl, None, None]:
-    from time import sleep
-
-    for attempt in range(1, MAX_ATTEMPTS + 1):
-        try:
-            with _urlopen(request, **kwargs) as response:
-                yield response
-                return
-        except HTTPError as exc:
-            if _should_retry(exc) and attempt < MAX_ATTEMPTS:
-                delay = _get_retry_delay(
-                    attempt, BASE_DELAY, MAX_DELAY, "exponential", True
-                )
-                print(
-                    f"Retrying request to {request.full_url} due to {exc} "
-                    f"({MAX_ATTEMPTS - attempt} attempts left)"
-                )
-                sleep(delay)
-                continue
-            raise
+    with _urlopen(request, **kwargs) as response:
+        yield response
 
 
 @dataclass
