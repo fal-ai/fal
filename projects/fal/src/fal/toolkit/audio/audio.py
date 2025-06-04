@@ -1,4 +1,16 @@
+from functools import wraps
+
+from pydantic import Field
+
 from fal.toolkit.file.file import IS_PYDANTIC_V2, File
+
+
+@wraps(Field)
+def AudioField(*args, **kwargs):
+    ui = kwargs.get("ui", {})
+    ui.setdefault("field", "audio")
+    kwargs["ui"] = ui
+    return Field(*args, **kwargs)
 
 
 class Audio(File):

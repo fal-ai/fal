@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shutil
+from functools import wraps
 from pathlib import Path
 from tempfile import NamedTemporaryFile, mkdtemp
 from typing import Any, Callable, Optional
@@ -61,6 +62,14 @@ get_builtin_repository.__module__ = "__main__"
 DEFAULT_REPOSITORY: FileRepository | RepositoryId = "fal_v3"
 FALLBACK_REPOSITORY: FileRepository | RepositoryId = "fal"
 OBJECT_LIFECYCLE_PREFERENCE_KEY = "x-fal-object-lifecycle-preference"
+
+
+@wraps(Field)
+def FileField(*args, **kwargs):
+    ui = kwargs.get("ui", {})
+    ui.setdefault("field", "file")
+    kwargs["ui"] = ui
+    return Field(*args, **kwargs)
 
 
 class File(BaseModel):
