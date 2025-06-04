@@ -48,11 +48,19 @@ def add_parser(main_subparsers, parents):
     subparsers = parser.add_subparsers(
         title="Commands",
         metavar="command",
+        dest="cmd",
         required=True,
         parser_class=FalClientParser,
     )
 
-    list_parser = subparsers.add_parser("list", aliases=["ls"], parents=parents)
+    list_help = "List files."
+    list_parser = subparsers.add_parser(
+        "list",
+        aliases=["ls"],
+        description=list_help,
+        help=list_help,
+        parents=parents,
+    )
     list_parser.add_argument(
         "path",
         nargs="?",
@@ -62,7 +70,13 @@ def add_parser(main_subparsers, parents):
     )
     list_parser.set_defaults(func=_list)
 
-    download_parser = subparsers.add_parser("download", parents=parents)
+    download_help = "Download files."
+    download_parser = subparsers.add_parser(
+        "download",
+        description=download_help,
+        help=download_help,
+        parents=parents,
+    )
     download_parser.add_argument(
         "remote_path", type=str, help="Remote path to download"
     )
@@ -71,12 +85,24 @@ def add_parser(main_subparsers, parents):
     )
     download_parser.set_defaults(func=_download)
 
-    upload_parser = subparsers.add_parser("upload", parents=parents)
+    upload_help = "Upload files."
+    upload_parser = subparsers.add_parser(
+        "upload",
+        description=upload_help,
+        help=upload_help,
+        parents=parents,
+    )
     upload_parser.add_argument("local_path", type=str, help="Local path to upload")
     upload_parser.add_argument("remote_path", type=str, help="Remote path to upload to")
     upload_parser.set_defaults(func=_upload)
 
-    upload_url_parser = subparsers.add_parser("upload-url", parents=parents)
+    upload_url_help = "Upload file from URL."
+    upload_url_parser = subparsers.add_parser(
+        "upload-url",
+        description=upload_url_help,
+        help=upload_url_help,
+        parents=parents,
+    )
     upload_url_parser.add_argument("url", type=str, help="URL to upload")
     upload_url_parser.add_argument(
         "remote_path", type=str, help="Remote path to upload to"
