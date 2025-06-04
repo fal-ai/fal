@@ -494,6 +494,16 @@ class FalClientError(Exception):
     pass
 
 
+@dataclass
+class FalClientHTTPError(FalClientError):
+    message: str
+    status_code: int
+    response_headers: dict[str, str]
+
+    def __str__(self) -> str:
+        return f"{self.message}"
+
+
 def _raise_for_status(response: httpx.Response) -> None:
     try:
         response.raise_for_status()
@@ -503,7 +513,13 @@ def _raise_for_status(response: httpx.Response) -> None:
         except (ValueError, KeyError):
             msg = response.text
 
-        raise FalClientError(msg) from exc
+        raise FalClientHTTPError(
+            msg,
+            response.status_code,
+            # converting to dict to avoid httpx.Headers,
+            # which means we don't support multiple values per header
+            dict(response.headers),
+        ) from exc
 
 
 @dataclass
