@@ -79,7 +79,6 @@ def _print_error(msg):
 
 def _check_latest_version():
     from packaging.version import parse
-    from rich.emoji import Emoji
     from rich.panel import Panel
     from rich.text import Text
 
@@ -95,7 +94,6 @@ def _check_latest_version():
         return
 
     line1 = Text.assemble(
-        (Emoji.replace(":warning-emoji:  "), "bold white"),
         ("A new version of fal is available: ", "bold white"),
         (latest_version, "bold green"),
     )
