@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+from functools import wraps
 from tempfile import NamedTemporaryFile
 from typing import TYPE_CHECKING, Literal, Optional, Union
 
@@ -61,6 +62,14 @@ def get_image_size(source: ImageSizeInput) -> ImageSize:
 
 
 ImageFormat = Literal["png", "jpeg", "jpg", "webp", "gif"]
+
+
+@wraps(Field)
+def ImageField(*args, **kwargs):
+    ui = kwargs.get("ui", {})
+    ui.setdefault("field", "image")
+    kwargs["ui"] = ui
+    return Field(*args, **kwargs)
 
 
 class Image(File):
