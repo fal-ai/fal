@@ -1183,6 +1183,9 @@ class BaseServable:
         app_info.labels(version=self.version).set(1)
 
         app = self._build_app()
+
+        # We use the default workers=1 config because setup function can be heavy
+        # and it runs once per worker.
         server = Server(
             config=Config(app, host="0.0.0.0", port=8080, timeout_keep_alive=300)
         )
