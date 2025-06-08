@@ -7,6 +7,7 @@ import random
 import shutil
 import subprocess
 import sys
+from contextlib import suppress
 from pathlib import Path, PurePath
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 from urllib.parse import urlparse
@@ -468,8 +469,11 @@ def clone_repository(
             with TemporaryDirectory(
                 dir=target_dir, suffix=f"{local_repo_path.name}.tmp.old"
             ) as tmp_dir:
-                os.rename(local_repo_path, tmp_dir)
-                shutil.rmtree(tmp_dir)
+                with suppress(FileNotFoundError):
+                    # repository might be already deleted by another worker
+                    os.rename(local_repo_path, tmp_dir)
+                    # sometimes seeing FileNotFoundError even here on juicefs
+                    shutil.rmtree(tmp_dir)
 
     # NOTE: using the target_dir to be able to avoid potential copies across temp fs
     # and target fs, and also to be able to atomically rename repo_name dir into place

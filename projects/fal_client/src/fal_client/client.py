@@ -6,6 +6,7 @@ import os
 import mimetypes
 import asyncio
 from pathlib import Path
+import random
 import time
 import base64
 import threading
@@ -493,6 +494,16 @@ class FalClientError(Exception):
     pass
 
 
+@dataclass
+class FalClientHTTPError(FalClientError):
+    message: str
+    status_code: int
+    response_headers: dict[str, str]
+
+    def __str__(self) -> str:
+        return f"{self.message}"
+
+
 def _raise_for_status(response: httpx.Response) -> None:
     try:
         response.raise_for_status()
@@ -502,7 +513,13 @@ def _raise_for_status(response: httpx.Response) -> None:
         except (ValueError, KeyError):
             msg = response.text
 
-        raise FalClientError(msg) from exc
+        raise FalClientHTTPError(
+            msg,
+            response.status_code,
+            # converting to dict to avoid httpx.Headers,
+            # which means we don't support multiple values per header
+            dict(response.headers),
+        ) from exc
 
 
 @dataclass
@@ -695,28 +712,58 @@ async def _async_request(
     return response
 
 
-def _should_retry(status_code: int) -> bool:
-    if status_code in [408, 409, 429] or status_code >= 500:
+MAX_ATTEMPTS = 10
+BASE_DELAY = 0.1
+MAX_DELAY = 30
+RETRY_CODES = [408, 409, 429]
+
+
+def _should_retry(exc: httpx.HTTPError) -> bool:
+    if isinstance(exc, httpx.TransportError):
         return True
+
+    if (
+        isinstance(exc, httpx.HTTPStatusError)
+        and exc.response.status_code in RETRY_CODES
+    ):
+        return True
+
     return False
 
 
-MAX_RETRIES = 3
+def _get_retry_delay(
+    num_retry: int,
+    base_delay: float,
+    max_delay: float,
+    backoff_type: Literal["exponential", "fixed"] = "exponential",
+    jitter: bool = False,
+) -> float:
+    if backoff_type == "exponential":
+        delay = min(base_delay * (2 ** (num_retry - 1)), max_delay)
+    else:
+        delay = min(base_delay, max_delay)
+
+    if jitter:
+        delay *= random.uniform(0.5, 1.5)
+
+    return min(delay, max_delay)
 
 
 def _maybe_retry_request(
     client: httpx.Client, method: str, url: str, **kwargs: Any
 ) -> httpx.Response:
-    retries = MAX_RETRIES
-    while retries > 0:
+    for attempt in range(1, MAX_ATTEMPTS + 1):
         try:
             return _request(client, method, url, **kwargs)
-        except httpx.HTTPStatusError as exc:
-            if _should_retry(exc.response.status_code):
-                logger.debug(
-                    f"Retrying request to {url} due to {exc} ({retries} retries left)"
+        except httpx.HTTPError as exc:
+            if _should_retry(exc) and attempt < MAX_ATTEMPTS:
+                delay = _get_retry_delay(
+                    attempt, BASE_DELAY, MAX_DELAY, "exponential", True
                 )
-                retries -= 1
+                logger.debug(
+                    f"Retrying request to {url} due to {exc} ({MAX_ATTEMPTS - attempt} attempts left)"
+                )
+                time.sleep(delay)
                 continue
             raise
 
@@ -724,16 +771,16 @@ def _maybe_retry_request(
 async def _async_maybe_retry_request(
     client: httpx.AsyncClient, method: str, url: str, **kwargs: Any
 ) -> httpx.Response:
-    retries = MAX_RETRIES
-    while retries > 0:
+    for attempt in range(1, MAX_ATTEMPTS + 1):
         try:
             return await _async_request(client, method, url, **kwargs)
-        except httpx.HTTPStatusError as exc:
-            if _should_retry(exc.response.status_code):
+        except httpx.HTTPError as exc:
+            if _should_retry(exc) and attempt < MAX_ATTEMPTS:
+                delay = _get_retry_delay(attempt, 0.1, 10, "exponential", True)
                 logger.debug(
-                    f"Retrying request to {url} due to {exc} ({retries} retries left)"
+                    f"Retrying request to {url} due to {exc} ({MAX_ATTEMPTS - attempt} attempts left)"
                 )
-                retries -= 1
+                await asyncio.sleep(delay)
                 continue
             raise
 

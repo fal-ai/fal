@@ -63,8 +63,13 @@ def key_credentials() -> tuple[str, str] | None:
 
     key = os.environ.get("FAL_KEY") or config.get("key") or get_colab_token()
     if key:
-        key_id, key_secret = key.split(":", 1)
-        return (key_id, key_secret)
+        try:
+            key_id, key_secret = key.split(":", 1)
+            return (key_id, key_secret)
+        except ValueError:
+            print(f"Invalid key format: {key}")
+            return None
+
     elif "FAL_KEY_ID" in os.environ and "FAL_KEY_SECRET" in os.environ:
         return (os.environ["FAL_KEY_ID"], os.environ["FAL_KEY_SECRET"])
     else:
@@ -123,6 +128,26 @@ def _fetch_teams(bearer_token: str) -> list[dict]:
             return json.load(response)
     except HTTPError as exc:
         raise FalServerlessException("Failed to fetch teams") from exc
+
+
+def current_user_info(headers: dict[str, str]) -> dict:
+    import json
+    from urllib.error import HTTPError
+    from urllib.request import Request, urlopen
+
+    from fal.exceptions import FalServerlessException
+    from fal.flags import REST_URL
+
+    request = Request(
+        method="GET",
+        url=f"{REST_URL}/users/current",
+        headers=headers,
+    )
+    try:
+        with urlopen(request) as response:
+            return json.load(response)
+    except HTTPError as exc:
+        raise FalServerlessException("Failed to fetch user info") from exc
 
 
 def login(console):

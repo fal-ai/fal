@@ -105,15 +105,12 @@ def wrap_app(cls: type[App], **kwargs) -> IsolatedFunction:
         app.serve()
 
     metadata = {}
-    try:
-        app = cls(_allow_init=True)
-        metadata["openapi"] = app.openapi()
-    except Exception:
-        logger.warning("Failed to build OpenAPI specification for %s", cls.__name__)
-        realtime_app = False
-    else:
-        routes = app.collect_routes()
-        realtime_app = any(route.is_websocket for route in routes)
+    app = cls(_allow_init=True)
+
+    metadata["openapi"] = app.openapi()
+
+    routes = app.collect_routes()
+    realtime_app = any(route.is_websocket for route in routes)
 
     kind = cls.host_kwargs.pop("kind", "virtualenv")
     if kind == "container":
@@ -122,6 +119,7 @@ def wrap_app(cls: type[App], **kwargs) -> IsolatedFunction:
     wrapper = fal_function(
         kind,
         requirements=cls.requirements,
+        local_python_modules=cls.local_python_modules,
         machine_type=cls.machine_type,
         num_gpus=cls.num_gpus,
         **cls.host_kwargs,
@@ -265,6 +263,7 @@ def _print_python_packages() -> None:
 
 class App(BaseServable):
     requirements: ClassVar[list[str]] = []
+    local_python_modules: ClassVar[list[str]] = []
     machine_type: ClassVar[str] = "S"
     num_gpus: ClassVar[int | None] = None
     host_kwargs: ClassVar[dict[str, Any]] = {

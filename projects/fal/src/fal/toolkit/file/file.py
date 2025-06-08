@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shutil
+from functools import wraps
 from pathlib import Path
 from tempfile import NamedTemporaryFile, mkdtemp
 from typing import Any, Callable, Optional
@@ -63,6 +64,14 @@ FALLBACK_REPOSITORY: FileRepository | RepositoryId = "fal"
 OBJECT_LIFECYCLE_PREFERENCE_KEY = "x-fal-object-lifecycle-preference"
 
 
+@wraps(Field)
+def FileField(*args, **kwargs):
+    ui = kwargs.get("ui", {})
+    ui.setdefault("field", "file")
+    kwargs["ui"] = ui
+    return Field(*args, **kwargs)
+
+
 class File(BaseModel):
     # public properties
     url: str = Field(
@@ -103,7 +112,14 @@ class File(BaseModel):
     else:
 
         @classmethod
+        def __convert_from_dict(cls, value: Any):
+            if isinstance(value, dict):
+                return cls(**value)
+            return value
+
+        @classmethod
         def __get_validators__(cls):
+            yield cls.__convert_from_dict
             yield cls.__convert_from_str
 
     @classmethod

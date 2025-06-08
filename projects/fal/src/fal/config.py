@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 import os
 from contextlib import contextmanager
-from typing import Dict, List, Optional
+from typing import Dict, Iterator, List, Optional
 
 SETTINGS_SECTION = "__internal__"  # legacy
 DEFAULT_PROFILE = "default"
@@ -9,6 +11,7 @@ DEFAULT_PROFILE = "default"
 class Config:
     _config: Dict[str, Dict[str, str]]
     _profile: Optional[str]
+    _editing: bool = False
 
     DEFAULT_CONFIG_PATH = "~/.fal/config.toml"
 
@@ -38,7 +41,11 @@ class Config:
     @profile.setter
     def profile(self, value: Optional[str]) -> None:
         if value and value not in self._config:
+            # Make sure the section exists
             self._config[value] = {}
+            self.set_internal("profile", value)
+        elif not value:
+            self.unset_internal("profile")
 
         self._profile = value
 
@@ -92,10 +99,16 @@ class Config:
     def unset_internal(self, key: str) -> None:
         self._config.get(SETTINGS_SECTION, {}).pop(key, None)
 
-    def delete(self, profile: str) -> None:
+    def delete_profile(self, profile: str) -> None:
         del self._config[profile]
 
     @contextmanager
-    def edit(self):
-        yield self
-        self.save()
+    def edit(self) -> Iterator[Config]:
+        if self._editing:
+            # no-op
+            yield self
+        else:
+            self._editing = True
+            yield self
+            self.save()
+            self._editing = False

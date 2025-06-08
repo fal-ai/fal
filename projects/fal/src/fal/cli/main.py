@@ -13,6 +13,7 @@ from . import (
     create,
     deploy,
     doctor,
+    files,
     keys,
     profile,
     run,
@@ -57,6 +58,7 @@ def _get_main_parser() -> argparse.ArgumentParser:
         create,
         runners,
         teams,
+        files,
     ]:
         cmd.add_parser(subparsers, parents)
 
@@ -75,10 +77,45 @@ def _print_error(msg):
     console.print(f"{CROSS_ICON} {msg}")
 
 
+def _check_latest_version():
+    from packaging.version import parse
+    from rich.panel import Panel
+    from rich.text import Text
+
+    from fal._version import get_latest_version, version_tuple
+
+    latest_version = get_latest_version()
+    parsed = parse(latest_version)
+    latest_version_tuple = (parsed.major, parsed.minor, parsed.micro)
+    if latest_version_tuple <= version_tuple:
+        return
+
+    if not console.is_terminal:
+        return
+
+    line1 = Text.assemble(
+        ("A new version of fal is available: ", "bold white"),
+        (latest_version, "bold green"),
+    )
+    line2 = Text.assemble(("pip install --upgrade fal", "bold cyan"))
+    line2.align("center", width=len(line1))
+
+    panel = Panel(
+        line1 + "\n\n" + line2,
+        border_style="yellow",
+        padding=(1, 2),
+        highlight=True,
+        expand=False,
+    )
+    console.print(panel)
+
+
 def main(argv=None) -> int:
     import grpc
 
     from fal.api import UserFunctionException
+
+    _check_latest_version()
 
     ret = 1
     try:

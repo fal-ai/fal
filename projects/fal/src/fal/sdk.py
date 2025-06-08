@@ -157,7 +157,15 @@ class AuthenticatedCredentials(Credentials):
 
     def to_headers(self) -> dict[str, str]:
         token = self.user.bearer_token
-        return {"Authorization": token}
+        headers = {
+            "Authorization": token,
+        }
+
+        if self.team:
+            team_id = self.user.get_account(self.team)["user_id"]
+            headers["X-Fal-User-Id"] = team_id
+
+        return headers
 
 
 @dataclass
@@ -193,7 +201,7 @@ def get_default_credentials(team: str | None = None) -> Credentials:
         return FalServerlessKeyCredentials(key_creds[0], key_creds[1])
     else:
         config = Config()
-        team = team or config.get("team")
+        team = team or config.get_internal("team")
         return AuthenticatedCredentials(team=team)
 
 
@@ -230,6 +238,7 @@ class ApplicationInfo:
     request_timeout: int
     startup_timeout: int
     valid_regions: list[str]
+    created_at: datetime
 
 
 @dataclass
@@ -360,6 +369,7 @@ def _from_grpc_application_info(
         request_timeout=message.request_timeout,
         startup_timeout=message.startup_timeout,
         valid_regions=list(message.valid_regions),
+        created_at=isolate_proto.datetime_from_timestamp(message.created_at),
     )
 
 
@@ -650,8 +660,12 @@ class FalServerlessConnection:
         )
         return from_grpc(res.alias_info)
 
-    def list_applications(self) -> list[ApplicationInfo]:
-        request = isolate_proto.ListApplicationsRequest()
+    def list_applications(
+        self, application_name: str | None = None
+    ) -> list[ApplicationInfo]:
+        request = isolate_proto.ListApplicationsRequest(
+            application_name=application_name
+        )
         res: isolate_proto.ListApplicationsResult = self.stub.ListApplications(request)
         return [from_grpc(app) for app in res.applications]
 

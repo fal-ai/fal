@@ -1,81 +1,123 @@
-from functools import lru_cache
-from pathlib import Path
-from typing import Any, Dict, Optional, Sequence, Tuple, Union
+import os
+import posixpath
+from functools import cached_property
+from typing import TYPE_CHECKING
 
-import tomli
+from fsspec import AbstractFileSystem
 
+if TYPE_CHECKING:
+    import httpx
 
-@lru_cache
-def _load_toml(path: Union[Path, str]) -> Dict[str, Any]:
-    with open(path, "rb") as f:
-        return tomli.load(f)
-
-
-@lru_cache
-def _cached_resolve(path: Path) -> Path:
-    return path.resolve()
+USER_AGENT = "fal-sdk/1.14.0 (python)"
 
 
-@lru_cache
-def find_project_root(srcs: Optional[Sequence[str]]) -> Tuple[Path, str]:
-    """Return a directory containing .git, or pyproject.toml.
+class FalFileSystem(AbstractFileSystem):
+    @cached_property
+    def _client(self) -> "httpx.Client":
+        from httpx import Client
 
-    That directory will be a common parent of all files and directories
-    passed in `srcs`.
+        from fal.flags import REST_URL
+        from fal.sdk import get_default_credentials
 
-    If no directory in the tree contains a marker that would specify it's the
-    project root, the root of the file system is returned.
+        creds = get_default_credentials()
+        return Client(
+            base_url=REST_URL,
+            headers={
+                **creds.to_headers(),
+                "User-Agent": USER_AGENT,
+            },
+        )
 
-    Returns a two-tuple with the first element as the project root path and
-    the second element as a string describing the method by which the
-    project root was discovered.
-    """
-    if not srcs:
-        srcs = [str(_cached_resolve(Path.cwd()))]
+    def _request(self, method, path, **kwargs):
+        from fal.exceptions import FalServerlessException
 
-    path_srcs = [_cached_resolve(Path(Path.cwd(), src)) for src in srcs]
+        response = self._client.request(method, path, **kwargs)
+        if response.status_code != 200:
+            try:
+                detail = response.json()["detail"]
+            except Exception:
+                detail = response.text
+            raise FalServerlessException(detail)
+        return response
 
-    # A list of lists of parents for each 'src'. 'src' is included as a
-    # "parent" of itself if it is a directory
-    src_parents = [
-        list(path.parents) + ([path] if path.is_dir() else []) for path in path_srcs
-    ]
+    def _ls(self, path):
+        response = self._request("GET", f"/files/list/{path}")
+        files = response.json()
+        return sorted(
+            (
+                {
+                    "name": entry["path"],
+                    "size": entry["size"],
+                    "type": "file" if entry["is_file"] else "directory",
+                    "mtime": entry["updated_time"],
+                }
+                for entry in files
+            ),
+            key=lambda x: x["name"],
+        )
 
-    common_base = max(
-        set.intersection(*(set(parents) for parents in src_parents)),
-        key=lambda path: path.parts,
-    )
+    def ls(self, path, detail=True, **kwargs):
+        abs_path = "/" + path.lstrip("/")
+        if abs_path in self.dircache:
+            entries = self.dircache[abs_path]
+        elif abs_path in ["/", "", "."]:
+            entries = [
+                {
+                    "name": "/data",
+                    "size": 0,
+                    "type": "directory",
+                    "mtime": 0,
+                }
+            ]
+        else:
+            entries = self._ls(abs_path)
+        self.dircache[abs_path] = entries
 
-    for directory in (common_base, *common_base.parents):
-        if (directory / ".git").exists():
-            return directory, ".git directory"
+        if detail:
+            return entries
 
-        if (directory / "pyproject.toml").is_file():
-            pyproject_toml = _load_toml(directory / "pyproject.toml")
-            if "fal" in pyproject_toml.get("tool", {}):
-                return directory, "pyproject.toml"
+        return [entry["name"] for entry in entries]
 
-    return directory, "file system root"
+    def info(self, path, **kwargs):
+        parent = posixpath.dirname(path)
+        entries = self.ls(parent, detail=True)
+        for entry in entries:
+            if entry["name"] == path:
+                return entry
+        raise FileNotFoundError(f"File not found: {path}")
 
+    def get_file(self, rpath, lpath, **kwargs):
+        if self.isdir(rpath):
+            os.makedirs(lpath, exist_ok=True)
+            return
 
-def find_pyproject_toml(
-    path_search_start: Optional[Tuple[str, ...]] = None,
-) -> Optional[str]:
-    """Find the absolute filepath to a pyproject.toml if it exists"""
-    path_project_root, _ = find_project_root(path_search_start)
-    path_pyproject_toml = path_project_root / "pyproject.toml"
+        with open(lpath, "wb") as fobj:
+            response = self._request("GET", f"/files/file/{rpath}")
+            fobj.write(response.content)
 
-    if path_pyproject_toml.is_file():
-        return str(path_pyproject_toml)
+    def put_file(self, lpath, rpath, mode="overwrite", **kwargs):
+        if os.path.isdir(lpath):
+            return
 
+        with open(lpath, "rb") as fobj:
+            self._request(
+                "POST",
+                f"/files/file/local/{rpath}",
+                files={"file_upload": (posixpath.basename(lpath), fobj, "text/plain")},
+            )
+        self.dircache.clear()
 
-def parse_pyproject_toml(path_config: str) -> Dict[str, Any]:
-    """Parse a pyproject toml file, pulling out relevant parts for fal.
+    def put_file_from_url(self, url, rpath, mode="overwrite", **kwargs):
+        self._request(
+            "POST",
+            f"/files/file/url/{rpath}",
+            json={"url": url},
+        )
+        self.dircache.clear()
 
-    If parsing fails, will raise a tomli.TOMLDecodeError.
-    """
-    pyproject_toml = _load_toml(path_config)
-    config: Dict[str, Any] = pyproject_toml.get("tool", {}).get("fal", {})
-    config = {k.replace("--", "").replace("-", "_"): v for k, v in config.items()}
-
-    return config
+    def rm(self, path, **kwargs):
+        self._request(
+            "DELETE",
+            f"/files/file/{path}",
+        )
+        self.dircache.clear()

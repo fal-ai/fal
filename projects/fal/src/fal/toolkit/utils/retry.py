@@ -2,7 +2,7 @@ import functools
 import random
 import time
 import traceback
-from typing import Any, Callable, Literal
+from typing import Any, Callable, Literal, Optional
 
 BackoffType = Literal["exponential", "fixed"]
 
@@ -13,6 +13,7 @@ def retry(
     max_delay: float = 60.0,
     backoff_type: BackoffType = "exponential",
     jitter: bool = False,
+    should_retry: Optional[Callable[[Exception], bool]] = None,
 ) -> Callable:
     def decorator(func: Callable) -> Callable:
         @functools.wraps(func)
@@ -22,6 +23,9 @@ def retry(
                 try:
                     return func(*args, **kwargs)
                 except Exception as e:
+                    if should_retry is not None and not should_retry(e):
+                        raise
+
                     retries += 1
                     print(f"Retrying {retries} of {max_retries}...")
                     if retries == max_retries:

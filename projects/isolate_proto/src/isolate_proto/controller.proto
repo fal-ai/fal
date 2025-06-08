@@ -224,7 +224,7 @@ message UpdateApplicationResult {
 }
 
 message ListApplicationsRequest {
-    // Empty. For future use.
+    optional string application_name = 1;
 }
 
 message ApplicationInfo {
@@ -239,6 +239,7 @@ message ApplicationInfo {
     optional int32 startup_timeout = 10;
     repeated string valid_regions = 11;
     optional int32 concurrency_buffer = 12;
+    google.protobuf.Timestamp created_at = 13;
 }
 
 message ListApplicationsResult {

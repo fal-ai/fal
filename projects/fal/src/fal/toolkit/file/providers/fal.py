@@ -5,13 +5,15 @@ import math
 import os
 import threading
 from base64 import b64encode
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Generic, TypeVar
+from typing import Any, Generator, Generic, TypeVar
 from urllib.error import HTTPError
 from urllib.parse import urlparse, urlunparse
 from urllib.request import Request, urlopen
+from urllib.response import addinfourl
 
 from fal.auth import key_credentials
 from fal.toolkit.exceptions import FileUploadException
@@ -20,6 +22,48 @@ from fal.toolkit.utils.retry import retry
 
 _FAL_CDN = "https://fal.media"
 _FAL_CDN_V3 = "https://v3.fal.media"
+
+DEFAULT_REQUEST_TIMEOUT = 10
+PUT_REQUEST_TIMEOUT = 5 * 60
+
+MAX_ATTEMPTS = 5
+BASE_DELAY = 0.1
+MAX_DELAY = 30
+RETRY_CODES = [408, 409, 429, 500, 502, 503, 504]
+
+
+@contextmanager
+def _urlopen(
+    request: Request,
+    timeout: int = DEFAULT_REQUEST_TIMEOUT,
+) -> Generator[addinfourl, None, None]:
+    with urlopen(request, timeout=timeout) as response:
+        yield response
+
+
+def _should_retry(exc: Exception) -> bool:
+    if isinstance(exc, HTTPError) and exc.code in RETRY_CODES:
+        return True
+
+    return False
+
+
+@contextmanager
+def _maybe_retry_request(
+    request: Request,
+    **kwargs: Any,
+) -> Generator[addinfourl, None, None]:
+    _urlopen_with_retry = retry(
+        max_retries=MAX_ATTEMPTS,
+        base_delay=BASE_DELAY,
+        max_delay=MAX_DELAY,
+        backoff_type="exponential",
+        jitter=True,
+        should_retry=_should_retry,
+    )(_urlopen)
+
+    with _urlopen_with_retry(request, **kwargs) as response:
+        yield response
 
 
 @dataclass
@@ -79,7 +123,7 @@ class FalV2TokenManager:
             data=b"{}",
             method="POST",
         )
-        with urlopen(req) as response:
+        with _maybe_retry_request(req) as response:
             result = json.load(response)
 
         parsed_base_url = urlparse(result["base_url"])
@@ -124,7 +168,6 @@ LIFECYCLE_PREFERENCE: VariableReference[dict[str, str] | None] = VariableReferen
 
 @dataclass
 class FalFileRepositoryBase(FileRepository):
-    @retry(max_retries=3, base_delay=1, backoff_type="exponential", jitter=True)
     def _save(
         self, file: FileData, storage_type: str, headers: dict[str, str] | None = None
     ) -> str:
@@ -158,7 +201,7 @@ class FalFileRepositoryBase(FileRepository):
                 headers=headers,
                 method="POST",
             )
-            with urlopen(req) as response:
+            with _maybe_retry_request(req) as response:
                 result = json.load(response)
 
             upload_url = result["upload_url"]
@@ -175,7 +218,7 @@ class FalFileRepositoryBase(FileRepository):
                 headers={"Content-Type": file.content_type},
             )
 
-            with urlopen(req):
+            with _maybe_retry_request(req, timeout=PUT_REQUEST_TIMEOUT):
                 pass
 
             return result["file_url"]
@@ -252,7 +295,7 @@ class MultipartUploadGCS:
                 ).encode(),
             )
 
-            with urlopen(req) as response:
+            with _maybe_retry_request(req) as response:
                 result = json.load(response)
                 self._access_url = result["file_url"]
                 self._upload_url = result["upload_url"]
@@ -262,7 +305,6 @@ class MultipartUploadGCS:
                 f"Error initiating upload. Status {exc.status}: {exc.reason}"
             )
 
-    @retry(max_retries=5, base_delay=1, backoff_type="exponential", jitter=True)
     def upload_part(self, part_number: int, data: bytes) -> None:
         initiate_upload_url = self.upload_url + f"/{part_number}"
         req = Request(
@@ -272,7 +314,7 @@ class MultipartUploadGCS:
         )
 
         try:
-            with urlopen(req) as response:
+            with _maybe_retry_request(req) as response:
                 result = json.load(response)
                 upload_url = result["upload_url"]
         except HTTPError as exc:
@@ -288,7 +330,7 @@ class MultipartUploadGCS:
         )
 
         try:
-            with urlopen(req) as resp:
+            with _maybe_retry_request(req, timeout=PUT_REQUEST_TIMEOUT) as resp:
                 self._parts.append(
                     {
                         "part_number": part_number,
@@ -318,7 +360,7 @@ class MultipartUploadGCS:
                     }
                 ).encode(),
             )
-            with urlopen(req):
+            with _maybe_retry_request(req):
                 pass
         except HTTPError as e:
             raise FileUploadException(
@@ -414,7 +456,6 @@ class FalFileRepository(FalFileRepositoryBase):
         if object_lifecycle_preference:
             headers["X-Fal-Object-Lifecycle"] = json.dumps(object_lifecycle_preference)
 
-    @retry(max_retries=3, base_delay=1, backoff_type="exponential", jitter=True)
     def save(
         self,
         file: FileData,
@@ -523,7 +564,7 @@ class MultipartUpload:
                     }
                 ).encode(),
             )
-            with urlopen(req) as response:
+            with _maybe_retry_request(req) as response:
                 result = json.load(response)
                 self._upload_url = result["upload_url"]
                 self._file_url = result["file_url"]
@@ -543,7 +584,7 @@ class MultipartUpload:
         )
 
         try:
-            with urlopen(req) as resp:
+            with _maybe_retry_request(req, timeout=PUT_REQUEST_TIMEOUT) as resp:
                 self._parts.append(
                     {
                         "part_number": part_number,
@@ -568,7 +609,7 @@ class MultipartUpload:
                 },
                 data=json.dumps({"parts": self._parts}).encode(),
             )
-            with urlopen(req):
+            with _maybe_retry_request(req):
                 pass
         except HTTPError as e:
             raise FileUploadException(
@@ -721,7 +762,7 @@ class MultipartUploadV3:
                 ).encode(),
             )
 
-            with urlopen(req) as response:
+            with _maybe_retry_request(req) as response:
                 result = json.load(response)
                 self._access_url = result["file_url"]
                 self._upload_url = result["upload_url"]
@@ -731,7 +772,6 @@ class MultipartUploadV3:
                 f"Error initiating upload. Status {exc.status}: {exc.reason}"
             )
 
-    @retry(max_retries=5, base_delay=1, backoff_type="exponential", jitter=True)
     def upload_part(self, part_number: int, data: bytes) -> None:
         parsed = urlparse(self.upload_url)
         part_path = parsed.path + f"/{part_number}"
@@ -747,7 +787,7 @@ class MultipartUploadV3:
         )
 
         try:
-            with urlopen(req) as resp:
+            with _maybe_retry_request(req, timeout=PUT_REQUEST_TIMEOUT) as resp:
                 self._parts.append(
                     {
                         "partNumber": part_number,
@@ -775,7 +815,7 @@ class MultipartUploadV3:
                 },
                 data=json.dumps({"parts": self._parts}).encode(),
             )
-            with urlopen(req):
+            with _maybe_retry_request(req):
                 pass
         except HTTPError as e:
             raise FileUploadException(
@@ -915,7 +955,7 @@ class InternalMultipartUploadV3:
                     "X-Fal-File-Name": self.file_name,
                 },
             )
-            with urlopen(req) as response:
+            with _maybe_retry_request(req) as response:
                 result = json.load(response)
                 self._access_url = result["access_url"]
                 self._upload_id = result["uploadId"]
@@ -925,7 +965,6 @@ class InternalMultipartUploadV3:
                 f"Error initiating upload. Status {exc.status}: {exc.reason}"
             )
 
-    @retry(max_retries=5, base_delay=1, backoff_type="exponential", jitter=True)
     def upload_part(self, part_number: int, data: bytes) -> None:
         url = f"{self.access_url}/multipart/{self.upload_id}/{part_number}"
 
@@ -940,7 +979,7 @@ class InternalMultipartUploadV3:
         )
 
         try:
-            with urlopen(req) as resp:
+            with _maybe_retry_request(req, timeout=PUT_REQUEST_TIMEOUT) as resp:
                 self._parts.append(
                     {
                         "partNumber": part_number,
@@ -966,7 +1005,7 @@ class InternalMultipartUploadV3:
                 },
                 data=json.dumps({"parts": self._parts}).encode(),
             )
-            with urlopen(req):
+            with _maybe_retry_request(req):
                 pass
         except HTTPError as e:
             raise FileUploadException(
@@ -1054,7 +1093,6 @@ class InternalMultipartUploadV3:
 
 @dataclass
 class FalFileRepositoryV2(FalFileRepositoryBase):
-    @retry(max_retries=3, base_delay=1, backoff_type="exponential", jitter=True)
     def save(
         self,
         file: FileData,
@@ -1092,7 +1130,7 @@ class FalFileRepositoryV2(FalFileRepositoryBase):
                 headers=headers,
                 method="PUT",
             )
-            with urlopen(req) as response:
+            with _maybe_retry_request(req, timeout=PUT_REQUEST_TIMEOUT) as response:
                 result = json.load(response)
 
             return result["file_url"]
@@ -1164,7 +1202,6 @@ class FalCDNFileRepository(FileRepository):
                 object_lifecycle_preference
             )
 
-    @retry(max_retries=3, base_delay=1, backoff_type="exponential", jitter=True)
     def save(
         self,
         file: FileData,
@@ -1186,7 +1223,7 @@ class FalCDNFileRepository(FileRepository):
         url = os.getenv("FAL_CDN_HOST", _FAL_CDN) + "/files/upload"
         request = Request(url, headers=headers, method="POST", data=file.data)
         try:
-            with urlopen(request) as response:
+            with _maybe_retry_request(request) as response:
                 result = json.load(response)
         except HTTPError as e:
             raise FileUploadException(
@@ -1223,7 +1260,6 @@ class FalFileRepositoryV3(FileRepository):
             "User-Agent": "fal/0.1.0",
         }
 
-    @retry(max_retries=3, base_delay=1, backoff_type="exponential", jitter=True)
     def save(
         self,
         file: FileData,
@@ -1266,7 +1302,7 @@ class FalFileRepositoryV3(FileRepository):
             ).encode(),
         )
         try:
-            with urlopen(request) as response:
+            with _maybe_retry_request(request) as response:
                 result = json.load(response)
                 file_url = result["file_url"]
                 upload_url = result["upload_url"]
@@ -1282,7 +1318,7 @@ class FalFileRepositoryV3(FileRepository):
             data=file.data,
         )
         try:
-            with urlopen(request):
+            with _maybe_retry_request(request, timeout=PUT_REQUEST_TIMEOUT):
                 pass
         except HTTPError as e:
             raise FileUploadException(
@@ -1345,7 +1381,6 @@ class InternalFalFileRepositoryV3(FileRepository):
         if object_lifecycle_preference:
             headers["X-Fal-Object-Lifecycle"] = json.dumps(object_lifecycle_preference)
 
-    @retry(max_retries=3, base_delay=1, backoff_type="exponential", jitter=True)
     def save(
         self,
         file: FileData,
@@ -1380,7 +1415,7 @@ class InternalFalFileRepositoryV3(FileRepository):
         url = os.getenv("FAL_CDN_V3_HOST", _FAL_CDN_V3) + "/files/upload"
         request = Request(url, headers=headers, method="POST", data=file.data)
         try:
-            with urlopen(request) as response:
+            with _maybe_retry_request(request) as response:
                 result = json.load(response)
         except HTTPError as e:
             raise FileUploadException(

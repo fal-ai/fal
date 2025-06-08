@@ -28,6 +28,7 @@ docs = [
 test = [
     "pytest",
     "pytest-asyncio",
+    "pytest-mock",
     "pillow",
     "pydantic>=1.0.0,<3.0.0",  # For testing pydantic v1 compatibility
     "pydantic>=2.0.0",  # For testing pydantic v2 compatibility

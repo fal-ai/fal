@@ -1,13 +1,19 @@
 from __future__ import annotations
 
 import io
+from functools import wraps
 from tempfile import NamedTemporaryFile
 from typing import TYPE_CHECKING, Literal, Optional, Union
 
 from fastapi import Request
 from pydantic import BaseModel, Field
 
-from fal.toolkit.file.file import DEFAULT_REPOSITORY, FALLBACK_REPOSITORY, File
+from fal.toolkit.file.file import (
+    DEFAULT_REPOSITORY,
+    FALLBACK_REPOSITORY,
+    IS_PYDANTIC_V2,
+    File,
+)
 from fal.toolkit.file.types import FileRepository, RepositoryId
 from fal.toolkit.utils.download_utils import _download_file_python
 
@@ -58,6 +64,14 @@ def get_image_size(source: ImageSizeInput) -> ImageSize:
 ImageFormat = Literal["png", "jpeg", "jpg", "webp", "gif"]
 
 
+@wraps(Field)
+def ImageField(*args, **kwargs):
+    ui = kwargs.get("ui", {})
+    ui.setdefault("field", "image")
+    kwargs["ui"] = ui
+    return Field(*args, **kwargs)
+
+
 class Image(File):
     """
     Represents an image file.
@@ -71,6 +85,15 @@ class Image(File):
     height: Optional[int] = Field(
         None, description="The height of the image in pixels.", examples=[1024]
     )
+
+    if IS_PYDANTIC_V2:
+        model_config = {"json_schema_extra": {"ui": {"field": "image"}}}
+    else:
+
+        class Config:
+            @staticmethod
+            def schema_extra(schema, model_type):
+                schema.setdefault("ui", {})["field"] = "image"
 
     @classmethod
     def from_bytes(  # type: ignore[override]

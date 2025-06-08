@@ -102,6 +102,7 @@ def _app_rev_table(revs: list[ApplicationInfo]):
     table.add_column("Machine Type")
     table.add_column("Runners")
     table.add_column("Regions")
+    table.add_column("Created")
 
     for rev in revs:
         table.add_row(
@@ -115,6 +116,7 @@ def _app_rev_table(revs: list[ApplicationInfo]):
             " ".join(rev.machine_types),
             str(rev.active_runners),
             " ".join(rev.valid_regions),
+            str(rev.created_at),
         )
 
     return table
@@ -123,7 +125,7 @@ def _app_rev_table(revs: list[ApplicationInfo]):
 def _list_rev(args):
     client = get_client(args.host, args.team)
     with client.connect() as connection:
-        revs = connection.list_applications()
+        revs = connection.list_applications(args.app_name)
         table = _app_rev_table(revs)
 
     args.console.print(table)
@@ -136,6 +138,11 @@ def _add_list_rev_parser(subparsers, parents):
         description=list_help,
         help=list_help,
         parents=parents,
+    )
+    parser.add_argument(
+        "app_name",
+        nargs="?",
+        help="Application name.",
     )
     parser.set_defaults(func=_list_rev)
 

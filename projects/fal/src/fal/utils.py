@@ -21,8 +21,11 @@ def load_function_from(
     file_path: str,
     function_name: str | None = None,
 ) -> LoadedFunction:
+    import os
     import runpy
+    import sys
 
+    sys.path.append(os.getcwd())
     module = runpy.run_path(file_path)
     if function_name is None:
         fal_objects = {
