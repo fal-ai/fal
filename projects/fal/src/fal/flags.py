@@ -19,7 +19,8 @@ AUTH_DISABLED = bool_envvar("ISOLATE_AUTH_DISABLED")
 config = Config()
 config_host = config.get("host")
 
-GRPC_HOST = config_host or os.getenv("FAL_HOST") or "api.alpha.fal.ai"
+# FAL_HOST takes precedence over config.host
+GRPC_HOST = os.getenv("FAL_HOST") or config_host or "api.alpha.fal.ai"
 if not TEST_MODE:
     assert GRPC_HOST.startswith("api"), "FAL_HOST must start with 'api'"
 
