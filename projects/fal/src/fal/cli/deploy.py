@@ -68,7 +68,7 @@ def _deploy_from_reference(
     args,
     auth: Optional[Literal["public", "shared", "private"]] = None,
     deployment_strategy: Optional[Literal["recreate", "rolling"]] = None,
-    no_scale: bool = False,
+    scale: bool = True,
 ):
     from fal.api import FalServerlessError, FalServerlessHost
     from fal.utils import load_function_from
@@ -104,10 +104,10 @@ def _deploy_from_reference(
         func=isolated_function.func,
         options=isolated_function.options,
         application_name=app_name,
-        application_auth_mode=app_auth,
+        application_auth_mode=app_auth,  # type: ignore
         metadata=isolated_function.options.host.get("metadata", {}),
         deployment_strategy=deployment_strategy,
-        scale=not no_scale,
+        scale=scale,
     )
 
     if app_id:
@@ -165,7 +165,7 @@ def _deploy(args):
         args,
         app_auth,
         app_deployment_strategy,
-        app_no_scale,
+        scale=not app_no_scale,
     )
 
 
