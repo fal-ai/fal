@@ -403,6 +403,7 @@ class FalServerlessHost(Host):
             "metadata",
             "request_timeout",
             "startup_timeout",
+            "private_logs",
             "_base_image",
             "_scheduler",
             "_scheduler_options",
