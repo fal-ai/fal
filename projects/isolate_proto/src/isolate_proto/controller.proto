@@ -194,7 +194,11 @@ message RegisterApplicationRequest {
     optional google.protobuf.Struct metadata = 8;
     // Deployment strategy
     optional DeploymentStrategy deployment_strategy = 9;
+    // To ignore/respect the scaling settings of the application
+    // when re-deploying an existing application.
     optional bool scale = 10;
+    // To make all logs generated from the app private
+    optional bool private_logs = 11;
 }
 
 message RegisterApplicationResultType {
