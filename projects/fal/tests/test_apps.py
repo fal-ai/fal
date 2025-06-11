@@ -212,12 +212,18 @@ class ExceptionApp(fal.App, keep_alive=300, max_concurrency=1):
     def app_exception(self) -> Output:
         raise AppException(message="this app is designed to fail", status_code=401)
 
+    # While making the request provide payload as {"lhs": 1, "rhs": 2}
     @fal.endpoint("/field-exception")
     def field_exception(self, input: Input) -> Output:
         raise FieldException(
             field="rhs",
             message="rhs must be an integer",
         )
+
+    # While making the request provide payload as {"lhs": "a", "rhs": 2}
+    @fal.endpoint("/pydantic-exception")
+    def pydantic_exception(self, input: Input) -> Output:
+        return Output(result=input.lhs + input.rhs)
 
     @fal.endpoint("/cuda-exception")
     def cuda_exception(self) -> Output:
