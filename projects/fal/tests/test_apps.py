@@ -220,11 +220,6 @@ class ExceptionApp(fal.App, keep_alive=300, max_concurrency=1):
             message="rhs must be an integer",
         )
 
-    # While making the request provide payload as {"lhs": "a", "rhs": 2}
-    @fal.endpoint("/pydantic-validation")
-    def pydantic_exception(self, input: Input) -> Output:
-        return Output(result=input.lhs + input.rhs)
-
     @fal.endpoint("/cuda-exception")
     def cuda_exception(self) -> Output:
         # mimicking error message from PyTorch (https://github.com/pytorch/pytorch/blob/6c65fd03942415b68040e102c44cf5109d2d851e/c10/cuda/CUDACachingAllocator.cpp#L1234C12-L1234C30)
@@ -964,12 +959,12 @@ def test_app_exceptions(test_exception_app: AppClient):
     assert _CUDA_OOM_MESSAGE in cuda_exc.value.message
 
 
-def test_pydantic_validation_billing(test_exception_app: AppClient):
+def test_pydantic_validation_billing(test_stateful_app: AppClient):
     with httpx.Client() as httpx_client:
-        url = test_exception_app.url + "/pydantic-validation"
+        url = test_stateful_app.url + "/increment"
         response = httpx_client.post(
             url,
-            json={"lhs": "this-is-not-int", "rhs": 2},
+            json={"value": "this-is-not-int"},
             timeout=30,
         )
 
