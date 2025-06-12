@@ -959,17 +959,13 @@ def test_app_exceptions(test_exception_app: AppClient):
     assert _CUDA_OOM_MESSAGE in cuda_exc.value.message
 
 
-def test_pydantic_validation_billing(test_stateful_app: AppClient):
-    with httpx.Client() as httpx_client:
-        url = test_stateful_app.url + "/increment"
-        response = httpx_client.post(
-            url,
-            json={"value": "this-is-not-int"},
-            timeout=30,
-        )
+def test_pydantic_validation_billing(test_stateful_app: str):
+    response = apps.run(
+        test_stateful_app, arguments={"value": "this-is-not-int"}, path="/increment"
+    )
 
-        assert response.status_code == 422
-        assert response.headers.get("x-fal-billable-units") == "0"
+    assert response.status_code == 422
+    assert response.headers.get("x-fal-billable-units") == "0"
 
 
 def test_field_exception_billing(test_exception_app: AppClient):
