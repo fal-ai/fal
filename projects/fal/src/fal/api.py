@@ -168,18 +168,6 @@ class Host(Generic[ArgsT, ReturnT]):
 
         return options
 
-    def register(
-        self,
-        func: Callable[ArgsT, ReturnT],
-        options: Options,
-        application_name: str | None = None,
-        application_auth_mode: Literal["public", "shared", "private"] | None = None,
-        metadata: dict[str, Any] | None = None,
-        scale: bool = True,
-    ) -> str | None:
-        """Register the given function on the host for API call execution."""
-        raise NotImplementedError
-
     def run(
         self,
         func: Callable[ArgsT, ReturnT],
@@ -417,6 +405,7 @@ class FalServerlessHost(Host):
             "metadata",
             "request_timeout",
             "startup_timeout",
+            "private_logs",
             "_base_image",
             "_scheduler",
             "_scheduler_options",
@@ -514,6 +503,8 @@ class FalServerlessHost(Host):
             metadata=metadata,
             deployment_strategy=deployment_strategy,
             scale=scale,
+            # By default, logs are public
+            private_logs=options.host.get("private_logs", False),
         ):
             for log in partial_result.logs:
                 self._log_printer.print(log)
