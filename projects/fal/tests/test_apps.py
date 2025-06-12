@@ -221,7 +221,7 @@ class ExceptionApp(fal.App, keep_alive=300, max_concurrency=1):
         )
 
     # While making the request provide payload as {"lhs": "a", "rhs": 2}
-    @fal.endpoint("/pydantic-exception")
+    @fal.endpoint("/pydantic-validation")
     def pydantic_exception(self, input: Input) -> Output:
         return Output(result=input.lhs + input.rhs)
 
@@ -963,21 +963,26 @@ def test_app_exceptions(test_exception_app: AppClient):
     assert cuda_exc.value.status_code == _CUDA_OOM_STATUS_CODE
     assert _CUDA_OOM_MESSAGE in cuda_exc.value.message
 
+
+def test_pydantic_validation_billing(test_exception_app: AppClient):
     with httpx.Client() as httpx_client:
-        url = test_exception_app.url + "/pydantic-exception"
+        url = test_exception_app.url + "/pydantic-validation"
         response = httpx_client.post(
             url,
-            json={"lhs": "invalid_string", "rhs": 2},
+            json={"lhs": "this-is-not-int", "rhs": 2},
             timeout=30,
         )
 
         assert response.status_code == 422
         assert response.headers.get("x-fal-billable-units") == "0"
 
+
+def test_field_exception_billing(test_exception_app: AppClient):
+    with httpx.Client() as httpx_client:
         url = test_exception_app.url + "/field-exception"
         response = httpx_client.post(
             url,
-            json={"lhs": "1", "rhs": 2},
+            json={"lhs": 1, "rhs": 2},
             timeout=30,
         )
 
