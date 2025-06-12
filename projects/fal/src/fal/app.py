@@ -113,8 +113,6 @@ def wrap_app(cls: type[App], **kwargs) -> IsolatedFunction:
     realtime_app = any(route.is_websocket for route in routes)
 
     kind = cls.host_kwargs.pop("kind", "virtualenv")
-    if kind == "container":
-        cls.host_kwargs.pop("resolver", None)
 
     wrapper = fal_function(
         kind,
