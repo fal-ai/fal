@@ -963,6 +963,27 @@ def test_app_exceptions(test_exception_app: AppClient):
     assert cuda_exc.value.status_code == _CUDA_OOM_STATUS_CODE
     assert _CUDA_OOM_MESSAGE in cuda_exc.value.message
 
+    with httpx.Client() as httpx_client:
+        url = test_exception_app.url + "/pydantic-exception"
+        response = httpx_client.post(
+            url,
+            json={"lhs": "invalid_string", "rhs": 2},
+            timeout=30,
+        )
+
+        assert response.status_code == 422
+        assert response.headers.get("x-fal-billable-units") == "0"
+
+        url = test_exception_app.url + "/field-exception"
+        response = httpx_client.post(
+            url,
+            json={"lhs": "1", "rhs": 2},
+            timeout=30,
+        )
+
+        assert response.status_code == 422
+        assert not hasattr(response.headers, "x-fal-billable-units")
+
 
 def test_kill_runner(host: api.FalServerlessHost, test_sleep_app: str):
     handle = apps.submit(test_sleep_app, arguments={"wait_time": 10})
