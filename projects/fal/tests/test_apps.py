@@ -404,6 +404,12 @@ def test_stateful_app(host: api.FalServerlessHost, user: User):
 
 
 @pytest.fixture(scope="module")
+def test_pydantic_validation_error():
+    with AppClient.connect(StatefulAdditionApp) as client:
+        yield client
+
+
+@pytest.fixture(scope="module")
 def test_cancellable_app(host: api.FalServerlessHost, user: User):
     cancellable_app = fal.wrap_app(CancellableApp)
     with register_app(host, cancellable_app, "cancellable") as (app_alias, _):
@@ -960,12 +966,16 @@ def test_app_exceptions(test_exception_app: AppClient):
 
 
 def test_pydantic_validation_billing(test_stateful_app: str):
-    response = apps.run(
-        test_stateful_app, arguments={"value": "this-is-not-int"}, path="/increment"
-    )
+    with httpx.Client() as httpx_client:
+        url = test_stateful_app.url + "/increment"
+        response = httpx_client.post(
+            url,
+            json={"value": "this-is-not-an-integer"},
+            timeout=30,
+        )
 
-    assert response.status_code == 422
-    assert response.headers.get("x-fal-billable-units") == "0"
+        assert response.status_code == 422
+        assert response.headers.get("x-fal-billable-units") == "0"
 
 
 def test_field_exception_billing(test_exception_app: AppClient):
