@@ -965,9 +965,9 @@ def test_app_exceptions(test_exception_app: AppClient):
     assert _CUDA_OOM_MESSAGE in cuda_exc.value.message
 
 
-def test_pydantic_validation_billing(test_stateful_app: str):
+def test_pydantic_validation_billing(test_pydantic_validation_error: AppClient):
     with httpx.Client() as httpx_client:
-        url = test_stateful_app.url + "/increment"
+        url = test_pydantic_validation_error.url + "/increment"
         response = httpx_client.post(
             url,
             json={"value": "this-is-not-an-integer"},
