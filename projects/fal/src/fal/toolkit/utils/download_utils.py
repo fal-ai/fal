@@ -456,7 +456,7 @@ def clone_repository(
                     # repository might be already deleted by another worker
                     os.rename(local_repo_path, tmp_dir)
                     # sometimes seeing FileNotFoundError even here on juicefs
-                    shutil.rmtree(tmp_dir)
+                    shutil.rmtree(tmp_dir, ignore_errors=True)
 
     # NOTE: using the target_dir to be able to avoid potential copies across temp fs
     # and target fs, and also to be able to atomically rename repo_name dir into place
@@ -492,7 +492,7 @@ def clone_repository(
             try:
                 os.rename(temp_dir, local_repo_path)
             except OSError as error:
-                shutil.rmtree(temp_dir)
+                shutil.rmtree(temp_dir, ignore_errors=True)
 
                 # someone beat us to it, assume it's good
                 if error.errno != errno.ENOTEMPTY:
