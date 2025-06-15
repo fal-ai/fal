@@ -482,6 +482,10 @@ def clone_repository(
             if commit_hash:
                 checkout_command = ["git", "checkout", commit_hash]
                 subprocess.check_call(checkout_command, cwd=temp_dir)
+                subprocess.check_call(
+                    ["git", "submodule", "update", "--init", "--recursive"],
+                    cwd=temp_dir,
+                )
 
             # NOTE: Atomically renaming the repository directory into place when the
             # clone and checkout are done.
