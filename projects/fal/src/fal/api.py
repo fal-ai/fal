@@ -33,6 +33,8 @@ import uvicorn
 import yaml
 from fastapi import FastAPI
 from fastapi import __version__ as fastapi_version
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 from pydantic import __version__ as pydantic_version
@@ -1091,6 +1093,17 @@ class BaseServable:
         @_app.exception_handler(FieldException)
         async def field_exception_handler(request: Request, exc: FieldException):
             return JSONResponse(exc.to_pydantic_format(), exc.status_code)
+
+        # ref: https://github.com/fastapi/fastapi/blob/37c8e7d76b4b47eb2c4cced6b4de59eb3d5f08eb/fastapi/exception_handlers.py#L20
+        @_app.exception_handler(RequestValidationError)
+        async def request_val_exception_handler(
+            request: Request, exc: RequestValidationError
+        ):
+            return JSONResponse(
+                {"detail": jsonable_encoder(exc.errors())},
+                422,
+                headers={"x-fal-billable-units": "0"},
+            )
 
         @_app.exception_handler(CUDAOutOfMemoryException)
         async def cuda_out_of_memory_exception_handler(
