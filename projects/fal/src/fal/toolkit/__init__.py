@@ -9,6 +9,7 @@ from fal.toolkit.utils import (
     FAL_PERSISTENT_DIR,
     FAL_REPOSITORY_DIR,
     clone_repository,
+    clone_repository_cached,
     download_file,
     download_model_weights,
 )
@@ -31,6 +32,7 @@ __all__ = [
     "FAL_PERSISTENT_DIR",
     "FAL_REPOSITORY_DIR",
     "clone_repository",
+    "clone_repository_cached",
     "download_file",
     "download_model_weights",
 ]
