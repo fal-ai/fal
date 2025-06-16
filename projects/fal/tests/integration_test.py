@@ -348,19 +348,13 @@ def test_download_model_weights(isolated_client, mock_fal_persistent_dirs):
 
 
 def test_clone_repository(isolated_client, mock_fal_persistent_dirs):
-    from fal.toolkit.utils.download_utils import FAL_REPOSITORY_DIR
-
     # https://github.com/fal-ai/isolate/tree/64b0a89c8391bd2cb3ca23cdeae01779e11aee05
     EXAMPLE_REPO_URL = "https://github.com/fal-ai/isolate.git"
     EXAMPLE_REPO_FIRST_COMMIT = "64b0a89c8391bd2cb3ca23cdeae01779e11aee05"
     EXAMPLE_REPO_SECOND_COMMIT = "34ecbca8cc7b64719d2a5c40dd3272f8d13bc1d2"
-    expected_path = f"/tmp/isolate"
-    first_expected_path = (
-        f"/tmp/isolate-{EXAMPLE_REPO_FIRST_COMMIT[:8]}"
-    )
-    second_expected_path = (
-        f"/tmp/isolate-{EXAMPLE_REPO_SECOND_COMMIT[:8]}"
-    )
+    expected_path = "/tmp/isolate"
+    first_expected_path = f"/tmp/isolate-{EXAMPLE_REPO_FIRST_COMMIT[:8]}"
+    second_expected_path = f"/tmp/isolate-{EXAMPLE_REPO_SECOND_COMMIT[:8]}"
 
     @isolated_client()
     def clone_without_commit_hash():

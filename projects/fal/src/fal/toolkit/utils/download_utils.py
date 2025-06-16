@@ -427,16 +427,14 @@ def clone_repository(
     temp_dir = Path("/tmp")
     base_repo_dir = Path(FAL_REPOSITORY_DIR)
 
-
     if repo_name is None:
         repo_name = Path(https_url).stem
         if commit_hash:
             repo_name += f"-{commit_hash[:8]}"
 
     commit_hash = commit_hash or "main"
-    repo_url_hash = _hash_url(https_url)
-    repo_hash = f"{repo_url_hash}-{commit_hash}"
-    archive_path = base_repo_dir / (repo_hash+".zip")
+    repo_hash = f"{_hash_url(https_url)}-{commit_hash}"
+    archive_path = base_repo_dir / (repo_hash + ".zip")
     local_repo_path = target_dir / repo_name
 
     if local_repo_path.exists():
@@ -466,13 +464,12 @@ def clone_repository(
                 # sometimes seeing FileNotFoundError even here on juicefs
                 shutil.rmtree(tmp_dir, ignore_errors=True)
 
-    
     if archive_path.exists():
         print("Cached repository found, unpacking...")
 
         # Copy the archive to the temp directory
-        file_path = shutil.copyfile(archive_path, temp_dir / (repo_name+".zip"))
-        
+        file_path = shutil.copyfile(archive_path, temp_dir / (repo_name + ".zip"))
+
         # Unpack and clean
         shutil.unpack_archive(file_path, temp_dir / repo_name)
         os.remove(file_path)
@@ -484,8 +481,8 @@ def clone_repository(
 
     else:
         # NOTE: using the target_dir to be able to avoid potential copies across temp fs
-        # and target fs, and also to be able to atomically rename repo_name dir into place
-        # when we are done setting it up.
+        # and target fs, and also to be able to atomically rename repo_name dir into
+        #  place when we are done setting it up.
         # os.makedirs(target_dir, exist_ok=True)  # type: ignore[arg-type]
         with TemporaryDirectory(
             dir="/tmp",
@@ -512,25 +509,25 @@ def clone_repository(
                         cwd=temp_repo_dir,
                     )
 
-                repo_zip_name = repo_hash+".zip"
+                repo_zip_name = repo_hash + ".zip"
 
-                file_name = shutil.make_archive(repo_name, "zip", root_dir=temp_repo_dir)
-                os.rename(file_name, temp_dir/repo_zip_name)
-
+                file_name = shutil.make_archive(
+                    repo_name, "zip", root_dir=temp_repo_dir
+                )
+                os.rename(file_name, temp_dir / repo_zip_name)
 
                 # We know that file_path is empty
                 os.makedirs(archive_path.parent, exist_ok=True)
 
-                shutil.copy(temp_dir/repo_zip_name, archive_path)
-                os.remove(temp_dir/repo_zip_name)
+                shutil.copy(temp_dir / repo_zip_name, archive_path)
+                os.remove(temp_dir / repo_zip_name)
 
                 print(f"Repository is cached in {archive_path}")
-
 
                 # NOTE: Atomically renaming the repository directory into place when the
                 # clone and checkout are done.
                 try:
-                    shutil.copytree(temp_repo_dir, target_dir/repo_name)
+                    shutil.copytree(temp_repo_dir, target_dir / repo_name)
                     shutil.rmtree(temp_repo_dir, ignore_errors=True)
                 except OSError as error:
                     shutil.rmtree(temp_dir, ignore_errors=True)
