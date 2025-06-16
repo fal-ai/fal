@@ -422,14 +422,22 @@ def clone_repository(
     Returns:
         A Path object representing the full path to the cloned Git repository.
     """
-    target_dir = target_dir or FAL_REPOSITORY_DIR  # type: ignore[assignment]
+
+    target_dir = Path(target_dir or "/tmp")  # type: ignore[assignment]
+    temp_dir = Path("/tmp")
+    base_repo_dir = Path(FAL_REPOSITORY_DIR)
+
 
     if repo_name is None:
         repo_name = Path(https_url).stem
         if commit_hash:
             repo_name += f"-{commit_hash[:8]}"
 
-    local_repo_path = Path(target_dir) / repo_name  # type: ignore[arg-type]
+    commit_hash = commit_hash or "main"
+    repo_url_hash = _hash_url(https_url)
+    repo_hash = f"{repo_url_hash}-{commit_hash}"
+    archive_path = base_repo_dir / (repo_hash+".zip")
+    local_repo_path = target_dir / repo_name
 
     if local_repo_path.exists():
         local_repo_commit_hash = _get_git_revision_hash(local_repo_path)
@@ -437,71 +445,104 @@ def clone_repository(
             if include_to_path:
                 __add_local_path_to_sys_path(local_repo_path)
             return local_repo_path
-        else:
-            if local_repo_commit_hash != commit_hash:
-                print(
-                    f"Local repository '{local_repo_path}' has a different commit hash "
-                    f"({local_repo_commit_hash}) than the one provided ({commit_hash})."
-                )
-            elif force:
-                print(
-                    f"Local repository '{local_repo_path}' already exists. "
-                    f"Forcing re-download."
-                )
+        elif local_repo_commit_hash != commit_hash:
+            print(
+                f"Local repository '{local_repo_path}' has a different commit hash "
+                f"({local_repo_commit_hash}) than the one provided ({commit_hash})."
+            )
+        elif force:
+            print(
+                f"Local repository '{local_repo_path}' already exists. "
+                f"Forcing re-download."
+            )
             print(f"Removing the existing repository: {local_repo_path} ")
-            with TemporaryDirectory(
-                dir=target_dir, suffix=f"{local_repo_path.name}.tmp.old"
-            ) as tmp_dir:
-                with suppress(FileNotFoundError):
-                    # repository might be already deleted by another worker
-                    os.rename(local_repo_path, tmp_dir)
-                    # sometimes seeing FileNotFoundError even here on juicefs
-                    shutil.rmtree(tmp_dir, ignore_errors=True)
 
-    # NOTE: using the target_dir to be able to avoid potential copies across temp fs
-    # and target fs, and also to be able to atomically rename repo_name dir into place
-    # when we are done setting it up.
-    os.makedirs(target_dir, exist_ok=True)  # type: ignore[arg-type]
-    with TemporaryDirectory(
-        dir=target_dir,
-        suffix=f"{local_repo_path.name}.tmp",
-    ) as temp_dir:
-        try:
-            print(f"Cloning the repository '{https_url}' .")
+        with TemporaryDirectory(
+            dir=target_dir, suffix=f"{local_repo_path.name}.tmp.old"
+        ) as tmp_dir:
+            with suppress(FileNotFoundError):
+                # repository might be already deleted by another worker
+                os.rename(local_repo_path, tmp_dir)
+                # sometimes seeing FileNotFoundError even here on juicefs
+                shutil.rmtree(tmp_dir, ignore_errors=True)
 
-            # Clone with disabling the logs and advices for detached HEAD state.
-            clone_command = [
-                "git",
-                "clone",
-                "--recursive",
-                https_url,
-                temp_dir,
-            ]
-            subprocess.check_call(clone_command)
+    
+    if archive_path.exists():
+        print("Cached repository found, unpacking...")
 
-            if commit_hash:
-                checkout_command = ["git", "checkout", commit_hash]
-                subprocess.check_call(checkout_command, cwd=temp_dir)
-                subprocess.check_call(
-                    ["git", "submodule", "update", "--init", "--recursive"],
-                    cwd=temp_dir,
-                )
+        # Copy the archive to the temp directory
+        file_path = shutil.copyfile(archive_path, temp_dir / (repo_name+".zip"))
+        
+        # Unpack and clean
+        shutil.unpack_archive(file_path, temp_dir / repo_name)
+        os.remove(file_path)
 
-            # NOTE: Atomically renaming the repository directory into place when the
-            # clone and checkout are done.
+        if temp_dir.absolute() != target_dir.absolute():
+            shutil.move(temp_dir / repo_name, target_dir / repo_name)
+
+        local_repo_path = target_dir / repo_name
+
+    else:
+        # NOTE: using the target_dir to be able to avoid potential copies across temp fs
+        # and target fs, and also to be able to atomically rename repo_name dir into place
+        # when we are done setting it up.
+        # os.makedirs(target_dir, exist_ok=True)  # type: ignore[arg-type]
+        with TemporaryDirectory(
+            dir="/tmp",
+            suffix=f"{repo_name}.tmp",
+        ) as temp_repo_dir:
             try:
-                os.rename(temp_dir, local_repo_path)
-            except OSError as error:
-                shutil.rmtree(temp_dir, ignore_errors=True)
+                print(f"Cloning the repository '{https_url}'.")
 
-                # someone beat us to it, assume it's good
-                if error.errno != errno.ENOTEMPTY:
-                    raise
-                print(f"{local_repo_path} already exists, skipping rename")
+                # Clone with disabling the logs and advices for detached HEAD state.
+                clone_command = [
+                    "git",
+                    "clone",
+                    "--recursive",
+                    https_url,
+                    temp_repo_dir,
+                ]
+                subprocess.check_call(clone_command)
 
-        except Exception as error:
-            print(f"{error}\nFailed to clone repository '{https_url}' .")
-            raise error
+                if commit_hash:
+                    checkout_command = ["git", "checkout", commit_hash]
+                    subprocess.check_call(checkout_command, cwd=temp_repo_dir)
+                    subprocess.check_call(
+                        ["git", "submodule", "update", "--init", "--recursive"],
+                        cwd=temp_repo_dir,
+                    )
+
+                repo_zip_name = repo_hash+".zip"
+
+                file_name = shutil.make_archive(repo_name, "zip", root_dir=temp_repo_dir)
+                os.rename(file_name, temp_dir/repo_zip_name)
+
+
+                # We know that file_path is empty
+                os.makedirs(archive_path.parent, exist_ok=True)
+
+                shutil.copy(temp_dir/repo_zip_name, archive_path)
+                os.remove(temp_dir/repo_zip_name)
+
+                print(f"Repository is cached in {archive_path}")
+
+
+                # NOTE: Atomically renaming the repository directory into place when the
+                # clone and checkout are done.
+                try:
+                    shutil.copytree(temp_repo_dir, target_dir/repo_name)
+                    shutil.rmtree(temp_repo_dir, ignore_errors=True)
+                except OSError as error:
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+
+                    # someone beat us to it, assume it's good
+                    if error.errno != errno.ENOTEMPTY:
+                        raise
+                    print(f"{target_dir/repo_name} already exists, skipping rename")
+
+            except Exception as error:
+                print(f"{error}\nFailed to clone repository '{https_url}' .")
+                raise error
 
     if include_to_path:
         __add_local_path_to_sys_path(local_repo_path)

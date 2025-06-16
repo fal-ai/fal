@@ -354,12 +354,12 @@ def test_clone_repository(isolated_client, mock_fal_persistent_dirs):
     EXAMPLE_REPO_URL = "https://github.com/fal-ai/isolate.git"
     EXAMPLE_REPO_FIRST_COMMIT = "64b0a89c8391bd2cb3ca23cdeae01779e11aee05"
     EXAMPLE_REPO_SECOND_COMMIT = "34ecbca8cc7b64719d2a5c40dd3272f8d13bc1d2"
-    expected_path = FAL_REPOSITORY_DIR / "isolate"
+    expected_path = f"/tmp/isolate"
     first_expected_path = (
-        FAL_REPOSITORY_DIR / f"isolate-{EXAMPLE_REPO_FIRST_COMMIT[:8]}"
+        f"/tmp/isolate-{EXAMPLE_REPO_FIRST_COMMIT[:8]}"
     )
     second_expected_path = (
-        FAL_REPOSITORY_DIR / f"isolate-{EXAMPLE_REPO_SECOND_COMMIT[:8]}"
+        f"/tmp/isolate-{EXAMPLE_REPO_SECOND_COMMIT[:8]}"
     )
 
     @isolated_client()
