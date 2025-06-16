@@ -988,6 +988,8 @@ def test_field_exception_billing(test_exception_app: AppClient):
         )
 
         assert response.status_code == 422
+        # For errors raised on runtime, developers should be handling the billing.
+        # Therefore not adding billing units.
         assert not hasattr(response.headers, "x-fal-billable-units")
 
 
