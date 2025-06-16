@@ -3,6 +3,7 @@ from __future__ import annotations
 import errno
 import hashlib
 import os
+import random
 import shutil
 import subprocess
 import sys
@@ -486,7 +487,7 @@ def clone_repository(
         # os.makedirs(target_dir, exist_ok=True)  # type: ignore[arg-type]
         with TemporaryDirectory(
             dir="/tmp",
-            suffix=f"{repo_name}.tmp",
+            suffix=f"{repo_name}.tmp{random.randint(0, 1000000)}",
         ) as temp_repo_dir:
             try:
                 print(f"Cloning the repository '{https_url}'.")
@@ -518,17 +519,14 @@ def clone_repository(
 
                 # We know that file_path is empty
                 os.makedirs(archive_path.parent, exist_ok=True)
-
-                shutil.copy(temp_dir / repo_zip_name, archive_path)
-                os.remove(temp_dir / repo_zip_name)
+                shutil.move(temp_dir / repo_zip_name, archive_path)
 
                 print(f"Repository is cached in {archive_path}")
 
                 # NOTE: Atomically renaming the repository directory into place when the
                 # clone and checkout are done.
                 try:
-                    shutil.copytree(temp_repo_dir, target_dir / repo_name)
-                    shutil.rmtree(temp_repo_dir, ignore_errors=True)
+                    shutil.move(temp_repo_dir, target_dir / repo_name)
                 except OSError as error:
                     shutil.rmtree(temp_dir, ignore_errors=True)
 
