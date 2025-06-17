@@ -620,7 +620,7 @@ def clone_repository_cached(
                 try:
                     shutil.move(temp_repo_dir, target_path)
                 except OSError as error:
-                    shutil.rmtree(temp_dir, ignore_errors=True)
+                    shutil.rmtree(temp_repo_dir, ignore_errors=True)
 
                     # someone beat us to it, assume it's good
                     if error.errno != errno.ENOTEMPTY:

@@ -360,11 +360,10 @@ def test_clone_repository(isolated_client, mock_fal_persistent_dirs, clone_fn):
     EXAMPLE_REPO_URL = "https://github.com/fal-ai/isolate.git"
     EXAMPLE_REPO_FIRST_COMMIT = "64b0a89c8391bd2cb3ca23cdeae01779e11aee05"
     EXAMPLE_REPO_SECOND_COMMIT = "34ecbca8cc7b64719d2a5c40dd3272f8d13bc1d2"
+    from fal.toolkit.utils.download_utils import FAL_REPOSITORY_DIR
 
     # clone_repository uses FAL_REPOSITORY_DIR, clone_repository_cached uses /tmp
     if clone_fn == clone_repository:
-        from fal.toolkit.utils.download_utils import FAL_REPOSITORY_DIR
-
         base_dir = FAL_REPOSITORY_DIR
     else:
         base_dir = Path("/tmp")
@@ -372,6 +371,7 @@ def test_clone_repository(isolated_client, mock_fal_persistent_dirs, clone_fn):
     expected_path = str(base_dir / "isolate")
     first_expected_path = str(base_dir / f"isolate-{EXAMPLE_REPO_FIRST_COMMIT[:8]}")
     second_expected_path = str(base_dir / f"isolate-{EXAMPLE_REPO_SECOND_COMMIT[:8]}")
+    import os
 
     @isolated_client()
     def clone_without_commit_hash():
@@ -468,6 +468,53 @@ def test_clone_repository(isolated_client, mock_fal_persistent_dirs, clone_fn):
         assert (
             first_repo_stat.st_mtime < third_repo_stat.st_mtime
         ), "The repository should be cloned again with force=True"
+
+    @isolated_client()
+    def clone_without_commit_hash_multiple_times():
+        import shutil
+
+        # Clean FAL_REPOSITORY_DIR
+        shutil.rmtree(FAL_REPOSITORY_DIR, ignore_errors=True)
+
+        repo_path = clone_fn(EXAMPLE_REPO_URL)
+
+        repo_dir_contents = os.listdir(FAL_REPOSITORY_DIR)
+
+        first_n_archives = len(repo_dir_contents)
+        first_archive_stat = Path(FAL_REPOSITORY_DIR / repo_dir_contents[0]).stat()
+
+        repo_path_2 = clone_fn(EXAMPLE_REPO_URL)
+
+        repo_dir_contents_2 = os.listdir(FAL_REPOSITORY_DIR)
+
+        second_n_archives = len(repo_dir_contents_2)
+        second_archive_stat = Path(FAL_REPOSITORY_DIR / repo_dir_contents_2[0]).stat()
+
+        return (
+            repo_path,
+            repo_path_2,
+            first_n_archives,
+            second_n_archives,
+            first_archive_stat,
+            second_archive_stat,
+        )
+
+    (
+        repo_path,
+        repo_path_2,
+        first_n_archives,
+        second_n_archives,
+        first_archive_stat,
+        second_archive_stat,
+    ) = clone_without_commit_hash_multiple_times()
+
+    if clone_fn == clone_repository_cached:
+        assert first_n_archives == 1, "Only one archive should be present"
+        assert second_n_archives == 1, "Only one archive should be present"
+        assert (
+            first_archive_stat.st_mtime == second_archive_stat.st_mtime
+        ), "The archive should be the same"
+        assert repo_path == repo_path_2, "The repository should be the same"
 
 
 def fal_file_downloaded(file: File):
