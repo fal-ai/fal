@@ -23,7 +23,7 @@ from fal.toolkit import (
     Image as FalImage,
 )
 from fal.toolkit.file.file import CompressedFile
-from fal.toolkit.utils.download_utils import _get_git_revision_hash, _hash_url
+from fal.toolkit.utils.download_utils import _git_rev_parse, _hash_url
 
 EXAMPLE_FILE_URL = "https://raw.githubusercontent.com/fal-ai/fal/main/projects/fal/tests/assets/cat.png"
 
@@ -376,13 +376,13 @@ def test_clone_repository(isolated_client, mock_fal_persistent_dirs):
         first_path = clone_repository(
             EXAMPLE_REPO_URL, commit_hash=EXAMPLE_REPO_FIRST_COMMIT
         )
-        first_repo_hash = _get_git_revision_hash(first_path)
+        first_repo_hash = _git_rev_parse(first_path, "HEAD")
 
         second_path = clone_repository(
             EXAMPLE_REPO_URL, commit_hash=EXAMPLE_REPO_SECOND_COMMIT
         )
 
-        second_repo_hash = _get_git_revision_hash(second_path)
+        second_repo_hash = _git_rev_parse(second_path, "HEAD")
 
         return first_path, first_repo_hash, second_path, second_repo_hash
 

@@ -427,13 +427,22 @@ def clone_repository(
     if repo_name is None:
         repo_name = Path(https_url).stem
         if commit_hash:
+            if len(commit_hash) < 8:
+                raise ValueError(f"Commit hash '{commit_hash}' is too short.")
             repo_name += f"-{commit_hash[:8]}"
 
     local_repo_path = Path(target_dir) / repo_name  # type: ignore[arg-type]
 
     if local_repo_path.exists():
-        local_repo_commit_hash = _get_git_revision_hash(local_repo_path)
-        if local_repo_commit_hash == commit_hash and not force:
+        local_repo_commit_hash = _git_rev_parse(local_repo_path, "HEAD")
+        full_commit_hash = (
+            _git_rev_parse(local_repo_path, commit_hash) if commit_hash else None
+        )
+        if (
+            full_commit_hash
+            and local_repo_commit_hash == full_commit_hash
+            and not force
+        ):
             if include_to_path:
                 __add_local_path_to_sys_path(local_repo_path)
             return local_repo_path
@@ -516,12 +525,12 @@ def __add_local_path_to_sys_path(local_path: Path | str):
         sys.path.insert(0, local_path_str)
 
 
-def _get_git_revision_hash(repo_path: Path) -> str:
+def _git_rev_parse(repo_path: Path, ref: str) -> str:
     import subprocess
 
     try:
         return subprocess.check_output(
-            ["git", "rev-parse", "HEAD"],
+            ["git", "rev-parse", ref],
             cwd=repo_path,
             text=True,
             stderr=subprocess.STDOUT,
