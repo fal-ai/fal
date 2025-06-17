@@ -577,9 +577,10 @@ def clone_repository_cached(
         # and target fs, and also to be able to atomically rename repo_name dir into
         #  place when we are done setting it up.
         # os.makedirs(target_dir, exist_ok=True)  # type: ignore[arg-type]
+        random_idx = random.randint(0, 9999999)
         with TemporaryDirectory(
             dir="/tmp",
-            suffix=f"{repo_name}.tmp{random.randint(0, 1000000)}",
+            suffix=f"{repo_name}.tmp{random_idx}",
         ) as temp_repo_dir:
             try:
                 print(f"Cloning the repository '{https_url}'.")
@@ -618,7 +619,14 @@ def clone_repository_cached(
                 # NOTE: Atomically renaming the repository directory into place when the
                 # clone and checkout are done.
                 try:
-                    shutil.move(temp_repo_dir, target_path)
+                    shutil.move(
+                        temp_repo_dir,
+                        target_path.with_name(f"tmp_{random_idx}_" + target_path.name),
+                    )
+                    os.rename(
+                        target_path.with_name(f"tmp_{random_idx}_" + target_path.name),
+                        target_path,
+                    )
                 except OSError as error:
                     shutil.rmtree(temp_repo_dir, ignore_errors=True)
 
