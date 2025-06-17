@@ -956,7 +956,18 @@ def function(  # type: ignore
     def wrapper(func: Callable[ArgsT, ReturnT]):
         include_modules_from(func)
 
-        for module_name in local_python_modules or []:
+        if local_python_modules and not isinstance(local_python_modules, list):
+            raise ValueError(
+                "local_python_modules must be a list of module names as strings, got "
+                f"{repr(local_python_modules)}"
+            )
+
+        for idx, module_name in enumerate(local_python_modules or []):
+            if not isinstance(module_name, str):
+                raise ValueError(
+                    "local_python_modules must be a list of module names as strings, "
+                    f"got {repr(module_name)} at index {idx}"
+                )
             include_module(module_name)
 
         proxy = IsolatedFunction(
