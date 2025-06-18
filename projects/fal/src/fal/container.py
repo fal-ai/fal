@@ -19,6 +19,7 @@ class ContainerImage:
     builder: Optional[Builder] = field(default=None)
     compression: str = DEFAULT_COMPRESSION
     force_compression: bool = DEFAULT_FORCE_COMPRESSION
+    secrets: Dict[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.registries:
@@ -51,4 +52,5 @@ class ContainerImage:
             "builder": self.builder,
             "compression": self.compression,
             "force_compression": self.force_compression,
+            "secrets": self.secrets,
         }
