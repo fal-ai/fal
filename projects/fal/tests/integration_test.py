@@ -384,9 +384,7 @@ def test_clone_repository(isolated_client, mock_fal_persistent_dirs, clone_fn):
 
     @isolated_client()
     def clone_with_commit_hash():
-        first_path = clone_fn(
-            EXAMPLE_REPO_URL, commit_hash=EXAMPLE_REPO_FIRST_COMMIT
-        )
+        first_path = clone_fn(EXAMPLE_REPO_URL, commit_hash=EXAMPLE_REPO_FIRST_COMMIT)
         first_repo_hash = _git_rev_parse(first_path, "HEAD")
 
         second_path = clone_fn(EXAMPLE_REPO_URL, commit_hash=EXAMPLE_REPO_SECOND_COMMIT)

@@ -401,10 +401,13 @@ def clone_repository(
 ) -> Path:
     """Clones a Git repository from the specified HTTPS URL into a local
     directory.
+
     This function clones a Git repository from the specified HTTPS URL into a local
     directory. It can also checkout a specific commit if the `commit_hash` is provided.
+
     If a custom `target_dir` or `repo_name` is not specified, a predefined directory is
     used for the target directory, and the repository name is determined from the URL.
+
     Args:
         https_url: The HTTPS URL of the Git repository to be cloned.
         commit_hash: The commit hash to checkout after cloning.
@@ -416,6 +419,7 @@ def clone_repository(
             and its commit hash matches the provided commit hash. Defaults to `False`.
         include_to_path: If `True`, the cloned repository is added to the `sys.path`.
             Defaults to `False`.
+
     Returns:
         A Path object representing the full path to the cloned Git repository.
     """
@@ -511,6 +515,7 @@ def clone_repository(
 
     if include_to_path:
         __add_local_path_to_sys_path(local_repo_path)
+
     return local_repo_path
 
 
@@ -552,7 +557,7 @@ def clone_repository_cached(
 
     if commit_hash is None:
         print(
-            "Log warning: No commit hash provided. Attempting to fetch the latest"
+            "Warning: No commit hash provided. Attempting to fetch the latest"
             " version of the repository from GitHub. This process may take time and"
             " could result in unexpected changes. Please specify a commit hash to"
             " ensure stability."
@@ -570,7 +575,6 @@ def clone_repository_cached(
             )
     else:
         # Convert mutable hash to immutable hash
-
         result = subprocess.check_output(
             ["git", "ls-remote", https_url, commit_hash],
             text=True,
@@ -578,6 +582,11 @@ def clone_repository_cached(
         )
 
         if result:
+            # This is mutable hash case
+            print(
+                "Warning: The provided Git reference is mutable (e.g., a branch or "
+                "tag). Please use an immutable commit hash to ensure reproducibility."
+            )
             commit_hash = result.split()[0]
 
         repo_name += f"-{commit_hash[:8]}"
@@ -598,7 +607,7 @@ def clone_repository_cached(
                 shutil.rmtree(tmp_dir, ignore_errors=True)
 
     if archive_path.exists():
-        print("Cached repository found, unpacking...")
+        print("Repository cache found, unpacking...")
 
         # Copy the archive to the temp directory
         file_path = shutil.copyfile(archive_path, temp_dir / (repo_name + ".zip"))
@@ -611,10 +620,6 @@ def clone_repository_cached(
             shutil.move(temp_dir / repo_name, target_path)
 
     else:
-        # NOTE: using the target_dir to be able to avoid potential copies across temp fs
-        # and target fs, and also to be able to atomically rename repo_name dir into
-        #  place when we are done setting it up.
-        # os.makedirs(target_dir, exist_ok=True)  # type: ignore[arg-type]
         random_idx = random.randint(0, 9999999)
         with TemporaryDirectory(
             dir="/tmp",
