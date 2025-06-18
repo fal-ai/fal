@@ -615,7 +615,7 @@ class FalServerlessHost(Host):
         def result_handler(partial_result):
             ret.stream = partial_result.stream
             for log in partial_result.logs:
-                if "Access your exposed service at" in log.message:
+                if "And API access through" in log.message:
                     ret.url = log.message.rsplit()[-1]
                 ret.logs.put(log)
 
