@@ -616,7 +616,7 @@ class FalServerlessHost(Host):
             ret.stream = partial_result.stream
             for log in partial_result.logs:
                 if "And API access through" in log.message:
-                    ret.url = log.message.rsplit()[-1]
+                    ret.url = log.message.rsplit()[-1].replace("queue.", "")
                 ret.logs.put(log)
 
         self._thread_pool.submit(
