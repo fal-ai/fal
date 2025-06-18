@@ -540,10 +540,39 @@ def clone_repository_cached(
         target_path = Path(target_path)
 
     repo_name = target_path.stem if target_path else Path(https_url).stem
-    if commit_hash:
+
+    if commit_hash is None:
+        print(
+            "Log warning: No commit hash provided. Attempting to fetch the latest"
+            " version of the repository from GitHub. This process may take time and"
+            " could result in unexpected changes. Please specify a commit hash to"
+            " ensure stability."
+        )
+
+        # Get the commit hash from the remote repository
+        commit_hash = subprocess.check_output(
+            ["git", "ls-remote", https_url, "HEAD"],
+            text=True,
+            stderr=subprocess.STDOUT,
+        ).split()[0]
+        if not commit_hash:
+            raise ValueError(
+                "Failed to get the commit hash from the remote repository."
+            )
+    else:
+        # Convert mutable hash to immutable hash
+
+        result = subprocess.check_output(
+            ["git", "ls-remote", https_url, commit_hash],
+            text=True,
+            stderr=subprocess.STDOUT,
+        )
+
+        if result:
+            commit_hash = result.split()[0]
+
         repo_name += f"-{commit_hash[:8]}"
 
-    commit_hash = commit_hash or "main"
     repo_hash = f"{_hash_url(https_url)}-{commit_hash}"
     archive_path = base_repo_dir / (repo_hash + ".zip")
     target_path = Path(target_path or temp_dir / repo_name)
