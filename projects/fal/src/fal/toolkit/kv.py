@@ -6,7 +6,7 @@ from urllib.request import Request
 from fal.toolkit.exceptions import KVStoreException
 from fal.toolkit.file.providers.fal import _maybe_retry_request, fal_v3_token_manager
 
-FAL_KV_HOST = "https://fal-kv.burkay-c7a.workers.dev"
+FAL_KV_HOST = "https://kv.fal.media"
 
 
 class KVStore:
