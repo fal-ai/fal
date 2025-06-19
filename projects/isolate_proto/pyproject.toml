@@ -22,7 +22,7 @@ requires-python = ">=3.8"
 dependencies = [
     # NOTE: when upgrading grpcio version, make sure you also upgrade grpcio-tools
     # and re-generate python bindings (see tools/regen_grpc.py).
-    "grpcio>=1.64.0",
+    "grpcio>=1.64.0,<2",
     "protobuf",
     "isolate[build]>=0.13.0,<1.14.0",
 ]
@@ -36,6 +36,6 @@ dev = [
     "isolate_proto[test]",
     # for tools/regen_grpc.py
     "refactor",
-    "grpcio-tools>=1.64.0",
+    "grpcio-tools==1.64.0",
     "mypy-protobuf==3.5.0",
 ]
