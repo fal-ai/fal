@@ -24,7 +24,7 @@ requires-python = ">=3.8"
 dependencies = [
     "isolate[build]>=0.17.0,<0.18.0",
     "isolate-proto>=0.9.1,<0.10.0",
-    "grpcio>=1.64.0",
+    "grpcio>=1.64.0,<2",
     "dill==0.3.7",
     "cloudpickle==3.0.0",
     "typing-extensions>=4.7.1,<5",
