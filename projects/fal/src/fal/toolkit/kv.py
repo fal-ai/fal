@@ -1,5 +1,5 @@
 import json
-from typing import Any
+from typing import Any, Optional
 from urllib.error import HTTPError
 from urllib.request import Request
 
@@ -27,7 +27,7 @@ class KVStore:
             "User-Agent": "fal/0.1.0",
         }
 
-    def get(self, key: str) -> str | None:
+    def get(self, key: str) -> Optional[str]:
         """Retrieve a value from the key-value store.
 
         Args:
@@ -63,8 +63,8 @@ class KVStore:
         self,
         method: str,
         path: str,
-        data: bytes | None = None,
-    ) -> dict[str, Any] | None:
+        data: Optional[bytes] = None,
+    ) -> Optional[dict[str, Any]]:
         headers = {
             **self.auth_headers,
             "Accept": "application/json",
