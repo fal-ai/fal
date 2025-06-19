@@ -24,6 +24,14 @@ fal.toolkit.exceptions module
    :undoc-members:
    :show-inheritance:
 
+fal.toolkit.kv module
+---------------------
+
+.. automodule:: fal.toolkit.kv
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 fal.toolkit.optimize module
 ---------------------------
 

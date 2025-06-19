@@ -214,6 +214,67 @@
 <p>Raised when file upload fails</p>
 </dd></dl>
 
+<dl class="py exception">
+<dt class="sig sig-object py" id="fal.toolkit.exceptions.KVStoreException">
+<em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.toolkit.exceptions.</span></span><span class="sig-name descname"><span class="pre">KVStoreException</span></span><a class="headerlink" href="#fal.toolkit.exceptions.KVStoreException" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#fal.toolkit.exceptions.FalTookitException" title="fal.toolkit.exceptions.FalTookitException"><code class="xref py py-class docutils literal notranslate"><span class="pre">FalTookitException</span></code></a></p>
+<p>Raised when KV store operation fails</p>
+</dd></dl>
+
+</section>
+<section id="module-fal.toolkit.kv">
+<span id="fal-toolkit-kv-module"></span><h2>fal.toolkit.kv module<a class="headerlink" href="#module-fal.toolkit.kv" title="Link to this heading">¶</a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.toolkit.kv.KVStore">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.toolkit.kv.</span></span><span class="sig-name descname"><span class="pre">KVStore</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">db_name</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.kv.KVStore" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>A key-value store client for interacting with the FAL KV service.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>db_name</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – The name of the database/namespace to use for this KV store.</p>
+</dd>
+</dl>
+<dl class="py property">
+<dt class="sig sig-object py" id="fal.toolkit.kv.KVStore.auth_headers">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">auth_headers</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#fal.toolkit.kv.KVStore.auth_headers" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.toolkit.kv.KVStore.get">
+<span class="sig-name descname"><span class="pre">get</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">key</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.kv.KVStore.get" title="Link to this definition">¶</a></dt>
+<dd><p>Retrieve a value from the key-value store.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>key</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – The key to retrieve the value for.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]</span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The value associated with the key, or None if the key doesn’t exist.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.toolkit.kv.KVStore.set">
+<span class="sig-name descname"><span class="pre">set</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">key</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">value</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.kv.KVStore.set" title="Link to this definition">¶</a></dt>
+<dd><p>Store a value in the key-value store.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>key</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – The key to store the value under.</p></li>
+<li><p><strong>value</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – The value to store.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
 </section>
 <section id="module-fal.toolkit.optimize">
 <span id="fal-toolkit-optimize-module"></span><h2>fal.toolkit.optimize module<a class="headerlink" href="#module-fal.toolkit.optimize" title="Link to this heading">¶</a></h2>
