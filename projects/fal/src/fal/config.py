@@ -50,10 +50,14 @@ class Config:
         self._profile = value
 
     def profiles(self) -> List[str]:
-        keys = []
+        keys: List[str] = []
         for key in self._config:
             if key != SETTINGS_SECTION:
-                keys.append(key)
+                if key == DEFAULT_PROFILE:
+                    # Add it at the beginning
+                    keys.insert(0, key)
+                else:
+                    keys.append(key)
 
         return keys
 

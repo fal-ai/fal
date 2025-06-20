@@ -7,7 +7,7 @@ from fal.config import Config
 
 def _list(args):
     table = Table()
-    table.add_column("Default")
+    table.add_column("Set")
     table.add_column("Profile")
     table.add_column("Settings")
 
