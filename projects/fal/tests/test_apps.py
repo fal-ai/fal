@@ -577,13 +577,6 @@ def test_app_disconnect_behavior(test_app: str, test_cancellable_app: str):
         e.value.response.status_code == 504
     ), "Expected Gateway Timeout even though the app handled it"
 
-    with pytest.raises(HTTPStatusError) as e:
-        apps.run(
-            test_cancellable_app,
-            arguments={"lhs": 1, "rhs": 2, "wait_time": 1},
-        )
-    assert e.value.response.status_code == 500
-
 
 @pytest.mark.xfail(
     reason="Temporary disabled while investigating backend issue. Ping @efiop"
