@@ -319,24 +319,26 @@ def _handle_grpc_error():
             try:
                 return fn(*args, **kwargs)
             except grpc.RpcError as e:
+                msg = e.details() or str(e)
                 if e.code() == grpc.StatusCode.UNAVAILABLE:
                     raise FalServerlessError(
                         "Could not reach fal host. "
                         "This is most likely a transient problem. "
-                        "Please, try again."
+                        "If it persists, please reach out to support@fal.ai with the following details: "  # noqa: E501
+                        f"{msg}"
                     )
-                elif e.details().endswith("died with <Signals.SIGKILL: 9>.`."):
+                elif msg.endswith("died with <Signals.SIGKILL: 9>.`."):
                     raise FalServerlessError(
                         "Isolated function crashed. "
                         "This is likely due to resource overflow. "
                         "You can try again by setting a bigger `machine_type`"
                     )
                 elif e.code() == grpc.StatusCode.INVALID_ARGUMENT and (
-                    "The function function could not be deserialized" in e.details()
+                    "The function function could not be deserialized" in msg
                 ):
-                    raise FalMissingDependencyError(e.details()) from None
+                    raise FalMissingDependencyError(msg) from None
                 else:
-                    raise FalServerlessError(e.details())
+                    raise FalServerlessError(msg)
 
         return handler
 
