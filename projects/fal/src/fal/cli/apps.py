@@ -310,7 +310,11 @@ def _add_runners_parser(subparsers, parents):
 def _delete(args):
     client = get_client(args.host, args.team)
     with client.connect() as connection:
-        connection.delete_alias(args.app_name)
+        res = connection.delete_alias(args.app_name)
+        if res is None:
+            args.console.print(f"Application {args.app_name!r} not found.")
+        else:
+            args.console.print(f"Application {args.app_name!r} deleted ({res})")
 
 
 def _add_delete_parser(subparsers, parents):
