@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import os
 import subprocess
 import uuid
+import textwrap
 from contextlib import suppress
 
 import pytest
@@ -9,9 +11,10 @@ from isolate.backends.common import active_python
 from pydantic import __version__ as pydantic_version
 
 import fal
-from fal.api import FalServerlessError, Options
+from fal.api import FalServerlessError, FalServerlessHost, Options
 from fal.container import ContainerImage
 from fal.toolkit.file import File
+from fal.utils import load_function_from
 
 PACKAGE_NAME = "fall"
 
@@ -217,8 +220,6 @@ def test_function_calling_other_function(isolated_client):
         ],
     )
     def calling_function(recurse):
-        import os
-
         for name in os.environ:
             if name.startswith("FAL_"):
                 print(os.environ[name])
@@ -264,8 +265,6 @@ def test_process_crash(isolated_client):
     # a decent error message.
     @isolated_client("virtualenv")
     def process_crash_without_catching():
-        import os
-
         os._exit(0)
 
     with pytest.raises(FalServerlessError, match="..."):
@@ -354,8 +353,6 @@ def test_client_superseeding_dependencies_crash(isolated_client):
 def test_memory_overflow_crash_on_run(isolated_client):
     @isolated_client("virtualenv")
     def memory_overflow_crash_on_run():
-        import os
-
         objects = []
         while True:
             objects.append(os.urandom(1024**3))
@@ -378,8 +375,6 @@ def test_keepalive_after_agent_exit(isolated_client):
 
         @isolated_client("virtualenv")
         def process_crash_without_catching():
-            import os
-
             os._exit(0)
 
         process_crash_without_catching()
@@ -602,8 +597,6 @@ def test_worker_env_vars(isolated_client):
 
     @isolated_client("virtualenv", keep_alive=5)
     def get_env_var(name: str) -> str | None:
-        import os
-
         return os.getenv(name, None)
 
     fal_host = get_env_var("FAL_HOST")
@@ -698,3 +691,38 @@ def test_on_changes():
     assert "max_concurrency" not in op.host, "max_concurrency set in local gateway"
     assert "keep_alive" not in op.host, "keep_alive set in local host"
     assert "machine_type" not in op.host, "machine_type set in local host"
+
+
+def test_bundle_paths(tmpdir):
+    (tmpdir / "foo.py").write_text("def foo(): return 'foo'", encoding="utf-8")
+    (tmpdir / "bar").mkdir()
+    (tmpdir / "bar" / "__init__.py").write_text(
+        "from .baz import baz\ndef bar(): return 'bar'", encoding="utf-8"
+    )
+    (tmpdir / "bar" / "baz").mkdir()
+    (tmpdir / "bar" / "baz" / "__init__.py").write_text(
+        "def baz(): return 'baz'", encoding="utf-8"
+    )
+    (tmpdir / "myfunc.py").write_text(
+        textwrap.dedent(
+            """
+            import fal
+
+            @fal.function(bundle_paths=["foo.py", "bar"])
+            def myfunc():
+                from bar import bar
+                from bar.baz import baz
+                from foo import foo
+
+                return foo() + bar() + baz()
+            """,
+        ),
+        encoding="utf-8",
+    )
+
+    host = FalServerlessHost()
+    file_path = str(tmpdir / "myfunc.py")
+    func_name = "myfunc"
+    loaded = load_function_from(host, file_path, func_name)
+    isolated_function = loaded.function
+    assert isolated_function() == "foobarbaz"
