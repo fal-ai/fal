@@ -20,7 +20,7 @@ from pydantic import __version__ as pydantic_version
 import fal
 import fal.api as api
 from fal import apps
-from fal.app import AppClient, AppClientError
+from fal.app import AppClient, AppClientError, wrap_app
 from fal.cli.deploy import User, _get_user
 from fal.container import ContainerImage
 from fal.exceptions import (
@@ -332,7 +332,7 @@ class BrokenApp(fal.App, keep_alive=300, max_concurrency=1):
 
 
 @pytest.fixture(scope="module")
-def host() -> Generator[api.FalServerlessHost, None, None]:
+def host() -> Generator[api.Host, None, None]:
     yield addition_app.host
 
 
@@ -343,7 +343,11 @@ def user() -> Generator[User, None, None]:
 
 
 @contextmanager
-def register_app(host: api.FalServerlessHost, app: fal.App, suffix: str = ""):
+def register_app(
+    host: api.FalServerlessHost,
+    app: api.ServedIsolatedFunction | api.IsolatedFunction,
+    suffix: str = "",
+):
     app_alias = str(uuid.uuid4()) + "-test-alias" + ("-" + suffix if suffix else "")
     app_revision = host.register(
         func=app.func,
@@ -398,7 +402,7 @@ def test_fastapi_app(host: api.FalServerlessHost, user: User):
 
 @pytest.fixture(scope="module")
 def test_stateful_app(host: api.FalServerlessHost, user: User):
-    stateful_app = fal.wrap_app(StatefulAdditionApp)
+    stateful_app = wrap_app(StatefulAdditionApp)
     with register_app(host, stateful_app, "stateful") as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
@@ -411,7 +415,7 @@ def test_pydantic_validation_error():
 
 @pytest.fixture(scope="module")
 def test_cancellable_app(host: api.FalServerlessHost, user: User):
-    cancellable_app = fal.wrap_app(CancellableApp)
+    cancellable_app = wrap_app(CancellableApp)
     with register_app(host, cancellable_app, "cancellable") as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
@@ -424,21 +428,21 @@ def test_exception_app():
 
 @pytest.fixture(scope="module")
 def test_sleep_app(host: api.FalServerlessHost, user: User):
-    sleep_app = fal.wrap_app(SleepApp)
+    sleep_app = wrap_app(SleepApp)
     with register_app(host, sleep_app, "sleep") as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
 
 @pytest.fixture(scope="module")
 def test_realtime_app(host: api.FalServerlessHost, user: User):
-    realtime_app = fal.wrap_app(RealtimeApp)
+    realtime_app = wrap_app(RealtimeApp)
     with register_app(host, realtime_app, "realtime") as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
 
 def test_broken_app_failure(host: api.FalServerlessHost, user: User):
     with pytest.raises(FalServerlessException) as e:
-        fal.wrap_app(BrokenApp)
+        wrap_app(BrokenApp)
 
     assert "Failed to generate OpenAPI" in str(e)
 
