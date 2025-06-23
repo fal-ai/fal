@@ -746,10 +746,15 @@ class FalServerlessConnection:
         )
         self.stub.SetAlias(request)
 
-    def delete_alias(self, alias: str) -> str:
+    def delete_alias(self, alias: str) -> str | None:
         request = isolate_proto.DeleteAliasRequest(alias=alias)
-        res: isolate_proto.DeleteAliasResult = self.stub.DeleteAlias(request)
-        return res.revision
+        try:
+            res: isolate_proto.DeleteAliasResult = self.stub.DeleteAlias(request)
+            return res.revision
+        except grpc.RpcError as e:
+            if e.code() == grpc.StatusCode.NOT_FOUND:
+                return None
+            raise
 
     def list_aliases(self) -> list[AliasInfo]:
         request = isolate_proto.ListAliasesRequest()
