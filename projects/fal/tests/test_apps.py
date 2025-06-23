@@ -6,7 +6,7 @@ import time
 import uuid
 from contextlib import contextmanager, suppress
 from datetime import datetime, timedelta, timezone
-from typing import Generator, List, Tuple
+from typing import Generator, List, Tuple, Union
 
 import httpx
 import pytest
@@ -345,7 +345,7 @@ def user() -> Generator[User, None, None]:
 @contextmanager
 def register_app(
     host: api.FalServerlessHost,
-    app: api.ServedIsolatedFunction | api.IsolatedFunction,
+    app: Union[api.ServedIsolatedFunction, api.IsolatedFunction],
     suffix: str = "",
 ):
     app_alias = str(uuid.uuid4()) + "-test-alias" + ("-" + suffix if suffix else "")
