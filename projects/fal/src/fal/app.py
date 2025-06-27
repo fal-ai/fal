@@ -197,7 +197,14 @@ class AppClient:
 
     @classmethod
     @contextmanager
-    def connect(cls, app_cls):
+    def connect(
+        cls,
+        app_cls,
+        *,
+        health_request_timeout: int = 30,
+        startup_timeout: int = 60,
+        health_check_interval: float = 0.5,
+    ):
         app = wrap_app(app_cls)
         info = app.spawn()
         _shutdown_event = threading.Event()
@@ -214,20 +221,50 @@ class AppClient:
         _log_printer.start()
 
         try:
-            with httpx.Client() as client:
-                retries = 100
-                for _ in range(retries):
-                    url = info.url + "/health"
-                    resp = client.get(url, timeout=60)
+            if info.url is None:
+                raise AppClientError(
+                    "App spawn failed: no URL returned",
+                    status_code=500,
+                )
 
-                    if resp.is_success:
-                        break
-                    elif resp.status_code not in (500, 404):
-                        raise AppClientError(
-                            f"Failed to GET {url}: {resp.status_code} {resp.text}",
-                            status_code=resp.status_code,
+            start_time = time.perf_counter()
+            url = info.url + "/health"
+            last_error = None
+            attempt = 0
+
+            with httpx.Client() as client:
+                while time.perf_counter() - start_time < startup_timeout:
+                    attempt += 1
+
+                    try:
+                        resp = client.get(url, timeout=health_request_timeout)
+                    except httpx.TimeoutException:
+                        last_error = (
+                            f"Request timed out after {health_request_timeout} seconds"
                         )
-                    time.sleep(0.1)
+                    except httpx.TransportError as e:
+                        last_error = f"Network error: {e}"
+                    else:
+                        if resp.is_success:
+                            break
+
+                        if resp.status_code in (500, 404):
+                            last_error = f"Server not ready (HTTP {resp.status_code})"
+                        else:
+                            raise AppClientError(
+                                "Health check failed with non-retryable error: "
+                                f"{resp.status_code} {resp.text}",
+                                status_code=resp.status_code,
+                            )
+
+                    time.sleep(health_check_interval)
+                else:
+                    # retry loop completed without success
+                    raise AppClientError(
+                        f"Health check failed after {startup_timeout}s "
+                        f"({attempt} attempts). Last error: {last_error}",
+                        status_code=500,
+                    )
 
             client = cls(app_cls, info.url)
             yield client
