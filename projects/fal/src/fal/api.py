@@ -956,6 +956,7 @@ def function(
 
 
 MAX_BUNDLE_FILE_SIZE = 1024 * 1024  # 1MB
+MAX_BUNDLE_TOTAL_SIZE = 100 * 1024 * 1024  # 100MB
 
 
 def INCLUDE_PYTHON_FILES(path: str) -> bool:
@@ -995,11 +996,9 @@ class Bundle:
     def _add_file(cls, zipfile: ZipFile, path: str, arcname: str):
         size = os.path.getsize(path)
         if size > MAX_BUNDLE_FILE_SIZE:
-            print(
-                f"Bundled file {path} is larger than"
-                f"{MAX_BUNDLE_FILE_SIZE} bytes, skipping"
+            raise ValueError(
+                f"Bundle file {arcname} is larger than {MAX_BUNDLE_FILE_SIZE} bytes"
             )
-            return
         zipfile.write(path, arcname)
 
     @classmethod
@@ -1029,7 +1028,14 @@ class Bundle:
                     arcname = os.path.relpath(file, root)
                     cls._add_file(zipfile, file, arcname)
 
-        return cls(buffer.getvalue())
+        zipfile_bytes = buffer.getvalue()
+        size = len(zipfile_bytes)
+        if size > MAX_BUNDLE_TOTAL_SIZE:
+            raise ValueError(
+                f"Bundle size is too big ({size} > {MAX_BUNDLE_TOTAL_SIZE})"
+            )
+
+        return cls(zipfile_bytes)
 
     def unpack(self, path: str):
         buffer = io.BytesIO(self.zipfile_bytes)
