@@ -1062,7 +1062,7 @@ def function(  # type: ignore
     if config.get("image"):
         kind = "container"
 
-    options = host.parse_options(kind=kind, bundle_paths=bundle_paths, **config)
+    options = host.parse_options(kind=kind, **config)
 
     def wrapper(func: Callable[ArgsT, ReturnT]):
         include_modules_from(func)
@@ -1091,6 +1091,7 @@ def function(  # type: ignore
             host=host,  # type: ignore
             raw_func=func,  # type: ignore
             options=options,
+            bundle_paths=bundle_paths,
         )
         return wraps(func)(proxy)  # type: ignore
 
@@ -1394,6 +1395,7 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
     host: Host[ArgsT, ReturnT]
     raw_func: Callable[ArgsT, ReturnT]
     options: Options
+    bundle_paths: list[str | BundlePath] | None
     executor: ThreadPoolExecutor = field(default_factory=ThreadPoolExecutor)
     reraise: bool = True
 
@@ -1431,26 +1433,9 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
         )
 
     def __call__(self, *args: ArgsT.args, **kwargs: ArgsT.kwargs) -> ReturnT:
-        if file_path := getattr(self.func, "__file__", None):
-            root = os.path.dirname(file_path)
-        elif code := getattr(self.func, "__code__", None):
-            root = os.path.dirname(code.co_filename)
-        else:
-            module = inspect.getmodule(self.func)
-            file_path = getattr(module, "__file__", None)
-            if file_path is None:
-                raise ValueError(
-                    "Couldn't determine the root directory of the function. "
-                    "Please contact fal support."
-                )
-            root = os.path.dirname(file_path)
-
-        bundle_paths = self.options.environment.pop("bundle_paths", None)
-        bundle = Bundle.from_paths(root, bundle_paths) if bundle_paths else None
-
         try:
             return self.host.run(
-                BundleWrapper(self.func, bundle),
+                self.func,
                 self.options,
                 args=args,
                 kwargs=kwargs,
@@ -1520,13 +1505,31 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
     @property
     def func(self) -> Callable[ArgsT, ReturnT]:
         serve_mode = self.options.gateway.get("serve")
+        func = self.raw_func
         if serve_mode:
             # This type can be safely ignored because this case only happens when it
             # is a ServedIsolatedFunction
-            serve_func: Callable[[], None] = ServeWrapper(self.raw_func)
-            return serve_func  # type: ignore
+            func = ServeWrapper(self.raw_func)  # type: ignore
+
+        if file_path := getattr(self.raw_func, "__file__", None):
+            root = os.path.dirname(file_path)
+        elif code := getattr(self.raw_func, "__code__", None):
+            root = os.path.dirname(code.co_filename)
         else:
-            return self.raw_func
+            module = inspect.getmodule(self.raw_func)
+            file_path = getattr(module, "__file__", None)
+            if file_path is None:
+                raise ValueError(
+                    "Couldn't determine the root directory of the function. "
+                    "Please contact fal support."
+                )
+            root = os.path.dirname(file_path)
+
+        bundle = (
+            Bundle.from_paths(root, self.bundle_paths) if self.bundle_paths else None
+        )
+
+        return BundleWrapper(func, bundle)
 
 
 if sys.version_info <= (3, 10):
