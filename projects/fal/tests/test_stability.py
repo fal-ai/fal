@@ -695,7 +695,14 @@ def test_on_changes():
     assert "machine_type" not in op.host, "machine_type set in local host"
 
 
-def test_bundle_paths(tmpdir):
+@pytest.mark.parametrize(
+    "bundle_paths",
+    [
+        ["foo.py", "bar"],
+        ["."],
+    ],
+)
+def test_bundle_paths(tmpdir, bundle_paths):
     (tmpdir / "foo.py").write_text("def foo(): return 'foo'", encoding="utf-8")
     (tmpdir / "bar").mkdir()
     (tmpdir / "bar" / "__init__.py").write_text(
@@ -703,6 +710,41 @@ def test_bundle_paths(tmpdir):
     )
     (tmpdir / "bar" / "baz").mkdir()
     (tmpdir / "bar" / "baz" / "__init__.py").write_text(
+        "def baz(): return 'baz'", encoding="utf-8"
+    )
+    (tmpdir / "myfunc.py").write_text(
+        textwrap.dedent(
+            f"""
+            import fal
+
+            @fal.function(bundle_paths={str(bundle_paths)})
+            def myfunc():
+                from bar import bar
+                from bar.baz import baz
+                from foo import foo
+
+                return foo() + bar() + baz()
+            """,
+        ),
+        encoding="utf-8",
+    )
+
+    host = FalServerlessHost()
+    file_path = str(tmpdir / "myfunc.py")
+    func_name = "myfunc"
+    loaded = load_function_from(host, file_path, func_name)
+    isolated_function = loaded.function
+    assert isolated_function() == "foobarbaz"
+
+
+def test_bundle_paths_limits(tmpdir, monkeypatch):
+    (tmpdir / "foo.py").write_text("d", encoding="utf-8")
+    (tmpdir / "bar").mkdir()
+    (tmpdir / "bar" / "__init__.py").write_text(
+        "from .baz import baz\ndef bar(): return 'bar'", encoding="utf-8"
+    )
+    (tmpdir / "baz").mkdir()
+    (tmpdir / "baz" / "__init__.py").write_text(
         "def baz(): return 'baz'", encoding="utf-8"
     )
     (tmpdir / "myfunc.py").write_text(
@@ -725,6 +767,13 @@ def test_bundle_paths(tmpdir):
     host = FalServerlessHost()
     file_path = str(tmpdir / "myfunc.py")
     func_name = "myfunc"
-    loaded = load_function_from(host, file_path, func_name)
-    isolated_function = loaded.function
-    assert isolated_function() == "foobarbaz"
+
+    with monkeypatch.context() as m:
+        m.setattr(fal.api, "MAX_BUNDLE_TOTAL_SIZE", 1)
+        with pytest.raises(ValueError, match="Bundle size is too big"):
+            load_function_from(host, file_path, func_name)
+
+    with monkeypatch.context() as m:
+        m.setattr(fal.api, "MAX_BUNDLE_FILE_SIZE", 1)
+        with pytest.raises(ValueError, match=r"Bundle file .* is larger than"):
+            load_function_from(host, file_path, func_name)
