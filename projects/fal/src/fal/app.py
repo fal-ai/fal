@@ -99,12 +99,18 @@ async def _set_logger_labels(
         pass
 
 
+class InitializeAndServe:
+    def __init__(self, cls: type[App], file_path: str):
+        self.cls = cls
+        self.__file__ = file_path
+
+    def __call__(self):
+        app = self.cls()
+        app.serve()
+
+
 def wrap_app(cls: type[App], **kwargs) -> IsolatedFunction:
     include_modules_from(cls)
-
-    def initialize_and_serve():
-        app = cls()
-        app.serve()
 
     metadata = {}
     app = cls(_allow_init=True)
@@ -130,7 +136,19 @@ def wrap_app(cls: type[App], **kwargs) -> IsolatedFunction:
         exposed_port=8080,
         serve=False,
     )
-    fn = wrapper(initialize_and_serve)
+
+    file_path = getattr(cls, "__file__", None)
+    if file_path is None:
+        module = inspect.getmodule(cls)
+        file_path = getattr(module, "__file__", None)
+
+    if not file_path:
+        raise ValueError(
+            f"Couldn't determine the root directory of the {cls.__name__}. "
+            "Please contact fal support."
+        )
+
+    fn = wrapper(InitializeAndServe(cls, file_path))
     fn.options.add_requirements(SERVE_REQUIREMENTS)
     if realtime_app:
         fn.options.add_requirements(REALTIME_APP_REQUIREMENTS)

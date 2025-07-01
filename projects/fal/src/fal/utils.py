@@ -58,6 +58,7 @@ def load_function_from(
     fal._serialization.include_package_from_path(file_path)
 
     target = module[function_name]
+    target.__file__ = module["__file__"]
     endpoints = ["/"]
     if isinstance(target, type) and issubclass(target, App):
         app_name = target.app_name

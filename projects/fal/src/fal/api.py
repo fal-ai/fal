@@ -1018,7 +1018,10 @@ MAX_BUNDLE_TOTAL_SIZE = 100 * 1024 * 1024  # 100MB
 
 
 def INCLUDE_PYTHON_FILES(path: str) -> bool:
-    return path.endswith(".py")
+    if path.endswith(".py"):
+        return True
+    print(f"{path} is not a python file, skipping bundling")
+    return False
 
 
 @dataclass
@@ -1107,7 +1110,6 @@ def function(  # type: ignore
     *,
     host: Host | None = None,
     local_python_modules: list[str] | None = None,
-    bundle_paths: list[str | BundlePath] | None = None,
     **config: Any,
 ):
     if host is None:
@@ -1128,6 +1130,7 @@ def function(  # type: ignore
                 f"{repr(local_python_modules)}"
             )
 
+        bundle_paths = config.get("bundle_paths", None)
         if bundle_paths and not isinstance(bundle_paths, list):
             raise ValueError(
                 "bundle_paths must be a list of str or BundlePath paths to bundle, got "
@@ -1142,14 +1145,10 @@ def function(  # type: ignore
                 )
             include_module(module_name)
 
-        root = os.path.dirname(func.__code__.co_filename)
-        bundle = Bundle.from_paths(root, bundle_paths) if bundle_paths else None
-
         proxy = IsolatedFunction(
             host=host,  # type: ignore
             raw_func=func,  # type: ignore
             options=options,
-            bundle=bundle,
         )
         return wraps(func)(proxy)  # type: ignore
 
@@ -1455,7 +1454,6 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
     options: Options
     executor: ThreadPoolExecutor = field(default_factory=ThreadPoolExecutor)
     reraise: bool = True
-    bundle: Bundle | None = None
 
     def __getstate__(self) -> dict[str, Any]:
         # Ensure that the executor is not pickled.
@@ -1491,9 +1489,26 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
         )
 
     def __call__(self, *args: ArgsT.args, **kwargs: ArgsT.kwargs) -> ReturnT:
+        if file_path := getattr(self.func, "__file__", None):
+            root = os.path.dirname(file_path)
+        elif code := getattr(self.func, "__code__", None):
+            root = os.path.dirname(code.co_filename)
+        else:
+            module = inspect.getmodule(self.func)
+            file_path = getattr(module, "__file__", None)
+            if file_path is None:
+                raise ValueError(
+                    "Couldn't determine the root directory of the function. "
+                    "Please contact fal support."
+                )
+            root = os.path.dirname(file_path)
+
+        bundle_paths = self.options.environment.pop("bundle_paths", None)
+        bundle = Bundle.from_paths(root, bundle_paths) if bundle_paths else None
+
         try:
             return self.host.run(
-                BundleWrapper(self.func, self.bundle),
+                BundleWrapper(self.func, bundle),
                 self.options,
                 args=args,
                 kwargs=kwargs,
