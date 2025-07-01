@@ -1110,6 +1110,7 @@ def function(  # type: ignore
     *,
     host: Host | None = None,
     local_python_modules: list[str] | None = None,
+    bundle_paths: list[str | BundlePath] | None = None,
     **config: Any,
 ):
     if host is None:
@@ -1119,7 +1120,7 @@ def function(  # type: ignore
     if config.get("image"):
         kind = "container"
 
-    options = host.parse_options(kind=kind, **config)
+    options = host.parse_options(kind=kind, bundle_paths=bundle_paths, **config)
 
     def wrapper(func: Callable[ArgsT, ReturnT]):
         include_modules_from(func)
@@ -1130,7 +1131,6 @@ def function(  # type: ignore
                 f"{repr(local_python_modules)}"
             )
 
-        bundle_paths = config.get("bundle_paths", None)
         if bundle_paths and not isinstance(bundle_paths, list):
             raise ValueError(
                 "bundle_paths must be a list of str or BundlePath paths to bundle, got "
