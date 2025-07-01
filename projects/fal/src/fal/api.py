@@ -493,10 +493,10 @@ class FalServerlessHost(Host):
             metadata = {}
 
         # TODO: let the user send more metadata than just openapi
-        if isinstance(func, ServeWrapper):
+        if isinstance(func, BundleWrapper) and isinstance(func.func, ServeWrapper):
             # Assigning in a separate property leaving a place for the user
             # to add more metadata in the future
-            metadata["openapi"] = func.openapi()
+            metadata["openapi"] = func.func.openapi()
 
         for partial_result in self._connection.register(
             partial_func,
