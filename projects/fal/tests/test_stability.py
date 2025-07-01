@@ -771,9 +771,11 @@ def test_bundle_paths_limits(tmpdir, monkeypatch):
     with monkeypatch.context() as m:
         m.setattr(fal.api, "MAX_BUNDLE_TOTAL_SIZE", 1)
         with pytest.raises(ValueError, match="Bundle size is too big"):
-            load_function_from(host, file_path, func_name)
+            loaded = load_function_from(host, file_path, func_name)
+            loaded.function()
 
     with monkeypatch.context() as m:
         m.setattr(fal.api, "MAX_BUNDLE_FILE_SIZE", 1)
         with pytest.raises(ValueError, match=r"Bundle file .* is larger than"):
-            load_function_from(host, file_path, func_name)
+            loaded = load_function_from(host, file_path, func_name)
+            loaded.function()
