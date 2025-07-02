@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shutil
+import traceback
 from functools import wraps
 from pathlib import Path
 from tempfile import NamedTemporaryFile, mkdtemp
@@ -178,9 +179,15 @@ class File(BaseModel):
 
         try:
             url = repo.save(fdata, **save_kwargs)
-        except Exception:
+        except Exception as exc:
             if not fallback_repository:
                 raise
+
+            traceback.print_exc()
+            print(
+                f"Failed to save bytes to repository {repository}: {exc}, "
+                f"falling back to {fallback_repository}"
+            )
 
             fallback_repo = get_builtin_repository(fallback_repository)
 
@@ -237,9 +244,15 @@ class File(BaseModel):
                 content_type=content_type,
                 **save_kwargs,
             )
-        except Exception:
+        except Exception as exc:
             if not fallback_repository:
                 raise
+
+            traceback.print_exc()
+            print(
+                f"Failed to save file to repository {repository}: {exc}, "
+                f"falling back to {fallback_repository}"
+            )
 
             fallback_repo = get_builtin_repository(fallback_repository)
 
