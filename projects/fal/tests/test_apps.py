@@ -235,7 +235,7 @@ class ExceptionApp(fal.App, keep_alive=300, max_concurrency=1):
         raise RuntimeError("cuDNN error: CUDNN_STATUS_INTERNAL_ERROR")
 
 
-class CancellableApp(fal.App, keep_alive=300, max_concurrency=1, request_timeout=10):
+class CancellableApp(fal.App, keep_alive=300, max_concurrency=1, request_timeout=2):
     task = None
     running = 0
 
@@ -555,7 +555,7 @@ def test_app_disconnect_behavior(test_app: str, test_cancellable_app: str):
     with pytest.raises(HTTPStatusError) as e:
         apps.run(
             test_cancellable_app,
-            arguments={"lhs": 1, "rhs": 2, "wait_time": 20},
+            arguments={"lhs": 1, "rhs": 2, "wait_time": 6},
             path="/well-handled",
         )
     assert (
@@ -575,7 +575,7 @@ def test_app_disconnect_behavior(test_app: str, test_cancellable_app: str):
     with pytest.raises(HTTPStatusError) as e:
         apps.run(
             test_cancellable_app,
-            arguments={"lhs": 1, "rhs": 2, "wait_time": 20},
+            arguments={"lhs": 1, "rhs": 2, "wait_time": 6},
         )
     assert (
         e.value.response.status_code == 504
