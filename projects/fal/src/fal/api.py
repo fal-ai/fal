@@ -500,7 +500,7 @@ class FalServerlessHost(Host):
             partial_func,
             environments,
             application_name=application_name,
-            application_auth_mode=application_auth_mode,
+            auth_mode=application_auth_mode,
             machine_requirements=machine_requirements,
             metadata=metadata,
             deployment_strategy=deployment_strategy,

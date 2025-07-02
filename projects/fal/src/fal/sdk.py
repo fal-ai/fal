@@ -45,6 +45,9 @@ logger = get_logger(__name__)
 patch_pickle()
 
 
+AuthMode = Optional[Literal["public", "private", "shared"]]
+
+
 class ServerCredentials:
     def to_grpc(self) -> grpc.ChannelCredentials:
         raise NotImplementedError
@@ -565,7 +568,7 @@ class FalServerlessConnection:
         function: Callable[..., ResultT],
         environments: list[isolate_proto.EnvironmentDefinition],
         application_name: str | None = None,
-        application_auth_mode: Literal["public", "private", "shared"] | None = None,
+        auth_mode: AuthMode = None,
         *,
         serialization_method: str = _DEFAULT_SERIALIZATION_METHOD,
         machine_requirements: MachineRequirements | None = None,
@@ -598,13 +601,14 @@ class FalServerlessConnection:
         else:
             wrapped_requirements = None
 
-        auth_mode = None
-        if application_auth_mode == "public":
-            auth_mode = isolate_proto.ApplicationAuthMode.PUBLIC
-        elif application_auth_mode == "shared":
-            auth_mode = isolate_proto.ApplicationAuthMode.SHARED
-        elif application_auth_mode == "private":
-            auth_mode = isolate_proto.ApplicationAuthMode.PRIVATE
+        if auth_mode == "public":
+            auth = isolate_proto.ApplicationAuthMode.PUBLIC
+        elif auth_mode == "shared":
+            auth = isolate_proto.ApplicationAuthMode.SHARED
+        elif auth_mode == "private":
+            auth = isolate_proto.ApplicationAuthMode.PRIVATE
+        else:
+            auth = None
 
         struct_metadata = None
         if metadata:
@@ -620,7 +624,7 @@ class FalServerlessConnection:
             environments=environments,
             machine_requirements=wrapped_requirements,
             application_name=application_name,
-            auth_mode=auth_mode,
+            auth_mode=auth,
             metadata=struct_metadata,
             deployment_strategy=deployment_strategy_proto,
             scale=scale,
@@ -730,14 +734,16 @@ class FalServerlessConnection:
         self,
         alias: str,
         revision: str,
-        auth_mode: Literal["public", "private", "shared"],
+        auth_mode: AuthMode,
     ):
         if auth_mode == "public":
             auth = isolate_proto.ApplicationAuthMode.PUBLIC
         elif auth_mode == "shared":
             auth = isolate_proto.ApplicationAuthMode.SHARED
-        else:
+        elif auth_mode == "private":
             auth = isolate_proto.ApplicationAuthMode.PRIVATE
+        else:
+            auth = None
 
         request = isolate_proto.SetAliasRequest(
             alias=alias,
