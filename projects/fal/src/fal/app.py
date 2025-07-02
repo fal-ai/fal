@@ -125,7 +125,6 @@ def wrap_app(cls: type[App], **kwargs) -> IsolatedFunction:
         kind,
         requirements=cls.requirements,
         local_python_modules=cls.local_python_modules,
-        bundle_paths=cls.bundle_paths,
         machine_type=cls.machine_type,
         num_gpus=cls.num_gpus,
         **cls.host_kwargs,
@@ -349,6 +348,9 @@ class App(BaseServable):
             cls.host_kwargs["startup_timeout"] = cls.startup_timeout
 
         cls.app_name = getattr(cls, "app_name", app_name)
+
+        if cls.bundle_paths is not None:
+            cls.host_kwargs["bundle_paths"] = cls.bundle_paths
 
         if cls.__init__ is not App.__init__:
             raise ValueError(
