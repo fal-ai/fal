@@ -270,7 +270,7 @@ def _add_set_rev_parser(subparsers, parents):
     parser.add_argument(
         "--auth",
         choices=ALIAS_AUTH_MODES,
-        default="private",
+        default=None,
         help="Application authentication mode.",
     )
     parser.set_defaults(func=_set_rev)
