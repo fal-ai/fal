@@ -235,7 +235,7 @@ class ExceptionApp(fal.App, keep_alive=300, max_concurrency=1):
         raise RuntimeError("cuDNN error: CUDNN_STATUS_INTERNAL_ERROR")
 
 
-class CancellableApp(fal.App, keep_alive=300, max_concurrency=1, request_timeout=2):
+class CancellableApp(fal.App, keep_alive=300, max_concurrency=1, request_timeout=4):
     task = None
     running = 0
 
@@ -514,12 +514,12 @@ def test_stateful_app_client(test_stateful_app: str):
 
 def test_app_cancellation(test_app: str, test_cancellable_app: str):
     request_handle = apps.submit(
-        test_cancellable_app, arguments={"lhs": 1, "rhs": 2, "wait_time": 5}
+        test_cancellable_app, arguments={"lhs": 1, "rhs": 2, "wait_time": 6}
     )
 
     while True:
         status = request_handle.status()
-        time.sleep(0.5)
+        time.sleep(0.05)
         if isinstance(status, apps.InProgress):
             # The app is running
             break
@@ -534,12 +534,12 @@ def test_app_cancellation(test_app: str, test_cancellable_app: str):
 
     # normal app should just ignore the cancellation
     request_handle = apps.submit(
-        test_app, arguments={"lhs": 1, "rhs": 2, "wait_time": 5}
+        test_app, arguments={"lhs": 1, "rhs": 2, "wait_time": 6}
     )
 
     while True:
         status = request_handle.status()
-        time.sleep(0.5)
+        time.sleep(0.05)
         if isinstance(status, apps.InProgress):
             # The app is running
             break
