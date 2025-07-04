@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+import uuid
 from contextlib import suppress
 
 import pytest
@@ -80,6 +81,69 @@ def test_regular_function_in_a_container(isolated_client):
         return a * b
 
     assert mult(5, 2) == 10
+
+
+def test_container_no_venv(isolated_client):
+    actual_python = active_python()
+
+    @isolated_client(
+        "container",
+        image=ContainerImage.from_dockerfile_str(
+            f"""
+            FROM python:{actual_python}
+            # {uuid.uuid4()}
+            """
+        ),
+    )
+    def myfunc():
+        return 42
+
+    assert myfunc() == 42
+
+
+def test_container_venv(isolated_client):
+    actual_python = active_python()
+
+    @isolated_client(
+        "container",
+        image=ContainerImage.from_dockerfile_str(
+            f"""
+            FROM python:{actual_python}
+            # {uuid.uuid4()}
+            RUN python -m venv .venv
+            ENV PATH="/root/.venv/bin:$PATH"
+            """
+        ),
+    )
+    def myfunc():
+        return 42
+
+    assert myfunc() == 42
+
+
+def test_container_uv_venv(isolated_client):
+    actual_python = active_python()
+
+    @isolated_client(
+        "container",
+        image=ContainerImage.from_dockerfile_str(
+            f"""
+            FROM python:{actual_python}  # {uuid.uuid4()}
+
+            RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+            ENV PATH="/root/.local/bin:$PATH"
+
+            RUN uv python install {actual_python}
+
+            RUN uv venv /opt/uv-venv
+            ENV PATH="/opt/uv-venv/bin:$PATH"
+            """
+        ),
+    )
+    def myfunc():
+        return 42
+
+    assert myfunc() == 42
 
 
 def test_regular_function_in_a_container_with_custom_image(isolated_client):
