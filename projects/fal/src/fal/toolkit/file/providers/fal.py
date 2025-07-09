@@ -9,7 +9,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Generator, Generic, TypeVar
+from typing import Any, Dict, Generator, Generic, TypeVar
 from urllib.error import HTTPError
 from urllib.parse import urlparse, urlunparse
 from urllib.request import Request, urlopen
@@ -67,6 +67,19 @@ def _maybe_retry_request(
 
     with _urlopen_with_retry(request, **kwargs) as response:
         yield response
+
+
+def _object_lifecycle_headers(
+    headers: dict[str, str],
+    object_lifecycle_preference: dict[str, str] | None,
+):
+    if object_lifecycle_preference:
+        # Used by V3 CDN
+        headers["X-Fal-Object-Lifecycle"] = json.dumps(object_lifecycle_preference)
+        # Used by V1 CDN
+        headers["X-Fal-Object-Lifecycle-Preference"] = json.dumps(
+            object_lifecycle_preference
+        )
 
 
 @dataclass
@@ -451,14 +464,6 @@ class MultipartUploadGCS:
 
 @dataclass
 class FalFileRepository(FalFileRepositoryBase):
-    def _object_lifecycle_headers(
-        self,
-        headers: dict[str, str],
-        object_lifecycle_preference: dict[str, str] | None,
-    ):
-        if object_lifecycle_preference:
-            headers["X-Fal-Object-Lifecycle"] = json.dumps(object_lifecycle_preference)
-
     def save(
         self,
         file: FileData,
@@ -479,9 +484,8 @@ class FalFileRepository(FalFileRepositoryBase):
                 max_concurrency=multipart_max_concurrency,
             )
 
-        headers = {}
-        if object_lifecycle_preference:
-            headers["X-Fal-Object-Lifecycle"] = json.dumps(object_lifecycle_preference)
+        headers: Dict[str, str] = {}
+        _object_lifecycle_headers(headers, object_lifecycle_preference)
 
         return self._save(file, "gcs", headers=headers)
 
@@ -1124,6 +1128,8 @@ class FalFileRepositoryV2(FalFileRepositoryBase):
             "Content-Type": file.content_type,
         }
 
+        _object_lifecycle_headers(headers, object_lifecycle_preference)
+
         storage_url = f"{token.base_upload_url}/upload"
 
         try:
@@ -1195,16 +1201,6 @@ class InMemoryRepository(FileRepository):
 
 @dataclass
 class FalCDNFileRepository(FileRepository):
-    def _object_lifecycle_headers(
-        self,
-        headers: dict[str, str],
-        object_lifecycle_preference: dict[str, str] | None,
-    ):
-        if object_lifecycle_preference:
-            headers["X-Fal-Object-Lifecycle-Preference"] = json.dumps(
-                object_lifecycle_preference
-            )
-
     def save(
         self,
         file: FileData,
@@ -1221,7 +1217,7 @@ class FalCDNFileRepository(FileRepository):
             "X-Fal-File-Name": file.file_name,
         }
 
-        self._object_lifecycle_headers(headers, object_lifecycle_preference)
+        _object_lifecycle_headers(headers, object_lifecycle_preference)
 
         url = os.getenv("FAL_CDN_HOST", _FAL_CDN) + "/files/upload"
         request = Request(url, headers=headers, method="POST", data=file.data)
@@ -1288,6 +1284,7 @@ class FalFileRepositoryV3(FileRepository):
             "Accept": "application/json",
             "Content-Type": "application/json",
         }
+        _object_lifecycle_headers(headers, object_lifecycle_preference)
 
         grpc_host = os.environ.get("FAL_HOST", "api.alpha.fal.ai")
         rest_host = grpc_host.replace("api", "rest", 1)
@@ -1376,14 +1373,6 @@ class InternalFalFileRepositoryV3(FileRepository):
     That way it can avoid the need to refresh the token for every upload.
     """
 
-    def _object_lifecycle_headers(
-        self,
-        headers: dict[str, str],
-        object_lifecycle_preference: dict[str, str] | None,
-    ):
-        if object_lifecycle_preference:
-            headers["X-Fal-Object-Lifecycle"] = json.dumps(object_lifecycle_preference)
-
     def save(
         self,
         file: FileData,
@@ -1413,7 +1402,7 @@ class InternalFalFileRepositoryV3(FileRepository):
             "X-Fal-File-Name": file.file_name,
         }
 
-        self._object_lifecycle_headers(headers, object_lifecycle_preference)
+        _object_lifecycle_headers(headers, object_lifecycle_preference)
 
         url = os.getenv("FAL_CDN_V3_HOST", _FAL_CDN_V3) + "/files/upload"
         request = Request(url, headers=headers, method="POST", data=file.data)
