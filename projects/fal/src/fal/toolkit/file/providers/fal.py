@@ -45,6 +45,9 @@ def _should_retry(exc: Exception) -> bool:
     if isinstance(exc, HTTPError) and exc.code in RETRY_CODES:
         return True
 
+    if isinstance(exc, TimeoutError):
+        return True
+
     return False
 
 
