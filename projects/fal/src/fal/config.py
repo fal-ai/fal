@@ -4,8 +4,9 @@ import os
 from contextlib import contextmanager
 from typing import Dict, Iterator, List, Optional
 
-SETTINGS_SECTION = "__internal__"  # legacy
-DEFAULT_PROFILE = "default"
+SETTINGS_SECTION = "__internal__"
+
+NO_PROFILE_ERROR = ValueError("No profile set.")
 
 
 class Config:
@@ -15,7 +16,7 @@ class Config:
 
     DEFAULT_CONFIG_PATH = "~/.fal/config.toml"
 
-    def __init__(self):
+    def __init__(self, *, validate_profile: bool = False):
         import tomli
 
         self.config_path = os.path.expanduser(
@@ -28,11 +29,17 @@ class Config:
         except FileNotFoundError:
             self._config = {}
 
-        profile = (
-            os.getenv("FAL_PROFILE") or self.get_internal("profile") or DEFAULT_PROFILE
-        )
+        profile = os.getenv("FAL_PROFILE") or self.get_internal("profile")
 
-        self.profile = profile
+        # Try to set the profile, but don't fail if it doesn't exist
+        try:
+            self.profile = profile
+        except ValueError:
+            # Profile doesn't exist, set to None
+            self._profile = None
+
+        if validate_profile and not self.profile:
+            raise NO_PROFILE_ERROR
 
     @property
     def profile(self) -> Optional[str]:
@@ -41,9 +48,10 @@ class Config:
     @profile.setter
     def profile(self, value: Optional[str]) -> None:
         if value and value not in self._config:
-            # Make sure the section exists
-            self._config[value] = {}
-            self.set_internal("profile", value)
+            # Don't automatically create profiles - they should be created explicitly
+            raise ValueError(
+                f"Profile '{value}' does not exist. Create it first or use the profile set command."  # noqa: E501
+            )
         elif not value:
             self.unset_internal("profile")
 
@@ -53,11 +61,7 @@ class Config:
         keys: List[str] = []
         for key in self._config:
             if key != SETTINGS_SECTION:
-                if key == DEFAULT_PROFILE:
-                    # Add it at the beginning
-                    keys.insert(0, key)
-                else:
-                    keys.append(key)
+                keys.append(key)
 
         return keys
 
@@ -75,13 +79,13 @@ class Config:
 
     def set(self, key: str, value: str) -> None:
         if not self.profile:
-            raise ValueError("No profile set.")
+            raise NO_PROFILE_ERROR
 
         self._config[self.profile][key] = value
 
     def unset(self, key: str) -> None:
         if not self.profile:
-            raise ValueError("No profile set.")
+            raise NO_PROFILE_ERROR
 
         self._config.get(self.profile, {}).pop(key, None)
 
