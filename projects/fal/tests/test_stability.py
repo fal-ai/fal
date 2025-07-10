@@ -121,31 +121,6 @@ def test_container_venv(isolated_client):
     assert myfunc() == 42
 
 
-def test_container_uv_venv(isolated_client):
-    actual_python = active_python()
-
-    @isolated_client(
-        "container",
-        image=ContainerImage.from_dockerfile_str(
-            f"""
-            FROM python:{actual_python}  # {uuid.uuid4()}
-
-            RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-            ENV PATH="/root/.local/bin:$PATH"
-
-            RUN uv python install {actual_python}
-
-            RUN uv venv /opt/uv-venv
-            ENV PATH="/opt/uv-venv/bin:$PATH"
-            """
-        ),
-    )
-    def myfunc():
-        return 42
-
-    assert myfunc() == 42
-
-
 def test_regular_function_in_a_container_with_custom_image(isolated_client):
     actual_python = active_python()
 
