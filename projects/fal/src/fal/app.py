@@ -21,7 +21,6 @@ from fal._serialization import include_modules_from
 from fal.api import (
     SERVE_REQUIREMENTS,
     BaseServable,
-    BundlePath,
     IsolatedFunction,
     RouteSignature,
 )
@@ -320,7 +319,7 @@ def _print_python_packages() -> None:
 class App(BaseServable):
     requirements: ClassVar[list[str]] = []
     local_python_modules: ClassVar[list[str]] = []
-    bundle_paths: ClassVar[list[str | BundlePath]] = []
+    bundle_paths: ClassVar[list[str]] = []
     machine_type: ClassVar[str] = "S"
     num_gpus: ClassVar[int | None] = None
     host_kwargs: ClassVar[dict[str, Any]] = {

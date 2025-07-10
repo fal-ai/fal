@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import os
 import subprocess
-import uuid
 import textwrap
+import uuid
 from contextlib import suppress
 
 import pytest
