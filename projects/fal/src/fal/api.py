@@ -668,6 +668,8 @@ class Options:
 
 _SERVE_PORT = 8080
 
+DEFAULT_BUNDLE_PATHS_IGNORE = ["!*.py"]
+
 # Overload @function to help users identify the correct signature.
 # NOTE: This is both in sync with host options and with environment configs from
 # `isolate` package.
@@ -687,7 +689,8 @@ def function(
     exposed_port: int | None = None,
     max_concurrency: int | None = None,
     local_python_modules: list[str] | None = None,
-    bundle_paths: list[str | BundlePath] | None = None,
+    bundle_paths: list[str] | None = None,
+    bundle_paths_ignore: list[str] | None = DEFAULT_BUNDLE_PATHS_IGNORE,
 ) -> Callable[
     [Callable[Concatenate[ArgsT], ReturnT]], IsolatedFunction[ArgsT, ReturnT]
 ]: ...
@@ -705,7 +708,8 @@ def function(
     exposed_port: int | None = None,
     max_concurrency: int | None = None,
     local_python_modules: list[str] | None = None,
-    bundle_paths: list[str | BundlePath] | None = None,
+    bundle_paths: list[str] | None = None,
+    bundle_paths_ignore: list[str] | None = DEFAULT_BUNDLE_PATHS_IGNORE,
 ) -> Callable[
     [Callable[Concatenate[ArgsT], ReturnT]], ServedIsolatedFunction[ArgsT, ReturnT]
 ]: ...
@@ -724,7 +728,8 @@ def function(
     exposed_port: int | None = None,
     max_concurrency: int | None = None,
     local_python_modules: list[str] | None = None,
-    bundle_paths: list[str | BundlePath] | None = None,
+    bundle_paths: list[str] | None = None,
+    bundle_paths_ignore: list[str] | None = DEFAULT_BUNDLE_PATHS_IGNORE,
     # FalServerlessHost options
     metadata: dict[str, Any] | None = None,
     machine_type: str | list[str] = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
@@ -755,7 +760,8 @@ def function(
     exposed_port: int | None = None,
     max_concurrency: int | None = None,
     local_python_modules: list[str] | None = None,
-    bundle_paths: list[str | BundlePath] | None = None,
+    bundle_paths: list[str] | None = None,
+    bundle_paths_ignore: list[str] | None = DEFAULT_BUNDLE_PATHS_IGNORE,
     # FalServerlessHost options
     metadata: dict[str, Any] | None = None,
     machine_type: str | list[str] = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
@@ -793,7 +799,8 @@ def function(
     exposed_port: int | None = None,
     max_concurrency: int | None = None,
     local_python_modules: list[str] | None = None,
-    bundle_paths: list[str | BundlePath] | None = None,
+    bundle_paths: list[str] | None = None,
+    bundle_paths_ignore: list[str] | None = DEFAULT_BUNDLE_PATHS_IGNORE,
 ) -> Callable[
     [Callable[Concatenate[ArgsT], ReturnT]], IsolatedFunction[ArgsT, ReturnT]
 ]: ...
@@ -816,7 +823,8 @@ def function(
     exposed_port: int | None = None,
     max_concurrency: int | None = None,
     local_python_modules: list[str] | None = None,
-    bundle_paths: list[str | BundlePath] | None = None,
+    bundle_paths: list[str] | None = None,
+    bundle_paths_ignore: list[str] | None = DEFAULT_BUNDLE_PATHS_IGNORE,
 ) -> Callable[
     [Callable[Concatenate[ArgsT], ReturnT]], ServedIsolatedFunction[ArgsT, ReturnT]
 ]: ...
@@ -840,7 +848,8 @@ def function(
     exposed_port: int | None = None,
     max_concurrency: int | None = None,
     local_python_modules: list[str] | None = None,
-    bundle_paths: list[str | BundlePath] | None = None,
+    bundle_paths: list[str] | None = None,
+    bundle_paths_ignore: list[str] | None = DEFAULT_BUNDLE_PATHS_IGNORE,
     # FalServerlessHost options
     metadata: dict[str, Any] | None = None,
     machine_type: str | list[str] = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
@@ -876,7 +885,8 @@ def function(
     exposed_port: int | None = None,
     max_concurrency: int | None = None,
     local_python_modules: list[str] | None = None,
-    bundle_paths: list[str | BundlePath] | None = None,
+    bundle_paths: list[str] | None = None,
+    bundle_paths_ignore: list[str] | None = DEFAULT_BUNDLE_PATHS_IGNORE,
     # FalServerlessHost options
     metadata: dict[str, Any] | None = None,
     machine_type: str | list[str] = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
@@ -906,7 +916,8 @@ def function(
     exposed_port: int | None = None,
     max_concurrency: int | None = None,
     local_python_modules: list[str] | None = None,
-    bundle_paths: list[str | BundlePath] | None = None,
+    bundle_paths: list[str] | None = None,
+    bundle_paths_ignore: list[str] | None = DEFAULT_BUNDLE_PATHS_IGNORE,
     # FalServerlessHost options
     metadata: dict[str, Any] | None = None,
     machine_type: str | list[str] = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
@@ -936,7 +947,8 @@ def function(
     exposed_port: int | None = None,
     max_concurrency: int | None = None,
     local_python_modules: list[str] | None = None,
-    bundle_paths: list[str | BundlePath] | None = None,
+    bundle_paths: list[str] | None = None,
+    bundle_paths_ignore: list[str] | None = DEFAULT_BUNDLE_PATHS_IGNORE,
     # FalServerlessHost options
     metadata: dict[str, Any] | None = None,
     machine_type: str | list[str] = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
@@ -957,29 +969,6 @@ def function(
 
 MAX_BUNDLE_FILE_SIZE = 1024 * 1024  # 1MB
 MAX_BUNDLE_TOTAL_SIZE = 100 * 1024 * 1024  # 100MB
-
-
-def INCLUDE_PYTHON_FILES(path: str) -> bool:
-    if path.endswith(".py"):
-        return True
-    print(f"{path} is not a python file, skipping bundling")
-    return False
-
-
-@dataclass
-class BundlePath:
-    path: str
-    filter: Callable[[str], bool] = field(default=INCLUDE_PYTHON_FILES)
-
-    def __iter__(self) -> Iterator[str]:
-        if os.path.isdir(self.path):
-            for root, _dirs, files in os.walk(self.path):
-                for file in files:
-                    if self.filter(os.path.join(root, file)):
-                        yield os.path.join(root, file)
-        else:
-            if self.filter(self.path):
-                yield self.path
 
 
 @dataclass
@@ -1005,20 +994,19 @@ class Bundle:
         zipfile.write(path, arcname)
 
     @classmethod
-    def from_paths(cls, root: str, paths: list[str | BundlePath]) -> Bundle:
+    def from_paths(cls, root: str, paths: list[str], ignore: list[str]) -> Bundle:
+        import pathspec
+
         buffer = io.BytesIO()
+
+        spec = pathspec.PathSpec.from_lines("gitwildmatch", ignore)
 
         with ZipFile(buffer, "w") as zipfile:
             for path in paths:
-                if isinstance(path, BundlePath):
-                    bundle_path = path
-                    str_path = path.path
+                if not os.path.isabs(path):
+                    str_path = os.path.join(root, path)
                 else:
-                    bundle_path = BundlePath(path)
                     str_path = path
-
-                if not os.path.isabs(str_path):
-                    str_path = os.path.join(root, str_path)
 
                 norm_path = os.path.normpath(str_path)
                 if not norm_path.startswith(root):
@@ -1026,10 +1014,20 @@ class Bundle:
                         f"Bundle path {path} is outside the fal.App directory {root}"
                     )
 
-                bundle_path = BundlePath(norm_path, filter=bundle_path.filter)
-                for file in bundle_path:
-                    arcname = os.path.relpath(file, root)
-                    cls._add_file(zipfile, file, arcname)
+                if os.path.isdir(norm_path):
+                    # Use pathspec's match_tree to get all files that should be included
+                    # (not ignored by the spec)
+                    for file_path in spec.match_tree(norm_path, negate=True):
+                        # file_path is relative to norm_path, so we need to make
+                        # it absolute
+                        absolute_file_path = os.path.join(norm_path, file_path)
+                        arcname = os.path.relpath(absolute_file_path, root)
+                        cls._add_file(zipfile, absolute_file_path, arcname)
+                else:
+                    # Single file - check if it should be included
+                    arcname = os.path.relpath(norm_path, root)
+                    if not spec.match_file(arcname):
+                        cls._add_file(zipfile, norm_path, arcname)
 
         zipfile_bytes = buffer.getvalue()
         size = len(zipfile_bytes)
@@ -1052,7 +1050,8 @@ def function(  # type: ignore
     *,
     host: Host | None = None,
     local_python_modules: list[str] | None = None,
-    bundle_paths: list[str | BundlePath] | None = None,
+    bundle_paths: list[str] | None = None,
+    bundle_paths_ignore: list[str] | None = DEFAULT_BUNDLE_PATHS_IGNORE,
     **config: Any,
 ):
     if host is None:
@@ -1075,8 +1074,14 @@ def function(  # type: ignore
 
         if bundle_paths and not isinstance(bundle_paths, list):
             raise ValueError(
-                "bundle_paths must be a list of str or BundlePath paths to bundle, got "
+                "bundle_paths must be a list of str paths to bundle, got "
                 f"{repr(bundle_paths)}"
+            )
+
+        if bundle_paths_ignore and not isinstance(bundle_paths_ignore, list):
+            raise ValueError(
+                "bundle_paths_ignore must be a list of str paths to ignore, got "
+                f"{repr(bundle_paths_ignore)}"
             )
 
         for idx, module_name in enumerate(local_python_modules or []):
@@ -1092,6 +1097,7 @@ def function(  # type: ignore
             raw_func=func,  # type: ignore
             options=options,
             bundle_paths=bundle_paths,
+            bundle_paths_ignore=bundle_paths_ignore,
         )
         return wraps(func)(proxy)  # type: ignore
 
@@ -1395,7 +1401,8 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
     host: Host[ArgsT, ReturnT]
     raw_func: Callable[ArgsT, ReturnT]
     options: Options
-    bundle_paths: list[str | BundlePath] | None
+    bundle_paths: list[str] | None
+    bundle_paths_ignore: list[str] | None
     executor: ThreadPoolExecutor = field(default_factory=ThreadPoolExecutor)
     reraise: bool = True
 
@@ -1525,8 +1532,8 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
                 )
             root = os.path.dirname(file_path)
 
-        bundle = (
-            Bundle.from_paths(root, self.bundle_paths) if self.bundle_paths else None
+        bundle = Bundle.from_paths(
+            root, self.bundle_paths or [], self.bundle_paths_ignore or []
         )
 
         return BundleWrapper(func, bundle)
