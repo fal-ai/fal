@@ -56,6 +56,16 @@ class FalFileSystem(AbstractFileSystem):
             raise FalServerlessException(detail)
         return response
 
+    def _abspath(self, rpath):
+        if rpath.startswith("/"):
+            return rpath
+
+        cwd = "/data"
+        if rpath in [".", ""]:
+            return cwd
+
+        return posixpath.join(cwd, rpath)
+
     def _ls(self, path):
         response = self._request("GET", f"/files/list/{path}")
         files = response.json()
@@ -73,7 +83,7 @@ class FalFileSystem(AbstractFileSystem):
         )
 
     def ls(self, path, detail=True, **kwargs):
-        abs_path = "/" + path.lstrip("/")
+        abs_path = self._abspath(path)
         if abs_path in self.dircache:
             entries = self.dircache[abs_path]
         elif abs_path in ["/", "", "."]:
@@ -95,20 +105,29 @@ class FalFileSystem(AbstractFileSystem):
         return [entry["name"] for entry in entries]
 
     def info(self, path, **kwargs):
-        parent = posixpath.dirname(path)
+        abs_path = self._abspath(path)
+        if abs_path == "/":
+            return {
+                "name": "/",
+                "size": 0,
+                "type": "directory",
+                "mtime": 0,
+            }
+        parent = posixpath.dirname(abs_path)
         entries = self.ls(parent, detail=True)
         for entry in entries:
-            if entry["name"] == path:
+            if entry["name"] == abs_path:
                 return entry
-        raise FileNotFoundError(f"File not found: {path}")
+        raise FileNotFoundError(f"File not found: {abs_path}")
 
     def get_file(self, rpath, lpath, **kwargs):
-        if self.isdir(rpath):
+        abs_rpath = self._abspath(rpath)
+        if self.isdir(abs_rpath):
             os.makedirs(lpath, exist_ok=True)
             return
 
         with open(lpath, "wb") as fobj:
-            response = self._request("GET", f"/files/file/{rpath}")
+            response = self._request("GET", f"/files/file/{abs_rpath}")
             fobj.write(response.content)
 
     def _put_file_part(self, rpath, lpath, upload_id, part_number, chunk_size):
@@ -177,6 +196,8 @@ class FalFileSystem(AbstractFileSystem):
         if os.path.isdir(lpath):
             return
 
+        abs_rpath = self._abspath(rpath)
+
         size = os.path.getsize(lpath)
         with Progress(
             SpinnerColumn(),
@@ -185,29 +206,31 @@ class FalFileSystem(AbstractFileSystem):
             TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
         ) as progress:
             if size > MULTIPART_THRESHOLD:
-                self._put_file_multipart(lpath, rpath, size, progress)
+                self._put_file_multipart(lpath, abs_rpath, size, progress)
             else:
                 task = progress.add_task(f"{os.path.basename(lpath)}", total=1)
                 with open(lpath, "rb") as fobj:
                     self._request(
                         "POST",
-                        f"/files/file/local/{rpath}",
+                        f"/files/file/local/{abs_rpath}",
                         files={"file_upload": (posixpath.basename(lpath), fobj)},
                     )
                 progress.advance(task)
         self.dircache.clear()
 
     def put_file_from_url(self, url, rpath, mode="overwrite", **kwargs):
+        abs_rpath = self._abspath(rpath)
         self._request(
             "POST",
-            f"/files/file/url/{rpath}",
+            f"/files/file/url/{abs_rpath}",
             json={"url": url},
         )
         self.dircache.clear()
 
     def rm(self, path, **kwargs):
+        abs_path = self._abspath(path)
         self._request(
             "DELETE",
-            f"/files/file/{path}",
+            f"/files/file/{abs_path}",
         )
         self.dircache.clear()
