@@ -21,6 +21,7 @@ from fal._serialization import include_modules_from
 from fal.api import (
     SERVE_REQUIREMENTS,
     BaseServable,
+    BundlePath,
     IsolatedFunction,
     RouteSignature,
 )
@@ -97,12 +98,18 @@ async def _set_logger_labels(
         pass
 
 
+class InitializeAndServe:
+    def __init__(self, cls: type[App], file_path: str):
+        self.cls = cls
+        self.__file__ = file_path
+
+    def __call__(self):
+        app = self.cls()
+        app.serve()
+
+
 def wrap_app(cls: type[App], **kwargs) -> IsolatedFunction:
     include_modules_from(cls)
-
-    def initialize_and_serve():
-        app = cls()
-        app.serve()
 
     metadata = {}
     app = cls(_allow_init=True)
@@ -126,7 +133,19 @@ def wrap_app(cls: type[App], **kwargs) -> IsolatedFunction:
         exposed_port=8080,
         serve=False,
     )
-    fn = wrapper(initialize_and_serve)
+
+    file_path = getattr(cls, "__file__", None)
+    if file_path is None:
+        module = inspect.getmodule(cls)
+        file_path = getattr(module, "__file__", None)
+
+    if not file_path:
+        raise ValueError(
+            f"Couldn't determine the root directory of the {cls.__name__}. "
+            "Please contact fal support."
+        )
+
+    fn = wrapper(InitializeAndServe(cls, file_path))
     fn.options.add_requirements(SERVE_REQUIREMENTS)
     if realtime_app:
         fn.options.add_requirements(REALTIME_APP_REQUIREMENTS)
@@ -299,6 +318,7 @@ def _print_python_packages() -> None:
 class App(BaseServable):
     requirements: ClassVar[list[str]] = []
     local_python_modules: ClassVar[list[str]] = []
+    bundle_paths: ClassVar[list[str | BundlePath]] = []
     machine_type: ClassVar[str] = "S"
     num_gpus: ClassVar[int | None] = None
     host_kwargs: ClassVar[dict[str, Any]] = {
@@ -328,6 +348,9 @@ class App(BaseServable):
             cls.host_kwargs["startup_timeout"] = cls.startup_timeout
 
         cls.app_name = getattr(cls, "app_name", app_name)
+
+        if cls.bundle_paths is not None:
+            cls.host_kwargs["bundle_paths"] = cls.bundle_paths
 
         if cls.__init__ is not App.__init__:
             raise ValueError(

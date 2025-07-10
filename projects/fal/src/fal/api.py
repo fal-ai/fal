@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import io
 import os
 import sys
 import threading
@@ -25,6 +26,7 @@ from typing import (
     cast,
     overload,
 )
+from zipfile import ZipFile
 
 import cloudpickle
 import grpc
@@ -491,10 +493,10 @@ class FalServerlessHost(Host):
             metadata = {}
 
         # TODO: let the user send more metadata than just openapi
-        if isinstance(func, ServeWrapper):
+        if isinstance(func, BundleWrapper) and isinstance(func.func, ServeWrapper):
             # Assigning in a separate property leaving a place for the user
             # to add more metadata in the future
-            metadata["openapi"] = func.openapi()
+            metadata["openapi"] = func.func.openapi()
 
         for partial_result in self._connection.register(
             partial_func,
@@ -673,7 +675,7 @@ _SERVE_PORT = 8080
 
 ## virtualenv
 ### LocalHost
-@overload
+@overload  # type: ignore
 def function(
     kind: Literal["virtualenv"] = "virtualenv",
     *,
@@ -685,6 +687,7 @@ def function(
     exposed_port: int | None = None,
     max_concurrency: int | None = None,
     local_python_modules: list[str] | None = None,
+    bundle_paths: list[str | BundlePath] | None = None,
 ) -> Callable[
     [Callable[Concatenate[ArgsT], ReturnT]], IsolatedFunction[ArgsT, ReturnT]
 ]: ...
@@ -702,6 +705,7 @@ def function(
     exposed_port: int | None = None,
     max_concurrency: int | None = None,
     local_python_modules: list[str] | None = None,
+    bundle_paths: list[str | BundlePath] | None = None,
 ) -> Callable[
     [Callable[Concatenate[ArgsT], ReturnT]], ServedIsolatedFunction[ArgsT, ReturnT]
 ]: ...
@@ -720,6 +724,7 @@ def function(
     exposed_port: int | None = None,
     max_concurrency: int | None = None,
     local_python_modules: list[str] | None = None,
+    bundle_paths: list[str | BundlePath] | None = None,
     # FalServerlessHost options
     metadata: dict[str, Any] | None = None,
     machine_type: str | list[str] = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
@@ -750,6 +755,7 @@ def function(
     exposed_port: int | None = None,
     max_concurrency: int | None = None,
     local_python_modules: list[str] | None = None,
+    bundle_paths: list[str | BundlePath] | None = None,
     # FalServerlessHost options
     metadata: dict[str, Any] | None = None,
     machine_type: str | list[str] = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
@@ -787,6 +793,7 @@ def function(
     exposed_port: int | None = None,
     max_concurrency: int | None = None,
     local_python_modules: list[str] | None = None,
+    bundle_paths: list[str | BundlePath] | None = None,
 ) -> Callable[
     [Callable[Concatenate[ArgsT], ReturnT]], IsolatedFunction[ArgsT, ReturnT]
 ]: ...
@@ -809,6 +816,7 @@ def function(
     exposed_port: int | None = None,
     max_concurrency: int | None = None,
     local_python_modules: list[str] | None = None,
+    bundle_paths: list[str | BundlePath] | None = None,
 ) -> Callable[
     [Callable[Concatenate[ArgsT], ReturnT]], ServedIsolatedFunction[ArgsT, ReturnT]
 ]: ...
@@ -832,6 +840,7 @@ def function(
     exposed_port: int | None = None,
     max_concurrency: int | None = None,
     local_python_modules: list[str] | None = None,
+    bundle_paths: list[str | BundlePath] | None = None,
     # FalServerlessHost options
     metadata: dict[str, Any] | None = None,
     machine_type: str | list[str] = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
@@ -867,6 +876,7 @@ def function(
     exposed_port: int | None = None,
     max_concurrency: int | None = None,
     local_python_modules: list[str] | None = None,
+    bundle_paths: list[str | BundlePath] | None = None,
     # FalServerlessHost options
     metadata: dict[str, Any] | None = None,
     machine_type: str | list[str] = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
@@ -896,6 +906,7 @@ def function(
     exposed_port: int | None = None,
     max_concurrency: int | None = None,
     local_python_modules: list[str] | None = None,
+    bundle_paths: list[str | BundlePath] | None = None,
     # FalServerlessHost options
     metadata: dict[str, Any] | None = None,
     machine_type: str | list[str] = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
@@ -925,6 +936,7 @@ def function(
     exposed_port: int | None = None,
     max_concurrency: int | None = None,
     local_python_modules: list[str] | None = None,
+    bundle_paths: list[str | BundlePath] | None = None,
     # FalServerlessHost options
     metadata: dict[str, Any] | None = None,
     machine_type: str | list[str] = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
@@ -943,12 +955,104 @@ def function(
 ]: ...
 
 
+MAX_BUNDLE_FILE_SIZE = 1024 * 1024  # 1MB
+MAX_BUNDLE_TOTAL_SIZE = 100 * 1024 * 1024  # 100MB
+
+
+def INCLUDE_PYTHON_FILES(path: str) -> bool:
+    if path.endswith(".py"):
+        return True
+    print(f"{path} is not a python file, skipping bundling")
+    return False
+
+
+@dataclass
+class BundlePath:
+    path: str
+    filter: Callable[[str], bool] = field(default=INCLUDE_PYTHON_FILES)
+
+    def __iter__(self) -> Iterator[str]:
+        if os.path.isdir(self.path):
+            for root, _dirs, files in os.walk(self.path):
+                for file in files:
+                    if self.filter(os.path.join(root, file)):
+                        yield os.path.join(root, file)
+        else:
+            if self.filter(self.path):
+                yield self.path
+
+
+@dataclass
+class Bundle:
+    zipfile_bytes: bytes
+    _zipfile: ZipFile | None = None
+
+    def __getstate__(self) -> dict[str, Any]:
+        return {
+            "zipfile_bytes": self.zipfile_bytes,
+        }
+
+    def __setstate__(self, state: dict[str, Any]):
+        self.zipfile_bytes = state["zipfile_bytes"]
+
+    @classmethod
+    def _add_file(cls, zipfile: ZipFile, path: str, arcname: str):
+        size = os.path.getsize(path)
+        if size > MAX_BUNDLE_FILE_SIZE:
+            raise ValueError(
+                f"Bundle file {arcname} is larger than {MAX_BUNDLE_FILE_SIZE} bytes"
+            )
+        zipfile.write(path, arcname)
+
+    @classmethod
+    def from_paths(cls, root: str, paths: list[str | BundlePath]) -> Bundle:
+        buffer = io.BytesIO()
+
+        with ZipFile(buffer, "w") as zipfile:
+            for path in paths:
+                if isinstance(path, BundlePath):
+                    bundle_path = path
+                    str_path = path.path
+                else:
+                    bundle_path = BundlePath(path)
+                    str_path = path
+
+                if not os.path.isabs(str_path):
+                    str_path = os.path.join(root, str_path)
+
+                norm_path = os.path.normpath(str_path)
+                if not norm_path.startswith(root):
+                    raise ValueError(
+                        f"Bundle path {path} is outside the fal.App directory {root}"
+                    )
+
+                bundle_path = BundlePath(norm_path, filter=bundle_path.filter)
+                for file in bundle_path:
+                    arcname = os.path.relpath(file, root)
+                    cls._add_file(zipfile, file, arcname)
+
+        zipfile_bytes = buffer.getvalue()
+        size = len(zipfile_bytes)
+        if size > MAX_BUNDLE_TOTAL_SIZE:
+            raise ValueError(
+                f"Bundle size is too big ({size} > {MAX_BUNDLE_TOTAL_SIZE})"
+            )
+
+        return cls(zipfile_bytes)
+
+    def unpack(self, path: str):
+        buffer = io.BytesIO(self.zipfile_bytes)
+        with ZipFile(buffer, "r") as zipfile:
+            zipfile.extractall(path)
+
+
 # implementation
 def function(  # type: ignore
     kind: str = "virtualenv",
     *,
     host: Host | None = None,
     local_python_modules: list[str] | None = None,
+    bundle_paths: list[str | BundlePath] | None = None,
     **config: Any,
 ):
     if host is None:
@@ -964,6 +1068,12 @@ def function(  # type: ignore
                 f"{repr(local_python_modules)}"
             )
 
+        if bundle_paths and not isinstance(bundle_paths, list):
+            raise ValueError(
+                "bundle_paths must be a list of str or BundlePath paths to bundle, got "
+                f"{repr(bundle_paths)}"
+            )
+
         for idx, module_name in enumerate(local_python_modules or []):
             if not isinstance(module_name, str):
                 raise ValueError(
@@ -976,6 +1086,7 @@ def function(  # type: ignore
             host=host,  # type: ignore
             raw_func=func,  # type: ignore
             options=options,
+            bundle_paths=bundle_paths,
         )
         return wraps(func)(proxy)  # type: ignore
 
@@ -1259,11 +1370,27 @@ class ServeWrapper(BaseServable):
         self.serve()
 
 
+class BundleWrapper:
+    func: Callable
+    bundle: Bundle | None
+
+    def __init__(self, func: Callable, bundle: Bundle | None):
+        self.func = func
+        self.bundle = bundle
+
+    def __call__(self, *args, **kwargs) -> Any:
+        if self.bundle is not None:
+            self.bundle.unpack(os.getcwd())
+            sys.path.insert(0, os.getcwd())
+        return self.func(*args, **kwargs)
+
+
 @dataclass
 class IsolatedFunction(Generic[ArgsT, ReturnT]):
     host: Host[ArgsT, ReturnT]
     raw_func: Callable[ArgsT, ReturnT]
     options: Options
+    bundle_paths: list[str | BundlePath] | None
     executor: ThreadPoolExecutor = field(default_factory=ThreadPoolExecutor)
     reraise: bool = True
 
@@ -1373,13 +1500,31 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
     @property
     def func(self) -> Callable[ArgsT, ReturnT]:
         serve_mode = self.options.gateway.get("serve")
+        func = self.raw_func
         if serve_mode:
             # This type can be safely ignored because this case only happens when it
             # is a ServedIsolatedFunction
-            serve_func: Callable[[], None] = ServeWrapper(self.raw_func)
-            return serve_func  # type: ignore
+            func = ServeWrapper(self.raw_func)  # type: ignore
+
+        if file_path := getattr(self.raw_func, "__file__", None):
+            root = os.path.dirname(file_path)
+        elif code := getattr(self.raw_func, "__code__", None):
+            root = os.path.dirname(code.co_filename)
         else:
-            return self.raw_func
+            module = inspect.getmodule(self.raw_func)
+            file_path = getattr(module, "__file__", None)
+            if file_path is None:
+                raise ValueError(
+                    "Couldn't determine the root directory of the function. "
+                    "Please contact fal support."
+                )
+            root = os.path.dirname(file_path)
+
+        bundle = (
+            Bundle.from_paths(root, self.bundle_paths) if self.bundle_paths else None
+        )
+
+        return BundleWrapper(func, bundle)
 
 
 if sys.version_info <= (3, 10):
