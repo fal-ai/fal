@@ -266,6 +266,7 @@ message SetAliasRequest {
 
 message SetAliasResult {
     // Empty. For future use.
+    AliasInfo alias_info = 1;
 }
 
 message DeleteAliasRequest {
