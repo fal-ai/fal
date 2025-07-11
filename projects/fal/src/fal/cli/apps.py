@@ -246,7 +246,10 @@ def _add_scale_parser(subparsers, parents):
 def _set_rev(args):
     client = get_client(args.host, args.team)
     with client.connect() as connection:
-        connection.create_alias(args.app_name, args.app_rev, args.auth)
+        alias_info = connection.create_alias(args.app_name, args.app_rev, args.auth)
+        table = _apps_table([alias_info])
+
+    args.console.print(table)
 
 
 def _add_set_rev_parser(subparsers, parents):
