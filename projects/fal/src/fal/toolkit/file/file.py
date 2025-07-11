@@ -73,6 +73,42 @@ def FileField(*args, **kwargs):
     return Field(*args, **kwargs)
 
 
+def _try_with_fallback(
+    func: str,
+    args: list[Any],
+    repository: FileRepository | RepositoryId,
+    fallback_repository: Optional[
+        FileRepository | RepositoryId | list[FileRepository | RepositoryId]
+    ],
+    save_kwargs: dict,
+    fallback_save_kwargs: dict,
+) -> Any:
+    if fallback_repository is None:
+        fallback_repositories = []
+    elif isinstance(fallback_repository, list):
+        fallback_repositories = fallback_repository
+    else:
+        fallback_repositories = [fallback_repository]
+
+    attempts = [
+        (repository, save_kwargs),
+        *((fallback, fallback_save_kwargs) for fallback in fallback_repositories),
+    ]
+    for idx, (repo, kwargs) in enumerate(attempts):
+        repo_obj = get_builtin_repository(repo)
+        try:
+            return getattr(repo_obj, func)(*args, **kwargs)
+        except Exception as exc:
+            if idx >= len(attempts) - 1:
+                raise
+
+            traceback.print_exc()
+            print(
+                f"Failed to {func} to repository {repo}: {exc}, "
+                f"falling back to {attempts[idx + 1][0]}"
+            )
+
+
 class File(BaseModel):
     # public properties
     url: str = Field(
@@ -154,14 +190,12 @@ class File(BaseModel):
         file_name: Optional[str] = None,
         repository: FileRepository | RepositoryId = DEFAULT_REPOSITORY,
         fallback_repository: Optional[
-            FileRepository | RepositoryId
+            FileRepository | RepositoryId | list[FileRepository | RepositoryId]
         ] = FALLBACK_REPOSITORY,
         request: Optional[Request] = None,
         save_kwargs: Optional[dict] = None,
         fallback_save_kwargs: Optional[dict] = None,
     ) -> File:
-        repo = get_builtin_repository(repository)
-
         save_kwargs = save_kwargs or {}
         fallback_save_kwargs = fallback_save_kwargs or {}
 
@@ -177,21 +211,14 @@ class File(BaseModel):
             "object_lifecycle_preference", object_lifecycle_preference
         )
 
-        try:
-            url = repo.save(fdata, **save_kwargs)
-        except Exception as exc:
-            if not fallback_repository:
-                raise
-
-            traceback.print_exc()
-            print(
-                f"Failed to save bytes to repository {repository}: {exc}, "
-                f"falling back to {fallback_repository}"
-            )
-
-            fallback_repo = get_builtin_repository(fallback_repository)
-
-            url = fallback_repo.save(fdata, **fallback_save_kwargs)
+        url = _try_with_fallback(
+            "save",
+            [fdata],
+            repository=repository,
+            fallback_repository=fallback_repository,
+            save_kwargs=save_kwargs,
+            fallback_save_kwargs=fallback_save_kwargs,
+        )
 
         return cls(
             url=url,
@@ -209,7 +236,7 @@ class File(BaseModel):
         repository: FileRepository | RepositoryId = DEFAULT_REPOSITORY,
         multipart: bool | None = None,
         fallback_repository: Optional[
-            FileRepository | RepositoryId
+            FileRepository | RepositoryId | list[FileRepository | RepositoryId]
         ] = FALLBACK_REPOSITORY,
         request: Optional[Request] = None,
         save_kwargs: Optional[dict] = None,
@@ -218,8 +245,6 @@ class File(BaseModel):
         file_path = Path(path)
         if not file_path.exists():
             raise FileNotFoundError(f"File {file_path} does not exist")
-
-        repo = get_builtin_repository(repository)
 
         save_kwargs = save_kwargs or {}
         fallback_save_kwargs = fallback_save_kwargs or {}
@@ -238,29 +263,17 @@ class File(BaseModel):
         save_kwargs.setdefault("multipart", multipart)
         fallback_save_kwargs.setdefault("multipart", multipart)
 
-        try:
-            url, data = repo.save_file(
-                file_path,
-                content_type=content_type,
-                **save_kwargs,
-            )
-        except Exception as exc:
-            if not fallback_repository:
-                raise
+        save_kwargs.setdefault("content_type", content_type)
+        fallback_save_kwargs.setdefault("content_type", content_type)
 
-            traceback.print_exc()
-            print(
-                f"Failed to save file to repository {repository}: {exc}, "
-                f"falling back to {fallback_repository}"
-            )
-
-            fallback_repo = get_builtin_repository(fallback_repository)
-
-            url, data = fallback_repo.save_file(
-                file_path,
-                content_type=content_type,
-                **fallback_save_kwargs,
-            )
+        url, data = _try_with_fallback(
+            "save_file",
+            [file_path],
+            repository=repository,
+            fallback_repository=fallback_repository,
+            save_kwargs=save_kwargs,
+            fallback_save_kwargs=fallback_save_kwargs,
+        )
 
         return cls(
             url=url,
