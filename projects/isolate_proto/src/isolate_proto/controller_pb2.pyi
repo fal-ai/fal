@@ -769,13 +769,19 @@ global___SetAliasRequest = SetAliasRequest
 
 @typing_extensions.final
 class SetAliasResult(google.protobuf.message.Message):
-    """Empty. For future use."""
-
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
+    ALIAS_INFO_FIELD_NUMBER: builtins.int
+    @property
+    def alias_info(self) -> global___AliasInfo:
+        """Empty. For future use."""
     def __init__(
         self,
+        *,
+        alias_info: global___AliasInfo | None = ...,
     ) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["alias_info", b"alias_info"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["alias_info", b"alias_info"]) -> None: ...
 
 global___SetAliasResult = SetAliasResult
 
