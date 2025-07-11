@@ -735,7 +735,7 @@ class FalServerlessConnection:
         alias: str,
         revision: str,
         auth_mode: AuthMode,
-    ):
+    ) -> AliasInfo:
         if auth_mode == "public":
             auth = isolate_proto.ApplicationAuthMode.PUBLIC
         elif auth_mode == "shared":
@@ -750,7 +750,8 @@ class FalServerlessConnection:
             revision=revision,
             auth_mode=auth,
         )
-        self.stub.SetAlias(request)
+        res = self.stub.SetAlias(request)
+        return from_grpc(res.alias_info)
 
     def delete_alias(self, alias: str) -> str | None:
         request = isolate_proto.DeleteAliasRequest(alias=alias)
