@@ -104,7 +104,7 @@ class Image(File):
         file_name: str | None = None,
         repository: FileRepository | RepositoryId = DEFAULT_REPOSITORY,
         fallback_repository: Optional[
-            FileRepository | RepositoryId
+            FileRepository | RepositoryId | list[FileRepository | RepositoryId]
         ] = FALLBACK_REPOSITORY,
         request: Optional[Request] = None,
     ) -> Image:
@@ -128,7 +128,7 @@ class Image(File):
         file_name: str | None = None,
         repository: FileRepository | RepositoryId = DEFAULT_REPOSITORY,
         fallback_repository: Optional[
-            FileRepository | RepositoryId
+            FileRepository | RepositoryId | list[FileRepository | RepositoryId]
         ] = FALLBACK_REPOSITORY,
         request: Optional[Request] = None,
     ) -> Image:
