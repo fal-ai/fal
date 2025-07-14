@@ -691,6 +691,7 @@ def function(
     local_python_modules: list[str] | None = None,
     bundle_paths: list[str] | None = None,
     bundle_paths_ignore: list[str] | None = DEFAULT_BUNDLE_PATHS_IGNORE,
+    context_dir: str | None = None,
 ) -> Callable[
     [Callable[Concatenate[ArgsT], ReturnT]], IsolatedFunction[ArgsT, ReturnT]
 ]: ...
@@ -710,6 +711,7 @@ def function(
     local_python_modules: list[str] | None = None,
     bundle_paths: list[str] | None = None,
     bundle_paths_ignore: list[str] | None = DEFAULT_BUNDLE_PATHS_IGNORE,
+    context_dir: str | None = None,
 ) -> Callable[
     [Callable[Concatenate[ArgsT], ReturnT]], ServedIsolatedFunction[ArgsT, ReturnT]
 ]: ...
@@ -730,6 +732,7 @@ def function(
     local_python_modules: list[str] | None = None,
     bundle_paths: list[str] | None = None,
     bundle_paths_ignore: list[str] | None = DEFAULT_BUNDLE_PATHS_IGNORE,
+    context_dir: str | None = None,
     # FalServerlessHost options
     metadata: dict[str, Any] | None = None,
     machine_type: str | list[str] = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
@@ -762,6 +765,7 @@ def function(
     local_python_modules: list[str] | None = None,
     bundle_paths: list[str] | None = None,
     bundle_paths_ignore: list[str] | None = DEFAULT_BUNDLE_PATHS_IGNORE,
+    context_dir: str | None = None,
     # FalServerlessHost options
     metadata: dict[str, Any] | None = None,
     machine_type: str | list[str] = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
@@ -801,6 +805,7 @@ def function(
     local_python_modules: list[str] | None = None,
     bundle_paths: list[str] | None = None,
     bundle_paths_ignore: list[str] | None = DEFAULT_BUNDLE_PATHS_IGNORE,
+    context_dir: str | None = None,
 ) -> Callable[
     [Callable[Concatenate[ArgsT], ReturnT]], IsolatedFunction[ArgsT, ReturnT]
 ]: ...
@@ -825,6 +830,7 @@ def function(
     local_python_modules: list[str] | None = None,
     bundle_paths: list[str] | None = None,
     bundle_paths_ignore: list[str] | None = DEFAULT_BUNDLE_PATHS_IGNORE,
+    context_dir: str | None = None,
 ) -> Callable[
     [Callable[Concatenate[ArgsT], ReturnT]], ServedIsolatedFunction[ArgsT, ReturnT]
 ]: ...
@@ -850,6 +856,7 @@ def function(
     local_python_modules: list[str] | None = None,
     bundle_paths: list[str] | None = None,
     bundle_paths_ignore: list[str] | None = DEFAULT_BUNDLE_PATHS_IGNORE,
+    context_dir: str | None = None,
     # FalServerlessHost options
     metadata: dict[str, Any] | None = None,
     machine_type: str | list[str] = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
@@ -887,6 +894,7 @@ def function(
     local_python_modules: list[str] | None = None,
     bundle_paths: list[str] | None = None,
     bundle_paths_ignore: list[str] | None = DEFAULT_BUNDLE_PATHS_IGNORE,
+    context_dir: str | None = None,
     # FalServerlessHost options
     metadata: dict[str, Any] | None = None,
     machine_type: str | list[str] = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
@@ -918,6 +926,7 @@ def function(
     local_python_modules: list[str] | None = None,
     bundle_paths: list[str] | None = None,
     bundle_paths_ignore: list[str] | None = DEFAULT_BUNDLE_PATHS_IGNORE,
+    context_dir: str | None = None,
     # FalServerlessHost options
     metadata: dict[str, Any] | None = None,
     machine_type: str | list[str] = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
@@ -949,6 +958,7 @@ def function(
     local_python_modules: list[str] | None = None,
     bundle_paths: list[str] | None = None,
     bundle_paths_ignore: list[str] | None = DEFAULT_BUNDLE_PATHS_IGNORE,
+    context_dir: str | None = None,
     # FalServerlessHost options
     metadata: dict[str, Any] | None = None,
     machine_type: str | list[str] = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
@@ -1052,6 +1062,7 @@ def function(  # type: ignore
     local_python_modules: list[str] | None = None,
     bundle_paths: list[str] | None = None,
     bundle_paths_ignore: list[str] | None = DEFAULT_BUNDLE_PATHS_IGNORE,
+    context_dir: str | None = None,
     **config: Any,
 ):
     if host is None:
@@ -1084,6 +1095,11 @@ def function(  # type: ignore
                 f"{repr(bundle_paths_ignore)}"
             )
 
+        if context_dir is not None and not isinstance(context_dir, str):
+            raise ValueError(
+                "context_dir must be a string path, got " f"{repr(context_dir)}"
+            )
+
         for idx, module_name in enumerate(local_python_modules or []):
             if not isinstance(module_name, str):
                 raise ValueError(
@@ -1098,6 +1114,7 @@ def function(  # type: ignore
             options=options,
             bundle_paths=bundle_paths,
             bundle_paths_ignore=bundle_paths_ignore,
+            context_dir=context_dir,
         )
         return wraps(func)(proxy)  # type: ignore
 
@@ -1403,6 +1420,7 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
     options: Options
     bundle_paths: list[str] | None
     bundle_paths_ignore: list[str] | None
+    context_dir: str | None
     executor: ThreadPoolExecutor = field(default_factory=ThreadPoolExecutor)
     reraise: bool = True
 
@@ -1518,7 +1536,9 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
             # is a ServedIsolatedFunction
             func = ServeWrapper(self.raw_func)  # type: ignore
 
-        if file_path := getattr(self.raw_func, "__file__", None):
+        if self.context_dir is not None:
+            root = self.context_dir
+        elif file_path := getattr(self.raw_func, "__file__", None):
             root = os.path.dirname(file_path)
         elif code := getattr(self.raw_func, "__code__", None):
             root = os.path.dirname(code.co_filename)
