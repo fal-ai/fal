@@ -347,7 +347,7 @@ def _stream_url_data_to_file(
 
 
 def _mark_used_dir(dir: Path):
-    used_file = dir / ".used"
+    used_file = dir / ".fal_used"
     day_ago = time.time() - 86400
     if not used_file.exists() or used_file.stat().st_mtime < day_ago:
         # Touch a last-used file to indicate that the weights have been used
@@ -389,7 +389,12 @@ def download_model_weights(
             # .fal/model_weights/00155dc2d9579360d577d1a87d31b52c21135c14a5f44fcbab36fbb8352f3e0d  # noqa: E501
             # We need to either not allow multiple files in the directory or
             # find the one that is the most recently used.
-            weights_path = next(weights_dir.glob("*"))
+            weights_path = next(
+                # Ignore .fal dotfiles since they are metadata files
+                f
+                for f in weights_dir.glob("*")
+                if not f.name.startswith(".fal")
+            )
             _mark_used_dir(weights_dir)
             return weights_path
         # The model weights directory is empty, so we need to download the weights
