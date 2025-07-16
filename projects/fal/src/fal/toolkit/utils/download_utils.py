@@ -6,6 +6,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from contextlib import suppress
 from pathlib import Path, PurePath
 from tempfile import NamedTemporaryFile, TemporaryDirectory
@@ -381,12 +382,20 @@ def download_model_weights(
         except StopIteration:
             pass
 
-    return download_file(
+    path = download_file(
         url,
         target_dir=weights_dir,
         force=force,
         request_headers=request_headers,
     )
+
+    used_file = path.parent / ".used"
+    day_ago = time.time() - 86400
+    if not used_file.exists() or used_file.stat().st_mtime < day_ago:
+        # Touch a last-used file to indicate that the weights have been used
+        used_file.touch()
+
+    return path
 
 
 def clone_repository(
