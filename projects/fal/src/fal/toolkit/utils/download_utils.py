@@ -346,6 +346,14 @@ def _stream_url_data_to_file(
         raise DownloadError("Received less data than expected from the server.")
 
 
+def _mark_used_dir(dir: Path):
+    used_file = dir / ".used"
+    day_ago = time.time() - 86400
+    if not used_file.exists() or used_file.stat().st_mtime < day_ago:
+        # Touch a last-used file to indicate that the weights have been used
+        used_file.touch()
+
+
 def download_model_weights(
     url: str, force: bool = False, request_headers: dict[str, str] | None = None
 ) -> Path:
@@ -376,7 +384,13 @@ def download_model_weights(
 
     if weights_dir.exists() and not force:
         try:
+            # TODO: sometimes the directory can hold multiple files
+            # Example:
+            # .fal/model_weights/00155dc2d9579360d577d1a87d31b52c21135c14a5f44fcbab36fbb8352f3e0d  # noqa: E501
+            # We need to either not allow multiple files in the directory or
+            # find the one that is the most recently used.
             weights_path = next(weights_dir.glob("*"))
+            _mark_used_dir(weights_dir)
             return weights_path
         # The model weights directory is empty, so we need to download the weights
         except StopIteration:
@@ -389,11 +403,7 @@ def download_model_weights(
         request_headers=request_headers,
     )
 
-    used_file = path.parent / ".used"
-    day_ago = time.time() - 86400
-    if not used_file.exists() or used_file.stat().st_mtime < day_ago:
-        # Touch a last-used file to indicate that the weights have been used
-        used_file.touch()
+    _mark_used_dir(weights_dir)
 
     return path
 
