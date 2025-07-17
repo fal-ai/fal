@@ -1608,6 +1608,8 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
                 )
             root = os.path.dirname(file_path)
 
+        assert os.path.isabs(root)
+
         if self.context_dir is not None and os.path.isabs(self.context_dir):
             context_dir = self.context_dir
         else:

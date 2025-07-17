@@ -111,6 +111,19 @@ class InitializeAndServe:
 def wrap_app(cls: type[App], **kwargs) -> IsolatedFunction:
     include_modules_from(cls)
 
+    file_path = getattr(cls, "__file__", None)
+    if file_path is None:
+        module = inspect.getmodule(cls)
+        file_path = getattr(module, "__file__", None)
+
+    if not file_path:
+        raise ValueError(
+            f"Couldn't determine the root directory of the {cls.__name__}. "
+            "Please contact fal support."
+        )
+
+    initialize_and_serve = InitializeAndServe(cls, file_path)
+
     metadata = {}
     app = cls(_allow_init=True)
 
@@ -135,18 +148,7 @@ def wrap_app(cls: type[App], **kwargs) -> IsolatedFunction:
         serve=False,
     )
 
-    file_path = getattr(cls, "__file__", None)
-    if file_path is None:
-        module = inspect.getmodule(cls)
-        file_path = getattr(module, "__file__", None)
-
-    if not file_path:
-        raise ValueError(
-            f"Couldn't determine the root directory of the {cls.__name__}. "
-            "Please contact fal support."
-        )
-
-    fn = wrapper(InitializeAndServe(cls, file_path))
+    fn = wrapper(initialize_and_serve)
     fn.options.add_requirements(SERVE_REQUIREMENTS)
     if realtime_app:
         fn.options.add_requirements(REALTIME_APP_REQUIREMENTS)
