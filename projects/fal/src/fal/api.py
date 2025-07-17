@@ -1536,9 +1536,7 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
             # is a ServedIsolatedFunction
             func = ServeWrapper(self.raw_func)  # type: ignore
 
-        if self.context_dir is not None:
-            root = self.context_dir
-        elif file_path := getattr(self.raw_func, "__file__", None):
+        if file_path := getattr(self.raw_func, "__file__", None):
             root = os.path.dirname(file_path)
         elif code := getattr(self.raw_func, "__code__", None):
             root = os.path.dirname(code.co_filename)
@@ -1552,8 +1550,13 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
                 )
             root = os.path.dirname(file_path)
 
+        if self.context_dir is not None and os.path.isabs(self.context_dir):
+            context_dir = self.context_dir
+        else:
+            context_dir = os.path.normpath(os.path.join(root, self.context_dir or ""))
+
         bundle = Bundle.from_paths(
-            root, self.bundle_paths or [], self.bundle_paths_ignore or []
+            context_dir, self.bundle_paths or [], self.bundle_paths_ignore or []
         )
 
         return BundleWrapper(func, bundle)
