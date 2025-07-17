@@ -39,7 +39,7 @@ def mock_args(
     app_name: Optional[str] = None,
     auth: Optional[str] = None,
     strategy: Optional[str] = None,
-    no_scale: bool = False,
+    reset_scale: bool = False,
 ):
     args = MagicMock()
 
@@ -47,8 +47,7 @@ def mock_args(
     args.app_name = app_name
     args.auth = auth
     args.strategy = strategy
-
-    args.no_scale = no_scale
+    args.app_scale_settings = reset_scale
 
     return args
 
@@ -287,12 +286,12 @@ def test_deploy_with_cli_deployment_strategy(
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
 @patch("fal.cli._utils.parse_pyproject_toml")
 @patch("fal.cli.deploy._deploy_from_reference")
-def test_deploy_with_cli_no_scale(
+def test_deploy_with_cli_reset_scale(
     mock_deploy_ref, mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml
 ):
     mock_parse_toml.return_value = mock_parse_pyproject_toml
 
-    args = mock_args(app_ref=("src/my_app/inference.py", "MyApp"), no_scale=True)
+    args = mock_args(app_ref=("src/my_app/inference.py", "MyApp"), reset_scale=True)
 
     _deploy(args)
 
@@ -302,7 +301,7 @@ def test_deploy_with_cli_no_scale(
         args,
         None,
         None,
-        scale=False,
+        scale=True,
     )
 
 

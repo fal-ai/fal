@@ -66,9 +66,9 @@ def _deploy_from_reference(
     app_ref: Tuple[Optional[Union[Path, str]], ...],
     app_name: str,
     args,
-    auth: Optional[Literal["public", "shared", "private"]] = None,
-    deployment_strategy: Optional[Literal["recreate", "rolling"]] = None,
-    scale: bool = True,
+    auth: Optional[Literal["public", "shared", "private"]],
+    deployment_strategy: Optional[Literal["recreate", "rolling"]],
+    scale: bool,
 ):
     from fal.api import FalServerlessError, FalServerlessHost
     from fal.utils import load_function_from
@@ -146,7 +146,7 @@ def _deploy(args):
             raise ValueError("Cannot use --app-name or --auth with app name reference.")
 
         app_name = args.app_ref[0]
-        app_ref, app_auth, app_deployment_strategy, app_no_scale = (
+        app_ref, app_auth, app_deployment_strategy, app_scale_settings = (
             get_app_data_from_toml(app_name)
         )
         file_path, func_name = RefAction.split_ref(app_ref)
@@ -157,7 +157,7 @@ def _deploy(args):
         app_name = args.app_name
         app_auth = args.auth
         app_deployment_strategy = args.strategy
-        app_no_scale = args.no_scale
+        app_scale_settings = args.app_scale_settings
 
     _deploy_from_reference(
         (file_path, func_name),
@@ -165,7 +165,7 @@ def _deploy(args):
         args,
         app_auth,
         app_deployment_strategy,
-        scale=not app_no_scale,
+        scale=app_scale_settings,
     )
 
 
@@ -233,12 +233,17 @@ def add_parser(main_subparsers, parents):
     )
     parser.add_argument(
         "--no-scale",
+        action="store_false",
+        dest="app_scale_settings",
+        default=False,
+        help="Use the previous deployment of the application for scale settings. "
+        "This is the default behavior.",
+    )
+    parser.add_argument(
+        "--reset-scale",
         action="store_true",
-        help=(
-            "Use min_concurrency/max_concurrency/concurrency_buffer/max_multiplexing "
-            "from previous deployment of application with this name, if exists. "
-            "Otherwise will use the values from the application code."
-        ),
+        dest="app_scale_settings",
+        help="Use the application code for scale settings.",
     )
 
     parser.set_defaults(func=_deploy)
