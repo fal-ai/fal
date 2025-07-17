@@ -777,3 +777,102 @@ def test_bundle_paths_limits(tmpdir, monkeypatch):
         with pytest.raises(ValueError, match=r"Bundle file .* is larger than"):
             loaded = load_function_from(host, file_path, func_name)
             loaded.function()
+
+
+def test_bundle_paths_ignore(tmpdir):
+    # Create test files and directories
+    (tmpdir / "foo.py").write_text("def foo(): return 'foo'", encoding="utf-8")
+    (tmpdir / "bar.py").write_text("def bar(): return 'bar'", encoding="utf-8")
+    (tmpdir / "baz.py").write_text("def baz(): return 'baz'", encoding="utf-8")
+    (tmpdir / "ignore_me.py").write_text(
+        "def ignore(): return 'ignored'", encoding="utf-8"
+    )
+    (tmpdir / "data").mkdir()
+    (tmpdir / "data" / "config.txt").write_text("config data", encoding="utf-8")
+    (tmpdir / "data" / "ignore_this.txt").write_text(
+        "should be ignored", encoding="utf-8"
+    )
+
+    (tmpdir / "myfunc.py").write_text(
+        textwrap.dedent(
+            """
+            import fal
+
+            @fal.function(
+                bundle_paths=["foo.py", "bar.py", "baz.py", "ignore_me.py", "data"],
+                bundle_paths_ignore=["ignore_me.py", "data/ignore_this.txt"]
+            )
+            def myfunc():
+                from foo import foo
+                from bar import bar
+                from baz import baz
+                # ignore_me.py should not be available since it's ignored
+                try:
+                    from ignore_me import ignore
+                    return "ignore_me.py was included but should have been ignored"
+                except ImportError:
+                    return foo() + bar() + baz()
+            """,
+        ),
+        encoding="utf-8",
+    )
+
+    host = FalServerlessHost()
+    file_path = str(tmpdir / "myfunc.py")
+    func_name = "myfunc"
+    loaded = load_function_from(host, file_path, func_name)
+    isolated_function = loaded.function
+    assert isolated_function() == "foobarbaz"
+
+
+def test_bundle_paths_context_dir(tmpdir):
+    # Create a subdirectory structure
+    context_dir = tmpdir / "context"
+    context_dir.mkdir()
+
+    # Create files in the context directory
+    (context_dir / "foo.py").write_text("def foo(): return 'foo'", encoding="utf-8")
+    (context_dir / "bar").mkdir()
+    (context_dir / "bar" / "__init__.py").write_text(
+        "from .baz import baz\ndef bar(): return 'bar'", encoding="utf-8"
+    )
+    (context_dir / "bar" / "baz").mkdir()
+    (context_dir / "bar" / "baz" / "__init__.py").write_text(
+        "def baz(): return 'baz'", encoding="utf-8"
+    )
+
+    # Create a file outside the context directory that should not be accessible
+    (tmpdir / "outside.py").write_text(
+        "def outside(): return 'outside'", encoding="utf-8"
+    )
+
+    (tmpdir / "myfunc.py").write_text(
+        textwrap.dedent(
+            f"""
+            import fal
+
+            @fal.function(
+                bundle_paths=["foo.py", "bar"],
+                context_dir="{str(context_dir)}"
+            )
+            def myfunc():
+                from foo import foo
+                from bar import bar
+                from bar.baz import baz
+                # outside.py should not be available since it's outside context_dir
+                try:
+                    from outside import outside
+                    return "outside.py was included but should not be accessible"
+                except ImportError:
+                    return foo() + bar() + baz()
+            """,
+        ),
+        encoding="utf-8",
+    )
+
+    host = FalServerlessHost()
+    file_path = str(tmpdir / "myfunc.py")
+    func_name = "myfunc"
+    loaded = load_function_from(host, file_path, func_name)
+    isolated_function = loaded.function
+    assert isolated_function() == "foobarbaz"
