@@ -74,7 +74,7 @@ def test_deploy_with_toml_success(
         args,
         "shared",
         "rolling",
-        scale=True,
+        scale=False,
     )
 
 
@@ -100,7 +100,7 @@ def test_deploy_with_toml_no_auth(
         args,
         "private",
         "recreate",
-        scale=True,
+        scale=False,
     )
 
 
@@ -211,7 +211,7 @@ def test_deploy_with_toml_deployment_strategy(
         args,
         "shared",
         "rolling",
-        scale=True,
+        scale=False,
     )
 
 
@@ -235,7 +235,7 @@ def test_deploy_with_toml_default_deployment_strategy(
         args,
         "private",
         "recreate",
-        scale=True,
+        scale=False,
     )
 
 
@@ -257,7 +257,7 @@ def test_deploy_with_cli_auth(
         args,
         "shared",
         None,
-        scale=True,
+        scale=False,
     )
 
 
@@ -279,7 +279,7 @@ def test_deploy_with_cli_deployment_strategy(
         args,
         None,
         "rolling",
-        scale=True,
+        scale=False,
     )
 
 
@@ -323,5 +323,5 @@ def test_deploy_with_cli_scale(
         args,
         None,
         None,
-        scale=True,
+        scale=False,
     )
