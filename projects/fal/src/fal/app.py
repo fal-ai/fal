@@ -320,6 +320,8 @@ class App(BaseServable):
     requirements: ClassVar[list[str]] = []
     local_python_modules: ClassVar[list[str]] = []
     bundle_paths: ClassVar[list[str]] = []
+    bundle_paths_ignore: ClassVar[list[str]] = []
+    context_dir: ClassVar[str | None] = None
     machine_type: ClassVar[str] = "S"
     num_gpus: ClassVar[int | None] = None
     host_kwargs: ClassVar[dict[str, Any]] = {
@@ -352,6 +354,12 @@ class App(BaseServable):
 
         if cls.bundle_paths is not None:
             cls.host_kwargs["bundle_paths"] = cls.bundle_paths
+
+        if cls.bundle_paths_ignore is not None:
+            cls.host_kwargs["bundle_paths_ignore"] = cls.bundle_paths_ignore
+
+        if cls.context_dir is not None:
+            cls.host_kwargs["context_dir"] = cls.context_dir
 
         if cls.__init__ is not App.__init__:
             raise ValueError(
