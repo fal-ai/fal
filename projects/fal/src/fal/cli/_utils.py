@@ -12,7 +12,7 @@ def get_client(host: str, team: str | None = None):
 
 def is_app_name(app_ref: tuple[str, str | None]) -> bool:
     is_single_file = app_ref[1] is None
-    is_python_file = app_ref[0].endswith(".py")
+    is_python_file = app_ref[0] is None or app_ref[0].endswith(".py")
 
     return is_single_file and not is_python_file
 
@@ -42,9 +42,16 @@ def get_app_data_from_toml(app_name):
 
     app_auth = app_data.pop("auth", "private")
     app_deployment_strategy = app_data.pop("deployment_strategy", "recreate")
-    app_no_scale = app_data.pop("no_scale", False)
+
+    if "no_scale" in app_data:
+        # Deprecated
+        app_no_scale = app_data.pop("no_scale")
+        print("[WARNING] no_scale is deprecated, use app_scale_settings instead")
+        app_reset_scale = not app_no_scale
+    else:
+        app_reset_scale = app_data.pop("app_scale_settings", False)
 
     if len(app_data) > 0:
         raise ValueError(f"Found unexpected keys in pyproject.toml: {app_data}")
 
-    return app_ref, app_auth, app_deployment_strategy, app_no_scale
+    return app_ref, app_auth, app_deployment_strategy, app_reset_scale
