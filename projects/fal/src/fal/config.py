@@ -6,7 +6,9 @@ from typing import Dict, Iterator, List, Optional
 
 SETTINGS_SECTION = "__internal__"
 
-NO_PROFILE_ERROR = ValueError("No profile set.")
+NO_PROFILE_ERROR = ValueError(
+    "No profile set. Use command [bold]fal profile set[/] to set a profile."
+)
 
 
 class Config:

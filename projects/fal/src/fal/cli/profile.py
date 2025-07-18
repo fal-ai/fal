@@ -68,12 +68,17 @@ def _unset(args, config: Config | None = None):
 def _key_set(args):
     config = Config(validate_profile=True)
 
+    args.console.print("Go to https://fal.ai/dashboard/keys to create a key.")
+    args.console.print(
+        "Enter the key in the format [cyan][bold]id:secret[/][/]. You can copy and paste it from the browser."  # noqa: E501
+    )
+
     while True:
         key = input("Enter the key: ")
         if ":" in key:
             break
         args.console.print(
-            "[red]Invalid key. The key must be in the format [bold]key:value[/].[/]"
+            "[yellow]Invalid key. The key must be in the format:[/] [cyan][bold]id:secret[/][/]."  # noqa: E501
         )
 
     with config.edit():
@@ -99,10 +104,10 @@ def _create(args):
     with config.edit() as config:
         config._config[args.PROFILE] = {}
 
-    args.console.print(f"Profile [cyan]{args.PROFILE}[/] created.")
     args.console.print(
-        f"Use [bold]fal profile set {args.PROFILE}[/] to set it as default."
+        f"Profile [cyan]{args.PROFILE}[/] created. Setting it as default profile..."
     )
+    _set(args)
 
 
 def _delete(args):
@@ -184,7 +189,7 @@ def add_parser(main_subparsers, parents):
     )
     host_set_parser.set_defaults(func=_host_set)
 
-    create_help = "Create a new profile. Use 'fal profile set <name>' to set it as default after creation."  # noqa: E501
+    create_help = "Create a new profile."
     create_parser = subparsers.add_parser(
         "create",
         description=create_help,
