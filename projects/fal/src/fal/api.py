@@ -953,6 +953,11 @@ def function(  # type: ignore
 ):
     if host is None:
         host = FalServerlessHost()
+
+    # NOTE: assuming kind="container" if image is provided
+    if config.get("image"):
+        kind = "container"
+
     options = host.parse_options(kind=kind, **config)
 
     def wrapper(func: Callable[ArgsT, ReturnT]):
