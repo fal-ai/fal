@@ -2,7 +2,13 @@ from __future__ import annotations
 
 from fal.toolkit.audio.audio import Audio, AudioField
 from fal.toolkit.file import CompressedFile, File, FileField
-from fal.toolkit.image.image import Image, ImageField, ImageSizeInput, get_image_size
+from fal.toolkit.image.image import (
+    Image,
+    ImageField,
+    ImageSizeInput,
+    ImageSizeInputWithConfig,
+    get_image_size,
+)
 from fal.toolkit.optimize import optimize
 from fal.toolkit.utils import (
     FAL_MODEL_WEIGHTS_DIR,
@@ -23,6 +29,7 @@ __all__ = [
     "Image",
     "ImageField",
     "ImageSizeInput",
+    "ImageSizeInputWithConfig",
     "get_image_size",
     "optimize",
     "Video",
