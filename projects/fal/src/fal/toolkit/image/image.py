@@ -40,6 +40,48 @@ class ImageSize(BaseModel):
     )
 
 
+# To be able to reference the ImageSize class in the ImageSizeWithConfig function
+_ImageSize = ImageSize
+
+
+def ImageSizeWithConfig(
+    width: tuple[int, int] | None = None,
+    height: tuple[int, int] | None = None,
+    **kwargs,
+) -> type[_ImageSize]:
+    """
+    Create a parametrized ImageSize class with custom validation bounds.
+
+    Args:
+        width: Minimum and maximum allowed width
+        height: Minimum and maximum allowed height
+        **kwargs: Additional arguments to pass to the class
+
+    Returns:
+        A new ImageSize class with the specified bounds
+    """
+    width_ge, width_le = width or (0, 14142)
+    height_ge, height_le = height or (0, 14142)
+
+    # Important to use ImageSize as class name for UI to render correctly
+    # Inherit from ImageSize to get isinstance checks
+    class ImageSize(_ImageSize):
+        width: int = Field(
+            default=kwargs.get("width", max(width_ge, 512)),
+            description="The width of the generated image.",
+            ge=width_ge,
+            le=width_le,
+        )
+        height: int = Field(
+            default=kwargs.get("height", max(height_ge, 512)),
+            description="The height of the generated image.",
+            ge=height_ge,
+            le=height_le,
+        )
+
+    return ImageSize
+
+
 IMAGE_SIZE_PRESETS: dict[ImageSizePreset, ImageSize] = {
     "square_hd": ImageSize(width=1024, height=1024),
     "square": ImageSize(width=512, height=512),
@@ -49,7 +91,17 @@ IMAGE_SIZE_PRESETS: dict[ImageSizePreset, ImageSize] = {
     "landscape_16_9": ImageSize(width=1024, height=576),
 }
 
+# Order of union is important for UI to render correctly
 ImageSizeInput = Union[ImageSize, ImageSizePreset]
+
+
+def ImageSizeInputWithConfig(
+    width: tuple[int, int] | None = None,
+    height: tuple[int, int] | None = None,
+    **kwargs,
+) -> type[ImageSizeInput]:
+    # Order of union is important for UI to render correctly
+    return Union[ImageSizeWithConfig(width, height, **kwargs), ImageSizePreset]  # type: ignore
 
 
 def get_image_size(source: ImageSizeInput) -> ImageSize:
