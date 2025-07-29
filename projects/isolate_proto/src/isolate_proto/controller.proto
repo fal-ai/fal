@@ -330,6 +330,7 @@ message ListAliasRunnersRequest {
 
 message ListAliasRunnersResponse {
     repeated RunnerInfo runners = 1;
+    optional int32 pending_runners = 2;
 }
 
 message RunnerInfo {
@@ -352,6 +353,7 @@ message ListRunnersRequest {
 
 message ListRunnersResponse {
     repeated RunnerInfo runners = 1;
+    optional int32 pending_runners = 2;
 }
 
 message KillRunnerResponse {

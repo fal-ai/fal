@@ -81,13 +81,14 @@ def _kill(args):
 def _list(args):
     client = get_client(args.host, args.team)
     with client.connect() as connection:
-        runners = connection.list_runners()
+        runners, pending_runners = connection.list_runners()
         args.console.print(f"Runners: {len(runners)}")
+        # args.console.print(f"Pending Runners: {pending_runners}")
         args.console.print(runners_table(runners))
 
-        requests_table = runners_requests_table(runners)
-        args.console.print(f"Requests: {len(requests_table.rows)}")
-        args.console.print(requests_table)
+        # requests_table = runners_requests_table(runners)
+        # args.console.print(f"Requests: {len(requests_table.rows)}")
+        # args.console.print(requests_table)
 
 
 def _add_kill_parser(subparsers, parents):

@@ -282,10 +282,13 @@ def _add_set_rev_parser(subparsers, parents):
 def _runners(args):
     client = get_client(args.host, args.team)
     with client.connect() as connection:
-        alias_runners = connection.list_alias_runners(alias=args.app_name)
+        alias_runners, pending_runners = connection.list_alias_runners(
+            alias=args.app_name
+        )
 
     runners_table = runners.runners_table(alias_runners)
     args.console.print(f"Runners: {len(alias_runners)}")
+    args.console.print(f"Pending Runners: {pending_runners}")
     # Drop the alias column, which is the first column
     runners_table.columns.pop(0)
     args.console.print(runners_table)

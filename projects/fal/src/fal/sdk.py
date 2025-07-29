@@ -768,10 +768,12 @@ class FalServerlessConnection:
         response: isolate_proto.ListAliasesResult = self.stub.ListAliases(request)
         return [from_grpc(alias) for alias in response.aliases]
 
-    def list_alias_runners(self, alias: str) -> list[RunnerInfo]:
+    def list_alias_runners(self, alias: str) -> tuple[list[RunnerInfo], int]:
         request = isolate_proto.ListAliasRunnersRequest(alias=alias)
         response = self.stub.ListAliasRunners(request)
-        return [from_grpc(runner) for runner in response.runners]
+        return [
+            from_grpc(runner) for runner in response.runners
+        ], response.pending_runners
 
     def set_secret(self, name: str, value: str) -> None:
         request = isolate_proto.SetSecretRequest(name=name, value=value)
@@ -796,7 +798,9 @@ class FalServerlessConnection:
         request = isolate_proto.KillRunnerRequest(runner_id=runner_id)
         self.stub.KillRunner(request)
 
-    def list_runners(self) -> list[RunnerInfo]:
+    def list_runners(self) -> tuple[list[RunnerInfo], int]:
         request = isolate_proto.ListRunnersRequest()
         response = self.stub.ListRunners(request)
-        return [from_grpc(runner) for runner in response.runners]
+        return [
+            from_grpc(runner) for runner in response.runners
+        ], response.pending_runners
