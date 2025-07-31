@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import List
 
-from fal.sdk import RunnerInfo
+from fal.sdk import PendingRunnerInfo, RunnerInfo
 
 from ._utils import get_client
 from .parser import FalClientParser
@@ -50,6 +50,24 @@ def runners_table(runners: List[RunnerInfo]):
     return table
 
 
+def pending_runners_table(pending_runners: list[PendingRunnerInfo]):
+    from rich.table import Table
+
+    table = Table()
+    table.add_column("Alias")
+    table.add_column("Pending At")
+    table.add_column("Revision")
+
+    for pending_runner in pending_runners:
+        table.add_row(
+            pending_runner.alias,
+            str(pending_runner.pending_at),
+            pending_runner.revision,
+        )
+
+    return table
+
+
 def runners_requests_table(runners: list[RunnerInfo]):
     from rich.table import Table
 
@@ -81,9 +99,12 @@ def _kill(args):
 def _list(args):
     client = get_client(args.host, args.team)
     with client.connect() as connection:
-        runners = connection.list_runners()
+        runners, pending_runners = connection.list_runners()
         args.console.print(f"Runners: {len(runners)}")
         args.console.print(runners_table(runners))
+
+        args.console.print(f"Pending Runners: {len(pending_runners)}")
+        args.console.print(pending_runners_table(pending_runners))
 
         requests_table = runners_requests_table(runners)
         args.console.print(f"Requests: {len(requests_table.rows)}")

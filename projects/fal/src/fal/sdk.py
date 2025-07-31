@@ -273,6 +273,13 @@ class RunnerInfo:
 
 
 @dataclass
+class PendingRunnerInfo:
+    pending_at: datetime
+    revision: str
+    alias: str
+
+
+@dataclass
 class HostedRunResult(Generic[ResultT]):
     run_id: str
     status: HostedRunStatus
@@ -419,6 +426,17 @@ def _from_grpc_runner_info(message: isolate_proto.RunnerInfo) -> RunnerInfo:
         ),
         uptime=timedelta(seconds=message.uptime),
         external_metadata=external_metadata,
+        revision=message.revision,
+        alias=message.alias,
+    )
+
+
+@from_grpc.register(isolate_proto.PendingRunnerInfo)
+def _from_grpc_pending_runner_info(
+    message: isolate_proto.PendingRunnerInfo,
+) -> PendingRunnerInfo:
+    return PendingRunnerInfo(
+        pending_at=isolate_proto.datetime_from_timestamp(message.pending_at),
         revision=message.revision,
         alias=message.alias,
     )
@@ -768,10 +786,14 @@ class FalServerlessConnection:
         response: isolate_proto.ListAliasesResult = self.stub.ListAliases(request)
         return [from_grpc(alias) for alias in response.aliases]
 
-    def list_alias_runners(self, alias: str) -> list[RunnerInfo]:
+    def list_alias_runners(
+        self, alias: str
+    ) -> tuple[list[RunnerInfo], list[PendingRunnerInfo]]:
         request = isolate_proto.ListAliasRunnersRequest(alias=alias)
         response = self.stub.ListAliasRunners(request)
-        return [from_grpc(runner) for runner in response.runners]
+        return [from_grpc(runner) for runner in response.runners], [
+            from_grpc(pending_runner) for pending_runner in response.pending_runners
+        ]
 
     def set_secret(self, name: str, value: str) -> None:
         request = isolate_proto.SetSecretRequest(name=name, value=value)
@@ -796,7 +818,9 @@ class FalServerlessConnection:
         request = isolate_proto.KillRunnerRequest(runner_id=runner_id)
         self.stub.KillRunner(request)
 
-    def list_runners(self) -> list[RunnerInfo]:
+    def list_runners(self) -> tuple[list[RunnerInfo], list[PendingRunnerInfo]]:
         request = isolate_proto.ListRunnersRequest()
         response = self.stub.ListRunners(request)
-        return [from_grpc(runner) for runner in response.runners]
+        return [from_grpc(runner) for runner in response.runners], [
+            from_grpc(pending_runner) for pending_runner in response.pending_runners
+        ]
