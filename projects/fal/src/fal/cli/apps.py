@@ -293,6 +293,12 @@ def _runners(args):
     runners_table.columns.pop(0)
     args.console.print(runners_table)
 
+    pending_runners_table = runners.pending_runners_table(pending_runners)
+    # Drop the alias column, which is the first column
+    pending_runners_table.columns.pop(0)
+    args.console.print(f"Pending Runners: {len(pending_runners)}")
+    args.console.print(pending_runners_table)
+
     requests_table = runners.runners_requests_table(alias_runners)
     args.console.print(f"Requests: {len(requests_table.rows)}")
     args.console.print(requests_table)

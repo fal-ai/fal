@@ -1008,16 +1008,15 @@ class ListAliasRunnersResponse(google.protobuf.message.Message):
     PENDING_RUNNERS_FIELD_NUMBER: builtins.int
     @property
     def runners(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[global___RunnerInfo]: ...
-    pending_runners: builtins.int
+    @property
+    def pending_runners(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[global___PendingRunnerInfo]: ...
     def __init__(
         self,
         *,
         runners: collections.abc.Iterable[global___RunnerInfo] | None = ...,
-        pending_runners: builtins.int | None = ...,
+        pending_runners: collections.abc.Iterable[global___PendingRunnerInfo] | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing_extensions.Literal["_pending_runners", b"_pending_runners", "pending_runners", b"pending_runners"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing_extensions.Literal["_pending_runners", b"_pending_runners", "pending_runners", b"pending_runners", "runners", b"runners"]) -> None: ...
-    def WhichOneof(self, oneof_group: typing_extensions.Literal["_pending_runners", b"_pending_runners"]) -> typing_extensions.Literal["pending_runners"] | None: ...
+    def ClearField(self, field_name: typing_extensions.Literal["pending_runners", b"pending_runners", "runners", b"runners"]) -> None: ...
 
 global___ListAliasRunnersResponse = ListAliasRunnersResponse
 
@@ -1061,6 +1060,27 @@ class RunnerInfo(google.protobuf.message.Message):
 global___RunnerInfo = RunnerInfo
 
 @typing_extensions.final
+class PendingRunnerInfo(google.protobuf.message.Message):
+    DESCRIPTOR: google.protobuf.descriptor.Descriptor
+
+    PENDING_AT_FIELD_NUMBER: builtins.int
+    REVISION_FIELD_NUMBER: builtins.int
+    ALIAS_FIELD_NUMBER: builtins.int
+    pending_at: builtins.float
+    revision: builtins.str
+    alias: builtins.str
+    def __init__(
+        self,
+        *,
+        pending_at: builtins.float = ...,
+        revision: builtins.str = ...,
+        alias: builtins.str = ...,
+    ) -> None: ...
+    def ClearField(self, field_name: typing_extensions.Literal["alias", b"alias", "pending_at", b"pending_at", "revision", b"revision"]) -> None: ...
+
+global___PendingRunnerInfo = PendingRunnerInfo
+
+@typing_extensions.final
 class KillRunnerRequest(google.protobuf.message.Message):
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
@@ -1095,16 +1115,15 @@ class ListRunnersResponse(google.protobuf.message.Message):
     PENDING_RUNNERS_FIELD_NUMBER: builtins.int
     @property
     def runners(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[global___RunnerInfo]: ...
-    pending_runners: builtins.int
+    @property
+    def pending_runners(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[global___PendingRunnerInfo]: ...
     def __init__(
         self,
         *,
         runners: collections.abc.Iterable[global___RunnerInfo] | None = ...,
-        pending_runners: builtins.int | None = ...,
+        pending_runners: collections.abc.Iterable[global___PendingRunnerInfo] | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing_extensions.Literal["_pending_runners", b"_pending_runners", "pending_runners", b"pending_runners"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing_extensions.Literal["_pending_runners", b"_pending_runners", "pending_runners", b"pending_runners", "runners", b"runners"]) -> None: ...
-    def WhichOneof(self, oneof_group: typing_extensions.Literal["_pending_runners", b"_pending_runners"]) -> typing_extensions.Literal["pending_runners"] | None: ...
+    def ClearField(self, field_name: typing_extensions.Literal["pending_runners", b"pending_runners", "runners", b"runners"]) -> None: ...
 
 global___ListRunnersResponse = ListRunnersResponse
 

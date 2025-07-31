@@ -330,7 +330,7 @@ message ListAliasRunnersRequest {
 
 message ListAliasRunnersResponse {
     repeated RunnerInfo runners = 1;
-    optional int32 pending_runners = 2;
+    repeated PendingRunnerInfo pending_runners = 2;
 }
 
 message RunnerInfo {
@@ -343,6 +343,12 @@ message RunnerInfo {
     optional google.protobuf.Struct external_metadata = 5;
 }
 
+message PendingRunnerInfo {
+    float pending_at = 1;
+    string revision = 2;
+    string alias = 3;
+}
+
 message KillRunnerRequest {
     string runner_id = 1;
 }
@@ -353,7 +359,7 @@ message ListRunnersRequest {
 
 message ListRunnersResponse {
     repeated RunnerInfo runners = 1;
-    optional int32 pending_runners = 2;
+    repeated PendingRunnerInfo pending_runners = 2;
 }
 
 message KillRunnerResponse {

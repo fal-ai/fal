@@ -273,6 +273,13 @@ class RunnerInfo:
 
 
 @dataclass
+class PendingRunnerInfo:
+    pending_at: datetime
+    revision: str
+    alias: str
+
+
+@dataclass
 class HostedRunResult(Generic[ResultT]):
     run_id: str
     status: HostedRunStatus
