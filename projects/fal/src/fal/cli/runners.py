@@ -61,7 +61,7 @@ def pending_runners_table(pending_runners: list[PendingRunnerInfo]):
     for pending_runner in pending_runners:
         table.add_row(
             pending_runner.alias,
-            pending_runner.pending_at,
+            str(pending_runner.pending_at),
             pending_runner.revision,
         )
 
