@@ -1066,16 +1066,18 @@ class PendingRunnerInfo(google.protobuf.message.Message):
     PENDING_AT_FIELD_NUMBER: builtins.int
     REVISION_FIELD_NUMBER: builtins.int
     ALIAS_FIELD_NUMBER: builtins.int
-    pending_at: builtins.float
+    @property
+    def pending_at(self) -> google.protobuf.timestamp_pb2.Timestamp: ...
     revision: builtins.str
     alias: builtins.str
     def __init__(
         self,
         *,
-        pending_at: builtins.float = ...,
+        pending_at: google.protobuf.timestamp_pb2.Timestamp | None = ...,
         revision: builtins.str = ...,
         alias: builtins.str = ...,
     ) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["pending_at", b"pending_at"]) -> builtins.bool: ...
     def ClearField(self, field_name: typing_extensions.Literal["alias", b"alias", "pending_at", b"pending_at", "revision", b"revision"]) -> None: ...
 
 global___PendingRunnerInfo = PendingRunnerInfo

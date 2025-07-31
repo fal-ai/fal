@@ -344,7 +344,7 @@ message RunnerInfo {
 }
 
 message PendingRunnerInfo {
-    float pending_at = 1;
+    google.protobuf.Timestamp pending_at = 1;
     string revision = 2;
     string alias = 3;
 }
