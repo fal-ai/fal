@@ -411,28 +411,31 @@ class App(BaseServable):
                 )
             return response
 
-        @app.middleware("http")
-        async def set_global_object_preference(request, call_next):
-            try:
-                preference_dict = request_lifecycle_preference(request)
-                if preference_dict is not None:
-                    # This will not work properly for apps with multiplexing enabled
-                    # we may mix up the preferences between requests
-                    LIFECYCLE_PREFERENCE.set(preference_dict)
-            except Exception:
-                from fastapi.logger import logger
+        multiplexing = self.host_kwargs.get("max_multiplexing") or 1
+        if multiplexing == 1:
+            # just register the middleware if we are not multiplexing
+            @app.middleware("http")
+            async def set_global_object_preference(request, call_next):
+                try:
+                    preference_dict = request_lifecycle_preference(request)
+                    if preference_dict is not None:
+                        # This will not work properly for apps with multiplexing enabled
+                        # we may mix up the preferences between requests
+                        LIFECYCLE_PREFERENCE.set(preference_dict)
+                except Exception:
+                    from fastapi.logger import logger
 
-                logger.exception(
-                    "Failed set a global lifecycle preference %s",
-                    self.__class__.__name__,
-                )
+                    logger.exception(
+                        "Failed set a global lifecycle preference %s",
+                        self.__class__.__name__,
+                    )
 
-            try:
-                return await call_next(request)
-            finally:
-                # We may miss the global preference if there are operations
-                # being done in the background that go beyond the request
-                LIFECYCLE_PREFERENCE.set(None)
+                try:
+                    return await call_next(request)
+                finally:
+                    # We may miss the global preference if there are operations
+                    # being done in the background that go beyond the request
+                    LIFECYCLE_PREFERENCE.set(None)
 
         @app.middleware("http")
         async def set_request_id(request, call_next):
