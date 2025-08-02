@@ -201,9 +201,11 @@ class File(BaseModel):
 
         fdata = FileData(data, content_type, file_name)
 
-        object_lifecycle_preference = (
-            request_lifecycle_preference(request) or LIFECYCLE_PREFERENCE.get()
-        )
+        if request:
+            object_lifecycle_preference = request_lifecycle_preference(request)
+        else:
+            object_lifecycle_preference = LIFECYCLE_PREFERENCE.get()
+
         save_kwargs.setdefault(
             "object_lifecycle_preference", object_lifecycle_preference
         )
@@ -250,9 +252,12 @@ class File(BaseModel):
         fallback_save_kwargs = fallback_save_kwargs or {}
 
         content_type = content_type or "application/octet-stream"
-        object_lifecycle_preference = (
-            request_lifecycle_preference(request) or LIFECYCLE_PREFERENCE.get()
-        )
+
+        if request:
+            object_lifecycle_preference = request_lifecycle_preference(request)
+        else:
+            object_lifecycle_preference = LIFECYCLE_PREFERENCE.get()
+
         save_kwargs.setdefault(
             "object_lifecycle_preference", object_lifecycle_preference
         )
@@ -332,11 +337,8 @@ class CompressedFile(File):
             shutil.rmtree(self.extract_dir)
 
 
-def request_lifecycle_preference(request: Optional[Request]) -> dict[str, str] | None:
+def request_lifecycle_preference(request: Request) -> dict[str, str] | None:
     import json
-
-    if request is None:
-        return None
 
     preference_str = request.headers.get(OBJECT_LIFECYCLE_PREFERENCE_KEY)
     if preference_str is None:
