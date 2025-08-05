@@ -990,13 +990,18 @@ class ListAliasRunnersRequest(google.protobuf.message.Message):
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
     ALIAS_FIELD_NUMBER: builtins.int
+    LIST_PENDING_FIELD_NUMBER: builtins.int
     alias: builtins.str
+    list_pending: builtins.bool
     def __init__(
         self,
         *,
         alias: builtins.str = ...,
+        list_pending: builtins.bool | None = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing_extensions.Literal["alias", b"alias"]) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["_list_pending", b"_list_pending", "list_pending", b"list_pending"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["_list_pending", b"_list_pending", "alias", b"alias", "list_pending", b"list_pending"]) -> None: ...
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_list_pending", b"_list_pending"]) -> typing_extensions.Literal["list_pending"] | None: ...
 
 global___ListAliasRunnersRequest = ListAliasRunnersRequest
 
@@ -1077,13 +1082,18 @@ global___KillRunnerRequest = KillRunnerRequest
 
 @typing_extensions.final
 class ListRunnersRequest(google.protobuf.message.Message):
-    """Empty. For future use."""
-
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
+    LIST_PENDING_FIELD_NUMBER: builtins.int
+    list_pending: builtins.bool
     def __init__(
         self,
+        *,
+        list_pending: builtins.bool | None = ...,
     ) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["_list_pending", b"_list_pending", "list_pending", b"list_pending"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["_list_pending", b"_list_pending", "list_pending", b"list_pending"]) -> None: ...
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_list_pending", b"_list_pending"]) -> typing_extensions.Literal["list_pending"] | None: ...
 
 global___ListRunnersRequest = ListRunnersRequest
 
