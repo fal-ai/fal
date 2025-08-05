@@ -1027,6 +1027,7 @@ class RunnerInfo(google.protobuf.message.Message):
     REVISION_FIELD_NUMBER: builtins.int
     ALIAS_FIELD_NUMBER: builtins.int
     EXTERNAL_METADATA_FIELD_NUMBER: builtins.int
+    STATE_FIELD_NUMBER: builtins.int
     runner_id: builtins.str
     in_flight_requests: builtins.int
     expiration_countdown: builtins.int
@@ -1035,6 +1036,7 @@ class RunnerInfo(google.protobuf.message.Message):
     alias: builtins.str
     @property
     def external_metadata(self) -> google.protobuf.struct_pb2.Struct: ...
+    state: builtins.str
     def __init__(
         self,
         *,
@@ -1045,13 +1047,16 @@ class RunnerInfo(google.protobuf.message.Message):
         revision: builtins.str = ...,
         alias: builtins.str = ...,
         external_metadata: google.protobuf.struct_pb2.Struct | None = ...,
+        state: builtins.str | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing_extensions.Literal["_expiration_countdown", b"_expiration_countdown", "_external_metadata", b"_external_metadata", "expiration_countdown", b"expiration_countdown", "external_metadata", b"external_metadata"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing_extensions.Literal["_expiration_countdown", b"_expiration_countdown", "_external_metadata", b"_external_metadata", "alias", b"alias", "expiration_countdown", b"expiration_countdown", "external_metadata", b"external_metadata", "in_flight_requests", b"in_flight_requests", "revision", b"revision", "runner_id", b"runner_id", "uptime", b"uptime"]) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["_expiration_countdown", b"_expiration_countdown", "_external_metadata", b"_external_metadata", "_state", b"_state", "expiration_countdown", b"expiration_countdown", "external_metadata", b"external_metadata", "state", b"state"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["_expiration_countdown", b"_expiration_countdown", "_external_metadata", b"_external_metadata", "_state", b"_state", "alias", b"alias", "expiration_countdown", b"expiration_countdown", "external_metadata", b"external_metadata", "in_flight_requests", b"in_flight_requests", "revision", b"revision", "runner_id", b"runner_id", "state", b"state", "uptime", b"uptime"]) -> None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_expiration_countdown", b"_expiration_countdown"]) -> typing_extensions.Literal["expiration_countdown"] | None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_external_metadata", b"_external_metadata"]) -> typing_extensions.Literal["external_metadata"] | None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_state", b"_state"]) -> typing_extensions.Literal["state"] | None: ...
 
 global___RunnerInfo = RunnerInfo
 
