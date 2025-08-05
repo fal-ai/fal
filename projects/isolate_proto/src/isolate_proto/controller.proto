@@ -326,6 +326,7 @@ message ListSecretsResponse {
 
 message ListAliasRunnersRequest {
     string alias = 1;
+    optional bool list_pending = 2;
 }
 
 message ListAliasRunnersResponse {
