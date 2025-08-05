@@ -84,15 +84,15 @@ def _try_with_fallback(
     fallback_save_kwargs: dict,
 ) -> Any:
     if fallback_repository is None:
-        fallback_repositories = []
+        fallback_repository = []
     elif isinstance(fallback_repository, list):
-        fallback_repositories = fallback_repository
+        pass
     else:
-        fallback_repositories = [fallback_repository]
+        fallback_repository = [fallback_repository]
 
-    attempts = [
+    attempts: list[tuple[FileRepository | RepositoryId, dict]] = [
         (repository, save_kwargs),
-        *((fallback, fallback_save_kwargs) for fallback in fallback_repositories),
+        *((fallback, fallback_save_kwargs) for fallback in fallback_repository),
     ]
     for idx, (repo, kwargs) in enumerate(attempts):
         repo_obj = get_builtin_repository(repo)
@@ -204,6 +204,7 @@ class File(BaseModel):
         if request:
             object_lifecycle_preference = request_lifecycle_preference(request)
         else:
+            print("[WARNING] No request provided, using global lifecycle preference")
             object_lifecycle_preference = LIFECYCLE_PREFERENCE.get()
 
         save_kwargs.setdefault(
@@ -256,6 +257,7 @@ class File(BaseModel):
         if request:
             object_lifecycle_preference = request_lifecycle_preference(request)
         else:
+            print("[WARNING] No request provided, using global lifecycle preference")
             object_lifecycle_preference = LIFECYCLE_PREFERENCE.get()
 
         save_kwargs.setdefault(
