@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from dataclasses import asdict
 from typing import TYPE_CHECKING
 
 import fal.cli.runners as runners
@@ -62,9 +64,13 @@ def _list(args):
         else:
             apps.sort(key=lambda x: x.alias)
 
-        table = _apps_table(apps)
-
-    args.console.print(table)
+        if args.output == "pretty":
+            table = _apps_table(apps)
+            args.console.print(table)
+        elif args.output == "json":
+            apps_as_dicts = [asdict(a) for a in apps]
+            res = json.dumps(apps_as_dicts)
+            args.console.print(res)
 
 
 def _add_list_parser(subparsers, parents):
@@ -84,6 +90,13 @@ def _add_list_parser(subparsers, parents):
         "--filter",
         type=str,
         help="Filter applications by alias contents",
+    )
+    parser.add_argument(
+        "--output",
+        type=str,
+        default="pretty",
+        choices=["pretty", "json"],
+        help="Modify the command output",
     )
     parser.set_defaults(func=_list)
 
