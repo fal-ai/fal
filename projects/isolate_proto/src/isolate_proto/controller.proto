@@ -348,7 +348,7 @@ message KillRunnerRequest {
 }
 
 message ListRunnersRequest {
-    // Empty. For future use.
+    optional bool list_pending = 1;
 }
 
 message ListRunnersResponse {
