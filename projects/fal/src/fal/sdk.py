@@ -270,6 +270,7 @@ class RunnerInfo:
     external_metadata: dict[str, Any]
     revision: str
     alias: str
+    state: str
 
 
 @dataclass
@@ -421,6 +422,7 @@ def _from_grpc_runner_info(message: isolate_proto.RunnerInfo) -> RunnerInfo:
         external_metadata=external_metadata,
         revision=message.revision,
         alias=message.alias,
+        state=message.state,
     )
 
 
@@ -769,7 +771,7 @@ class FalServerlessConnection:
         return [from_grpc(alias) for alias in response.aliases]
 
     def list_alias_runners(self, alias: str) -> list[RunnerInfo]:
-        request = isolate_proto.ListAliasRunnersRequest(alias=alias)
+        request = isolate_proto.ListAliasRunnersRequest(alias=alias, list_pending=True)
         response = self.stub.ListAliasRunners(request)
         return [from_grpc(runner) for runner in response.runners]
 
@@ -797,6 +799,6 @@ class FalServerlessConnection:
         self.stub.KillRunner(request)
 
     def list_runners(self) -> list[RunnerInfo]:
-        request = isolate_proto.ListRunnersRequest()
+        request = isolate_proto.ListRunnersRequest(list_pending=True)
         response = self.stub.ListRunners(request)
         return [from_grpc(runner) for runner in response.runners]
