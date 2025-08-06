@@ -125,7 +125,7 @@ def _deploy_from_reference(
         if args.output == "json":
             args.console.print(
                 {
-                    "app_id": app_id,
+                    "revision": app_id,
                     "app_name": app_name,
                 }
             )
