@@ -69,8 +69,8 @@ def _list(args):
             args.console.print(table)
         elif args.output == "json":
             apps_as_dicts = [asdict(a) for a in apps]
-            res = json.dumps(apps_as_dicts)
-            args.console.print({"apps": res})
+            res = json.dumps({"apps": apps_as_dicts})
+            args.console.print(res)
 
 
 def _add_list_parser(subparsers, parents):
