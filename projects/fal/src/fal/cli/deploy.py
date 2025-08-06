@@ -1,4 +1,5 @@
 import argparse
+import json
 from collections import namedtuple
 from pathlib import Path
 from typing import Literal, Optional, Tuple, Union
@@ -124,10 +125,12 @@ def _deploy_from_reference(
 
         if args.output == "json":
             args.console.print(
-                {
-                    "revision": app_id,
-                    "app_name": app_name,
-                }
+                json.dumps(
+                    {
+                        "revision": app_id,
+                        "app_name": app_name,
+                    }
+                )
             )
         elif args.output == "pretty":
             args.console.print(
