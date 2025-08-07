@@ -1025,6 +1025,19 @@ global___ListAliasRunnersResponse = ListAliasRunnersResponse
 class RunnerInfo(google.protobuf.message.Message):
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
+    class _State:
+        ValueType = typing.NewType("ValueType", builtins.int)
+        V: typing_extensions.TypeAlias = ValueType
+
+    class _StateEnumTypeWrapper(google.protobuf.internal.enum_type_wrapper._EnumTypeWrapper[RunnerInfo._State.ValueType], builtins.type):
+        DESCRIPTOR: google.protobuf.descriptor.EnumDescriptor
+        RUNNING: RunnerInfo._State.ValueType  # 0
+        PENDING: RunnerInfo._State.ValueType  # 1
+
+    class State(_State, metaclass=_StateEnumTypeWrapper): ...
+    RUNNING: RunnerInfo.State.ValueType  # 0
+    PENDING: RunnerInfo.State.ValueType  # 1
+
     RUNNER_ID_FIELD_NUMBER: builtins.int
     IN_FLIGHT_REQUESTS_FIELD_NUMBER: builtins.int
     EXPIRATION_COUNTDOWN_FIELD_NUMBER: builtins.int
@@ -1041,7 +1054,7 @@ class RunnerInfo(google.protobuf.message.Message):
     alias: builtins.str
     @property
     def external_metadata(self) -> google.protobuf.struct_pb2.Struct: ...
-    state: builtins.str
+    state: global___RunnerInfo.State.ValueType
     def __init__(
         self,
         *,
@@ -1052,7 +1065,7 @@ class RunnerInfo(google.protobuf.message.Message):
         revision: builtins.str = ...,
         alias: builtins.str = ...,
         external_metadata: google.protobuf.struct_pb2.Struct | None = ...,
-        state: builtins.str | None = ...,
+        state: global___RunnerInfo.State.ValueType | None = ...,
     ) -> None: ...
     def HasField(self, field_name: typing_extensions.Literal["_expiration_countdown", b"_expiration_countdown", "_external_metadata", b"_external_metadata", "_state", b"_state", "expiration_countdown", b"expiration_countdown", "external_metadata", b"external_metadata", "state", b"state"]) -> builtins.bool: ...
     def ClearField(self, field_name: typing_extensions.Literal["_expiration_countdown", b"_expiration_countdown", "_external_metadata", b"_external_metadata", "_state", b"_state", "alias", b"alias", "expiration_countdown", b"expiration_countdown", "external_metadata", b"external_metadata", "in_flight_requests", b"in_flight_requests", "revision", b"revision", "runner_id", b"runner_id", "state", b"state", "uptime", b"uptime"]) -> None: ...

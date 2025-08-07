@@ -341,7 +341,14 @@ message RunnerInfo {
     string revision = 6;
     string alias = 7;
     optional google.protobuf.Struct external_metadata = 5;
-    optional string state = 8;
+
+    enum State {
+        RUNNING = 0;
+
+        PENDING = 1;
+    }
+
+    optional State state = 8;
 }
 
 message KillRunnerRequest {
