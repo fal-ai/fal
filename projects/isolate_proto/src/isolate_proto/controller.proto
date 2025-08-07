@@ -326,6 +326,7 @@ message ListSecretsResponse {
 
 message ListAliasRunnersRequest {
     string alias = 1;
+    optional bool list_pending = 2;
 }
 
 message ListAliasRunnersResponse {
@@ -340,6 +341,14 @@ message RunnerInfo {
     string revision = 6;
     string alias = 7;
     optional google.protobuf.Struct external_metadata = 5;
+
+    enum State {
+        RUNNING = 0;
+
+        PENDING = 1;
+    }
+
+    optional State state = 8;
 }
 
 message KillRunnerRequest {
@@ -347,7 +356,7 @@ message KillRunnerRequest {
 }
 
 message ListRunnersRequest {
-    // Empty. For future use.
+    optional bool list_pending = 1;
 }
 
 message ListRunnersResponse {
