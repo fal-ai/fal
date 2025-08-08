@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import List
 
-from fal.sdk import RunnerInfo
+from fal.sdk import RunnerInfo, RunnerState
 
 from ._utils import get_client
 from .parser import FalClientParser
@@ -19,6 +19,7 @@ def runners_table(runners: List[RunnerInfo]):
     table.add_column("Expires In")
     table.add_column("Uptime")
     table.add_column("Revision")
+    table.add_column("State")
 
     for runner in runners:
         external_metadata = runner.external_metadata
@@ -45,6 +46,7 @@ def runners_table(runners: List[RunnerInfo]):
             ),
             f"{runner.uptime} ({runner.uptime.total_seconds()}s)",
             runner.revision,
+            runner.state.value,
         )
 
     return table
@@ -82,7 +84,11 @@ def _list(args):
     client = get_client(args.host, args.team)
     with client.connect() as connection:
         runners = connection.list_runners()
-        args.console.print(f"Runners: {len(runners)}")
+        pending_runners = [
+            runner for runner in runners if runner.state == RunnerState.PENDING
+        ]
+        args.console.print(f"Runners: {len(runners) - len(pending_runners)}")
+        args.console.print(f"Pending Runners: {len(pending_runners)}")
         args.console.print(runners_table(runners))
 
         requests_table = runners_requests_table(runners)
