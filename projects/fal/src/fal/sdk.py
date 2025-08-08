@@ -261,6 +261,21 @@ class AliasInfo:
     valid_regions: list[str]
 
 
+class RunnerState(Enum):
+    RUNNING = "running"
+    PENDING = "pending"
+    UNKNOWN = "unknown"
+
+    @staticmethod
+    def from_proto(proto: isolate_proto.RunnerInfo.State) -> RunnerState:
+        if proto is isolate_proto.RunnerInfo.State.RUNNING:
+            return RunnerState.RUNNING
+        elif proto is isolate_proto.RunnerInfo.State.PENDING:
+            return RunnerState.PENDING
+        else:
+            return RunnerState.UNKNOWN
+
+
 @dataclass
 class RunnerInfo:
     runner_id: str
@@ -270,7 +285,7 @@ class RunnerInfo:
     external_metadata: dict[str, Any]
     revision: str
     alias: str
-    state: str
+    state: RunnerState
 
 
 @dataclass
@@ -422,7 +437,7 @@ def _from_grpc_runner_info(message: isolate_proto.RunnerInfo) -> RunnerInfo:
         external_metadata=external_metadata,
         revision=message.revision,
         alias=message.alias,
-        state=message.state,
+        state=RunnerState.from_proto(message.state),
     )
 
 
