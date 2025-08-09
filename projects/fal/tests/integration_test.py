@@ -16,6 +16,7 @@ from fal.api import FalServerlessError, IsolatedFunction
 from fal.toolkit import (
     File,
     clone_repository,
+    clone_repository_cached,
     download_file,
     download_model_weights,
 )
@@ -347,24 +348,34 @@ def test_download_model_weights(isolated_client, mock_fal_persistent_dirs):
     ), "The model weights should be redownloaded with force=True"
 
 
-def test_clone_repository(isolated_client, mock_fal_persistent_dirs):
-    from fal.toolkit.utils.download_utils import FAL_REPOSITORY_DIR
-
+@pytest.mark.parametrize(
+    "clone_fn",
+    [
+        clone_repository,
+        clone_repository_cached,
+    ],
+)
+def test_clone_repository(isolated_client, mock_fal_persistent_dirs, clone_fn):
     # https://github.com/fal-ai/isolate/tree/64b0a89c8391bd2cb3ca23cdeae01779e11aee05
     EXAMPLE_REPO_URL = "https://github.com/fal-ai/isolate.git"
     EXAMPLE_REPO_FIRST_COMMIT = "64b0a89c8391bd2cb3ca23cdeae01779e11aee05"
     EXAMPLE_REPO_SECOND_COMMIT = "34ecbca8cc7b64719d2a5c40dd3272f8d13bc1d2"
-    expected_path = FAL_REPOSITORY_DIR / "isolate"
-    first_expected_path = (
-        FAL_REPOSITORY_DIR / f"isolate-{EXAMPLE_REPO_FIRST_COMMIT[:8]}"
-    )
-    second_expected_path = (
-        FAL_REPOSITORY_DIR / f"isolate-{EXAMPLE_REPO_SECOND_COMMIT[:8]}"
-    )
+    from fal.toolkit.utils.download_utils import FAL_REPOSITORY_DIR
+
+    # clone_repository uses FAL_REPOSITORY_DIR, clone_repository_cached uses /tmp
+    if clone_fn == clone_repository:
+        base_dir = FAL_REPOSITORY_DIR
+    else:
+        base_dir = Path("/tmp")
+
+    expected_path = str(base_dir / "isolate")
+    first_expected_path = str(base_dir / f"isolate-{EXAMPLE_REPO_FIRST_COMMIT[:8]}")
+    second_expected_path = str(base_dir / f"isolate-{EXAMPLE_REPO_SECOND_COMMIT[:8]}")
+    import os
 
     @isolated_client()
     def clone_without_commit_hash():
-        repo_path = clone_repository(EXAMPLE_REPO_URL)
+        repo_path = clone_fn(EXAMPLE_REPO_URL)
 
         return repo_path
 
@@ -373,14 +384,10 @@ def test_clone_repository(isolated_client, mock_fal_persistent_dirs):
 
     @isolated_client()
     def clone_with_commit_hash():
-        first_path = clone_repository(
-            EXAMPLE_REPO_URL, commit_hash=EXAMPLE_REPO_FIRST_COMMIT
-        )
+        first_path = clone_fn(EXAMPLE_REPO_URL, commit_hash=EXAMPLE_REPO_FIRST_COMMIT)
         first_repo_hash = _git_rev_parse(first_path, "HEAD")
 
-        second_path = clone_repository(
-            EXAMPLE_REPO_URL, commit_hash=EXAMPLE_REPO_SECOND_COMMIT
-        )
+        second_path = clone_fn(EXAMPLE_REPO_URL, commit_hash=EXAMPLE_REPO_SECOND_COMMIT)
 
         second_repo_hash = _git_rev_parse(second_path, "HEAD")
 
@@ -409,17 +416,17 @@ def test_clone_repository(isolated_client, mock_fal_persistent_dirs):
 
     @isolated_client()
     def clone_with_force():
-        first_path = clone_repository(
+        first_path = clone_fn(
             EXAMPLE_REPO_URL, commit_hash=EXAMPLE_REPO_FIRST_COMMIT, force=False
         )
         first_repo_stat = first_path.stat()
 
-        second_path = clone_repository(
+        second_path = clone_fn(
             EXAMPLE_REPO_URL, commit_hash=EXAMPLE_REPO_FIRST_COMMIT, force=False
         )
         second_repo_stat = second_path.stat()
 
-        third_path = clone_repository(
+        third_path = clone_fn(
             EXAMPLE_REPO_URL, commit_hash=EXAMPLE_REPO_FIRST_COMMIT, force=True
         )
         third_repo_stat = third_path.stat()
@@ -433,32 +440,81 @@ def test_clone_repository(isolated_client, mock_fal_persistent_dirs):
             third_repo_stat,
         )
 
+    # Only test force functionality for clone_repository
+    if clone_fn == clone_repository:
+        (
+            first_path,
+            first_repo_stat,
+            second_path,
+            second_repo_stat,
+            third_path,
+            third_repo_stat,
+        ) = clone_with_force()
+
+        assert str(first_expected_path) == str(
+            first_path
+        ), "Path should be the target location"
+        assert str(first_expected_path) == str(
+            second_path
+        ), "Path should be the target location"
+        assert str(first_expected_path) == str(
+            third_path
+        ), "Path should be the target location"
+
+        assert (
+            first_repo_stat.st_mtime == second_repo_stat.st_mtime
+        ), "The repository should not be cloned again"
+
+        assert (
+            first_repo_stat.st_mtime < third_repo_stat.st_mtime
+        ), "The repository should be cloned again with force=True"
+
+    @isolated_client()
+    def clone_without_commit_hash_multiple_times():
+        import shutil
+
+        # Clean FAL_REPOSITORY_DIR
+        shutil.rmtree(FAL_REPOSITORY_DIR, ignore_errors=True)
+
+        repo_path = clone_fn(EXAMPLE_REPO_URL)
+
+        repo_dir_contents = os.listdir(FAL_REPOSITORY_DIR)
+
+        first_n_archives = len(repo_dir_contents)
+        first_archive_stat = Path(FAL_REPOSITORY_DIR / repo_dir_contents[0]).stat()
+
+        repo_path_2 = clone_fn(EXAMPLE_REPO_URL)
+
+        repo_dir_contents_2 = os.listdir(FAL_REPOSITORY_DIR)
+
+        second_n_archives = len(repo_dir_contents_2)
+        second_archive_stat = Path(FAL_REPOSITORY_DIR / repo_dir_contents_2[0]).stat()
+
+        return (
+            repo_path,
+            repo_path_2,
+            first_n_archives,
+            second_n_archives,
+            first_archive_stat,
+            second_archive_stat,
+        )
+
     (
-        first_path,
-        first_repo_stat,
-        second_path,
-        second_repo_stat,
-        third_path,
-        third_repo_stat,
-    ) = clone_with_force()
+        repo_path,
+        repo_path_2,
+        first_n_archives,
+        second_n_archives,
+        first_archive_stat,
+        second_archive_stat,
+    ) = clone_without_commit_hash_multiple_times()
 
-    assert str(first_expected_path) == str(
-        first_path
-    ), "Path should be the target location"
-    assert str(first_expected_path) == str(
-        second_path
-    ), "Path should be the target location"
-    assert str(first_expected_path) == str(
-        third_path
-    ), "Path should be the target location"
-
-    assert (
-        first_repo_stat.st_mtime == second_repo_stat.st_mtime
-    ), "The repository should not be cloned again"
-
-    assert (
-        first_repo_stat.st_mtime < third_repo_stat.st_mtime
-    ), "The repository should be cloned again with force=True"
+    if clone_fn == clone_repository_cached:
+        assert first_n_archives == 1, "Only one archive should be present"
+        assert second_n_archives == 1, "Only one archive should be present"
+        assert (
+            first_archive_stat.st_mtime == second_archive_stat.st_mtime
+        ), "The archive should be the same"
+        assert repo_path == repo_path_2, "The repository should be the same"
 
 
 def fal_file_downloaded(file: File):
