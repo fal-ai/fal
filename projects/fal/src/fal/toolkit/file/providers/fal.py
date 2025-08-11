@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Generator, Generic, TypeVar
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse, urlunparse
 from urllib.request import Request, urlopen
 from urllib.response import addinfourl
@@ -43,6 +43,11 @@ def _urlopen(
 
 def _should_retry(exc: Exception) -> bool:
     if isinstance(exc, HTTPError) and exc.code in RETRY_CODES:
+        return True
+    elif type(exc) is URLError:
+        # URLError is a base class for other errors,
+        # but it can be raised directly, e.g.
+        # URLError: <urlopen error [Errno -3] Temporary failure in name resolution>
         return True
 
     if isinstance(exc, TimeoutError):
