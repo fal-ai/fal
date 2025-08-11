@@ -44,8 +44,9 @@ def _urlopen(
 def _should_retry(exc: Exception) -> bool:
     if isinstance(exc, HTTPError) and exc.code in RETRY_CODES:
         return True
-
-    if isinstance(exc, URLError):
+    elif type(exc) is URLError:
+        # URLError is a base class for other errors,
+        # but it can be raised directly
         return True
 
     if isinstance(exc, TimeoutError):
