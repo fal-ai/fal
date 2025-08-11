@@ -1,4 +1,5 @@
 import argparse
+import json
 from collections import namedtuple
 from pathlib import Path
 from typing import Literal, Optional, Tuple, Union
@@ -122,20 +123,30 @@ def _deploy_from_reference(
         # just replace .ai for .run
         endpoint_host = env_host.replace(".ai", ".run")
 
-        args.console.print(
-            "Registered a new revision for function "
-            f"'{app_name}' (revision='{app_id}')."
-        )
-        args.console.print("Playground:")
-        for endpoint in loaded.endpoints:
+        if args.output == "json":
             args.console.print(
-                f"\thttps://{playground_host}/models/{user.username}/{app_name}{endpoint}"
+                json.dumps(
+                    {
+                        "revision": app_id,
+                        "app_name": app_name,
+                    }
+                )
             )
-        args.console.print("Endpoints:")
-        for endpoint in loaded.endpoints:
+        elif args.output == "pretty":
             args.console.print(
-                f"\thttps://{endpoint_host}/{user.username}/{app_name}{endpoint}"
+                "Registered a new revision for function "
+                f"'{app_name}' (revision='{app_id}')."
             )
+            args.console.print("Playground:")
+            for endpoint in loaded.endpoints:
+                args.console.print(
+                    f"\thttps://{playground_host}/models/{user.username}/{app_name}{endpoint}"
+                )
+            args.console.print("Endpoints:")
+            for endpoint in loaded.endpoints:
+                args.console.print(
+                    f"\thttps://{endpoint_host}/{user.username}/{app_name}{endpoint}"
+                )
 
 
 def _deploy(args):
@@ -244,6 +255,13 @@ def add_parser(main_subparsers, parents):
         action="store_true",
         dest="app_scale_settings",
         help="Use the application code for scale settings.",
+    )
+    parser.add_argument(
+        "--output",
+        type=str,
+        default="pretty",
+        choices=["pretty", "json"],
+        help="Modify the command output",
     )
 
     parser.set_defaults(func=_deploy)
