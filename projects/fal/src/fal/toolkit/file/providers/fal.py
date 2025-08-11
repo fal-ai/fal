@@ -46,7 +46,8 @@ def _should_retry(exc: Exception) -> bool:
         return True
     elif type(exc) is URLError:
         # URLError is a base class for other errors,
-        # but it can be raised directly
+        # but it can be raised directly, e.g.
+        # URLError: <urlopen error [Errno -3] Temporary failure in name resolution>
         return True
 
     if isinstance(exc, TimeoutError):
