@@ -5,6 +5,7 @@ from dataclasses import asdict
 from typing import TYPE_CHECKING
 
 import fal.cli.runners as runners
+from fal.sdk import RunnerState
 
 from ._utils import get_client
 from .parser import FalClientParser
@@ -298,7 +299,11 @@ def _runners(args):
         alias_runners = connection.list_alias_runners(alias=args.app_name)
 
     runners_table = runners.runners_table(alias_runners)
-    args.console.print(f"Runners: {len(alias_runners)}")
+    pending_runners = [
+        runner for runner in alias_runners if runner.state == RunnerState.PENDING
+    ]
+    args.console.print(f"Runners: {len(alias_runners) - len(pending_runners)}")
+    args.console.print(f"Pending Runners: {len(pending_runners)}")
     # Drop the alias column, which is the first column
     runners_table.columns.pop(0)
     args.console.print(runners_table)
