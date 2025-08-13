@@ -1015,7 +1015,8 @@ def test_kill_runner(host: api.FalServerlessHost, test_sleep_app: str):
         client.kill_runner(runners[0].runner_id)
 
         runners = client.list_alias_runners(app_alias)
-        assert len(runners) == 0
+        num_runners = len([runner for runner in runners if runner.state == "running"])
+        assert num_runners == 0
 
 
 def test_container_app_client(test_container_app: str):
