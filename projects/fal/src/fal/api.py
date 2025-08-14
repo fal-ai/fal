@@ -600,8 +600,22 @@ class FalServerlessHost(Host):
         kwargs: dict[str, Any],
     ) -> ReturnT:
         def result_handler(partial_result):
+            from isolate.logs import Log, LogLevel, LogSource
+
             for log in partial_result.logs:
                 self._log_printer.print(log)
+
+                if "Access the playground at" in log.message:
+                    _url = log.message.rsplit()[-1]
+                    for route in func._routes:  # type: ignore[attr-defined]
+                        self._log_printer.print(
+                            Log(
+                                message=f"{_url}{route}",
+                                source=LogSource.USER,
+                                level=LogLevel.INFO,
+                                timestamp=log.timestamp,
+                            )
+                        )
 
         return self._run(func, options, args, kwargs, result_handler=result_handler)
 
