@@ -337,8 +337,10 @@ class App(BaseServable):
 
     def __init__(self, *, _allow_init: bool = False):
         if not _allow_init and not os.getenv("IS_ISOLATE_AGENT"):
+            cls_name = self.__class__.__name__
             raise NotImplementedError(
-                "Running apps through SDK is not implemented yet."
+                "Running apps through SDK is not implemented yet. "
+                f"Please use `fal run path/to/app.py::{cls_name}` to run your app."
             )
 
     @classmethod
