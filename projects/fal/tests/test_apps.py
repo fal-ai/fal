@@ -727,7 +727,12 @@ def test_app_deploy_scale(host: api.FalServerlessHost):
     )
 
     options = replace(
-        addition_app.options, host={**addition_app.options.host, "max_multiplexing": 30}
+        addition_app.options,
+        host={
+            **addition_app.options.host,
+            "max_multiplexing": 3,
+            "max_concurrency": 2,
+        },
     )
     kwargs = dict(
         func=addition_app.func,
@@ -743,7 +748,10 @@ def test_app_deploy_scale(host: api.FalServerlessHost):
         found = next(filter(lambda alias: alias.alias == app_alias, res), None)
         assert found, f"Could not find app {app_alias} in {res}"
         assert found.revision == app_revision
-        assert found.max_multiplexing == 1
+        # multiplexing is revision-specific
+        assert found.max_multiplexing == 3, "Expected max_multiplexing to have changed"
+        # max_concurrency is alias-specific
+        assert found.max_concurrency == 1, "Expected max_concurrency to stay the same"
 
     app_revision = addition_app.host.register(**kwargs, scale=True)
 
@@ -752,7 +760,9 @@ def test_app_deploy_scale(host: api.FalServerlessHost):
         found = next(filter(lambda alias: alias.alias == app_alias, res), None)
         assert found, f"Could not find app {app_alias} in {res}"
         assert found.revision == app_revision
-        assert found.max_multiplexing == 30
+        # when scaling, all values are updated
+        assert found.max_multiplexing == 3
+        assert found.max_concurrency == 2
 
 
 # List aliases is taking long
