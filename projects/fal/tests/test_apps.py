@@ -731,7 +731,7 @@ def test_app_deploy_scale(host: api.FalServerlessHost):
         host={
             **addition_app.options.host,
             "max_multiplexing": 3,
-            "max_concurrency": 5,
+            "max_concurrency": 2,
         },
     )
     kwargs = dict(
@@ -762,7 +762,7 @@ def test_app_deploy_scale(host: api.FalServerlessHost):
         assert found.revision == app_revision
         # when scaling, all values are updated
         assert found.max_multiplexing == 3
-        assert found.max_concurrency == 5
+        assert found.max_concurrency == 2
 
 
 # List aliases is taking long
