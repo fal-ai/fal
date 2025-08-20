@@ -28,6 +28,14 @@ fal.toolkit.utils.retry module
    :undoc-members:
    :show-inheritance:
 
+fal.toolkit.utils.setup\_utils module
+-------------------------------------
+
+.. automodule:: fal.toolkit.utils.setup_utils
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 Module contents
 ---------------
 

@@ -179,6 +179,29 @@ The client disconnect is monitored through the Request object.</p>
 </dd></dl>
 
 </section>
+<section id="module-fal.toolkit.utils.setup_utils">
+<span id="fal-toolkit-utils-setup-utils-module"></span><h2>fal.toolkit.utils.setup_utils module<a class="headerlink" href="#module-fal.toolkit.utils.setup_utils" title="Link to this heading">¶</a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.toolkit.utils.setup_utils.patch_onnx_runtime">
+<span class="sig-prename descclassname"><span class="pre">fal.toolkit.utils.setup_utils.</span></span><span class="sig-name descname"><span class="pre">patch_onnx_runtime</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">inter_op_num_threads</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">16</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">intra_op_num_threads</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">16</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">omp_num_threads</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">16</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.utils.setup_utils.patch_onnx_runtime" title="Link to this definition">¶</a></dt>
+<dd><p>Patch ONNX Runtime’s defaults to set the number of threads for inter-op,
+intra-op, and OpenMP.Trying to use an ONNX Runtime session within a fal app
+without explicitly setting these parameters can lead to issues, for example,
+it can cause several logs related to these parameters to be printed.
+Please run this function before importing any ONNX Runtime modules
+in your application.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>inter_op_num_threads</strong> (<em>int</em>) – Number of threads for inter-op parallelism.</p></li>
+<li><p><strong>intra_op_num_threads</strong> (<em>int</em>) – Number of threads for intra-op parallelism.</p></li>
+<li><p><strong>omp_num_threads</strong> (<em>int</em>) – Number of threads for OpenMP parallelism.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
 <section id="module-fal.toolkit.utils">
 <span id="module-contents"></span><h2>Module contents<a class="headerlink" href="#module-fal.toolkit.utils" title="Link to this heading">¶</a></h2>
 </section>
