@@ -44,10 +44,10 @@ class IsolateControllerStub(object):
                 request_serializer=controller__pb2.HostedRun.SerializeToString,
                 response_deserializer=controller__pb2.HostedRunResult.FromString,
                 _registered_method=True)
-        self.RunStream = channel.stream_stream(
-                '/controller.IsolateController/RunStream',
-                request_serializer=controller__pb2.HostedRun.SerializeToString,
-                response_deserializer=controller__pb2.HostedRunResult.FromString,
+        self.InteractiveRun = channel.stream_stream(
+                '/controller.IsolateController/InteractiveRun',
+                request_serializer=controller__pb2.InteractiveRunRequest.SerializeToString,
+                response_deserializer=controller__pb2.InteractiveRunResponse.FromString,
                 _registered_method=True)
         self.Map = channel.unary_stream(
                 '/controller.IsolateController/Map',
@@ -142,7 +142,7 @@ class IsolateControllerServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def RunStream(self, request_iterator, context):
+    def InteractiveRun(self, request_iterator, context):
         """Run the given function on the specified environment. Streams logs
         and the result originating from that function. Supports streaming
         inputs to hot reload the function.
@@ -271,10 +271,10 @@ def add_IsolateControllerServicer_to_server(servicer, server):
                     request_deserializer=controller__pb2.HostedRun.FromString,
                     response_serializer=controller__pb2.HostedRunResult.SerializeToString,
             ),
-            'RunStream': grpc.stream_stream_rpc_method_handler(
-                    servicer.RunStream,
-                    request_deserializer=controller__pb2.HostedRun.FromString,
-                    response_serializer=controller__pb2.HostedRunResult.SerializeToString,
+            'InteractiveRun': grpc.stream_stream_rpc_method_handler(
+                    servicer.InteractiveRun,
+                    request_deserializer=controller__pb2.InteractiveRunRequest.FromString,
+                    response_serializer=controller__pb2.InteractiveRunResponse.SerializeToString,
             ),
             'Map': grpc.unary_stream_rpc_method_handler(
                     servicer.Map,
@@ -395,7 +395,7 @@ class IsolateController(object):
             _registered_method=True)
 
     @staticmethod
-    def RunStream(request_iterator,
+    def InteractiveRun(request_iterator,
             target,
             options=(),
             channel_credentials=None,
@@ -408,9 +408,9 @@ class IsolateController(object):
         return grpc.experimental.stream_stream(
             request_iterator,
             target,
-            '/controller.IsolateController/RunStream',
-            controller__pb2.HostedRun.SerializeToString,
-            controller__pb2.HostedRunResult.FromString,
+            '/controller.IsolateController/InteractiveRun',
+            controller__pb2.InteractiveRunRequest.SerializeToString,
+            controller__pb2.InteractiveRunResponse.FromString,
             options,
             channel_credentials,
             insecure,
