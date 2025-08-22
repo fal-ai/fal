@@ -142,10 +142,15 @@ def _deploy_from_reference(
                 args.console.print(
                     f"\thttps://{playground_host}/models/{user.username}/{app_name}{endpoint}"
                 )
-            args.console.print("Endpoints:")
+            args.console.print("Synchronous Endpoints:")
             for endpoint in loaded.endpoints:
                 args.console.print(
                     f"\thttps://{endpoint_host}/{user.username}/{app_name}{endpoint}"
+                )
+            args.console.print("Asynchronous Endpoints (Recommended):")
+            for endpoint in loaded.endpoints:
+                args.console.print(
+                    f"\thttps://queue.{endpoint_host}/{user.username}/{app_name}{endpoint}"
                 )
 
 
