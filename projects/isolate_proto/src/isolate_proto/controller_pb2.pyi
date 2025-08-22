@@ -260,6 +260,30 @@ class UserKeyInfo(google.protobuf.message.Message):
 global___UserKeyInfo = UserKeyInfo
 
 @typing_extensions.final
+class ServiceURLs(google.protobuf.message.Message):
+    DESCRIPTOR: google.protobuf.descriptor.Descriptor
+
+    PLAYGROUND_FIELD_NUMBER: builtins.int
+    RUN_FIELD_NUMBER: builtins.int
+    QUEUE_FIELD_NUMBER: builtins.int
+    WS_FIELD_NUMBER: builtins.int
+    playground: builtins.str
+    run: builtins.str
+    queue: builtins.str
+    ws: builtins.str
+    def __init__(
+        self,
+        *,
+        playground: builtins.str = ...,
+        run: builtins.str = ...,
+        queue: builtins.str = ...,
+        ws: builtins.str = ...,
+    ) -> None: ...
+    def ClearField(self, field_name: typing_extensions.Literal["playground", b"playground", "queue", b"queue", "run", b"run", "ws", b"ws"]) -> None: ...
+
+global___ServiceURLs = ServiceURLs
+
+@typing_extensions.final
 class HostedRunResult(google.protobuf.message.Message):
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
@@ -267,6 +291,7 @@ class HostedRunResult(google.protobuf.message.Message):
     STATUS_FIELD_NUMBER: builtins.int
     LOGS_FIELD_NUMBER: builtins.int
     RETURN_VALUE_FIELD_NUMBER: builtins.int
+    SERVICE_URLS_FIELD_NUMBER: builtins.int
     run_id: builtins.str
     """Unique run id / token."""
     @property
@@ -282,6 +307,9 @@ class HostedRunResult(google.protobuf.message.Message):
         """The result of the run, if it is complete (indicated by
         status.is_complete).
         """
+    @property
+    def service_urls(self) -> global___ServiceURLs:
+        """Service URLs for the run"""
     def __init__(
         self,
         *,
@@ -289,11 +317,14 @@ class HostedRunResult(google.protobuf.message.Message):
         status: global___HostedRunStatus | None = ...,
         logs: collections.abc.Iterable[common_pb2.Log] | None = ...,
         return_value: common_pb2.SerializedObject | None = ...,
+        service_urls: global___ServiceURLs | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing_extensions.Literal["_return_value", b"_return_value", "_status", b"_status", "return_value", b"return_value", "status", b"status"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing_extensions.Literal["_return_value", b"_return_value", "_status", b"_status", "logs", b"logs", "return_value", b"return_value", "run_id", b"run_id", "status", b"status"]) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["_return_value", b"_return_value", "_service_urls", b"_service_urls", "_status", b"_status", "return_value", b"return_value", "service_urls", b"service_urls", "status", b"status"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["_return_value", b"_return_value", "_service_urls", b"_service_urls", "_status", b"_status", "logs", b"logs", "return_value", b"return_value", "run_id", b"run_id", "service_urls", b"service_urls", "status", b"status"]) -> None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_return_value", b"_return_value"]) -> typing_extensions.Literal["return_value"] | None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_service_urls", b"_service_urls"]) -> typing_extensions.Literal["service_urls"] | None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_status", b"_status"]) -> typing_extensions.Literal["status"] | None: ...
 
@@ -534,19 +565,26 @@ class RegisterApplicationResult(google.protobuf.message.Message):
 
     LOGS_FIELD_NUMBER: builtins.int
     RESULT_FIELD_NUMBER: builtins.int
+    SERVICE_URLS_FIELD_NUMBER: builtins.int
     @property
     def logs(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[common_pb2.Log]: ...
     @property
     def result(self) -> global___RegisterApplicationResultType: ...
+    @property
+    def service_urls(self) -> global___ServiceURLs: ...
     def __init__(
         self,
         *,
         logs: collections.abc.Iterable[common_pb2.Log] | None = ...,
         result: global___RegisterApplicationResultType | None = ...,
+        service_urls: global___ServiceURLs | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing_extensions.Literal["_result", b"_result", "result", b"result"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing_extensions.Literal["_result", b"_result", "logs", b"logs", "result", b"result"]) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["_result", b"_result", "_service_urls", b"_service_urls", "result", b"result", "service_urls", b"service_urls"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["_result", b"_result", "_service_urls", b"_service_urls", "logs", b"logs", "result", b"result", "service_urls", b"service_urls"]) -> None: ...
+    @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_result", b"_result"]) -> typing_extensions.Literal["result"] | None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_service_urls", b"_service_urls"]) -> typing_extensions.Literal["service_urls"] | None: ...
 
 global___RegisterApplicationResult = RegisterApplicationResult
 

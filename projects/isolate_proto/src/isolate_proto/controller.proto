@@ -108,6 +108,13 @@ message UserKeyInfo {
     string alias = 4;
 }
 
+message ServiceURLs {
+    string playground = 1;
+    string run = 2;
+    string queue = 3;
+    string ws = 4;
+}
+
 message HostedRunResult {
     // Unique run id / token.
     string run_id = 1;
@@ -122,6 +129,9 @@ message HostedRunResult {
     // The result of the run, if it is complete (indicated by
     // status.is_complete).
     optional SerializedObject return_value = 4;
+
+    // Service URLs for the run
+    optional ServiceURLs service_urls = 5;
 }
 
 message HostedRunStatus {
@@ -208,6 +218,7 @@ message RegisterApplicationResultType {
 message RegisterApplicationResult {
     repeated Log logs = 1;
     optional RegisterApplicationResultType result = 2;
+    optional ServiceURLs service_urls = 3;
 }
 
 message UpdateApplicationRequest {
