@@ -289,18 +289,28 @@ class RunnerInfo:
 
 
 @dataclass
+class ServiceURLs:
+    playground: str
+    run: str
+    queue: str
+    ws: str
+
+
+@dataclass
 class HostedRunResult(Generic[ResultT]):
     run_id: str
     status: HostedRunStatus
     logs: list[Log] = field(default_factory=list)
     result: ResultT | None = None
     stream: Any = None
+    service_urls: ServiceURLs | None = None
 
 
 @dataclass
 class RegisterApplicationResult:
     result: RegisterApplicationResultType | None
     logs: list[Log] = field(default_factory=list)
+    service_urls: ServiceURLs | None = None
 
 
 @dataclass
@@ -452,6 +462,9 @@ def _from_grpc_register_application_result(
             if not message.HasField("result")
             else RegisterApplicationResultType(message.result.application_id)
         ),
+        service_urls=from_grpc(message.service_urls)
+        if message.HasField("service_urls")
+        else None,
     )
 
 
@@ -460,6 +473,13 @@ def _from_grpc_hosted_run_status(
     message: isolate_proto.HostedRunStatus,
 ) -> HostedRunStatus:
     return HostedRunStatus(HostedRunState(message.state))
+
+
+@from_grpc.register(isolate_proto.ServiceURLs)
+def _from_grpc_service_urls(
+    message: isolate_proto.ServiceURLs,
+) -> ServiceURLs:
+    return ServiceURLs(message.playground, message.run, message.queue, message.ws)
 
 
 @from_grpc.register(isolate_proto.HostedRunResult)
@@ -476,6 +496,9 @@ def _from_grpc_hosted_run_result(
         from_grpc(message.status),
         logs=[from_grpc(log) for log in message.logs],
         result=return_value,
+        service_urls=from_grpc(message.service_urls)
+        if message.HasField("service_urls")
+        else None,
     )
 
 
