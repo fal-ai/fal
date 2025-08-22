@@ -2113,7 +2113,7 @@ project root was discovered.</p>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="fal.sdk.HostedRunResult">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.sdk.</span></span><span class="sig-name descname"><span class="pre">HostedRunResult</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">run_id</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">status</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">logs=&lt;factory&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">result=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stream=None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.HostedRunResult" title="Link to this definition">¶</a></dt>
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.sdk.</span></span><span class="sig-name descname"><span class="pre">HostedRunResult</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">run_id</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">status</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">logs=&lt;factory&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">result=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stream=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">service_urls=None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.HostedRunResult" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Generic</span></code>[<code class="xref py py-obj docutils literal notranslate"><span class="pre">ResultT</span></code>]</p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="fal.sdk.HostedRunResult.logs">
@@ -2128,6 +2128,11 @@ project root was discovered.</p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="fal.sdk.HostedRunResult.run_id">
 <span class="sig-name descname"><span class="pre">run_id</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><a class="headerlink" href="#fal.sdk.HostedRunResult.run_id" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.sdk.HostedRunResult.service_urls">
+<span class="sig-name descname"><span class="pre">service_urls</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#fal.sdk.ServiceURLs" title="fal.sdk.ServiceURLs"><code class="xref py py-class docutils literal notranslate"><span class="pre">ServiceURLs</span></code></a> <span class="pre">|</span> <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.sdk.HostedRunResult.service_urls" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
@@ -2289,7 +2294,7 @@ project root was discovered.</p>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="fal.sdk.RegisterApplicationResult">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.sdk.</span></span><span class="sig-name descname"><span class="pre">RegisterApplicationResult</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">result</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">logs=&lt;factory&gt;</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.RegisterApplicationResult" title="Link to this definition">¶</a></dt>
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.sdk.</span></span><span class="sig-name descname"><span class="pre">RegisterApplicationResult</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">result</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">logs=&lt;factory&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">service_urls=None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.RegisterApplicationResult" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="fal.sdk.RegisterApplicationResult.logs">
@@ -2299,6 +2304,11 @@ project root was discovered.</p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="fal.sdk.RegisterApplicationResult.result">
 <span class="sig-name descname"><span class="pre">result</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#fal.sdk.RegisterApplicationResultType" title="fal.sdk.RegisterApplicationResultType"><code class="xref py py-class docutils literal notranslate"><span class="pre">RegisterApplicationResultType</span></code></a> <span class="pre">|</span> <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></em><a class="headerlink" href="#fal.sdk.RegisterApplicationResult.result" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.sdk.RegisterApplicationResult.service_urls">
+<span class="sig-name descname"><span class="pre">service_urls</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#fal.sdk.ServiceURLs" title="fal.sdk.ServiceURLs"><code class="xref py py-class docutils literal notranslate"><span class="pre">ServiceURLs</span></code></a> <span class="pre">|</span> <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.sdk.RegisterApplicationResult.service_urls" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 </dd></dl>
@@ -2440,6 +2450,32 @@ project root was discovered.</p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="fal.sdk.ServerlessSecret.name">
 <span class="sig-name descname"><span class="pre">name</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><a class="headerlink" href="#fal.sdk.ServerlessSecret.name" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.sdk.ServiceURLs">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.sdk.</span></span><span class="sig-name descname"><span class="pre">ServiceURLs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">playground</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">run</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">queue</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ws</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.ServiceURLs" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.sdk.ServiceURLs.playground">
+<span class="sig-name descname"><span class="pre">playground</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><a class="headerlink" href="#fal.sdk.ServiceURLs.playground" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.sdk.ServiceURLs.queue">
+<span class="sig-name descname"><span class="pre">queue</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><a class="headerlink" href="#fal.sdk.ServiceURLs.queue" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.sdk.ServiceURLs.run">
+<span class="sig-name descname"><span class="pre">run</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><a class="headerlink" href="#fal.sdk.ServiceURLs.run" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.sdk.ServiceURLs.ws">
+<span class="sig-name descname"><span class="pre">ws</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><a class="headerlink" href="#fal.sdk.ServiceURLs.ws" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 </dd></dl>
