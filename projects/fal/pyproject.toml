@@ -51,7 +51,7 @@ dependencies = [
     # For 3.9 and earlier, importlib-metadata's newer versions are included in the standard library.
     'importlib-metadata>=4.4; python_version < "3.10"',
     "msgpack>=1.0.7,<2",
-    "websockets>=12.0,<13",
+    "websockets>=12.0,<16",
     "pillow>=10.2.0,<11",
     "pyjwt[crypto]>=2.8.0,<3",
     "uvicorn>=0.29.0,<1",
