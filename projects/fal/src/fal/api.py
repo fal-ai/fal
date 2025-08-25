@@ -600,22 +600,22 @@ class FalServerlessHost(Host):
         kwargs: dict[str, Any],
     ) -> ReturnT:
         def result_handler(partial_result):
-            from isolate.logs import Log, LogLevel, LogSource
+            from fal.console import console
+
+            if service_urls := partial_result.service_urls:
+                console.print("Playground:")
+                endpoints = func._routes  # type: ignore[attr-defined]
+                for endpoint in endpoints:
+                    console.print(f"\t{service_urls.playground}{endpoint}")
+                console.print("Synchronous Endpoints:")
+                for endpoint in endpoints:
+                    console.print(f"\t{service_urls.run}{endpoint}")
+                console.print("Asynchronous Endpoints (Recommended):")
+                for endpoint in endpoints:
+                    console.print(f"\t{service_urls.queue}{endpoint}")
 
             for log in partial_result.logs:
                 self._log_printer.print(log)
-
-                if "Access the playground at" in log.message:
-                    _url = log.message.rsplit()[-1]
-                    for route in func._routes:  # type: ignore[attr-defined]
-                        self._log_printer.print(
-                            Log(
-                                message=f"{_url}{route}",
-                                source=LogSource.USER,
-                                level=LogLevel.INFO,
-                                timestamp=log.timestamp,
-                            )
-                        )
 
         return self._run(func, options, args, kwargs, result_handler=result_handler)
 
