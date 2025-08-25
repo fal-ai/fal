@@ -604,7 +604,7 @@ class FalServerlessHost(Host):
 
             if service_urls := partial_result.service_urls:
                 console.print("Playground:")
-                endpoints = func._routes  # type: ignore[attr-defined]
+                endpoints = func._routes or ["/"]  # type: ignore[attr-defined]
                 for endpoint in endpoints:
                     console.print(f"\t{service_urls.playground}{endpoint}")
                 console.print("Synchronous Endpoints:")
@@ -615,6 +615,12 @@ class FalServerlessHost(Host):
                     console.print(f"\t{service_urls.queue}{endpoint}")
 
             for log in partial_result.logs:
+                if (
+                    "Access the playground at" in log.message
+                    or "And API access through" in log.message
+                ):
+                    # Obsolete messages from before service_urls were added.
+                    continue
                 self._log_printer.print(log)
 
         return self._run(func, options, args, kwargs, result_handler=result_handler)
