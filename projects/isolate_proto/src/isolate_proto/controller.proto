@@ -11,6 +11,10 @@ service IsolateController {
     // Run the given function on the specified environment. Streams logs
     // and the result originating from that function.
     rpc Run (HostedRun) returns (stream HostedRunResult) {}
+    // Run the given function on the specified environment. Streams logs
+    // and the result originating from that function. Supports streaming
+    // inputs to hot reload the function.
+    rpc InteractiveRun (stream InteractiveRunRequest) returns (stream InteractiveRunResponse) {}
     // Run the given function in parallel with the given inputs
     rpc Map (HostedMap) returns (stream HostedRunResult) {}
     // Creates an authentication key for a user
@@ -132,6 +136,14 @@ message HostedRunResult {
 
     // Service URLs for the run
     optional ServiceURLs service_urls = 5;
+}
+
+message InteractiveRunRequest {
+    HostedRun hosted_run = 1;
+}
+
+message InteractiveRunResponse {
+    HostedRunResult hosted_run_result = 1;
 }
 
 message HostedRunStatus {
