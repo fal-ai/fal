@@ -110,6 +110,7 @@ def wrap_app(cls: type[App], **kwargs) -> IsolatedFunction:
     metadata["openapi"] = app.openapi()
 
     routes = app.collect_routes()
+    initialize_and_serve._routes = [r.path for r in routes.keys()] or ["/"]  # type: ignore[attr-defined]
     realtime_app = any(route.is_websocket for route in routes)
 
     kind = cls.host_kwargs.pop("kind", "virtualenv")

@@ -600,7 +600,27 @@ class FalServerlessHost(Host):
         kwargs: dict[str, Any],
     ) -> ReturnT:
         def result_handler(partial_result):
+            from fal.console import console
+
+            if service_urls := partial_result.service_urls:
+                console.print("Playground:")
+                endpoints = getattr(func, "_routes", ["/"])  # type: ignore[attr-defined]
+                for endpoint in endpoints:
+                    console.print(f"\t{service_urls.playground}{endpoint}")
+                console.print("Synchronous Endpoints:")
+                for endpoint in endpoints:
+                    console.print(f"\t{service_urls.run}{endpoint}")
+                console.print("Asynchronous Endpoints (Recommended):")
+                for endpoint in endpoints:
+                    console.print(f"\t{service_urls.queue}{endpoint}")
+
             for log in partial_result.logs:
+                if (
+                    "Access the playground at" in log.message
+                    or "And API access through" in log.message
+                ):
+                    # Obsolete messages from before service_urls were added.
+                    continue
                 self._log_printer.print(log)
 
         return self._run(func, options, args, kwargs, result_handler=result_handler)
