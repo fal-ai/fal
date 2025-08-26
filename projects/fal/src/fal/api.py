@@ -604,7 +604,7 @@ class FalServerlessHost(Host):
 
             if service_urls := partial_result.service_urls:
                 console.print("Playground:")
-                endpoints = func._routes or ["/"]  # type: ignore[attr-defined]
+                endpoints = getattr(func, "_routes", ["/"])  # type: ignore[attr-defined]
                 for endpoint in endpoints:
                     console.print(f"\t{service_urls.playground}{endpoint}")
                 console.print("Synchronous Endpoints:")
