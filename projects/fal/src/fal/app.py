@@ -11,7 +11,13 @@ import time
 import typing
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass
-from typing import Any, Callable, ClassVar, Literal, TypeVar
+from typing import (
+    Any,
+    Callable,
+    ClassVar,
+    Literal,
+    TypeVar,
+)
 
 import fastapi
 import grpc.aio as async_grpc
@@ -314,6 +320,7 @@ class App(BaseServable):
     app_auth: ClassVar[Literal["private", "public", "shared", None]] = None
     request_timeout: ClassVar[int | None] = None
     startup_timeout: ClassVar[int | None] = None
+    files: ClassVar[list[str]] = []
 
     isolate_channel: async_grpc.Channel | None = None
 
@@ -327,6 +334,9 @@ class App(BaseServable):
 
         if cls.startup_timeout is not None:
             cls.host_kwargs["startup_timeout"] = cls.startup_timeout
+
+        if cls.files:
+            cls.host_kwargs["files"] = cls.files
 
         cls.app_name = getattr(cls, "app_name", app_name)
 
