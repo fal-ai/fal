@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import inspect
 import os
 import sys
@@ -50,6 +51,7 @@ from fal.exceptions import (
     FieldException,
 )
 from fal.exceptions._cuda import _is_cuda_oom_exception
+from fal.file_sync import FileSync
 from fal.logging.isolate import IsolateLogPrinter
 from fal.sdk import (
     FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER,
@@ -59,6 +61,7 @@ from fal.sdk import (
     Credentials,
     FalServerlessClient,
     FalServerlessConnection,
+    File,
     HostedRunState,
     MachineRequirements,
     get_agent_credentials,
@@ -433,6 +436,7 @@ class FalServerlessHost(Host):
             "_base_image",
             "_scheduler",
             "_scheduler_options",
+            "files",
         }
     )
 
@@ -443,6 +447,9 @@ class FalServerlessHost(Host):
     _log_printer = IsolateLogPrinter(debug=flags.DEBUG)
 
     _thread_pool: ThreadPoolExecutor = field(default_factory=ThreadPoolExecutor)
+
+    def set_local_file_path(self, path: str):
+        self.local_file_path = path
 
     def __getstate__(self) -> dict[str, Any]:
         state = self.__dict__.copy()
@@ -506,6 +513,15 @@ class FalServerlessHost(Host):
             request_timeout=request_timeout,
             startup_timeout=startup_timeout,
         )
+        files = options.host.get("files", [])
+        if files:
+            sync = FileSync(self.local_file_path)
+            result = asyncio.run(sync.sync_files(files))
+            all_files = result["existing_hashes"] + result["uploaded_files"]
+            files = [
+                File(relative_path=file["relative_path"], hash=file["hash"])
+                for file in all_files
+            ]
 
         partial_func = _prepare_partial_func(func)
 
@@ -529,6 +545,7 @@ class FalServerlessHost(Host):
             scale=scale,
             # By default, logs are public
             private_logs=options.host.get("private_logs", False),
+            files=files,
         ):
             for log in partial_result.logs:
                 self._log_printer.print(log)
@@ -568,6 +585,16 @@ class FalServerlessHost(Host):
         setup_function = options.host.get("setup_function", None)
         request_timeout = options.host.get("request_timeout")
         startup_timeout = options.host.get("startup_timeout")
+        files = options.host.get("files", [])
+        if files:
+            sync = FileSync(self.local_file_path)
+            result = asyncio.run(sync.sync_files(files))
+            all_files = result["existing_hashes"] + result["uploaded_files"]
+            files = [
+                File(relative_path=file["relative_path"], hash=file["hash"])
+                for file in all_files
+            ]
+
         machine_requirements = MachineRequirements(
             machine_types=machine_type,  # type: ignore
             num_gpus=options.host.get("num_gpus"),
@@ -593,6 +620,7 @@ class FalServerlessHost(Host):
             environments,
             machine_requirements=machine_requirements,
             setup_function=setup_function,
+            files=files,
         ):
             result_handler(partial_result)
 
