@@ -58,6 +58,23 @@ def load_function_from(
     fal._serialization.include_package_from_path(file_path)
 
     target = module[function_name]
+    original_setup = target.setup
+
+    def enhanced_setup(self):
+        # Do not modify base location, files will be found at /deploy-data
+        # import os
+        # os.chdir("/deploy-data")
+        # Append to path for python to be able to access stuff
+        import sys
+
+        sys.path.append("/deploy-data")
+
+        # Run the original setup
+        original_setup(self)
+
+    # Replace the method
+    target.setup = enhanced_setup
+
     endpoints = ["/"]
     if isinstance(target, type) and issubclass(target, App):
         app_name = target.app_name
