@@ -9,6 +9,10 @@ from typing import Any
 import httpx
 from tusclient import client
 
+from fal.console import console
+from fal.console.icons import CROSS_ICON
+from fal.exceptions import FalServerlessException
+
 USER_AGENT = "fal-sdk/1.14.0 (python)"
 
 
@@ -48,10 +52,10 @@ class FileSync:
         )
 
     async def _request(self, method: str, path: str, **kwargs) -> httpx.Response:
-        from fal.exceptions import FalServerlessException
-
         response = await self._client.request(method, path, **kwargs)
-        if response.status_code != 200:
+        if response.status_code == 404:
+            raise FalServerlessException("Not Found")
+        elif response.status_code != 200:
             try:
                 detail = response.json()["detail"]
             except Exception:
@@ -85,14 +89,11 @@ class FileSync:
 
     def normalize_path(self, path_str: str, base_path_str: str) -> tuple[str, str]:
         path = Path(path_str)
-        base_path = Path(base_path_str)
+        base_path = Path(base_path_str).resolve()
 
         # Resolve relative paths against base directory
         if not path.is_absolute():
-            if base_path.is_file():
-                script_dir = base_path.parent
-            else:
-                script_dir = base_path
+            script_dir = base_path.parent
             absolute_path = (script_dir / path).resolve()
         else:
             absolute_path = path.resolve()
@@ -104,7 +105,8 @@ class FileSync:
             relative_path = absolute_path.as_posix()
 
         # Remove parent directory traversals for security
-        relative_path = relative_path.replace("../", "")
+        while relative_path.startswith("../"):
+            relative_path = relative_path[3:]
 
         return absolute_path.as_posix(), relative_path
 
@@ -114,7 +116,7 @@ class FileSync:
             response.raise_for_status()
             return response.json()
         except Exception as e:
-            print("Error fetching cache:", e)
+            console.print(f"{CROSS_ICON} Failed to fetch cache: {e}")
             return []
 
     async def load_local_cache(self) -> dict[str, dict[str, Any]]:
@@ -140,7 +142,7 @@ class FileSync:
             with open(self.cache_file, "w") as f:
                 json.dump(cache_data, f, indent=2)
         except OSError as e:
-            print(f"Warning: Failed to save cache: {e}")
+            console.print(f"{CROSS_ICON} Failed to save local cache: {e}")
 
     async def check_local_cache(self, current_metadata: dict[str, Any]) -> bool:
         cache = await self.load_local_cache()
@@ -166,6 +168,7 @@ class FileSync:
         for path in paths:
             abs_path, rel_path = self.normalize_path(path, self.local_file_path)
             if not os.path.exists(abs_path):
+                console.print(f"{abs_path} was not found, it will be skipped")
                 continue
 
             if os.path.isfile(abs_path):
@@ -195,10 +198,13 @@ class FileSync:
             response = await self._request(
                 "HEAD", f"/files/tus_file/exists/{file_hash}"
             )
-            print(response.status_code)
             return response.status_code == 200
+        except FalServerlessException as e:
+            if "not found" in str(e).lower():
+                console.print(f"Syncing file: {file_hash}")
+            return False
         except Exception as e:
-            print(f"Error checking hash {file_hash}: {e}")
+            console.print(f"{CROSS_ICON} Couldn't check file hash: {e}")
             return False
 
     async def check_multiple_hashes_exist(
@@ -212,7 +218,7 @@ class FileSync:
         hash_status = {}
         for file_hash, result in zip(file_hashes, results):
             if isinstance(result, Exception):
-                print(f"Error checking hash {file_hash}: {result}")
+                console.print(f"{CROSS_ICON} {file_hash} not found, syncing...")
                 hash_status[file_hash] = False
             else:
                 hash_status[file_hash] = result
@@ -271,10 +277,17 @@ class FileSync:
         # Remove duplicate files by absolute path
         unique_files = []
         seen_paths = set()
+        seen_relative_paths = set()
         for metadata in files:
             abs_path = metadata["absolute_path"]
+            rel_path = metadata["relative_path"]
             if abs_path not in seen_paths:
                 seen_paths.add(abs_path)
+                if rel_path in seen_relative_paths:
+                    raise Exception(
+                        f"Duplicate {rel_path} found, please change name for {abs_path}"
+                    )
+                seen_relative_paths.add(rel_path)
                 unique_files.append(metadata)
 
         # Check local cache first to avoid unnecessary server requests
