@@ -234,3 +234,17 @@ class FalFileSystem(AbstractFileSystem):
             f"/files/file/{abs_path}",
         )
         self.dircache.clear()
+
+    def rename(self, path, destination, **kwargs):
+        abs_path = self._abspath(path)
+        abs_dest = self._abspath(destination)
+        self._request(
+            "POST",
+            f"/files/rename/{abs_path}",
+            json={"destination": abs_dest},
+        )
+        self.dircache.clear()
+
+    def mv(self, path1, path2, recursive=False, maxdepth=None, **kwargs):
+        # Delegate to server-side rename
+        self.rename(path1, path2)

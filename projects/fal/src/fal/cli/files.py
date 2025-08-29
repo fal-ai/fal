@@ -35,6 +35,13 @@ def _upload_url(args):
     fs.put_file_from_url(args.url, args.remote_path)
 
 
+def _mv(args):
+    from fal.files import FalFileSystem
+
+    fs = FalFileSystem()
+    fs.mv(args.source, args.destination)
+
+
 def add_parser(main_subparsers, parents):
     files_help = "Manage fal files."
     parser = main_subparsers.add_parser(
@@ -108,3 +115,14 @@ def add_parser(main_subparsers, parents):
         "remote_path", type=str, help="Remote path to upload to"
     )
     upload_url_parser.set_defaults(func=_upload_url)
+
+    mv_help = "Move or rename a remote file or directory."
+    mv_parser = subparsers.add_parser(
+        "mv",
+        description=mv_help,
+        help=mv_help,
+        parents=parents,
+    )
+    mv_parser.add_argument("source", type=str, help="Remote source path")
+    mv_parser.add_argument("destination", type=str, help="Remote destination path")
+    mv_parser.set_defaults(func=_mv)
