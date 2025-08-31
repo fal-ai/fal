@@ -1,3 +1,4 @@
+import argparse
 from contextlib import ExitStack, contextmanager
 
 from .parser import FalParser
@@ -45,17 +46,23 @@ def debugtools(args):
 
 
 def get_debug_parser():
+    from fal.flags import DEBUG
+
     parser = FalParser(add_help=False)
     group = parser.add_argument_group(title="Debug")
-    group.add_argument("--debug", action="store_true", help="Show verbose errors.")
+    group.add_argument(
+        "--debug",
+        action="store_true",
+        help="Show verbose errors." if DEBUG else argparse.SUPPRESS,
+    )
     group.add_argument(
         "--pdb",
         action="store_true",
-        help="Start pdb on error.",
+        help="Start pdb on error." if DEBUG else argparse.SUPPRESS,
     )
     group.add_argument(
         "--cprofile",
         action="store_true",
-        help="Show cProfile report.",
+        help="Show cProfile report." if DEBUG else argparse.SUPPRESS,
     )
     return parser
