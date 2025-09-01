@@ -7,32 +7,40 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+from platformdirs import user_cache_dir
 from tusclient import client
 
+from fal._version import version_tuple
 from fal.console import console
 from fal.console.icons import CROSS_ICON
-from fal.exceptions import FalServerlessException
+from fal.exceptions import FalServerlessException, FileTooLargeError
 
-USER_AGENT = "fal-sdk/1.14.0 (python)"
+USER_AGENT = f"fal-sdk/{'.'.join(map(str, version_tuple))} (python)"
+FILE_SIZE_LIMIT = 1024 * 1024 * 1024  # 1GB
 
 
 class FileSync:
     def __init__(self, local_file_path: str):
+        from fal.auth import current_user_info
+        from fal.sdk import get_default_credentials
+
+        self.creds = get_default_credentials()
+        user_info = current_user_info(self.creds.to_headers())
+        nickname = user_info["nickname"]
+
         self.local_file_path = local_file_path
-        self.cache_dir = Path.home() / ".cache" / "fal"
+        self.cache_dir = Path(user_cache_dir()) / "fal" / nickname
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.cache_file = self.cache_dir / "file_metadata.json"
 
     @cached_property
     def _client(self) -> httpx.AsyncClient:
         from fal.flags import REST_URL
-        from fal.sdk import get_default_credentials
 
-        creds = get_default_credentials()
         return httpx.AsyncClient(
             base_url=REST_URL,
             headers={
-                **creds.to_headers(),
+                **self.creds.to_headers(),
                 "User-Agent": USER_AGENT,
             },
         )
@@ -63,23 +71,27 @@ class FileSync:
             raise FalServerlessException(detail)
         return response
 
-    def compute_hash(self, file_path: str, mtime: float, mode: int) -> str:
-        sha256 = hashlib.sha256()
-
-        # Hash file contents
+    def compute_hash(self, file_path: str, mode: int) -> str:
+        # Hash file contents efficiently
         with open(file_path, "rb") as f:
-            for chunk in iter(lambda: f.read(4096), b""):
-                sha256.update(chunk)
+            file_hash = hashlib.file_digest(f, "sha256")
 
         # Include metadata in hash
-        metadata_string = f"{mtime}:{mode}"
-        sha256.update(metadata_string.encode("utf-8"))
+        metadata_string = f"{mode}"
+        file_hash.update(metadata_string.encode("utf-8"))
 
-        return sha256.hexdigest()
+        return file_hash.hexdigest()
 
     def get_file_metadata(self, file_path: str) -> dict[str, Any]:
         stat = os.stat(file_path)
-        file_hash = self.compute_hash(file_path, stat.st_mtime, stat.st_mode)
+
+        # Limit allowed individual file size
+        if stat.st_size > FILE_SIZE_LIMIT:
+            raise FileTooLargeError(
+                f"{file_path} is larger than {FILE_SIZE_LIMIT} bytes."
+            )
+
+        file_hash = self.compute_hash(file_path, stat.st_mode)
         return {
             "size": str(stat.st_size),
             "mtime": str(stat.st_mtime),

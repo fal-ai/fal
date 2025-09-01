@@ -1,4 +1,4 @@
-import os
+from pathlib import Path
 
 from ._utils import get_app_data_from_toml, is_app_name
 from .parser import FalClientParser, RefAction
@@ -15,7 +15,7 @@ def _run(args):
     else:
         file_path, func_name = args.func_ref
         # Turn relative path into absolute path for files
-        file_path = os.getcwd() + "/" + file_path
+        file_path = str(Path(file_path).absolute())
 
     host = FalServerlessHost(args.host)
     host.set_local_file_path(file_path)

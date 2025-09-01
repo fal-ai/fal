@@ -56,3 +56,8 @@ class RequestCancelledException(FalServerlessException):
     """Exception raised when the request is cancelled by the client."""
 
     message: str = "Request cancelled by the client."
+
+
+@dataclass
+class FileTooLargeError(FalServerlessException):
+    """Exception raised when the file is too large."""

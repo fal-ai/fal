@@ -38,10 +38,6 @@ def test_file_sync_init(temp_dir):
     assert (
         fs.local_file_path == local_path
     ), "Incorrect local_file_path, base file is not set correctly"
-    expected_cache_dir = Path.home() / ".cache" / "fal"
-    assert fs.cache_dir == expected_cache_dir, "Cache dir is not set correctly"
-    expected_cache_file = expected_cache_dir / "file_metadata.json"
-    assert fs.cache_file == expected_cache_file, "Cache File is not correct"
 
 
 @patch("pathlib.Path.mkdir")
@@ -130,7 +126,7 @@ def test_compute_hash_basic_functionality(file_sync, temp_dir):
     test_file.write_text(test_content)
 
     stat = os.stat(test_file)
-    hash_result = file_sync.compute_hash(str(test_file), stat.st_mtime, stat.st_mode)
+    hash_result = file_sync.compute_hash(str(test_file), stat.st_mode)
 
     assert len(hash_result) == 64, "Expected SHA256 hash length of 64 chars"
     assert all(
@@ -144,8 +140,8 @@ def test_compute_hash_metadata_affects_result(file_sync, temp_dir):
     test_file.write_text("same content")
 
     stat1 = os.stat(test_file)
-    hash1 = file_sync.compute_hash(str(test_file), stat1.st_mtime, stat1.st_mode)
-    hash2 = file_sync.compute_hash(str(test_file), stat1.st_mtime + 1, stat1.st_mode)
+    hash1 = file_sync.compute_hash(str(test_file), stat1.st_mode)
+    hash2 = file_sync.compute_hash(str(test_file), stat1.st_mode + 1)
 
     assert hash1 != hash2, "Different metadata should produce different hashes"
 
@@ -158,16 +154,14 @@ def test_compute_hash_large_file_chunking(file_sync, temp_dir):
     test_file.write_text(large_content)
 
     stat = os.stat(test_file)
-    hash_result = file_sync.compute_hash(str(test_file), stat.st_mtime, stat.st_mode)
+    hash_result = file_sync.compute_hash(str(test_file), stat.st_mode)
 
     assert len(hash_result) == 64, "Large file hash should still be 64 chars"
     # Verify it's different from a smaller file with same pattern
     small_file = Path(temp_dir) / "small_file.txt"
     small_file.write_text("x" * 100)
     small_stat = os.stat(small_file)
-    small_hash = file_sync.compute_hash(
-        str(small_file), small_stat.st_mtime, small_stat.st_mode
-    )
+    small_hash = file_sync.compute_hash(str(small_file), small_stat.st_mode)
     assert (
         hash_result != small_hash
     ), "Large and small files with different content should have different hashes"
