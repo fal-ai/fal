@@ -371,6 +371,10 @@ class App(BaseServable):
 
     @asynccontextmanager
     async def lifespan(self, app: fastapi.FastAPI):
+        import sys
+
+        # Add to path to discover files via python
+        sys.path.append("/deploy-data")
         _print_python_packages()
         await _call_any_fn(self.setup)
         try:
