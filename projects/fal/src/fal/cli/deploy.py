@@ -1,6 +1,5 @@
 import argparse
 import json
-import os
 from collections import namedtuple
 from pathlib import Path
 from typing import Literal, Optional, Tuple, Union
@@ -178,7 +177,7 @@ def _deploy(args):
         app_auth = args.auth
         app_deployment_strategy = args.strategy
         app_scale_settings = args.app_scale_settings
-        file_path = os.getcwd() + "/" + file_path
+        file_path = str(Path(file_path).absolute())
 
     _deploy_from_reference(
         (file_path, func_name),
