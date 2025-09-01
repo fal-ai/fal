@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from dataclasses import dataclass
 
 import fal._serialization
@@ -60,7 +61,7 @@ def load_function_from(
     target = module[function_name]
     original_setup = target.setup
 
-    def enhanced_setup(self):
+    async def enhanced_setup(self):
         # Do not modify base location, files will be found at /deploy-data
         # import os
         # os.chdir("/deploy-data")
@@ -70,7 +71,10 @@ def load_function_from(
         sys.path.append("/deploy-data")
 
         # Run the original setup
-        original_setup(self)
+        if inspect.iscoroutinefunction(original_setup):
+            await original_setup(self)
+        else:
+            original_setup(self)
 
     # Replace the method
     target.setup = enhanced_setup
