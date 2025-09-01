@@ -113,7 +113,7 @@ def _check_latest_version():
 def main(argv=None) -> int:
     import grpc
 
-    from fal.api import UserFunctionException
+    from fal.api import FalSerializationError, UserFunctionException
 
     _check_latest_version()
 
@@ -123,7 +123,7 @@ def main(argv=None) -> int:
 
         with debugtools(args):
             ret = args.func(args)
-    except UserFunctionException as _exc:
+    except (UserFunctionException, FalSerializationError) as _exc:
         cause = _exc.__cause__
         exc: BaseException = cause or _exc
         tb = rich.traceback.Traceback.from_exception(
@@ -132,7 +132,12 @@ def main(argv=None) -> int:
             exc.__traceback__,
         )
         console.print(tb)
-        _print_error("Unhandled user exception")
+
+        if isinstance(_exc, UserFunctionException):
+            msg = "Unhandled user exception"
+        else:
+            msg = str(_exc)
+        _print_error(msg)
     except KeyboardInterrupt:
         _print_error("Aborted.")
     except grpc.RpcError as exc:

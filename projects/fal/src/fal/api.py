@@ -96,7 +96,12 @@ class InternalFalServerlessError(FalServerlessException):
 
 
 @dataclass
-class FalMissingDependencyError(FalServerlessError): ...
+class FalSerializationError(FalServerlessException):
+    message: str
+
+
+@dataclass
+class FalMissingDependencyError(FalSerializationError): ...
 
 
 @dataclass
@@ -316,6 +321,8 @@ def _handle_grpc_error():
             """
             Wraps grpc errors as fal Serverless Errors.
             """
+            from isolate.connections.common import SerializationError
+
             try:
                 return fn(*args, **kwargs)
             except grpc.RpcError as e:
@@ -339,6 +346,18 @@ def _handle_grpc_error():
                     raise FalMissingDependencyError(msg) from None
                 else:
                     raise FalServerlessError(msg)
+            except SerializationError as e:
+                msg = str(e)
+                cause = e.__cause__
+                if isinstance(cause, ModuleNotFoundError):
+                    missing_module = cause.name
+                    msg += (
+                        f". Could not find module '{missing_module}'. "
+                        "This is likely due to a missing dependency. "
+                        "Please make sure to include all dependencies "
+                        "in the environment configuration."
+                    )
+                raise FalSerializationError(msg) from cause
 
         return handler
 
