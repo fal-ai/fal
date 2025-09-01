@@ -445,6 +445,8 @@ class FalServerlessHost(Host):
 
     _thread_pool: ThreadPoolExecutor = field(default_factory=ThreadPoolExecutor)
 
+    local_file_path: str = ""
+
     def set_local_file_path(self, path: str):
         self.local_file_path = path
 
