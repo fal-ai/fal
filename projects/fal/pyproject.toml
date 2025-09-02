@@ -23,10 +23,11 @@ readme = "README.md"
 requires-python = ">=3.8"
 dependencies = [
     "isolate[build]>=0.18.0,<0.20.0",
-    "isolate-proto>=0.12.0,<0.13.0",
+    "isolate_proto @ git+https://github.com/fal-ai/fal.git@isolate-proto-files#subdirectory=projects/isolate_proto",
     "grpcio>=1.64.0,<2",
     "dill==0.3.7",
     "cloudpickle==3.0.0",
+    "platformdirs==4.4.0",
     "typing-extensions>=4.7.1,<5",
     "structlog>=22.3.0,<26",
     "opentelemetry-api>=1.15.0,<2",
@@ -47,6 +48,7 @@ dependencies = [
     "attrs>=21.3.0",
     "python-dateutil>=2.8.0,<3",
     "types-python-dateutil>=2.8.0,<3",
+    "tuspy==1.1.0",
     # For 3.9 and earlier, importlib-metadata's newer versions are included in the standard library.
     'importlib-metadata>=4.4; python_version < "3.10"',
     "msgpack>=1.0.7,<2",
