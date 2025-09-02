@@ -102,17 +102,20 @@ class FileSync:
     def normalize_path(self, path_str: str, base_path_str: str) -> tuple[str, str]:
         path = Path(path_str)
         base_path = Path(base_path_str).resolve()
+        if base_path.is_dir():
+            script_dir = base_path
+        else:
+            script_dir = base_path.parent
 
         # Resolve relative paths against base directory
         if not path.is_absolute():
-            script_dir = base_path.parent
             absolute_path = (script_dir / path).resolve()
         else:
             absolute_path = path.resolve()
 
         # Create relative path, handling cross-drive scenarios
         try:
-            relative_path = os.path.relpath(absolute_path, base_path.parent)
+            relative_path = os.path.relpath(absolute_path, script_dir)
         except ValueError:
             relative_path = absolute_path.as_posix()
 
