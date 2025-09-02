@@ -127,7 +127,7 @@ class FileSync:
 
     async def fetch_cache_from_server(self) -> list[dict[str, Any]]:
         try:
-            response = await self._request("GET", "files/tus_file/cache")
+            response = await self._request("GET", "files/cache/list")
             response.raise_for_status()
             return response.json()
         except Exception as e:
@@ -208,25 +208,26 @@ class FileSync:
 
         return collected_files
 
-    async def check_hash_exists(self, file_hash: str) -> bool:
+    async def check_hash_exists(self, file_hash: str, file_name: str) -> bool:
         try:
-            response = await self._request(
-                "HEAD", f"/files/tus_file/exists/{file_hash}"
-            )
+            response = await self._request("HEAD", f"/files/cache/exists/{file_hash}")
             return response.status_code == 200
         except FalServerlessException as e:
             if "not found" in str(e).lower():
-                console.print(f"Syncing file: {file_hash}")
+                console.print(f"Syncing file: {file_name}")
             return False
         except Exception as e:
             console.print(f"{CROSS_ICON} Couldn't check file hash: {e}")
             return False
 
     async def check_multiple_hashes_exist(
-        self, file_hashes: list[str]
+        self, file_hashes: list[str], file_names: list[str]
     ) -> dict[str, bool]:
         # Create concurrent hash check tasks
-        tasks = [self.check_hash_exists(file_hash) for file_hash in file_hashes]
+        tasks = [
+            self.check_hash_exists(file_hash, file_name)
+            for file_hash, file_name in zip(file_hashes, file_names)
+        ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         # Build result dictionary, handling any exceptions
@@ -320,7 +321,10 @@ class FileSync:
 
         # Check which hashes exist on server (parallel)
         hashes_to_check = [metadata["hash"] for metadata in files_to_check]
-        hash_status = await self.check_multiple_hashes_exist(hashes_to_check)
+        file_names_to_check = [metadata["absolute_path"] for metadata in files_to_check]
+        hash_status = await self.check_multiple_hashes_exist(
+            hashes_to_check, file_names_to_check
+        )
 
         # Categorize files based on server hash status
         files_to_upload = []

@@ -437,7 +437,7 @@ async def test_check_hash_exists_status_codes(file_sync):
         mock_response.status_code = status_code
 
         with patch.object(file_sync, "_request", AsyncMock(return_value=mock_response)):
-            result = await file_sync.check_hash_exists("test_hash")
+            result = await file_sync.check_hash_exists("test_hash", "test_file")
             assert (
                 result is expected
             ), f"{message}. Status {status_code} should return {expected}"
@@ -449,7 +449,7 @@ async def test_check_hash_exists_error_handling(file_sync):
     with patch.object(
         file_sync, "_request", AsyncMock(side_effect=Exception("Network error"))
     ):
-        result = await file_sync.check_hash_exists("abc123")
+        result = await file_sync.check_hash_exists("abc123", "abc123")
         assert (
             result is False
         ), "Should return False on network errors, not raise exception"
@@ -459,14 +459,15 @@ async def test_check_hash_exists_error_handling(file_sync):
 async def test_check_multiple_hashes_exist_bulk_operation(file_sync):
     """Test bulk hash existence checking with mixed results"""
 
-    def mock_check_side_effect(hash_val):
+    def mock_check_side_effect(hash_val, file_name):
         return hash_val in ["existing_hash1", "existing_hash3"]
 
     with patch.object(
         file_sync, "check_hash_exists", side_effect=mock_check_side_effect
     ):
         result = await file_sync.check_multiple_hashes_exist(
-            ["existing_hash1", "missing_hash2", "existing_hash3"]
+            ["existing_hash1", "missing_hash2", "existing_hash3"],
+            ["existing_file1", "missing_file2", "exsiting_file3"],
         )
 
         expected = {
