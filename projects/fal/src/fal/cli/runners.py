@@ -105,28 +105,8 @@ def _list_json(args, runners: list[RunnerInfo], pending_runners: list[RunnerInfo
         for r in runners
     ]
 
-    json_requests = []
-    for r in runners:
-        for lease in r.external_metadata.get("leases", []):
-            req_id = lease.get("request_id")
-            if not req_id:
-                continue
-            json_requests.append(
-                {
-                    "runner_id": r.runner_id,
-                    "request_id": req_id,
-                    "caller_id": lease.get("caller_user_id") or "",
-                }
-            )
-
     res = {
         "runners": json_runners,
-        "stats": {
-            "runners": len(runners) - len(pending_runners),
-            "pending_runners": len(pending_runners),
-            "requests": len(json_requests),
-        },
-        "requests": json_requests,
     }
     args.console.print(json.dumps(res))
 
