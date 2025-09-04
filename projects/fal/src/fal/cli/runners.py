@@ -82,21 +82,11 @@ def _kill(args):
 
 
 def _list_json(args, runners: list[RunnerInfo], pending_runners: list[RunnerInfo]):
-    def _num_leases_with_request(r: RunnerInfo) -> int:
-        return len(
-            [
-                lease
-                for lease in r.external_metadata.get("leases", [])
-                if lease.get("request_id") is not None
-            ]
-        )
-
     json_runners = [
         {
             "alias": r.alias,
             "runner_id": r.runner_id,
             "in_flight_requests": r.in_flight_requests,
-            "missing_leases": r.in_flight_requests - _num_leases_with_request(r),
             "expiration_countdown": r.expiration_countdown,
             "uptime_seconds": int(r.uptime.total_seconds()),
             "revision": r.revision,
