@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import json
 from typing import List
 
 from fal.sdk import RunnerInfo, RunnerState
 
 from ._utils import get_client
-from .parser import FalClientParser
+from .parser import FalClientParser, get_output_parser
 
 
 def runners_table(runners: List[RunnerInfo]):
@@ -80,6 +81,26 @@ def _kill(args):
         connection.kill_runner(args.id)
 
 
+def _list_json(args, runners: list[RunnerInfo], pending_runners: list[RunnerInfo]):
+    json_runners = [
+        {
+            "alias": r.alias,
+            "runner_id": r.runner_id,
+            "in_flight_requests": r.in_flight_requests,
+            "expiration_countdown": r.expiration_countdown,
+            "uptime_seconds": int(r.uptime.total_seconds()),
+            "revision": r.revision,
+            "state": r.state.value,
+        }
+        for r in runners
+    ]
+
+    res = {
+        "runners": json_runners,
+    }
+    args.console.print(json.dumps(res))
+
+
 def _list(args):
     client = get_client(args.host, args.team)
     with client.connect() as connection:
@@ -87,13 +108,18 @@ def _list(args):
         pending_runners = [
             runner for runner in runners if runner.state == RunnerState.PENDING
         ]
-        args.console.print(f"Runners: {len(runners) - len(pending_runners)}")
-        args.console.print(f"Pending Runners: {len(pending_runners)}")
-        args.console.print(runners_table(runners))
+        if args.output == "pretty":
+            args.console.print(f"Runners: {len(runners) - len(pending_runners)}")
+            args.console.print(f"Pending Runners: {len(pending_runners)}")
+            args.console.print(runners_table(runners))
 
-        requests_table = runners_requests_table(runners)
-        args.console.print(f"Requests: {len(requests_table.rows)}")
-        args.console.print(requests_table)
+            requests_table = runners_requests_table(runners)
+            args.console.print(f"Requests: {len(requests_table.rows)}")
+            args.console.print(requests_table)
+        elif args.output == "json":
+            _list_json(args, runners, pending_runners)
+        else:
+            raise AssertionError(f"Invalid output format: {args.output}")
 
 
 def _add_kill_parser(subparsers, parents):
@@ -117,7 +143,7 @@ def _add_list_parser(subparsers, parents):
         "list",
         description=list_help,
         help=list_help,
-        parents=parents,
+        parents=[*parents, get_output_parser()],
     )
     parser.set_defaults(func=_list)
 

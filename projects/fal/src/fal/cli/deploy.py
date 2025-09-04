@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Literal, Optional, Tuple, Union
 
 from ._utils import get_app_data_from_toml, is_app_name
-from .parser import FalClientParser, RefAction
+from .parser import FalClientParser, RefAction, get_output_parser
 
 User = namedtuple("User", ["user_id", "username"])
 
@@ -152,6 +152,8 @@ def _deploy_from_reference(
                 args.console.print(
                     f"\thttps://queue.{endpoint_host}/{user.username}/{app_name}{endpoint}"
                 )
+        else:
+            raise AssertionError(f"Invalid output format: {args.output}")
 
 
 def _deploy(args):
@@ -211,7 +213,11 @@ def add_parser(main_subparsers, parents):
 
     parser = main_subparsers.add_parser(
         "deploy",
-        parents=[*parents, FalClientParser(add_help=False)],
+        parents=[
+            *parents,
+            get_output_parser(),
+            FalClientParser(add_help=False),
+        ],
         description=deploy_help,
         help=deploy_help,
         epilog=epilog,
@@ -260,13 +266,6 @@ def add_parser(main_subparsers, parents):
         action="store_true",
         dest="app_scale_settings",
         help="Use the application code for scale settings.",
-    )
-    parser.add_argument(
-        "--output",
-        type=str,
-        default="pretty",
-        choices=["pretty", "json"],
-        help="Modify the command output",
     )
 
     parser.set_defaults(func=_deploy)
