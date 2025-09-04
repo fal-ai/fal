@@ -103,3 +103,16 @@ class FalClientParser(FalParser):
             "--team",
             help="The team to use.",
         )
+
+
+def get_output_parser():
+    parser = FalParser(add_help=False)
+    group = parser.add_argument_group(title="Output")
+    group.add_argument(
+        "--output",
+        type=str,
+        default="pretty",
+        choices=["pretty", "json"],
+        help="Modify the command output",
+    )
+    return parser

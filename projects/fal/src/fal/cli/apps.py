@@ -8,7 +8,7 @@ import fal.cli.runners as runners
 from fal.sdk import RunnerState
 
 from ._utils import get_client
-from .parser import FalClientParser
+from .parser import FalClientParser, get_output_parser
 
 if TYPE_CHECKING:
     from fal.sdk import AliasInfo, ApplicationInfo
@@ -72,6 +72,8 @@ def _list(args):
             apps_as_dicts = [asdict(a) for a in apps]
             res = json.dumps({"apps": apps_as_dicts})
             args.console.print(res)
+        else:
+            raise AssertionError(f"Invalid output format: {args.output}")
 
 
 def _add_list_parser(subparsers, parents):
@@ -80,7 +82,7 @@ def _add_list_parser(subparsers, parents):
         "list",
         description=list_help,
         help=list_help,
-        parents=parents,
+        parents=[*parents, get_output_parser()],
     )
     parser.add_argument(
         "--sort-by-runners",
@@ -91,13 +93,6 @@ def _add_list_parser(subparsers, parents):
         "--filter",
         type=str,
         help="Filter applications by alias contents",
-    )
-    parser.add_argument(
-        "--output",
-        type=str,
-        default="pretty",
-        choices=["pretty", "json"],
-        help="Modify the command output",
     )
     parser.set_defaults(func=_list)
 
