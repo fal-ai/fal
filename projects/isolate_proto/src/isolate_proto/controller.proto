@@ -60,6 +60,12 @@ message HostedMap {
     repeated SerializedObject inputs = 4;
 }
 
+message File {
+    // File contains the hash and the relative path of the local file 
+    string hash = 1;
+    string relative_path = 2;
+}
+
 message HostedRun {
     // Environment definitions.
     repeated EnvironmentDefinition environments = 1;
@@ -69,6 +75,8 @@ message HostedRun {
     SerializedObject function = 3;
     // Optional setup function to pass as the first argument to the function.
     optional SerializedObject setup_func = 4;
+    // Optional files to be included 
+    repeated File files = 5;
 }
 
 message CreateUserKeyRequest {
@@ -197,6 +205,8 @@ enum DeploymentStrategy {
     ROLLING = 1;
 }
 
+
+
 message RegisterApplicationRequest {
     // Environment definitions.
     repeated EnvironmentDefinition environments = 1;
@@ -221,6 +231,8 @@ message RegisterApplicationRequest {
     optional bool scale = 10;
     // To make all logs generated from the app private
     optional bool private_logs = 11;
+    // Optional files to be included 
+    repeated File files = 12;
 }
 
 message RegisterApplicationResultType {
