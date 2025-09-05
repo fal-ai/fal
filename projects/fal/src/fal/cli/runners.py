@@ -81,7 +81,7 @@ def _kill(args):
         connection.kill_runner(args.id)
 
 
-def _list_json(args, runners: list[RunnerInfo], pending_runners: list[RunnerInfo]):
+def _list_json(args, runners: list[RunnerInfo]):
     json_runners = [
         {
             "alias": r.alias,
@@ -108,16 +108,23 @@ def _list(args):
         pending_runners = [
             runner for runner in runners if runner.state == RunnerState.PENDING
         ]
+        setup_runners = [
+            runner for runner in runners if runner.state == RunnerState.SETUP
+        ]
         if args.output == "pretty":
-            args.console.print(f"Runners: {len(runners) - len(pending_runners)}")
-            args.console.print(f"Pending Runners: {len(pending_runners)}")
+            args.console.print(
+                "Runners: "
+                + str(len(runners) - len(pending_runners) - len(setup_runners))
+            )
+            args.console.print(f"Runners Pending: {len(pending_runners)}")
+            args.console.print(f"Runners Setting Up: {len(setup_runners)}")
             args.console.print(runners_table(runners))
 
             requests_table = runners_requests_table(runners)
             args.console.print(f"Requests: {len(requests_table.rows)}")
             args.console.print(requests_table)
         elif args.output == "json":
-            _list_json(args, runners, pending_runners)
+            _list_json(args, runners)
         else:
             raise AssertionError(f"Invalid output format: {args.output}")
 

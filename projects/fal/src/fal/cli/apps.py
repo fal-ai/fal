@@ -297,8 +297,14 @@ def _runners(args):
     pending_runners = [
         runner for runner in alias_runners if runner.state == RunnerState.PENDING
     ]
-    args.console.print(f"Runners: {len(alias_runners) - len(pending_runners)}")
-    args.console.print(f"Pending Runners: {len(pending_runners)}")
+    setup_runners = [
+        runner for runner in alias_runners if runner.state == RunnerState.SETUP
+    ]
+    args.console.print(
+        f"Runners: {len(alias_runners) - len(pending_runners) - len(setup_runners)}"
+    )
+    args.console.print(f"Runners Pending: {len(pending_runners)}")
+    args.console.print(f"Runners Setting Up: {len(setup_runners)}")
     # Drop the alias column, which is the first column
     runners_table.columns.pop(0)
     args.console.print(runners_table)
