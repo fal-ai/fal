@@ -379,8 +379,9 @@ message RunnerInfo {
 
     enum State {
         RUNNING = 0;
-
         PENDING = 1;
+        SCHEDULING = 2;
+        SETUP = 3;
     }
 
     optional State state = 8;

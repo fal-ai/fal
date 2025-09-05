@@ -1134,10 +1134,14 @@ class RunnerInfo(google.protobuf.message.Message):
         DESCRIPTOR: google.protobuf.descriptor.EnumDescriptor
         RUNNING: RunnerInfo._State.ValueType  # 0
         PENDING: RunnerInfo._State.ValueType  # 1
+        SCHEDULING: RunnerInfo._State.ValueType  # 2
+        SETUP: RunnerInfo._State.ValueType  # 3
 
     class State(_State, metaclass=_StateEnumTypeWrapper): ...
     RUNNING: RunnerInfo.State.ValueType  # 0
     PENDING: RunnerInfo.State.ValueType  # 1
+    SCHEDULING: RunnerInfo.State.ValueType  # 2
+    SETUP: RunnerInfo.State.ValueType  # 3
 
     RUNNER_ID_FIELD_NUMBER: builtins.int
     IN_FLIGHT_REQUESTS_FIELD_NUMBER: builtins.int
