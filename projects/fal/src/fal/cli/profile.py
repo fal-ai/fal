@@ -20,7 +20,7 @@ def _list(args):
                     "settings": list(config._config[profile].keys()),
                 }
             )
-        args.console.print(json.dumps(json_profiles))
+        args.console.print(json.dumps({"profiles": json_profiles}))
     elif args.output == "pretty":
         table = Table()
         table.add_column("Set")

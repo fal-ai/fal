@@ -56,7 +56,7 @@ def _list_accounts(args):
                     "is_selected": selected,
                 }
             )
-        args.console.print(json.dumps(json_accounts))
+        args.console.print(json.dumps({"teams": json_accounts}))
     elif args.output == "pretty":
         from rich.style import Style
         from rich.table import Table

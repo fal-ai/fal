@@ -56,7 +56,7 @@ def _list(args):
                 }
                 for key in keys
             ]
-            args.console.print(json.dumps(json_keys))
+            args.console.print(json.dumps({"keys": json_keys}))
         elif args.output == "pretty":
             from rich.table import Table
 

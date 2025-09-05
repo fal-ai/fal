@@ -45,7 +45,7 @@ def _list(args):
                 }
                 for secret in secrets
             ]
-            args.console.print(json.dumps(json_secrets))
+            args.console.print(json.dumps({"secrets": json_secrets}))
         elif args.output == "pretty":
             from rich.table import Table
 
