@@ -46,13 +46,12 @@ def _list_accounts(args):
 
     if args.output == "json":
         json_accounts = []
-        for idx, account in enumerate(user_access.accounts):
+        for account in user_access.accounts:
             selected = account["nickname"] == current_account_name
             json_accounts.append(
                 {
-                    "index": idx + 1,
                     "nickname": account["nickname"],
-                    "type": "Personal" if account["is_personal"] else "Team",
+                    "type": "personal" if account["is_personal"] else "team",
                     "is_selected": selected,
                 }
             )
