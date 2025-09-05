@@ -31,27 +31,45 @@ def _add_set_parser(subparsers, parents):
 
 
 def _list(args):
-    from rich.table import Table
-
-    table = Table()
-    table.add_column("Secret Name")
-    table.add_column("Created At")
+    import json
 
     client = get_client(args.host, args.team)
     with client.connect() as connection:
-        for secret in connection.list_secrets():
-            table.add_row(secret.name, str(secret.created_at))
+        secrets = list(connection.list_secrets())
 
-    args.console.print(table)
+        if args.output == "json":
+            json_secrets = [
+                {
+                    "name": secret.name,
+                    "created_at": str(secret.created_at),
+                }
+                for secret in secrets
+            ]
+            args.console.print(json.dumps(json_secrets))
+        elif args.output == "pretty":
+            from rich.table import Table
+
+            table = Table()
+            table.add_column("Secret Name")
+            table.add_column("Created At")
+
+            for secret in secrets:
+                table.add_row(secret.name, str(secret.created_at))
+
+            args.console.print(table)
+        else:
+            raise AssertionError(f"Invalid output format: {args.output}")
 
 
 def _add_list_parser(subparsers, parents):
+    from .parser import get_output_parser
+
     list_help = "List secrets."
     parser = subparsers.add_parser(
         "list",
         description=list_help,
         help=list_help,
-        parents=parents,
+        parents=[*parents, get_output_parser()],
     )
     parser.set_defaults(func=_list)
 

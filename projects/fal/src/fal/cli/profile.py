@@ -6,20 +6,37 @@ from fal.config import Config
 
 
 def _list(args):
-    table = Table()
-    table.add_column("Set")
-    table.add_column("Profile")
-    table.add_column("Settings")
+    import json
 
     config = Config()
-    for profile in config.profiles():
-        table.add_row(
-            "*" if profile == config._profile else "",
-            profile,
-            ", ".join(key for key in config._config[profile]),
-        )
 
-    args.console.print(table)
+    if args.output == "json":
+        json_profiles = []
+        for profile in config.profiles():
+            json_profiles.append(
+                {
+                    "profile": profile,
+                    "is_set": profile == config._profile,
+                    "settings": list(config._config[profile].keys()),
+                }
+            )
+        args.console.print(json.dumps(json_profiles))
+    elif args.output == "pretty":
+        table = Table()
+        table.add_column("Set")
+        table.add_column("Profile")
+        table.add_column("Settings")
+
+        for profile in config.profiles():
+            table.add_row(
+                "*" if profile == config._profile else "",
+                profile,
+                ", ".join(key for key in config._config[profile]),
+            )
+
+        args.console.print(table)
+    else:
+        raise AssertionError(f"Invalid output format: {args.output}")
 
 
 def _set(args):
@@ -136,12 +153,14 @@ def add_parser(main_subparsers, parents):
         required=True,
     )
 
+    from .parser import get_output_parser
+
     list_help = "List all profiles."
     list_parser = subparsers.add_parser(
         "list",
         description=list_help,
         help=list_help,
-        parents=parents,
+        parents=[*parents, get_output_parser()],
     )
     list_parser.set_defaults(func=_list)
 
