@@ -264,6 +264,7 @@ class AliasInfo:
 class RunnerState(Enum):
     RUNNING = "running"
     PENDING = "pending"
+    SETUP = "setup"
     UNKNOWN = "unknown"
 
     @staticmethod
@@ -272,6 +273,8 @@ class RunnerState(Enum):
             return RunnerState.RUNNING
         elif proto is isolate_proto.RunnerInfo.State.PENDING:
             return RunnerState.PENDING
+        elif proto is isolate_proto.RunnerInfo.State.SETUP:
+            return RunnerState.SETUP
         else:
             return RunnerState.UNKNOWN
 
