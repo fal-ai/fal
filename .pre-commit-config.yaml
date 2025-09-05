@@ -58,6 +58,7 @@ repos:
             "--ignore-missing-imports",
             "--no-warn-no-return",
             "--check-untyped-defs",
+            "--enable-incomplete-feature=Unpack",
           ]
         additional_dependencies:
           - types-protobuf
