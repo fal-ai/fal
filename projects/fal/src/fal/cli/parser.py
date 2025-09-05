@@ -115,4 +115,11 @@ def get_output_parser():
         choices=["pretty", "json"],
         help="Modify the command output",
     )
+    group.add_argument(
+        "--json",
+        action="store_const",
+        const="json",
+        dest="output",
+        help="Output in JSON format (same as --output json)",
+    )
     return parser
