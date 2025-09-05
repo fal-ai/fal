@@ -35,8 +35,7 @@ def _logout(args):
 
 
 def _list_accounts(args):
-    from rich.style import Style
-    from rich.table import Table
+    import json
 
     from fal.auth import UserAccess
     from fal.config import Config
@@ -45,23 +44,41 @@ def _list_accounts(args):
     config = Config()
     current_account_name = config.get_internal("team") or user_access.info["nickname"]
 
-    table = Table(border_style=Style(frame=False), show_header=False)
-    table.add_column("#")
-    table.add_column("Nickname")
-    table.add_column("Type")
+    if args.output == "json":
+        json_accounts = []
+        for account in user_access.accounts:
+            selected = account["nickname"] == current_account_name
+            json_accounts.append(
+                {
+                    "nickname": account["nickname"],
+                    "type": "personal" if account["is_personal"] else "team",
+                    "is_selected": selected,
+                }
+            )
+        args.console.print(json.dumps({"teams": json_accounts}))
+    elif args.output == "pretty":
+        from rich.style import Style
+        from rich.table import Table
 
-    for idx, account in enumerate(user_access.accounts):
-        selected = account["nickname"] == current_account_name
-        color = "bold yellow" if selected else None
+        table = Table(border_style=Style(frame=False), show_header=False)
+        table.add_column("#")
+        table.add_column("Nickname")
+        table.add_column("Type")
 
-        table.add_row(
-            f"* {idx + 1}" if selected else f"  {idx + 1}",
-            account["nickname"],
-            "Personal" if account["is_personal"] else "Team",
-            style=color,
-        )
+        for idx, account in enumerate(user_access.accounts):
+            selected = account["nickname"] == current_account_name
+            color = "bold yellow" if selected else None
 
-    args.console.print(table)
+            table.add_row(
+                f"* {idx + 1}" if selected else f"  {idx + 1}",
+                account["nickname"],
+                "Personal" if account["is_personal"] else "Team",
+                style=color,
+            )
+
+        args.console.print(table)
+    else:
+        raise AssertionError(f"Invalid output format: {args.output}")
 
 
 def _unset_account(args):
