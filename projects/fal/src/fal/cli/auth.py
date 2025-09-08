@@ -44,7 +44,9 @@ def _list_accounts(args):
     config = Config()
     current_account_name = config.get_internal("team") or user_access.info["nickname"]
 
-    if args.output == "json":
+    # NOTE: might be used by other commands that don't have the --output/--json flag
+    output = getattr(args, "output", "pretty")
+    if output == "json":
         json_accounts = []
         for account in user_access.accounts:
             selected = account["nickname"] == current_account_name
@@ -56,7 +58,7 @@ def _list_accounts(args):
                 }
             )
         args.console.print(json.dumps({"teams": json_accounts}))
-    elif args.output == "pretty":
+    elif output == "pretty":
         from rich.style import Style
         from rich.table import Table
 
@@ -78,7 +80,7 @@ def _list_accounts(args):
 
         args.console.print(table)
     else:
-        raise AssertionError(f"Invalid output format: {args.output}")
+        raise AssertionError(f"Invalid output format: {output}")
 
 
 def _unset_account(args):
