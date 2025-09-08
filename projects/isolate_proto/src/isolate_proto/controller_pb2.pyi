@@ -1135,11 +1135,13 @@ class RunnerInfo(google.protobuf.message.Message):
         RUNNING: RunnerInfo._State.ValueType  # 0
         PENDING: RunnerInfo._State.ValueType  # 1
         SETUP: RunnerInfo._State.ValueType  # 2
+        DEAD: RunnerInfo._State.ValueType  # 3
 
     class State(_State, metaclass=_StateEnumTypeWrapper): ...
     RUNNING: RunnerInfo.State.ValueType  # 0
     PENDING: RunnerInfo.State.ValueType  # 1
     SETUP: RunnerInfo.State.ValueType  # 2
+    DEAD: RunnerInfo.State.ValueType  # 3
 
     RUNNER_ID_FIELD_NUMBER: builtins.int
     IN_FLIGHT_REQUESTS_FIELD_NUMBER: builtins.int
@@ -1201,15 +1203,22 @@ class ListRunnersRequest(google.protobuf.message.Message):
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
     LIST_PENDING_FIELD_NUMBER: builtins.int
+    START_TIME_FIELD_NUMBER: builtins.int
     list_pending: builtins.bool
+    @property
+    def start_time(self) -> google.protobuf.timestamp_pb2.Timestamp: ...
     def __init__(
         self,
         *,
         list_pending: builtins.bool | None = ...,
+        start_time: google.protobuf.timestamp_pb2.Timestamp | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing_extensions.Literal["_list_pending", b"_list_pending", "list_pending", b"list_pending"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing_extensions.Literal["_list_pending", b"_list_pending", "list_pending", b"list_pending"]) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["_list_pending", b"_list_pending", "_start_time", b"_start_time", "list_pending", b"list_pending", "start_time", b"start_time"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["_list_pending", b"_list_pending", "_start_time", b"_start_time", "list_pending", b"list_pending", "start_time", b"start_time"]) -> None: ...
+    @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_list_pending", b"_list_pending"]) -> typing_extensions.Literal["list_pending"] | None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_start_time", b"_start_time"]) -> typing_extensions.Literal["start_time"] | None: ...
 
 global___ListRunnersRequest = ListRunnersRequest
 
