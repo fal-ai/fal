@@ -15,8 +15,7 @@ def runners_table(runners: List[RunnerInfo]):
     table = Table()
     table.add_column("Alias")
     table.add_column("Runner ID")
-    table.add_column("In Flight Requests")
-    table.add_column("Missing Leases")
+    table.add_column("In Flight\nRequests")
     table.add_column("Expires In")
     table.add_column("Uptime")
     table.add_column("Revision")
@@ -34,12 +33,20 @@ def runners_table(runners: List[RunnerInfo]):
             ]
         )
 
+        in_flight = str(runner.in_flight_requests)
+        missing_leases = runner.in_flight_requests - num_leases_with_request
+        if missing_leases > 0:
+            # Show a small indicator of in flight requests that are not visible in the
+            # leases lists
+            # This can be due to race conditions, so only important to report if it's
+            # consistent
+            in_flight = f"{in_flight} [dim]({missing_leases})[/]"
+
         table.add_row(
             runner.alias,
             # Mark lost runners in red
             runner.runner_id if present else f"[red]{runner.runner_id}[/]",
-            str(runner.in_flight_requests),
-            str(runner.in_flight_requests - num_leases_with_request),
+            in_flight,
             (
                 "N/A (active)"
                 if runner.expiration_countdown is None
