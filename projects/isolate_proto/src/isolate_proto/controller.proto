@@ -381,6 +381,7 @@ message RunnerInfo {
         RUNNING = 0;
         PENDING = 1;
         SETUP = 2;
+        DEAD = 3;
     }
 
     optional State state = 8;
@@ -392,6 +393,7 @@ message KillRunnerRequest {
 
 message ListRunnersRequest {
     optional bool list_pending = 1;
+    optional google.protobuf.Timestamp start_time = 2;
 }
 
 message ListRunnersResponse {
