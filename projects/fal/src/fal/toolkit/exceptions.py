@@ -149,7 +149,7 @@ class InternalServerException(ToolkitHTTPException):
         errors = (error,)
 
         super().__init__(
-            status_code=504, errors=errors, retryable=retryable, billing_units=0
+            status_code=500, errors=errors, retryable=retryable, billing_units=0
         )
 
 
@@ -197,7 +197,7 @@ class DownstreamServiceException(ToolkitHTTPException):
         )
 
         super().__init__(
-            status_code=504,
+            status_code=500,
             errors=(error,),
             retryable=retryable,
             billing_units=billing_units,
