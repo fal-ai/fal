@@ -40,6 +40,13 @@ from fal.toolkit.file.providers.fal import LIFECYCLE_PREFERENCE
 
 REALTIME_APP_REQUIREMENTS = ["websockets", "msgpack"]
 REQUEST_ID_KEY = "x-fal-request-id"
+DEFAULT_FILES_IGNORE = [
+    r"\.pyc$",
+    r"__pycache__/",
+    r"\.git/",
+    r"\.DS_Store$",
+]
+
 
 EndpointT = TypeVar("EndpointT", bound=Callable[..., Any])
 logger = get_logger(__name__)
@@ -321,6 +328,7 @@ class App(BaseServable):
     request_timeout: ClassVar[int | None] = None
     startup_timeout: ClassVar[int | None] = None
     files: ClassVar[list[str]] = []
+    files_ignore: ClassVar[list[str]] = DEFAULT_FILES_IGNORE
 
     isolate_channel: async_grpc.Channel | None = None
 
@@ -337,6 +345,9 @@ class App(BaseServable):
 
         if cls.files:
             cls.host_kwargs["files"] = cls.files
+
+        if cls.files_ignore:
+            cls.host_kwargs["files_ignore"] = cls.files_ignore
 
         cls.app_name = getattr(cls, "app_name", app_name)
 
