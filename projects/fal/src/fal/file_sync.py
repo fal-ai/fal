@@ -1,13 +1,12 @@
-import asyncio
+import concurrent.futures
 import hashlib
-import json
 import os
+import re
 from functools import cached_property
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 import httpx
-from platformdirs import user_cache_dir
 from tusclient import client
 
 from fal._version import version_tuple
@@ -17,27 +16,35 @@ from fal.exceptions import FalServerlessException, FileTooLargeError
 
 USER_AGENT = f"fal-sdk/{'.'.join(map(str, version_tuple))} (python)"
 FILE_SIZE_LIMIT = 1024 * 1024 * 1024  # 1GB
+DEFAULT_CONCURRENCY_UPLOADS = 10
+
+
+def sanitize_relative_path(rel_path: str) -> str:
+    pure_path = PurePosixPath(rel_path)
+
+    # If absolute, make it relative by removing the root
+    if pure_path.is_absolute():
+        pure_path = PurePosixPath(*pure_path.parts[1:])
+
+    # Filter out '..' and '.' parts for security
+    clean_parts = [part for part in pure_path.parts if part not in ("..", ".")]
+
+    # Reconstruct and return the cleaned path
+    return PurePosixPath(*clean_parts).as_posix()
 
 
 class FileSync:
     def __init__(self, local_file_path: str):
-        from fal.auth import current_user_info
         from fal.sdk import get_default_credentials
 
         self.creds = get_default_credentials()
-        user_info = current_user_info(self.creds.to_headers())
-        nickname = user_info["nickname"]
-
         self.local_file_path = local_file_path
-        self.cache_dir = Path(user_cache_dir()) / "fal" / nickname
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
-        self.cache_file = self.cache_dir / "file_metadata.json"
 
     @cached_property
-    def _client(self) -> httpx.AsyncClient:
+    def _client(self) -> httpx.Client:
         from fal.flags import REST_URL
 
-        return httpx.AsyncClient(
+        return httpx.Client(
             base_url=REST_URL,
             headers={
                 **self.creds.to_headers(),
@@ -59,8 +66,8 @@ class FileSync:
             },
         )
 
-    async def _request(self, method: str, path: str, **kwargs) -> httpx.Response:
-        response = await self._client.request(method, path, **kwargs)
+    def _request(self, method: str, path: str, **kwargs) -> httpx.Response:
+        response = self._client.request(method, path, **kwargs)
         if response.status_code == 404:
             raise FalServerlessException("Not Found")
         elif response.status_code != 200:
@@ -71,9 +78,8 @@ class FileSync:
             raise FalServerlessException(detail)
         return response
 
-    def compute_hash(self, file_path: str, mode: int) -> str:
-        # Hash file contents efficiently
-        with open(file_path, "rb") as f:
+    def compute_hash(self, file_path: Path, mode: int) -> str:
+        with file_path.open("rb") as f:
             file_hash = hashlib.file_digest(f, "sha256")
 
         # Include metadata in hash
@@ -82,13 +88,12 @@ class FileSync:
 
         return file_hash.hexdigest()
 
-    def get_file_metadata(self, file_path: str) -> dict[str, Any]:
-        stat = os.stat(file_path)
-
+    def get_file_metadata(self, file_path: Path) -> dict[str, Any]:
+        stat = file_path.stat()
         # Limit allowed individual file size
         if stat.st_size > FILE_SIZE_LIMIT:
             raise FileTooLargeError(
-                f"{file_path} is larger than {FILE_SIZE_LIMIT} bytes."
+                message=f"{file_path} is larger than {FILE_SIZE_LIMIT} bytes."
             )
 
         file_hash = self.compute_hash(file_path, stat.st_mode)
@@ -107,139 +112,58 @@ class FileSync:
         else:
             script_dir = base_path.parent
 
-        # Resolve relative paths against base directory
-        if not path.is_absolute():
-            absolute_path = (script_dir / path).resolve()
-        else:
-            absolute_path = path.resolve()
+        absolute_path = (
+            path.resolve() if path.is_absolute() else (script_dir / path).resolve()
+        )
 
-        # Create relative path, handling cross-drive scenarios
         try:
             relative_path = os.path.relpath(absolute_path, script_dir)
+            relative_path = sanitize_relative_path(relative_path)
         except ValueError:
-            relative_path = absolute_path.as_posix()
-
-        # Remove parent directory traversals for security
-        while relative_path.startswith("../"):
-            relative_path = relative_path[3:]
+            raise ValueError(f"Invalid relative path: {absolute_path}")
 
         return absolute_path.as_posix(), relative_path
-
-    async def fetch_cache_from_server(self) -> list[dict[str, Any]]:
-        try:
-            response = await self._request("GET", "files/cache/list")
-            response.raise_for_status()
-            return response.json()
-        except Exception as e:
-            console.print(f"{CROSS_ICON} Failed to fetch cache: {e}")
-            return []
-
-    async def load_local_cache(self) -> dict[str, dict[str, Any]]:
-        if not self.cache_file.exists():
-            files = await self.fetch_cache_from_server()
-            cache = {
-                file["hash"]: {
-                    "mtime": file["mtime"],
-                    "mode": file["mode"],
-                    "size": file["size_bytes"],
-                    "hash": file["hash"],
-                }
-                for file in files
-            }
-            self.save_local_cache(cache)
-            return cache
-
-        with open(self.cache_file) as f:
-            return json.load(f)
-
-    def save_local_cache(self, cache_data: dict[str, dict[str, Any]]) -> None:
-        try:
-            with open(self.cache_file, "w") as f:
-                json.dump(cache_data, f, indent=2)
-        except OSError as e:
-            console.print(f"{CROSS_ICON} Failed to save local cache: {e}")
-
-    async def check_local_cache(self, current_metadata: dict[str, Any]) -> bool:
-        cache = await self.load_local_cache()
-        cached_metadata = cache.get(current_metadata["hash"])
-
-        if not cached_metadata:
-            return False
-
-        # Check if hash matches (hash includes content + mtime + mode)
-        return cached_metadata.get("hash") == current_metadata.get("hash")
-
-    async def update_local_cache(self, metadata: dict[str, Any]) -> None:
-        cache = await self.load_local_cache()
-        cache[metadata["hash"]] = {
-            **metadata,
-            "cached_at": str(asyncio.get_event_loop().time()),
-        }
-        self.save_local_cache(cache)
 
     def collect_files(self, paths: list[str]) -> list[dict[str, Any]]:
         collected_files = []
 
         for path in paths:
-            abs_path, rel_path = self.normalize_path(path, self.local_file_path)
-            if not os.path.exists(abs_path):
+            abs_path_str, rel_path = self.normalize_path(path, self.local_file_path)
+            abs_path = Path(abs_path_str)
+            if not abs_path.exists():
                 console.print(f"{abs_path} was not found, it will be skipped")
                 continue
 
-            if os.path.isfile(abs_path):
+            if abs_path.is_file():
                 metadata = self.get_file_metadata(abs_path)
-                metadata["absolute_path"] = abs_path
+                metadata["absolute_path"] = abs_path_str
                 metadata["relative_path"] = rel_path
                 collected_files.append(metadata)
 
-            elif os.path.isdir(abs_path):
+            elif abs_path.is_dir():
                 # Recursively walk directory tree
-                for root, _, files in os.walk(abs_path):
-                    for file_name in files:
-                        file_abs_path = os.path.join(root, file_name)
-                        file_abs_path, file_rel_path = self.normalize_path(
-                            file_abs_path, self.local_file_path
+                for file_path in abs_path.rglob("*"):
+                    if file_path.is_file():
+                        file_abs_str, file_rel_path = self.normalize_path(
+                            str(file_path), self.local_file_path
                         )
-
-                        metadata = self.get_file_metadata(file_abs_path)
-                        metadata["absolute_path"] = file_abs_path
+                        metadata = self.get_file_metadata(Path(file_abs_str))
+                        metadata["absolute_path"] = file_abs_str
                         metadata["relative_path"] = file_rel_path
                         collected_files.append(metadata)
 
         return collected_files
 
-    async def check_hash_exists(self, file_hash: str, file_name: str) -> bool:
+    def check_hashes_on_server(self, hashes: list[str]) -> list[str]:
         try:
-            response = await self._request("HEAD", f"/files/cache/exists/{file_hash}")
-            return response.status_code == 200
-        except FalServerlessException as e:
-            if "not found" in str(e).lower():
-                console.print(f"Syncing file: {file_name}")
-            return False
+            response = self._request("POST", "/files/sync", json={"hashes": hashes})
+            response.raise_for_status()
+            data = response.json()
+            return data
         except Exception as e:
-            console.print(f"{CROSS_ICON} Couldn't check file hash: {e}")
-            return False
+            console.print(f"{CROSS_ICON} Failed to check hashes on server: {e}")
 
-    async def check_multiple_hashes_exist(
-        self, file_hashes: list[str], file_names: list[str]
-    ) -> dict[str, bool]:
-        # Create concurrent hash check tasks
-        tasks = [
-            self.check_hash_exists(file_hash, file_name)
-            for file_hash, file_name in zip(file_hashes, file_names)
-        ]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-
-        # Build result dictionary, handling any exceptions
-        hash_status = {}
-        for file_hash, result in zip(file_hashes, results):
-            if isinstance(result, Exception):
-                console.print(f"{CROSS_ICON} {file_hash} not found, syncing...")
-                hash_status[file_hash] = False
-            else:
-                hash_status[file_hash] = result
-
-        return hash_status
+            return hashes
 
     def upload_file_tus(
         self,
@@ -253,35 +177,27 @@ class FileSync:
         uploader.upload()
         return uploader.url
 
-    async def upload_multiple_files(
-        self, files_to_upload: list[dict[str, Any]], chunk_size: int = 5 * 1024 * 1024
-    ) -> list[dict[str, Any]]:
-        loop = asyncio.get_event_loop()
-
-        async def upload_single_file(metadata):
+    def _should_ignore_file(
+        self, relative_path: str, ignore_patterns: list[str]
+    ) -> bool:
+        """Check if a file should be ignored based on regex patterns."""
+        for pattern in ignore_patterns:
             try:
-                # Run synchronous TUS upload in thread pool
-                upload_url = await loop.run_in_executor(
-                    None,
-                    lambda: self.upload_file_tus(
-                        metadata["absolute_path"],
-                        chunk_size=chunk_size,
-                        metadata=metadata,
-                    ),
-                )
-                metadata["upload_url"] = upload_url
-                return metadata
-            except Exception as e:
-                return {"relative_path": metadata["relative_path"], "error": str(e)}
+                if re.search(pattern, relative_path):
+                    # Showing this to avoid confusion
+                    console.print(f"Ignoring file: {relative_path}")
+                    return True
+            except re.error as e:
+                console.print(f"Invalid regex pattern '{pattern}': {e}")
+                continue
+        return False
 
-        # Upload files concurrently
-        tasks = [upload_single_file(metadata) for metadata in files_to_upload]
-        return await asyncio.gather(*tasks)
-
-    async def sync_files(
+    def sync_files(
         self,
         paths: list[str],
         chunk_size: int = 5 * 1024 * 1024,
+        max_concurrency_uploads: int = DEFAULT_CONCURRENCY_UPLOADS,
+        files_ignore: list[str] = [],
     ) -> dict[str, list[dict[str, Any]]]:
         files = self.collect_files(paths)
         results: dict[str, list[dict[str, Any]]] = {
@@ -289,6 +205,16 @@ class FileSync:
             "uploaded_files": [],
             "errors": [],
         }
+
+        # Filter out ignored files
+        if files_ignore:
+            filtered_files = []
+            for metadata in files:
+                if not self._should_ignore_file(
+                    metadata["relative_path"], files_ignore
+                ):
+                    filtered_files.append(metadata)
+            files = filtered_files
 
         # Remove duplicate files by absolute path
         unique_files = []
@@ -301,60 +227,64 @@ class FileSync:
                 seen_paths.add(abs_path)
                 if rel_path in seen_relative_paths:
                     raise Exception(
-                        f"Duplicate {rel_path} found, please change name for {abs_path}"
+                        f"Duplicate relative path '{rel_path}' found for '{abs_path}'"
                     )
                 seen_relative_paths.add(rel_path)
                 unique_files.append(metadata)
 
-        # Check local cache first to avoid unnecessary server requests
         files_to_check = []
         for metadata in unique_files:
-            abs_path = metadata["absolute_path"]
-            if await self.check_local_cache(metadata):
-                # File unchanged since last sync, skip
-                results["existing_hashes"].append(metadata)
-            else:
-                files_to_check.append(metadata)
+            # print(f"Relative path: {metadata['relative_path']}")
+            files_to_check.append(metadata)
 
         if not files_to_check:
             return results
 
-        # Check which hashes exist on server (parallel)
+        # Batch check hashes on server (single request)
         hashes_to_check = [metadata["hash"] for metadata in files_to_check]
-        file_names_to_check = [metadata["absolute_path"] for metadata in files_to_check]
-        hash_status = await self.check_multiple_hashes_exist(
-            hashes_to_check, file_names_to_check
-        )
+        missing_hashes = self.check_hashes_on_server(hashes_to_check)
 
-        # Categorize files based on server hash status
+        # Categorize based on server response
+        hash_to_metadata = {m["hash"]: m for m in files_to_check}
         files_to_upload = []
-        for metadata in files_to_check:
-            file_hash = metadata["hash"]
-
-            if hash_status.get(file_hash, False):
-                # Hash exists on server
+        for file_hash in hashes_to_check:
+            if file_hash not in missing_hashes:
+                metadata = hash_to_metadata[file_hash]
                 results["existing_hashes"].append(metadata)
-                # Update cache with hash exists status
-                await self.update_local_cache(metadata)
             else:
-                # Need to upload
-                files_to_upload.append(metadata)
+                files_to_upload.append(hash_to_metadata[file_hash])
 
-        # Upload files in parallel
+        # Upload missing files in parallel with bounded concurrency
         if files_to_upload:
-            upload_results = await self.upload_multiple_files(
-                files_to_upload, chunk_size
-            )
 
-            for result in upload_results:
-                if "error" in result:
-                    results["errors"].append(result)
-                else:
-                    results["uploaded_files"].append(result)
-                    await self.update_local_cache(result)
+            def upload_single_file(metadata):
+                try:
+                    upload_url = self.upload_file_tus(
+                        metadata["absolute_path"],
+                        chunk_size=chunk_size,
+                        metadata=metadata,
+                    )
+                    metadata["upload_url"] = upload_url
+                    return metadata
+                except Exception as e:
+                    return {"relative_path": metadata["relative_path"], "error": str(e)}
+
+            with concurrent.futures.ThreadPoolExecutor(
+                max_workers=max_concurrency_uploads
+            ) as executor:
+                futures = [
+                    executor.submit(upload_single_file, metadata)
+                    for metadata in files_to_upload
+                ]
+                for future in concurrent.futures.as_completed(futures):
+                    result = future.result()
+                    if "error" in result:
+                        results["errors"].append(result)
+                    else:
+                        results["uploaded_files"].append(result)
 
         return results
 
-    async def close(self):
-        """Close async HTTP client."""
-        await self._client.aclose()
+    def close(self):
+        """Close HTTP client."""
+        self._client.close()

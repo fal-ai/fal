@@ -61,3 +61,5 @@ class RequestCancelledException(FalServerlessException):
 @dataclass
 class FileTooLargeError(FalServerlessException):
     """Exception raised when the file is too large."""
+
+    message: str = "File is too large."

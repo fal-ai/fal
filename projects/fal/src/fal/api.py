@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import inspect
 import os
 import sys
@@ -434,6 +433,7 @@ class FalServerlessHost(Host):
             "_scheduler",
             "_scheduler_options",
             "files",
+            "files_ignore",
         }
     )
 
@@ -513,9 +513,10 @@ class FalServerlessHost(Host):
             startup_timeout=startup_timeout,
         )
         files = options.host.get("files", [])
+        files_ignore = options.host.get("files_ignore", [])
         if files:
             sync = FileSync(self.local_file_path)
-            result = asyncio.run(sync.sync_files(files))
+            result = sync.sync_files(files, files_ignore=files_ignore)
             all_files = result["existing_hashes"] + result["uploaded_files"]
             files = [
                 File(relative_path=file["relative_path"], hash=file["hash"])
@@ -585,15 +586,15 @@ class FalServerlessHost(Host):
         request_timeout = options.host.get("request_timeout")
         startup_timeout = options.host.get("startup_timeout")
         files = options.host.get("files", [])
+        files_ignore = options.host.get("files_ignore", [])
         if files:
             sync = FileSync(self.local_file_path)
-            result = asyncio.run(sync.sync_files(files))
+            result = sync.sync_files(files, files_ignore=files_ignore)
             all_files = result["existing_hashes"] + result["uploaded_files"]
             files = [
                 File(relative_path=file["relative_path"], hash=file["hash"])
                 for file in all_files
             ]
-
         machine_requirements = MachineRequirements(
             machine_types=machine_type,  # type: ignore
             num_gpus=options.host.get("num_gpus"),
