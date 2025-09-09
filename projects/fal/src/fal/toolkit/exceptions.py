@@ -258,35 +258,21 @@ class ImageTooLargeException(ToolkitHTTPException):
         input: str | None = None,
         model: BaseModel | None = None,
         location: tuple[str | int, ...] = (),
-        max_height: int | None = None,
-        max_width: int | None = None,
         billing_units: int | None = None,
         max_resolution: int | None = None,
     ):
-        if max_resolution is None and (max_height is None or max_width is None):
-            raise ValueError(
-                "Either 'max_resolution' must be provided, "
-                "or both 'max_height' and 'max_width' must be provided"
-            )
+        if max_resolution is None:
+            raise ValueError("'max_resolution' must be provided.")
 
-        if max_resolution is not None:
-            error = ErrorDetail(
-                input=input,
-                model=model,
-                location=location,
-                msg="Image too large",
-                type="image_too_large",
-                ctx={"max_resolution": max_resolution},
-            )
-        else:
-            error = ErrorDetail(
-                input=input,
-                model=model,
-                location=location,
-                msg="Image too large",
-                type="image_too_large",
-                ctx={"max_height": max_height, "max_width": max_width},
-            )
+        error = ErrorDetail(
+            input=input,
+            model=model,
+            location=location,
+            msg="Image too large",
+            type="image_too_large",
+            ctx={"max_resolution": max_resolution},
+        )
+
         super().__init__(status_code=422, errors=(error,), billing_units=billing_units)
 
 
