@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import json
+from datetime import timedelta
 from typing import List
 
 from fal.sdk import RunnerInfo, RunnerState
 
 from ._utils import get_client
-from .parser import FalClientParser, get_output_parser
+from .parser import FalClientParser, SinceAction, get_output_parser
 
 
 def runners_table(runners: List[RunnerInfo]):
@@ -42,17 +43,20 @@ def runners_table(runners: List[RunnerInfo]):
             # consistent
             in_flight = f"{in_flight} [dim]({missing_leases})[/]"
 
+        uptime = timedelta(
+            seconds=int(runner.uptime.total_seconds()),
+        )
         table.add_row(
             runner.alias,
             # Mark lost runners in red
             runner.runner_id if present else f"[red]{runner.runner_id}[/]",
             in_flight,
             (
-                "N/A (active)"
+                "N/A"
                 if runner.expiration_countdown is None
                 else f"{runner.expiration_countdown}s"
             ),
-            f"{runner.uptime} ({runner.uptime.total_seconds()}s)",
+            f"{uptime} ({uptime.total_seconds():.0f}s)",
             runner.revision,
             runner.state.value,
         )
@@ -111,17 +115,31 @@ def _list_json(args, runners: list[RunnerInfo]):
 def _list(args):
     client = get_client(args.host, args.team)
     with client.connect() as connection:
-        runners = connection.list_runners()
+        start_time = getattr(args, "since", None)
+        runners = connection.list_runners(start_time=start_time)
+
+        if getattr(args, "state", None):
+            states = set(args.state)
+            if "all" not in states:
+                runners = [r for r in runners if r.state.value in states]
         pending_runners = [
             runner for runner in runners if runner.state == RunnerState.PENDING
         ]
         setup_runners = [
             runner for runner in runners if runner.state == RunnerState.SETUP
         ]
+        dead_runners = [
+            runner for runner in runners if runner.state == RunnerState.DEAD
+        ]
         if args.output == "pretty":
             args.console.print(
                 "Runners: "
-                + str(len(runners) - len(pending_runners) - len(setup_runners))
+                + str(
+                    len(runners)
+                    - len(pending_runners)
+                    - len(setup_runners)
+                    - len(dead_runners)
+                )
             )
             args.console.print(f"Runners Pending: {len(pending_runners)}")
             args.console.print(f"Runners Setting Up: {len(setup_runners)}")
@@ -158,6 +176,24 @@ def _add_list_parser(subparsers, parents):
         description=list_help,
         help=list_help,
         parents=[*parents, get_output_parser()],
+    )
+    parser.add_argument(
+        "--since",
+        default=None,
+        action=SinceAction,
+        limit="1 day",
+        help=(
+            "Show dead runners since the given time. "
+            "Accepts 'now', relative like '30m', '1h', '1d', "
+            "or an ISO timestamp. Max 24 hours."
+        ),
+    )
+    parser.add_argument(
+        "--state",
+        choices=["all", "running", "pending", "setup", "dead"],
+        nargs="+",
+        default=None,
+        help=("Filter by runner state(s). Choose one or more, or 'all'(default)."),
     )
     parser.set_defaults(func=_list)
 

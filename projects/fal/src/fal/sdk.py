@@ -265,6 +265,7 @@ class RunnerState(Enum):
     RUNNING = "running"
     PENDING = "pending"
     SETUP = "setup"
+    DEAD = "dead"
     UNKNOWN = "unknown"
 
     @staticmethod
@@ -275,6 +276,8 @@ class RunnerState(Enum):
             return RunnerState.PENDING
         elif proto is isolate_proto.RunnerInfo.State.SETUP:
             return RunnerState.SETUP
+        elif proto is isolate_proto.RunnerInfo.State.DEAD:
+            return RunnerState.DEAD
         else:
             return RunnerState.UNKNOWN
 
@@ -811,8 +814,18 @@ class FalServerlessConnection:
         response: isolate_proto.ListAliasesResult = self.stub.ListAliases(request)
         return [from_grpc(alias) for alias in response.aliases]
 
-    def list_alias_runners(self, alias: str) -> list[RunnerInfo]:
-        request = isolate_proto.ListAliasRunnersRequest(alias=alias, list_pending=True)
+    def list_alias_runners(
+        self,
+        alias: str,
+        *,
+        list_pending: bool = True,
+        start_time: datetime | None = None,
+    ) -> list[RunnerInfo]:
+        kwargs = {"alias": alias, "list_pending": list_pending}
+        if start_time:
+            kwargs["start_time"] = isolate_proto.timestamp_from_datetime(start_time)
+
+        request = isolate_proto.ListAliasRunnersRequest(**kwargs)
         response = self.stub.ListAliasRunners(request)
         return [from_grpc(runner) for runner in response.runners]
 
@@ -839,7 +852,13 @@ class FalServerlessConnection:
         request = isolate_proto.KillRunnerRequest(runner_id=runner_id)
         self.stub.KillRunner(request)
 
-    def list_runners(self) -> list[RunnerInfo]:
-        request = isolate_proto.ListRunnersRequest(list_pending=True)
+    def list_runners(self, start_time: datetime | None = None) -> list[RunnerInfo]:
+        kwargs = {
+            "list_pending": True,
+        }
+        if start_time:
+            kwargs["start_time"] = isolate_proto.timestamp_from_datetime(start_time)
+
+        request = isolate_proto.ListRunnersRequest(**kwargs)
         response = self.stub.ListRunners(request)
         return [from_grpc(runner) for runner in response.runners]

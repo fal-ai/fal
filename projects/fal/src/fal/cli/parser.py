@@ -1,5 +1,7 @@
 import argparse
 import sys
+from datetime import datetime, timedelta
+from typing import Optional
 
 import rich_argparse
 
@@ -53,6 +55,61 @@ class DictAction(argparse.Action):
             d[key] = value
 
         setattr(args, self.dest, d)
+
+
+class SinceAction(argparse.Action):
+    LIMIT_LEEWAY = timedelta(minutes=1)
+
+    def _parse_since(self, value: str) -> Optional[datetime]:
+        import dateparser
+
+        return dateparser.parse(
+            value,
+            settings={
+                "PREFER_DATES_FROM": "past",
+            },
+        )
+
+    def __init__(self, *args, **kwargs):
+        self._limit = kwargs.pop("limit", None)
+        if self._limit:
+            if not isinstance(self._limit, str):
+                raise ValueError(
+                    f"Invalid 'limit' value for SinceAction: {self._limit!r}"
+                )
+
+            self._limit_dt = self._parse_since(self._limit)
+            if not self._limit_dt:
+                raise ValueError(
+                    f"Invalid 'limit' value for SinceAction: {self._limit!r}"
+                )
+
+        super().__init__(*args, **kwargs)
+
+    def __call__(self, parser, args, values, option_string=None):  # noqa: ARG002
+        if values is None:
+            setattr(args, self.dest, None)
+            return
+
+        dt = self._parse_since(values)
+        if not dt:
+            raise argparse.ArgumentError(
+                self,
+                (
+                    f"Invalid since value: {values}. "
+                    "Use 'now', relative like '15m' or '24h ago', "
+                    "or an ISO timestamp."
+                ),
+            )
+
+        if self._limit_dt is not None:
+            if dt < self._limit_dt - self.LIMIT_LEEWAY:
+                raise argparse.ArgumentError(
+                    self,
+                    f"Since value is older than the allowed limit {self._limit}.",
+                )
+
+        setattr(args, self.dest, dt)
 
 
 def _find_parser(parser, func):

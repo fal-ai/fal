@@ -45,4 +45,5 @@ repos:
           - types-requests
           - types-redis
           - types-pyyaml
+          - types-dateparser
         files: "^projects/fal/src/"
