@@ -303,8 +303,8 @@ class ImageAspectRatioException(ToolkitHTTPException):
     ):
         if min_aspect_ratio is None and max_aspect_ratio is None:
             raise ValueError(
-                "min_aspect_ratio and max_aspect_ratio must be provided together, "
-                "or neither should be provided."
+                "At least one of 'min_aspect_ratio' or 'max_aspect_ratio' must be "
+                "provided."
             )
 
         if min_aspect_ratio is not None and max_aspect_ratio is not None:
