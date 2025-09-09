@@ -232,8 +232,7 @@ class ImageTooSmallException(ToolkitHTTPException):
         input: str | None = None,
         model: BaseModel | None = None,
         location: tuple[str | int, ...] = (),
-        min_height: int,
-        min_width: int,
+        min_resolution: int | None = None,
         msg: str | None = None,
         billing_units: int | None = None,
     ):
@@ -241,12 +240,9 @@ class ImageTooSmallException(ToolkitHTTPException):
             input=input,
             model=model,
             location=location,
-            msg=(
-                f"Image dimensions are too small. Minimum dimensions required: "
-                f"{min_width}x{min_height} pixels."
-            ),
+            msg="Image too small",
             type="image_too_small",
-            ctx={"min_height": min_height, "min_width": min_width},
+            ctx={"min_resolution": min_resolution},
         )
         super().__init__(status_code=422, errors=(error,), billing_units=billing_units)
 
