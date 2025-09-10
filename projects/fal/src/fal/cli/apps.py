@@ -292,26 +292,30 @@ def _runners(args):
     client = get_client(args.host, args.team)
     with client.connect() as connection:
         alias_runners = connection.list_alias_runners(alias=args.app_name)
+    if args.output == "pretty":
+        runners_table = runners.runners_table(alias_runners)
+        pending_runners = [
+            runner for runner in alias_runners if runner.state == RunnerState.PENDING
+        ]
+        setup_runners = [
+            runner for runner in alias_runners if runner.state == RunnerState.SETUP
+        ]
+        args.console.print(
+            f"Runners: {len(alias_runners) - len(pending_runners) - len(setup_runners)}"
+        )
+        args.console.print(f"Runners Pending: {len(pending_runners)}")
+        args.console.print(f"Runners Setting Up: {len(setup_runners)}")
+        # Drop the alias column, which is the first column
+        runners_table.columns.pop(0)
+        args.console.print(runners_table)
 
-    runners_table = runners.runners_table(alias_runners)
-    pending_runners = [
-        runner for runner in alias_runners if runner.state == RunnerState.PENDING
-    ]
-    setup_runners = [
-        runner for runner in alias_runners if runner.state == RunnerState.SETUP
-    ]
-    args.console.print(
-        f"Runners: {len(alias_runners) - len(pending_runners) - len(setup_runners)}"
-    )
-    args.console.print(f"Runners Pending: {len(pending_runners)}")
-    args.console.print(f"Runners Setting Up: {len(setup_runners)}")
-    # Drop the alias column, which is the first column
-    runners_table.columns.pop(0)
-    args.console.print(runners_table)
-
-    requests_table = runners.runners_requests_table(alias_runners)
-    args.console.print(f"Requests: {len(requests_table.rows)}")
-    args.console.print(requests_table)
+        requests_table = runners.runners_requests_table(alias_runners)
+        args.console.print(f"Requests: {len(requests_table.rows)}")
+        args.console.print(requests_table)
+    elif args.output == "json":
+        runners._list_json(args, alias_runners)
+    else:
+        raise AssertionError(f"Invalid output format: {args.output}")
 
 
 def _add_runners_parser(subparsers, parents):
@@ -320,7 +324,7 @@ def _add_runners_parser(subparsers, parents):
         "runners",
         description=runners_help,
         help=runners_help,
-        parents=parents,
+        parents=[*parents, get_output_parser()],
     )
     parser.add_argument(
         "app_name",
