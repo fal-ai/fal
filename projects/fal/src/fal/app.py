@@ -11,7 +11,13 @@ import time
 import typing
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass
-from typing import Any, Callable, ClassVar, Literal, TypeVar
+from typing import (
+    Any,
+    Callable,
+    ClassVar,
+    Literal,
+    TypeVar,
+)
 
 import fastapi
 import grpc.aio as async_grpc
@@ -34,6 +40,13 @@ from fal.toolkit.file.providers.fal import LIFECYCLE_PREFERENCE
 
 REALTIME_APP_REQUIREMENTS = ["websockets", "msgpack"]
 REQUEST_ID_KEY = "x-fal-request-id"
+DEFAULT_FILES_IGNORE = [
+    r"\.pyc$",
+    r"__pycache__/",
+    r"\.git/",
+    r"\.DS_Store$",
+]
+
 
 EndpointT = TypeVar("EndpointT", bound=Callable[..., Any])
 logger = get_logger(__name__)
@@ -314,6 +327,8 @@ class App(BaseServable):
     app_auth: ClassVar[Literal["private", "public", "shared", None]] = None
     request_timeout: ClassVar[int | None] = None
     startup_timeout: ClassVar[int | None] = None
+    files: ClassVar[list[str]] = []
+    files_ignore: ClassVar[list[str]] = DEFAULT_FILES_IGNORE
 
     isolate_channel: async_grpc.Channel | None = None
 
@@ -327,6 +342,12 @@ class App(BaseServable):
 
         if cls.startup_timeout is not None:
             cls.host_kwargs["startup_timeout"] = cls.startup_timeout
+
+        if cls.files:
+            cls.host_kwargs["files"] = cls.files
+
+        if cls.files_ignore:
+            cls.host_kwargs["files_ignore"] = cls.files_ignore
 
         cls.app_name = getattr(cls, "app_name", app_name)
 
@@ -361,6 +382,10 @@ class App(BaseServable):
 
     @asynccontextmanager
     async def lifespan(self, app: fastapi.FastAPI):
+        import sys
+
+        # Add to path to discover files via python
+        sys.path.append("/deploy-data")
         _print_python_packages()
         await _call_any_fn(self.setup)
         try:
