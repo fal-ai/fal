@@ -1092,17 +1092,24 @@ class ListAliasRunnersRequest(google.protobuf.message.Message):
 
     ALIAS_FIELD_NUMBER: builtins.int
     LIST_PENDING_FIELD_NUMBER: builtins.int
+    START_TIME_FIELD_NUMBER: builtins.int
     alias: builtins.str
     list_pending: builtins.bool
+    @property
+    def start_time(self) -> google.protobuf.timestamp_pb2.Timestamp: ...
     def __init__(
         self,
         *,
         alias: builtins.str = ...,
         list_pending: builtins.bool | None = ...,
+        start_time: google.protobuf.timestamp_pb2.Timestamp | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing_extensions.Literal["_list_pending", b"_list_pending", "list_pending", b"list_pending"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing_extensions.Literal["_list_pending", b"_list_pending", "alias", b"alias", "list_pending", b"list_pending"]) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["_list_pending", b"_list_pending", "_start_time", b"_start_time", "list_pending", b"list_pending", "start_time", b"start_time"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["_list_pending", b"_list_pending", "_start_time", b"_start_time", "alias", b"alias", "list_pending", b"list_pending", "start_time", b"start_time"]) -> None: ...
+    @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_list_pending", b"_list_pending"]) -> typing_extensions.Literal["list_pending"] | None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_start_time", b"_start_time"]) -> typing_extensions.Literal["start_time"] | None: ...
 
 global___ListAliasRunnersRequest = ListAliasRunnersRequest
 
