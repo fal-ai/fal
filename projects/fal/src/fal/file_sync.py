@@ -79,8 +79,10 @@ class FileSync:
         return response
 
     def compute_hash(self, file_path: Path, mode: int) -> str:
+        file_hash = hashlib.sha256()
         with file_path.open("rb") as f:
-            file_hash = hashlib.file_digest(f, "sha256")
+            for chunk in iter(lambda: f.read(4096), b""):
+                file_hash.update(chunk)
 
         # Include metadata in hash
         metadata_string = f"{mode}"
