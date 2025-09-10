@@ -8,7 +8,7 @@ import fal.cli.runners as runners
 from fal.sdk import RunnerState
 
 from ._utils import get_client
-from .parser import FalClientParser, get_output_parser
+from .parser import FalClientParser, SinceAction, get_output_parser
 
 if TYPE_CHECKING:
     from fal.sdk import AliasInfo, ApplicationInfo
@@ -291,7 +291,14 @@ def _add_set_rev_parser(subparsers, parents):
 def _runners(args):
     client = get_client(args.host, args.team)
     with client.connect() as connection:
-        alias_runners = connection.list_alias_runners(alias=args.app_name)
+        start_time = getattr(args, "since", None)
+        alias_runners = connection.list_alias_runners(
+            alias=args.app_name, start_time=start_time
+        )
+    if getattr(args, "state", None):
+        states = set(args.state)
+        if "all" not in states:
+            alias_runners = [r for r in alias_runners if r.state.value in states]
     if args.output == "pretty":
         runners_table = runners.runners_table(alias_runners)
         pending_runners = [
@@ -329,6 +336,24 @@ def _add_runners_parser(subparsers, parents):
     parser.add_argument(
         "app_name",
         help="Application name.",
+    )
+    parser.add_argument(
+        "--since",
+        default=None,
+        action=SinceAction,
+        limit="1 day",
+        help=(
+            "Show dead runners since the given time. "
+            "Accepts 'now', relative like '30m', '1h', '1d', "
+            "or an ISO timestamp. Max 24 hours."
+        ),
+    )
+    parser.add_argument(
+        "--state",
+        choices=["all", "running", "pending", "setup", "dead"],
+        nargs="+",
+        default=None,
+        help=("Filter by runner state(s). Choose one or more, or 'all'(default)."),
     )
     parser.set_defaults(func=_runners)
 
