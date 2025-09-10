@@ -4,7 +4,7 @@ import os
 import re
 from functools import cached_property
 from pathlib import Path, PurePosixPath
-from typing import Any
+from typing import Any, Dict, List, Tuple
 
 import httpx
 from tusclient import client
@@ -88,7 +88,7 @@ class FileSync:
 
         return file_hash.hexdigest()
 
-    def get_file_metadata(self, file_path: Path) -> dict[str, Any]:
+    def get_file_metadata(self, file_path: Path) -> Dict[str, Any]:
         stat = file_path.stat()
         # Limit allowed individual file size
         if stat.st_size > FILE_SIZE_LIMIT:
@@ -104,7 +104,7 @@ class FileSync:
             "hash": file_hash,
         }
 
-    def normalize_path(self, path_str: str, base_path_str: str) -> tuple[str, str]:
+    def normalize_path(self, path_str: str, base_path_str: str) -> Tuple[str, str]:
         path = Path(path_str)
         base_path = Path(base_path_str).resolve()
         if base_path.is_dir():
@@ -124,7 +124,7 @@ class FileSync:
 
         return absolute_path.as_posix(), relative_path
 
-    def collect_files(self, paths: list[str]) -> list[dict[str, Any]]:
+    def collect_files(self, paths: List[str]) -> List[Dict[str, Any]]:
         collected_files = []
 
         for path in paths:
@@ -154,7 +154,7 @@ class FileSync:
 
         return collected_files
 
-    def check_hashes_on_server(self, hashes: list[str]) -> list[str]:
+    def check_hashes_on_server(self, hashes: List[str]) -> List[str]:
         try:
             response = self._request("POST", "/files/sync", json={"hashes": hashes})
             response.raise_for_status()
@@ -169,16 +169,16 @@ class FileSync:
         self,
         file_path: str,
         chunk_size: int = 5 * 1024 * 1024,
-        metadata: dict[str, Any] | None = None,
+        metadata: Dict[str, Any] = {},
     ) -> str:
         uploader = self._tus_client.uploader(
-            file_path, chunk_size=chunk_size, metadata=metadata or {}
+            file_path, chunk_size=chunk_size, metadata=metadata
         )
         uploader.upload()
         return uploader.url
 
     def _should_ignore_file(
-        self, relative_path: str, ignore_patterns: list[str]
+        self, relative_path: str, ignore_patterns: List[str]
     ) -> bool:
         """Check if a file should be ignored based on regex patterns."""
         for pattern in ignore_patterns:
@@ -194,13 +194,13 @@ class FileSync:
 
     def sync_files(
         self,
-        paths: list[str],
+        paths: List[str],
         chunk_size: int = 5 * 1024 * 1024,
         max_concurrency_uploads: int = DEFAULT_CONCURRENCY_UPLOADS,
-        files_ignore: list[str] = [],
-    ) -> dict[str, list[dict[str, Any]]]:
+        files_ignore: List[str] = [],
+    ) -> Dict[str, List[Dict[str, Any]]]:
         files = self.collect_files(paths)
-        results: dict[str, list[dict[str, Any]]] = {
+        results: Dict[str, List[Dict[str, Any]]] = {
             "existing_hashes": [],
             "uploaded_files": [],
             "errors": [],
