@@ -279,7 +279,6 @@ def test_deploy_with_cli_deployment_strategy(
 
     mock_deploy_ref.assert_called_once_with(
         (f"{project_root / 'src/my_app/inference.py'}", "MyApp"),
-        ("src/my_app/inference.py", "MyApp"),
         None,
         args,
         None,
@@ -328,7 +327,6 @@ def test_deploy_with_cli_scale(
 
     mock_deploy_ref.assert_called_once_with(
         (f"{project_root / 'src/my_app/inference.py'}", "MyApp"),
-        ("src/my_app/inference.py", "MyApp"),
         None,
         args,
         None,
