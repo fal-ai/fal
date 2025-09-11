@@ -79,6 +79,9 @@ SERVE_REQUIREMENTS = [
     f"pydantic=={pydantic_version}",
     "uvicorn",
     "starlette_exporter",
+    # workaround for prometheus_client 0.23.0
+    # https://github.com/prometheus/client_python/issues/1135
+    "packaging",
     "structlog",
     "tomli",
     "tomli-w",
