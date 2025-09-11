@@ -619,21 +619,23 @@ def test_worker_env_vars(isolated_client):
 
 
 @pytest.mark.parametrize(
-    "repo_type, url_prefix",
+    "repo_type, url_prefixes",
     [
         (
             "fal",
-            "https://storage.googleapis.com/isolate-dev-smiling-shark_toolkit_public_bucket/",
+            [
+                "https://storage.googleapis.com/isolate-dev-smiling-shark_toolkit_public_bucket/"
+            ],
         ),
-        ("fal_v2", "https://v2.fal.media/files"),
-        ("fal_v3", "https://v3.fal.media/files"),
+        ("fal_v2", ["https://v2.fal.media/files"]),
+        ("fal_v3", ["https://v3.fal.media/files", "https://v3b.fal.media/files"]),
     ],
 )
-def test_fal_storage(isolated_client, repo_type, url_prefix):
+def test_fal_storage(isolated_client, repo_type, url_prefixes):
     file = File.from_bytes(
         b"Hello fal storage from local", repository=repo_type, fallback_repository=None
     )
-    assert file.url.startswith(url_prefix)
+    assert any(file.url.startswith(url_prefix) for url_prefix in url_prefixes)
     assert file.as_bytes().decode().endswith("local")
 
     @isolated_client(
@@ -656,7 +658,7 @@ def test_fal_storage(isolated_client, repo_type, url_prefix):
 
     local_fn = hello_file.on(serve=False)
     file = local_fn()
-    assert file.url.startswith(url_prefix)
+    assert any(file.url.startswith(url_prefix) for url_prefix in url_prefixes)
     assert file.as_bytes().decode().endswith("isolated")
 
 

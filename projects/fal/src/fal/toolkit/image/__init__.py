@@ -7,18 +7,19 @@ from typing import TYPE_CHECKING
 from .image import *  # noqa: F403
 
 if TYPE_CHECKING:
-    from PIL.Image import Image as PILImage
+    # suffix so we don't clash with PILImage from .image
+    from PIL.Image import Image as PILImage2
 
 
 def filter_by(
     has_nsfw_concepts: list[bool],
-    images: list[PILImage],
-) -> list[PILImage]:
-    from PIL import Image as PILImage
+    images: list[PILImage2],
+) -> list[PILImage2]:
+    from PIL import Image as PILImageModule
 
     return [
         (
-            PILImage.new("RGB", (image.width, image.height), (0, 0, 0))
+            PILImageModule.new("RGB", (image.width, image.height), (0, 0, 0))
             if has_nsfw
             else image
         )
