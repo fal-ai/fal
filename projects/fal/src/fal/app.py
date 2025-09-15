@@ -300,7 +300,7 @@ def _print_python_packages() -> None:
 class App(BaseServable):
     requirements: ClassVar[list[str]] = []
     local_python_modules: ClassVar[list[str]] = []
-    machine_type: ClassVar[str] = "S"
+    machine_type: ClassVar[str | list[str]] = "S"
     num_gpus: ClassVar[int | None] = None
     host_kwargs: ClassVar[dict[str, Any]] = {
         "_scheduler": "nomad",
