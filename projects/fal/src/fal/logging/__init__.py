@@ -6,7 +6,6 @@ import structlog
 from structlog.typing import EventDict, WrappedLogger
 
 from .style import LEVEL_STYLES
-from .user import AddUserIdProcessor
 
 # Unfortunately structlog console processor does not support
 # more general theming as a public API. Consider a PR on the
@@ -43,7 +42,6 @@ structlog.configure(
         structlog.stdlib.PositionalArgumentsFormatter(),
         structlog.processors.TimeStamper(fmt="%Y-%m-%d %H:%M:%S"),
         structlog.processors.StackInfoRenderer(),
-        AddUserIdProcessor(),
         _console_log_output,
     ],
     wrapper_class=structlog.stdlib.BoundLogger,
