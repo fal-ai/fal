@@ -28,14 +28,6 @@ fal.logging.trace module
    :undoc-members:
    :show-inheritance:
 
-fal.logging.user module
------------------------
-
-.. automodule:: fal.logging.user
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 Module contents
 ---------------
 
