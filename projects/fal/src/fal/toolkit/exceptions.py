@@ -117,12 +117,12 @@ class ToolkitHTTPException(HTTPException, FalTookitException):
         status_code: int,
         errors: tuple[ErrorDetail, ...] = (),
         retryable: bool = False,
-        billing_units: int | None = None,
+        billable_units: int | None = None,
     ):
         headers = {"x-fal-retryable": "true" if retryable else "false"}
 
-        if billing_units is not None:
-            headers["x-fal-billable-units"] = str(billing_units)
+        if billable_units is not None:
+            headers["x-fal-billable-units"] = str(billable_units)
 
         HTTPException.__init__(
             self,
@@ -149,7 +149,7 @@ class InternalServerException(ToolkitHTTPException):
         errors = (error,)
 
         super().__init__(
-            status_code=500, errors=errors, retryable=retryable, billing_units=0
+            status_code=500, errors=errors, retryable=retryable, billable_units=0
         )
 
 
@@ -172,7 +172,7 @@ class GenerationTimeoutException(ToolkitHTTPException):
 
         # no need for billing since it is already 5XX
         super().__init__(
-            status_code=504, errors=errors, retryable=retryable, billing_units=0
+            status_code=504, errors=errors, retryable=retryable, billable_units=0
         )
 
 
@@ -187,7 +187,7 @@ class DownstreamServiceException(ToolkitHTTPException):
         msg: str | None = None,
         exception: Exception,
         retryable: bool = False,
-        billing_units: int = 0,
+        billable_units: int = 0,
     ):
         error = ErrorDetail(
             input=input,
@@ -200,7 +200,7 @@ class DownstreamServiceException(ToolkitHTTPException):
             status_code=500,
             errors=(error,),
             retryable=retryable,
-            billing_units=billing_units,
+            billable_units=billable_units,
         )
 
 
@@ -221,7 +221,7 @@ class DownstreamServiceUnavailableException(ToolkitHTTPException):
         )
 
         super().__init__(
-            status_code=504, errors=(error,), retryable=retryable, billing_units=0
+            status_code=504, errors=(error,), retryable=retryable, billable_units=0
         )
 
 
@@ -234,7 +234,7 @@ class ImageTooSmallException(ToolkitHTTPException):
         location: tuple[str | int, ...] = (),
         min_resolution: int | None = None,
         msg: str | None = None,
-        billing_units: int | None = None,
+        billable_units: int | None = None,
     ):
         error = ErrorDetail(
             input=input,
@@ -244,7 +244,7 @@ class ImageTooSmallException(ToolkitHTTPException):
             type="image_too_small",
             ctx={"min_resolution": min_resolution},
         )
-        super().__init__(status_code=422, errors=(error,), billing_units=billing_units)
+        super().__init__(status_code=422, errors=(error,), billable_units=billable_units)
 
 
 class ImageTooLargeException(ToolkitHTTPException):
@@ -254,7 +254,7 @@ class ImageTooLargeException(ToolkitHTTPException):
         input: str | None = None,
         model: BaseModel | None = None,
         location: tuple[str | int, ...] = (),
-        billing_units: int | None = None,
+        billable_units: int | None = None,
         max_resolution: int | None = None,
     ):
         if max_resolution is None:
@@ -269,7 +269,7 @@ class ImageTooLargeException(ToolkitHTTPException):
             ctx={"max_resolution": max_resolution},
         )
 
-        super().__init__(status_code=422, errors=(error,), billing_units=billing_units)
+        super().__init__(status_code=422, errors=(error,), billable_units=billable_units)
 
 
 class ImageAspectRatioException(ToolkitHTTPException):
@@ -281,7 +281,7 @@ class ImageAspectRatioException(ToolkitHTTPException):
         location: tuple[str | int, ...] = (),
         min_aspect_ratio: float | None = None,
         max_aspect_ratio: float | None = None,
-        billing_units: int | None = None,
+        billable_units: int | None = None,
     ):
         if min_aspect_ratio is None and max_aspect_ratio is None:
             raise ValueError(
@@ -315,7 +315,7 @@ class ImageAspectRatioException(ToolkitHTTPException):
                 "max_aspect_ratio": max_aspect_ratio,
             },
         )
-        super().__init__(status_code=422, errors=(error,), billing_units=billing_units)
+        super().__init__(status_code=422, errors=(error,), billable_units=billable_units)
 
 
 class ImageLoadException(ToolkitHTTPException):
@@ -325,7 +325,7 @@ class ImageLoadException(ToolkitHTTPException):
         input: str | None = None,
         model: BaseModel | None = None,
         location: tuple[str | int, ...] = (),
-        billing_units: int | None = None,
+        billable_units: int | None = None,
     ):
         error = ErrorDetail(
             input=input,
@@ -337,7 +337,7 @@ class ImageLoadException(ToolkitHTTPException):
             ),
             type="image_load_error",
         )
-        super().__init__(status_code=422, errors=(error,), billing_units=billing_units)
+        super().__init__(status_code=422, errors=(error,), billable_units=billable_units)
 
 
 class FileDownloadException(ToolkitHTTPException):
@@ -347,7 +347,7 @@ class FileDownloadException(ToolkitHTTPException):
         input: str | None = None,
         model: BaseModel | None = None,
         location: tuple[str | int, ...] = (),
-        billing_units: int | None = None,
+        billable_units: int | None = None,
     ):
         error = ErrorDetail(
             input=input,
@@ -359,7 +359,7 @@ class FileDownloadException(ToolkitHTTPException):
             ),
             type="file_download_error",
         )
-        super().__init__(status_code=422, errors=(error,), billing_units=billing_units)
+        super().__init__(status_code=422, errors=(error,), billable_units=billable_units)
 
 
 class FileTooLargeException(ToolkitHTTPException):
@@ -371,7 +371,7 @@ class FileTooLargeException(ToolkitHTTPException):
         location: tuple[str | int, ...] = (),
         max_size: int,
         msg: str | None = None,
-        billing_units: int | None = None,
+        billable_units: int | None = None,
     ):
         error = ErrorDetail(
             input=input,
@@ -384,4 +384,4 @@ class FileTooLargeException(ToolkitHTTPException):
             type="file_too_large",
             ctx={"max_size": max_size},
         )
-        super().__init__(status_code=422, errors=(error,), billing_units=billing_units)
+        super().__init__(status_code=422, errors=(error,), billable_units=billable_units)

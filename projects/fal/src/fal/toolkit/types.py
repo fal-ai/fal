@@ -735,20 +735,20 @@ class HttpsOrDataUrl(str):
             raise FileDownloadException(
                 input=self,
                 location=self._loc,
-                billing_units=0,
+                billable_units=0,
             )
         elif isinstance(exc, ToolkitFileSizeExceededException):
             raise FileTooLargeException(
                 input=self,
                 location=self._loc,
                 max_size=max_size or 0,
-                billing_units=0,
+                billable_units=0,
             )
         elif isinstance(exc, ToolkitDataFormatException):
             raise FileDownloadException(
                 input=self,
                 location=self._loc,
-                billing_units=0,
+                billable_units=0,
             )
 
         raise exc
@@ -938,26 +938,26 @@ class ImageUrl(HttpsOrDataUrl):
             raise ImageLoadException(
                 input=self,
                 location=self._loc,
-                billing_units=0,
+                billable_units=0,
             )
         elif isinstance(exc, ToolkitFileDownloadException):
             raise FileDownloadException(
                 input=self,
                 location=self._loc,
-                billing_units=0,
+                billable_units=0,
             )
         elif isinstance(exc, ToolkitFileSizeExceededException):
             raise FileTooLargeException(
                 input=self,
                 location=self._loc,
                 max_size=config.max_file_size,  # type: ignore
-                billing_units=0,
+                billable_units=0,
             )
         elif isinstance(exc, ToolkitDataFormatException):
             raise ImageLoadException(
                 input=self,
                 location=self._loc,
-                billing_units=0,
+                billable_units=0,
             )
 
         raise exc
@@ -969,7 +969,7 @@ class ImageUrl(HttpsOrDataUrl):
             raise ImageLoadException(
                 input=self,
                 location=self._loc,
-                billing_units=0,
+                billable_units=0,
             )
 
         width_too_small = config.min_width is not None and width < config.min_width
@@ -980,7 +980,7 @@ class ImageUrl(HttpsOrDataUrl):
                 location=self._loc,
                 min_width=config.min_width,  # type: ignore
                 min_height=config.min_height,  # type: ignore
-                billing_units=0,
+                billable_units=0,
             )
 
         width_exceeds = config.max_width is not None and width > config.max_width
@@ -991,7 +991,7 @@ class ImageUrl(HttpsOrDataUrl):
                 location=self._loc,
                 max_width=config.max_width,  # type: ignore[arg-type]
                 max_height=config.max_height,  # type: ignore[arg-type]
-                billing_units=0,
+                billable_units=0,
             )
 
         max_aspect_ratio = max(width, height) / min(width, height)
@@ -1006,7 +1006,7 @@ class ImageUrl(HttpsOrDataUrl):
                 location=self._loc,
                 min_aspect_ratio=config.min_aspect_ratio,
                 max_aspect_ratio=config.max_aspect_ratio,
-                billing_units=0,
+                billable_units=0,
             )
 
         if (
@@ -1018,7 +1018,7 @@ class ImageUrl(HttpsOrDataUrl):
                 location=self._loc,
                 min_aspect_ratio=config.min_aspect_ratio,
                 max_aspect_ratio=config.max_aspect_ratio,
-                billing_units=0,
+                billable_units=0,
             )
 
     async def _load_and_validate_pil_async(self, **overrides):
