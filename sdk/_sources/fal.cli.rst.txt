@@ -108,6 +108,14 @@ fal.cli.profile module
    :undoc-members:
    :show-inheritance:
 
+fal.cli.queue module
+--------------------
+
+.. automodule:: fal.cli.queue
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 fal.cli.run module
 ------------------
 
