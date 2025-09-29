@@ -159,6 +159,17 @@ class FalV2TokenManager:
             expires_at=datetime.fromisoformat(result["expires_at"]),
         )
 
+    def __getstate__(self) -> dict[str, Any]:
+        state = self.__dict__.copy()
+        # Remove the lock from the state dictionary
+        del state["_lock"]
+        return state
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        # Restore the instance attributes
+        self.__dict__.update(state)
+        # Recreate the lock
+        self._lock = threading.Lock()
 
 class FalV3TokenManager(FalV2TokenManager):
     token_cls: type[FalV2Token] = FalV3Token
