@@ -171,6 +171,7 @@ class FalV2TokenManager:
         # Recreate the lock
         self._lock = threading.Lock()
 
+
 class FalV3TokenManager(FalV2TokenManager):
     token_cls: type[FalV2Token] = FalV3Token
     storage_type: str = "fal-cdn-v3"
