@@ -1143,12 +1143,14 @@ class RunnerInfo(google.protobuf.message.Message):
         PENDING: RunnerInfo._State.ValueType  # 1
         SETUP: RunnerInfo._State.ValueType  # 2
         DEAD: RunnerInfo._State.ValueType  # 3
+        DOCKER_PULL: RunnerInfo._State.ValueType  # 4
 
     class State(_State, metaclass=_StateEnumTypeWrapper): ...
     RUNNING: RunnerInfo.State.ValueType  # 0
     PENDING: RunnerInfo.State.ValueType  # 1
     SETUP: RunnerInfo.State.ValueType  # 2
     DEAD: RunnerInfo.State.ValueType  # 3
+    DOCKER_PULL: RunnerInfo.State.ValueType  # 4
 
     RUNNER_ID_FIELD_NUMBER: builtins.int
     IN_FLIGHT_REQUESTS_FIELD_NUMBER: builtins.int
