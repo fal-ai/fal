@@ -383,6 +383,7 @@ message RunnerInfo {
         PENDING = 1;
         SETUP = 2;
         DEAD = 3;
+        DOCKER_PULL = 4;
     }
 
     optional State state = 8;

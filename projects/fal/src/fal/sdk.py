@@ -265,6 +265,7 @@ class RunnerState(Enum):
     RUNNING = "running"
     PENDING = "pending"
     SETUP = "setup"
+    DOCKER_PULL = "docker_pull"
     DEAD = "dead"
     UNKNOWN = "unknown"
 
@@ -278,6 +279,8 @@ class RunnerState(Enum):
             return RunnerState.SETUP
         elif proto is isolate_proto.RunnerInfo.State.DEAD:
             return RunnerState.DEAD
+        elif proto is isolate_proto.RunnerInfo.State.DOCKER_PULL:
+            return RunnerState.DOCKER_PULL
         else:
             return RunnerState.UNKNOWN
 
