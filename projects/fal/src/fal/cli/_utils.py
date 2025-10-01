@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from typing import Any, Optional
+
 from fal.project import find_project_root, find_pyproject_toml, parse_pyproject_toml
+from fal.sdk import AuthModeLiteral, DeploymentStrategyLiteral
 
 
 def get_client(host: str, team: str | None = None):
-    from fal.sdk import FalServerlessClient, get_default_credentials
+    from fal.sdk import FalServerlessClient, get_default_credentials  # noqa: PLC0415
 
     credentials = get_default_credentials(team=team)
     return FalServerlessClient(host, credentials)
@@ -17,7 +20,9 @@ def is_app_name(app_ref: tuple[str, str | None]) -> bool:
     return is_single_file and not is_python_file
 
 
-def get_app_data_from_toml(app_name):
+def get_app_data_from_toml(
+    app_name,
+) -> tuple[str, Optional[AuthModeLiteral], Optional[DeploymentStrategyLiteral], bool]:
     toml_path = find_pyproject_toml()
 
     if toml_path is None:
@@ -27,12 +32,12 @@ def get_app_data_from_toml(app_name):
     apps = fal_data.get("apps", {})
 
     try:
-        app_data = apps[app_name]
+        app_data: dict[str, Any] = apps[app_name]
     except KeyError:
         raise ValueError(f"App {app_name} not found in pyproject.toml")
 
     try:
-        app_ref = app_data.pop("ref")
+        app_ref: str = app_data.pop("ref")
     except KeyError:
         raise ValueError(f"App {app_name} does not have a ref key in pyproject.toml")
 
@@ -40,12 +45,15 @@ def get_app_data_from_toml(app_name):
     project_root, _ = find_project_root(None)
     app_ref = str(project_root / app_ref)
 
-    app_auth = app_data.pop("auth", "private")
-    app_deployment_strategy = app_data.pop("deployment_strategy", "recreate")
+    app_auth: Optional[AuthModeLiteral] = app_data.pop("auth", None)
+    app_deployment_strategy: Optional[DeploymentStrategyLiteral] = app_data.pop(
+        "deployment_strategy", None
+    )
 
+    app_reset_scale: bool
     if "no_scale" in app_data:
         # Deprecated
-        app_no_scale = app_data.pop("no_scale")
+        app_no_scale: bool = app_data.pop("no_scale")
         print("[WARNING] no_scale is deprecated, use app_scale_settings instead")
         app_reset_scale = not app_no_scale
     else:

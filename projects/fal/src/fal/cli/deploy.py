@@ -2,7 +2,9 @@ import argparse
 import json
 from collections import namedtuple
 from pathlib import Path
-from typing import Literal, Optional, Tuple, Union
+from typing import Optional, Tuple, Union, cast
+
+from fal.sdk import AuthModeLiteral, DeploymentStrategyLiteral
 
 from ._utils import get_app_data_from_toml, is_app_name
 from .parser import FalClientParser, RefAction, get_output_parser
@@ -67,8 +69,8 @@ def _deploy_from_reference(
     app_ref: Tuple[Optional[Union[Path, str]], ...],
     app_name: str,
     args,
-    auth: Optional[Literal["public", "shared", "private"]],
-    deployment_strategy: Optional[Literal["recreate", "rolling"]],
+    auth: Optional[AuthModeLiteral],
+    deployment_strategy: Optional[DeploymentStrategyLiteral],
     scale: bool,
 ):
     from fal.api import FalServerlessError, FalServerlessHost
@@ -172,10 +174,12 @@ def _deploy(args):
     # path/to/myfile.py::MyApp
     else:
         file_path, func_name = args.app_ref
-        app_name = args.app_name
-        app_auth = args.auth
-        app_deployment_strategy = args.strategy
-        app_scale_settings = args.app_scale_settings
+        app_name = cast(str, args.app_name)
+        # default to be set in the backend
+        app_auth = cast(Optional[AuthModeLiteral], args.auth)
+        # default comes from the CLI
+        app_deployment_strategy = cast(DeploymentStrategyLiteral, args.strategy)
+        app_scale_settings = cast(bool, args.app_scale_settings)
 
     _deploy_from_reference(
         (file_path, func_name),
