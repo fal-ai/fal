@@ -98,8 +98,8 @@ def test_deploy_with_toml_no_auth(
         (f"{project_root / 'src/another_app/inference.py'}", "AnotherApp"),
         "another-app",
         args,
-        "private",
-        "recreate",
+        None,
+        None,
         scale=False,
     )
 
@@ -233,8 +233,8 @@ def test_deploy_with_toml_default_deployment_strategy(
         (f"{project_root / 'src/another_app/inference.py'}", "AnotherApp"),
         "another-app",
         args,
-        "private",
-        "recreate",
+        None,
+        None,
         scale=False,
     )
 
