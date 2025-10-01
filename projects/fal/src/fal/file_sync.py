@@ -132,12 +132,19 @@ class FileSync:
     ) -> Tuple[str, str]:
         path = Path(path_str)
         base_path = Path(base_path_str).resolve()
-        if files_context_dir:
-            script_dir = Path(files_context_dir).resolve()
-        elif base_path.is_dir():
+
+        if base_path.is_dir():
             script_dir = base_path
         else:
             script_dir = base_path.parent
+
+        if files_context_dir:
+            context_path = Path(files_context_dir)
+            if context_path.is_absolute():
+                script_dir = context_path.resolve()
+            else:
+                script_dir = (script_dir / context_path).resolve()
+
         absolute_path = (
             path.resolve() if path.is_absolute() else (script_dir / path).resolve()
         )
