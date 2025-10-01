@@ -23,7 +23,7 @@ readme = "README.md"
 requires-python = ">=3.8"
 dependencies = [
     "isolate[build]>=0.18.0,<0.21.0",
-    "isolate-proto>=0.16.0,<0.18.0",
+    "isolate-proto>=0.17.0,<0.18.0",
     "grpcio>=1.64.0,<2",
     "dill==0.3.7",
     "cloudpickle==3.0.0",
