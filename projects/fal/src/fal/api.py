@@ -437,6 +437,7 @@ class FalServerlessHost(Host):
             "_scheduler_options",
             "files",
             "files_ignore",
+            "files_context_dir",
         }
     )
 
@@ -517,9 +518,12 @@ class FalServerlessHost(Host):
         )
         files = options.host.get("files", [])
         files_ignore = options.host.get("files_ignore", [])
+        files_context_dir = options.host.get("files_context_dir", None)
         if files:
             sync = FileSync(self.local_file_path)
-            result = sync.sync_files(files, files_ignore=files_ignore)
+            result = sync.sync_files(
+                files, files_ignore=files_ignore, files_context_dir=files_context_dir
+            )
             all_files = result["existing_hashes"] + result["uploaded_files"]
             files = [
                 File(relative_path=file["relative_path"], hash=file["hash"])
@@ -590,9 +594,12 @@ class FalServerlessHost(Host):
         startup_timeout = options.host.get("startup_timeout")
         files = options.host.get("files", [])
         files_ignore = options.host.get("files_ignore", [])
+        files_context_dir = options.host.get("files_context_dir", None)
         if files:
             sync = FileSync(self.local_file_path)
-            result = sync.sync_files(files, files_ignore=files_ignore)
+            result = sync.sync_files(
+                files, files_ignore=files_ignore, files_context_dir=files_context_dir
+            )
             all_files = result["existing_hashes"] + result["uploaded_files"]
             files = [
                 File(relative_path=file["relative_path"], hash=file["hash"])

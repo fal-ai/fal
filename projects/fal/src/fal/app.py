@@ -329,6 +329,7 @@ class App(BaseServable):
     startup_timeout: ClassVar[int | None] = None
     files: ClassVar[list[str]] = []
     files_ignore: ClassVar[list[str]] = DEFAULT_FILES_IGNORE
+    files_context_dir: ClassVar[str | None] = None
 
     isolate_channel: async_grpc.Channel | None = None
 
@@ -348,6 +349,9 @@ class App(BaseServable):
 
         if cls.files_ignore:
             cls.host_kwargs["files_ignore"] = cls.files_ignore
+
+        if cls.files_context_dir is not None:
+            cls.host_kwargs["files_context_dir"] = cls.files_context_dir
 
         cls.app_name = getattr(cls, "app_name", app_name)
 

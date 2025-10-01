@@ -7,6 +7,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Dict, List, Tuple
 
 import httpx
+from rich.tree import Tree
 from tusclient import client
 
 from fal._version import version_tuple
@@ -19,18 +20,38 @@ FILE_SIZE_LIMIT = 1024 * 1024 * 1024  # 1GB
 DEFAULT_CONCURRENCY_UPLOADS = 10
 
 
+def print_path_tree(file_paths):
+    tree = Tree("/deploy-data")
+
+    nodes = {"": tree}
+
+    for file_path in sorted(file_paths):
+        parts = Path(file_path).parts
+
+        for i, part in enumerate(parts):
+            current_path = str(Path(*parts[: i + 1]))
+
+            if current_path not in nodes:
+                parent_path = str(Path(*parts[:i])) if i > 0 else ""
+                parent_node = nodes[parent_path]
+
+                nodes[current_path] = parent_node.add(f"{part}")
+
+    console.print(tree)
+
+
 def sanitize_relative_path(rel_path: str) -> str:
     pure_path = PurePosixPath(rel_path)
 
-    # If absolute, make it relative by removing the root
+    # Block files that are absolute or contain parent directory references
     if pure_path.is_absolute():
-        pure_path = PurePosixPath(*pure_path.parts[1:])
+        raise FalServerlessException(f"Absolute Path is not allowed: {rel_path}")
+    if ".." in pure_path.parts or "." in pure_path.parts:
+        raise FalServerlessException(
+            f"Parent directory reference is not allowed: {rel_path}"
+        )
 
-    # Filter out '..' and '.' parts for security
-    clean_parts = [part for part in pure_path.parts if part not in ("..", ".")]
-
-    # Reconstruct and return the cleaned path
-    return PurePosixPath(*clean_parts).as_posix()
+    return pure_path.as_posix()
 
 
 class FileSync:
@@ -106,14 +127,17 @@ class FileSync:
             "hash": file_hash,
         }
 
-    def normalize_path(self, path_str: str, base_path_str: str) -> Tuple[str, str]:
+    def normalize_path(
+        self, path_str: str, base_path_str: str, files_context_dir: str | None = None
+    ) -> Tuple[str, str]:
         path = Path(path_str)
         base_path = Path(base_path_str).resolve()
-        if base_path.is_dir():
+        if files_context_dir:
+            script_dir = Path(files_context_dir).resolve()
+        elif base_path.is_dir():
             script_dir = base_path
         else:
             script_dir = base_path.parent
-
         absolute_path = (
             path.resolve() if path.is_absolute() else (script_dir / path).resolve()
         )
@@ -126,11 +150,15 @@ class FileSync:
 
         return absolute_path.as_posix(), relative_path
 
-    def collect_files(self, paths: List[str]) -> List[Dict[str, Any]]:
+    def collect_files(
+        self, paths: List[str], files_context_dir: str | None = None
+    ) -> List[Dict[str, Any]]:
         collected_files = []
 
         for path in paths:
-            abs_path_str, rel_path = self.normalize_path(path, self.local_file_path)
+            abs_path_str, rel_path = self.normalize_path(
+                path, self.local_file_path, files_context_dir
+            )
             abs_path = Path(abs_path_str)
             if not abs_path.exists():
                 console.print(f"{abs_path} was not found, it will be skipped")
@@ -147,7 +175,7 @@ class FileSync:
                 for file_path in abs_path.rglob("*"):
                     if file_path.is_file():
                         file_abs_str, file_rel_path = self.normalize_path(
-                            str(file_path), self.local_file_path
+                            str(file_path), self.local_file_path, files_context_dir
                         )
                         metadata = self.get_file_metadata(Path(file_abs_str))
                         metadata["absolute_path"] = file_abs_str
@@ -158,7 +186,9 @@ class FileSync:
 
     def check_hashes_on_server(self, hashes: List[str]) -> List[str]:
         try:
-            response = self._request("POST", "/files/sync", json={"hashes": hashes})
+            response = self._request(
+                "POST", "/files/missing_hashes", json={"hashes": hashes}
+            )
             response.raise_for_status()
             data = response.json()
             return data
@@ -200,8 +230,9 @@ class FileSync:
         chunk_size: int = 5 * 1024 * 1024,
         max_concurrency_uploads: int = DEFAULT_CONCURRENCY_UPLOADS,
         files_ignore: List[str] = [],
+        files_context_dir: str | None = None,
     ) -> Dict[str, List[Dict[str, Any]]]:
-        files = self.collect_files(paths)
+        files = self.collect_files(paths, files_context_dir)
         results: Dict[str, List[Dict[str, Any]]] = {
             "existing_hashes": [],
             "uploaded_files": [],
@@ -233,34 +264,34 @@ class FileSync:
                     )
                 seen_relative_paths.add(rel_path)
                 unique_files.append(metadata)
+            else:
+                if rel_path not in seen_relative_paths:
+                    seen_relative_paths.add(rel_path)
 
         files_to_check = []
         for metadata in unique_files:
-            # print(f"Relative path: {metadata['relative_path']}")
             files_to_check.append(metadata)
 
         if not files_to_check:
             return results
 
-        # Batch check hashes on server (single request)
         hashes_to_check = [metadata["hash"] for metadata in files_to_check]
         missing_hashes = self.check_hashes_on_server(hashes_to_check)
 
         # Categorize based on server response
-        hash_to_metadata = {m["hash"]: m for m in files_to_check}
         files_to_upload = []
-        for file_hash in hashes_to_check:
-            if file_hash not in missing_hashes:
-                metadata = hash_to_metadata[file_hash]
-                results["existing_hashes"].append(metadata)
+        for file in files_to_check:
+            if file["hash"] not in missing_hashes:
+                results["existing_hashes"].append(file)
             else:
-                files_to_upload.append(hash_to_metadata[file_hash])
+                files_to_upload.append(file)
 
         # Upload missing files in parallel with bounded concurrency
         if files_to_upload:
 
             def upload_single_file(metadata):
                 try:
+                    console.print(f"Uploading file: {metadata['relative_path']}")
                     upload_url = self.upload_file_tus(
                         metadata["absolute_path"],
                         chunk_size=chunk_size,
@@ -285,6 +316,12 @@ class FileSync:
                     else:
                         results["uploaded_files"].append(result)
 
+        relative_paths = [
+            file["relative_path"]
+            for file in results["uploaded_files"] + results["existing_hashes"]
+        ]
+        console.print("File Structure:")
+        print_path_tree(relative_paths)
         return results
 
     def close(self):
