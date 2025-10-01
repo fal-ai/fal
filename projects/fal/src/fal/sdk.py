@@ -623,7 +623,7 @@ class FalServerlessConnection:
         serialization_method: str = _DEFAULT_SERIALIZATION_METHOD,
         machine_requirements: MachineRequirements | None = None,
         metadata: dict[str, Any] | None = None,
-        deployment_strategy: DeploymentStrategyLiteral = "recreate",
+        deployment_strategy: DeploymentStrategyLiteral,
         scale: bool = True,
         private_logs: bool = False,
     ) -> Iterator[isolate_proto.RegisterApplicationResult]:
