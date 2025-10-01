@@ -354,6 +354,7 @@ def register_app(
         options=app.options,
         application_name=app_alias,
         application_auth_mode="private",
+        deployment_strategy="recreate",
     )
     try:
         yield app_alias, app_revision
@@ -712,6 +713,7 @@ def test_app_no_auth():
             options=addition_app.options,
             # random enough
             application_name=app_alias,
+            deployment_strategy="recreate",
         )
 
 
@@ -724,6 +726,7 @@ def test_app_deploy_scale(host: api.FalServerlessHost):
         options=addition_app.options,
         application_name=app_alias,
         application_auth_mode="private",
+        deployment_strategy="recreate",
     )
 
     options = replace(
@@ -739,6 +742,7 @@ def test_app_deploy_scale(host: api.FalServerlessHost):
         options=options,
         application_name=app_alias,
         application_auth_mode="private",
+        deployment_strategy="recreate",
     )
 
     app_revision = addition_app.host.register(**kwargs, scale=False)
