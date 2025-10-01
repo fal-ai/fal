@@ -255,7 +255,7 @@ def add_parser(main_subparsers, parents):
         "--strategy",
         choices=["recreate", "rolling"],
         help="Deployment strategy.",
-        default="rolling",
+        default="recreate",
     )
     parser.add_argument(
         "--no-scale",
