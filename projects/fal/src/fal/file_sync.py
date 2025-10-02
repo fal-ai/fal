@@ -4,7 +4,7 @@ import os
 import re
 from functools import cached_property
 from pathlib import Path, PurePosixPath
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 from rich.tree import Tree
@@ -128,7 +128,7 @@ class FileSync:
         }
 
     def normalize_path(
-        self, path_str: str, base_path_str: str, files_context_dir: str | None = None
+        self, path_str: str, base_path_str: str, files_context_dir: Optional[str] = None
     ) -> Tuple[str, str]:
         path = Path(path_str)
         base_path = Path(base_path_str).resolve()
@@ -158,7 +158,7 @@ class FileSync:
         return absolute_path.as_posix(), relative_path
 
     def collect_files(
-        self, paths: List[str], files_context_dir: str | None = None
+        self, paths: List[str], files_context_dir: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         collected_files = []
 
@@ -237,7 +237,7 @@ class FileSync:
         chunk_size: int = 5 * 1024 * 1024,
         max_concurrency_uploads: int = DEFAULT_CONCURRENCY_UPLOADS,
         files_ignore: List[str] = [],
-        files_context_dir: str | None = None,
+        files_context_dir: Optional[str] = None,
     ) -> Dict[str, List[Dict[str, Any]]]:
         files = self.collect_files(paths, files_context_dir)
         results: Dict[str, List[Dict[str, Any]]] = {
