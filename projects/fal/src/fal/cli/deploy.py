@@ -101,7 +101,7 @@ def _deploy_from_reference(
     isolated_function = loaded.function
     app_name = app_name or loaded.app_name  # type: ignore
     app_auth = auth or loaded.app_auth
-    deployment_strategy = deployment_strategy or "recreate"
+    deployment_strategy = deployment_strategy or "rolling"
 
     app_id = host.register(
         func=isolated_function.func,
@@ -255,7 +255,7 @@ def add_parser(main_subparsers, parents):
         "--strategy",
         choices=["recreate", "rolling"],
         help="Deployment strategy.",
-        default="recreate",
+        default="rolling",
     )
     parser.add_argument(
         "--no-scale",
