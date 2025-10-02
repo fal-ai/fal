@@ -11,13 +11,8 @@ import time
 import typing
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass
-from typing import (
-    Any,
-    Callable,
-    ClassVar,
-    Literal,
-    TypeVar,
-)
+
+from typing import Any, Callable, ClassVar, Optional, TypeVar
 
 import fastapi
 import grpc.aio as async_grpc
@@ -35,6 +30,7 @@ from fal.api import (
 )
 from fal.exceptions import FalServerlessException, RequestCancelledException
 from fal.logging import get_logger
+from fal.sdk import AuthModeLiteral
 from fal.toolkit.file import request_lifecycle_preference
 from fal.toolkit.file.providers.fal import LIFECYCLE_PREFERENCE
 
@@ -324,7 +320,7 @@ class App(BaseServable):
         "keep_alive": 60,
     }
     app_name: ClassVar[str]
-    app_auth: ClassVar[Literal["private", "public", "shared", None]] = None
+    app_auth: ClassVar[Optional[AuthModeLiteral]] = None
     request_timeout: ClassVar[int | None] = None
     startup_timeout: ClassVar[int | None] = None
     files: ClassVar[list[str]] = []

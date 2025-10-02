@@ -21,6 +21,7 @@ from typing import (
     Iterator,
     Literal,
     NamedTuple,
+    Optional,
     TypeVar,
     cast,
     overload,
@@ -57,7 +58,9 @@ from fal.sdk import (
     FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
     FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING,
     FAL_SERVERLESS_DEFAULT_MIN_CONCURRENCY,
+    AuthModeLiteral,
     Credentials,
+    DeploymentStrategyLiteral,
     FalServerlessClient,
     FalServerlessConnection,
     File,
@@ -475,12 +478,13 @@ class FalServerlessHost(Host):
         self,
         func: Callable[ArgsT, ReturnT],
         options: Options,
-        application_name: str | None = None,
-        application_auth_mode: Literal["public", "shared", "private"] | None = None,
-        metadata: dict[str, Any] | None = None,
-        deployment_strategy: Literal["recreate", "rolling"] = "recreate",
+        *,
+        application_name: Optional[str] = None,
+        application_auth_mode: Optional[AuthModeLiteral] = None,
+        metadata: Optional[dict[str, Any]] = None,
+        deployment_strategy: DeploymentStrategyLiteral,
         scale: bool = True,
-    ) -> str | None:
+    ) -> Optional[str]:
         from isolate.backends.common import active_python
 
         environment_options = options.environment.copy()

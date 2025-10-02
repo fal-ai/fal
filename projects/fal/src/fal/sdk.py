@@ -45,7 +45,8 @@ logger = get_logger(__name__)
 patch_pickle()
 
 
-AuthMode = Optional[Literal["public", "private", "shared"]]
+AuthModeLiteral = Literal["public", "private", "shared"]
+DeploymentStrategyLiteral = Literal["recreate", "rolling"]
 
 
 class ServerCredentials:
@@ -623,12 +624,12 @@ class FalServerlessConnection:
         function: Callable[..., ResultT],
         environments: list[isolate_proto.EnvironmentDefinition],
         application_name: str | None = None,
-        auth_mode: AuthMode = None,
+        auth_mode: Optional[AuthModeLiteral] = None,
         *,
         serialization_method: str = _DEFAULT_SERIALIZATION_METHOD,
         machine_requirements: MachineRequirements | None = None,
         metadata: dict[str, Any] | None = None,
-        deployment_strategy: Literal["recreate", "rolling"] = "recreate",
+        deployment_strategy: DeploymentStrategyLiteral,
         scale: bool = True,
         private_logs: bool = False,
         files: list[File] | None = None,
@@ -803,7 +804,7 @@ class FalServerlessConnection:
         self,
         alias: str,
         revision: str,
-        auth_mode: AuthMode,
+        auth_mode: Optional[AuthModeLiteral],
     ) -> AliasInfo:
         if auth_mode == "public":
             auth = isolate_proto.ApplicationAuthMode.PUBLIC
