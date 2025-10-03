@@ -334,10 +334,16 @@ class App(BaseServable):
         "resolver": "uv",
         "keep_alive": 60,
     }
-    app_name: ClassVar[str]
+    app_name: ClassVar[Optional[str]] = None
+    name: ClassVar[Optional[str]] = None
     app_auth: ClassVar[Optional[AuthModeLiteral]] = None
-    request_timeout: ClassVar[int | None] = None
-    startup_timeout: ClassVar[int | None] = None
+    request_timeout: ClassVar[Optional[int]] = None
+    startup_timeout: ClassVar[Optional[int]] = None
+    min_concurrency: ClassVar[Optional[int]] = None
+    max_concurrency: ClassVar[Optional[int]] = None
+    concurrency_buffer: ClassVar[Optional[int]] = None
+    concurrency_buffer_perc: ClassVar[Optional[int]] = None
+    max_multiplexing: ClassVar[Optional[int]] = None
 
     isolate_channel: async_grpc.Channel | None = None
 
@@ -352,7 +358,23 @@ class App(BaseServable):
         if cls.startup_timeout is not None:
             cls.host_kwargs["startup_timeout"] = cls.startup_timeout
 
-        cls.app_name = getattr(cls, "app_name", app_name)
+        if cls.min_concurrency is not None:
+            cls.host_kwargs["min_concurrency"] = cls.min_concurrency
+
+        if cls.max_concurrency is not None:
+            cls.host_kwargs["max_concurrency"] = cls.max_concurrency
+
+        if cls.concurrency_buffer is not None:
+            cls.host_kwargs["concurrency_buffer"] = cls.concurrency_buffer
+
+        if cls.concurrency_buffer_perc is not None:
+            cls.host_kwargs["concurrency_buffer_perc"] = cls.concurrency_buffer_perc
+
+        if cls.max_multiplexing is not None:
+            cls.host_kwargs["max_multiplexing"] = cls.max_multiplexing
+
+        cls.app_name = getattr(cls, "app_name", app_name)  # backward compatibility
+        cls.name = app_name
 
         if cls.bundle_paths is not None:
             cls.host_kwargs["bundle_paths"] = cls.bundle_paths
