@@ -44,6 +44,7 @@ dependencies = [
     "starlette-exporter>=0.21.0",
     # rest-api-client dependencies
     "httpx>=0.15.4",
+    "httpx-sse",
     "attrs>=21.3.0",
     "python-dateutil>=2.8.0,<3",
     "types-python-dateutil>=2.8.0,<3",

@@ -1,9 +1,18 @@
 from __future__ import annotations
 
 import json
-from datetime import timedelta
-from typing import List
+from collections import deque
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from http import HTTPStatus
+from typing import Iterator, List
 
+import httpx
+from httpx_sse import connect_sse
+from rich.console import Console
+from structlog.typing import EventDict
+
+from fal.rest_client import REST_CLIENT
 from fal.sdk import RunnerInfo, RunnerState
 
 from ._utils import get_client
@@ -198,6 +207,347 @@ def _add_list_parser(subparsers, parents):
     parser.set_defaults(func=_list)
 
 
+def _to_iso_naive(dt: datetime) -> str:
+    return dt.astimezone(timezone.utc).isoformat()
+
+
+def _parse_ts(ts: str) -> datetime:
+    # Support both 'Z' and offset formats
+    ts_norm = ts.replace("Z", "+00:00")
+    return datetime.fromisoformat(ts_norm)
+
+
+def _to_aware_utc(dt: datetime) -> datetime:
+    # Treat naive datetimes as UTC
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _post_history(
+    client: httpx.Client,
+    base_params: dict[str, str],
+    since: datetime | None,
+    until: datetime | None,
+    page_size: int,
+) -> tuple[list, str | None]:
+    params: dict[str, str] = dict(base_params)
+    if since is not None:
+        params["since"] = _to_iso_naive(since)
+    if until is not None:
+        params["until"] = _to_iso_naive(until)
+    params["page_size"] = str(page_size)
+    resp = client.post("/logs/history", params=params)
+    if resp.status_code != HTTPStatus.OK:
+        try:
+            detail = resp.json().get("detail", resp.text)
+        except Exception:
+            detail = resp.text
+        raise RuntimeError(f"Failed to fetch logs history: {detail}")
+    data = resp.json()
+    items = data.get("items", []) if isinstance(data, dict) else []
+    next_until = data.get("next_until") if isinstance(data, dict) else None
+    if not isinstance(items, list):
+        raise RuntimeError("Unexpected logs history response format")
+    return items, next_until
+
+
+@dataclass
+class RestRunnerInfo:
+    started_at: datetime | None
+    ended_at: datetime | None
+
+
+def _get_runner_info(runner_id: str) -> RestRunnerInfo:
+    headers = REST_CLIENT.get_headers()
+    with httpx.Client(
+        base_url=REST_CLIENT.base_url, headers=headers, timeout=30
+    ) as client:
+        resp = client.get(f"/runners/{runner_id}")
+        if resp.status_code == HTTPStatus.NOT_FOUND:
+            raise RuntimeError(f"Runner {runner_id} not found")
+        if resp.status_code != HTTPStatus.OK:
+            raise RuntimeError(
+                f"Failed to fetch runner info: {resp.status_code} {resp.text}"
+            )
+        data = resp.json()
+        if not isinstance(data, dict):
+            raise RuntimeError(f"Unexpected runner info response format: {resp.text}")
+
+        start: datetime | None = None
+        end: datetime | None = None
+
+        started_at = data.get("started_at")
+        if started_at is not None:
+            try:
+                start = _to_aware_utc(_parse_ts(started_at))
+            except Exception:
+                start = None
+
+        ended_at = data.get("ended_at")
+        if ended_at is not None:
+            try:
+                end = _to_aware_utc(_parse_ts(ended_at))
+            except Exception:
+                end = None
+
+        return RestRunnerInfo(started_at=start, ended_at=end)
+
+
+def _stream_logs(
+    base_params: dict[str, str], since: datetime | None, until: datetime | None
+) -> Iterator[dict]:
+    headers = REST_CLIENT.get_headers()
+    params: dict[str, str] = base_params.copy()
+    if since is not None:
+        params["since"] = _to_iso_naive(since)
+    if until is not None:
+        params["until"] = _to_iso_naive(until)
+    with httpx.Client(
+        base_url=REST_CLIENT.base_url,
+        headers=headers,
+        timeout=None,
+        follow_redirects=True,
+    ) as client:
+        with connect_sse(
+            client,
+            method="POST",
+            url="/logs/stream",
+            params=params,
+            headers={"Accept": "text/event-stream"},
+        ) as event_source:
+            for sse in event_source.iter_sse():
+                if not sse.data:
+                    continue
+                if sse.event == "error":
+                    raise RuntimeError(f"Error streaming logs: {sse.data}")
+                try:
+                    yield json.loads(sse.data)
+                except Exception:
+                    continue
+
+
+DEFAULT_PAGE_SIZE = 1000
+
+
+def _iter_logs(
+    base_params: dict[str, str], start: datetime | None, end: datetime | None
+) -> Iterator[dict]:
+    headers = REST_CLIENT.get_headers()
+    with httpx.Client(
+        base_url=REST_CLIENT.base_url,
+        headers=headers,
+        timeout=300,
+        follow_redirects=True,
+    ) as client:
+        cursor_until = end
+        while True:
+            items, next_until = _post_history(
+                client, base_params, start, cursor_until, DEFAULT_PAGE_SIZE
+            )
+
+            yield from items
+
+            if not next_until:
+                break
+
+            new_until_dt = _to_aware_utc(_parse_ts(next_until))
+            if start is not None and new_until_dt <= start:
+                break
+            cursor_until = new_until_dt
+
+
+def _get_logs(
+    params: dict[str, str],
+    since: datetime | None,
+    until: datetime | None,
+    lines_count: int | None,
+    *,
+    oldest: bool = False,
+) -> Iterator[dict]:
+    if lines_count is None:
+        yield from _iter_logs(params, since, until)
+        return
+
+    if oldest:
+        produced = 0
+        for log in _iter_logs(params, since, until):
+            if produced >= lines_count:
+                break
+            produced += 1
+            yield log
+        return
+
+    # newest tail: collect into a fixed-size deque, then yield
+    tail: deque[dict] = deque(maxlen=lines_count)
+    for log in _iter_logs(params, since, until):
+        tail.append(log)
+    for log in tail:
+        yield log
+
+
+class LogPrinter:
+    def __init__(self, console: Console) -> None:
+        from structlog.dev import ConsoleRenderer
+
+        from fal.logging.style import LEVEL_STYLES
+
+        self._console = console
+        self._renderer = ConsoleRenderer(level_styles=LEVEL_STYLES)
+
+    def _render_log(self, log: dict) -> str:
+        ts_str: str = log["timestamp"]
+        timestamp = _to_aware_utc(_parse_ts(ts_str))
+        local_ts = timestamp.astimezone()
+        tz_offset = local_ts.strftime("%z")
+        # Insert ':' into offset for readability, e.g. +0300 -> +03:00
+        if tz_offset and len(tz_offset) == 5:
+            tz_offset = tz_offset[:3] + ":" + tz_offset[3:]
+
+        event: EventDict = {
+            "event": log.get("message", ""),
+            "level": str(log.get("level", "")).upper(),
+            "timestamp": f"{local_ts.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}{tz_offset}",
+        }
+        return self._renderer(logger={}, name=event["level"], event_dict=event)
+
+    def print(self, log: dict) -> None:
+        self._console.print(self._render_log(log), highlight=False)
+
+
+DEFAULT_STREAM_SINCE = timedelta(minutes=1)
+
+
+def _logs(args):
+    params: dict[str, str] = {"job_id": args.id}
+    if getattr(args, "search", None) is not None:
+        params["search"] = args.search
+
+    runner_info = _get_runner_info(args.id)
+    follow: bool = getattr(args, "follow", False)
+    since = getattr(args, "since", None)
+    if follow:
+        since = since or (datetime.now(timezone.utc) - DEFAULT_STREAM_SINCE)
+    else:
+        since = since or runner_info.started_at
+    until = getattr(args, "until", None) or runner_info.ended_at
+
+    # Normalize to aware UTC for comparisons
+    if since is not None:
+        since = _to_aware_utc(since)
+    if until is not None:
+        until = _to_aware_utc(until)
+
+    # Sanity limiters: clamp within runner lifetime when known
+    if runner_info.started_at is not None:
+        if since is not None and since < runner_info.started_at:
+            since = runner_info.started_at
+        if until is not None and until < runner_info.started_at:
+            until = runner_info.started_at
+    if runner_info.ended_at is not None:
+        if since is not None and since > runner_info.ended_at:
+            since = runner_info.ended_at
+        if until is not None and until > runner_info.ended_at:
+            until = runner_info.ended_at
+
+    # Ensure ordering if both are present
+    if since is not None and until is not None and until < since:
+        since, until = until, since
+
+    lines_arg = getattr(args, "lines", None)
+    lines_count: int | None = None
+    lines_oldest = False
+    if lines_arg is not None:
+        if lines_arg.startswith("+"):
+            lines_str = lines_arg[1:]
+            lines_oldest = True
+        else:
+            lines_str = lines_arg
+        try:
+            lines_count = int(lines_str)
+        except ValueError:
+            args.parser.error("Invalid -n|--lines value. Use an integer or +integer.")
+
+    if follow:
+        logs_gen = _stream_logs(params, since, until)
+    else:
+        logs_gen = _get_logs(params, since, until, lines_count, oldest=lines_oldest)
+
+    printer = LogPrinter(args.console)
+
+    if follow:
+        for log in logs_gen:
+            if args.output == "json":
+                args.console.print(json.dumps(log))
+            else:
+                printer.print(log)
+        return
+
+    if args.output == "json":
+        args.console.print(json.dumps({"logs": list(logs_gen)}))
+    else:
+        for log in reversed(list(logs_gen)):
+            printer.print(log)
+
+
+def _add_logs_parser(subparsers, parents):
+    logs_help = "Show logs for a runner."
+    parser = subparsers.add_parser(
+        "logs",
+        aliases=["log"],
+        description=logs_help,
+        help=logs_help,
+        parents=[*parents, get_output_parser()],
+    )
+    parser.add_argument(
+        "id",
+        help="Runner ID.",
+    )
+    parser.add_argument(
+        "--search",
+        default=None,
+        help="Search for string in logs.",
+    )
+    parser.add_argument(
+        "--since",
+        default=None,
+        action=SinceAction,
+        help=(
+            "Show logs since the given time. "
+            "Accepts 'now', relative like '30m', '1h', or an ISO timestamp. "
+            "Defaults to runner start time or to '1m ago' in --follow mode."
+        ),
+    )
+    parser.add_argument(
+        "--until",
+        default=None,
+        action=SinceAction,
+        help=(
+            "Show logs until the given time. "
+            "Accepts 'now', relative like '30m', '1h', or an ISO timestamp. "
+            "Defaults to runner finish time or 'now' if it is still running."
+        ),
+    )
+    parser.add_argument(
+        "--follow",
+        "-f",
+        action="store_true",
+        help="Follow logs live. If --since is not specified, implies '--since 1m ago'.",
+    )
+    parser.add_argument(
+        "--lines",
+        "-n",
+        default=None,
+        type=str,
+        help=(
+            "Only show latest N log lines. "
+            "If '+' prefix is used, show oldest N log lines. "
+            "Ignored if --follow is used."
+        ),
+    )
+    parser.set_defaults(func=_logs)
+
+
 def add_parser(main_subparsers, parents):
     runners_help = "Manage fal runners."
     parser = main_subparsers.add_parser(
@@ -217,3 +567,4 @@ def add_parser(main_subparsers, parents):
 
     _add_kill_parser(subparsers, parents)
     _add_list_parser(subparsers, parents)
+    _add_logs_parser(subparsers, parents)
