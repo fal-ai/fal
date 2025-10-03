@@ -54,6 +54,7 @@ from fal.exceptions._cuda import _is_cuda_oom_exception
 from fal.logging.isolate import IsolateLogPrinter
 from fal.sdk import (
     FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER,
+    FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER_PERC,
     FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
     FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING,
     FAL_SERVERLESS_DEFAULT_MIN_CONCURRENCY,
@@ -427,6 +428,7 @@ class FalServerlessHost(Host):
             "max_concurrency",
             "min_concurrency",
             "concurrency_buffer",
+            "concurrency_buffer_perc",
             "max_multiplexing",
             "setup_function",
             "metadata",
@@ -491,6 +493,7 @@ class FalServerlessHost(Host):
         max_concurrency = options.host.get("max_concurrency")
         min_concurrency = options.host.get("min_concurrency")
         concurrency_buffer = options.host.get("concurrency_buffer")
+        concurrency_buffer_perc = options.host.get("concurrency_buffer_perc")
         max_multiplexing = options.host.get("max_multiplexing")
         exposed_port = options.get_exposed_port()
         request_timeout = options.host.get("request_timeout")
@@ -507,6 +510,7 @@ class FalServerlessHost(Host):
             max_concurrency=max_concurrency,
             min_concurrency=min_concurrency,
             concurrency_buffer=concurrency_buffer,
+            concurrency_buffer_perc=concurrency_buffer_perc,
             request_timeout=request_timeout,
             startup_timeout=startup_timeout,
         )
@@ -564,6 +568,7 @@ class FalServerlessHost(Host):
         max_concurrency = options.host.get("max_concurrency")
         min_concurrency = options.host.get("min_concurrency")
         concurrency_buffer = options.host.get("concurrency_buffer")
+        concurrency_buffer_perc = options.host.get("concurrency_buffer_perc")
         max_multiplexing = options.host.get("max_multiplexing")
         base_image = options.host.get("_base_image", None)
         scheduler = options.host.get("_scheduler", None)
@@ -584,6 +589,7 @@ class FalServerlessHost(Host):
             max_concurrency=max_concurrency,
             min_concurrency=min_concurrency,
             concurrency_buffer=concurrency_buffer,
+            concurrency_buffer_perc=concurrency_buffer_perc,
             request_timeout=request_timeout,
             startup_timeout=startup_timeout,
         )
@@ -774,6 +780,7 @@ def function(
     max_multiplexing: int = FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING,
     min_concurrency: int = FAL_SERVERLESS_DEFAULT_MIN_CONCURRENCY,
     concurrency_buffer: int = FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER,
+    concurrency_buffer_perc: int = FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER_PERC,
     request_timeout: int | None = None,
     startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
@@ -804,6 +811,7 @@ def function(
     max_multiplexing: int = FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING,
     min_concurrency: int = FAL_SERVERLESS_DEFAULT_MIN_CONCURRENCY,
     concurrency_buffer: int = FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER,
+    concurrency_buffer_perc: int = FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER_PERC,
     request_timeout: int | None = None,
     startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
@@ -886,6 +894,7 @@ def function(
     max_multiplexing: int = FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING,
     min_concurrency: int = FAL_SERVERLESS_DEFAULT_MIN_CONCURRENCY,
     concurrency_buffer: int = FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER,
+    concurrency_buffer_perc: int = FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER_PERC,
     request_timeout: int | None = None,
     startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
@@ -921,6 +930,7 @@ def function(
     max_multiplexing: int = FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING,
     min_concurrency: int = FAL_SERVERLESS_DEFAULT_MIN_CONCURRENCY,
     concurrency_buffer: int = FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER,
+    concurrency_buffer_perc: int = FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER_PERC,
     request_timeout: int | None = None,
     startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
@@ -950,6 +960,7 @@ def function(
     max_multiplexing: int = FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING,
     min_concurrency: int = FAL_SERVERLESS_DEFAULT_MIN_CONCURRENCY,
     concurrency_buffer: int = FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER,
+    concurrency_buffer_perc: int = FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER_PERC,
     request_timeout: int | None = None,
     startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
@@ -979,6 +990,7 @@ def function(
     max_multiplexing: int = FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING,
     min_concurrency: int = FAL_SERVERLESS_DEFAULT_MIN_CONCURRENCY,
     concurrency_buffer: int = FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER,
+    concurrency_buffer_perc: int = FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER_PERC,
     request_timeout: int | None = None,
     startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
