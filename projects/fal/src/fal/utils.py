@@ -31,9 +31,7 @@ def load_function_from(
         fal_objects = {
             obj_name: obj
             for obj_name, obj in module.items()
-            if isinstance(obj, type)
-            and issubclass(obj, fal.App)
-            and hasattr(obj, "app_name")
+            if isinstance(obj, type) and issubclass(obj, fal.App) and obj is not fal.App
         }
         if len(fal_objects) == 0:
             raise FalServerlessError("No fal.App found in the module.")
