@@ -63,3 +63,11 @@ class FileTooLargeError(FalServerlessException):
     """Exception raised when the file is too large."""
 
     message: str = "File is too large."
+
+
+@dataclass
+class AppFileUploadException(FalServerlessException):
+    """Raised when file upload fails"""
+
+    message: str
+    relative_path: str

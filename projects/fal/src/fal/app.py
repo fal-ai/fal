@@ -305,6 +305,14 @@ def _print_python_packages() -> None:
     print("[debug] Python packages installed:", ", ".join(packages))
 
 
+def _include_app_files_path():
+    import sys  # noqa: PLC0415
+
+    # Add local files deployment path to sys.path so imports
+    # work correctly in the isolate agent
+    sys.path.append("/app_files")
+
+
 class App(BaseServable):
     requirements: ClassVar[list[str]] = []
     local_python_modules: ClassVar[list[str]] = []
@@ -381,10 +389,7 @@ class App(BaseServable):
 
     @asynccontextmanager
     async def lifespan(self, app: fastapi.FastAPI):
-        import sys
-
-        # Add to path to discover files via python
-        sys.path.append("/app_files")
+        _include_app_files_path()
         _print_python_packages()
         await _call_any_fn(self.setup)
         try:

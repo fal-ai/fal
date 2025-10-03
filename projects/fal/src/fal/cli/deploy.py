@@ -92,8 +92,7 @@ def _deploy_from_reference(
         file_path = str(file_path)  # type: ignore
 
     user = _get_user()
-    host = FalServerlessHost(args.host)
-    host.set_local_file_path(str(file_path))
+    host = FalServerlessHost(args.host, local_file_path=str(file_path))
     loaded = load_function_from(
         host,
         file_path,  # type: ignore

@@ -1,9 +1,11 @@
+import re
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+import fal.file_sync as file_sync_mod
 from fal.file_sync import FileSync
 
 
@@ -66,48 +68,46 @@ def test_request_404_raises_not_found(file_sync):
             file_sync._request("GET", "/test")
 
 
-def test_compute_hash_basic_functionality(file_sync, temp_dir):
+def test_compute_hash_basic_functionality(temp_dir):
     """Test hash computation produces valid SHA256"""
     test_file = Path(temp_dir) / "test.txt"
     test_file.write_text("Hello, world!")
 
     stat = test_file.stat()
-    hash_result = file_sync.compute_hash(test_file, stat.st_mode)
+    hash_result = file_sync_mod.compute_hash(test_file, stat.st_mode)
 
     assert len(hash_result) == 64
     assert all(c in "0123456789abcdef" for c in hash_result)
 
 
-def test_compute_hash_different_content_different_hash(file_sync, temp_dir):
+def test_compute_hash_different_content_different_hash(temp_dir):
     """Test different file content produces different hashes"""
     file1 = Path(temp_dir) / "file1.txt"
     file2 = Path(temp_dir) / "file2.txt"
     file1.write_text("content1")
     file2.write_text("content2")
 
-    hash1 = file_sync.compute_hash(file1, file1.stat().st_mode)
-    hash2 = file_sync.compute_hash(file2, file2.stat().st_mode)
+    hash1 = file_sync_mod.compute_hash(file1, file1.stat().st_mode)
+    hash2 = file_sync_mod.compute_hash(file2, file2.stat().st_mode)
 
     assert hash1 != hash2
 
 
-def test_get_file_metadata_structure(file_sync, temp_dir):
+def test_get_file_metadata_structure(temp_dir):
     """Test file metadata returns correct structure and values"""
     test_file = Path(temp_dir) / "test.txt"
     test_content = "test content"
     test_file.write_text(test_content)
 
-    metadata = file_sync.get_file_metadata(test_file)
+    metadata = file_sync_mod.FileMetadata.from_path(
+        test_file, relative="test.txt", absolute=str(test_file)
+    )
 
-    required_keys = ["size", "mtime", "mode", "hash"]
-    for key in required_keys:
-        assert key in metadata
-
-    assert int(metadata["size"]) == len(test_content)
-    assert len(metadata["hash"]) == 64
+    assert metadata.size == len(test_content)
+    assert len(metadata.hash) == 64
 
 
-def test_get_file_metadata_file_too_large_error(file_sync, temp_dir):
+def test_get_file_metadata_file_too_large_error(temp_dir):
     """Test that files exceeding size limit raise FileTooLargeError"""
     from fal.exceptions import FileTooLargeError
 
@@ -121,22 +121,23 @@ def test_get_file_metadata_file_too_large_error(file_sync, temp_dir):
         mock_stat.return_value.st_mode = 33188
 
         with pytest.raises(FileTooLargeError):
-            file_sync.get_file_metadata(test_file)
+            file_sync_mod.FileMetadata.from_path(
+                test_file, relative="test.txt", absolute=str(test_file)
+            )
 
 
-def test_normalize_path_relative_to_base(file_sync, temp_dir):
+def test_normalize_path_relative_to_base(temp_dir):
     """Test path normalization resolves relative paths correctly"""
     base_file = str(Path(temp_dir) / "app.py")
-    fs = FileSync(base_file)
 
-    abs_path, rel_path = fs.normalize_path("config.txt", base_file)
+    abs_path, rel_path = file_sync_mod.normalize_path("config.txt", base_file)
 
     expected_abs = (Path(temp_dir) / "config.txt").resolve().as_posix()
     assert abs_path == expected_abs
     assert rel_path == "config.txt"
 
 
-def test_collect_files_single_file(file_sync, temp_dir):
+def test_collect_files_single_file(temp_dir):
     """Test collecting a single file"""
     app_file = Path(temp_dir) / "app.py"
     app_file.write_text("# app file")
@@ -148,10 +149,10 @@ def test_collect_files_single_file(file_sync, temp_dir):
     files = fs.collect_files(["readme.txt"])
 
     assert len(files) == 1
-    assert files[0]["relative_path"] == "readme.txt"
+    assert files[0].relative_path == "readme.txt"
 
 
-def test_collect_files_directory(file_sync, temp_dir):
+def test_collect_files_directory(temp_dir):
     """Test collecting files from a directory"""
     app_file = Path(temp_dir) / "app.py"
     app_file.write_text("# app file")
@@ -165,12 +166,12 @@ def test_collect_files_directory(file_sync, temp_dir):
     files = fs.collect_files(["config/"])
 
     assert len(files) == 2
-    relative_paths = [f["relative_path"] for f in files]
+    relative_paths = [f.relative_path for f in files]
     assert "config/config.json" in relative_paths
     assert "config/settings.yml" in relative_paths
 
 
-def test_collect_files_handles_nonexistent_gracefully(file_sync, temp_dir):
+def test_collect_files_handles_nonexistent_gracefully(temp_dir):
     """Test that nonexistent files/directories are skipped without error"""
     app_file = Path(temp_dir) / "app.py"
     app_file.write_text("# app file")
@@ -183,21 +184,22 @@ def test_collect_files_handles_nonexistent_gracefully(file_sync, temp_dir):
 
 def test_should_ignore_file_basic_patterns(file_sync):
     """Test basic regex patterns for ignoring files"""
-    ignore_patterns = [r"\.pyc$", r"__pycache__/", r"\.git/"]
+    ignore_patterns_str = [r"\.pyc$", r"__pycache__/", r"\.git/"]
+    ignore_patterns = [re.compile(pattern) for pattern in ignore_patterns_str]
 
     # Should ignore
-    assert file_sync._should_ignore_file("test.pyc", ignore_patterns)
-    assert file_sync._should_ignore_file("__pycache__/file.py", ignore_patterns)
-    assert file_sync._should_ignore_file(".git/config", ignore_patterns)
+    assert file_sync._matches_patterns("test.pyc", ignore_patterns)
+    assert file_sync._matches_patterns("__pycache__/file.py", ignore_patterns)
+    assert file_sync._matches_patterns(".git/config", ignore_patterns)
 
     # Should not ignore
-    assert not file_sync._should_ignore_file("test.py", ignore_patterns)
-    assert not file_sync._should_ignore_file("src/main.py", ignore_patterns)
+    assert not file_sync._matches_patterns("test.py", ignore_patterns)
+    assert not file_sync._matches_patterns("src/main.py", ignore_patterns)
 
 
 def test_should_ignore_file_empty_patterns(file_sync):
     """Test behavior with empty ignore patterns"""
-    result = file_sync._should_ignore_file("test.py", [])
+    result = file_sync._matches_patterns("test.py", [])
     assert not result
 
 
@@ -235,7 +237,10 @@ def test_upload_file_tus_basic_functionality(file_sync, temp_dir):
     with patch.object(file_sync, "_tus_client") as mock_client:
         mock_client.uploader.return_value = mock_uploader
 
-        result_url = file_sync.upload_file_tus(str(test_file))
+        metadata = file_sync_mod.FileMetadata.from_path(
+            test_file, relative="test.txt", absolute=str(test_file)
+        )
+        result_url = file_sync.upload_file_tus(str(test_file), metadata)
 
         assert result_url == expected_url
         mock_uploader.upload.assert_called_once()
@@ -254,14 +259,16 @@ def test_sync_files_with_ignore_patterns(file_sync, temp_dir):
 
     # Mock server responses to avoid actual network calls
     with patch.object(fs, "check_hashes_on_server", return_value=[]):
-        results = fs.sync_files(paths=[str(temp_dir)], files_ignore=[r"\.pyc$"])
+        all_files, errors = fs.sync_files(
+            paths=[str(temp_dir)], files_ignore=[re.compile(r"\.pyc$")]
+        )
 
         # Should only process app.py, not the ignored .pyc file
-        all_files = results["existing_hashes"] + results["uploaded_files"]
-        relative_paths = [f["relative_path"] for f in all_files]
+        relative_paths = [f.relative_path for f in all_files]
 
         assert "app.py" in relative_paths
         assert "test.pyc" not in relative_paths
+        assert len(errors) == 0
 
 
 def test_sync_files_basic_workflow(file_sync, temp_dir):
@@ -278,12 +285,10 @@ def test_sync_files_basic_workflow(file_sync, temp_dir):
         # Make server say all hashes are missing (need upload)
         mock_check.side_effect = lambda hashes: hashes
 
-        results = fs.sync_files([str(test_file)])
+        all_files, errors = fs.sync_files([str(test_file)])
 
-        assert (
-            len(results["uploaded_files"]) >= 1 or len(results["existing_hashes"]) >= 1
-        )
-        assert len(results["errors"]) == 0
+        assert len(all_files) >= 1
+        assert len(errors) == 0
 
 
 def test_sync_files_deduplication(file_sync, temp_dir):
@@ -294,11 +299,12 @@ def test_sync_files_deduplication(file_sync, temp_dir):
     fs = FileSync(str(Path(temp_dir) / "app.py"))
 
     with patch.object(fs, "check_hashes_on_server", return_value=[]):
-        results = fs.sync_files([str(test_file), str(test_file)])
+        all_files, errors = fs.sync_files([str(test_file), str(test_file)])
 
         # Should only process the file once
-        total_files = len(results["existing_hashes"]) + len(results["uploaded_files"])
+        total_files = len(all_files)
         assert total_files == 1
+        assert len(errors) == 0
 
 
 def test_close_client(file_sync):

@@ -43,6 +43,7 @@ from typing_extensions import Concatenate, ParamSpec
 
 import fal.flags as flags
 from fal._serialization import include_module, include_modules_from, patch_pickle
+from fal.console import console
 from fal.container import ContainerImage
 from fal.exceptions import (
     AppException,
@@ -445,17 +446,18 @@ class FalServerlessHost(Host):
     )
 
     url: str = FAL_SERVERLESS_DEFAULT_URL
-    credentials: Credentials = field(default_factory=get_default_credentials)
-    _lock: threading.Lock = field(default_factory=threading.Lock)
-
-    _log_printer = IsolateLogPrinter(debug=flags.DEBUG)
-
-    _thread_pool: ThreadPoolExecutor = field(default_factory=ThreadPoolExecutor)
-
     local_file_path: str = ""
+    credentials: Credentials = field(default_factory=get_default_credentials)
 
-    def set_local_file_path(self, path: str):
-        self.local_file_path = path
+    _lock: threading.Lock = field(default_factory=threading.Lock, init=False)
+
+    _log_printer: IsolateLogPrinter = field(
+        default_factory=lambda: IsolateLogPrinter(debug=flags.DEBUG), init=False
+    )
+
+    _thread_pool: ThreadPoolExecutor = field(
+        default_factory=ThreadPoolExecutor, init=False
+    )
 
     def __getstate__(self) -> dict[str, Any]:
         state = self.__dict__.copy()
@@ -472,6 +474,35 @@ class FalServerlessHost(Host):
         with self._lock:
             client = FalServerlessClient(self.url, self.credentials)
             return client.connect()
+
+    def _app_files_sync(self, options: Options) -> list[File]:
+        import re  # noqa: PLC0415
+
+        app_files: list[str] = options.host.get("app_files", [])
+        app_files_ignore_str = options.host.get("app_files_ignore", [])
+        app_files_ignore = [re.compile(pattern) for pattern in app_files_ignore_str]
+        app_files_context_dir = options.host.get("app_files_context_dir", None)
+        res = []
+        if app_files:
+            sync = FileSync(self.local_file_path)
+            files, errors = sync.sync_files(
+                app_files,
+                files_ignore=app_files_ignore,
+                files_context_dir=app_files_context_dir,
+            )
+            if errors:
+                for error in errors:
+                    console.print(
+                        f"Error uploading file {error.relative_path}: {error.message}"
+                    )
+
+                raise FalServerlessException("Error uploading files")
+
+            res = [
+                File(relative_path=file.relative_path, hash=file.hash) for file in files
+            ]
+
+        return res
 
     @_handle_grpc_error()
     def register(
@@ -520,21 +551,8 @@ class FalServerlessHost(Host):
             request_timeout=request_timeout,
             startup_timeout=startup_timeout,
         )
-        app_files = options.host.get("app_files", [])
-        app_files_ignore = options.host.get("app_files_ignore", [])
-        app_files_context_dir = options.host.get("app_files_context_dir", None)
-        if app_files:
-            sync = FileSync(self.local_file_path)
-            result = sync.sync_files(
-                app_files,
-                files_ignore=app_files_ignore,
-                files_context_dir=app_files_context_dir,
-            )
-            all_files = result["existing_hashes"] + result["uploaded_files"]
-            app_files = [
-                File(relative_path=file["relative_path"], hash=file["hash"])
-                for file in all_files
-            ]
+
+        app_files = self._app_files_sync(options)
 
         partial_func = _prepare_partial_func(func)
 
@@ -598,21 +616,6 @@ class FalServerlessHost(Host):
         setup_function = options.host.get("setup_function", None)
         request_timeout = options.host.get("request_timeout")
         startup_timeout = options.host.get("startup_timeout")
-        app_files = options.host.get("app_files", [])
-        app_files_ignore = options.host.get("app_files_ignore", [])
-        app_files_context_dir = options.host.get("app_files_context_dir", None)
-        if app_files:
-            sync = FileSync(self.local_file_path)
-            result = sync.sync_files(
-                app_files,
-                files_ignore=app_files_ignore,
-                files_context_dir=app_files_context_dir,
-            )
-            all_files = result["existing_hashes"] + result["uploaded_files"]
-            app_files = [
-                File(relative_path=file["relative_path"], hash=file["hash"])
-                for file in all_files
-            ]
         machine_requirements = MachineRequirements(
             machine_types=machine_type,  # type: ignore
             num_gpus=options.host.get("num_gpus"),
@@ -628,6 +631,8 @@ class FalServerlessHost(Host):
             request_timeout=request_timeout,
             startup_timeout=startup_timeout,
         )
+
+        app_files = self._app_files_sync(options)
 
         return_value = _UNSET
         # Allow isolate provided arguments (such as setup function) to take

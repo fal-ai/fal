@@ -17,8 +17,7 @@ def _run(args):
         # Turn relative path into absolute path for files
         file_path = str(Path(file_path).absolute())
 
-    host = FalServerlessHost(args.host)
-    host.set_local_file_path(file_path)
+    host = FalServerlessHost(args.host, local_file_path=file_path)
 
     loaded = load_function_from(host, file_path, func_name)
 
