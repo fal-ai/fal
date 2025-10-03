@@ -43,6 +43,7 @@ from typing_extensions import Concatenate, ParamSpec
 
 import fal.flags as flags
 from fal._serialization import include_module, include_modules_from, patch_pickle
+from fal.console import console
 from fal.container import ContainerImage
 from fal.exceptions import (
     AppException,
@@ -51,6 +52,7 @@ from fal.exceptions import (
     FieldException,
 )
 from fal.exceptions._cuda import _is_cuda_oom_exception
+from fal.file_sync import FileSync
 from fal.logging.isolate import IsolateLogPrinter
 from fal.sdk import (
     FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER,
@@ -63,6 +65,7 @@ from fal.sdk import (
     DeploymentStrategyLiteral,
     FalServerlessClient,
     FalServerlessConnection,
+    File,
     HostedRunState,
     MachineRequirements,
     get_agent_credentials,
@@ -438,16 +441,25 @@ class FalServerlessHost(Host):
             "_base_image",
             "_scheduler",
             "_scheduler_options",
+            "app_files",
+            "app_files_ignore",
+            "app_files_context_dir",
         }
     )
 
     url: str = FAL_SERVERLESS_DEFAULT_URL
+    local_file_path: str = ""
     credentials: Credentials = field(default_factory=get_default_credentials)
-    _lock: threading.Lock = field(default_factory=threading.Lock)
 
-    _log_printer = IsolateLogPrinter(debug=flags.DEBUG)
+    _lock: threading.Lock = field(default_factory=threading.Lock, init=False)
 
-    _thread_pool: ThreadPoolExecutor = field(default_factory=ThreadPoolExecutor)
+    _log_printer: IsolateLogPrinter = field(
+        default_factory=lambda: IsolateLogPrinter(debug=flags.DEBUG), init=False
+    )
+
+    _thread_pool: ThreadPoolExecutor = field(
+        default_factory=ThreadPoolExecutor, init=False
+    )
 
     def __getstate__(self) -> dict[str, Any]:
         state = self.__dict__.copy()
@@ -464,6 +476,35 @@ class FalServerlessHost(Host):
         with self._lock:
             client = FalServerlessClient(self.url, self.credentials)
             return client.connect()
+
+    def _app_files_sync(self, options: Options) -> list[File]:
+        import re  # noqa: PLC0415
+
+        app_files: list[str] = options.host.get("app_files", [])
+        app_files_ignore_str = options.host.get("app_files_ignore", [])
+        app_files_ignore = [re.compile(pattern) for pattern in app_files_ignore_str]
+        app_files_context_dir = options.host.get("app_files_context_dir", None)
+        res = []
+        if app_files:
+            sync = FileSync(self.local_file_path)
+            files, errors = sync.sync_files(
+                app_files,
+                files_ignore=app_files_ignore,
+                files_context_dir=app_files_context_dir,
+            )
+            if errors:
+                for error in errors:
+                    console.print(
+                        f"Error uploading file {error.relative_path}: {error.message}"
+                    )
+
+                raise FalServerlessException("Error uploading files")
+
+            res = [
+                File(relative_path=file.relative_path, hash=file.hash) for file in files
+            ]
+
+        return res
 
     @_handle_grpc_error()
     def register(
@@ -515,6 +556,8 @@ class FalServerlessHost(Host):
             startup_timeout=startup_timeout,
         )
 
+        app_files = self._app_files_sync(options)
+
         partial_func = _prepare_partial_func(func)
 
         if metadata is None:
@@ -537,6 +580,7 @@ class FalServerlessHost(Host):
             scale=scale,
             # By default, logs are public
             private_logs=options.host.get("private_logs", False),
+            files=app_files,
         ):
             for log in partial_result.logs:
                 self._log_printer.print(log)
@@ -594,6 +638,8 @@ class FalServerlessHost(Host):
             startup_timeout=startup_timeout,
         )
 
+        app_files = self._app_files_sync(options)
+
         return_value = _UNSET
         # Allow isolate provided arguments (such as setup function) to take
         # precedence over the ones provided by the user.
@@ -603,6 +649,7 @@ class FalServerlessHost(Host):
             environments,
             machine_requirements=machine_requirements,
             setup_function=setup_function,
+            files=app_files,
         ):
             result_handler(partial_result)
 

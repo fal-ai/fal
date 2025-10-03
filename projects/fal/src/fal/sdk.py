@@ -231,6 +231,12 @@ class HostedRunStatus:
 
 
 @dataclass
+class File:
+    hash: str
+    relative_path: str
+
+
+@dataclass
 class ApplicationInfo:
     application_id: str
     keep_alive: int
@@ -632,6 +638,7 @@ class FalServerlessConnection:
         deployment_strategy: DeploymentStrategyLiteral,
         scale: bool = True,
         private_logs: bool = False,
+        files: list[File] | None = None,
     ) -> Iterator[isolate_proto.RegisterApplicationResult]:
         wrapped_function = to_serialized_object(function, serialization_method)
         if machine_requirements:
@@ -657,6 +664,12 @@ class FalServerlessConnection:
             )
         else:
             wrapped_requirements = None
+
+        if files:
+            files = [
+                isolate_proto.File(hash=file.hash, relative_path=file.relative_path)
+                for file in files
+            ]
 
         if auth_mode == "public":
             auth = isolate_proto.ApplicationAuthMode.PUBLIC
@@ -686,6 +699,7 @@ class FalServerlessConnection:
             deployment_strategy=deployment_strategy_proto,
             scale=scale,
             private_logs=private_logs,
+            files=files,
         )
         for partial_result in self.stub.RegisterApplication(request):
             yield from_grpc(partial_result)
@@ -749,6 +763,7 @@ class FalServerlessConnection:
         serialization_method: str = _DEFAULT_SERIALIZATION_METHOD,
         machine_requirements: MachineRequirements | None = None,
         setup_function: Callable[[], InputT] | None = None,
+        files: list[File] | None = None,
     ) -> Iterator[HostedRunResult[ResultT]]:
         wrapped_function = to_serialized_object(function, serialization_method)
         if machine_requirements:
@@ -774,11 +789,16 @@ class FalServerlessConnection:
             )
         else:
             wrapped_requirements = None
-
+        if files:
+            files = [
+                isolate_proto.File(hash=file.hash, relative_path=file.relative_path)
+                for file in files
+            ]
         request = isolate_proto.HostedRun(
             function=wrapped_function,
             environments=environments,
             machine_requirements=wrapped_requirements,
+            files=files,
         )
         if setup_function:
             request.setup_func.MergeFrom(

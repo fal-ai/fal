@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from ._utils import get_app_data_from_toml, is_app_name
 from .parser import FalClientParser, RefAction
 
@@ -6,14 +8,16 @@ def _run(args):
     from fal.api import FalServerlessHost
     from fal.utils import load_function_from
 
-    host = FalServerlessHost(args.host)
-
     if is_app_name(args.func_ref):
         app_name = args.func_ref[0]
         app_ref, *_ = get_app_data_from_toml(app_name)
         file_path, func_name = RefAction.split_ref(app_ref)
     else:
         file_path, func_name = args.func_ref
+        # Turn relative path into absolute path for files
+        file_path = str(Path(file_path).absolute())
+
+    host = FalServerlessHost(args.host, local_file_path=file_path)
 
     loaded = load_function_from(host, file_path, func_name)
 

@@ -251,8 +251,10 @@ def test_deploy_with_cli_auth(
 
     _deploy(args)
 
+    project_root, _ = find_project_root(None)
+
     mock_deploy_ref.assert_called_once_with(
-        ("src/my_app/inference.py", "MyApp"),
+        (f"{project_root / 'src/my_app/inference.py'}", "MyApp"),
         None,
         args,
         "shared",
@@ -273,8 +275,10 @@ def test_deploy_with_cli_deployment_strategy(
 
     _deploy(args)
 
+    project_root, _ = find_project_root(None)
+
     mock_deploy_ref.assert_called_once_with(
-        ("src/my_app/inference.py", "MyApp"),
+        (f"{project_root / 'src/my_app/inference.py'}", "MyApp"),
         None,
         args,
         None,
@@ -295,8 +299,10 @@ def test_deploy_with_cli_reset_scale(
 
     _deploy(args)
 
+    project_root, _ = find_project_root(None)
+
     mock_deploy_ref.assert_called_once_with(
-        ("src/my_app/inference.py", "MyApp"),
+        (f"{project_root / 'src/my_app/inference.py'}", "MyApp"),
         None,
         args,
         None,
@@ -317,8 +323,10 @@ def test_deploy_with_cli_scale(
 
     _deploy(args)
 
+    project_root, _ = find_project_root(None)
+
     mock_deploy_ref.assert_called_once_with(
-        ("src/my_app/inference.py", "MyApp"),
+        (f"{project_root / 'src/my_app/inference.py'}", "MyApp"),
         None,
         args,
         None,

@@ -92,7 +92,7 @@ def _deploy_from_reference(
         file_path = str(file_path)  # type: ignore
 
     user = _get_user()
-    host = FalServerlessHost(args.host)
+    host = FalServerlessHost(args.host, local_file_path=str(file_path))
     loaded = load_function_from(
         host,
         file_path,  # type: ignore
@@ -180,6 +180,7 @@ def _deploy(args):
         # default comes from the CLI
         app_deployment_strategy = cast(DeploymentStrategyLiteral, args.strategy)
         app_scale_settings = cast(bool, args.app_scale_settings)
+        file_path = str(Path(file_path).absolute())
 
     _deploy_from_reference(
         (file_path, func_name),

@@ -35,6 +35,13 @@ from fal.toolkit.file.providers.fal import LIFECYCLE_PREFERENCE
 
 REALTIME_APP_REQUIREMENTS = ["websockets", "msgpack"]
 REQUEST_ID_KEY = "x-fal-request-id"
+DEFAULT_APP_FILES_IGNORE = [
+    r"\.pyc$",
+    r"__pycache__/",
+    r"\.git/",
+    r"\.DS_Store$",
+]
+
 
 EndpointT = TypeVar("EndpointT", bound=Callable[..., Any])
 logger = get_logger(__name__)
@@ -298,6 +305,14 @@ def _print_python_packages() -> None:
     print("[debug] Python packages installed:", ", ".join(packages))
 
 
+def _include_app_files_path():
+    import sys  # noqa: PLC0415
+
+    # Add local files deployment path to sys.path so imports
+    # work correctly in the isolate agent
+    sys.path.append("/app_files")
+
+
 class App(BaseServable):
     requirements: ClassVar[list[str]] = []
     local_python_modules: ClassVar[list[str]] = []
@@ -313,6 +328,9 @@ class App(BaseServable):
     }
     app_name: ClassVar[Optional[str]] = None
     app_auth: ClassVar[Optional[AuthModeLiteral]] = None
+    app_files: ClassVar[list[str]] = []
+    app_files_ignore: ClassVar[list[str]] = DEFAULT_APP_FILES_IGNORE
+    app_files_context_dir: ClassVar[Optional[str]] = None
     request_timeout: ClassVar[Optional[int]] = None
     startup_timeout: ClassVar[Optional[int]] = None
     min_concurrency: ClassVar[Optional[int]] = None
@@ -333,6 +351,15 @@ class App(BaseServable):
 
         if cls.startup_timeout is not None:
             cls.host_kwargs["startup_timeout"] = cls.startup_timeout
+
+        if cls.app_files:
+            cls.host_kwargs["app_files"] = cls.app_files
+
+        if cls.app_files_ignore:
+            cls.host_kwargs["app_files_ignore"] = cls.app_files_ignore
+
+        if cls.app_files_context_dir is not None:
+            cls.host_kwargs["app_files_context_dir"] = cls.app_files_context_dir
 
         if cls.min_concurrency is not None:
             cls.host_kwargs["min_concurrency"] = cls.min_concurrency
@@ -382,6 +409,7 @@ class App(BaseServable):
 
     @asynccontextmanager
     async def lifespan(self, app: fastapi.FastAPI):
+        _include_app_files_path()
         _print_python_packages()
         await _call_any_fn(self.setup)
         try:
