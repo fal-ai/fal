@@ -209,6 +209,8 @@
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.app_auth"><code class="docutils literal notranslate"><span class="pre">App.app_auth</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.app_name"><code class="docutils literal notranslate"><span class="pre">App.app_name</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.collect_routes"><code class="docutils literal notranslate"><span class="pre">App.collect_routes()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.concurrency_buffer"><code class="docutils literal notranslate"><span class="pre">App.concurrency_buffer</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.concurrency_buffer_perc"><code class="docutils literal notranslate"><span class="pre">App.concurrency_buffer_perc</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.get_endpoints"><code class="docutils literal notranslate"><span class="pre">App.get_endpoints()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.health"><code class="docutils literal notranslate"><span class="pre">App.health()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.host_kwargs"><code class="docutils literal notranslate"><span class="pre">App.host_kwargs</span></code></a></li>
@@ -216,6 +218,9 @@
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.lifespan"><code class="docutils literal notranslate"><span class="pre">App.lifespan()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.local_python_modules"><code class="docutils literal notranslate"><span class="pre">App.local_python_modules</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.machine_type"><code class="docutils literal notranslate"><span class="pre">App.machine_type</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.max_concurrency"><code class="docutils literal notranslate"><span class="pre">App.max_concurrency</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.max_multiplexing"><code class="docutils literal notranslate"><span class="pre">App.max_multiplexing</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.min_concurrency"><code class="docutils literal notranslate"><span class="pre">App.min_concurrency</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.num_gpus"><code class="docutils literal notranslate"><span class="pre">App.num_gpus</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.provide_hints"><code class="docutils literal notranslate"><span class="pre">App.provide_hints()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.request_timeout"><code class="docutils literal notranslate"><span class="pre">App.request_timeout</span></code></a></li>
@@ -650,6 +655,8 @@
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.app_auth"><code class="docutils literal notranslate"><span class="pre">App.app_auth</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.app_name"><code class="docutils literal notranslate"><span class="pre">App.app_name</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.collect_routes"><code class="docutils literal notranslate"><span class="pre">App.collect_routes()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.concurrency_buffer"><code class="docutils literal notranslate"><span class="pre">App.concurrency_buffer</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.concurrency_buffer_perc"><code class="docutils literal notranslate"><span class="pre">App.concurrency_buffer_perc</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.get_endpoints"><code class="docutils literal notranslate"><span class="pre">App.get_endpoints()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.health"><code class="docutils literal notranslate"><span class="pre">App.health()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.host_kwargs"><code class="docutils literal notranslate"><span class="pre">App.host_kwargs</span></code></a></li>
@@ -657,6 +664,9 @@
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.lifespan"><code class="docutils literal notranslate"><span class="pre">App.lifespan()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.local_python_modules"><code class="docutils literal notranslate"><span class="pre">App.local_python_modules</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.machine_type"><code class="docutils literal notranslate"><span class="pre">App.machine_type</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.max_concurrency"><code class="docutils literal notranslate"><span class="pre">App.max_concurrency</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.max_multiplexing"><code class="docutils literal notranslate"><span class="pre">App.max_multiplexing</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.min_concurrency"><code class="docutils literal notranslate"><span class="pre">App.min_concurrency</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.num_gpus"><code class="docutils literal notranslate"><span class="pre">App.num_gpus</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.provide_hints"><code class="docutils literal notranslate"><span class="pre">App.provide_hints()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.request_timeout"><code class="docutils literal notranslate"><span class="pre">App.request_timeout</span></code></a></li>
