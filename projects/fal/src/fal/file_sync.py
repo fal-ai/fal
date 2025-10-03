@@ -140,8 +140,6 @@ class FileMetadata:
             "mtime": str(self.mtime),
             "mode": str(self.mode),
             "hash": self.hash,
-            "relative_path": self.relative_path,
-            "absolute_path": self.absolute_path,
         }
 
 
