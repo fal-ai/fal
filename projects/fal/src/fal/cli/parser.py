@@ -86,6 +86,37 @@ class SinceAction(argparse.Action):
 
         super().__init__(*args, **kwargs)
 
+        # If a default is provided as a string like "1h ago", parse it into a datetime
+        # so callers can rely on receiving a datetime even when the flag isn't passed.
+        default_value = getattr(self, "default", None)
+        if default_value is not None and default_value is not argparse.SUPPRESS:
+            if isinstance(default_value, str):
+                dt = self._parse_since(default_value)
+                if not dt:
+                    raise ValueError(
+                        f"Invalid 'default' value for SinceAction: {default_value!r}"
+                    )
+                if (
+                    self._limit
+                    and self._limit_dt is not None
+                    and dt < self._limit_dt - self.LIMIT_LEEWAY
+                ):
+                    raise ValueError(
+                        "Default since value is older than the allowed limit "
+                        f"{self._limit}."
+                    )
+                self.default = dt
+            elif isinstance(default_value, datetime):
+                if (
+                    self._limit
+                    and self._limit_dt is not None
+                    and default_value < self._limit_dt - self.LIMIT_LEEWAY
+                ):
+                    raise ValueError(
+                        "Default since value is older than the allowed limit "
+                        f"{self._limit}."
+                    )
+
     def __call__(self, parser, args, values, option_string=None):  # noqa: ARG002
         if values is None:
             setattr(args, self.dest, None)
@@ -102,7 +133,7 @@ class SinceAction(argparse.Action):
                 ),
             )
 
-        if self._limit_dt is not None:
+        if self._limit and self._limit_dt is not None:
             if dt < self._limit_dt - self.LIMIT_LEEWAY:
                 raise argparse.ArgumentError(
                     self,

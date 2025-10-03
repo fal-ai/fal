@@ -61,7 +61,7 @@ message HostedMap {
 }
 
 message File {
-    // File contains the hash and the relative path of the local file 
+    // File contains the hash and the relative path of the local file
     string hash = 1;
     string relative_path = 2;
 }
@@ -75,7 +75,7 @@ message HostedRun {
     SerializedObject function = 3;
     // Optional setup function to pass as the first argument to the function.
     optional SerializedObject setup_func = 4;
-    // Optional files to be included 
+    // Optional files to be included
     repeated File files = 5;
 }
 
@@ -192,6 +192,7 @@ message MachineRequirements {
     optional int32 request_timeout = 13;
     optional int32 startup_timeout = 14;
     optional int32 concurrency_buffer = 15;
+    optional int32 concurrency_buffer_perc = 16;
 }
 
 enum ApplicationAuthMode {
@@ -231,7 +232,7 @@ message RegisterApplicationRequest {
     optional bool scale = 10;
     // To make all logs generated from the app private
     optional bool private_logs = 11;
-    // Optional files to be included 
+    // Optional files to be included
     repeated File files = 12;
 }
 
@@ -256,6 +257,7 @@ message UpdateApplicationRequest {
     optional int32 request_timeout = 8;
     optional int32 startup_timeout = 9;
     optional int32 concurrency_buffer = 10;
+    optional int32 concurrency_buffer_perc = 11;
 }
 
 message UpdateApplicationResult {
@@ -279,6 +281,7 @@ message ApplicationInfo {
     repeated string valid_regions = 11;
     optional int32 concurrency_buffer = 12;
     google.protobuf.Timestamp created_at = 13;
+    optional int32 concurrency_buffer_perc = 14;
 }
 
 message ListApplicationsResult {
@@ -334,6 +337,7 @@ message AliasInfo {
     optional int32 startup_timeout = 11;
     repeated string valid_regions = 12;
     optional int32 concurrency_buffer = 13;
+    optional int32 concurrency_buffer_perc = 14;
 }
 
 message SetSecretRequest {

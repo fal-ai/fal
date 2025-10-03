@@ -44,6 +44,8 @@ def test_scale():
             "10",
             "--concurrency-buffer",
             "3",
+            "--concurrency-buffer-perc",
+            "27",
         ]
     )
     assert args.func == _scale
@@ -53,6 +55,7 @@ def test_scale():
     assert args.min_concurrency == 7
     assert args.max_concurrency == 10
     assert args.concurrency_buffer == 3
+    assert args.concurrency_buffer_perc == 27
 
 
 def test_runners():

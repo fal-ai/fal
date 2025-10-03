@@ -33,13 +33,20 @@ def _apps_table(apps: list[AliasInfo]):
     table.add_column("Regions")
 
     for app in apps:
+        if app.concurrency_buffer_perc > 0:
+            concurrency_buffer_str = (
+                f"{app.concurrency_buffer_perc}%, min {app.concurrency_buffer}"
+            )
+        else:
+            concurrency_buffer_str = str(app.concurrency_buffer)
+
         table.add_row(
             app.alias,
             app.revision,
             app.auth_mode,
             str(app.min_concurrency),
             str(app.max_concurrency),
-            str(app.concurrency_buffer),
+            concurrency_buffer_str,
             str(app.max_multiplexing),
             str(app.keep_alive),
             str(app.request_timeout),
@@ -165,6 +172,7 @@ def _scale(args):
             and args.max_concurrency is None
             and args.min_concurrency is None
             and args.concurrency_buffer is None
+            and args.concurrency_buffer_perc is None
             and args.request_timeout is None
             and args.startup_timeout is None
             and args.machine_types is None
@@ -180,6 +188,7 @@ def _scale(args):
             max_concurrency=args.max_concurrency,
             min_concurrency=args.min_concurrency,
             concurrency_buffer=args.concurrency_buffer,
+            concurrency_buffer_perc=args.concurrency_buffer_perc,
             request_timeout=args.request_timeout,
             startup_timeout=args.startup_timeout,
             machine_types=args.machine_types,
@@ -225,7 +234,12 @@ def _add_scale_parser(subparsers, parents):
     parser.add_argument(
         "--concurrency-buffer",
         type=int,
-        help="Concurrency buffer",
+        help="Concurrency buffer (min)",
+    )
+    parser.add_argument(
+        "--concurrency-buffer-perc",
+        type=int,
+        help="Concurrency buffer %",
     )
     parser.add_argument(
         "--request-timeout",
