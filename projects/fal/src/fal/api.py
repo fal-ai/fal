@@ -438,9 +438,9 @@ class FalServerlessHost(Host):
             "_base_image",
             "_scheduler",
             "_scheduler_options",
-            "files",
-            "files_ignore",
-            "files_context_dir",
+            "app_files",
+            "app_files_ignore",
+            "app_files_context_dir",
         }
     )
 
@@ -520,16 +520,18 @@ class FalServerlessHost(Host):
             request_timeout=request_timeout,
             startup_timeout=startup_timeout,
         )
-        files = options.host.get("files", [])
-        files_ignore = options.host.get("files_ignore", [])
-        files_context_dir = options.host.get("files_context_dir", None)
-        if files:
+        app_files = options.host.get("app_files", [])
+        app_files_ignore = options.host.get("app_files_ignore", [])
+        app_files_context_dir = options.host.get("app_files_context_dir", None)
+        if app_files:
             sync = FileSync(self.local_file_path)
             result = sync.sync_files(
-                files, files_ignore=files_ignore, files_context_dir=files_context_dir
+                app_files,
+                files_ignore=app_files_ignore,
+                files_context_dir=app_files_context_dir,
             )
             all_files = result["existing_hashes"] + result["uploaded_files"]
-            files = [
+            app_files = [
                 File(relative_path=file["relative_path"], hash=file["hash"])
                 for file in all_files
             ]
@@ -556,7 +558,7 @@ class FalServerlessHost(Host):
             scale=scale,
             # By default, logs are public
             private_logs=options.host.get("private_logs", False),
-            files=files,
+            files=app_files,
         ):
             for log in partial_result.logs:
                 self._log_printer.print(log)
@@ -596,16 +598,18 @@ class FalServerlessHost(Host):
         setup_function = options.host.get("setup_function", None)
         request_timeout = options.host.get("request_timeout")
         startup_timeout = options.host.get("startup_timeout")
-        files = options.host.get("files", [])
-        files_ignore = options.host.get("files_ignore", [])
-        files_context_dir = options.host.get("files_context_dir", None)
-        if files:
+        app_files = options.host.get("app_files", [])
+        app_files_ignore = options.host.get("app_files_ignore", [])
+        app_files_context_dir = options.host.get("app_files_context_dir", None)
+        if app_files:
             sync = FileSync(self.local_file_path)
             result = sync.sync_files(
-                files, files_ignore=files_ignore, files_context_dir=files_context_dir
+                app_files,
+                files_ignore=app_files_ignore,
+                files_context_dir=app_files_context_dir,
             )
             all_files = result["existing_hashes"] + result["uploaded_files"]
-            files = [
+            app_files = [
                 File(relative_path=file["relative_path"], hash=file["hash"])
                 for file in all_files
             ]
@@ -634,7 +638,7 @@ class FalServerlessHost(Host):
             environments,
             machine_requirements=machine_requirements,
             setup_function=setup_function,
-            files=files,
+            files=app_files,
         ):
             result_handler(partial_result)
 

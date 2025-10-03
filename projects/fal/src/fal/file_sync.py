@@ -21,7 +21,7 @@ DEFAULT_CONCURRENCY_UPLOADS = 10
 
 
 def print_path_tree(file_paths):
-    tree = Tree("/deploy-data")
+    tree = Tree("/app_files")
 
     nodes = {"": tree}
 

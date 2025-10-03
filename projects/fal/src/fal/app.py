@@ -35,7 +35,7 @@ from fal.toolkit.file.providers.fal import LIFECYCLE_PREFERENCE
 
 REALTIME_APP_REQUIREMENTS = ["websockets", "msgpack"]
 REQUEST_ID_KEY = "x-fal-request-id"
-DEFAULT_FILES_IGNORE = [
+DEFAULT_APP_FILES_IGNORE = [
     r"\.pyc$",
     r"__pycache__/",
     r"\.git/",
@@ -322,9 +322,9 @@ class App(BaseServable):
     app_auth: ClassVar[Optional[AuthModeLiteral]] = None
     request_timeout: ClassVar[int | None] = None
     startup_timeout: ClassVar[int | None] = None
-    files: ClassVar[list[str]] = []
-    files_ignore: ClassVar[list[str]] = DEFAULT_FILES_IGNORE
-    files_context_dir: ClassVar[str | None] = None
+    app_files: ClassVar[list[str]] = []
+    app_files_ignore: ClassVar[list[str]] = DEFAULT_APP_FILES_IGNORE
+    app_files_context_dir: ClassVar[str | None] = None
 
     isolate_channel: async_grpc.Channel | None = None
 
@@ -339,14 +339,14 @@ class App(BaseServable):
         if cls.startup_timeout is not None:
             cls.host_kwargs["startup_timeout"] = cls.startup_timeout
 
-        if cls.files:
-            cls.host_kwargs["files"] = cls.files
+        if cls.app_files:
+            cls.host_kwargs["app_files"] = cls.app_files
 
-        if cls.files_ignore:
-            cls.host_kwargs["files_ignore"] = cls.files_ignore
+        if cls.app_files_ignore:
+            cls.host_kwargs["app_files_ignore"] = cls.app_files_ignore
 
-        if cls.files_context_dir is not None:
-            cls.host_kwargs["files_context_dir"] = cls.files_context_dir
+        if cls.app_files_context_dir is not None:
+            cls.host_kwargs["app_files_context_dir"] = cls.app_files_context_dir
 
         cls.app_name = getattr(cls, "app_name", app_name)
 
@@ -384,7 +384,7 @@ class App(BaseServable):
         import sys
 
         # Add to path to discover files via python
-        sys.path.append("/deploy-data")
+        sys.path.append("/app_files")
         _print_python_packages()
         await _call_any_fn(self.setup)
         try:
