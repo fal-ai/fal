@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+import fal.file_sync as fs
 from fal.file_sync import FileSync
 
 
@@ -66,38 +67,38 @@ def test_request_404_raises_not_found(file_sync):
             file_sync._request("GET", "/test")
 
 
-def test_compute_hash_basic_functionality(file_sync, temp_dir):
+def test_compute_hash_basic_functionality(temp_dir):
     """Test hash computation produces valid SHA256"""
     test_file = Path(temp_dir) / "test.txt"
     test_file.write_text("Hello, world!")
 
     stat = test_file.stat()
-    hash_result = file_sync.compute_hash(test_file, stat.st_mode)
+    hash_result = fs.compute_hash(test_file, stat.st_mode)
 
     assert len(hash_result) == 64
     assert all(c in "0123456789abcdef" for c in hash_result)
 
 
-def test_compute_hash_different_content_different_hash(file_sync, temp_dir):
+def test_compute_hash_different_content_different_hash(temp_dir):
     """Test different file content produces different hashes"""
     file1 = Path(temp_dir) / "file1.txt"
     file2 = Path(temp_dir) / "file2.txt"
     file1.write_text("content1")
     file2.write_text("content2")
 
-    hash1 = file_sync.compute_hash(file1, file1.stat().st_mode)
-    hash2 = file_sync.compute_hash(file2, file2.stat().st_mode)
+    hash1 = fs.compute_hash(file1, file1.stat().st_mode)
+    hash2 = fs.compute_hash(file2, file2.stat().st_mode)
 
     assert hash1 != hash2
 
 
-def test_get_file_metadata_structure(file_sync, temp_dir):
+def test_get_file_metadata_structure(temp_dir):
     """Test file metadata returns correct structure and values"""
     test_file = Path(temp_dir) / "test.txt"
     test_content = "test content"
     test_file.write_text(test_content)
 
-    metadata = file_sync.get_file_metadata(test_file)
+    metadata = fs.get_file_metadata(test_file)
 
     required_keys = ["size", "mtime", "mode", "hash"]
     for key in required_keys:
@@ -107,7 +108,7 @@ def test_get_file_metadata_structure(file_sync, temp_dir):
     assert len(metadata["hash"]) == 64
 
 
-def test_get_file_metadata_file_too_large_error(file_sync, temp_dir):
+def test_get_file_metadata_file_too_large_error(temp_dir):
     """Test that files exceeding size limit raise FileTooLargeError"""
     from fal.exceptions import FileTooLargeError
 
@@ -121,10 +122,10 @@ def test_get_file_metadata_file_too_large_error(file_sync, temp_dir):
         mock_stat.return_value.st_mode = 33188
 
         with pytest.raises(FileTooLargeError):
-            file_sync.get_file_metadata(test_file)
+            fs.get_file_metadata(test_file)
 
 
-def test_normalize_path_relative_to_base(file_sync, temp_dir):
+def test_normalize_path_relative_to_base(temp_dir):
     """Test path normalization resolves relative paths correctly"""
     base_file = str(Path(temp_dir) / "app.py")
     fs = FileSync(base_file)
@@ -136,7 +137,7 @@ def test_normalize_path_relative_to_base(file_sync, temp_dir):
     assert rel_path == "config.txt"
 
 
-def test_collect_files_single_file(file_sync, temp_dir):
+def test_collect_files_single_file(temp_dir):
     """Test collecting a single file"""
     app_file = Path(temp_dir) / "app.py"
     app_file.write_text("# app file")
@@ -151,7 +152,7 @@ def test_collect_files_single_file(file_sync, temp_dir):
     assert files[0]["relative_path"] == "readme.txt"
 
 
-def test_collect_files_directory(file_sync, temp_dir):
+def test_collect_files_directory(temp_dir):
     """Test collecting files from a directory"""
     app_file = Path(temp_dir) / "app.py"
     app_file.write_text("# app file")
@@ -170,7 +171,7 @@ def test_collect_files_directory(file_sync, temp_dir):
     assert "config/settings.yml" in relative_paths
 
 
-def test_collect_files_handles_nonexistent_gracefully(file_sync, temp_dir):
+def test_collect_files_handles_nonexistent_gracefully(temp_dir):
     """Test that nonexistent files/directories are skipped without error"""
     app_file = Path(temp_dir) / "app.py"
     app_file.write_text("# app file")
