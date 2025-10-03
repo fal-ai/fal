@@ -57,6 +57,14 @@ fal.container module
    :undoc-members:
    :show-inheritance:
 
+fal.file\_sync module
+---------------------
+
+.. automodule:: fal.file_sync
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 fal.files module
 ----------------
 

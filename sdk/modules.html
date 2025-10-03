@@ -127,6 +127,7 @@
 </li>
 <li class="toctree-l3"><a class="reference internal" href="fal.html#fal.api.FalServerlessHost"><code class="docutils literal notranslate"><span class="pre">FalServerlessHost</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.api.FalServerlessHost.credentials"><code class="docutils literal notranslate"><span class="pre">FalServerlessHost.credentials</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.api.FalServerlessHost.local_file_path"><code class="docutils literal notranslate"><span class="pre">FalServerlessHost.local_file_path</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.api.FalServerlessHost.register"><code class="docutils literal notranslate"><span class="pre">FalServerlessHost.register()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.api.FalServerlessHost.run"><code class="docutils literal notranslate"><span class="pre">FalServerlessHost.run()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.api.FalServerlessHost.spawn"><code class="docutils literal notranslate"><span class="pre">FalServerlessHost.spawn()</span></code></a></li>
@@ -207,6 +208,9 @@
 <li class="toctree-l2"><a class="reference internal" href="fal.html#module-fal.app">fal.app module</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="fal.html#fal.app.App"><code class="docutils literal notranslate"><span class="pre">App</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.app_auth"><code class="docutils literal notranslate"><span class="pre">App.app_auth</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.app_files"><code class="docutils literal notranslate"><span class="pre">App.app_files</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.app_files_context_dir"><code class="docutils literal notranslate"><span class="pre">App.app_files_context_dir</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.app_files_ignore"><code class="docutils literal notranslate"><span class="pre">App.app_files_ignore</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.app_name"><code class="docutils literal notranslate"><span class="pre">App.app_name</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.collect_routes"><code class="docutils literal notranslate"><span class="pre">App.collect_routes()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.concurrency_buffer"><code class="docutils literal notranslate"><span class="pre">App.concurrency_buffer</span></code></a></li>
@@ -308,6 +312,32 @@
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.container.ContainerImage.to_dict"><code class="docutils literal notranslate"><span class="pre">ContainerImage.to_dict()</span></code></a></li>
 </ul>
 </li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="fal.html#module-fal.file_sync">fal.file_sync module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.file_sync.FileMetadata"><code class="docutils literal notranslate"><span class="pre">FileMetadata</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.file_sync.FileMetadata.absolute_path"><code class="docutils literal notranslate"><span class="pre">FileMetadata.absolute_path</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.file_sync.FileMetadata.from_path"><code class="docutils literal notranslate"><span class="pre">FileMetadata.from_path()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.file_sync.FileMetadata.hash"><code class="docutils literal notranslate"><span class="pre">FileMetadata.hash</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.file_sync.FileMetadata.mode"><code class="docutils literal notranslate"><span class="pre">FileMetadata.mode</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.file_sync.FileMetadata.mtime"><code class="docutils literal notranslate"><span class="pre">FileMetadata.mtime</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.file_sync.FileMetadata.relative_path"><code class="docutils literal notranslate"><span class="pre">FileMetadata.relative_path</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.file_sync.FileMetadata.size"><code class="docutils literal notranslate"><span class="pre">FileMetadata.size</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.file_sync.FileMetadata.to_dict"><code class="docutils literal notranslate"><span class="pre">FileMetadata.to_dict()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.file_sync.FileSync"><code class="docutils literal notranslate"><span class="pre">FileSync</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.file_sync.FileSync.check_hashes_on_server"><code class="docutils literal notranslate"><span class="pre">FileSync.check_hashes_on_server()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.file_sync.FileSync.close"><code class="docutils literal notranslate"><span class="pre">FileSync.close()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.file_sync.FileSync.collect_files"><code class="docutils literal notranslate"><span class="pre">FileSync.collect_files()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.file_sync.FileSync.sync_files"><code class="docutils literal notranslate"><span class="pre">FileSync.sync_files()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.file_sync.FileSync.upload_file_tus"><code class="docutils literal notranslate"><span class="pre">FileSync.upload_file_tus()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.file_sync.compute_hash"><code class="docutils literal notranslate"><span class="pre">compute_hash()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.file_sync.normalize_path"><code class="docutils literal notranslate"><span class="pre">normalize_path()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.file_sync.print_path_tree"><code class="docutils literal notranslate"><span class="pre">print_path_tree()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.file_sync.sanitize_relative_path"><code class="docutils literal notranslate"><span class="pre">sanitize_relative_path()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="fal.html#module-fal.files">fal.files module</a><ul>
@@ -432,6 +462,11 @@
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.FalServerlessKeyCredentials.key_secret"><code class="docutils literal notranslate"><span class="pre">FalServerlessKeyCredentials.key_secret</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.FalServerlessKeyCredentials.to_grpc"><code class="docutils literal notranslate"><span class="pre">FalServerlessKeyCredentials.to_grpc()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.FalServerlessKeyCredentials.to_headers"><code class="docutils literal notranslate"><span class="pre">FalServerlessKeyCredentials.to_headers()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.sdk.File"><code class="docutils literal notranslate"><span class="pre">File</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.File.hash"><code class="docutils literal notranslate"><span class="pre">File.hash</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.File.relative_path"><code class="docutils literal notranslate"><span class="pre">File.relative_path</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="fal.html#fal.sdk.HostedRunResult"><code class="docutils literal notranslate"><span class="pre">HostedRunResult</span></code></a><ul>
@@ -653,6 +688,9 @@
 <li class="toctree-l2"><a class="reference internal" href="fal.html#module-fal">Module contents</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="fal.html#fal.App"><code class="docutils literal notranslate"><span class="pre">App</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.app_auth"><code class="docutils literal notranslate"><span class="pre">App.app_auth</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.app_files"><code class="docutils literal notranslate"><span class="pre">App.app_files</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.app_files_context_dir"><code class="docutils literal notranslate"><span class="pre">App.app_files_context_dir</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.app_files_ignore"><code class="docutils literal notranslate"><span class="pre">App.app_files_ignore</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.app_name"><code class="docutils literal notranslate"><span class="pre">App.app_name</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.collect_routes"><code class="docutils literal notranslate"><span class="pre">App.collect_routes()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.concurrency_buffer"><code class="docutils literal notranslate"><span class="pre">App.concurrency_buffer</span></code></a></li>
