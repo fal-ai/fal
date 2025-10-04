@@ -266,7 +266,7 @@ class FileSync:
         files_context_dir: Optional[str] = None,
     ) -> Tuple[List[FileMetadata], List[AppFileUploadException]]:
         files = self.collect_files(paths, files_context_dir)
-        existing_hashes: List[FileMetadata] = []
+        existing_files: List[FileMetadata] = []
         uploaded_files: List[Tuple[FileMetadata, str]] = []
         errors: List[AppFileUploadException] = []
 
@@ -302,23 +302,21 @@ class FileSync:
                 if rel_path not in seen_relative_paths:
                     seen_relative_paths.add(rel_path)
 
-        files_to_check: List[FileMetadata] = []
-        for metadata in unique_files:
-            files_to_check.append(metadata)
+        if not unique_files:
+            return existing_files, errors
 
-        if not files_to_check:
-            return existing_hashes, errors
-
-        hashes_to_check = [metadata.hash for metadata in files_to_check]
+        hashes_to_check = [metadata.hash for metadata in unique_files]
         missing_hashes = self.check_hashes_on_server(hashes_to_check)
 
         # Categorize based on server response
         files_to_upload: List[FileMetadata] = []
         hashes_to_upload = set()
-        for file in files_to_check:
-            if file.hash not in missing_hashes or file.hash in hashes_to_upload:
-                existing_hashes.append(file)
+        for file in unique_files:
+            if file.hash not in missing_hashes:
+                existing_files.append(file)
             else:
+                if file.hash in hashes_to_upload:
+                    continue
                 hashes_to_upload.add(file.hash)
                 files_to_upload.append(file)
 
@@ -350,13 +348,11 @@ class FileSync:
                     else:
                         uploaded_files.append((metadata, future.result()))
 
-        all_files = existing_hashes + [file for file, _ in uploaded_files]
-
         # TODO: hide behind DEBUG flag?
         console.print("File Structure:")
-        print_path_tree([m.relative_path for m in all_files])
+        print_path_tree([m.relative_path for m in unique_files])
 
-        return all_files, errors
+        return unique_files, errors
 
     def close(self):
         """Close HTTP client."""
