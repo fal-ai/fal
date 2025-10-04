@@ -302,7 +302,7 @@ class FileSync:
         if not unique_files:
             return [], []
 
-        hashes_to_check = {metadata.hash for metadata in unique_files}
+        hashes_to_check = list({metadata.hash for metadata in unique_files})
         missing_hashes = set(self.check_hashes_on_server(hashes_to_check))
 
         # Categorize based on server response
