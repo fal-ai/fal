@@ -314,10 +314,12 @@ class FileSync:
 
         # Categorize based on server response
         files_to_upload: List[FileMetadata] = []
+        hashes_to_upload = set()
         for file in files_to_check:
-            if file.hash not in missing_hashes:
+            if file.hash not in missing_hashes or file.hash in hashes_to_upload:
                 existing_hashes.append(file)
             else:
+                hashes_to_upload.add(file.hash)
                 files_to_upload.append(file)
 
         # Upload missing files in parallel with bounded concurrency
