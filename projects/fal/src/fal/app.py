@@ -313,6 +313,41 @@ def _include_app_files_path():
     sys.path.append("/app_files")
 
 
+def _move_app_files_to_app_dir():
+    import tarfile
+    from pathlib import Path
+
+    source_dir = Path("/app_files")
+    target_dir = Path("/app")
+    tar_path = Path("/tmp/app_files.tar.gz")
+
+    if not source_dir.exists():
+        return
+
+    try:
+        with tarfile.open(tar_path, "w:gz") as tar:
+            for item in source_dir.rglob("*"):
+                arcname = item.relative_to(source_dir)
+
+                if item.is_symlink():
+                    # Follow symlink to get real file
+                    real_file = item.resolve()
+                    if real_file.is_file():
+                        # Add the real file content with the symlink's name
+                        tar.add(real_file, arcname=str(arcname), recursive=False)
+                elif item.is_file():
+                    # Regular file
+                    tar.add(item, arcname=str(arcname), recursive=False)
+                elif item.is_dir():
+                    # Directory
+                    tar.add(item, arcname=str(arcname), recursive=False)
+        with tarfile.open(tar_path, "r:gz") as tar:
+            tar.extractall(path=target_dir)
+    finally:
+        if tar_path.exists():
+            tar_path.unlink()
+
+
 class App(BaseServable):
     requirements: ClassVar[list[str]] = []
     local_python_modules: ClassVar[list[str]] = []
@@ -410,6 +445,7 @@ class App(BaseServable):
     @asynccontextmanager
     async def lifespan(self, app: fastapi.FastAPI):
         _include_app_files_path()
+        _move_app_files_to_app_dir()
         _print_python_packages()
         await _call_any_fn(self.setup)
         try:
