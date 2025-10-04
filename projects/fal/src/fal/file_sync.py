@@ -225,7 +225,7 @@ class FileSync:
 
         return collected_files
 
-    def check_hashes_on_server(self, hashes: Iterable[str]) -> Iterable[str]:
+    def check_hashes_on_server(self, hashes: List[str]) -> List[str]:
         try:
             response = self._request(
                 "POST", "/files/missing_hashes", json={"hashes": hashes}
