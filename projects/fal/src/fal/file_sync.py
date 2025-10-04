@@ -5,7 +5,7 @@ import re
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path, PurePosixPath
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple
 
 import httpx
 from rich.tree import Tree
@@ -225,7 +225,7 @@ class FileSync:
 
         return collected_files
 
-    def check_hashes_on_server(self, hashes: List[str]) -> List[str]:
+    def check_hashes_on_server(self, hashes: Iterable[str]) -> Iterable[str]:
         try:
             response = self._request(
                 "POST", "/files/missing_hashes", json={"hashes": hashes}
@@ -266,9 +266,6 @@ class FileSync:
         files_context_dir: Optional[str] = None,
     ) -> Tuple[List[FileMetadata], List[AppFileUploadException]]:
         files = self.collect_files(paths, files_context_dir)
-        existing_hashes: List[FileMetadata] = []
-        uploaded_files: List[Tuple[FileMetadata, str]] = []
-        errors: List[AppFileUploadException] = []
 
         # Filter out ignored files
         if files_ignore:
@@ -302,26 +299,23 @@ class FileSync:
                 if rel_path not in seen_relative_paths:
                     seen_relative_paths.add(rel_path)
 
-        files_to_check: List[FileMetadata] = []
-        for metadata in unique_files:
-            files_to_check.append(metadata)
+        if not unique_files:
+            return [], []
 
-        if not files_to_check:
-            return existing_hashes, errors
-
-        hashes_to_check = [metadata.hash for metadata in files_to_check]
-        missing_hashes = self.check_hashes_on_server(hashes_to_check)
+        hashes_to_check = {metadata.hash for metadata in unique_files}
+        missing_hashes = set(self.check_hashes_on_server(hashes_to_check))
 
         # Categorize based on server response
         files_to_upload: List[FileMetadata] = []
-        hashes_to_upload = set()
-        for file in files_to_check:
-            if file.hash not in missing_hashes or file.hash in hashes_to_upload:
-                existing_hashes.append(file)
-            else:
-                hashes_to_upload.add(file.hash)
+        for file in unique_files:
+            if file.hash in missing_hashes:
+                # No longer missing as we are uploading it
+                # Removing it avoids duplicate uploads
+                missing_hashes.remove(file.hash)
                 files_to_upload.append(file)
 
+        uploaded_files: List[Tuple[FileMetadata, str]] = []
+        errors: List[AppFileUploadException] = []
         # Upload missing files in parallel with bounded concurrency
         if files_to_upload:
             # Embed it here to be able to pass it to the executor
@@ -350,13 +344,11 @@ class FileSync:
                     else:
                         uploaded_files.append((metadata, future.result()))
 
-        all_files = existing_hashes + [file for file, _ in uploaded_files]
-
         # TODO: hide behind DEBUG flag?
         console.print("File Structure:")
-        print_path_tree([m.relative_path for m in all_files])
+        print_path_tree([m.relative_path for m in unique_files])
 
-        return all_files, errors
+        return unique_files, errors
 
     def close(self):
         """Close HTTP client."""
