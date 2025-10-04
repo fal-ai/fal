@@ -5,7 +5,7 @@ import re
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path, PurePosixPath
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple
 
 import httpx
 from rich.tree import Tree
@@ -225,7 +225,7 @@ class FileSync:
 
         return collected_files
 
-    def check_hashes_on_server(self, hashes: List[str]) -> List[str]:
+    def check_hashes_on_server(self, hashes: Iterable[str]) -> Iterable[str]:
         try:
             response = self._request(
                 "POST", "/files/missing_hashes", json={"hashes": hashes}
@@ -266,9 +266,6 @@ class FileSync:
         files_context_dir: Optional[str] = None,
     ) -> Tuple[List[FileMetadata], List[AppFileUploadException]]:
         files = self.collect_files(paths, files_context_dir)
-        existing_files: List[FileMetadata] = []
-        uploaded_files: List[Tuple[FileMetadata, str]] = []
-        errors: List[AppFileUploadException] = []
 
         # Filter out ignored files
         if files_ignore:
@@ -303,23 +300,22 @@ class FileSync:
                     seen_relative_paths.add(rel_path)
 
         if not unique_files:
-            return existing_files, errors
+            return [], []
 
-        hashes_to_check = [metadata.hash for metadata in unique_files]
-        missing_hashes = self.check_hashes_on_server(hashes_to_check)
+        hashes_to_check = {metadata.hash for metadata in unique_files}
+        missing_hashes = set(self.check_hashes_on_server(hashes_to_check))
 
         # Categorize based on server response
         files_to_upload: List[FileMetadata] = []
-        hashes_to_upload = set()
         for file in unique_files:
-            if file.hash not in missing_hashes:
-                existing_files.append(file)
-            else:
-                if file.hash in hashes_to_upload:
-                    continue
-                hashes_to_upload.add(file.hash)
+            if file.hash in missing_hashes:
+                # No longer missing as we are uploading it
+                # Removing it avoids duplicate uploads
+                missing_hashes.remove(file.hash)
                 files_to_upload.append(file)
 
+        uploaded_files: List[Tuple[FileMetadata, str]] = []
+        errors: List[AppFileUploadException] = []
         # Upload missing files in parallel with bounded concurrency
         if files_to_upload:
             # Embed it here to be able to pass it to the executor
