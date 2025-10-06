@@ -27,6 +27,7 @@ from fal.api import (
 from fal.api import (
     function as fal_function,
 )
+from fal.container import ContainerImage
 from fal.exceptions import FalServerlessException, RequestCancelledException
 from fal.logging import get_logger
 from fal.sdk import AuthModeLiteral
@@ -338,6 +339,8 @@ class App(BaseServable):
     concurrency_buffer: ClassVar[Optional[int]] = None
     concurrency_buffer_perc: ClassVar[Optional[int]] = None
     max_multiplexing: ClassVar[Optional[int]] = None
+    kind: ClassVar[Optional[str]] = None
+    image: ClassVar[Optional[ContainerImage]] = None
 
     isolate_channel: async_grpc.Channel | None = None
 
@@ -375,6 +378,12 @@ class App(BaseServable):
 
         if cls.max_multiplexing is not None:
             cls.host_kwargs["max_multiplexing"] = cls.max_multiplexing
+
+        if cls.kind is not None:
+            cls.host_kwargs["kind"] = cls.kind
+
+        if cls.image is not None:
+            cls.host_kwargs["image"] = cls.image
 
         cls.app_name = getattr(cls, "app_name") or app_name
 

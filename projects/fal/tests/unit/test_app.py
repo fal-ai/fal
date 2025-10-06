@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fal import App
+from fal.container import ContainerImage
 
 
 def test_app_default_app_name_is_generated_from_class_name():
@@ -22,6 +23,10 @@ def test_app_classvars_propagate_to_host_kwargs():
         concurrency_buffer = 4
         concurrency_buffer_perc = 50
         max_multiplexing = 7
+        kind = "container"
+        image = ContainerImage.from_dockerfile_str(
+            "FROM python:3.10-slim",
+        )
 
     hk = VarsApp.host_kwargs
     assert hk["request_timeout"] == 11
@@ -34,6 +39,8 @@ def test_app_classvars_propagate_to_host_kwargs():
     assert hk["concurrency_buffer"] == 4
     assert hk["concurrency_buffer_perc"] == 50
     assert hk["max_multiplexing"] == 7
+    assert hk["kind"] == "container"
+    assert isinstance(hk["image"], ContainerImage)
 
 
 def test_app_kwargs_merge_into_host_kwargs_and_override_defaults():
