@@ -191,37 +191,74 @@ class FileSync:
             raise FalServerlessException(detail)
         return response
 
+    def _is_glob_pattern(self, path: str) -> bool:
+        """Check if a path string contains glob patterns."""
+        return any(char in path for char in ['*', '?', '[', ']'])
+
     def collect_files(self, paths: List[str], files_context_dir: Optional[str] = None):
         collected_files: List[FileMetadata] = []
 
         for path in paths:
-            abs_path_str, rel_path = normalize_path(
-                path, self.local_file_path, files_context_dir
-            )
-            abs_path = Path(abs_path_str)
-            if not abs_path.exists():
-                console.print(f"{abs_path} was not found, it will be skipped")
-                continue
+            # Check if this is a glob pattern
+            if self._is_glob_pattern(path):
+                # Determine the base directory to search from
+                base_path = Path(self.local_file_path).resolve()
+                if base_path.is_file():
+                    base_path = base_path.parent
+                
+                if files_context_dir:
+                    context_path = Path(files_context_dir)
+                    if context_path.is_absolute():
+                        base_path = context_path.resolve()
+                    else:
+                        base_path = (base_path / context_path).resolve()
 
-            if abs_path.is_file():
-                metadata = FileMetadata.from_path(
-                    abs_path, relative=rel_path, absolute=abs_path_str
-                )
-                collected_files.append(metadata)
-
-            elif abs_path.is_dir():
-                # Recursively walk directory tree
-                for file_path in abs_path.rglob("*"):
+                # Use glob to find matching files
+                matched_files = base_path.glob(path)
+                for file_path in matched_files:
                     if file_path.is_file():
-                        file_abs_str, file_rel_path = normalize_path(
-                            str(file_path), self.local_file_path, files_context_dir
-                        )
-                        metadata = FileMetadata.from_path(
-                            Path(file_abs_str),
-                            relative=file_rel_path,
-                            absolute=file_abs_str,
-                        )
-                        collected_files.append(metadata)
+                        try:
+                            file_abs_str, file_rel_path = normalize_path(
+                                str(file_path), self.local_file_path, files_context_dir
+                            )
+                            metadata = FileMetadata.from_path(
+                                Path(file_abs_str),
+                                relative=file_rel_path,
+                                absolute=file_abs_str,
+                            )
+                            collected_files.append(metadata)
+                        except Exception:
+                            # Skip files that can't be normalized
+                            continue
+            else:
+                # Original logic for literal paths
+                abs_path_str, rel_path = normalize_path(
+                    path, self.local_file_path, files_context_dir
+                )
+                abs_path = Path(abs_path_str)
+                if not abs_path.exists():
+                    console.print(f"{abs_path} was not found, it will be skipped")
+                    continue
+
+                if abs_path.is_file():
+                    metadata = FileMetadata.from_path(
+                        abs_path, relative=rel_path, absolute=abs_path_str
+                    )
+                    collected_files.append(metadata)
+
+                elif abs_path.is_dir():
+                    # Recursively walk directory tree
+                    for file_path in abs_path.rglob("*"):
+                        if file_path.is_file():
+                            file_abs_str, file_rel_path = normalize_path(
+                                str(file_path), self.local_file_path, files_context_dir
+                            )
+                            metadata = FileMetadata.from_path(
+                                Path(file_abs_str),
+                                relative=file_rel_path,
+                                absolute=file_abs_str,
+                            )
+                            collected_files.append(metadata)
 
         return collected_files
 
