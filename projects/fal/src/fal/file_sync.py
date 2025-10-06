@@ -1,5 +1,6 @@
 import concurrent.futures
 import hashlib
+import logging
 import os
 import re
 from dataclasses import dataclass
@@ -10,6 +11,7 @@ from typing import Dict, List, Optional, Tuple
 import httpx
 from rich.tree import Tree
 
+import fal.flags as flags
 from fal._version import version_tuple
 from fal.console import console
 from fal.console.icons import CROSS_ICON
@@ -22,10 +24,11 @@ from fal.exceptions import (
 USER_AGENT = f"fal-sdk/{'.'.join(map(str, version_tuple))} (python)"
 FILE_SIZE_LIMIT = 1024 * 1024 * 1024  # 1GB
 DEFAULT_CONCURRENCY_UPLOADS = 10
+logger = logging.getLogger(__name__)
 
 
 def print_path_tree(file_paths):
-    tree = Tree("/app_files")
+    tree = Tree("/app")
 
     nodes = {"": tree}
 
@@ -272,8 +275,7 @@ class FileSync:
             filtered_files: List[FileMetadata] = []
             for metadata in files:
                 if self._matches_patterns(metadata.relative_path, files_ignore):
-                    # TODO: hide behind DEBUG flag?
-                    console.print(f"Ignoring file: {metadata.relative_path}")
+                    logger.debug(f"Ignoring file: {metadata.relative_path}")
                 else:
                     filtered_files.append(metadata)
 
@@ -344,9 +346,9 @@ class FileSync:
                     else:
                         uploaded_files.append((metadata, future.result()))
 
-        # TODO: hide behind DEBUG flag?
-        console.print("File Structure:")
-        print_path_tree([m.relative_path for m in unique_files])
+        if flags.DEBUG:
+            logger.debug("File Structure:")
+            print_path_tree([m.relative_path for m in unique_files])
 
         return unique_files, errors
 
