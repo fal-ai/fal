@@ -110,7 +110,7 @@ async def _set_logger_labels(
 def wrap_app(cls: type[App], **kwargs) -> IsolatedFunction:
     include_modules_from(cls)
 
-    host = kwargs.pop("host", None)
+    host = kwargs.get("host", None)
     if host:
         cls.local_file_path = host.local_file_path
 
