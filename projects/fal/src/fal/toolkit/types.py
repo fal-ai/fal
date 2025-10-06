@@ -77,30 +77,47 @@ def get_retry_delay(
 
     return min(delay, max_delay)
 
+@lru_cache(maxsize=1)
+def _pillow_has_avif_support() -> bool:
+    import PIL
+
+    major, minor, *_ = PIL.__version__.split(".")
+    major = int(major)
+    minor = int(minor)
+    return (major, minor) >= (11, 2)
 
 @lru_cache(maxsize=1)
-def register_custom_pil_openers():
+def _register_heif_opener():
     from PIL.Image import MIME
-
     try:
-        from pillow_heif import register_heif_opener  # type: ignore
-
-        if getattr(MIME, "HEIF", None) is None:
-            register_heif_opener()
+        from pillow_heif import register_heif_opener
     except ModuleNotFoundError:
         print("HEIF: pillow-heif not installed.")
     except ImportError:
         print("HEIF: pillow-heif import failed.")
+    else:
+        if getattr(MIME, "HEIF", None) is None:
+            register_heif_opener()
+
+@lru_cache(maxsize=1)
+def _register_avif_opener():
+    from PIL.Image import MIME
 
     try:
-        from pillow_heif import register_avif_opener  # type: ignore
-
-        if getattr(MIME, "AVIF", None) is None:
-            register_avif_opener()
+        from pillow_heif import register_avif_opener
     except ModuleNotFoundError:
         print("AVIF: pillow-heif not installed.")
     except ImportError:
-        print("AVIF: pillow-heif import failed. Consider installing pillow-heif<1.0.0")
+        print("AVIF: pillow-heif import failed.")
+    else:
+        if getattr(MIME, "AVIF", None) is None:
+            register_avif_opener()
+
+@lru_cache(maxsize=1)
+def _register_custom_pil_openers():
+    _register_heif_opener()
+    if not _pillow_has_avif_support():
+        _register_avif_opener()
 
 
 @overload
@@ -514,7 +531,7 @@ def read_image_from_url(
     """
     from PIL import Image as PILImage
 
-    register_custom_pil_openers()
+    _register_custom_pil_openers()
 
     image_bytes = download_file(
         url,
