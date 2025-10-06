@@ -338,6 +338,7 @@ def _include_app_files_path(
 
     # Add local files deployment path to sys.path so imports
     # work correctly in the isolate agent
+    sys.path.append("/app")
     sys.path.append(str(final_path))
 
     # Change the current working directory to the path of the app
