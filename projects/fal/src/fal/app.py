@@ -11,6 +11,7 @@ import time
 import typing
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Callable, ClassVar, Optional, TypeVar
 
 import fastapi
@@ -108,6 +109,10 @@ async def _set_logger_labels(
 
 def wrap_app(cls: type[App], **kwargs) -> IsolatedFunction:
     include_modules_from(cls)
+
+    host = kwargs.pop("host", None)
+    if host:
+        cls.local_file_path = host.local_file_path
 
     def initialize_and_serve():
         app = cls()
@@ -306,12 +311,38 @@ def _print_python_packages() -> None:
     print("[debug] Python packages installed:", ", ".join(packages))
 
 
-def _include_app_files_path():
+def _include_app_files_path(
+    local_file_path: str | None, app_files_context_dir: str | None
+):
+    if local_file_path is None:
+        return
+
+    base_path = Path(local_file_path).resolve()
+
+    if base_path.is_dir():
+        script_dir = base_path
+    else:
+        script_dir = base_path.parent
+
+    if app_files_context_dir:
+        context_path = Path(app_files_context_dir)
+        if context_path.is_absolute():
+            script_dir = context_path.resolve()
+        else:
+            script_dir = (script_dir / context_path).resolve()
+
+    relative_path = os.path.relpath(base_path, script_dir)
+    final_path = Path("/app") / Path(relative_path).parent
+
     import sys  # noqa: PLC0415
 
     # Add local files deployment path to sys.path so imports
     # work correctly in the isolate agent
-    sys.path.append("/app_files")
+    sys.path.append(str(final_path))
+
+    # Change the current working directory to the path of the app
+    # so that the app can access the files in the current directory
+    os.chdir(str(final_path))
 
 
 class App(BaseServable):
@@ -341,6 +372,7 @@ class App(BaseServable):
     max_multiplexing: ClassVar[Optional[int]] = None
     kind: ClassVar[Optional[str]] = None
     image: ClassVar[Optional[ContainerImage]] = None
+    local_file_path: ClassVar[Optional[str]] = None
 
     isolate_channel: async_grpc.Channel | None = None
 
@@ -418,7 +450,7 @@ class App(BaseServable):
 
     @asynccontextmanager
     async def lifespan(self, app: fastapi.FastAPI):
-        _include_app_files_path()
+        _include_app_files_path(self.local_file_path, self.app_files_context_dir)
         _print_python_packages()
         await _call_any_fn(self.setup)
         try:
