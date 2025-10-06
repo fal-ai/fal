@@ -376,7 +376,7 @@ class App(BaseServable):
         if cls.max_multiplexing is not None:
             cls.host_kwargs["max_multiplexing"] = cls.max_multiplexing
 
-        cls.app_name = getattr(cls, "app_name", app_name)
+        cls.app_name = getattr(cls, "app_name") or app_name
 
         if cls.__init__ is not App.__init__:
             raise ValueError(
