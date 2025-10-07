@@ -1345,8 +1345,14 @@ class BaseServable:
             await asyncio.wait(pending)
 
         with suppress(asyncio.CancelledError):
-            asyncio.set_event_loop(asyncio.new_event_loop())
-            asyncio.run(_serve())
+            try:
+                # Check if there's an existing event loop
+                asyncio.get_event_loop()
+                print("Detected existing event loop, using asyncio.create_task.")
+                asyncio.create_task(_serve())
+            except RuntimeError:
+                asyncio.set_event_loop(asyncio.new_event_loop())
+                asyncio.run(_serve())
 
 
 class ServeWrapper(BaseServable):
