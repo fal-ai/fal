@@ -334,6 +334,12 @@ def _include_app_files_path(
     relative_path = os.path.relpath(base_path, script_dir)
     final_path = Path("/app") / Path(relative_path).parent
 
+    # Create the final path if it doesn't exist
+    # This is for cases when fal app is not in root
+    # and its parent directory is not in app_files
+    # Which means that the relative path to app won't be created by default
+    final_path.mkdir(parents=True, exist_ok=True)
+
     import sys  # noqa: PLC0415
 
     # Add local files deployment path to sys.path so imports
