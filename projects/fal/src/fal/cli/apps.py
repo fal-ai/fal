@@ -5,6 +5,7 @@ from dataclasses import asdict
 from typing import TYPE_CHECKING
 
 import fal.cli.runners as runners
+from fal.api.client import SyncServerlessClient
 from fal.sdk import RunnerState
 
 from ._utils import get_client
@@ -60,27 +61,23 @@ def _apps_table(apps: list[AliasInfo]):
 
 
 def _list(args):
-    client = get_client(args.host, args.team)
-    with client.connect() as connection:
-        apps = connection.list_aliases()
+    client = SyncServerlessClient(host=args.host, team=args.team)
+    apps = client.apps.list(filter=args.filter)
 
-        if args.filter:
-            apps = [app for app in apps if args.filter in app.alias]
+    if args.sort_by_runners:
+        apps.sort(key=lambda x: x.active_runners)
+    else:
+        apps.sort(key=lambda x: x.alias)
 
-        if args.sort_by_runners:
-            apps.sort(key=lambda x: x.active_runners)
-        else:
-            apps.sort(key=lambda x: x.alias)
-
-        if args.output == "pretty":
-            table = _apps_table(apps)
-            args.console.print(table)
-        elif args.output == "json":
-            apps_as_dicts = [asdict(a) for a in apps]
-            res = json.dumps({"apps": apps_as_dicts})
-            args.console.print(res)
-        else:
-            raise AssertionError(f"Invalid output format: {args.output}")
+    if args.output == "pretty":
+        table = _apps_table(apps)
+        args.console.print(table)
+    elif args.output == "json":
+        apps_as_dicts = [asdict(a) for a in apps]
+        json_res = json.dumps({"apps": apps_as_dicts})
+        args.console.print(json_res)
+    else:
+        raise AssertionError(f"Invalid output format: {args.output}")
 
 
 def _add_list_parser(subparsers, parents):
@@ -164,37 +161,36 @@ def _add_list_rev_parser(subparsers, parents):
 
 
 def _scale(args):
-    client = get_client(args.host, args.team)
-    with client.connect() as connection:
-        if (
-            args.keep_alive is None
-            and args.max_multiplexing is None
-            and args.max_concurrency is None
-            and args.min_concurrency is None
-            and args.concurrency_buffer is None
-            and args.concurrency_buffer_perc is None
-            and args.request_timeout is None
-            and args.startup_timeout is None
-            and args.machine_types is None
-            and args.regions is None
-        ):
-            args.console.log("No parameters for update were provided, ignoring.")
-            return
+    client = SyncServerlessClient(host=args.host, team=args.team)
+    if (
+        args.keep_alive is None
+        and args.max_multiplexing is None
+        and args.max_concurrency is None
+        and args.min_concurrency is None
+        and args.concurrency_buffer is None
+        and args.concurrency_buffer_perc is None
+        and args.request_timeout is None
+        and args.startup_timeout is None
+        and args.machine_types is None
+        and args.regions is None
+    ):
+        args.console.log("No parameters for update were provided, ignoring.")
+        return
 
-        alias_info = connection.update_application(
-            application_name=args.app_name,
-            keep_alive=args.keep_alive,
-            max_multiplexing=args.max_multiplexing,
-            max_concurrency=args.max_concurrency,
-            min_concurrency=args.min_concurrency,
-            concurrency_buffer=args.concurrency_buffer,
-            concurrency_buffer_perc=args.concurrency_buffer_perc,
-            request_timeout=args.request_timeout,
-            startup_timeout=args.startup_timeout,
-            machine_types=args.machine_types,
-            valid_regions=args.regions,
-        )
-        table = _apps_table([alias_info])
+    app_info = client.apps.scale(
+        args.app_name,
+        keep_alive=args.keep_alive,
+        max_multiplexing=args.max_multiplexing,
+        max_concurrency=args.max_concurrency,
+        min_concurrency=args.min_concurrency,
+        concurrency_buffer=args.concurrency_buffer,
+        concurrency_buffer_perc=args.concurrency_buffer_perc,
+        request_timeout=args.request_timeout,
+        startup_timeout=args.startup_timeout,
+        machine_types=args.machine_types,
+        regions=args.regions,
+    )
+    table = _apps_table([app_info])
 
     args.console.print(table)
 
@@ -303,16 +299,11 @@ def _add_set_rev_parser(subparsers, parents):
 
 
 def _runners(args):
-    client = get_client(args.host, args.team)
-    with client.connect() as connection:
-        start_time = getattr(args, "since", None)
-        alias_runners = connection.list_alias_runners(
-            alias=args.app_name, start_time=start_time
-        )
-    if getattr(args, "state", None):
-        states = set(args.state)
-        if "all" not in states:
-            alias_runners = [r for r in alias_runners if r.state.value in states]
+    client = SyncServerlessClient(host=args.host, team=args.team)
+    start_time = args.since
+    alias_runners = client.apps.runners(
+        args.app_name, since=start_time, state=args.state
+    )
     if args.output == "pretty":
         runners_table = runners.runners_table(alias_runners)
         pending_runners = [

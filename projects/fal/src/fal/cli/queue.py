@@ -11,7 +11,7 @@ from .parser import FalClientParser, get_output_parser
 
 
 def _queue_size(args):
-    from .deploy import _get_user
+    from fal.api.deploy import _get_user
 
     user = _get_user()
 
@@ -38,7 +38,7 @@ def _queue_size(args):
 
 
 def _queue_flush(args):
-    from .deploy import _get_user
+    from fal.api.deploy import _get_user
 
     user = _get_user()
 

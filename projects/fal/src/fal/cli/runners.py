@@ -12,10 +12,10 @@ from httpx_sse import connect_sse
 from rich.console import Console
 from structlog.typing import EventDict
 
+from fal.api.client import SyncServerlessClient
 from fal.rest_client import REST_CLIENT
-from fal.sdk import RunnerInfo, RunnerState
+from fal.sdk import FalServerlessClient, RunnerInfo, RunnerState
 
-from ._utils import get_client
 from .parser import FalClientParser, SinceAction, get_output_parser
 
 
@@ -96,8 +96,10 @@ def runners_requests_table(runners: list[RunnerInfo]):
 
 
 def _kill(args):
-    client = get_client(args.host, args.team)
-    with client.connect() as connection:
+    client = SyncServerlessClient(host=args.host, team=args.team)
+    with FalServerlessClient(
+        client._grpc_host, client._credentials
+    ).connect() as connection:
         connection.kill_runner(args.id)
 
 
@@ -122,45 +124,41 @@ def _list_json(args, runners: list[RunnerInfo]):
 
 
 def _list(args):
-    client = get_client(args.host, args.team)
-    with client.connect() as connection:
-        start_time = getattr(args, "since", None)
-        runners = connection.list_runners(start_time=start_time)
+    client = SyncServerlessClient(host=args.host, team=args.team)
+    start_time = args.since
+    runners = client.runners.list(since=start_time)
 
-        if getattr(args, "state", None):
-            states = set(args.state)
-            if "all" not in states:
-                runners = [r for r in runners if r.state.value in states]
-        pending_runners = [
-            runner for runner in runners if runner.state == RunnerState.PENDING
-        ]
-        setup_runners = [
-            runner for runner in runners if runner.state == RunnerState.SETUP
-        ]
-        dead_runners = [
-            runner for runner in runners if runner.state == RunnerState.DEAD
-        ]
-        if args.output == "pretty":
-            args.console.print(
-                "Runners: "
-                + str(
-                    len(runners)
-                    - len(pending_runners)
-                    - len(setup_runners)
-                    - len(dead_runners)
-                )
+    if args.state:
+        states = set(args.state)
+        if "all" not in states:
+            runners = [r for r in runners if r.state.value in states]
+
+    pending_runners = [
+        runner for runner in runners if runner.state == RunnerState.PENDING
+    ]
+    setup_runners = [runner for runner in runners if runner.state == RunnerState.SETUP]
+    dead_runners = [runner for runner in runners if runner.state == RunnerState.DEAD]
+    if args.output == "pretty":
+        args.console.print(
+            "Runners: "
+            + str(
+                len(runners)
+                - len(pending_runners)
+                - len(setup_runners)
+                - len(dead_runners)
             )
-            args.console.print(f"Runners Pending: {len(pending_runners)}")
-            args.console.print(f"Runners Setting Up: {len(setup_runners)}")
-            args.console.print(runners_table(runners))
+        )
+        args.console.print(f"Runners Pending: {len(pending_runners)}")
+        args.console.print(f"Runners Setting Up: {len(setup_runners)}")
+        args.console.print(runners_table(runners))
 
-            requests_table = runners_requests_table(runners)
-            args.console.print(f"Requests: {len(requests_table.rows)}")
-            args.console.print(requests_table)
-        elif args.output == "json":
-            _list_json(args, runners)
-        else:
-            raise AssertionError(f"Invalid output format: {args.output}")
+        requests_table = runners_requests_table(runners)
+        args.console.print(f"Requests: {len(requests_table.rows)}")
+        args.console.print(requests_table)
+    elif args.output == "json":
+        _list_json(args, runners)
+    else:
+        raise AssertionError(f"Invalid output format: {args.output}")
 
 
 def _add_kill_parser(subparsers, parents):
@@ -420,17 +418,17 @@ DEFAULT_STREAM_SINCE = timedelta(minutes=1)
 
 def _logs(args):
     params: dict[str, str] = {"job_id": args.id}
-    if getattr(args, "search", None) is not None:
+    if args.search is not None:
         params["search"] = args.search
 
     runner_info = _get_runner_info(args.id)
-    follow: bool = getattr(args, "follow", False)
-    since = getattr(args, "since", None)
+    follow: bool = args.follow
+    since = args.since
     if follow:
         since = since or (datetime.now(timezone.utc) - DEFAULT_STREAM_SINCE)
     else:
         since = since or runner_info.started_at
-    until = getattr(args, "until", None) or runner_info.ended_at
+    until = args.until or runner_info.ended_at
 
     # Normalize to aware UTC for comparisons
     if since is not None:
@@ -454,7 +452,7 @@ def _logs(args):
     if since is not None and until is not None and until < since:
         since, until = until, since
 
-    lines_arg = getattr(args, "lines", None)
+    lines_arg = args.lines
     lines_count: int | None = None
     lines_oldest = False
     if lines_arg is not None:
