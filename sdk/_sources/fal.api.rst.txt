@@ -1,0 +1,53 @@
+fal.api package
+===============
+
+Submodules
+----------
+
+fal.api.api module
+------------------
+
+.. automodule:: fal.api.api
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+fal.api.apps module
+-------------------
+
+.. automodule:: fal.api.apps
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+fal.api.client module
+---------------------
+
+.. automodule:: fal.api.client
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+fal.api.deploy module
+---------------------
+
+.. automodule:: fal.api.deploy
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+fal.api.runners module
+----------------------
+
+.. automodule:: fal.api.runners
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+Module contents
+---------------
+
+.. automodule:: fal.api
+   :members:
+   :undoc-members:
+   :show-inheritance:

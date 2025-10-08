@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="./">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>fal.api package &#8212; fal_sdk  documentation</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=5ecbeea2" />
+    <link rel="stylesheet" type="text/css" href="_static/basic.css?v=686e5160" />
+    <link rel="stylesheet" type="text/css" href="_static/alabaster.css?v=27fed22d" />
+    <script src="_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="_static/doctools.js?v=9bcbadda"></script>
+    <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="fal.auth package" href="fal.auth.html" />
+    <link rel="prev" title="fal package" href="fal.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section id="fal-api-package">
+<h1>fal.api package<a class="headerlink" href="#fal-api-package" title="Link to this heading">¶</a></h1>
+<section id="submodules">
+<h2>Submodules<a class="headerlink" href="#submodules" title="Link to this heading">¶</a></h2>
+</section>
+<section id="module-fal.api.api">
+<span id="fal-api-api-module"></span><h2>fal.api.api module<a class="headerlink" href="#module-fal.api.api" title="Link to this heading">¶</a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.api.api.BaseServable">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.api.api.</span></span><span class="sig-name descname"><span class="pre">BaseServable</span></span><a class="headerlink" href="#fal.api.api.BaseServable" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.api.BaseServable.collect_routes">
+<span class="sig-name descname"><span class="pre">collect_routes</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.api.BaseServable.collect_routes" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code>[<a class="reference internal" href="#fal.api.api.RouteSignature" title="fal.api.api.RouteSignature"><code class="xref py py-class docutils literal notranslate"><span class="pre">RouteSignature</span></code></a>, <code class="xref py py-data docutils literal notranslate"><span class="pre">Callable</span></code>[<code class="xref py py-data docutils literal notranslate"><span class="pre">...</span></code>, <code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code>]]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.api.BaseServable.lifespan">
+<span class="sig-name descname"><span class="pre">lifespan</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">app</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.api.BaseServable.lifespan" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.api.BaseServable.openapi">
+<span class="sig-name descname"><span class="pre">openapi</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.api.BaseServable.openapi" title="Link to this definition">¶</a></dt>
+<dd><p>Build the OpenAPI specification for the served function.
+Attach needed metadata for a better integration to fal.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code>]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.api.BaseServable.serve">
+<span class="sig-name descname"><span class="pre">serve</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.api.BaseServable.serve" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.api.api.BaseServable.version">
+<span class="sig-name descname"><span class="pre">version</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'unknown'</span></em><a class="headerlink" href="#fal.api.api.BaseServable.version" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.api.api.FalFastAPI">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.api.api.</span></span><span class="sig-name descname"><span class="pre">FalFastAPI</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">debug=False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">routes=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">title='FastAPI'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">summary=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">description=''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">version='0.1.0'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">openapi_url='/openapi.json'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">openapi_tags=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">servers=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dependencies=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">default_response_class=&lt;fastapi.datastructures.DefaultPlaceholder</span> <span class="pre">object&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">redirect_slashes=True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">docs_url='/docs'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">redoc_url='/redoc'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">swagger_ui_oauth2_redirect_url='/docs/oauth2-redirect'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">swagger_ui_init_oauth=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">middleware=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exception_handlers=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">on_startup=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">on_shutdown=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lifespan=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">terms_of_service=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">contact=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">license_info=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">openapi_prefix=''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">root_path=''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">root_path_in_servers=True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">responses=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">callbacks=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">webhooks=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">deprecated=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">include_in_schema=True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">swagger_ui_parameters=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">generate_unique_id_function=&lt;fastapi.datastructures.DefaultPlaceholder</span> <span class="pre">object&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">separate_input_output_schemas=True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">openapi_external_docs=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">**extra</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.api.FalFastAPI" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">FastAPI</span></code></p>
+<p>A subclass of FastAPI that adds some fal-specific functionality.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.api.FalFastAPI.openapi">
+<span class="sig-name descname"><span class="pre">openapi</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.api.FalFastAPI.openapi" title="Link to this definition">¶</a></dt>
+<dd><p>Build the OpenAPI specification for the served function.
+Attach needed metadata for a better integration to fal.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code>]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="fal.api.api.FalMissingDependencyError">
+<em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.api.api.</span></span><span class="sig-name descname"><span class="pre">FalMissingDependencyError</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">message</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.api.FalMissingDependencyError" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#fal.api.api.FalSerializationError" title="fal.api.api.FalSerializationError"><code class="xref py py-class docutils literal notranslate"><span class="pre">FalSerializationError</span></code></a></p>
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="fal.api.api.FalSerializationError">
+<em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.api.api.</span></span><span class="sig-name descname"><span class="pre">FalSerializationError</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">message</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.api.FalSerializationError" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">FalServerlessException</span></code></p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.api.api.FalSerializationError.message">
+<span class="sig-name descname"><span class="pre">message</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><a class="headerlink" href="#fal.api.api.FalSerializationError.message" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="fal.api.api.FalServerlessError">
+<em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.api.api.</span></span><span class="sig-name descname"><span class="pre">FalServerlessError</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">message</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.api.FalServerlessError" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">FalServerlessException</span></code></p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.api.api.FalServerlessError.message">
+<span class="sig-name descname"><span class="pre">message</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><a class="headerlink" href="#fal.api.api.FalServerlessError.message" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.api.api.FalServerlessHost">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.api.api.</span></span><span class="sig-name descname"><span class="pre">FalServerlessHost</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">url='api.alpha.fal.ai'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">local_file_path=''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">credentials=&lt;factory&gt;</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.api.FalServerlessHost" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#fal.api.api.Host" title="fal.api.api.Host"><code class="xref py py-class docutils literal notranslate"><span class="pre">Host</span></code></a></p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.api.api.FalServerlessHost.credentials">
+<span class="sig-name descname"><span class="pre">credentials</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="fal.html#fal.sdk.Credentials" title="fal.sdk.Credentials"><code class="xref py py-class docutils literal notranslate"><span class="pre">Credentials</span></code></a></em><a class="headerlink" href="#fal.api.api.FalServerlessHost.credentials" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.api.api.FalServerlessHost.local_file_path">
+<span class="sig-name descname"><span class="pre">local_file_path</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">''</span></em><a class="headerlink" href="#fal.api.api.FalServerlessHost.local_file_path" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.api.FalServerlessHost.register">
+<span class="sig-name descname"><span class="pre">register</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">func</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">options</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">application_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">application_auth_mode</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">metadata</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">deployment_strategy</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scale</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.api.FalServerlessHost.register" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.api.FalServerlessHost.run">
+<span class="sig-name descname"><span class="pre">run</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">func</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">options</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.api.FalServerlessHost.run" title="Link to this definition">¶</a></dt>
+<dd><p>Run the given function in the isolated environment.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">TypeVar</span></code>(<code class="docutils literal notranslate"><span class="pre">ReturnT</span></code>, covariant=True)</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.api.FalServerlessHost.spawn">
+<span class="sig-name descname"><span class="pre">spawn</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">func</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">options</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.api.FalServerlessHost.spawn" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference internal" href="#fal.api.api.SpawnInfo" title="fal.api.api.SpawnInfo"><code class="xref py py-class docutils literal notranslate"><span class="pre">SpawnInfo</span></code></a></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.api.api.FalServerlessHost.url">
+<span class="sig-name descname"><span class="pre">url</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'api.alpha.fal.ai'</span></em><a class="headerlink" href="#fal.api.api.FalServerlessHost.url" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.api.api.Host">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.api.api.</span></span><span class="sig-name descname"><span class="pre">Host</span></span><a class="headerlink" href="#fal.api.api.Host" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Generic</span></code>[<code class="xref py py-obj docutils literal notranslate"><span class="pre">ArgsT</span></code>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">ReturnT</span></code>]</p>
+<p>The physical environment where the isolated code
+is executed.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.api.Host.parse_key">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">parse_key</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">key</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">value</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.api.Host.parse_key" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">tuple</span></code>[<code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code>, <code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code>]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.api.Host.parse_options">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">parse_options</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">config</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.api.Host.parse_options" title="Link to this definition">¶</a></dt>
+<dd><p>Split the given set of options into host and
+environment options.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference internal" href="#fal.api.api.Options" title="fal.api.api.Options"><code class="xref py py-class docutils literal notranslate"><span class="pre">Options</span></code></a></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.api.Host.run">
+<span class="sig-name descname"><span class="pre">run</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">func</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">options</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.api.Host.run" title="Link to this definition">¶</a></dt>
+<dd><p>Run the given function in the isolated environment.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">TypeVar</span></code>(<code class="docutils literal notranslate"><span class="pre">ReturnT</span></code>, covariant=True)</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.api.Host.spawn">
+<span class="sig-name descname"><span class="pre">spawn</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">func</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">options</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.api.Host.spawn" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference internal" href="#fal.api.api.SpawnInfo" title="fal.api.api.SpawnInfo"><code class="xref py py-class docutils literal notranslate"><span class="pre">SpawnInfo</span></code></a></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="fal.api.api.InternalFalServerlessError">
+<em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.api.api.</span></span><span class="sig-name descname"><span class="pre">InternalFalServerlessError</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">message</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.api.InternalFalServerlessError" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">FalServerlessException</span></code></p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.api.api.InternalFalServerlessError.message">
+<span class="sig-name descname"><span class="pre">message</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><a class="headerlink" href="#fal.api.api.InternalFalServerlessError.message" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.api.api.IsolatedFunction">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.api.api.</span></span><span class="sig-name descname"><span class="pre">IsolatedFunction</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">host</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">raw_func</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">options</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">executor=&lt;factory&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">reraise=True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.api.IsolatedFunction" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Generic</span></code>[<code class="xref py py-obj docutils literal notranslate"><span class="pre">ArgsT</span></code>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">ReturnT</span></code>]</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.api.api.IsolatedFunction.executor">
+<span class="sig-name descname"><span class="pre">executor</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">ThreadPoolExecutor</span></code></em><a class="headerlink" href="#fal.api.api.IsolatedFunction.executor" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="fal.api.api.IsolatedFunction.func">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">func</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">ArgsT</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">ReturnT</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#fal.api.api.IsolatedFunction.func" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.api.api.IsolatedFunction.host">
+<span class="sig-name descname"><span class="pre">host</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#fal.api.api.Host" title="fal.api.api.Host"><code class="xref py py-class docutils literal notranslate"><span class="pre">Host</span></code></a><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">ParamSpec</span></code><span class="pre">(</span><code class="docutils literal notranslate"><span class="pre">ArgsT</span></code><span class="pre">),</span> <code class="xref py py-class docutils literal notranslate"><span class="pre">TypeVar</span></code><span class="pre">(</span><code class="docutils literal notranslate"><span class="pre">ReturnT</span></code><span class="pre">,</span> <span class="pre">covariant=True)]</span></em><a class="headerlink" href="#fal.api.api.IsolatedFunction.host" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.api.IsolatedFunction.on">
+<span class="sig-name descname"><span class="pre">on</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">host</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">config</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.api.IsolatedFunction.on" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.api.api.IsolatedFunction.options">
+<span class="sig-name descname"><span class="pre">options</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#fal.api.api.Options" title="fal.api.api.Options"><code class="xref py py-class docutils literal notranslate"><span class="pre">Options</span></code></a></em><a class="headerlink" href="#fal.api.api.IsolatedFunction.options" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.api.api.IsolatedFunction.raw_func">
+<span class="sig-name descname"><span class="pre">raw_func</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Callable</span></code><span class="pre">[[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">ParamSpec</span></code><span class="pre">(</span><code class="docutils literal notranslate"><span class="pre">ArgsT</span></code><span class="pre">)],</span> <code class="xref py py-class docutils literal notranslate"><span class="pre">TypeVar</span></code><span class="pre">(</span><code class="docutils literal notranslate"><span class="pre">ReturnT</span></code><span class="pre">,</span> <span class="pre">covariant=True)]</span></em><a class="headerlink" href="#fal.api.api.IsolatedFunction.raw_func" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.api.api.IsolatedFunction.reraise">
+<span class="sig-name descname"><span class="pre">reraise</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">True</span></em><a class="headerlink" href="#fal.api.api.IsolatedFunction.reraise" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.api.IsolatedFunction.spawn">
+<span class="sig-name descname"><span class="pre">spawn</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.api.IsolatedFunction.spawn" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.api.IsolatedFunction.submit">
+<span class="sig-name descname"><span class="pre">submit</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.api.IsolatedFunction.submit" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.api.api.LocalHost">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.api.api.</span></span><span class="sig-name descname"><span class="pre">LocalHost</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">_AGENT_ENVIRONMENT=&lt;factory&gt;</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.api.LocalHost" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#fal.api.api.Host" title="fal.api.api.Host"><code class="xref py py-class docutils literal notranslate"><span class="pre">Host</span></code></a></p>
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.api.LocalHost.run">
+<span class="sig-name descname"><span class="pre">run</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">func</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">options</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.api.LocalHost.run" title="Link to this definition">¶</a></dt>
+<dd><p>Run the given function in the isolated environment.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">TypeVar</span></code>(<code class="docutils literal notranslate"><span class="pre">ReturnT</span></code>, covariant=True)</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.api.api.Options">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.api.api.</span></span><span class="sig-name descname"><span class="pre">Options</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">host=&lt;factory&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">environment=&lt;factory&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gateway=&lt;factory&gt;</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.api.Options" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.api.Options.add_requirements">
+<span class="sig-name descname"><span class="pre">add_requirements</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">requirements</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.api.Options.add_requirements" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.api.api.Options.environment">
+<span class="sig-name descname"><span class="pre">environment</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">,</span> <code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code><span class="pre">]</span></em><a class="headerlink" href="#fal.api.api.Options.environment" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.api.api.Options.gateway">
+<span class="sig-name descname"><span class="pre">gateway</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">,</span> <code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code><span class="pre">]</span></em><a class="headerlink" href="#fal.api.api.Options.gateway" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.api.Options.get_exposed_port">
+<span class="sig-name descname"><span class="pre">get_exposed_port</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.api.Options.get_exposed_port" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code> | <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.api.api.Options.host">
+<span class="sig-name descname"><span class="pre">host</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">,</span> <code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code><span class="pre">]</span></em><a class="headerlink" href="#fal.api.api.Options.host" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.api.api.RouteSignature">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.api.api.</span></span><span class="sig-name descname"><span class="pre">RouteSignature</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">is_websocket</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">input_modal</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">buffering</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">session_timeout</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_batch_size</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">emit_timings</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.api.RouteSignature" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">NamedTuple</span></code></p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.api.api.RouteSignature.buffering">
+<span class="sig-name descname"><span class="pre">buffering</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code> <span class="pre">|</span> <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></em><a class="headerlink" href="#fal.api.api.RouteSignature.buffering" title="Link to this definition">¶</a></dt>
+<dd><p>Alias for field number 3</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.api.api.RouteSignature.emit_timings">
+<span class="sig-name descname"><span class="pre">emit_timings</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></em><a class="headerlink" href="#fal.api.api.RouteSignature.emit_timings" title="Link to this definition">¶</a></dt>
+<dd><p>Alias for field number 6</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.api.api.RouteSignature.input_modal">
+<span class="sig-name descname"><span class="pre">input_modal</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">type</span></code> <span class="pre">|</span> <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></em><a class="headerlink" href="#fal.api.api.RouteSignature.input_modal" title="Link to this definition">¶</a></dt>
+<dd><p>Alias for field number 2</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.api.api.RouteSignature.is_websocket">
+<span class="sig-name descname"><span class="pre">is_websocket</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></em><a class="headerlink" href="#fal.api.api.RouteSignature.is_websocket" title="Link to this definition">¶</a></dt>
+<dd><p>Alias for field number 1</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.api.api.RouteSignature.max_batch_size">
+<span class="sig-name descname"><span class="pre">max_batch_size</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></em><a class="headerlink" href="#fal.api.api.RouteSignature.max_batch_size" title="Link to this definition">¶</a></dt>
+<dd><p>Alias for field number 5</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.api.api.RouteSignature.path">
+<span class="sig-name descname"><span class="pre">path</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><a class="headerlink" href="#fal.api.api.RouteSignature.path" title="Link to this definition">¶</a></dt>
+<dd><p>Alias for field number 0</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.api.api.RouteSignature.session_timeout">
+<span class="sig-name descname"><span class="pre">session_timeout</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code> <span class="pre">|</span> <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></em><a class="headerlink" href="#fal.api.api.RouteSignature.session_timeout" title="Link to this definition">¶</a></dt>
+<dd><p>Alias for field number 4</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.api.api.ServeWrapper">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.api.api.</span></span><span class="sig-name descname"><span class="pre">ServeWrapper</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">func</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.api.ServeWrapper" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#fal.api.api.BaseServable" title="fal.api.api.BaseServable"><code class="xref py py-class docutils literal notranslate"><span class="pre">BaseServable</span></code></a></p>
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.api.ServeWrapper.collect_routes">
+<span class="sig-name descname"><span class="pre">collect_routes</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.api.ServeWrapper.collect_routes" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code>[<a class="reference internal" href="#fal.api.api.RouteSignature" title="fal.api.api.RouteSignature"><code class="xref py py-class docutils literal notranslate"><span class="pre">RouteSignature</span></code></a>, <code class="xref py py-data docutils literal notranslate"><span class="pre">Callable</span></code>[<code class="xref py py-data docutils literal notranslate"><span class="pre">...</span></code>, <code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code>]]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.api.api.ServedIsolatedFunction">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.api.api.</span></span><span class="sig-name descname"><span class="pre">ServedIsolatedFunction</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">host</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">raw_func</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">options</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">executor=&lt;factory&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">reraise=True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.api.ServedIsolatedFunction" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Generic</span></code>[<code class="xref py py-obj docutils literal notranslate"><span class="pre">ArgsT</span></code>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">ReturnT</span></code>], <a class="reference internal" href="#fal.api.api.IsolatedFunction" title="fal.api.api.IsolatedFunction"><code class="xref py py-class docutils literal notranslate"><span class="pre">IsolatedFunction</span></code></a>[(), <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code>]</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.api.ServedIsolatedFunction.on">
+<span class="sig-name descname"><span class="pre">on</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwds</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.api.ServedIsolatedFunction.on" title="Link to this definition">¶</a></dt>
+<dd><p>Helper for &#64;overload to raise when called.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.api.api.Server">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.api.api.</span></span><span class="sig-name descname"><span class="pre">Server</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.api.Server" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Server</span></code></p>
+<p>Server is a uvicorn.Server that actually plays nicely with signals.
+By default, uvicorn’s Server class overwrites the signal handler for SIGINT,
+swallowing the signal and preventing other tasks from cancelling.
+This class allows the task to be gracefully cancelled using asyncio’s built-in task
+cancellation or with an event, like aiohttp.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.api.Server.install_signal_handlers">
+<span class="sig-name descname"><span class="pre">install_signal_handlers</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.api.Server.install_signal_handlers" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.api.api.SpawnInfo">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.api.api.</span></span><span class="sig-name descname"><span class="pre">SpawnInfo</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">future=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">logs=&lt;factory&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">_url_ready=&lt;factory&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">_url=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stream=None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.api.SpawnInfo" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.api.api.SpawnInfo.future">
+<span class="sig-name descname"><span class="pre">future</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">Future</span></code> <span class="pre">|</span> <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.api.api.SpawnInfo.future" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.api.api.SpawnInfo.logs">
+<span class="sig-name descname"><span class="pre">logs</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">Queue</span></code></em><a class="headerlink" href="#fal.api.api.SpawnInfo.logs" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="fal.api.api.SpawnInfo.return_value">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">return_value</span></span><a class="headerlink" href="#fal.api.api.SpawnInfo.return_value" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.api.api.SpawnInfo.stream">
+<span class="sig-name descname"><span class="pre">stream</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.api.api.SpawnInfo.stream" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="fal.api.api.SpawnInfo.url">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">url</span></span><a class="headerlink" href="#fal.api.api.SpawnInfo.url" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="fal.api.api.UserFunctionException">
+<em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.api.api.</span></span><span class="sig-name descname"><span class="pre">UserFunctionException</span></span><a class="headerlink" href="#fal.api.api.UserFunctionException" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">FalServerlessException</span></code></p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.api.api.cached">
+<span class="sig-prename descclassname"><span class="pre">fal.api.api.</span></span><span class="sig-name descname"><span class="pre">cached</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">func</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.api.cached" title="Link to this definition">¶</a></dt>
+<dd><p>Cache the result of the given function in-memory.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Callable</span></code>[[<code class="xref py py-class docutils literal notranslate"><span class="pre">ParamSpec</span></code>(<code class="docutils literal notranslate"><span class="pre">ArgsT</span></code>)], <code class="xref py py-class docutils literal notranslate"><span class="pre">TypeVar</span></code>(<code class="docutils literal notranslate"><span class="pre">ReturnT</span></code>, covariant=True)]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.api.api.find_missing_dependencies">
+<span class="sig-prename descclassname"><span class="pre">fal.api.api.</span></span><span class="sig-name descname"><span class="pre">find_missing_dependencies</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">func</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">env</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.api.find_missing_dependencies" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Iterator</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">tuple</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.api.api.function">
+<span class="sig-prename descclassname"><span class="pre">fal.api.api.</span></span><span class="sig-name descname"><span class="pre">function</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">kind</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'virtualenv'</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">host</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">local_python_modules</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">config</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.api.function" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</section>
+<section id="module-fal.api.apps">
+<span id="fal-api-apps-module"></span><h2>fal.api.apps module<a class="headerlink" href="#module-fal.api.apps" title="Link to this heading">¶</a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.api.apps.apps_runners">
+<span class="sig-prename descclassname"><span class="pre">fal.api.apps.</span></span><span class="sig-name descname"><span class="pre">apps_runners</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">client</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">app_name</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">since</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">state</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.apps.apps_runners" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type">List[RunnerInfo]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.api.apps.list_apps">
+<span class="sig-prename descclassname"><span class="pre">fal.api.apps.</span></span><span class="sig-name descname"><span class="pre">list_apps</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">client</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filter</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.apps.list_apps" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type">List[AliasInfo]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.api.apps.scale_app">
+<span class="sig-prename descclassname"><span class="pre">fal.api.apps.</span></span><span class="sig-name descname"><span class="pre">scale_app</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">client</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">app_name</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">keep_alive</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_multiplexing</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_concurrency</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_concurrency</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">concurrency_buffer</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">concurrency_buffer_perc</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">request_timeout</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">startup_timeout</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">machine_types</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">regions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.apps.scale_app" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type">AliasInfo</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+<section id="fal-api-client-module">
+<h2>fal.api.client module<a class="headerlink" href="#fal-api-client-module" title="Link to this heading">¶</a></h2>
+</section>
+<section id="module-fal.api.deploy">
+<span id="fal-api-deploy-module"></span><h2>fal.api.deploy module<a class="headerlink" href="#module-fal.api.deploy" title="Link to this heading">¶</a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.api.deploy.DeploymentResult">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.api.deploy.</span></span><span class="sig-name descname"><span class="pre">DeploymentResult</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">revision</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">app_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">urls</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.deploy.DeploymentResult" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.api.deploy.DeploymentResult.app_name">
+<span class="sig-name descname"><span class="pre">app_name</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><a class="headerlink" href="#fal.api.deploy.DeploymentResult.app_name" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.api.deploy.DeploymentResult.revision">
+<span class="sig-name descname"><span class="pre">revision</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><a class="headerlink" href="#fal.api.deploy.DeploymentResult.revision" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.api.deploy.DeploymentResult.urls">
+<span class="sig-name descname"><span class="pre">urls</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">,</span> <code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">,</span> <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">]]</span></em><a class="headerlink" href="#fal.api.deploy.DeploymentResult.urls" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.api.deploy.User">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.api.deploy.</span></span><span class="sig-name descname"><span class="pre">User</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">user_id</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">username</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.deploy.User" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">tuple</span></code></p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.api.deploy.User.user_id">
+<span class="sig-name descname"><span class="pre">user_id</span></span><a class="headerlink" href="#fal.api.deploy.User.user_id" title="Link to this definition">¶</a></dt>
+<dd><p>Alias for field number 0</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.api.deploy.User.username">
+<span class="sig-name descname"><span class="pre">username</span></span><a class="headerlink" href="#fal.api.deploy.User.username" title="Link to this definition">¶</a></dt>
+<dd><p>Alias for field number 1</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.api.deploy.deploy">
+<span class="sig-prename descclassname"><span class="pre">fal.api.deploy.</span></span><span class="sig-name descname"><span class="pre">deploy</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">client</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">app_ref</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">app_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">auth</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">strategy</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'rolling'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">reset_scale</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.deploy.deploy" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference internal" href="#fal.api.deploy.DeploymentResult" title="fal.api.deploy.DeploymentResult"><code class="xref py py-class docutils literal notranslate"><span class="pre">DeploymentResult</span></code></a></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+<section id="module-fal.api.runners">
+<span id="fal-api-runners-module"></span><h2>fal.api.runners module<a class="headerlink" href="#module-fal.api.runners" title="Link to this heading">¶</a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.api.runners.list_runners">
+<span class="sig-prename descclassname"><span class="pre">fal.api.runners.</span></span><span class="sig-name descname"><span class="pre">list_runners</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">client</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">since</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.runners.list_runners" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<a class="reference internal" href="fal.html#fal.sdk.RunnerInfo" title="fal.sdk.RunnerInfo"><code class="xref py py-class docutils literal notranslate"><span class="pre">RunnerInfo</span></code></a>]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+<section id="module-fal.api">
+<span id="module-contents"></span><h2>Module contents<a class="headerlink" href="#module-fal.api" title="Link to this heading">¶</a></h2>
+</section>
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="index.html">fal_sdk</a></h1>
+
+
+
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="modules.html">fal</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="fal.html">fal package</a></li>
+</ul>
+</li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+  <li><a href="modules.html">fal</a><ul>
+  <li><a href="fal.html">fal package</a><ul>
+      <li>Previous: <a href="fal.html" title="previous chapter">fal package</a></li>
+      <li>Next: <a href="fal.auth.html" title="next chapter">fal.auth package</a></li>
+  </ul></li>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2024, FAL Team.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 8.1.3</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+      |
+      <a href="_sources/fal.api.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>

@@ -7,6 +7,7 @@ Subpackages
 .. toctree::
    :maxdepth: 4
 
+   fal.api
    fal.auth
    fal.cli
    fal.console
@@ -16,14 +17,6 @@ Subpackages
 
 Submodules
 ----------
-
-fal.api module
---------------
-
-.. automodule:: fal.api
-   :members:
-   :undoc-members:
-   :show-inheritance:
 
 fal.app module
 --------------
