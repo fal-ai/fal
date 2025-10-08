@@ -20,8 +20,8 @@ from pydantic import __version__ as pydantic_version
 import fal
 import fal.api as api
 from fal import apps
+from fal.api.deploy import User, _get_user
 from fal.app import AppClient, AppClientError, wrap_app
-from fal.cli.deploy import User, _get_user
 from fal.container import ContainerImage
 from fal.exceptions import (
     AppException,
