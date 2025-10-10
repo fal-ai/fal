@@ -36,6 +36,7 @@ def test_app_classvars_propagate_to_host_kwargs():
     assert hk["kind"] == "container"
     assert isinstance(hk["image"], ContainerImage)
 
+
 def test_app_files_classvars_propagate_to_host_kwargs():
     class VarsApp(App):
         request_timeout = 11
