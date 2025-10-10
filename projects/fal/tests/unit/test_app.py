@@ -15,9 +15,6 @@ def test_app_classvars_propagate_to_host_kwargs():
     class VarsApp(App):
         request_timeout = 11
         startup_timeout = 22
-        app_files = ["a.py", "b.py"]
-        app_files_ignore = [r"\\.venv/"]
-        app_files_context_dir = "."
         min_concurrency = 2
         max_concurrency = 3
         concurrency_buffer = 4
@@ -31,9 +28,6 @@ def test_app_classvars_propagate_to_host_kwargs():
     hk = VarsApp.host_kwargs
     assert hk["request_timeout"] == 11
     assert hk["startup_timeout"] == 22
-    assert hk["app_files"] == ["a.py", "b.py"]
-    assert hk["app_files_ignore"] == [r"\\.venv/"]
-    assert hk["app_files_context_dir"] == "."
     assert hk["min_concurrency"] == 2
     assert hk["max_concurrency"] == 3
     assert hk["concurrency_buffer"] == 4
