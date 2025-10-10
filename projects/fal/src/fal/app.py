@@ -6,11 +6,13 @@ import json
 import os
 import queue
 import re
+import sys
 import threading
 import time
 import typing
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Callable, ClassVar, Optional, TypeVar
 
 import fastapi
@@ -108,6 +110,10 @@ async def _set_logger_labels(
 
 def wrap_app(cls: type[App], **kwargs) -> IsolatedFunction:
     include_modules_from(cls)
+
+    host = kwargs.get("host", None)
+    if host:
+        cls.local_file_path = host.local_file_path
 
     def initialize_and_serve():
         app = cls()
@@ -306,12 +312,51 @@ def _print_python_packages() -> None:
     print("[debug] Python packages installed:", ", ".join(packages))
 
 
-def _include_app_files_path():
-    import sys  # noqa: PLC0415
+def _include_app_files_path(
+    local_file_path: str | None, app_files_context_dir: str | None
+):
+    if local_file_path is None:
+        return
+
+    base_path = Path(local_file_path).resolve()
+
+    if base_path.is_dir():
+        original_script_dir = base_path
+    else:
+        original_script_dir = base_path.parent
+
+    if app_files_context_dir:
+        context_path = Path(app_files_context_dir)
+        if context_path.is_absolute():
+            final_script_dir = context_path.resolve()
+        else:
+            final_script_dir = (original_script_dir / context_path).resolve()
+
+    relative_path = os.path.relpath(original_script_dir, final_script_dir)
+    final_path = Path("/app") / Path(relative_path)
+    print("final_path", final_path)
+
+    # Create the final path if it doesn't exist
+    # This is for cases when fal app is not in root
+    # and its parent directory is not in app_files
+    # Which means that the relative path to app won't be created by default
+    final_path.mkdir(parents=True, exist_ok=True)
 
     # Add local files deployment path to sys.path so imports
     # work correctly in the isolate agent
-    sys.path.append("/app_files")
+    # Append the final path to sys.path first so that the
+    # relative directory is resolved first in case of conflicts
+    sys.path.append(str(final_path))
+
+    # Add the /app path to sys.path so that
+    # the app can access the files in the top level directory
+    # This is for cases when fal app is not in root,
+    # and user wants to access the files without using relative imports
+    sys.path.append("/app")
+
+    # Change the current working directory to the path of the app
+    # so that the app can access the files in the current directory
+    os.chdir(str(final_path))
 
 
 class App(BaseServable):
@@ -341,6 +386,7 @@ class App(BaseServable):
     max_multiplexing: ClassVar[Optional[int]] = None
     kind: ClassVar[Optional[str]] = None
     image: ClassVar[Optional[ContainerImage]] = None
+    local_file_path: ClassVar[Optional[str]] = None
 
     isolate_channel: async_grpc.Channel | None = None
 
@@ -381,11 +427,16 @@ class App(BaseServable):
 
         if cls.kind is not None:
             cls.host_kwargs["kind"] = cls.kind
+            if cls.kind == "container" and cls.app_files:
+                raise ValueError("app_files is not supported for container apps.")
 
         if cls.image is not None:
             cls.host_kwargs["image"] = cls.image
 
         cls.app_name = getattr(cls, "app_name") or app_name
+
+        if kwargs.get("kind") and cls.app_files:
+            raise ValueError("app_files is not supported for container apps.")
 
         if cls.__init__ is not App.__init__:
             raise ValueError(
@@ -418,7 +469,8 @@ class App(BaseServable):
 
     @asynccontextmanager
     async def lifespan(self, app: fastapi.FastAPI):
-        _include_app_files_path()
+        if self.app_files:
+            _include_app_files_path(self.local_file_path, self.app_files_context_dir)
         _print_python_packages()
         await _call_any_fn(self.setup)
         try:

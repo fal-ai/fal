@@ -15,9 +15,6 @@ def test_app_classvars_propagate_to_host_kwargs():
     class VarsApp(App):
         request_timeout = 11
         startup_timeout = 22
-        app_files = ["a.py", "b.py"]
-        app_files_ignore = [r"\\.venv/"]
-        app_files_context_dir = "."
         min_concurrency = 2
         max_concurrency = 3
         concurrency_buffer = 4
@@ -31,6 +28,31 @@ def test_app_classvars_propagate_to_host_kwargs():
     hk = VarsApp.host_kwargs
     assert hk["request_timeout"] == 11
     assert hk["startup_timeout"] == 22
+    assert hk["min_concurrency"] == 2
+    assert hk["max_concurrency"] == 3
+    assert hk["concurrency_buffer"] == 4
+    assert hk["concurrency_buffer_perc"] == 50
+    assert hk["max_multiplexing"] == 7
+    assert hk["kind"] == "container"
+    assert isinstance(hk["image"], ContainerImage)
+
+
+def test_app_files_classvars_propagate_to_host_kwargs():
+    class VarsApp(App):
+        request_timeout = 11
+        startup_timeout = 22
+        app_files = ["a.py", "b.py"]
+        app_files_ignore = [r"\\.venv/"]
+        app_files_context_dir = "."
+        min_concurrency = 2
+        max_concurrency = 3
+        concurrency_buffer = 4
+        concurrency_buffer_perc = 50
+        max_multiplexing = 7
+
+    hk = VarsApp.host_kwargs
+    assert hk["request_timeout"] == 11
+    assert hk["startup_timeout"] == 22
     assert hk["app_files"] == ["a.py", "b.py"]
     assert hk["app_files_ignore"] == [r"\\.venv/"]
     assert hk["app_files_context_dir"] == "."
@@ -39,8 +61,6 @@ def test_app_classvars_propagate_to_host_kwargs():
     assert hk["concurrency_buffer"] == 4
     assert hk["concurrency_buffer_perc"] == 50
     assert hk["max_multiplexing"] == 7
-    assert hk["kind"] == "container"
-    assert isinstance(hk["image"], ContainerImage)
 
 
 def test_app_kwargs_merge_into_host_kwargs_and_override_defaults():
