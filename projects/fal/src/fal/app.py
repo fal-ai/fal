@@ -421,6 +421,7 @@ class App(BaseServable):
             cls.host_kwargs["max_multiplexing"] = cls.max_multiplexing
 
         if cls.kind is not None:
+            cls.host_kwargs["kind"] = cls.kind
             if cls.kind == "container" and cls.app_files:
                 raise ValueError("app_files is not supported for container apps.")
 
