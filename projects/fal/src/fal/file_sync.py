@@ -275,7 +275,8 @@ class FileSync:
             filtered_files: List[FileMetadata] = []
             for metadata in files:
                 if self._matches_patterns(metadata.relative_path, files_ignore):
-                    logger.debug(f"Ignoring file: {metadata.relative_path}")
+                    if flags.DEBUG:
+                        console.print(f"Ignoring file: {metadata.relative_path}")
                 else:
                     filtered_files.append(metadata)
 
@@ -347,7 +348,7 @@ class FileSync:
                         uploaded_files.append((metadata, future.result()))
 
         if flags.DEBUG:
-            logger.debug("File Structure:")
+            console.print("File Structure:")
             print_path_tree([m.relative_path for m in unique_files])
 
         return unique_files, errors

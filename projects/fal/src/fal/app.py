@@ -6,6 +6,7 @@ import json
 import os
 import queue
 import re
+import sys
 import threading
 import time
 import typing
@@ -320,19 +321,20 @@ def _include_app_files_path(
     base_path = Path(local_file_path).resolve()
 
     if base_path.is_dir():
-        script_dir = base_path
+        original_script_dir = base_path
     else:
-        script_dir = base_path.parent
+        original_script_dir = base_path.parent
 
     if app_files_context_dir:
         context_path = Path(app_files_context_dir)
         if context_path.is_absolute():
-            script_dir = context_path.resolve()
+            final_script_dir = context_path.resolve()
         else:
-            script_dir = (script_dir / context_path).resolve()
+            final_script_dir = (original_script_dir / context_path).resolve()
 
-    relative_path = os.path.relpath(base_path, script_dir)
-    final_path = Path("/app") / Path(relative_path).parent
+    relative_path = os.path.relpath(original_script_dir, final_script_dir)
+    final_path = Path("/app") / Path(relative_path)
+    print("final_path", final_path)
 
     # Create the final path if it doesn't exist
     # This is for cases when fal app is not in root
@@ -340,13 +342,16 @@ def _include_app_files_path(
     # Which means that the relative path to app won't be created by default
     final_path.mkdir(parents=True, exist_ok=True)
 
-    import sys  # noqa: PLC0415
-
     # Add local files deployment path to sys.path so imports
     # work correctly in the isolate agent
     # Append the final path to sys.path first so that the
     # relative directory is resolved first in case of conflicts
     sys.path.append(str(final_path))
+
+    # Add the /app path to sys.path so that
+    # the app can access the files in the top level directory
+    # This is for cases when fal app is not in root,
+    # and user wants to access the files without using relative imports
     sys.path.append("/app")
 
     # Change the current working directory to the path of the app
