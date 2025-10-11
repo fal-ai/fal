@@ -8,7 +8,11 @@ import warnings
 from collections.abc import Callable
 from io import BytesIO
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, TypeGuard
+from typing import TYPE_CHECKING, Any, Optional, Union
+
+if TYPE_CHECKING:
+    import torch.multiprocessing as mp
+
 
 def has_type_name(maybe_type: Any, type_name: str) -> bool:
     """
@@ -25,29 +29,25 @@ def has_type_name(maybe_type: Any, type_name: str) -> bool:
     return type_name in mro_types
 
 
-def is_torch_tensor(obj: Any) -> TypeGuard["TorchTensor"]:
+def is_torch_tensor(obj: Any) -> bool:
     """
     Checks if the given object is a PyTorch tensor without importing torch.
     """
     return has_type_name(obj, "Tensor")
 
 
-def is_numpy_array(obj: Any) -> TypeGuard["NumpyNDArray"]:
+def is_numpy_array(obj: Any) -> bool:
     """
     Checks if the given object is a NumPy array without importing numpy.
     """
     return has_type_name(obj, "ndarray")
 
 
-def is_pil_image(obj: Any) -> TypeGuard["PILImage"]:
+def is_pil_image(obj: Any) -> bool:
     """
     Checks if the given object is a PIL Image without importing PIL.
     """
     return has_type_name(obj, "Image")
-
-
-if TYPE_CHECKING:
-    import torch.multiprocessing as mp
 
 
 def format_for_serialization(
@@ -250,7 +250,7 @@ def encode_text_event(
     return f"data: {json.dumps(formatted)}\n\n".encode()
 
 
-def distributed_deserialize(serialized: bytes | str) -> Any:
+def distributed_deserialize(serialized: Union[bytes, str]) -> Any:
     """
     Deserializes a JSON string to an object.
     :param serialized: The serialized JSON string.
@@ -270,13 +270,16 @@ def wrap_distributed_worker(
     master_addr: str,
     master_port: int,
     timeout: int,
-    cwd: str | Path | None,
+    cwd: Optional[Union[str, Path]],
     args: tuple[Any],
     kwargs: dict[str, Any],
 ) -> None:
     """
     Worker function for distributed training or inference.
-    This function is called by each worker process spawned by `torch.multiprocessing.spawn`.
+
+    This function is called by each worker process spawned by
+    `torch.multiprocessing.spawn`.
+
     :param func: The function to run in each worker process.
     :param world_size: The total number of processes.
     :param rank: The rank of the current process.
@@ -317,7 +320,7 @@ def launch_distributed_processes(
     master_addr: str = "127.0.0.1",
     master_port: int = 29500,
     timeout: int = 1800,
-    cwd: str | Path | None = None,
+    cwd: Optional[Union[str, Path]] = None,
     *args: Any,
     **kwargs: Any,
 ) -> "mp.ProcessContext":
@@ -375,12 +378,12 @@ class KeepAliveTimer:
     Call a function after a certain amount of time to keep the worker alive.
     """
 
-    timer: threading.Timer | None
+    timer: Optional[threading.Timer]
 
     def __init__(
         self,
         func: Callable,
-        timeout: int | float,
+        timeout: Union[int, float],
         start: bool = False,
         *args: Any,
         **kwargs: Any,

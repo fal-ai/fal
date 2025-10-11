@@ -3,7 +3,6 @@ import inspect
 import os
 import pickle
 import queue
-import socket
 import threading
 import time
 import traceback
@@ -11,7 +10,7 @@ import warnings
 from collections.abc import AsyncIterator, Callable, Coroutine
 from concurrent.futures import Future
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Optional, Union
 
 from fal.distributed.utils import (
     KeepAliveTimer,
@@ -150,7 +149,7 @@ class DistributedWorker:
             raise RuntimeError("Event loop is not running.")
         return asyncio.run_coroutine_threadsafe(coro, self.loop)
 
-    def shutdown(self, timeout: int | float | None = None) -> None:
+    def shutdown(self, timeout: Optional[Union[int, float]] = None) -> None:
         """
         Shutdown the event loop.
         :param timeout: The timeout for the shutdown.
@@ -209,7 +208,7 @@ class DistributedRunner:
 
     zmq_socket: Optional["Socket[Any]"]
     context: Optional["mp.ProcessContext"]
-    keepalive_timer: KeepAliveTimer | None
+    keepalive_timer: Optional[KeepAliveTimer]
 
     def __init__(
         self,
@@ -221,9 +220,9 @@ class DistributedRunner:
         worker_port: int = 54923,
         timeout: int = 86400,  # 24 hours
         keepalive_payload: dict[str, Any] = {},
-        keepalive_interval: int | float | None = None,
-        cwd: str | Path | None = None,
-        set_device: bool | None = None,  # deprecated
+        keepalive_interval: Optional[Union[int, float]] = None,
+        cwd: Optional[Union[str, Path]] = None,
+        set_device: Optional[bool] = None,  # deprecated
     ) -> None:
         self.worker_cls = worker_cls
         self.world_size = world_size
@@ -254,7 +253,7 @@ class DistributedRunner:
                 return False
         return True
 
-    def terminate(self, timeout: int | float = 10) -> None:
+    def terminate(self, timeout: Union[int, float] = 10) -> None:
         """
         Terminates the distributed worker processes.
         This method should be called to clean up the worker processes.
@@ -268,7 +267,10 @@ class DistributedRunner:
     def gather_errors(self) -> list[Exception]:
         """
         Gathers errors from the distributed worker processes.
-        This method should be called to collect any errors that occurred during execution.
+
+        This method should be called to collect any errors that occurred
+        during execution.
+
         :return: A list of exceptions raised by the worker processes.
         """
         errors = []
@@ -321,15 +323,18 @@ class DistributedRunner:
                 self.zmq_socket.close()
             except Exception as e:
                 print(
-                    f"[debug] Error closing ZeroMQ socket: {e}\n{traceback.format_exc()}"
+                    f"[debug] Error closing ZeroMQ socket: {e}\n"
+                    f"{traceback.format_exc()}"
                 )
             self.zmq_socket = None
 
     def run(self, **kwargs: Any) -> None:
         """
         The main function to run the distributed worker.
-        This function is called by each worker process spawned by `torch.multiprocessing.spawn`.
-        This method must be synchronous.
+
+        This function is called by each worker process spawned by
+        `torch.multiprocessing.spawn`. This method must be synchronous.
+
         :param kwargs: The arguments to pass to the worker.
         """
         import torch.distributed as dist
@@ -395,7 +400,7 @@ class DistributedRunner:
             assert isinstance(payload_dict, dict)
             payload_dict["streaming"] = True
             image_format = payload_dict.get("image_format", "jpeg")
-            encoded_response: bytes | None = None
+            encoded_response: Optional[bytes] = None
 
             try:
                 future = worker.run_in_worker(worker.__call__, **payload_dict)
@@ -514,8 +519,10 @@ class DistributedRunner:
                     ident, msg = await socket.recv_multipart(flags=zmq.NOBLOCK)  # type: ignore[misc]
 
                     if msg != b"READY":
+                        worker_id = ident.decode("utf-8")
+                        worker_msg = msg.decode("utf-8")
                         raise RuntimeError(
-                            f"Unexpected message from worker {ident.decode('utf-8')}: {msg.decode('utf-8')}"
+                            f"Unexpected message from worker {worker_id}: {worker_msg}"
                         )
 
                     print(f"[debug] Worker {ident.decode('utf-8')} is ready.")
@@ -524,7 +531,8 @@ class DistributedRunner:
                     total_wait_time = time.perf_counter() - start_time
                     if total_wait_time > timeout:
                         raise TimeoutError(
-                            f"Timeout reached after {timeout} seconds while waiting for workers to be ready."
+                            f"Timeout reached after {timeout} seconds while "
+                            f"waiting for workers to be ready."
                         )
                     await asyncio.sleep(0.5)
                 self.ensure_alive()
@@ -538,7 +546,7 @@ class DistributedRunner:
         # Start the keepalive timer
         self.maybe_start_keepalive()
 
-    def keepalive(self, timeout: int | float | None = 60.0) -> None:
+    def keepalive(self, timeout: Optional[Union[int, float]] = 60.0) -> None:
         """
         Sends the keepalive payload to the worker.
         """
@@ -624,7 +632,8 @@ class DistributedRunner:
 
             if time.perf_counter() - wait_start > timeout:
                 print(
-                    f"[debug] Timeout reached after {timeout} seconds, stopping waiting."
+                    f"[debug] Timeout reached after {timeout} seconds, "
+                    f"stopping waiting."
                 )
                 break
 
@@ -641,8 +650,8 @@ class DistributedRunner:
     async def stream(
         self,
         payload: dict[str, Any] = {},
-        timeout: int | None = None,
-        streaming_timeout: int | None = None,
+        timeout: Optional[int] = None,
+        streaming_timeout: Optional[int] = None,
         as_text_events: bool = False,
     ) -> AsyncIterator[Any]:
         """
@@ -679,7 +688,8 @@ class DistributedRunner:
                     and iter_start_time - last_yield_time > streaming_timeout
                 ):
                     raise TimeoutError(
-                        f"Streaming timed out after {streaming_timeout} seconds of inactivity."
+                        f"Streaming timed out after {streaming_timeout} "
+                        f"seconds of inactivity."
                     )
 
                 await asyncio.sleep(0.1)
@@ -705,7 +715,7 @@ class DistributedRunner:
     async def invoke(
         self,
         payload: dict[str, Any] = {},
-        timeout: int | None = None,
+        timeout: Optional[int] = None,
     ) -> Any:
         """
         Invokes the distributed worker with the given payload.
@@ -729,7 +739,8 @@ class DistributedRunner:
                 rank, response = await socket.recv_multipart(flags=zmq.NOBLOCK)  # type: ignore[misc]
                 break  # Exit the loop if we received a response
             except zmq.Again:
-                if timeout is not None and time.perf_counter() - start_time > timeout:
+                elapsed = time.perf_counter() - start_time
+                if timeout is not None and elapsed > timeout:
                     raise TimeoutError(f"Invocation timed out after {timeout} seconds.")
 
                 await asyncio.sleep(0.1)
@@ -749,9 +760,9 @@ class DistributedRunner:
 
     async def __aexit__(
         self,
-        exc_type: type[BaseException] | None,
-        exc_value: BaseException | None,
-        exc_traceback: traceback.StackSummary | None,
+        exc_type: Optional[type[BaseException]],
+        exc_value: Optional[BaseException],
+        exc_traceback: Optional[traceback.StackSummary],
     ) -> None:
         """
         Exit the context manager.
