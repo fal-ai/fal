@@ -86,4 +86,55 @@ def test_worker_submit_when_not_running():
         worker.submit(dummy())
 
 
+def test_add_streaming_result():
+    """Test that streaming results are queued correctly."""
+    worker = SimpleWorker(rank=0, world_size=1)
+    worker.add_streaming_result({"frame": 1})
+    worker.add_streaming_result({"frame": 2})
+    
+    # Check queue has items
+    assert not worker.queue.empty()
+    item1 = worker.queue.get_nowait()
+    assert item1 is not None
+    
+    worker.shutdown()
+
+
+def test_add_streaming_error():
+    """Test that errors can be added to streaming queue."""
+    worker = SimpleWorker(rank=0, world_size=1)
+    worker.add_streaming_error(ValueError("test error"))
+    
+    assert not worker.queue.empty()
+    error_item = worker.queue.get_nowait()
+    assert error_item is not None
+    
+    worker.shutdown()
+
+
+def test_runner_gather_errors_when_no_errors():
+    """Test gather_errors returns empty list when no errors."""
+    runner = DistributedRunner(SimpleWorker, world_size=1)
+    errors = runner.gather_errors()
+    assert errors == []
+
+
+def test_runner_zmq_socket_cleanup():
+    """Test that ZMQ socket can be safely closed multiple times."""
+    runner = DistributedRunner(SimpleWorker, world_size=1)
+    assert runner.zmq_socket is None
+    
+    runner.close_zmq_socket()  # Should not crash even if None
+    assert runner.zmq_socket is None
+    
+    runner.close_zmq_socket()  # Should not crash if called again
+    assert runner.zmq_socket is None
+
+
+def test_runner_terminate_when_not_started():
+    """Test that terminate() is safe to call even when not started."""
+    runner = DistributedRunner(SimpleWorker, world_size=1)
+    runner.terminate()  # Should not crash
+
+
 
