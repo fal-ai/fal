@@ -48,13 +48,14 @@ def mock_args(
     args.auth = auth
     args.strategy = strategy
     args.app_scale_settings = reset_scale
+    args.output = "pretty"
 
     return args
 
 
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
 @patch("fal.cli._utils.parse_pyproject_toml")
-@patch("fal.cli.deploy._deploy_from_reference")
+@patch("fal.api.deploy._deploy_from_reference")
 def test_deploy_with_toml_success(
     mock_deploy_ref, mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml
 ):
@@ -69,18 +70,18 @@ def test_deploy_with_toml_success(
 
     # Ensure the correct app is deployed
     mock_deploy_ref.assert_called_once_with(
+        mock_deploy_ref.call_args[0][0],
         (f"{project_root / 'src/my_app/inference.py'}", "MyApp"),
         "my-app",
-        args,
         "shared",
-        "rolling",
+        strategy="rolling",
         scale=False,
     )
 
 
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
 @patch("fal.cli._utils.parse_pyproject_toml")
-@patch("fal.cli.deploy._deploy_from_reference")
+@patch("fal.api.deploy._deploy_from_reference")
 def test_deploy_with_toml_no_auth(
     mock_deploy_ref, mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml
 ):
@@ -95,18 +96,18 @@ def test_deploy_with_toml_no_auth(
 
     # Since auth is not provided for "another-app", it should default to "private"
     mock_deploy_ref.assert_called_once_with(
+        mock_deploy_ref.call_args[0][0],
         (f"{project_root / 'src/another_app/inference.py'}", "AnotherApp"),
         "another-app",
-        args,
         None,
-        None,
+        strategy=None,
         scale=False,
     )
 
 
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
 @patch("fal.cli._utils.parse_pyproject_toml")
-@patch("fal.cli.deploy._deploy_from_reference")
+@patch("fal.api.deploy._deploy_from_reference")
 def test_deploy_with_toml_app_not_found(
     mock_deploy_ref, mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml
 ):
@@ -124,7 +125,7 @@ def test_deploy_with_toml_app_not_found(
 
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
 @patch("fal.cli._utils.parse_pyproject_toml")
-@patch("fal.cli.deploy._deploy_from_reference")
+@patch("fal.api.deploy._deploy_from_reference")
 def test_deploy_with_toml_missing_ref_key(
     mock_deploy_ref, mock_parse_toml, mock_find_toml
 ):
@@ -148,7 +149,7 @@ def test_deploy_with_toml_missing_ref_key(
 
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
 @patch("fal.cli._utils.parse_pyproject_toml")
-@patch("fal.cli.deploy._deploy_from_reference")
+@patch("fal.api.deploy._deploy_from_reference")
 def test_deploy_with_toml_extra_keys_in_toml(
     mock_deploy_ref, mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml
 ):
@@ -193,7 +194,7 @@ def test_deploy_with_toml_only_app_name_is_provided(
 
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
 @patch("fal.cli._utils.parse_pyproject_toml")
-@patch("fal.cli.deploy._deploy_from_reference")
+@patch("fal.api.deploy._deploy_from_reference")
 def test_deploy_with_toml_deployment_strategy(
     mock_deploy_ref, mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml
 ):
@@ -206,18 +207,18 @@ def test_deploy_with_toml_deployment_strategy(
     project_root, _ = find_project_root(None)
 
     mock_deploy_ref.assert_called_once_with(
+        mock_deploy_ref.call_args[0][0],
         (f"{project_root / 'src/my_app/inference.py'}", "MyApp"),
         "my-app",
-        args,
         "shared",
-        "rolling",
+        strategy="rolling",
         scale=False,
     )
 
 
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
 @patch("fal.cli._utils.parse_pyproject_toml")
-@patch("fal.cli.deploy._deploy_from_reference")
+@patch("fal.api.deploy._deploy_from_reference")
 def test_deploy_with_toml_default_deployment_strategy(
     mock_deploy_ref, mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml
 ):
@@ -230,18 +231,18 @@ def test_deploy_with_toml_default_deployment_strategy(
     project_root, _ = find_project_root(None)
 
     mock_deploy_ref.assert_called_once_with(
+        mock_deploy_ref.call_args[0][0],
         (f"{project_root / 'src/another_app/inference.py'}", "AnotherApp"),
         "another-app",
-        args,
         None,
-        None,
+        strategy=None,
         scale=False,
     )
 
 
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
 @patch("fal.cli._utils.parse_pyproject_toml")
-@patch("fal.cli.deploy._deploy_from_reference")
+@patch("fal.api.deploy._deploy_from_reference")
 def test_deploy_with_cli_auth(
     mock_deploy_ref, mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml
 ):
@@ -254,18 +255,18 @@ def test_deploy_with_cli_auth(
     project_root, _ = find_project_root(None)
 
     mock_deploy_ref.assert_called_once_with(
+        mock_deploy_ref.call_args[0][0],
         (f"{project_root / 'src/my_app/inference.py'}", "MyApp"),
         None,
-        args,
         "shared",
-        None,
+        strategy=None,
         scale=False,
     )
 
 
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
 @patch("fal.cli._utils.parse_pyproject_toml")
-@patch("fal.cli.deploy._deploy_from_reference")
+@patch("fal.api.deploy._deploy_from_reference")
 def test_deploy_with_cli_deployment_strategy(
     mock_deploy_ref, mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml
 ):
@@ -278,18 +279,18 @@ def test_deploy_with_cli_deployment_strategy(
     project_root, _ = find_project_root(None)
 
     mock_deploy_ref.assert_called_once_with(
+        mock_deploy_ref.call_args[0][0],
         (f"{project_root / 'src/my_app/inference.py'}", "MyApp"),
         None,
-        args,
         None,
-        "rolling",
+        strategy="rolling",
         scale=False,
     )
 
 
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
 @patch("fal.cli._utils.parse_pyproject_toml")
-@patch("fal.cli.deploy._deploy_from_reference")
+@patch("fal.api.deploy._deploy_from_reference")
 def test_deploy_with_cli_reset_scale(
     mock_deploy_ref, mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml
 ):
@@ -302,18 +303,18 @@ def test_deploy_with_cli_reset_scale(
     project_root, _ = find_project_root(None)
 
     mock_deploy_ref.assert_called_once_with(
+        mock_deploy_ref.call_args[0][0],
         (f"{project_root / 'src/my_app/inference.py'}", "MyApp"),
         None,
-        args,
         None,
-        None,
+        strategy=None,
         scale=True,
     )
 
 
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
 @patch("fal.cli._utils.parse_pyproject_toml")
-@patch("fal.cli.deploy._deploy_from_reference")
+@patch("fal.api.deploy._deploy_from_reference")
 def test_deploy_with_cli_scale(
     mock_deploy_ref, mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml
 ):
@@ -326,10 +327,10 @@ def test_deploy_with_cli_scale(
     project_root, _ = find_project_root(None)
 
     mock_deploy_ref.assert_called_once_with(
+        mock_deploy_ref.call_args[0][0],
         (f"{project_root / 'src/my_app/inference.py'}", "MyApp"),
         None,
-        args,
         None,
-        None,
+        strategy=None,
         scale=False,
     )
