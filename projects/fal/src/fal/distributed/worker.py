@@ -11,6 +11,7 @@ import traceback
 import warnings
 from collections.abc import AsyncIterator, Callable, Coroutine
 from concurrent.futures import Future
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional, Union
 
@@ -176,7 +177,10 @@ class DistributedWorker:
         if inspect.iscoroutinefunction(func):
             coro = func(*args, **kwargs)
         else:
-            coro = asyncio.to_thread(func, *args, **kwargs)
+            # Using in place of asyncio.to_thread
+            # since it's not available in Python 3.8
+            loop = self.loop
+            coro = loop.run_in_executor(None, partial(func, *args, **kwargs))
 
         return self.submit(coro)
 
