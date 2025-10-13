@@ -246,7 +246,7 @@ spawn multiple worker processes for distributed training or inference.
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="fal.distributed.worker.DistributedRunner.context">
-<span class="sig-name descname"><span class="pre">context</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[mp.ProcessContext]</span></em><a class="headerlink" href="#fal.distributed.worker.DistributedRunner.context" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">context</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Optional[mp.ProcessContext]</span></em><a class="headerlink" href="#fal.distributed.worker.DistributedRunner.context" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py method">
@@ -319,7 +319,7 @@ during execution.</p>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="fal.distributed.worker.DistributedRunner.keepalive_timer">
-<span class="sig-name descname"><span class="pre">keepalive_timer</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><a class="reference internal" href="#fal.distributed.utils.KeepAliveTimer" title="fal.distributed.utils.KeepAliveTimer"><code class="xref py py-class docutils literal notranslate"><span class="pre">KeepAliveTimer</span></code></a><span class="pre">]</span></em><a class="headerlink" href="#fal.distributed.worker.DistributedRunner.keepalive_timer" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">keepalive_timer</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Optional[KeepAliveTimer]</span></em><a class="headerlink" href="#fal.distributed.worker.DistributedRunner.keepalive_timer" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py method">
@@ -427,7 +427,7 @@ This method should be called to clean up the worker processes.</p>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="fal.distributed.worker.DistributedRunner.zmq_socket">
-<span class="sig-name descname"><span class="pre">zmq_socket</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[Socket[Any]]</span></em><a class="headerlink" href="#fal.distributed.worker.DistributedRunner.zmq_socket" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">zmq_socket</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Optional[Socket[Any]]</span></em><a class="headerlink" href="#fal.distributed.worker.DistributedRunner.zmq_socket" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 </dd></dl>
@@ -607,7 +607,7 @@ This method is called once per worker.</p>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="fal.distributed.DistributedRunner.context">
-<span class="sig-name descname"><span class="pre">context</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[mp.ProcessContext]</span></em><a class="headerlink" href="#fal.distributed.DistributedRunner.context" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">context</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Optional[mp.ProcessContext]</span></em><a class="headerlink" href="#fal.distributed.DistributedRunner.context" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py method">
@@ -680,7 +680,7 @@ during execution.</p>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="fal.distributed.DistributedRunner.keepalive_timer">
-<span class="sig-name descname"><span class="pre">keepalive_timer</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><a class="reference internal" href="#fal.distributed.utils.KeepAliveTimer" title="fal.distributed.utils.KeepAliveTimer"><code class="xref py py-class docutils literal notranslate"><span class="pre">KeepAliveTimer</span></code></a><span class="pre">]</span></em><a class="headerlink" href="#fal.distributed.DistributedRunner.keepalive_timer" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">keepalive_timer</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Optional[KeepAliveTimer]</span></em><a class="headerlink" href="#fal.distributed.DistributedRunner.keepalive_timer" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py method">
@@ -788,7 +788,7 @@ This method should be called to clean up the worker processes.</p>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="fal.distributed.DistributedRunner.zmq_socket">
-<span class="sig-name descname"><span class="pre">zmq_socket</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[Socket[Any]]</span></em><a class="headerlink" href="#fal.distributed.DistributedRunner.zmq_socket" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">zmq_socket</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Optional[Socket[Any]]</span></em><a class="headerlink" href="#fal.distributed.DistributedRunner.zmq_socket" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 </dd></dl>
