@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import inspect
 import os
@@ -70,7 +72,7 @@ class DistributedWorker:
     # Public API
 
     @property
-    def device(self) -> "torch.device":
+    def device(self) -> torch.device:
         """
         :return: The device for the current worker.
         """
@@ -206,8 +208,8 @@ class DistributedRunner:
     A class to launch and manage distributed workers.
     """
 
-    zmq_socket: Optional["Socket[Any]"]
-    context: Optional["mp.ProcessContext"]
+    zmq_socket: Optional[Socket[Any]]
+    context: Optional[mp.ProcessContext]
     keepalive_timer: Optional[KeepAliveTimer]
 
     def __init__(
@@ -296,7 +298,7 @@ class DistributedRunner:
                 f"Distributed processes are not running. Errors: {self.gather_errors()}"
             )
 
-    def get_zmq_socket(self) -> "Socket[Any]":
+    def get_zmq_socket(self) -> Socket[Any]:
         """
         Returns a ZeroMQ socket of the specified type.
         :param socket_type: The type of the ZeroMQ socket.
@@ -750,7 +752,7 @@ class DistributedRunner:
         assert rank == b"0", "Expected response from worker with rank 0"
         return distributed_deserialize(response)
 
-    async def __aenter__(self) -> "DistributedRunner":
+    async def __aenter__(self) -> DistributedRunner:
         """
         Enter the context manager.
         :return: The DistributedRunner instance.
