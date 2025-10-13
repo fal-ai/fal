@@ -315,11 +315,16 @@ def _print_python_packages() -> None:
 def _include_app_files_path(
     local_file_path: str | None, app_files_context_dir: str | None
 ):
+    base_cloud_dir = Path("/app")
     if local_file_path is None:
         return
 
-    base_path = Path(local_file_path).resolve()
+    # In case of container apps, the /app directory is not created by default
+    # so we need to check if it exists before proceeding
+    if not base_cloud_dir.exists():
+        return
 
+    base_path = Path(local_file_path).resolve()
     if base_path.is_dir():
         original_script_dir = base_path
     else:
@@ -332,9 +337,14 @@ def _include_app_files_path(
         else:
             final_script_dir = (original_script_dir / context_path).resolve()
 
-    relative_path = os.path.relpath(original_script_dir, final_script_dir)
-    final_path = Path("/app") / Path(relative_path)
-    print("final_path", final_path)
+        # relative path between the original script dir
+        # and where the app_files_context_dir is targetting
+        relative_path = os.path.relpath(original_script_dir, final_script_dir)
+        # cloud final_path based on the `/app` base dir,
+        final_path = base_cloud_dir / Path(relative_path)
+    else:
+        # if no app_files_context_dir is provided, the base directory is the root
+        final_path = base_cloud_dir
 
     # Create the final path if it doesn't exist
     # This is for cases when fal app is not in root
@@ -348,11 +358,11 @@ def _include_app_files_path(
     # relative directory is resolved first in case of conflicts
     sys.path.append(str(final_path))
 
-    # Add the /app path to sys.path so that
+    # Add the base cloud dir path to sys.path so that
     # the app can access the files in the top level directory
     # This is for cases when fal app is not in root,
     # and user wants to access the files without using relative imports
-    sys.path.append("/app")
+    sys.path.append(str(base_cloud_dir))
 
     # Change the current working directory to the path of the app
     # so that the app can access the files in the current directory
