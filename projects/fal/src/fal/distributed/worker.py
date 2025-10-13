@@ -165,6 +165,16 @@ class DistributedWorker:
         self.loop.call_soon_threadsafe(self.loop.stop)
         self.thread.join(timeout=timeout)
 
+    async def _run_sync_in_executor(
+        self,
+        func: Callable[..., Any],
+        *args: Any,
+        **kwargs: Any,
+    ) -> Any:
+        """Run a synchronous function in the executor."""
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, partial(func, *args, **kwargs))
+
     def run_in_worker(
         self,
         func: Callable[..., Any],
@@ -179,8 +189,7 @@ class DistributedWorker:
         else:
             # Using in place of asyncio.to_thread
             # since it's not available in Python 3.8
-            loop = self.loop
-            coro = loop.run_in_executor(None, partial(func, *args, **kwargs))
+            coro = self._run_sync_in_executor(func, *args, **kwargs)
 
         return self.submit(coro)
 
