@@ -1,6 +1,5 @@
 import concurrent.futures
 import hashlib
-import logging
 import os
 import re
 from dataclasses import dataclass
@@ -24,7 +23,6 @@ from fal.exceptions import (
 USER_AGENT = f"fal-sdk/{'.'.join(map(str, version_tuple))} (python)"
 FILE_SIZE_LIMIT = 1024 * 1024 * 1024  # 1GB
 DEFAULT_CONCURRENCY_UPLOADS = 10
-logger = logging.getLogger(__name__)
 
 
 def print_path_tree(file_paths):

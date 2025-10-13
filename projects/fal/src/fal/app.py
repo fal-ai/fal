@@ -419,6 +419,10 @@ class App(BaseServable):
 
         if cls.app_files_context_dir is not None:
             cls.host_kwargs["app_files_context_dir"] = cls.app_files_context_dir
+            if not cls.app_files:
+                raise ValueError(
+                    "app_files_context_dir is only supported when app_files is provided"
+                )
 
         if cls.min_concurrency is not None:
             cls.host_kwargs["min_concurrency"] = cls.min_concurrency
@@ -479,6 +483,10 @@ class App(BaseServable):
 
     @asynccontextmanager
     async def lifespan(self, app: fastapi.FastAPI):
+        # We want to not do any directory changes for container apps,
+        # since we don't have explicit checks to see the kind of app
+        # We check for app_files here and check kind and app_files earlier
+        # to ensure that container apps don't have app_files
         if self.app_files:
             _include_app_files_path(self.local_file_path, self.app_files_context_dir)
         _print_python_packages()
