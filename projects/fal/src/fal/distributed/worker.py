@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import inspect
 import os
@@ -9,6 +11,7 @@ import traceback
 import warnings
 from collections.abc import AsyncIterator, Callable, Coroutine
 from concurrent.futures import Future
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional, Union
 
@@ -70,7 +73,7 @@ class DistributedWorker:
     # Public API
 
     @property
-    def device(self) -> "torch.device":
+    def device(self) -> torch.device:
         """
         :return: The device for the current worker.
         """
@@ -162,6 +165,16 @@ class DistributedWorker:
         self.loop.call_soon_threadsafe(self.loop.stop)
         self.thread.join(timeout=timeout)
 
+    async def _run_sync_in_executor(
+        self,
+        func: Callable[..., Any],
+        *args: Any,
+        **kwargs: Any,
+    ) -> Any:
+        """Run a synchronous function in the executor."""
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, partial(func, *args, **kwargs))
+
     def run_in_worker(
         self,
         func: Callable[..., Any],
@@ -174,7 +187,9 @@ class DistributedWorker:
         if inspect.iscoroutinefunction(func):
             coro = func(*args, **kwargs)
         else:
-            coro = asyncio.to_thread(func, *args, **kwargs)
+            # Using in place of asyncio.to_thread
+            # since it's not available in Python 3.8
+            coro = self._run_sync_in_executor(func, *args, **kwargs)
 
         return self.submit(coro)
 
@@ -206,8 +221,8 @@ class DistributedRunner:
     A class to launch and manage distributed workers.
     """
 
-    zmq_socket: Optional["Socket[Any]"]
-    context: Optional["mp.ProcessContext"]
+    zmq_socket: Optional[Socket[Any]]
+    context: Optional[mp.ProcessContext]
     keepalive_timer: Optional[KeepAliveTimer]
 
     def __init__(
@@ -296,7 +311,7 @@ class DistributedRunner:
                 f"Distributed processes are not running. Errors: {self.gather_errors()}"
             )
 
-    def get_zmq_socket(self) -> "Socket[Any]":
+    def get_zmq_socket(self) -> Socket[Any]:
         """
         Returns a ZeroMQ socket of the specified type.
         :param socket_type: The type of the ZeroMQ socket.
@@ -750,7 +765,7 @@ class DistributedRunner:
         assert rank == b"0", "Expected response from worker with rank 0"
         return distributed_deserialize(response)
 
-    async def __aenter__(self) -> "DistributedRunner":
+    async def __aenter__(self) -> DistributedRunner:
         """
         Enter the context manager.
         :return: The DistributedRunner instance.
