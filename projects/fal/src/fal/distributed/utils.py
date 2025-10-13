@@ -8,7 +8,7 @@ import warnings
 from collections.abc import Callable
 from io import BytesIO
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Union
 
 if TYPE_CHECKING:
     import torch.multiprocessing as mp
@@ -271,8 +271,8 @@ def wrap_distributed_worker(
     master_port: int,
     timeout: int,
     cwd: Optional[Union[str, Path]],
-    args: tuple[Any],
-    kwargs: dict[str, Any],
+    args: Tuple[Any],
+    kwargs: Dict[str, Any],
 ) -> None:
     """
     Worker function for distributed training or inference.
