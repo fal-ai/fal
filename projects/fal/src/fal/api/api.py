@@ -1218,7 +1218,9 @@ class BaseServable:
             headers = {}
             if exc.billable_units:
                 headers["x-fal-billable-units"] = exc.billable_units
-            return JSONResponse(exc.to_pydantic_format(), exc.status_code, headers=headers)
+            return JSONResponse(
+                exc.to_pydantic_format(), exc.status_code, headers=headers
+            )
 
         # ref: https://github.com/fastapi/fastapi/blob/37c8e7d76b4b47eb2c4cced6b4de59eb3d5f08eb/fastapi/exception_handlers.py#L20
         @_app.exception_handler(RequestValidationError)

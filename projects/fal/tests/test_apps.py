@@ -970,7 +970,7 @@ def test_app_exceptions(test_exception_app: AppClient):
 
     assert field_exc.value.status_code == 422
 
-    assert field_exc.value.headers.get("x-fal-billable-units") == None
+    assert field_exc.value.headers.get("x-fal-billable-units") is None
 
     with pytest.raises(AppClientError) as cuda_exc:
         test_exception_app.cuda_exception({})
