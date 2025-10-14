@@ -212,7 +212,6 @@ class ExceptionApp(fal.App, keep_alive=300, max_concurrency=1):
     def app_exception(self) -> Output:
         raise AppException(message="this app is designed to fail", status_code=401)
 
-    # While making the request provide payload as {"lhs": 1, "rhs": 2}
     @fal.endpoint("/field-exception")
     def field_exception(self, input: Input) -> Output:
         raise FieldException(
@@ -220,7 +219,6 @@ class ExceptionApp(fal.App, keep_alive=300, max_concurrency=1):
             message="rhs must be an integer",
         )
 
-    # While making the request provide payload as {"lhs": 1, "rhs": 2}
     @fal.endpoint("/field-exception-with-billable-units")
     def field_exception_with_billable_units(self, input: Input) -> Output:
         raise FieldException(
