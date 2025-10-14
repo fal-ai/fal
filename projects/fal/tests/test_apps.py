@@ -212,12 +212,19 @@ class ExceptionApp(fal.App, keep_alive=300, max_concurrency=1):
     def app_exception(self) -> Output:
         raise AppException(message="this app is designed to fail", status_code=401)
 
-    # While making the request provide payload as {"lhs": 1, "rhs": 2}
     @fal.endpoint("/field-exception")
     def field_exception(self, input: Input) -> Output:
         raise FieldException(
             field="rhs",
             message="rhs must be an integer",
+        )
+
+    @fal.endpoint("/field-exception-with-billable-units")
+    def field_exception_with_billable_units(self, input: Input) -> Output:
+        raise FieldException(
+            field="rhs",
+            message="rhs must be an integer",
+            billable_units="1",
         )
 
     @fal.endpoint("/cuda-exception")
@@ -953,9 +960,17 @@ def test_app_exceptions(test_exception_app: AppClient):
     assert app_exc.value.status_code == 401
 
     with pytest.raises(AppClientError) as field_exc:
+        test_exception_app.field_exception_with_billable_units({"lhs": 1, "rhs": "2"})
+
+    assert field_exc.value.status_code == 422
+    assert field_exc.value.headers.get("x-fal-billable-units") == "1"
+
+    with pytest.raises(AppClientError) as field_exc:
         test_exception_app.field_exception({"lhs": 1, "rhs": "2"})
 
     assert field_exc.value.status_code == 422
+
+    assert field_exc.value.headers.get("x-fal-billable-units") is None
 
     with pytest.raises(AppClientError) as cuda_exc:
         test_exception_app.cuda_exception({})

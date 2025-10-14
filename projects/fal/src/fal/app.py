@@ -11,7 +11,7 @@ import threading
 import time
 import typing
 from contextlib import asynccontextmanager, contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, ClassVar, Optional, TypeVar
 
@@ -154,7 +154,7 @@ def wrap_app(cls: type[App], **kwargs) -> IsolatedFunction:
 class AppClientError(FalServerlessException):
     message: str
     status_code: int
-
+    headers: dict[str, str] = field(default_factory=dict)
 
 class EndpointClient:
     def __init__(self, url, endpoint, signature, timeout: int | None = None):
@@ -180,6 +180,7 @@ class EndpointClient:
                 raise AppClientError(
                     f"Failed to POST {url}: {resp.status_code} {resp.text}",
                     status_code=resp.status_code,
+                    headers=resp.headers,
                 )
             resp_dict = resp.json()
 
@@ -271,6 +272,7 @@ class AppClient:
                                 "Health check failed with non-retryable error: "
                                 f"{resp.status_code} {resp.text}",
                                 status_code=resp.status_code,
+                                headers=resp.headers,
                             )
 
                     time.sleep(health_check_interval)
