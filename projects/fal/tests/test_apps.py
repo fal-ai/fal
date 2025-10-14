@@ -220,6 +220,15 @@ class ExceptionApp(fal.App, keep_alive=300, max_concurrency=1):
             message="rhs must be an integer",
         )
 
+    # While making the request provide payload as {"lhs": 1, "rhs": 2}
+    @fal.endpoint("/field-exception-with-billable-units")
+    def field_exception_with_billable_units(self, input: Input) -> Output:
+        raise FieldException(
+            field="rhs",
+            message="rhs must be an integer",
+            billable_units="1",
+        )
+
     @fal.endpoint("/cuda-exception")
     def cuda_exception(self) -> Output:
         # mimicking error message from PyTorch (https://github.com/pytorch/pytorch/blob/6c65fd03942415b68040e102c44cf5109d2d851e/c10/cuda/CUDACachingAllocator.cpp#L1234C12-L1234C30)
@@ -953,9 +962,17 @@ def test_app_exceptions(test_exception_app: AppClient):
     assert app_exc.value.status_code == 401
 
     with pytest.raises(AppClientError) as field_exc:
+        test_exception_app.field_exception_with_billable_units({"lhs": 1, "rhs": "2"})
+
+    assert field_exc.value.status_code == 422
+    assert field_exc.value.headers.get("x-fal-billable-units") == "1"
+
+    with pytest.raises(AppClientError) as field_exc:
         test_exception_app.field_exception({"lhs": 1, "rhs": "2"})
 
     assert field_exc.value.status_code == 422
+
+    assert field_exc.value.headers.get("x-fal-billable-units") == None
 
     with pytest.raises(AppClientError) as cuda_exc:
         test_exception_app.cuda_exception({})
