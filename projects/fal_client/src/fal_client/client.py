@@ -14,7 +14,16 @@ import logging
 from datetime import datetime, timezone
 from dataclasses import dataclass, field
 from functools import cached_property
-from typing import Any, AsyncIterator, Dict, Iterator, TYPE_CHECKING, Optional, Literal
+from typing import (
+    Any,
+    AsyncIterator,
+    Dict,
+    Iterator,
+    TYPE_CHECKING,
+    Optional,
+    Literal,
+    Callable,
+)
 from urllib.parse import urlencode
 
 import httpx
@@ -67,7 +76,7 @@ class CDNTokenManager:
 
     def _refresh_token(self) -> CDNToken:
         with httpx.Client() as client:
-            response = client.post(self._url, headers=self._headers, data=b"{}")
+            response = client.post(self._url, headers=self._headers, json={})
             response.raise_for_status()
             data = response.json()
 
@@ -102,9 +111,9 @@ class AsyncCDNTokenManager:
             "Content-Type": "application/json",
         }
 
-    async def _refresh_token(self) -> None:
+    async def _refresh_token(self) -> CDNToken:
         async with httpx.AsyncClient() as client:
-            response = await client.post(self._url, headers=self._headers, data=b"{}")
+            response = await client.post(self._url, headers=self._headers, json={})
             response.raise_for_status()
             data = response.json()
 
@@ -691,6 +700,8 @@ def _maybe_retry_request(
                 time.sleep(delay)
                 continue
             raise
+    # Should be unreachable, added for type checkers
+    raise RuntimeError("Failed to perform request")
 
 
 async def _async_maybe_retry_request(
@@ -708,6 +719,8 @@ async def _async_maybe_retry_request(
                 await asyncio.sleep(delay)
                 continue
             raise
+    # Should be unreachable, added for type checkers
+    raise RuntimeError("Failed to perform request")
 
 
 @dataclass(frozen=True)
@@ -716,7 +729,10 @@ class SyncRequestHandle(_BaseRequestHandle):
 
     @classmethod
     def from_request_id(
-        cls, client: httpx.Client, application: str, request_id: str
+        cls,
+        client: httpx.Client,
+        application: str,
+        request_id: str,
     ) -> SyncRequestHandle:
         app_id = AppId.from_endpoint_id(application)
         prefix = f"{app_id.namespace}/" if app_id.namespace else ""
@@ -782,7 +798,10 @@ class AsyncRequestHandle(_BaseRequestHandle):
 
     @classmethod
     def from_request_id(
-        cls, client: httpx.AsyncClient, application: str, request_id: str
+        cls,
+        client: httpx.AsyncClient,
+        application: str,
+        request_id: str,
     ) -> AsyncRequestHandle:
         app_id = AppId.from_endpoint_id(application)
         prefix = f"{app_id.namespace}/" if app_id.namespace else ""
@@ -887,6 +906,7 @@ class AsyncClient:
         path: str = "",
         timeout: float | None = None,
         hint: str | None = None,
+        headers: dict[str, str] = {},
     ) -> AnyJSON:
         """Run an application with the given arguments (which will be JSON serialized). The path parameter can be used to
         specify a subpath when applicable. This method will return the result of the inference call directly.
@@ -896,9 +916,9 @@ class AsyncClient:
         if path:
             url += "/" + path.lstrip("/")
 
-        headers = {}
+        _headers: dict[str, str] = {**headers}
         if hint is not None:
-            headers["X-Fal-Runner-Hint"] = hint
+            _headers["X-Fal-Runner-Hint"] = hint
 
         response = await _async_maybe_retry_request(
             self._client,
@@ -906,7 +926,7 @@ class AsyncClient:
             url,
             json=arguments,
             timeout=timeout,
-            headers=headers,
+            headers=_headers,
         )
         _raise_for_status(response)
         return response.json()
@@ -920,6 +940,7 @@ class AsyncClient:
         hint: str | None = None,
         webhook_url: str | None = None,
         priority: Optional[Priority] = None,
+        headers: dict[str, str] = {},
     ) -> AsyncRequestHandle:
         """Submit an application with the given arguments (which will be JSON serialized). The path parameter can be used to
         specify a subpath when applicable. This method will return a handle to the request that can be used to check the status
@@ -932,12 +953,12 @@ class AsyncClient:
         if webhook_url is not None:
             url += "?" + urlencode({"fal_webhook": webhook_url})
 
-        headers = {}
+        _headers: dict[str, str] = {**headers}
         if hint is not None:
-            headers["X-Fal-Runner-Hint"] = hint
+            _headers["X-Fal-Runner-Hint"] = hint
 
         if priority is not None:
-            headers["X-Fal-Queue-Priority"] = priority
+            _headers["X-Fal-Queue-Priority"] = priority
 
         response = await _async_maybe_retry_request(
             self._client,
@@ -945,6 +966,7 @@ class AsyncClient:
             url,
             json=arguments,
             timeout=self.default_timeout,
+            headers=_headers,
         )
         _raise_for_status(response)
 
@@ -965,9 +987,10 @@ class AsyncClient:
         path: str = "",
         hint: str | None = None,
         with_logs: bool = False,
-        on_enqueue: Optional[callable[[Queued], None]] = None,
-        on_queue_update: Optional[callable[[Status], None]] = None,
+        on_enqueue: Optional[Callable[[str], None]] = None,
+        on_queue_update: Optional[Callable[[Status], None]] = None,
         priority: Optional[Priority] = None,
+        headers: dict[str, str] = {},
     ) -> AnyJSON:
         handle = await self.submit(
             application,
@@ -975,6 +998,7 @@ class AsyncClient:
             path=path,
             hint=hint,
             priority=priority,
+            headers=headers,
         )
 
         if on_enqueue is not None:
@@ -1060,7 +1084,7 @@ class AsyncClient:
 
         response = await client.post(
             CDN_URL + "/files/upload",
-            data=data,
+            content=data,
             headers=headers,
         )
         _raise_for_status(response)
@@ -1077,7 +1101,7 @@ class AsyncClient:
         if os.path.getsize(path) > MULTIPART_THRESHOLD:
             client = await self._get_cdn_client()
             return await AsyncMultipartUpload.save_file(
-                file_path=path,
+                file_path=str(path),
                 client=client,
                 token_manager=self._token_manager,
                 content_type=mime_type,
@@ -1140,6 +1164,7 @@ class SyncClient:
         path: str = "",
         timeout: float | None = None,
         hint: str | None = None,
+        headers: dict[str, str] = {},
     ) -> AnyJSON:
         """Run an application with the given arguments (which will be JSON serialized). The path parameter can be used to
         specify a subpath when applicable. This method will return the result of the inference call directly.
@@ -1149,9 +1174,9 @@ class SyncClient:
         if path:
             url += "/" + path.lstrip("/")
 
-        headers = {}
+        _headers: dict[str, str] = {**headers}
         if hint is not None:
-            headers["X-Fal-Runner-Hint"] = hint
+            _headers["X-Fal-Runner-Hint"] = hint
 
         response = _maybe_retry_request(
             self._client,
@@ -1159,7 +1184,7 @@ class SyncClient:
             url,
             json=arguments,
             timeout=timeout,
-            headers=headers,
+            headers=_headers,
         )
         _raise_for_status(response)
         return response.json()
@@ -1173,6 +1198,7 @@ class SyncClient:
         hint: str | None = None,
         webhook_url: str | None = None,
         priority: Optional[Priority] = None,
+        headers: dict[str, str] = {},
     ) -> SyncRequestHandle:
         """Submit an application with the given arguments (which will be JSON serialized). The path parameter can be used to
         specify a subpath when applicable. This method will return a handle to the request that can be used to check the status
@@ -1185,12 +1211,12 @@ class SyncClient:
         if webhook_url is not None:
             url += "?" + urlencode({"fal_webhook": webhook_url})
 
-        headers = {}
+        _headers: dict[str, str] = {**headers}
         if hint is not None:
-            headers["X-Fal-Runner-Hint"] = hint
+            _headers["X-Fal-Runner-Hint"] = hint
 
         if priority is not None:
-            headers["X-Fal-Queue-Priority"] = priority
+            _headers["X-Fal-Queue-Priority"] = priority
 
         response = _maybe_retry_request(
             self._client,
@@ -1198,7 +1224,7 @@ class SyncClient:
             url,
             json=arguments,
             timeout=self.default_timeout,
-            headers=headers,
+            headers=_headers,
         )
         _raise_for_status(response)
 
@@ -1219,9 +1245,10 @@ class SyncClient:
         path: str = "",
         hint: str | None = None,
         with_logs: bool = False,
-        on_enqueue: Optional[callable[[Queued], None]] = None,
-        on_queue_update: Optional[callable[[Status], None]] = None,
+        on_enqueue: Optional[Callable[[str], None]] = None,
+        on_queue_update: Optional[Callable[[Status], None]] = None,
         priority: Optional[Priority] = None,
+        headers: dict[str, str] = {},
     ) -> AnyJSON:
         handle = self.submit(
             application,
@@ -1229,6 +1256,7 @@ class SyncClient:
             path=path,
             hint=hint,
             priority=priority,
+            headers=headers,
         )
 
         if on_enqueue is not None:
@@ -1310,7 +1338,7 @@ class SyncClient:
 
         response = client.post(
             CDN_URL + "/files/upload",
-            data=data,
+            content=data,
             headers=headers,
         )
         _raise_for_status(response)
@@ -1327,7 +1355,7 @@ class SyncClient:
         if os.path.getsize(path) > MULTIPART_THRESHOLD:
             client = self._get_cdn_client()
             return MultipartUpload.save_file(
-                file_path=path,
+                file_path=str(path),
                 client=client,
                 token_manager=self._token_manager,
                 content_type=mime_type,
