@@ -541,6 +541,7 @@ class RegisterApplicationRequest(google.protobuf.message.Message):
     SCALE_FIELD_NUMBER: builtins.int
     PRIVATE_LOGS_FIELD_NUMBER: builtins.int
     FILES_FIELD_NUMBER: builtins.int
+    APP_CODE_FIELD_NUMBER: builtins.int
     @property
     def environments(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[server_pb2.EnvironmentDefinition]:
         """Environment definitions."""
@@ -573,6 +574,8 @@ class RegisterApplicationRequest(google.protobuf.message.Message):
     @property
     def files(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[global___File]:
         """Optional files to be included"""
+    app_code: builtins.str
+    """Source code of the app implementation"""
     def __init__(
         self,
         *,
@@ -588,9 +591,12 @@ class RegisterApplicationRequest(google.protobuf.message.Message):
         scale: builtins.bool | None = ...,
         private_logs: builtins.bool | None = ...,
         files: collections.abc.Iterable[global___File] | None = ...,
+        app_code: builtins.str | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing_extensions.Literal["_application_name", b"_application_name", "_auth_mode", b"_auth_mode", "_deployment_strategy", b"_deployment_strategy", "_machine_requirements", b"_machine_requirements", "_max_concurrency", b"_max_concurrency", "_metadata", b"_metadata", "_private_logs", b"_private_logs", "_scale", b"_scale", "_setup_func", b"_setup_func", "application_name", b"application_name", "auth_mode", b"auth_mode", "deployment_strategy", b"deployment_strategy", "function", b"function", "machine_requirements", b"machine_requirements", "max_concurrency", b"max_concurrency", "metadata", b"metadata", "private_logs", b"private_logs", "scale", b"scale", "setup_func", b"setup_func"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing_extensions.Literal["_application_name", b"_application_name", "_auth_mode", b"_auth_mode", "_deployment_strategy", b"_deployment_strategy", "_machine_requirements", b"_machine_requirements", "_max_concurrency", b"_max_concurrency", "_metadata", b"_metadata", "_private_logs", b"_private_logs", "_scale", b"_scale", "_setup_func", b"_setup_func", "application_name", b"application_name", "auth_mode", b"auth_mode", "deployment_strategy", b"deployment_strategy", "environments", b"environments", "files", b"files", "function", b"function", "machine_requirements", b"machine_requirements", "max_concurrency", b"max_concurrency", "metadata", b"metadata", "private_logs", b"private_logs", "scale", b"scale", "setup_func", b"setup_func"]) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["_app_code", b"_app_code", "_application_name", b"_application_name", "_auth_mode", b"_auth_mode", "_deployment_strategy", b"_deployment_strategy", "_machine_requirements", b"_machine_requirements", "_max_concurrency", b"_max_concurrency", "_metadata", b"_metadata", "_private_logs", b"_private_logs", "_scale", b"_scale", "_setup_func", b"_setup_func", "app_code", b"app_code", "application_name", b"application_name", "auth_mode", b"auth_mode", "deployment_strategy", b"deployment_strategy", "function", b"function", "machine_requirements", b"machine_requirements", "max_concurrency", b"max_concurrency", "metadata", b"metadata", "private_logs", b"private_logs", "scale", b"scale", "setup_func", b"setup_func"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["_app_code", b"_app_code", "_application_name", b"_application_name", "_auth_mode", b"_auth_mode", "_deployment_strategy", b"_deployment_strategy", "_machine_requirements", b"_machine_requirements", "_max_concurrency", b"_max_concurrency", "_metadata", b"_metadata", "_private_logs", b"_private_logs", "_scale", b"_scale", "_setup_func", b"_setup_func", "app_code", b"app_code", "application_name", b"application_name", "auth_mode", b"auth_mode", "deployment_strategy", b"deployment_strategy", "environments", b"environments", "files", b"files", "function", b"function", "machine_requirements", b"machine_requirements", "max_concurrency", b"max_concurrency", "metadata", b"metadata", "private_logs", b"private_logs", "scale", b"scale", "setup_func", b"setup_func"]) -> None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_app_code", b"_app_code"]) -> typing_extensions.Literal["app_code"] | None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_application_name", b"_application_name"]) -> typing_extensions.Literal["application_name"] | None: ...
     @typing.overload
