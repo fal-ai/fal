@@ -14,6 +14,7 @@ class LoadedFunction:
     endpoints: list[str]
     app_name: str | None
     app_auth: str | None
+    source_code: str | None
 
 
 def load_function_from(
@@ -57,6 +58,9 @@ def load_function_from(
 
     target = module[function_name]
 
+    with open(file_path) as f:
+        source_code = f.read()
+
     endpoints = ["/"]
     if isinstance(target, type) and issubclass(target, App):
         app_name = target.app_name
@@ -68,4 +72,6 @@ def load_function_from(
         raise FalServerlessError(
             f"Function '{function_name}' is not a fal.function or a fal.App"
         )
-    return LoadedFunction(target, endpoints, app_name=app_name, app_auth=app_auth)
+    return LoadedFunction(
+        target, endpoints, app_name=app_name, app_auth=app_auth, source_code=source_code
+    )
