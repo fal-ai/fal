@@ -235,7 +235,7 @@ message RegisterApplicationRequest {
     // Optional files to be included
     repeated File files = 12;
     // Source code of the app implementation
-    optional string app_code = 13;
+    optional string source_code = 13;
 }
 
 message RegisterApplicationResultType {
