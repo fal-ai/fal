@@ -62,6 +62,7 @@ dependencies = [
     "tomli>2,<3",
     "tomli-w>=1,<2",
     "fsspec",
+    "tblib<3.2.0",
 ]
 
 [project.optional-dependencies]
