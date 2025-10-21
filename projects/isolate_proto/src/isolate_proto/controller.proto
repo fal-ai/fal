@@ -234,6 +234,8 @@ message RegisterApplicationRequest {
     optional bool private_logs = 11;
     // Optional files to be included
     repeated File files = 12;
+    // Source code of the app implementation
+    optional string source_code = 13;
 }
 
 message RegisterApplicationResultType {
