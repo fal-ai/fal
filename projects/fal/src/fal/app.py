@@ -156,6 +156,7 @@ class AppClientError(FalServerlessException):
     status_code: int
     headers: dict[str, str] = field(default_factory=dict)
 
+
 class EndpointClient:
     def __init__(self, url, endpoint, signature, timeout: int | None = None):
         self.url = url
