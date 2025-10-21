@@ -397,6 +397,7 @@ message RunnerInfo {
 
 message KillRunnerRequest {
     string runner_id = 1;
+    bool force = 2;
 }
 
 message ListRunnersRequest {
