@@ -122,6 +122,7 @@ def _deploy_from_reference(
         options=isolated_function.options,
         application_name=app_name,
         application_auth_mode=app_auth,  # type: ignore
+        source_code=loaded.source_code,
         metadata=isolated_function.options.host.get("metadata", {}),
         deployment_strategy=strategy,
         scale=scale,
