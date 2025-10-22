@@ -1223,13 +1223,16 @@ class KillRunnerRequest(google.protobuf.message.Message):
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
     RUNNER_ID_FIELD_NUMBER: builtins.int
+    FORCE_FIELD_NUMBER: builtins.int
     runner_id: builtins.str
+    force: builtins.bool
     def __init__(
         self,
         *,
         runner_id: builtins.str = ...,
+        force: builtins.bool = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing_extensions.Literal["runner_id", b"runner_id"]) -> None: ...
+    def ClearField(self, field_name: typing_extensions.Literal["force", b"force", "runner_id", b"runner_id"]) -> None: ...
 
 global___KillRunnerRequest = KillRunnerRequest
 
