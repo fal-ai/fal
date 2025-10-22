@@ -885,7 +885,7 @@ class FalServerlessConnection:
         ]
 
     def kill_runner(self, runner_id: str, force: bool) -> None:
-        request = isolate_proto.KillRunnerRequest(runner_id=runner_id)
+        request = isolate_proto.KillRunnerRequest(runner_id=runner_id, force=force)
         self.stub.KillRunner(request)
 
     def list_runners(self, start_time: datetime | None = None) -> list[RunnerInfo]:
