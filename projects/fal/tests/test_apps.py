@@ -1004,7 +1004,11 @@ def test_field_exception_billing(test_exception_app: AppClient):
         assert not hasattr(response.headers, "x-fal-billable-units")
 
 
-def test_kill_runner(host: api.FalServerlessHost, test_sleep_app: str):
+def test_kill_runner_gracefully(host: api.FalServerlessHost, test_sleep_app: str):
+    pass
+
+
+def test_kill_runner_force(host: api.FalServerlessHost, test_sleep_app: str):
     handle = apps.submit(test_sleep_app, arguments={"wait_time": 10})
 
     while True:
@@ -1018,7 +1022,7 @@ def test_kill_runner(host: api.FalServerlessHost, test_sleep_app: str):
 
     with host._connection as client:
         with pytest.raises(Exception) as e:
-            client.kill_runner("1234567890")
+            client.kill_runner("1234567890", force=True)
 
         assert "not found" in str(e).lower()
 
@@ -1026,7 +1030,7 @@ def test_kill_runner(host: api.FalServerlessHost, test_sleep_app: str):
         runners = client.list_alias_runners(app_alias)
         assert len(runners) == 1
 
-        client.kill_runner(runners[0].runner_id)
+        client.kill_runner(runners[0].runner_id, force=True)
 
         runners = client.list_alias_runners(app_alias)
         num_runners = len([runner for runner in runners if runner.state == "running"])

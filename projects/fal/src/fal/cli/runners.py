@@ -100,7 +100,7 @@ def _kill(args):
     with FalServerlessClient(
         client._grpc_host, client._credentials
     ).connect() as connection:
-        connection.kill_runner(args.id)
+        connection.kill_runner(args.id, args.force)
 
 
 def _list_json(args, runners: list[RunnerInfo]):
@@ -172,6 +172,12 @@ def _add_kill_parser(subparsers, parents):
     parser.add_argument(
         "id",
         help="Runner ID.",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Kill the runner immediately.",
+        default=False,
     )
     parser.set_defaults(func=_kill)
 
