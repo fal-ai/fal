@@ -4,7 +4,7 @@ import os
 from dataclasses import dataclass
 from typing import List, Optional
 
-from fal.api import FAL_SERVERLESS_DEFAULT_URL
+from fal.api import FAL_SERVERLESS_DEFAULT_URL, FalServerlessHost
 from fal.sdk import (
     AliasInfo,
     Credentials,
@@ -114,3 +114,10 @@ class SyncServerlessClient:
                     os.environ["FAL_PROFILE"] = prev
 
         return get_default_credentials(team=self.team)
+
+    def _create_host(self, *, local_file_path: str = "") -> FalServerlessHost:
+        return FalServerlessHost(
+            self._grpc_host,
+            local_file_path=local_file_path,
+            credentials=self._credentials,
+        )
