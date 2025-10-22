@@ -1219,20 +1219,44 @@ class RunnerInfo(google.protobuf.message.Message):
 global___RunnerInfo = RunnerInfo
 
 @typing_extensions.final
-class KillRunnerRequest(google.protobuf.message.Message):
+class StopRunnerRequest(google.protobuf.message.Message):
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
     RUNNER_ID_FIELD_NUMBER: builtins.int
-    FORCE_FIELD_NUMBER: builtins.int
     runner_id: builtins.str
-    force: builtins.bool
     def __init__(
         self,
         *,
         runner_id: builtins.str = ...,
-        force: builtins.bool = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing_extensions.Literal["force", b"force", "runner_id", b"runner_id"]) -> None: ...
+    def ClearField(self, field_name: typing_extensions.Literal["runner_id", b"runner_id"]) -> None: ...
+
+global___StopRunnerRequest = StopRunnerRequest
+
+@typing_extensions.final
+class StopRunnerResponse(google.protobuf.message.Message):
+    """Empty. For future use."""
+
+    DESCRIPTOR: google.protobuf.descriptor.Descriptor
+
+    def __init__(
+        self,
+    ) -> None: ...
+
+global___StopRunnerResponse = StopRunnerResponse
+
+@typing_extensions.final
+class KillRunnerRequest(google.protobuf.message.Message):
+    DESCRIPTOR: google.protobuf.descriptor.Descriptor
+
+    RUNNER_ID_FIELD_NUMBER: builtins.int
+    runner_id: builtins.str
+    def __init__(
+        self,
+        *,
+        runner_id: builtins.str = ...,
+    ) -> None: ...
+    def ClearField(self, field_name: typing_extensions.Literal["runner_id", b"runner_id"]) -> None: ...
 
 global___KillRunnerRequest = KillRunnerRequest
 
