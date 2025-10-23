@@ -43,6 +43,8 @@ service IsolateController {
     rpc ListSecrets (ListSecretsRequest) returns (ListSecretsResponse) {}
     // List alias runners in detail
     rpc ListAliasRunners (ListAliasRunnersRequest) returns (ListAliasRunnersResponse) {}
+    // Stop a runner
+    rpc StopRunner (StopRunnerRequest) returns (StopRunnerResponse) {}
     // Kill a runner
     rpc KillRunner (KillRunnerRequest) returns (KillRunnerResponse) {}
     // List all runners
@@ -395,9 +397,17 @@ message RunnerInfo {
     optional State state = 8;
 }
 
+message StopRunnerRequest {
+    string runner_id = 1;
+}
+
+message StopRunnerResponse {
+    // Empty. For future use.
+}
+
+
 message KillRunnerRequest {
     string runner_id = 1;
-    bool force = 2;
 }
 
 message ListRunnersRequest {

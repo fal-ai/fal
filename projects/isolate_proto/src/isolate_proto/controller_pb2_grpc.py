@@ -119,6 +119,11 @@ class IsolateControllerStub(object):
                 request_serializer=controller__pb2.ListAliasRunnersRequest.SerializeToString,
                 response_deserializer=controller__pb2.ListAliasRunnersResponse.FromString,
                 _registered_method=True)
+        self.StopRunner = channel.unary_unary(
+                '/controller.IsolateController/StopRunner',
+                request_serializer=controller__pb2.StopRunnerRequest.SerializeToString,
+                response_deserializer=controller__pb2.StopRunnerResponse.FromString,
+                _registered_method=True)
         self.KillRunner = channel.unary_unary(
                 '/controller.IsolateController/KillRunner',
                 request_serializer=controller__pb2.KillRunnerRequest.SerializeToString,
@@ -249,6 +254,13 @@ class IsolateControllerServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def StopRunner(self, request, context):
+        """Stop a runner
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def KillRunner(self, request, context):
         """Kill a runner
         """
@@ -345,6 +357,11 @@ def add_IsolateControllerServicer_to_server(servicer, server):
                     servicer.ListAliasRunners,
                     request_deserializer=controller__pb2.ListAliasRunnersRequest.FromString,
                     response_serializer=controller__pb2.ListAliasRunnersResponse.SerializeToString,
+            ),
+            'StopRunner': grpc.unary_unary_rpc_method_handler(
+                    servicer.StopRunner,
+                    request_deserializer=controller__pb2.StopRunnerRequest.FromString,
+                    response_serializer=controller__pb2.StopRunnerResponse.SerializeToString,
             ),
             'KillRunner': grpc.unary_unary_rpc_method_handler(
                     servicer.KillRunner,
@@ -789,6 +806,33 @@ class IsolateController(object):
             '/controller.IsolateController/ListAliasRunners',
             controller__pb2.ListAliasRunnersRequest.SerializeToString,
             controller__pb2.ListAliasRunnersResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def StopRunner(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/controller.IsolateController/StopRunner',
+            controller__pb2.StopRunnerRequest.SerializeToString,
+            controller__pb2.StopRunnerResponse.FromString,
             options,
             channel_credentials,
             insecure,

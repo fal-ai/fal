@@ -14,9 +14,6 @@ import json
 from collections import namedtuple
 from typing import Tuple, Union, cast
 
-from fal.cli._utils import get_app_data_from_toml, is_app_name
-from fal.cli.parser import RefAction
-
 User = namedtuple("User", ["user_id", "username"])
 
 
@@ -87,7 +84,7 @@ def _deploy_from_reference(
     strategy: Optional[DeploymentStrategyLiteral],
     scale: bool,
 ) -> DeploymentResult:
-    from fal.api import FalServerlessError, FalServerlessHost
+    from fal.api import FalServerlessError
     from fal.utils import load_function_from
 
     file_path, func_name = app_ref
@@ -106,7 +103,7 @@ def _deploy_from_reference(
         file_path = str(file_path)  # type: ignore
 
     user = _get_user()
-    host = FalServerlessHost(client._grpc_host, local_file_path=str(file_path))
+    host = client._create_host(local_file_path=str(file_path))
     loaded = load_function_from(
         host,
         file_path,  # type: ignore
@@ -172,6 +169,9 @@ def deploy(
     strategy: DeploymentStrategyLiteral = "rolling",
     reset_scale: bool = False,
 ) -> DeploymentResult:
+    from fal.cli._utils import get_app_data_from_toml, is_app_name
+    from fal.cli.parser import RefAction
+
     if isinstance(app_ref, tuple):
         app_ref_tuple = app_ref
     elif app_ref:

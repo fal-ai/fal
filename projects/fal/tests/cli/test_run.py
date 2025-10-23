@@ -45,11 +45,11 @@ def mock_args(host, func_ref: Tuple[str, Optional[str]]):
 
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
 @patch("fal.cli._utils.parse_pyproject_toml")
-@patch("fal.api.FalServerlessHost")
+@patch("fal.api.client.SyncServerlessClient._create_host")
 @patch("fal.utils.load_function_from")
 def test_run_with_toml_success(
     mock_load_function_from,
-    mock_fal_serverless_host,
+    mock_create_host,
     mock_parse_toml,
     mock_find_toml,
     mock_parse_pyproject_toml,
@@ -57,9 +57,9 @@ def test_run_with_toml_success(
     mock_parse_toml.return_value = mock_parse_pyproject_toml
 
     host = mocked_fal_serverless_host("my-host")
-    mock_fal_serverless_host.return_value = host
+    mock_create_host.return_value = host
 
-    args = mock_args(func_ref=("my-app", None), host=host)
+    args = mock_args(func_ref=("my-app", None), host="my-host")
 
     _run(args)
 

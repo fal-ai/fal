@@ -5,7 +5,7 @@ from .parser import FalClientParser, RefAction
 
 
 def _run(args):
-    from fal.api import FalServerlessHost
+    from fal.api.client import SyncServerlessClient
     from fal.utils import load_function_from
 
     if is_app_name(args.func_ref):
@@ -17,7 +17,8 @@ def _run(args):
         # Turn relative path into absolute path for files
         file_path = str(Path(file_path).absolute())
 
-    host = FalServerlessHost(args.host, local_file_path=file_path)
+    client = SyncServerlessClient(host=args.host, team=args.team)
+    host = client._create_host(local_file_path=file_path)
 
     loaded = load_function_from(host, file_path, func_name)
 
