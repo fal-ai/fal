@@ -31,6 +31,7 @@ from fal.exceptions import (
 )
 from fal.exceptions._cuda import _CUDA_OOM_MESSAGE, _CUDA_OOM_STATUS_CODE
 from fal.rest_client import REST_CLIENT
+from fal.sdk import RunnerState
 from fal.toolkit.utils.endpoint import cancel_on_disconnect
 from fal.workflows import Workflow
 
@@ -1004,6 +1005,68 @@ def test_field_exception_billing(test_exception_app: AppClient):
         assert not hasattr(response.headers, "x-fal-billable-units")
 
 
+def test_stop_runner(host: api.FalServerlessHost, test_sleep_app: str):
+    def submit_and_wait_for_runner():
+        handle = apps.submit(test_sleep_app, arguments={"wait_time": 1})
+
+        while True:
+            status = handle.status()
+            if isinstance(status, apps.InProgress):
+                break
+            elif isinstance(status, apps.Queued):
+                time.sleep(1)
+            else:
+                raise Exception(f"Failed to start the app: {status}")
+
+        return handle
+
+    # Submit a runner and wait for it to be idle
+    submit_and_wait_for_runner()
+
+    with host._connection as client:
+        timeout = 10
+        start_time = time.time()
+        while True:
+            _, _, app_alias = test_sleep_app.partition("/")
+            runners = client.list_alias_runners(app_alias)
+            assert len(runners) == 1
+
+            if runners[0].in_flight_requests == 0:
+                break
+            elif time.time() - start_time > timeout:
+                raise Exception(f"Timeout waiting for runner to be idle: {runners[0]}")
+            time.sleep(1)
+
+    # Because the runner is not requested to be stopped, it should be reused
+    submit_and_wait_for_runner()
+
+    with host._connection as client:
+        _, _, app_alias = test_sleep_app.partition("/")
+        runners = client.list_alias_runners(app_alias)
+        assert len(runners) == 1
+
+    # Request to stop the runner
+    with host._connection as client:
+        with pytest.raises(Exception) as e:
+            client.stop_runner("1234567890")
+
+        assert "not found" in str(e).lower()
+
+        _, _, app_alias = test_sleep_app.partition("/")
+        runners = client.list_alias_runners(app_alias)
+        assert len(runners) == 1
+
+        client.stop_runner(runners[0].runner_id)
+
+    # Because the runner is requested to be stopped,
+    # it should not be reused and a new runner should be created
+    submit_and_wait_for_runner()
+
+    with host._connection as client:
+        runners = client.list_alias_runners(app_alias)
+        assert len(runners) == 2
+
+
 def test_kill_runner(host: api.FalServerlessHost, test_sleep_app: str):
     handle = apps.submit(test_sleep_app, arguments={"wait_time": 10})
 
@@ -1029,7 +1092,9 @@ def test_kill_runner(host: api.FalServerlessHost, test_sleep_app: str):
         client.kill_runner(runners[0].runner_id)
 
         runners = client.list_alias_runners(app_alias)
-        num_runners = len([runner for runner in runners if runner.state == "running"])
+        num_runners = len(
+            [runner for runner in runners if runner.state == RunnerState.RUNNING]
+        )
         assert num_runners == 0
 
 
