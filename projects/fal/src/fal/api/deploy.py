@@ -14,9 +14,6 @@ import json
 from collections import namedtuple
 from typing import Tuple, Union, cast
 
-from fal.cli._utils import get_app_data_from_toml, is_app_name
-from fal.cli.parser import RefAction
-
 User = namedtuple("User", ["user_id", "username"])
 
 
@@ -172,6 +169,9 @@ def deploy(
     strategy: DeploymentStrategyLiteral = "rolling",
     reset_scale: bool = False,
 ) -> DeploymentResult:
+    from fal.cli._utils import get_app_data_from_toml, is_app_name
+    from fal.cli.parser import RefAction
+
     if isinstance(app_ref, tuple):
         app_ref_tuple = app_ref
     elif app_ref:
