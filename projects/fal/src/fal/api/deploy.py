@@ -87,7 +87,7 @@ def _deploy_from_reference(
     strategy: Optional[DeploymentStrategyLiteral],
     scale: bool,
 ) -> DeploymentResult:
-    from fal.api import FalServerlessError, FalServerlessHost
+    from fal.api import FalServerlessError
     from fal.utils import load_function_from
 
     file_path, func_name = app_ref
@@ -106,7 +106,7 @@ def _deploy_from_reference(
         file_path = str(file_path)  # type: ignore
 
     user = _get_user()
-    host = FalServerlessHost(client._grpc_host, local_file_path=str(file_path))
+    host = client._create_host(local_file_path=str(file_path))
     loaded = load_function_from(
         host,
         file_path,  # type: ignore
