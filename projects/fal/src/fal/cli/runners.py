@@ -14,7 +14,7 @@ from structlog.typing import EventDict
 
 from fal.api.client import SyncServerlessClient
 from fal.rest_client import REST_CLIENT
-from fal.sdk import FalServerlessClient, RunnerInfo, RunnerState
+from fal.sdk import RunnerInfo, RunnerState
 
 from .parser import FalClientParser, SinceAction, get_output_parser
 
@@ -95,12 +95,14 @@ def runners_requests_table(runners: list[RunnerInfo]):
     return table
 
 
+def _stop(args):
+    client = SyncServerlessClient(host=args.host, team=args.team)
+    client.runners.stop(args.id)
+
+
 def _kill(args):
     client = SyncServerlessClient(host=args.host, team=args.team)
-    with FalServerlessClient(
-        client._grpc_host, client._credentials
-    ).connect() as connection:
-        connection.kill_runner(args.id)
+    client.runners.kill(args.id)
 
 
 def _list_json(args, runners: list[RunnerInfo]):
@@ -159,6 +161,21 @@ def _list(args):
         _list_json(args, runners)
     else:
         raise AssertionError(f"Invalid output format: {args.output}")
+
+
+def _add_stop_parser(subparsers, parents):
+    stop_help = "Stop a runner gracefully."
+    parser = subparsers.add_parser(
+        "stop",
+        description=stop_help,
+        help=stop_help,
+        parents=parents,
+    )
+    parser.add_argument(
+        "id",
+        help="Runner ID.",
+    )
+    parser.set_defaults(func=_stop)
 
 
 def _add_kill_parser(subparsers, parents):
@@ -563,6 +580,7 @@ def add_parser(main_subparsers, parents):
         parser_class=FalClientParser,
     )
 
+    _add_stop_parser(subparsers, parents)
     _add_kill_parser(subparsers, parents)
     _add_list_parser(subparsers, parents)
     _add_logs_parser(subparsers, parents)
