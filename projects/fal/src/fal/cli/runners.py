@@ -14,7 +14,7 @@ from structlog.typing import EventDict
 
 from fal.api.client import SyncServerlessClient
 from fal.rest_client import REST_CLIENT
-from fal.sdk import FalServerlessClient, RunnerInfo, RunnerState
+from fal.sdk import RunnerInfo, RunnerState
 
 from .parser import FalClientParser, SinceAction, get_output_parser
 
@@ -97,18 +97,12 @@ def runners_requests_table(runners: list[RunnerInfo]):
 
 def _stop(args):
     client = SyncServerlessClient(host=args.host, team=args.team)
-    with FalServerlessClient(
-        client._grpc_host, client._credentials
-    ).connect() as connection:
-        connection.stop_runner(args.id)
+    client.runners.stop(args.id)
 
 
 def _kill(args):
     client = SyncServerlessClient(host=args.host, team=args.team)
-    with FalServerlessClient(
-        client._grpc_host, client._credentials
-    ).connect() as connection:
-        connection.kill_runner(args.id)
+    client.runners.kill(args.id)
 
 
 def _list_json(args, runners: list[RunnerInfo]):
