@@ -95,15 +95,20 @@ def runners_requests_table(runners: list[RunnerInfo]):
     return table
 
 
+def _stop(args):
+    client = SyncServerlessClient(host=args.host, team=args.team)
+    with FalServerlessClient(
+        client._grpc_host, client._credentials
+    ).connect() as connection:
+        connection.stop_runner(args.id)
+
+
 def _kill(args):
     client = SyncServerlessClient(host=args.host, team=args.team)
     with FalServerlessClient(
         client._grpc_host, client._credentials
     ).connect() as connection:
-        if args.force:
-            connection.kill_runner(args.id)
-        else:
-            connection.stop_runner(args.id)
+        connection.kill_runner(args.id)
 
 
 def _list_json(args, runners: list[RunnerInfo]):
@@ -164,6 +169,21 @@ def _list(args):
         raise AssertionError(f"Invalid output format: {args.output}")
 
 
+def _add_stop_parser(subparsers, parents):
+    stop_help = "Stop a runner gracefully."
+    parser = subparsers.add_parser(
+        "stop",
+        description=stop_help,
+        help=stop_help,
+        parents=parents,
+    )
+    parser.add_argument(
+        "id",
+        help="Runner ID.",
+    )
+    parser.set_defaults(func=_stop)
+
+
 def _add_kill_parser(subparsers, parents):
     kill_help = "Kill a runner."
     parser = subparsers.add_parser(
@@ -175,12 +195,6 @@ def _add_kill_parser(subparsers, parents):
     parser.add_argument(
         "id",
         help="Runner ID.",
-    )
-    parser.add_argument(
-        "--force",
-        action="store_true",
-        help="Kill the runner immediately.",
-        default=False,
     )
     parser.set_defaults(func=_kill)
 
@@ -572,6 +586,7 @@ def add_parser(main_subparsers, parents):
         parser_class=FalClientParser,
     )
 
+    _add_stop_parser(subparsers, parents)
     _add_kill_parser(subparsers, parents)
     _add_list_parser(subparsers, parents)
     _add_logs_parser(subparsers, parents)
