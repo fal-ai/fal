@@ -66,6 +66,12 @@ class _RunnersNamespace:
     def list(self, *, since=None) -> List[RunnerInfo]:
         return runners_api.list_runners(self.client, since=since)
 
+    def stop(self, runner_id: str) -> None:
+        return runners_api.stop_runner(self.client, runner_id)
+
+    def kill(self, runner_id: str) -> None:
+        return runners_api.kill_runner(self.client, runner_id)
+
 
 @dataclass
 class SyncServerlessClient:
