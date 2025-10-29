@@ -1068,6 +1068,7 @@ def test_stop_runner(host: api.FalServerlessHost, test_sleep_app: str):
 
 
 def test_kill_runner(host: api.FalServerlessHost, test_sleep_app: str):
+    # Kill all the replicas of the app that is already running
     handle = apps.submit(test_sleep_app, arguments={"wait_time": 10})
 
     while True:
@@ -1087,7 +1088,9 @@ def test_kill_runner(host: api.FalServerlessHost, test_sleep_app: str):
 
         _, _, app_alias = test_sleep_app.partition("/")
         runners = client.list_alias_runners(app_alias)
-        assert len(runners) == 1
+        existing_runners = len(
+            [runner for runner in runners if runner.state == RunnerState.RUNNING]
+        )
 
         client.kill_runner(runners[0].runner_id)
 
@@ -1095,7 +1098,7 @@ def test_kill_runner(host: api.FalServerlessHost, test_sleep_app: str):
         num_runners = len(
             [runner for runner in runners if runner.state == RunnerState.RUNNING]
         )
-        assert num_runners == 0
+        assert num_runners == existing_runners - 1
 
 
 def test_shell_runner(host: api.FalServerlessHost, test_sleep_app: str):
