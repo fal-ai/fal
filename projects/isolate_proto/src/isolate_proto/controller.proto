@@ -49,6 +49,8 @@ service IsolateController {
     rpc KillRunner (KillRunnerRequest) returns (KillRunnerResponse) {}
     // List all runners
     rpc ListRunners (ListRunnersRequest) returns (ListRunnersResponse) {}
+    // Open interactive shell in a runner
+    rpc ShellRunner (stream ShellRunnerInput) returns (stream ShellRunnerOutput) {}
 }
 
 message HostedMap {
@@ -421,4 +423,22 @@ message ListRunnersResponse {
 
 message KillRunnerResponse {
     // Empty. For future use.
+}
+
+message TerminalSize {
+    int32 height = 1;
+    int32 width = 2;
+}
+
+message ShellRunnerInput {
+    string runner_id = 1;
+    bytes data = 2;
+    bool close = 3;
+    optional TerminalSize tty_size = 4;
+}
+
+message ShellRunnerOutput {
+    bytes data = 1;
+    bool close = 2;
+    optional int32 exit_code = 3;
 }

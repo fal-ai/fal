@@ -1311,3 +1311,71 @@ class KillRunnerResponse(google.protobuf.message.Message):
     ) -> None: ...
 
 global___KillRunnerResponse = KillRunnerResponse
+
+@typing_extensions.final
+class TerminalSize(google.protobuf.message.Message):
+    DESCRIPTOR: google.protobuf.descriptor.Descriptor
+
+    HEIGHT_FIELD_NUMBER: builtins.int
+    WIDTH_FIELD_NUMBER: builtins.int
+    height: builtins.int
+    width: builtins.int
+    def __init__(
+        self,
+        *,
+        height: builtins.int = ...,
+        width: builtins.int = ...,
+    ) -> None: ...
+    def ClearField(self, field_name: typing_extensions.Literal["height", b"height", "width", b"width"]) -> None: ...
+
+global___TerminalSize = TerminalSize
+
+@typing_extensions.final
+class ShellRunnerInput(google.protobuf.message.Message):
+    DESCRIPTOR: google.protobuf.descriptor.Descriptor
+
+    RUNNER_ID_FIELD_NUMBER: builtins.int
+    DATA_FIELD_NUMBER: builtins.int
+    CLOSE_FIELD_NUMBER: builtins.int
+    TTY_SIZE_FIELD_NUMBER: builtins.int
+    runner_id: builtins.str
+    data: builtins.bytes
+    close: builtins.bool
+    @property
+    def tty_size(self) -> global___TerminalSize: ...
+    def __init__(
+        self,
+        *,
+        runner_id: builtins.str = ...,
+        data: builtins.bytes = ...,
+        close: builtins.bool = ...,
+        tty_size: global___TerminalSize | None = ...,
+    ) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["_tty_size", b"_tty_size", "tty_size", b"tty_size"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["_tty_size", b"_tty_size", "close", b"close", "data", b"data", "runner_id", b"runner_id", "tty_size", b"tty_size"]) -> None: ...
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_tty_size", b"_tty_size"]) -> typing_extensions.Literal["tty_size"] | None: ...
+
+global___ShellRunnerInput = ShellRunnerInput
+
+@typing_extensions.final
+class ShellRunnerOutput(google.protobuf.message.Message):
+    DESCRIPTOR: google.protobuf.descriptor.Descriptor
+
+    DATA_FIELD_NUMBER: builtins.int
+    CLOSE_FIELD_NUMBER: builtins.int
+    EXIT_CODE_FIELD_NUMBER: builtins.int
+    data: builtins.bytes
+    close: builtins.bool
+    exit_code: builtins.int
+    def __init__(
+        self,
+        *,
+        data: builtins.bytes = ...,
+        close: builtins.bool = ...,
+        exit_code: builtins.int | None = ...,
+    ) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["_exit_code", b"_exit_code", "exit_code", b"exit_code"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["_exit_code", b"_exit_code", "close", b"close", "data", b"data", "exit_code", b"exit_code"]) -> None: ...
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_exit_code", b"_exit_code"]) -> typing_extensions.Literal["exit_code"] | None: ...
+
+global___ShellRunnerOutput = ShellRunnerOutput
