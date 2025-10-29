@@ -1,12 +1,23 @@
 from __future__ import annotations
 
+import argparse
+import fcntl
 import json
+import os
+import signal
+import struct
+import sys
+import termios
+import tty
 from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from http import HTTPStatus
+from queue import Empty, Queue
+from threading import Thread
 from typing import Iterator, List
 
+import grpc
 import httpx
 from httpx_sse import connect_sse
 from rich.console import Console
@@ -93,6 +104,100 @@ def runners_requests_table(runners: list[RunnerInfo]):
             )
 
     return table
+
+
+def _get_tty_size():
+    """Get current terminal dimensions."""
+    try:
+        h, w = struct.unpack("HH", fcntl.ioctl(0, termios.TIOCGWINSZ, b"\0" * 4))[:2]
+        return h, w
+    except (OSError, ValueError):
+        return 24, 80  # Fallback to standard size
+
+
+def _shell(args):
+    """Execute interactive shell in runner."""
+    import isolate_proto
+
+    client = SyncServerlessClient(host=args.host, team=args.team)
+    stub = client._create_host()._connection.stub
+    runner_id = args.id
+
+    # Setup terminal for raw mode
+    fd = sys.stdin.fileno()
+    old_settings = termios.tcgetattr(fd)
+    tty.setraw(fd)
+
+    # Message queue for stdin data and resize events
+    messages = Queue()  # type: ignore
+    stop_flag = False
+
+    def handle_resize(*_):
+        messages.put(("resize", None))
+
+    signal.signal(signal.SIGWINCH, handle_resize)
+
+    def read_stdin():
+        """Read stdin in a background thread."""
+        nonlocal stop_flag
+        while not stop_flag:
+            try:
+                data = os.read(fd, 4096)
+                if not data:
+                    break
+                messages.put(("data", data))
+            except OSError:
+                break
+
+    reader = Thread(target=read_stdin, daemon=True)
+    reader.start()
+
+    def stream_inputs():
+        """Generate input stream for gRPC."""
+        # Send initial message with runner_id and terminal size
+        msg = isolate_proto.ShellRunnerInput(runner_id=runner_id)
+        h, w = _get_tty_size()
+        msg.tty_size.height = h
+        msg.tty_size.width = w
+        yield msg
+
+        # Stream stdin data and resize events
+        while True:
+            try:
+                msg_type, data = messages.get(timeout=0.1)
+            except Empty:
+                continue
+
+            if msg_type == "data":
+                yield isolate_proto.ShellRunnerInput(data=data)
+            elif msg_type == "resize":
+                msg = isolate_proto.ShellRunnerInput()
+                h, w = _get_tty_size()
+                msg.tty_size.height = h
+                msg.tty_size.width = w
+                yield msg
+
+    exit_code = 1
+    try:
+        for output in stub.ShellRunner(stream_inputs()):
+            if output.HasField("exit_code"):
+                exit_code = output.exit_code
+                break
+            if output.data:
+                sys.stdout.buffer.write(output.data)
+                sys.stdout.buffer.flush()
+            if output.close:
+                break
+        exit_code = exit_code or 0
+    except grpc.RpcError as exc:
+        args.console.print(f"\n[red]Connection error:[/] {exc.details()}")
+    except Exception as exc:
+        args.console.print(f"\n[red]Error:[/] {exc}")
+    finally:
+        stop_flag = True
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+
+    return exit_code
 
 
 def _stop(args):
@@ -563,6 +668,17 @@ def _add_logs_parser(subparsers, parents):
     parser.set_defaults(func=_logs)
 
 
+def _add_shell_parser(subparsers, parents):
+    """Add hidden shell command parser."""
+    parser = subparsers.add_parser(
+        "shell",
+        help=argparse.SUPPRESS,
+        parents=parents,
+    )
+    parser.add_argument("id", help="Runner ID.")
+    parser.set_defaults(func=_shell)
+
+
 def add_parser(main_subparsers, parents):
     runners_help = "Manage fal runners."
     parser = main_subparsers.add_parser(
@@ -584,3 +700,4 @@ def add_parser(main_subparsers, parents):
     _add_kill_parser(subparsers, parents)
     _add_list_parser(subparsers, parents)
     _add_logs_parser(subparsers, parents)
+    _add_shell_parser(subparsers, parents)

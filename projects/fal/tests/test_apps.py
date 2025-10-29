@@ -1098,6 +1098,41 @@ def test_kill_runner(host: api.FalServerlessHost, test_sleep_app: str):
         assert num_runners == 0
 
 
+def test_shell_runner(host: api.FalServerlessHost, test_sleep_app: str):
+    handle = apps.submit(test_sleep_app, arguments={"wait_time": 30})
+
+    while True:
+        status = handle.status()
+        if isinstance(status, apps.InProgress):
+            break
+        elif isinstance(status, apps.Queued):
+            time.sleep(1)
+        else:
+            raise Exception(f"Failed to start the app: {status}")
+
+    with host._connection as client:
+        _, _, app_alias = test_sleep_app.partition("/")
+        runners = client.list_alias_runners(app_alias)
+        assert len(runners) == 1
+        runner_id = runners[0].runner_id
+
+        proc = subprocess.Popen(
+            ["python", "-m", "fal", "runners", "shell", runner_id],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+
+        try:
+            commands = b"echo 'a' > t.txt\ncat t.txt\nexit\n"
+            stdout, stderr = proc.communicate(input=commands, timeout=10)
+            assert b"a" in stdout, f"Expected 'a' in output, got: {stdout.decode()}"
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait()
+
+
 def test_container_app_client(test_container_app: str):
     response = apps.run(test_container_app, arguments={"lhs": 1, "rhs": 2})
     assert response["result"] == 3
