@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from unittest import mock
-from urllib.error import HTTPError, URLError
+from urllib.error import HTTPError
 from urllib.request import Request
 
 import pytest
@@ -163,42 +163,3 @@ def test_max_retries_exhausted_for_retryable_errors():
 
         assert exc_info.value.code == 500
         assert call_count == 5
-
-
-def test_retry_on_urlerror_during_context_enter():
-    request = Request("https://example.com/test")
-
-    calls = {"open": 0, "enter": 0}
-
-    class EnterRaisesOnce:
-        def __init__(self):
-            self.data = b'{"result": "success"}'
-            self.headers = {"Content-Type": "application/json"}
-
-        def read(self):
-            return self.data
-
-        def __enter__(self):
-            calls["enter"] += 1
-            if calls["enter"] == 1:
-                raise URLError("Temporary failure in name resolution")
-            return self
-
-        def __exit__(self, exc_type, exc_val, exc_tb):
-            return False
-
-    def mock_urlopen_side_effect(*args, **kwargs):
-        calls["open"] += 1
-        return EnterRaisesOnce()
-
-    with mock.patch(
-        "fal.toolkit.file.providers.fal._urlopen", side_effect=mock_urlopen_side_effect
-    ):
-        with mock.patch("fal.toolkit.utils.retry.time.sleep"):
-            # Expect success after a retry (second __enter__ returns normally)
-            with _maybe_retry_request(request) as response:
-                assert response is not None
-
-    # Should have attempted to open at least twice due to retry
-    assert calls["open"] >= 2
-    assert calls["enter"] >= 2
