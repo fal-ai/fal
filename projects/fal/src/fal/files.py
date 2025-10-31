@@ -224,6 +224,7 @@ class FalFileSystem(AbstractFileSystem):
             "POST",
             f"/files/file/url/{abs_rpath}",
             json={"url": url},
+            timeout=10 * 60,  # 10 minutes in seconds
         )
         self.dircache.clear()
 
