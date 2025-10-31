@@ -1,12 +1,12 @@
-from ._utils import get_client
+from fal.api.client import SyncServerlessClient
+
 from .parser import DictAction, FalClientParser
 
 
 def _set(args):
-    client = get_client(args.host, args.team)
-    with client.connect() as connection:
-        for name, value in args.secrets.items():
-            connection.set_secret(name, value)
+    client = SyncServerlessClient(host=args.host, team=args.team)
+    for name, value in args.secrets.items():
+        client.secrets.set(name, value)
 
 
 def _add_set_parser(subparsers, parents):
@@ -33,32 +33,31 @@ def _add_set_parser(subparsers, parents):
 def _list(args):
     import json
 
-    client = get_client(args.host, args.team)
-    with client.connect() as connection:
-        secrets = list(connection.list_secrets())
+    client = SyncServerlessClient(host=args.host, team=args.team)
+    secrets = client.secrets.list()
 
-        if args.output == "json":
-            json_secrets = [
-                {
-                    "name": secret.name,
-                    "created_at": str(secret.created_at),
-                }
-                for secret in secrets
-            ]
-            args.console.print(json.dumps({"secrets": json_secrets}))
-        elif args.output == "pretty":
-            from rich.table import Table
+    if args.output == "json":
+        json_secrets = [
+            {
+                "name": secret.name,
+                "created_at": str(secret.created_at),
+            }
+            for secret in secrets
+        ]
+        args.console.print(json.dumps({"secrets": json_secrets}))
+    elif args.output == "pretty":
+        from rich.table import Table
 
-            table = Table()
-            table.add_column("Secret Name")
-            table.add_column("Created At")
+        table = Table()
+        table.add_column("Secret Name")
+        table.add_column("Created At")
 
-            for secret in secrets:
-                table.add_row(secret.name, str(secret.created_at))
+        for secret in secrets:
+            table.add_row(secret.name, str(secret.created_at))
 
-            args.console.print(table)
-        else:
-            raise AssertionError(f"Invalid output format: {args.output}")
+        args.console.print(table)
+    else:
+        raise AssertionError(f"Invalid output format: {args.output}")
 
 
 def _add_list_parser(subparsers, parents):
@@ -75,9 +74,8 @@ def _add_list_parser(subparsers, parents):
 
 
 def _unset(args):
-    client = get_client(args.host, args.team)
-    with client.connect() as connection:
-        connection.delete_secret(args.secret)
+    client = SyncServerlessClient(host=args.host, team=args.team)
+    client.secrets.unset(args.secret)
 
 
 def _add_unset_parser(subparsers, parents):
