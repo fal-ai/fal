@@ -56,21 +56,44 @@ def _should_retry(exc: Exception) -> bool:
     return False
 
 
+class _RetryingRequestContext:
+    def __init__(self, request: Request, kwargs: dict[str, Any]):
+        self.request = request
+        self.kwargs = kwargs
+        self._cm: Any | None = None
+        self._response: addinfourl | None = None
+
+    def __enter__(self) -> addinfourl:
+        def _enter_once() -> addinfourl:
+            # Obtain the original context manager and explicitly enter it
+            self._cm = _urlopen(self.request, **self.kwargs)
+            return self._cm.__enter__()
+
+        _enter_with_retry = retry(
+            max_retries=MAX_ATTEMPTS,
+            base_delay=BASE_DELAY,
+            max_delay=MAX_DELAY,
+            backoff_type="exponential",
+            jitter=True,
+            should_retry=_should_retry,
+        )(_enter_once)
+
+        self._response = _enter_with_retry()
+        assert self._response is not None
+        return self._response
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
+        if self._cm is not None:
+            return self._cm.__exit__(exc_type, exc_val, exc_tb)
+        return False
+
+
 @contextmanager
 def _maybe_retry_request(
     request: Request,
     **kwargs: Any,
 ) -> Generator[addinfourl, None, None]:
-    _urlopen_with_retry = retry(
-        max_retries=MAX_ATTEMPTS,
-        base_delay=BASE_DELAY,
-        max_delay=MAX_DELAY,
-        backoff_type="exponential",
-        jitter=True,
-        should_retry=_should_retry,
-    )(_urlopen)
-
-    with _urlopen_with_retry(request, **kwargs) as response:
+    with _RetryingRequestContext(request, kwargs) as response:
         yield response
 
 
