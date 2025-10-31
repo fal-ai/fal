@@ -33,7 +33,7 @@ class MockResponse:
 def test_successful_request_no_retry():
     request = Request("https://example.com/test")
 
-    with mock.patch("fal.toolkit.file.providers.fal._urlopen") as mock_urlopen:
+    with mock.patch("fal.toolkit.file.providers.fal.urlopen") as mock_urlopen:
         mock_response = MockResponse()
         mock_context = mock.MagicMock()
         mock_context.__enter__.return_value = mock_response
@@ -72,7 +72,7 @@ def test_retry_on_retryable_http_codes(error_code):
             return mock_context
 
     with mock.patch(
-        "fal.toolkit.file.providers.fal._urlopen", side_effect=mock_urlopen_side_effect
+        "fal.toolkit.file.providers.fal.urlopen", side_effect=mock_urlopen_side_effect
     ):
         with mock.patch(
             "fal.toolkit.utils.retry.time.sleep"
@@ -101,7 +101,7 @@ def test_no_retry_on_non_retryable_http_codes(error_code):
         )
 
     with mock.patch(
-        "fal.toolkit.file.providers.fal._urlopen", side_effect=mock_urlopen_side_effect
+        "fal.toolkit.file.providers.fal.urlopen", side_effect=mock_urlopen_side_effect
     ):
         with pytest.raises(HTTPError) as exc_info:
             with _maybe_retry_request(request):
@@ -123,7 +123,7 @@ def test_non_http_exception_not_retried():
         raise ValueError("Network error")
 
     with mock.patch(
-        "fal.toolkit.file.providers.fal._urlopen", side_effect=mock_urlopen_side_effect
+        "fal.toolkit.file.providers.fal.urlopen", side_effect=mock_urlopen_side_effect
     ):
         with pytest.raises(ValueError) as exc_info:
             with _maybe_retry_request(request):
@@ -152,7 +152,7 @@ def test_max_retries_exhausted_for_retryable_errors():
         )
 
     with mock.patch(
-        "fal.toolkit.file.providers.fal._urlopen", side_effect=mock_urlopen_side_effect
+        "fal.toolkit.file.providers.fal.urlopen", side_effect=mock_urlopen_side_effect
     ):
         with mock.patch(
             "fal.toolkit.utils.retry.time.sleep"
