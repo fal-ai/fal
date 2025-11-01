@@ -63,6 +63,7 @@ dependencies = [
     "tomli-w>=1,<2",
     "fsspec",
     "tblib<3.2.0",
+    "aiotus>=0.1.15",
 ]
 
 [project.optional-dependencies]
