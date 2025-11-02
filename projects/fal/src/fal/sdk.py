@@ -757,6 +757,17 @@ class FalServerlessConnection:
         request = isolate_proto.DeleteApplicationRequest(application_id=application_id)
         self.stub.DeleteApplication(request)
 
+    def rollout_application(
+        self,
+        application_name: str,
+        force: bool = False,
+    ) -> None:
+        request = isolate_proto.RolloutApplicationRequest(
+            application_name=application_name,
+            force=force,
+        )
+        self.stub.RolloutApplication(request)
+
     def run(
         self,
         function: Callable[..., ResultT],

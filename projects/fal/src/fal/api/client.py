@@ -58,6 +58,9 @@ class _AppsNamespace:
             regions=regions,
         )
 
+    def rollout(self, app_name: str, *, force: bool = False) -> None:
+        return apps_api.rollout_app(self.client, app_name, force=force)
+
 
 class _RunnersNamespace:
     def __init__(self, client: SyncServerlessClient):
