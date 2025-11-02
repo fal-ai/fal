@@ -3,7 +3,6 @@ from fal.cli.apps import (
     _delete_rev,
     _list,
     _list_rev,
-    _rollout,
     _runners,
     _scale,
     _set_rev,
@@ -57,13 +56,6 @@ def test_scale():
     assert args.max_concurrency == 10
     assert args.concurrency_buffer == 3
     assert args.concurrency_buffer_perc == 27
-
-
-def test_rollout():
-    args = parse_args(["apps", "rollout", "myapp", "--force"])
-    assert args.func == _rollout
-    assert args.app_name == "myapp"
-    assert args.force is True
 
 
 def test_runners():
