@@ -262,6 +262,32 @@ def _add_scale_parser(subparsers, parents):
     parser.set_defaults(func=_scale)
 
 
+def _rollout(args):
+    client = SyncServerlessClient(host=args.host, team=args.team)
+    client.apps.rollout(args.app_name, force=args.force)
+    args.console.log(f"Rolled out application {args.app_name}")
+
+
+def _add_rollout_parser(subparsers, parents):
+    rollout_help = "Rollout application."
+    parser = subparsers.add_parser(
+        "rollout",
+        description=rollout_help,
+        help=rollout_help,
+        parents=parents,
+    )
+    parser.add_argument(
+        "app_name",
+        help="Application name.",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Force rollout.",
+    )
+    parser.set_defaults(func=_rollout)
+
+
 def _set_rev(args):
     client = get_client(args.host, args.team)
     with client.connect() as connection:
@@ -431,6 +457,7 @@ def add_parser(main_subparsers, parents):
     _add_list_rev_parser(subparsers, parents)
     _add_set_rev_parser(subparsers, parents)
     _add_scale_parser(subparsers, parents)
+    _add_rollout_parser(subparsers, parents)
     _add_runners_parser(subparsers, parents)
     _add_delete_parser(subparsers, parents)
     _add_delete_rev_parser(subparsers, parents)

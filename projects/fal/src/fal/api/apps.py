@@ -67,3 +67,16 @@ def scale_app(
             machine_types=machine_types,
             valid_regions=regions,
         )
+
+
+def rollout_app(
+    client: SyncServerlessClient,
+    app_name: str,
+    *,
+    force: bool = False,
+) -> None:
+    with FalServerlessClient(client._grpc_host, client._credentials).connect() as conn:
+        conn.rollout_application(
+            application_name=app_name,
+            force=force,
+        )

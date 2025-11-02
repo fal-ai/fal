@@ -64,6 +64,11 @@ class IsolateControllerStub(object):
                 request_serializer=controller__pb2.DeleteApplicationRequest.SerializeToString,
                 response_deserializer=controller__pb2.DeleteApplicationResult.FromString,
                 )
+        self.RolloutApplication = channel.unary_unary(
+                '/controller.IsolateController/RolloutApplication',
+                request_serializer=controller__pb2.RolloutApplicationRequest.SerializeToString,
+                response_deserializer=controller__pb2.RolloutApplicationResult.FromString,
+                )
         self.SetAlias = channel.unary_unary(
                 '/controller.IsolateController/SetAlias',
                 request_serializer=controller__pb2.SetAliasRequest.SerializeToString,
@@ -192,6 +197,13 @@ class IsolateControllerServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def RolloutApplication(self, request, context):
+        """Rollout an application
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def SetAlias(self, request, context):
         """Set alias to point to an existing application.
         """
@@ -314,6 +326,11 @@ def add_IsolateControllerServicer_to_server(servicer, server):
                     servicer.DeleteApplication,
                     request_deserializer=controller__pb2.DeleteApplicationRequest.FromString,
                     response_serializer=controller__pb2.DeleteApplicationResult.SerializeToString,
+            ),
+            'RolloutApplication': grpc.unary_unary_rpc_method_handler(
+                    servicer.RolloutApplication,
+                    request_deserializer=controller__pb2.RolloutApplicationRequest.FromString,
+                    response_serializer=controller__pb2.RolloutApplicationResult.SerializeToString,
             ),
             'SetAlias': grpc.unary_unary_rpc_method_handler(
                     servicer.SetAlias,
@@ -542,6 +559,23 @@ class IsolateController(object):
         return grpc.experimental.unary_unary(request, target, '/controller.IsolateController/DeleteApplication',
             controller__pb2.DeleteApplicationRequest.SerializeToString,
             controller__pb2.DeleteApplicationResult.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def RolloutApplication(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/controller.IsolateController/RolloutApplication',
+            controller__pb2.RolloutApplicationRequest.SerializeToString,
+            controller__pb2.RolloutApplicationResult.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
 

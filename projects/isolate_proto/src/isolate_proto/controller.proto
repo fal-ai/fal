@@ -31,6 +31,8 @@ service IsolateController {
     rpc ListApplications (ListApplicationsRequest) returns (ListApplicationsResult) {};
     // Delete a function
     rpc DeleteApplication (DeleteApplicationRequest) returns (DeleteApplicationResult) {};
+    // Rollout an application
+    rpc RolloutApplication (RolloutApplicationRequest) returns (RolloutApplicationResult) {};
     // Set alias to point to an existing application.
     rpc SetAlias (SetAliasRequest) returns (SetAliasResult) {};
     // Delete an alias.
@@ -299,6 +301,15 @@ message DeleteApplicationRequest {
 }
 
 message DeleteApplicationResult {
+    // Empty. For future use.
+}
+
+message RolloutApplicationRequest {
+    string application_name = 1;
+    optional bool force = 2;
+}
+
+message RolloutApplicationResult {
     // Empty. For future use.
 }
 

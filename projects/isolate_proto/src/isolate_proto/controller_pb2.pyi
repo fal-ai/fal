@@ -867,6 +867,38 @@ class DeleteApplicationResult(google.protobuf.message.Message):
 global___DeleteApplicationResult = DeleteApplicationResult
 
 @typing_extensions.final
+class RolloutApplicationRequest(google.protobuf.message.Message):
+    DESCRIPTOR: google.protobuf.descriptor.Descriptor
+
+    APPLICATION_NAME_FIELD_NUMBER: builtins.int
+    FORCE_FIELD_NUMBER: builtins.int
+    application_name: builtins.str
+    force: builtins.bool
+    def __init__(
+        self,
+        *,
+        application_name: builtins.str = ...,
+        force: builtins.bool | None = ...,
+    ) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["_force", b"_force", "force", b"force"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["_force", b"_force", "application_name", b"application_name", "force", b"force"]) -> None: ...
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_force", b"_force"]) -> typing_extensions.Literal["force"] | None: ...
+
+global___RolloutApplicationRequest = RolloutApplicationRequest
+
+@typing_extensions.final
+class RolloutApplicationResult(google.protobuf.message.Message):
+    """Empty. For future use."""
+
+    DESCRIPTOR: google.protobuf.descriptor.Descriptor
+
+    def __init__(
+        self,
+    ) -> None: ...
+
+global___RolloutApplicationResult = RolloutApplicationResult
+
+@typing_extensions.final
 class SetAliasRequest(google.protobuf.message.Message):
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
