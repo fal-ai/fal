@@ -1101,6 +1101,43 @@ def test_kill_runner(host: api.FalServerlessHost, test_sleep_app: str):
         assert num_runners == existing_runners - 1
 
 
+def test_rollout_application(host: api.FalServerlessHost, test_sleep_app: str):
+    handle = apps.submit(test_sleep_app, arguments={"wait_time": 30})
+
+    while True:
+        status = handle.status()
+        if isinstance(status, apps.InProgress):
+            break
+        elif isinstance(status, apps.Queued):
+            time.sleep(1)
+        else:
+            raise Exception(f"Failed to start the app: {status}")
+
+    with host._connection as client:
+        _, _, app_alias = test_sleep_app.partition("/")
+        runners_before = client.list_alias_runners(app_alias)
+        assert len(runners_before) == 1
+        runner_id_before = runners_before[0].runner_id
+
+        client.rollout_application(app_alias, force=True)
+
+        time.sleep(15)
+
+        runners_after = client.list_alias_runners(app_alias)
+        runner_ids_after = {r.runner_id for r in runners_after}
+
+        assert runner_id_before not in runner_ids_after
+
+        client.rollout_application(app_alias, force=True)
+
+        time.sleep(3)
+
+        runners_final = client.list_alias_runners(app_alias)
+        runner_ids_final = {r.runner_id for r in runners_final}
+
+        assert not runner_ids_after.intersection(runner_ids_final)
+
+
 def test_shell_runner(host: api.FalServerlessHost, test_sleep_app: str):
     handle = apps.submit(test_sleep_app, arguments={"wait_time": 30})
 
