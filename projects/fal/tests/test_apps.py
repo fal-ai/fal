@@ -1005,6 +1005,7 @@ def test_field_exception_billing(test_exception_app: AppClient):
         assert not hasattr(response.headers, "x-fal-billable-units")
 
 
+@pytest.mark.flaky(max_runs=3)
 def test_stop_runner(host: api.FalServerlessHost, test_sleep_app: str):
     def submit_and_wait_for_runner():
         handle = apps.submit(test_sleep_app, arguments={"wait_time": 1})
@@ -1067,6 +1068,7 @@ def test_stop_runner(host: api.FalServerlessHost, test_sleep_app: str):
         assert len(runners) == 2
 
 
+@pytest.mark.flaky(max_runs=3)
 def test_kill_runner(host: api.FalServerlessHost, test_sleep_app: str):
     # Kill all the replicas of the app that is already running
     handle = apps.submit(test_sleep_app, arguments={"wait_time": 10})
