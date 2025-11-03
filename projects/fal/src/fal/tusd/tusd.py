@@ -113,28 +113,29 @@ def create_file_readers(
     return part_readers
 
 
-def compute_file_hash(file_path: Path) -> str:
+def compute_hash(file_path: Path) -> str:
     """
-    Computes sha256 hash using metadata and minimal content sampling. Uses ctime, mtime, filename, file size.
+    Compute sha256 hash using the filename and the first 16KB of file content.
 
     :param Path file_path: Path of the file.
     :return str: The hash value as a string of hexadecimal digits.
     """
+    file_hash = hashlib.sha256()
 
-    hasher = hashlib.sha256()
-    stat = file_path.stat()
-    file_size = stat.st_size
+    # Add filename
+    file_hash.update(file_path.name.encode("utf-8"))
 
-    # Hash metadata: creation time, modification time, filename, size
-    metadata_string = f"{stat.st_ctime}|{stat.st_mtime}|{file_path.name}|{file_size}"
-    hasher.update(metadata_string.encode("utf-8"))
+    # Add first 16KB of file content
+    SAMPLE_SIZE = 16 * 1024  # 16KB
+    with file_path.open("rb") as f:
+        content = f.read(SAMPLE_SIZE)
+        file_hash.update(content)
 
-    hash_result = hasher.hexdigest()
-
-    return hash_result
+    return file_hash.hexdigest()
 
 
-def prepare_metadata(file_path: Path, file_hash: str) -> Dict:
+
+def prepare_metadata(file_path: Path) -> Dict:
     """
     Takes a file path and its hash. Then prepares metadata for file upload.
 
@@ -145,7 +146,6 @@ def prepare_metadata(file_path: Path, file_hash: str) -> Dict:
     stat = file_path.stat()
 
     metadata = {
-        "hash": str(file_hash).encode(),
         "mode": str(stat.st_mode).encode(),
         "mtime": str(stat.st_mtime).encode(),
         "size": str(stat.st_size).encode(),
@@ -155,7 +155,7 @@ def prepare_metadata(file_path: Path, file_hash: str) -> Dict:
     return metadata
 
 
-async def upload(
+async def upload_multiple(
     file_path: Path,
     n_parallel: int = 20,
     server_url: str = TUS_SERVER_URL,
@@ -167,11 +167,19 @@ async def upload(
     """
 
     # Prepare the file metadata
-    file_hash = compute_file_hash(file_path)
-    metadata = prepare_metadata(file_path, file_hash)
+    metadata = prepare_metadata(file_path)
+    file_hash = compute_hash(file_path)
+    # Add hash to metadata (required by server)
+    metadata["hash"] = file_hash.encode()
     print(metadata)
 
+    from fal.sdk import get_default_credentials
+
+    creds = get_default_credentials()
+    print(f"{creds=}")
+
     headers = {
+        **creds.to_headers(),
         "User-Agent": USER_AGENT,
     }
 
@@ -259,7 +267,7 @@ def main():
 
         chunk_size = args.chunk_size * 1024 * 1024
         location = asyncio.run(
-            upload(
+            upload_multiple(
                 file_path=args.file,
                 n_parallel=args.parallel,
                 server_url=args.server,
