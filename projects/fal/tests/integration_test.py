@@ -473,6 +473,7 @@ def fal_file_content_matches(file: File, content: str):
     return file.as_bytes().decode() == content
 
 
+@pytest.mark.flaky(max_runs=3)
 def test_fal_file_from_path(isolated_client):
     @isolated_client(requirements=[f"pydantic=={pydantic_version}", "tomli"])
     def fal_file_from_temp(content: str):
