@@ -11,7 +11,7 @@ import tenacity
 import yarl
 from aiotus import RetryConfiguration, common, core, creation
 from aiotus.retry import _make_retrying, _sanitize_metadata
-from cache import cache_upload, get_cached_upload
+from fal.tusd.cache import cache_upload, get_cached_upload
 
 logger = logging.getLogger(__name__)
 
@@ -110,5 +110,6 @@ async def upload_single(  # noqa: PLR0913
         )
     except Exception as e:  # noqa: BLE001
         logger.error(f"Unable to upload file: {e}")
+        raise
 
     return None

@@ -1,16 +1,14 @@
-import argparse
 import asyncio
 import hashlib
 import os
-import sys
-import time
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import aiohttp
 import aiotus
-from cache import remove_from_cache
-from retry import upload_single
+
+import fal.tusd.cache as cache
+from fal.tusd.retry import upload_single
 
 # Monkey-patch aiotus.retry.upload so other functions use our cached version
 setattr(aiotus.retry, "upload", upload_single)
@@ -134,7 +132,6 @@ def compute_hash(file_path: Path) -> str:
     return file_hash.hexdigest()
 
 
-
 def prepare_metadata(file_path: Path) -> Dict:
     """
     Takes a file path and its hash. Then prepares metadata for file upload.
@@ -155,135 +152,122 @@ def prepare_metadata(file_path: Path) -> Dict:
     return metadata
 
 
-async def upload_multiple(
-    file_path: Path,
-    n_parallel: int = 20,
-    server_url: str = TUS_SERVER_URL,
-    chunk_size: int = 20 * 1024 * 1024,
-) -> str:
+class TusdUploader:
     """
-    Parallel upload using aiotus. aiotus handles threading internally via asyncio.to_thread(),
-    so we just provide simple synchronous file readers.
+    TUS uploader class for parallel file uploads.
+
+    Wraps the async upload_multiple functionality in a synchronous interface
+    and handles error cases with proper retry logic.
     """
 
-    # Prepare the file metadata
-    metadata = prepare_metadata(file_path)
-    file_hash = compute_hash(file_path)
-    # Add hash to metadata (required by server)
-    metadata["hash"] = file_hash.encode()
-    print(metadata)
+    def __init__(
+        self,
+        server_url: str,
+        headers: Dict[str, str],
+        n_parallel: int = 20,
+        chunk_size: int = 20 * 1024 * 1024,
+    ):
+        """
+        Initialize TusdUploader with server URL and headers.
 
-    from fal.sdk import get_default_credentials
+        :param server_url: TUS server URL endpoint
+        :param headers: HTTP headers to use for requests
+        :param n_parallel: Number of parallel upload parts
+        :param chunk_size: Size of each chunk in bytes
+        """
+        self.server_url = server_url
+        self.headers = headers
+        self.n_parallel = n_parallel
+        self.chunk_size = chunk_size
 
-    creds = get_default_credentials()
-    print(f"{creds=}")
+    def upload(
+        self,
+        lpath: str,
+    ) -> str:
+        """
+        Synchronously upload a file using TUS parallel upload.
 
-    headers = {
-        **creds.to_headers(),
-        "User-Agent": USER_AGENT,
-    }
+        Note: Only the filename (from lpath) is sent to TUS, not the full rpath.
+        The file will be moved to rpath after upload completes.
 
-    part_readers = create_file_readers(
-        file_path=file_path,
-        file_size=int(metadata.get("size").decode()),
-        num_parts=n_parallel,
-        parent_hash=file_hash,
-    )
+        :param lpath: Local file path
+        :return: The uploaded file path (before move to rpath)
+        """
+        file_path = Path(lpath)
+        return asyncio.run(self._upload_async(file_path))
 
-    print("Starting upload...")
-    start_time = time.time()
+    async def _upload_async(
+        self,
+        file_path: Path,
+    ) -> str:
+        """
+        Internal async upload method that performs the actual upload.
 
-    try:
-        # Open all file handles
-        part_files = [reader.__enter__() for reader in part_readers]
+        Only the filename (file_path.name) is sent to TUS in metadata.
+        Exceptions are not handled here - they propagate to the caller.
+        """
+        uploaded_path = await self._do_upload(file_path)
+        return uploaded_path
 
-        async with aiohttp.ClientSession() as session:
-            location = await aiotus.upload_multiple(
-                endpoint=server_url,
-                files=part_files,
-                metadata=metadata,
-                client_session=session,
-                headers=headers,
-                chunksize=chunk_size,
-                parallel_uploads=n_parallel,
-            )
+    async def _do_upload(
+        self,
+        file_path: Path,
+    ) -> str:
+        """
+        Perform the actual upload operation.
 
-            if location is None:
-                raise RuntimeError("Upload failed - no location returned")
+        :param file_path: Local file path to upload
+        :return: The uploaded file path (with original filename)
+        """
+        # Prepare the file metadata - use original filename (not rpath)
+        metadata = prepare_metadata(file_path)
+        file_hash = compute_hash(file_path)
+        # Add hash to metadata (required by server)
+        metadata["hash"] = file_hash.encode()
+        # Filename is already set by prepare_metadata to file_path.name
 
-            elapsed = time.time() - start_time
-            speed = int(metadata.get("size").decode()) / elapsed / (1024**2)
-
-            await remove_from_cache(file_hash=file_hash)
-
-            print("Upload completed")
-            print(f"Location: {location}")
-            print(f"Time: {elapsed:.2f}s")
-            print(f"Speed: {speed:.2f} MB/s")
-
-            return str(location)
-
-    finally:
-        # Clean up file handles
-        for reader in part_readers:
-            try:
-                reader.__exit__(None, None, None)
-            except Exception:
-                pass
-
-
-def main():
-    parser = argparse.ArgumentParser()
-
-    subparsers = parser.add_subparsers(dest="command")
-
-    # Upload command
-    upload_parser = subparsers.add_parser("upload")
-    upload_parser.add_argument("file", type=Path)
-    upload_parser.add_argument(
-        "--server", default=os.getenv("TUS_SERVER_URL", TUS_SERVER_URL)
-    )
-    upload_parser.add_argument("--chunk-size", type=int, default=50)
-
-    # Parallel upload command
-    parallel_parser = subparsers.add_parser("upload-parallel")
-    parallel_parser.add_argument("file", type=Path)
-    parallel_parser.add_argument("--parallel", type=int, default=10)
-    parallel_parser.add_argument(
-        "--server", default=os.getenv("TUS_SERVER_URL", TUS_SERVER_URL)
-    )
-    parallel_parser.add_argument("--chunk-size", type=int, default=50)
-
-    args = parser.parse_args()
-
-    if not args.command:
-        parser.print_help()
-        return 1
-
-    try:
-        if not args.file.exists():
-            print(f"File not found: {args.file}")
-            return 1
-
-        chunk_size = args.chunk_size * 1024 * 1024
-        location = asyncio.run(
-            upload_multiple(
-                file_path=args.file,
-                n_parallel=args.parallel,
-                server_url=args.server,
-                chunk_size=chunk_size,
-            )
+        file_size = int(metadata.get("size").decode())
+        part_readers = create_file_readers(
+            file_path=file_path,
+            file_size=file_size,
+            num_parts=self.n_parallel,
+            parent_hash=file_hash,
         )
-        print(f"Upload URL: {location}")
-        return 0
 
-    except Exception as e:
-        print(f"\n Error: {e}")
-        import traceback
+        try:
+            # Open all file handles
+            part_files = [reader.__enter__() for reader in part_readers]
 
-        traceback.print_exc()
-        return 1
+            timeout = aiohttp.ClientTimeout(
+                total=7200,  # 1 hour total timeout
+                connect=30,  # 30s to establish connection
+                sock_read=300,  # 5 min to read response after request sent
+            )
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                location = await aiotus.upload_multiple(
+                    endpoint=self.server_url,
+                    files=part_files,
+                    metadata=metadata,
+                    client_session=session,
+                    headers=self.headers,
+                    chunksize=self.chunk_size,
+                    parallel_uploads=self.n_parallel,
+                )
 
+                if location is None:
+                    raise RuntimeError("Upload failed - no location returned")
 
-if __name__ == "__main__":
-    sys.exit(main())
+                await cache.remove_from_cache(file_hash=file_hash)
+
+                # The uploaded file is at /data/.uploads/{filename}
+                uploaded_path = f"/data/.uploads/{file_path.name}"
+
+                return uploaded_path
+
+        finally:
+            # Clean up file handles
+            for reader in part_readers:
+                try:
+                    reader.__exit__(None, None, None)
+                except Exception:
+                    pass
