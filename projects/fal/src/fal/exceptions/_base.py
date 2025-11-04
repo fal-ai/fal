@@ -71,3 +71,9 @@ class AppFileUploadException(FalServerlessException):
 
     message: str
     relative_path: str
+
+
+class FalFilesException(FalServerlessException):
+    """Exception raised for file-related operations in FalFileSystem."""
+
+    pass
