@@ -8,6 +8,20 @@ import aiohttp
 import aiotus
 
 import fal.tusd.cache as cache
+
+# Suppress retry logging by replacing the logging functions with no-ops
+# This must be done BEFORE importing upload_single, since upload_single uses
+# _make_retrying which calls these functions to configure tenacity logging
+def _noop_log_before(s: str):
+    return lambda retry_state: None
+
+def _noop_log_before_sleep(s: str):
+    return lambda retry_state: None
+
+aiotus.retry._make_log_before_function = _noop_log_before
+aiotus.retry._make_log_before_sleep_function = _noop_log_before_sleep
+
+# Now import and monkey-patch aiotus.retry.upload with our cached version
 from fal.tusd.retry import upload_single
 
 # Monkey-patch aiotus.retry.upload so other functions use our cached version

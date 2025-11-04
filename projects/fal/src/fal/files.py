@@ -50,7 +50,7 @@ class FalFileSystem(AbstractFileSystem):
         from fal.tusd.tusd import TusdUploader
 
         creds = get_default_credentials()
-        server_url = f"{REST_URL}/"
+        server_url = f"{REST_URL}/files/tusd/"
         headers = {
             **creds.to_headers(),
             "User-Agent": USER_AGENT,
