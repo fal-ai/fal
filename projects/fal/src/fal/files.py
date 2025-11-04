@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     import httpx
 
 USER_AGENT = "fal-sdk/1.14.0 (python)"
-TUSD_THRESHOLD = 20 * 1024 * 1024  # 20MB - use tusd for files >= 20MB
+TUSD_THRESHOLD = 20 * 1024 * 1024
 
 
 def _compute_md5(lpath, chunk_size=8192):
@@ -44,7 +44,6 @@ class FalFileSystem(AbstractFileSystem):
 
     @cached_property
     def _tusd_uploader(self):
-        """Initialize TUS uploader for parallel uploads."""
         from fal.flags import REST_URL
         from fal.sdk import get_default_credentials
         from fal.tusd.tusd import TusdUploader
@@ -152,22 +151,14 @@ class FalFileSystem(AbstractFileSystem):
 
         size = os.path.getsize(lpath)
         if size >= TUSD_THRESHOLD:
-            # Use tusd parallel upload for large files
-            # Upload with original filename, then move to abs_rpath
             max_retries = 3
             retry_count = 0
 
             while retry_count < max_retries:
                 try:
-                    uploaded_path = self._tusd_uploader.upload(lpath)
-                    # Move the uploaded file to the desired location,
-                    # remove the artifacts
-                    if uploaded_path != abs_rpath:
-                        self.mv(uploaded_path, abs_rpath)
-                        self.rm(uploaded_path + ".info")
-                    break  # Success, exit retry loop
+                    self._tusd_uploader.upload(lpath, file_dir=rpath)
+                    break
                 except Exception as e:
-                    # Check for HTTP status codes in exceptions
                     status = None
                     if isinstance(e, aiohttp.ClientResponseError):
                         status = e.status
@@ -180,7 +171,7 @@ class FalFileSystem(AbstractFileSystem):
                         from fal.exceptions import FalFilesException
 
                         raise FalFilesException(
-                            "Max File size exceeded. You cannot upload files larger than 100GB."
+                            "Max File size exceeded. File larger than 100GB."
                         )
                     elif status == 400:
                         from fal.exceptions import FalFilesException
@@ -191,19 +182,15 @@ class FalFileSystem(AbstractFileSystem):
 
                         raise FalFilesException("Internal server error")
                     elif status == 409:
-                        # File exists - retry upload
                         retry_count += 1
                         if retry_count >= max_retries:
                             from fal.exceptions import FalFilesException
 
-                            raise FalFilesException(
-                                f"Upload failed after {max_retries} retries: File exists"
-                            )
-                        continue  # Retry upload
+                            raise FalFilesException("File exists")
+                        continue
                     elif status == 404:
-                        # Clear cache and retry
-                        from fal.tusd.tusd import compute_hash
                         from fal.tusd.cache import remove_from_cache
+                        from fal.tusd.tusd import compute_hash
 
                         file_hash = compute_hash(Path(lpath))
                         asyncio.run(remove_from_cache(file_hash=file_hash))
@@ -211,12 +198,9 @@ class FalFileSystem(AbstractFileSystem):
                         if retry_count >= max_retries:
                             from fal.exceptions import FalFilesException
 
-                            raise FalFilesException(
-                                f"Upload failed after {max_retries} retries: Not found"
-                            )
-                        continue  # Retry upload
+                            raise FalFilesException("Not found")
+                        continue
                     else:
-                        # Re-raise unhandled exceptions
                         raise
         else:
             with open(lpath, "rb") as fobj:
@@ -255,5 +239,4 @@ class FalFileSystem(AbstractFileSystem):
         self.dircache.clear()
 
     def mv(self, path1, path2, recursive=False, maxdepth=None, **kwargs):
-        # Delegate to server-side rename
         self.rename(path1, path2)

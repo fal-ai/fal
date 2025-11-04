@@ -14,9 +14,6 @@ import fal.tusd.cache as cache
 from fal.exceptions import FileTooLargeError
 
 
-# Suppress retry logging by replacing the logging functions with no-ops
-# This must be done BEFORE importing upload_single, since upload_single uses
-# _make_retrying which calls these functions to configure tenacity logging
 def _noop_log_before(s: str):
     return lambda retry_state: None
 
@@ -28,10 +25,8 @@ def _noop_log_before_sleep(s: str):
 aiotus.retry._make_log_before_function = _noop_log_before
 aiotus.retry._make_log_before_sleep_function = _noop_log_before_sleep
 
-# Now import and monkey-patch aiotus.retry.upload with our cached version
 from fal.tusd.retry import upload_single  # noqa: E402
 
-# Monkey-patch aiotus.retry.upload so other functions use our cached version
 setattr(aiotus.retry, "upload", upload_single)
 
 USER_AGENT = "fal-sdk/1.14.0 (python)"
@@ -39,12 +34,7 @@ TUS_SERVER_URL = os.environ.get("TUS_SERVER_URL")
 
 
 class LimitedReader:
-    """
-    Simple file reader that reads a limited range.
-
-    aiotus already uses asyncio.to_thread() internally, so we just need
-    regular synchronous file operations here.
-    """
+    """Simple file reader that reads a limited range."""
 
     def __init__(
         self,
@@ -63,22 +53,18 @@ class LimitedReader:
         self.progress_callback = progress_callback
 
     def __enter__(self):
-        """Open file handle."""
         self._file = self.file_path.open("rb")
         self._file.seek(self.start)
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        """Close file handle."""
         if self._file:
             self._file.close()
 
     def read(self, size: int = -1) -> bytes:
-        """Read up to size bytes from the file."""
         if self.position >= self.size:
             return b""
 
-        # Calculate how much to read
         remaining = self.size - self.position
         if size < 0 or size > remaining:
             size = remaining
@@ -88,23 +74,21 @@ class LimitedReader:
         data = self._file.read(size)
         self.position += len(data)
 
-        # Call progress callback if available
         if self.progress_callback and len(data) > 0:
             self.progress_callback(len(data))
 
         return data
 
     def seek(self, offset: int, whence: int = 0) -> int:
-        """Seek to position in the file."""
         if self._file is None:
             raise ValueError("File not opened")
-        if whence == 0:  # SEEK_SET - absolute position
+        if whence == 0:
             self.position = offset
             self._file.seek(self.start + offset)
-        elif whence == 1:  # SEEK_CUR - relative to current position
+        elif whence == 1:
             self.position += offset
             self._file.seek(offset, 1)
-        elif whence == 2:  # SEEK_END - relative to end
+        elif whence == 2:
             self.position = self.size + offset
             self._file.seek(self.start + self.size + offset)
 
@@ -116,7 +100,6 @@ class LimitedReader:
         return self._file.tell()
 
     def close(self):
-        """Close the file."""
         if self._file:
             self._file.close()
 
@@ -128,31 +111,9 @@ def create_file_readers(
     parent_hash: str,
     progress_callback: Optional[Callable[[int], None]] = None,
 ) -> List[LimitedReader]:
-    """
-    Creates a list of LimitedReader instances,
-    each responsible for reading a distinct chunk of a file.
-
-    Divides the file located at 'file_path' into 'num_parts'
-    sequential chunks and returns a LimitedReader
-    for each chunk. The parent file's hash ('parent_hash') is attached
-    to each reader for resumption or verification.
-
-    :param file_path: Path to the input file.
-    :param file_size: Total size of the file in bytes.
-    :param num_parts: Number of parts (chunks) to split the file into.
-    :param parent_hash: Precomputed hash of the parent file
-    for resumption/cache purposes.
-    :param progress_callback: Optional callback function
-    to track upload progress.
-
-
-    :return: List of LimitedReader objects, covering
-    the entire file in non-overlapping segments.
-    """
-
+    """Creates LimitedReader instances for file chunks."""
     part_size = file_size // num_parts
     part_readers: List[LimitedReader] = []
-    # Create readers for each part
     for i in range(num_parts):
         start = i * part_size
         size = file_size - start if i == num_parts - 1 else part_size
@@ -169,19 +130,10 @@ def create_file_readers(
 
 
 def compute_hash(file_path: Path) -> str:
-    """
-    Compute sha256 hash using the filename and the first 16KB of file content.
-
-    :param Path file_path: Path of the file.
-    :return str: The hash value as a string of hexadecimal digits.
-    """
+    """Compute sha256 hash using the first 16KB of file content."""
     file_hash = hashlib.sha256()
 
-    # Add filename
-    file_hash.update(file_path.name.encode("utf-8"))
-
-    # Add first 16KB of file content
-    SAMPLE_SIZE = 16 * 1024  # 16KB
+    SAMPLE_SIZE = 16 * 1024
     with file_path.open("rb") as f:
         content = f.read(SAMPLE_SIZE)
         file_hash.update(content)
@@ -189,54 +141,34 @@ def compute_hash(file_path: Path) -> str:
     return file_hash.hexdigest()
 
 
-def prepare_metadata(file_path: Path) -> Dict:
-    """
-    Takes a file path and its hash. Then prepares metadata for file upload.
-
-    :param Path file_path: Path of the file.
-    :param str file_hash: The hash value of the file.
-    :return Dict: A mapping that contains the metadata (values as bytes).
-    """
+def prepare_metadata(file_path: Path, file_dir: str) -> Dict:
+    """Prepares metadata for file upload."""
     stat = file_path.stat()
 
     metadata = {
         "mode": str(stat.st_mode).encode(),
         "mtime": str(stat.st_mtime).encode(),
         "size": str(stat.st_size).encode(),
-        "filename": str(file_path.name).encode(),
+        "filename": (file_dir).encode(),
     }
 
     return metadata
 
 
 class TusdUploader:
-    """
-    TUS uploader class for parallel file uploads.
+    """TUS uploader for parallel file uploads."""
 
-    Wraps the async upload_multiple functionality in a synchronous interface
-    and handles error cases with proper retry logic.
-    """
-
-    MAX_CHUNK_SIZE = 128 * 1024 * 1024  # 128MB
-    MAX_FILE_SIZE = 100 * 1024 * 1024 * 1024  # 100GB limit
+    MAX_CHUNK_SIZE = 256 * 1024 * 1024
+    MAX_FILE_SIZE = 100 * 1024 * 1024 * 1024
 
     def __init__(
         self,
         server_url: str,
         headers: Dict[str, str],
         n_parallel: int = 20,
-        chunk_size: int = 10 * 1024 * 1024,
+        chunk_size: int = 100 * 1024 * 1024,
         show_progress: bool = True,
     ):
-        """
-        Initialize TusdUploader with server URL and headers.
-
-        :param server_url: TUS server URL endpoint
-        :param headers: HTTP headers to use for requests
-        :param n_parallel: Number of parallel upload parts
-        :param chunk_size: Size of each chunk in bytes
-        :param show_progress: Whether to display a progress
-        """
         self.server_url = server_url
         self.headers = headers
         self.n_parallel = n_parallel
@@ -244,23 +176,12 @@ class TusdUploader:
         self.show_progress = show_progress
 
     def _calculate_chunk_size(self, file_size: int) -> int:
-        """
-        Calculate optimal chunk size based on file size.
-
-        Uses smaller chunks to provide more frequent progress updates
-
-        :param file_size: Size of the file in bytes
-        :return: Calculated chunk size in bytes
-        """
-        # For small files, use the default chunk size
+        """Calculate optimal chunk size based on file size."""
         if file_size < 100 * 1024 * 1024:
             return self.chunk_size
 
-        # For large files, use larger chunks for speed
         calculated_size = file_size // self.n_parallel * 10
-
-        # Keep it within reasonable bounds
-        min_chunk = 5 * 1024 * 1024  # 5MB minimum
+        min_chunk = 100 * 1024 * 1024
         calculated_size = max(calculated_size, min_chunk)
         calculated_size = min(calculated_size, self.MAX_CHUNK_SIZE)
 
@@ -269,62 +190,39 @@ class TusdUploader:
     def upload(
         self,
         lpath: str,
+        file_dir: str,
     ) -> str:
-        """
-        Synchronously upload a file using TUS parallel upload.
-
-        Note: Only the filename (from lpath) is sent to TUS, not the full rpath.
-        The file will be moved to rpath after upload completes.
-
-        :param lpath: Local file path
-        :return: The uploaded file path (before move to rpath)
-        """
+        """Synchronously upload a file using TUS parallel upload."""
         file_path = Path(lpath)
-        return asyncio.run(self._upload_async(file_path))
+        return asyncio.run(self._upload_async(file_path, file_dir))
 
     async def _upload_async(
         self,
         file_path: Path,
+        file_dir: str,
     ) -> str:
-        """
-        Internal async upload method that performs the actual upload.
-
-        Only the filename (file_path.name) is sent to TUS in metadata.
-        Exceptions are not handled here - they propagate to the caller.
-        """
-        uploaded_path = await self._do_upload(file_path)
+        uploaded_path = await self._do_upload(file_path, file_dir)
         return uploaded_path
 
     async def _do_upload(
         self,
         file_path: Path,
+        file_dir: str,
     ) -> str:
-        """
-        Perform the actual upload operation.
-
-        :param file_path: Local file path to upload
-        :return: The uploaded file path (with original filename)
-        """
-        # Prepare the file metadata - use original filename (not rpath)
-        metadata = prepare_metadata(file_path)
+        metadata = prepare_metadata(file_path, file_dir=file_dir)
         file_hash = compute_hash(file_path)
-        # Add hash to metadata (required by server)
         metadata["hash"] = file_hash.encode()
-        # Filename is already set by prepare_metadata to file_path.name
 
         file_size = int(metadata.get("size", "0").decode())
 
-        # Check file size limit
         if file_size > self.MAX_FILE_SIZE:
             raise FileTooLargeError(
                 f"File size ({file_size / (1024**3):.2f} GB) exceeds "
                 f"maximum allowed size ({self.MAX_FILE_SIZE / (1024**3):.0f} GB)"
             )
 
-        # Calculate optimal chunk size based on file size
         chunk_size = self._calculate_chunk_size(file_size)
 
-        # Set up progress bar with simple callback
         pbar = None
         pbar_lock = threading.Lock()
 
@@ -341,57 +239,50 @@ class TusdUploader:
                 with pbar_lock:
                     pbar.update(n)
 
-        part_readers = create_file_readers(
+        file = LimitedReader(
             file_path=file_path,
-            file_size=file_size,
-            num_parts=self.n_parallel,
+            start=0,
+            size=file_size,
             parent_hash=file_hash,
             progress_callback=update_progress if self.show_progress else None,
         )
 
         try:
-            # Open all file handles
-            part_files = [reader.__enter__() for reader in part_readers]
+            file.__enter__()
 
             timeout = aiohttp.ClientTimeout(
-                total=7200,  # 1 hour total timeout
-                connect=30,  # 30s to establish connection
-                sock_read=300,  # 5 min to read response after request sent
+                total=7200,
+                connect=30,
+                sock_read=300,
             )
             async with aiohttp.ClientSession(timeout=timeout) as session:
-                location = await aiotus.upload_multiple(
+                location = await aiotus.upload(
                     endpoint=self.server_url,
-                    files=part_files,
+                    file=file,
                     metadata=metadata,
                     client_session=session,
                     headers=self.headers,
                     chunksize=chunk_size,
-                    parallel_uploads=self.n_parallel,
                 )
 
                 if location is None:
                     raise RuntimeError("Upload failed - no location returned")
 
-                # Ensure progress bar shows 100%
                 if pbar and pbar.n < file_size:
                     with pbar_lock:
                         pbar.update(file_size - pbar.n)
 
                 await cache.remove_from_cache(file_hash=file_hash)
 
-                # The uploaded file is at /data/.uploads/{filename}
                 uploaded_path = f"/data/.uploads/{file_path.name}"
 
                 return uploaded_path
 
         finally:
-            # Clean up file handles
-            for reader in part_readers:
-                try:
-                    reader.__exit__(None, None, None)
-                except Exception:
-                    pass
+            try:
+                file.__exit__(None, None, None)
+            except Exception:
+                pass
 
-            # Close progress bar
             if pbar:
                 pbar.close()

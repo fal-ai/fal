@@ -11,6 +11,7 @@ import tenacity
 import yarl
 from aiotus import RetryConfiguration, common, core, creation
 from aiotus.retry import _make_retrying, _sanitize_metadata
+
 from fal.tusd.cache import cache_upload, get_cached_upload
 
 logger = logging.getLogger(__name__)
@@ -51,8 +52,7 @@ async def upload_single(  # noqa: PLR0913
 
     url = yarl.URL(endpoint)
 
-    # Compare the hash against upload cache. If exists skip creation and continue
-    file_hash = file.parent_hash # type: ignore
+    file_hash = file.parent_hash  # type: ignore
     start_position = file.tell()
     maybe_broken_upload = await get_cached_upload(file_hash, start_position, chunksize)
 
@@ -80,7 +80,6 @@ async def upload_single(  # noqa: PLR0913
                             headers=headers,
                         )
 
-                # Set the file url to cache
                 if file_hash:
                     await cache_upload(
                         file_hash, str(location), start_position, chunksize
@@ -89,7 +88,6 @@ async def upload_single(  # noqa: PLR0913
                 if not location.is_absolute():
                     location = url / location.path
             else:
-                # Use the url from the upload cache and set the location
                 location = yarl.URL(maybe_broken_upload)
 
             async for attempt in retrying_upload_file:
