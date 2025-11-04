@@ -19,12 +19,13 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from collections.abc import Mapping
     from contextlib import AbstractAsyncContextManager
-    from typing import BinaryIO
+
+    from fal.tusd.tusd import LimitedReader
 
 
 async def upload_single(  # noqa: PLR0913
     endpoint: str | yarl.URL,
-    file: BinaryIO,
+    file: LimitedReader,
     metadata: common.Metadata | None = None,
     client_session: aiohttp.ClientSession | None = None,
     config: RetryConfiguration | None = None,
@@ -91,10 +92,7 @@ async def upload_single(  # noqa: PLR0913
                 location = yarl.URL(maybe_broken_upload)
                 # Update the progress bar on resume
                 current_server_offset = await core.offset(
-                    session,
-                    location,
-                    ssl=config.ssl,
-                    headers=headers
+                    session, location, ssl=config.ssl, headers=headers
                 )
                 if file.progress_callback:
                     file.progress_callback(current_server_offset)
