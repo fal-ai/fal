@@ -167,4 +167,3 @@ async def remove_from_cache(file_hash: str):
             del cache[file_hash]
             # Save cache within the same lock
             await _save_upload_cache_unlocked(cache)
-            print(f"Removed from cache: {file_hash[:16]}...")

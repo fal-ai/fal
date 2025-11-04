@@ -64,6 +64,7 @@ dependencies = [
     "fsspec",
     "tblib<3.2.0",
     "aiotus>=0.1.15",
+    "tqdm==4.66.5",
 ]
 
 [project.optional-dependencies]
