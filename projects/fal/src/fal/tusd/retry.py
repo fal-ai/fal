@@ -89,6 +89,15 @@ async def upload_single(  # noqa: PLR0913
                     location = url / location.path
             else:
                 location = yarl.URL(maybe_broken_upload)
+                # Update the progress bar on resume
+                current_server_offset = await core.offset(
+                    session,
+                    location,
+                    ssl=config.ssl,
+                    headers=headers
+                )
+                if file.progress_callback:
+                    file.progress_callback(current_server_offset)
 
             async for attempt in retrying_upload_file:
                 with attempt:

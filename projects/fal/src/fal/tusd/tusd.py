@@ -1,7 +1,6 @@
 import asyncio
 import hashlib
 import os
-import threading
 from io import BufferedReader
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
@@ -224,7 +223,6 @@ class TusdUploader:
         chunk_size = self._calculate_chunk_size(file_size)
 
         pbar = None
-        pbar_lock = threading.Lock()
 
         if self.show_progress:
             pbar = tqdm(
@@ -236,8 +234,7 @@ class TusdUploader:
 
         def update_progress(n: int):
             if pbar:
-                with pbar_lock:
-                    pbar.update(n)
+                pbar.update(n)
 
         file = LimitedReader(
             file_path=file_path,
@@ -269,8 +266,7 @@ class TusdUploader:
                     raise RuntimeError("Upload failed - no location returned")
 
                 if pbar and pbar.n < file_size:
-                    with pbar_lock:
-                        pbar.update(file_size - pbar.n)
+                    pbar.update(file_size - pbar.n)
 
                 await cache.remove_from_cache(file_hash=file_hash)
 
