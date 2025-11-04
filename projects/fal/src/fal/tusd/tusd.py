@@ -256,7 +256,7 @@ class TusdUploader:
                 sock_read=300,
             )
             async with aiohttp.ClientSession(timeout=timeout) as session:
-                location = await aiotus.upload(
+                location = await upload_single(
                     endpoint=self.server_url,
                     file=file,
                     metadata=metadata,
