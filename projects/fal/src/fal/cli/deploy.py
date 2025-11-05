@@ -7,9 +7,21 @@ from .parser import FalClientParser, RefAction, get_output_parser
 
 
 def _deploy(args):
-    client = SyncServerlessClient(host=args.host, team=args.team)
+    from pathlib import Path
+
+    from ._utils import is_app_name
+
+    team = None
+    app_ref = args.app_ref
+
+    # Parse team from app reference if it's in <team-name>/<app-name> format
+    if app_ref and is_app_name(app_ref) and "/" in app_ref[0]:
+        # Try to interpret as team/app-name format
+        team, _ = app_ref[0].split("/", 1)
+    
+    client = SyncServerlessClient(host=args.host, team=team)
     res = client.deploy(
-        args.app_ref,
+        app_ref,
         app_name=args.app_name,
         auth=args.auth,
         strategy=args.strategy,
@@ -62,6 +74,7 @@ def add_parser(main_subparsers, parents):
         "  fal deploy path/to/myfile.py::MyApp\n"
         "  fal deploy path/to/myfile.py::MyApp --app-name myapp --auth public\n"
         "  fal deploy my-app\n"
+        "  fal deploy my-team/my-app\n"
     )
 
     parser = main_subparsers.add_parser(
@@ -87,6 +100,7 @@ def add_parser(main_subparsers, parents):
             "section and deploy the application specified with the provided app name.\n"
             "File path example: path/to/myfile.py::MyApp\n"
             "App name example: my-app\n"
+            "Team app name example: my-team/my-app\n"
         ),
     )
 

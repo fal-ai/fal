@@ -8,16 +8,24 @@ def _run(args):
     from fal.api.client import SyncServerlessClient
     from fal.utils import load_function_from
 
-    if is_app_name(args.func_ref):
-        app_name = args.func_ref[0]
+    team = None
+    func_ref = args.func_ref
+
+    # Check if it contains a slash and might be team/app-name format
+    if is_app_name(func_ref) and "/" in func_ref[0]:
+        # Try to interpret as team/app-name format
+        team, app_name = func_ref[0].split("/", 1)
+
+    if is_app_name(func_ref):
+        app_name = func_ref[0]
         app_ref, *_ = get_app_data_from_toml(app_name)
         file_path, func_name = RefAction.split_ref(app_ref)
     else:
-        file_path, func_name = args.func_ref
+        file_path, func_name = func_ref
         # Turn relative path into absolute path for files
         file_path = str(Path(file_path).absolute())
 
-    client = SyncServerlessClient(host=args.host, team=args.team)
+    client = SyncServerlessClient(host=args.host, team=team)
     host = client._create_host(local_file_path=file_path)
 
     loaded = load_function_from(host, file_path, func_name)
@@ -30,7 +38,12 @@ def _run(args):
 
 def add_parser(main_subparsers, parents):
     run_help = "Run fal function."
-    epilog = "Examples:\n" "  fal run path/to/myfile.py::myfunc"
+    epilog = (
+        "Examples:\n"
+        "  fal run path/to/myfile.py::myfunc\n"
+        "  fal run my-app\n"
+        "  fal run my-team/my-app"
+    )
     parser = main_subparsers.add_parser(
         "run",
         description=run_help,
@@ -41,6 +54,6 @@ def add_parser(main_subparsers, parents):
     parser.add_argument(
         "func_ref",
         action=RefAction,
-        help="Function reference.",
+        help="Function reference. Use <team-name>/<app-name> to run with a specific team.",
     )
     parser.set_defaults(func=_run)

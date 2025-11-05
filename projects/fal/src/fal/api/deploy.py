@@ -189,6 +189,11 @@ def deploy(
         app_ref, app_auth, app_strategy, app_scale_settings = get_app_data_from_toml(
             app_name
         )
+
+        # remove the team name from the app name
+        # <team-name>/<app-name> to <app-name>
+        app_name = app_name.split("/")[-1]
+
         file_path, func_name = RefAction.split_ref(app_ref)
 
     # path/to/myfile.py::MyApp
