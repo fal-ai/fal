@@ -154,8 +154,11 @@ def _shell(args):
 
     def stream_inputs():
         """Generate input stream for gRPC."""
-        # Send initial message with runner_id and terminal size
-        msg = isolate_proto.ShellRunnerInput(runner_id=runner_id)
+        # Send initial message with runner_id
+        yield isolate_proto.ShellRunnerInput(runner_id=runner_id)
+
+        # Send terminal size
+        msg = isolate_proto.ShellRunnerInput()
         h, w = _get_tty_size()
         msg.tty_size.height = h
         msg.tty_size.width = w
