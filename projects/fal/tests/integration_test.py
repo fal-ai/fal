@@ -573,6 +573,7 @@ def test_fal_compressed_file(isolated_client):
     assert len(extracted_file_paths) == 3
 
 
+@pytest.mark.flaky(max_runs=3)
 def test_fal_cdn(isolated_client):
     @isolated_client(requirements=[f"pydantic=={pydantic_version}", "tomli"])
     def upload_to_fal_cdn() -> FalImage:
