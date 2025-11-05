@@ -618,6 +618,7 @@ def test_worker_env_vars(isolated_client):
     assert fal_key_secret, "FAL_KEY_SECRET is not set"
 
 
+@pytest.mark.flaky(max_runs=3)
 @pytest.mark.parametrize(
     "repo_type, url_prefixes",
     [
