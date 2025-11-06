@@ -1201,7 +1201,7 @@ class RunnerInfo(google.protobuf.message.Message):
         PENDING: RunnerInfo._State.ValueType  # 1
         SETUP: RunnerInfo._State.ValueType  # 2
         DEAD: RunnerInfo._State.ValueType  # 3
-        """rename to TERMINATED?"""
+        """TERMINATED"""
         DOCKER_PULL: RunnerInfo._State.ValueType  # 4
         DRAINING: RunnerInfo._State.ValueType  # 5
         STOPPING: RunnerInfo._State.ValueType  # 6
@@ -1212,7 +1212,7 @@ class RunnerInfo(google.protobuf.message.Message):
     PENDING: RunnerInfo.State.ValueType  # 1
     SETUP: RunnerInfo.State.ValueType  # 2
     DEAD: RunnerInfo.State.ValueType  # 3
-    """rename to TERMINATED?"""
+    """TERMINATED"""
     DOCKER_PULL: RunnerInfo.State.ValueType  # 4
     DRAINING: RunnerInfo.State.ValueType  # 5
     STOPPING: RunnerInfo.State.ValueType  # 6
