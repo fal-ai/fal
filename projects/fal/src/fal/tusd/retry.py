@@ -79,7 +79,6 @@ async def upload_single(  # noqa: PLR0913
                             ssl=config.ssl,
                             headers=headers,
                         )
-
                 if file_hash:
                     await cache_upload(
                         file_hash, str(location), start_position, chunksize

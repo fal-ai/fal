@@ -11,6 +11,9 @@ from tqdm import tqdm
 
 import fal.tusd.cache as cache
 from fal.exceptions import FileTooLargeError
+from fal.tusd.retry import upload_single
+
+setattr(aiotus.retry, "upload", upload_single)
 
 
 def _noop_log_before(s: str):
@@ -164,8 +167,8 @@ class TusdUploader:
         self,
         server_url: str,
         headers: Dict[str, str],
-        n_parallel: int = 20,
-        chunk_size: int = 100 * 1024 * 1024,
+        n_parallel: int = 100,
+        chunk_size: int = 10 * 1024 * 1024,
         show_progress: bool = True,
     ):
         self.server_url = server_url
@@ -193,15 +196,7 @@ class TusdUploader:
     ) -> str:
         """Synchronously upload a file using TUS parallel upload."""
         file_path = Path(lpath)
-        return asyncio.run(self._upload_async(file_path, file_dir))
-
-    async def _upload_async(
-        self,
-        file_path: Path,
-        file_dir: str,
-    ) -> str:
-        uploaded_path = await self._do_upload(file_path, file_dir)
-        return uploaded_path
+        return asyncio.run(self._do_upload(file_path, file_dir))
 
     async def _do_upload(
         self,
@@ -236,16 +231,25 @@ class TusdUploader:
             if pbar:
                 pbar.update(n)
 
-        file = LimitedReader(
+        # file = LimitedReader(
+        #     file_path=file_path,
+        #     start=0,
+        #     size=file_size,
+        #     parent_hash=file_hash,
+        #     progress_callback=update_progress if self.show_progress else None,
+        # )
+
+        part_readers = create_file_readers(
             file_path=file_path,
-            start=0,
-            size=file_size,
+            file_size=file_size,
+            num_parts=self.n_parallel,
             parent_hash=file_hash,
             progress_callback=update_progress if self.show_progress else None,
         )
 
         try:
-            file.__enter__()
+           # Open all file handles
+            part_files = [reader.__enter__() for reader in part_readers]
 
             timeout = aiohttp.ClientTimeout(
                 total=7200,
@@ -253,13 +257,14 @@ class TusdUploader:
                 sock_read=300,
             )
             async with aiohttp.ClientSession(timeout=timeout) as session:
-                location = await upload_single(
+                location = await aiotus.upload_multiple(
                     endpoint=self.server_url,
-                    file=file,
+                    files=part_files,
                     metadata=metadata,
                     client_session=session,
                     headers=self.headers,
                     chunksize=chunk_size,
+                    parallel_uploads=self.n_parallel,
                 )
 
                 if location is None:
@@ -275,10 +280,12 @@ class TusdUploader:
                 return uploaded_path
 
         finally:
-            try:
-                file.__exit__(None, None, None)
-            except Exception:
-                pass
+            # Clean up file handles
+            for reader in part_readers:
+                try:
+                    reader.__exit__(None, None, None)
+                except Exception:
+                    pass
 
             if pbar:
                 pbar.close()
