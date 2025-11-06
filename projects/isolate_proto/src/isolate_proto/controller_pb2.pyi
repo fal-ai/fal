@@ -1201,14 +1201,22 @@ class RunnerInfo(google.protobuf.message.Message):
         PENDING: RunnerInfo._State.ValueType  # 1
         SETUP: RunnerInfo._State.ValueType  # 2
         DEAD: RunnerInfo._State.ValueType  # 3
+        """rename to TERMINATED?"""
         DOCKER_PULL: RunnerInfo._State.ValueType  # 4
+        DRAINING: RunnerInfo._State.ValueType  # 5
+        STOPPING: RunnerInfo._State.ValueType  # 6
+        STOPPED: RunnerInfo._State.ValueType  # 7
 
     class State(_State, metaclass=_StateEnumTypeWrapper): ...
     RUNNING: RunnerInfo.State.ValueType  # 0
     PENDING: RunnerInfo.State.ValueType  # 1
     SETUP: RunnerInfo.State.ValueType  # 2
     DEAD: RunnerInfo.State.ValueType  # 3
+    """rename to TERMINATED?"""
     DOCKER_PULL: RunnerInfo.State.ValueType  # 4
+    DRAINING: RunnerInfo.State.ValueType  # 5
+    STOPPING: RunnerInfo.State.ValueType  # 6
+    STOPPED: RunnerInfo.State.ValueType  # 7
 
     RUNNER_ID_FIELD_NUMBER: builtins.int
     IN_FLIGHT_REQUESTS_FIELD_NUMBER: builtins.int
