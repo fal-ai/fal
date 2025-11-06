@@ -1,0 +1,56 @@
+name: Integration Tests (fal)
+
+on:
+  push:
+    branches: [main]
+
+  pull_request:
+    types: [assigned, opened, synchronize, reopened]
+    paths-ignore:
+      - "README.md"
+
+  schedule:
+    - cron: '30 5 * * *' # every day at 5:30 UTC
+
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    name: integration (py ${{ matrix.python }}, ${{ matrix.deps }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        deps: ["pydantic==1.10.18", "pydantic==2.5.0"]
+        python: ["3.8", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip wheel
+          pip install -e 'projects/fal[test]' graphlib ${{ matrix.deps }}
+
+      - name: Run integration tests
+        env:
+          FAL_KEY: ${{ secrets.FAL_CLOUD_KEY_ID }}:${{ secrets.FAL_CLOUD_KEY_SECRET }}
+          FAL_HOST: api.${{ vars.FAL_CLOUD_INTEGRATION_TEST_HOST }}
+        run: |
+          pytest -n auto -v projects/fal/tests/integration
+
+
