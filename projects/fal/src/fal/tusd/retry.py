@@ -7,7 +7,6 @@ import logging
 from typing import TYPE_CHECKING
 
 import aiohttp
-import tenacity
 import yarl
 from aiotus import RetryConfiguration, common, core, creation
 from aiotus.retry import _make_retrying, _sanitize_metadata
@@ -109,12 +108,5 @@ async def upload_single(  # noqa: PLR0913
                     )
 
             return location
-    except tenacity.RetryError as e:
-        logger.error(
-            f"Unable to upload file, even after retrying: {e.last_attempt.exception()}"
-        )
-    except Exception as e:  # noqa: BLE001
-        logger.error(f"Unable to upload file: {e}")
+    except Exception:  # noqa: BLE001
         raise
-
-    return None
