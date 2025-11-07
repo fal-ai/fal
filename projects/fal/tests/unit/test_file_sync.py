@@ -17,8 +17,12 @@ def temp_dir():
 
 
 @pytest.fixture
-def file_sync(temp_dir):
+def file_sync(temp_dir, monkeypatch):
     """Create FileSync instance with temporary directory"""
+    # Ensure credential and host resolution do not require real auth or HTTPS
+    monkeypatch.setenv("FAL_KEY", "dummy:dummy")
+    monkeypatch.setenv("FAL_HOST", "api.localhost")
+    monkeypatch.setenv("ISOLATE_TEST_MODE", "1")
     return FileSync(local_file_path=str(Path(temp_dir) / "app.py"))
 
 

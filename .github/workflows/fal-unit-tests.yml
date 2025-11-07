@@ -1,4 +1,4 @@
-name: Run Integration Tests
+name: Unit Tests (fal)
 
 on:
   push:
@@ -18,22 +18,25 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
-  run:
+  unit:
+    name: unit (py ${{ matrix.python }}, ${{ matrix.deps }})
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
         deps: ["pydantic==1.10.18", "pydantic==2.5.0"]
-        # TODO: Test Python 3.13
         python: ["3.8", "3.12"]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
           cache: pip
@@ -41,13 +44,10 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --upgrade pip wheel
-          # TODO: should we include graphlib as a project dependency?
           pip install -e 'projects/fal[test]' graphlib ${{ matrix.deps }}
 
-      - name: Run integration tests
-        env:
-          FAL_KEY: ${{ secrets.FAL_CLOUD_KEY_ID }}:${{ secrets.FAL_CLOUD_KEY_SECRET }}
-          FAL_HOST: api.${{ vars.FAL_CLOUD_INTEGRATION_TEST_HOST }}
+      - name: Run unit tests
         run: |
-          # Don't exaggerate the parallelism, since this job runs a matrix
-          pytest -n 8 -v projects/fal/tests
+          pytest -n auto -v projects/fal/tests/unit
+
+
