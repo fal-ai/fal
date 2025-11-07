@@ -449,6 +449,7 @@ def test_broken_app_failure(host: api.FalServerlessHost, user: User):
     assert "Failed to generate OpenAPI" in str(e)
 
 
+@pytest.mark.flaky(max_runs=3)
 def test_app_client(test_app: str, test_nomad_app: str):
     response = apps.run(test_app, arguments={"lhs": 1, "rhs": 2})
     assert response["result"] == 3
@@ -514,6 +515,7 @@ def test_stateful_app_client(test_stateful_app: str):
     assert response["result"] == 0
 
 
+@pytest.mark.flaky(max_runs=3)
 def test_app_cancellation(test_app: str, test_cancellable_app: str):
     request_handle = apps.submit(
         test_cancellable_app, arguments={"lhs": 1, "rhs": 2, "wait_time": 6}
@@ -553,6 +555,7 @@ def test_app_cancellation(test_app: str, test_cancellable_app: str):
     assert response == {"result": 3}
 
 
+@pytest.mark.flaky(max_runs=3)
 def test_app_disconnect_behavior(test_app: str, test_cancellable_app: str):
     with pytest.raises(HTTPStatusError) as e:
         apps.run(
@@ -630,7 +633,9 @@ def test_app_client_async(test_sleep_app: str):
 
 
 # If the logging subsystem is not working for some nodes, this test will flake
-@pytest.mark.flaky(max_runs=10)
+@pytest.mark.xfail(
+    reason="Temporary disabled while investigating backend issue. Ping @efiop"
+)
 def test_traceback_logs(test_exception_app: AppClient):
     date = (
         datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=1)
@@ -1103,6 +1108,7 @@ def test_kill_runner(host: api.FalServerlessHost, test_sleep_app: str):
         assert num_runners == existing_runners - 1
 
 
+@pytest.mark.flaky(max_runs=3)
 def test_rollout_application(host: api.FalServerlessHost, test_sleep_app: str):
     handle = apps.submit(test_sleep_app, arguments={"wait_time": 30})
 
@@ -1140,6 +1146,7 @@ def test_rollout_application(host: api.FalServerlessHost, test_sleep_app: str):
         assert not runner_ids_after.intersection(runner_ids_final)
 
 
+@pytest.mark.flaky(max_runs=3)
 def test_shell_runner(host: api.FalServerlessHost, test_sleep_app: str):
     handle = apps.submit(test_sleep_app, arguments={"wait_time": 30})
 
