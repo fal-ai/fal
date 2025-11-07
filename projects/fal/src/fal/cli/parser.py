@@ -187,6 +187,10 @@ class FalClientParser(FalParser):
             default=GRPC_HOST,
             help=argparse.SUPPRESS,
         )
+        self.add_argument(
+            "--team",
+            help="The team to use.",
+        )
 
 
 def get_output_parser():

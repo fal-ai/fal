@@ -30,6 +30,11 @@ def mock_parse_pyproject_toml():
                 "ref": "src/app_with_extras/inference.py::AppWithExtras",
                 "extra_key": "extra_value",
             },
+            "team-app": {
+                "ref": "src/team_app/inference.py::TeamApp",
+                "team": "my-team",
+                "auth": "shared",
+            },
         }
     }
 
@@ -334,3 +339,109 @@ def test_deploy_with_cli_scale(
         strategy=None,
         scale=False,
     )
+
+
+@patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+@patch("fal.api.client.SyncServerlessClient")
+@patch("fal.api.deploy._deploy_from_reference")
+def test_deploy_with_team_from_toml(
+    mock_deploy_ref,
+    mock_client,
+    mock_parse_toml,
+    mock_find_toml,
+    mock_parse_pyproject_toml,
+):
+    """Test that team is read from pyproject.toml and passed to SyncServerlessClient"""
+    mock_parse_toml.return_value = mock_parse_pyproject_toml
+
+    # Mock the client instance
+    mock_client_instance = MagicMock()
+    mock_client.return_value = mock_client_instance
+
+    args = mock_args(app_ref=("team-app", None))
+    args.host = "my-host"
+
+    _deploy(args)
+
+    # Ensure the client was initialized with the correct team
+    mock_client.assert_called_once_with(host="my-host", team="my-team")
+
+    project_root, _ = find_project_root(None)
+
+    # Ensure the correct app is deployed
+    mock_deploy_ref.assert_called_once_with(
+        mock_client_instance,
+        (f"{project_root / 'src/team_app/inference.py'}", "TeamApp"),
+        "team-app",
+        "shared",
+        strategy=None,
+        scale=False,
+    )
+
+
+@patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+@patch("fal.api.client.SyncServerlessClient")
+@patch("fal.api.deploy._deploy_from_reference")
+def test_deploy_without_team_in_toml(
+    mock_deploy_ref,
+    mock_client,
+    mock_parse_toml,
+    mock_find_toml,
+    mock_parse_pyproject_toml,
+):
+    """Test that team defaults to None when not specified in pyproject.toml"""
+    mock_parse_toml.return_value = mock_parse_pyproject_toml
+
+    # Mock the client instance
+    mock_client_instance = MagicMock()
+    mock_client.return_value = mock_client_instance
+
+    args = mock_args(app_ref=("my-app", None))
+    args.host = "my-host"
+
+    _deploy(args)
+
+    # Ensure the client was initialized with team=None
+    mock_client.assert_called_once_with(host="my-host", team=None)
+
+
+@patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+def test_get_app_data_from_toml_with_team(
+    mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml
+):
+    """Test that get_app_data_from_toml returns the team field"""
+    from fal.cli._utils import get_app_data_from_toml
+
+    mock_parse_toml.return_value = mock_parse_pyproject_toml
+
+    app_ref, auth, strategy, reset_scale, team = get_app_data_from_toml("team-app")
+
+    project_root, _ = find_project_root(None)
+    assert app_ref == f"{project_root / 'src/team_app/inference.py'}::TeamApp"
+    assert auth == "shared"
+    assert strategy is None
+    assert reset_scale is False
+    assert team == "my-team"
+
+
+@patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+def test_get_app_data_from_toml_without_team(
+    mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml
+):
+    """Test that get_app_data_from_toml returns None for team when not specified"""
+    from fal.cli._utils import get_app_data_from_toml
+
+    mock_parse_toml.return_value = mock_parse_pyproject_toml
+
+    app_ref, auth, strategy, reset_scale, team = get_app_data_from_toml("my-app")
+
+    project_root, _ = find_project_root(None)
+    assert app_ref == f"{project_root / 'src/my_app/inference.py'}::MyApp"
+    assert auth == "shared"
+    assert strategy == "rolling"
+    assert reset_scale is False
+    assert team is None

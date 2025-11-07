@@ -22,7 +22,13 @@ def is_app_name(app_ref: tuple[str, str | None]) -> bool:
 
 def get_app_data_from_toml(
     app_name,
-) -> tuple[str, Optional[AuthModeLiteral], Optional[DeploymentStrategyLiteral], bool]:
+) -> tuple[
+    str,
+    Optional[AuthModeLiteral],
+    Optional[DeploymentStrategyLiteral],
+    bool,
+    Optional[str],
+]:
     toml_path = find_pyproject_toml()
 
     if toml_path is None:
@@ -49,6 +55,7 @@ def get_app_data_from_toml(
     app_deployment_strategy: Optional[DeploymentStrategyLiteral] = app_data.pop(
         "deployment_strategy", None
     )
+    app_team: Optional[str] = app_data.pop("team", None)
 
     app_reset_scale: bool
     if "no_scale" in app_data:
@@ -62,4 +69,4 @@ def get_app_data_from_toml(
     if len(app_data) > 0:
         raise ValueError(f"Found unexpected keys in pyproject.toml: {app_data}")
 
-    return app_ref, app_auth, app_deployment_strategy, app_reset_scale
+    return app_ref, app_auth, app_deployment_strategy, app_reset_scale, app_team

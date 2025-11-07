@@ -7,18 +7,19 @@ from .parser import FalClientParser, RefAction, get_output_parser
 
 
 def _deploy(args):
-    from pathlib import Path
-
-    from ._utils import is_app_name
+    from ._utils import get_app_data_from_toml, is_app_name
 
     team = None
     app_ref = args.app_ref
 
-    # Parse team from app reference if it's in <team-name>/<app-name> format
-    if app_ref and is_app_name(app_ref) and "/" in app_ref[0]:
-        # Try to interpret as team/app-name format
-        team, _ = app_ref[0].split("/", 1)
-    
+    # If the app_ref is an app name, get team from pyproject.toml
+    if app_ref and is_app_name(app_ref):
+        try:
+            _, _, _, _, team = get_app_data_from_toml(app_ref[0])
+        except (ValueError, FileNotFoundError):
+            # If we can't find the app in pyproject.toml, team remains None
+            pass
+
     client = SyncServerlessClient(host=args.host, team=team)
     res = client.deploy(
         app_ref,
@@ -74,7 +75,6 @@ def add_parser(main_subparsers, parents):
         "  fal deploy path/to/myfile.py::MyApp\n"
         "  fal deploy path/to/myfile.py::MyApp --app-name myapp --auth public\n"
         "  fal deploy my-app\n"
-        "  fal deploy my-team/my-app\n"
     )
 
     parser = main_subparsers.add_parser(
@@ -99,8 +99,7 @@ def add_parser(main_subparsers, parents):
             "command will look for a pyproject.toml file with a [tool.fal.apps] "
             "section and deploy the application specified with the provided app name.\n"
             "File path example: path/to/myfile.py::MyApp\n"
-            "App name example: my-app\n"
-            "Team app name example: my-team/my-app\n"
+            "App name example: my-app (configure team in pyproject.toml)\n"
         ),
     )
 

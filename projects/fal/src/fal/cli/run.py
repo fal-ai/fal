@@ -11,14 +11,9 @@ def _run(args):
     team = None
     func_ref = args.func_ref
 
-    # Check if it contains a slash and might be team/app-name format
-    if is_app_name(func_ref) and "/" in func_ref[0]:
-        # Try to interpret as team/app-name format
-        team, app_name = func_ref[0].split("/", 1)
-
     if is_app_name(func_ref):
         app_name = func_ref[0]
-        app_ref, *_ = get_app_data_from_toml(app_name)
+        app_ref, _, _, _, team = get_app_data_from_toml(app_name)
         file_path, func_name = RefAction.split_ref(app_ref)
     else:
         file_path, func_name = func_ref
@@ -38,12 +33,7 @@ def _run(args):
 
 def add_parser(main_subparsers, parents):
     run_help = "Run fal function."
-    epilog = (
-        "Examples:\n"
-        "  fal run path/to/myfile.py::myfunc\n"
-        "  fal run my-app\n"
-        "  fal run my-team/my-app"
-    )
+    epilog = "Examples:\n" "  fal run path/to/myfile.py::myfunc\n" "  fal run my-app\n"
     parser = main_subparsers.add_parser(
         "run",
         description=run_help,
@@ -54,6 +44,6 @@ def add_parser(main_subparsers, parents):
     parser.add_argument(
         "func_ref",
         action=RefAction,
-        help="Function reference. Use <team-name>/<app-name> to run with a specific team.",
+        help="Function reference. Configure team in pyproject.toml for app names.",
     )
     parser.set_defaults(func=_run)
