@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 from typing import Any, Optional
 
 from fal.project import find_project_root, find_pyproject_toml, parse_pyproject_toml
@@ -38,7 +39,7 @@ def get_app_data_from_toml(
     apps = fal_data.get("apps", {})
 
     try:
-        app_data: dict[str, Any] = apps[app_name]
+        app_data: dict[str, Any] = copy.deepcopy(apps[app_name])
     except KeyError:
         raise ValueError(f"App {app_name} not found in pyproject.toml")
 

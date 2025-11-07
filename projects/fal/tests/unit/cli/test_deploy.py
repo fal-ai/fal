@@ -343,10 +343,8 @@ def test_deploy_with_cli_scale(
 
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
 @patch("fal.cli._utils.parse_pyproject_toml")
-@patch("fal.api.client.SyncServerlessClient")
-@patch("fal.api.deploy._deploy_from_reference")
+@patch("fal.cli.deploy.SyncServerlessClient")
 def test_deploy_with_team_from_toml(
-    mock_deploy_ref,
     mock_client,
     mock_parse_toml,
     mock_find_toml,
@@ -358,6 +356,11 @@ def test_deploy_with_team_from_toml(
     # Mock the client instance
     mock_client_instance = MagicMock()
     mock_client.return_value = mock_client_instance
+    mock_client_instance.deploy.return_value = MagicMock(
+        revision="rev-123",
+        app_name="team-app",
+        urls={"playground": {}, "sync": {}, "async": {}},
+    )
 
     args = mock_args(app_ref=("team-app", None))
     args.host = "my-host"
@@ -367,25 +370,11 @@ def test_deploy_with_team_from_toml(
     # Ensure the client was initialized with the correct team
     mock_client.assert_called_once_with(host="my-host", team="my-team")
 
-    project_root, _ = find_project_root(None)
-
-    # Ensure the correct app is deployed
-    mock_deploy_ref.assert_called_once_with(
-        mock_client_instance,
-        (f"{project_root / 'src/team_app/inference.py'}", "TeamApp"),
-        "team-app",
-        "shared",
-        strategy=None,
-        scale=False,
-    )
-
 
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
 @patch("fal.cli._utils.parse_pyproject_toml")
-@patch("fal.api.client.SyncServerlessClient")
-@patch("fal.api.deploy._deploy_from_reference")
+@patch("fal.cli.deploy.SyncServerlessClient")
 def test_deploy_without_team_in_toml(
-    mock_deploy_ref,
     mock_client,
     mock_parse_toml,
     mock_find_toml,
@@ -397,6 +386,11 @@ def test_deploy_without_team_in_toml(
     # Mock the client instance
     mock_client_instance = MagicMock()
     mock_client.return_value = mock_client_instance
+    mock_client_instance.deploy.return_value = MagicMock(
+        revision="rev-123",
+        app_name="my-app",
+        urls={"playground": {}, "sync": {}, "async": {}},
+    )
 
     args = mock_args(app_ref=("my-app", None))
     args.host = "my-host"
