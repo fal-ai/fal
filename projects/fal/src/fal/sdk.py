@@ -272,27 +272,14 @@ class AliasInfo:
 
 
 class RunnerState(Enum):
-    RUNNING = "running"
-    PENDING = "pending"
-    SETUP = "setup"
-    DOCKER_PULL = "docker_pull"
-    DEAD = "dead"
-    UNKNOWN = "unknown"
-
-    @staticmethod
-    def from_proto(proto: isolate_proto.RunnerInfo.State) -> RunnerState:
-        if proto is isolate_proto.RunnerInfo.State.RUNNING:
-            return RunnerState.RUNNING
-        elif proto is isolate_proto.RunnerInfo.State.PENDING:
-            return RunnerState.PENDING
-        elif proto is isolate_proto.RunnerInfo.State.SETUP:
-            return RunnerState.SETUP
-        elif proto is isolate_proto.RunnerInfo.State.DEAD:
-            return RunnerState.DEAD
-        elif proto is isolate_proto.RunnerInfo.State.DOCKER_PULL:
-            return RunnerState.DOCKER_PULL
-        else:
-            return RunnerState.UNKNOWN
+    RUNNING = "RUNNING"
+    PENDING = "PENDING"
+    SETUP = "SETUP"
+    DOCKER_PULL = "DOCKER_PULL"
+    DEAD = "DEAD"
+    DRAINING = "DRAINING"
+    STOPPING = "STOPPING"
+    STOPPED = "STOPPED"
 
 
 @dataclass
@@ -468,7 +455,7 @@ def _from_grpc_runner_info(message: isolate_proto.RunnerInfo) -> RunnerInfo:
         external_metadata=external_metadata,
         revision=message.revision,
         alias=message.alias,
-        state=RunnerState.from_proto(message.state),
+        state=RunnerState(isolate_proto.RunnerInfo.State.Name(message.state)),
     )
 
 
