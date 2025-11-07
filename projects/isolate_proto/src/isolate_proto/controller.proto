@@ -403,8 +403,11 @@ message RunnerInfo {
         RUNNING = 0;
         PENDING = 1;
         SETUP = 2;
-        DEAD = 3;
+        DEAD = 3; // TERMINATED
         DOCKER_PULL = 4;
+        DRAINING = 5;
+        STOPPING = 6;
+        STOPPED = 7;
     }
 
     optional State state = 8;
