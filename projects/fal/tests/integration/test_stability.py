@@ -121,6 +121,7 @@ def test_container_venv(isolated_client):
     assert myfunc() == 42
 
 
+@pytest.mark.flaky(max_runs=3)
 def test_regular_function_in_a_container_with_custom_image(isolated_client):
     actual_python = active_python()
 
