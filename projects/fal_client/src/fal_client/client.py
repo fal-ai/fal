@@ -652,15 +652,20 @@ MAX_DELAY = 30
 RETRY_CODES = [408, 409, 429]
 
 
-def _should_retry(exc: httpx.HTTPError) -> bool:
+def _should_retry(exc: Exception, extra_retry_codes: list[int] = []) -> bool:
     if isinstance(exc, httpx.TransportError):
         return True
 
-    if (
-        isinstance(exc, httpx.HTTPStatusError)
-        and exc.response.status_code in RETRY_CODES
-    ):
-        return True
+    if isinstance(exc, httpx.HTTPStatusError):
+        if (
+            exc.response.status_code in RETRY_CODES
+            or exc.response.status_code in extra_retry_codes
+        ):
+            return True
+
+    if isinstance(exc, FalClientHTTPError):
+        if exc.status_code in RETRY_CODES or exc.status_code in extra_retry_codes:
+            return True
 
     return False
 
@@ -684,13 +689,18 @@ def _get_retry_delay(
 
 
 def _maybe_retry_request(
-    client: httpx.Client, method: str, url: str, **kwargs: Any
+    client: httpx.Client,
+    method: str,
+    url: str,
+    *,
+    extra_retry_codes: list[int] = [],
+    **kwargs: Any,
 ) -> httpx.Response:
     for attempt in range(1, MAX_ATTEMPTS + 1):
         try:
             return _request(client, method, url, **kwargs)
-        except httpx.HTTPError as exc:
-            if _should_retry(exc) and attempt < MAX_ATTEMPTS:
+        except (httpx.HTTPError, FalClientHTTPError) as exc:
+            if _should_retry(exc, extra_retry_codes) and attempt < MAX_ATTEMPTS:
                 delay = _get_retry_delay(
                     attempt, BASE_DELAY, MAX_DELAY, "exponential", True
                 )
@@ -705,13 +715,18 @@ def _maybe_retry_request(
 
 
 async def _async_maybe_retry_request(
-    client: httpx.AsyncClient, method: str, url: str, **kwargs: Any
+    client: httpx.AsyncClient,
+    method: str,
+    url: str,
+    *,
+    extra_retry_codes: list[int] = [],
+    **kwargs: Any,
 ) -> httpx.Response:
     for attempt in range(1, MAX_ATTEMPTS + 1):
         try:
             return await _async_request(client, method, url, **kwargs)
-        except httpx.HTTPError as exc:
-            if _should_retry(exc) and attempt < MAX_ATTEMPTS:
+        except (httpx.HTTPError, FalClientHTTPError) as exc:
+            if _should_retry(exc, extra_retry_codes) and attempt < MAX_ATTEMPTS:
                 delay = _get_retry_delay(attempt, 0.1, 10, "exponential", True)
                 logger.debug(
                     f"Retrying request to {url} due to {exc} ({MAX_ATTEMPTS - attempt} attempts left)"
@@ -754,6 +769,7 @@ class SyncRequestHandle(_BaseRequestHandle):
             self.client,
             "GET",
             self.status_url,
+            extra_retry_codes=[500],
             params={
                 "logs": with_logs,
             },
@@ -782,13 +798,17 @@ class SyncRequestHandle(_BaseRequestHandle):
         for _ in self.iter_events(with_logs=False):
             continue
 
-        response = _maybe_retry_request(self.client, "GET", self.response_url)
+        response = _maybe_retry_request(
+            self.client, "GET", self.response_url, extra_retry_codes=[500]
+        )
         _raise_for_status(response)
         return response.json()
 
     def cancel(self) -> None:
         """Cancel the request."""
-        response = _maybe_retry_request(self.client, "PUT", self.cancel_url)
+        response = _maybe_retry_request(
+            self.client, "PUT", self.cancel_url, extra_retry_codes=[500]
+        )
         _raise_for_status(response)
 
 
@@ -823,6 +843,7 @@ class AsyncRequestHandle(_BaseRequestHandle):
             self.client,
             "GET",
             self.status_url,
+            extra_retry_codes=[500],
             params={
                 "logs": with_logs,
             },
@@ -852,14 +873,16 @@ class AsyncRequestHandle(_BaseRequestHandle):
             continue
 
         response = await _async_maybe_retry_request(
-            self.client, "GET", self.response_url
+            self.client, "GET", self.response_url, extra_retry_codes=[500]
         )
         _raise_for_status(response)
         return response.json()
 
     async def cancel(self) -> None:
         """Cancel the request."""
-        response = await _async_maybe_retry_request(self.client, "PUT", self.cancel_url)
+        response = await _async_maybe_retry_request(
+            self.client, "PUT", self.cancel_url, extra_retry_codes=[500]
+        )
         _raise_for_status(response)
 
 

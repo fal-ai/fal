@@ -1,4 +1,6 @@
 import pytest
+import httpx
+import asyncio
 from unittest.mock import Mock, patch, AsyncMock
 
 from fal_client.client import (
@@ -8,6 +10,8 @@ from fal_client.client import (
     _BaseRequestHandle,
     SyncClient,
     AsyncClient,
+    SyncRequestHandle,
+    AsyncRequestHandle,
 )
 
 
@@ -303,3 +307,141 @@ async def test_async_client_subscribe_with_headers():
         first_call_kwargs = mock_request.call_args_list[0][1]
         assert "headers" in first_call_kwargs
         assert first_call_kwargs["headers"]["X-Correlation-Id"] == "corr-456"
+
+
+def test_sync_handle_retries_500(monkeypatch):
+    """Condensed sync test: status, get, and cancel retry on 500."""
+    import fal_client.client as client_mod
+
+    monkeypatch.setattr(client_mod, "MAX_ATTEMPTS", 3)
+    monkeypatch.setattr(client_mod, "BASE_DELAY", 0.0)
+    monkeypatch.setattr(client_mod, "MAX_DELAY", 0.0)
+
+    client = httpx.Client()
+    handle = SyncRequestHandle(
+        request_id="r-sync",
+        response_url="http://resp",
+        status_url="http://status",
+        cancel_url="http://cancel",
+        client=client,
+    )
+
+    # Mock iter_events to skip waiting
+    def _iter_events(self, with_logs: bool = False, interval: float = 0.1):
+        return iter([Completed(logs=[], metrics={})])
+
+    monkeypatch.setattr(SyncRequestHandle, "iter_events", _iter_events, raising=True)
+
+    # Prepare sequence:
+    # 1) status: 500 -> 200(COMPLETED)
+    # 2) get:    500 -> 200({"ok": true})
+    # 3) cancel: 500 -> 200()
+    req_status = httpx.Request("GET", "http://status")
+    status_500 = httpx.Response(500, request=req_status)
+    status_ok = httpx.Response(
+        200,
+        content=b'{"status": "COMPLETED", "logs": [], "metrics": {}}',
+        headers={"Content-Type": "application/json"},
+        request=req_status,
+    )
+
+    req_get = httpx.Request("GET", "http://resp")
+    get_500 = httpx.Response(500, request=req_get)
+    get_ok = httpx.Response(
+        200,
+        content=b'{"ok": true}',
+        headers={"Content-Type": "application/json"},
+        request=req_get,
+    )
+
+    req_put = httpx.Request("PUT", "http://cancel")
+    cancel_500 = httpx.Response(500, request=req_put)
+    cancel_ok = httpx.Response(200, request=req_put)
+
+    client.request = Mock(
+        side_effect=[status_500, status_ok, get_500, get_ok, cancel_500, cancel_ok]
+    )
+
+    # Status
+    status = handle.status(with_logs=False)
+    assert isinstance(status, Completed)
+
+    # Get
+    result = handle.get()
+    assert result == {"ok": True}
+
+    # Cancel
+    handle.cancel()
+
+    # 2 per operation
+    assert client.request.call_count == 6
+
+
+@pytest.mark.asyncio
+async def test_async_handle_retries_500(monkeypatch):
+    """Condensed async test: status, get, and cancel retry on 500."""
+    import fal_client.client as client_mod
+
+    monkeypatch.setattr(client_mod, "MAX_ATTEMPTS", 3)
+    monkeypatch.setattr(client_mod, "BASE_DELAY", 0.0)
+    monkeypatch.setattr(client_mod, "MAX_DELAY", 0.0)
+    monkeypatch.setattr(asyncio, "sleep", AsyncMock())
+
+    client = httpx.AsyncClient()
+    handle = AsyncRequestHandle(
+        request_id="r-async",
+        response_url="http://resp",
+        status_url="http://status",
+        cancel_url="http://cancel",
+        client=client,
+    )
+
+    # Mock iter_events to skip waiting
+    async def _iter_events(self, with_logs: bool = False, interval: float = 0.1):
+        yield Completed(logs=[], metrics={})
+
+    monkeypatch.setattr(AsyncRequestHandle, "iter_events", _iter_events, raising=True)
+
+    # Prepare sequence:
+    # 1) status: 500 -> 200(COMPLETED)
+    # 2) get:    500 -> 200({"ok": true})
+    # 3) cancel: 500 -> 200()
+    req_status = httpx.Request("GET", "http://status")
+    status_500 = httpx.Response(500, request=req_status)
+    status_ok = httpx.Response(
+        200,
+        content=b'{"status": "COMPLETED", "logs": [], "metrics": {}}',
+        headers={"Content-Type": "application/json"},
+        request=req_status,
+    )
+
+    req_get = httpx.Request("GET", "http://resp")
+    get_500 = httpx.Response(500, request=req_get)
+    get_ok = httpx.Response(
+        200,
+        content=b'{"ok": true}',
+        headers={"Content-Type": "application/json"},
+        request=req_get,
+    )
+
+    req_put = httpx.Request("PUT", "http://cancel")
+    cancel_500 = httpx.Response(500, request=req_put)
+    cancel_ok = httpx.Response(200, request=req_put)
+
+    client.request = AsyncMock(
+        side_effect=[status_500, status_ok, get_500, get_ok, cancel_500, cancel_ok]
+    )
+
+    # Status
+    status = await handle.status(with_logs=False)
+    assert isinstance(status, Completed)
+
+    # Get
+    result = await handle.get()
+    assert result == {"ok": True}
+
+    # Cancel
+    await handle.cancel()
+
+    # 2 per operation
+    assert client.request.await_count == 6
