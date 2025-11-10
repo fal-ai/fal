@@ -649,7 +649,7 @@ async def _async_request(
 MAX_ATTEMPTS = 10
 BASE_DELAY = 0.1
 MAX_DELAY = 30
-RETRY_CODES = [408, 409, 429]
+RETRY_CODES = [408, 409, 429, 502, 504]
 
 
 def _should_retry(exc: Exception, extra_retry_codes: list[int] = []) -> bool:
@@ -769,7 +769,6 @@ class SyncRequestHandle(_BaseRequestHandle):
             self.client,
             "GET",
             self.status_url,
-            extra_retry_codes=[500],
             params={
                 "logs": with_logs,
             },
@@ -798,16 +797,16 @@ class SyncRequestHandle(_BaseRequestHandle):
         for _ in self.iter_events(with_logs=False):
             continue
 
-        response = _maybe_retry_request(
-            self.client, "GET", self.response_url, extra_retry_codes=[500]
-        )
+        response = _maybe_retry_request(self.client, "GET", self.response_url)
         _raise_for_status(response)
         return response.json()
 
     def cancel(self) -> None:
         """Cancel the request."""
         response = _maybe_retry_request(
-            self.client, "PUT", self.cancel_url, extra_retry_codes=[500]
+            self.client,
+            "PUT",
+            self.cancel_url,
         )
         _raise_for_status(response)
 
@@ -843,7 +842,6 @@ class AsyncRequestHandle(_BaseRequestHandle):
             self.client,
             "GET",
             self.status_url,
-            extra_retry_codes=[500],
             params={
                 "logs": with_logs,
             },
@@ -873,7 +871,9 @@ class AsyncRequestHandle(_BaseRequestHandle):
             continue
 
         response = await _async_maybe_retry_request(
-            self.client, "GET", self.response_url, extra_retry_codes=[500]
+            self.client,
+            "GET",
+            self.response_url,
         )
         _raise_for_status(response)
         return response.json()
@@ -881,7 +881,9 @@ class AsyncRequestHandle(_BaseRequestHandle):
     async def cancel(self) -> None:
         """Cancel the request."""
         response = await _async_maybe_retry_request(
-            self.client, "PUT", self.cancel_url, extra_retry_codes=[500]
+            self.client,
+            "PUT",
+            self.cancel_url,
         )
         _raise_for_status(response)
 

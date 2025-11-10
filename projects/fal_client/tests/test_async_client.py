@@ -183,6 +183,22 @@ async def test_fal_client_upload(
             ),
             True,
         ),
+        (
+            httpx.HTTPStatusError(
+                message="test",
+                request=httpx.Request("GET", "https://example.com"),
+                response=httpx.Response(status_code=502),
+            ),
+            True,
+        ),
+        (
+            httpx.HTTPStatusError(
+                message="test",
+                request=httpx.Request("GET", "https://example.com"),
+                response=httpx.Response(status_code=504),
+            ),
+            True,
+        ),
     ],
 )
 async def test_retry(mocker, exc, retried, monkeypatch):
