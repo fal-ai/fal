@@ -187,7 +187,7 @@ async def test_fal_client_upload(
             httpx.HTTPStatusError(
                 message="test",
                 request=httpx.Request("GET", "https://example.com"),
-                response=httpx.Response(status_code=502),
+                response=httpx.Response(status_code=502, text="nginx error"),
             ),
             True,
         ),
@@ -195,7 +195,7 @@ async def test_fal_client_upload(
             httpx.HTTPStatusError(
                 message="test",
                 request=httpx.Request("GET", "https://example.com"),
-                response=httpx.Response(status_code=504),
+                response=httpx.Response(status_code=504, text="nginx error"),
             ),
             True,
         ),

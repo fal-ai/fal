@@ -508,6 +508,7 @@ class FalClientHTTPError(FalClientError):
     message: str
     status_code: int
     response_headers: dict[str, str]
+    response: httpx.Response
 
     def __str__(self) -> str:
         return f"{self.message}"
@@ -528,6 +529,7 @@ def _raise_for_status(response: httpx.Response) -> None:
             # converting to dict to avoid httpx.Headers,
             # which means we don't support multiple values per header
             dict(response.headers),
+            response=response,
         ) from exc
 
 
@@ -649,23 +651,46 @@ async def _async_request(
 MAX_ATTEMPTS = 10
 BASE_DELAY = 0.1
 MAX_DELAY = 30
-RETRY_CODES = [408, 409, 429, 502, 504]
+RETRY_CODES = [408, 409, 429]
+INGRESS_ERROR_CODES = [502, 503, 504]
+
+
+def _is_ingress_error(response: httpx.Response) -> bool:
+    """Tell apart ingress errors from client errors."""
+
+    if response.status_code not in INGRESS_ERROR_CODES:
+        return False
+
+    if "x-fal-request-id" in response.headers:
+        # this is clearly returned from our server
+        return False
+
+    # heuristic to detect an ingress error
+    if "nginx" in response.text:
+        return True
+
+    return False
+
+
+def _should_retry_response(
+    response: httpx.Response,
+    extra_retry_codes: list[int] = [],
+) -> bool:
+    if _is_ingress_error(response):
+        return True
+
+    if response.status_code in RETRY_CODES or response.status_code in extra_retry_codes:
+        return True
+
+    return False
 
 
 def _should_retry(exc: Exception, extra_retry_codes: list[int] = []) -> bool:
     if isinstance(exc, httpx.TransportError):
         return True
 
-    if isinstance(exc, httpx.HTTPStatusError):
-        if (
-            exc.response.status_code in RETRY_CODES
-            or exc.response.status_code in extra_retry_codes
-        ):
-            return True
-
-    if isinstance(exc, FalClientHTTPError):
-        if exc.status_code in RETRY_CODES or exc.status_code in extra_retry_codes:
-            return True
+    if isinstance(exc, (httpx.HTTPStatusError, FalClientHTTPError)):
+        return _should_retry_response(exc.response, extra_retry_codes)
 
     return False
 
