@@ -7,9 +7,22 @@ from .parser import FalClientParser, RefAction, get_output_parser
 
 
 def _deploy(args):
-    client = SyncServerlessClient(host=args.host, team=args.team)
+    from ._utils import get_app_data_from_toml, is_app_name
+
+    team = None
+    app_ref = args.app_ref
+
+    # If the app_ref is an app name, get team from pyproject.toml
+    if app_ref and is_app_name(app_ref):
+        try:
+            *_, team = get_app_data_from_toml(app_ref[0])
+        except (ValueError, FileNotFoundError):
+            # If we can't find the app in pyproject.toml, team remains None
+            pass
+
+    client = SyncServerlessClient(host=args.host, team=team)
     res = client.deploy(
-        args.app_ref,
+        app_ref,
         app_name=args.app_name,
         auth=args.auth,
         strategy=args.strategy,
@@ -86,7 +99,7 @@ def add_parser(main_subparsers, parents):
             "command will look for a pyproject.toml file with a [tool.fal.apps] "
             "section and deploy the application specified with the provided app name.\n"
             "File path example: path/to/myfile.py::MyApp\n"
-            "App name example: my-app\n"
+            "App name example: my-app (configure team in pyproject.toml)\n"
         ),
     )
 

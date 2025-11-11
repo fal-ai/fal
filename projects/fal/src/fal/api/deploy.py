@@ -186,9 +186,10 @@ def deploy(
             raise ValueError("Cannot use --app-name or --auth with app name reference.")
 
         app_name = app_ref_tuple[0]
-        app_ref, app_auth, app_strategy, app_scale_settings = get_app_data_from_toml(
+        app_ref, app_auth, app_strategy, app_scale_settings, _ = get_app_data_from_toml(
             app_name
         )
+
         file_path, func_name = RefAction.split_ref(app_ref)
 
     # path/to/myfile.py::MyApp
