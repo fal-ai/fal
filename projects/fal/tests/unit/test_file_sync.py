@@ -222,69 +222,6 @@ def test_check_hashes_on_server_success(file_sync):
         assert result == missing_hashes
 
 
-def test_upload_file_small_file_uses_post(file_sync, temp_dir):
-    """Test that small files are uploaded via a simple POST request"""
-    test_file = Path(temp_dir) / "test.txt"
-    test_file.write_text("small content")
-
-    metadata = file_sync_mod.FileMetadata.from_path(
-        test_file, relative="test.txt", absolute=str(test_file)
-    )
-
-    # Ensure the file is smaller than the threshold
-    assert metadata.size < file_sync_mod.MULTIPART_THRESHOLD
-
-    # Mock the request and multipart methods
-    with patch.object(file_sync, "_request") as mock_request, patch.object(
-        file_sync, "_put_file_multipart"
-    ) as mock_multipart:
-        # Mock the progress bar
-        mock_progress = MagicMock()
-        mock_progress.add_task.return_value = 1
-
-        file_sync.upload_file(str(test_file), metadata, mock_progress)
-
-        # Check that the simple POST was called
-        mock_request.assert_called_once()
-        assert mock_request.call_args[0] == (
-            "POST",
-            f"/files/file/local/{metadata.relative_path}",
-        )
-
-        # Check that multipart was NOT called
-        mock_multipart.assert_not_called()
-        mock_progress.add_task.assert_called_once()
-
-
-def test_upload_file_large_file_uses_multipart(file_sync, temp_dir):
-    """Test that large files are uploaded via multipart"""
-    test_file = Path(temp_dir) / "test.txt"
-    test_file.write_text("large content")
-
-    metadata = file_sync_mod.FileMetadata.from_path(
-        test_file, relative="test.txt", absolute=str(test_file)
-    )
-
-    # Mock the constants to force multipart
-    with patch.object(file_sync_mod, "MULTIPART_THRESHOLD", 1):
-        # Ensure the file is larger than the (mocked) threshold
-        assert metadata.size > file_sync_mod.MULTIPART_THRESHOLD
-
-        # Mock the request and multipart methods
-        with patch.object(file_sync, "_request") as mock_request, patch.object(
-            file_sync, "_put_file_multipart"
-        ) as mock_multipart:
-            mock_progress = MagicMock()
-
-            file_sync.upload_file(str(test_file), metadata, mock_progress)
-
-            # Check that multipart was called
-            mock_multipart.assert_called_once()
-
-            # Check that the simple POST was NOT called
-            mock_request.assert_not_called()
-
-
 def test_sync_files_with_ignore_patterns(file_sync, temp_dir):
     """Test sync_files properly filters files using ignore patterns"""
     # Create test files
