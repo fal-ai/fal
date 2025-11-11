@@ -77,6 +77,7 @@ _UNSET = object()
 SERVE_REQUIREMENTS = [
     f"fastapi=={fastapi_version}",
     f"pydantic=={pydantic_version}",
+    f"tblib=={tblib.__version__}",
     "uvicorn",
     "starlette_exporter",
     "structlog",
