@@ -63,7 +63,7 @@ dependencies = [
     "tomli-w>=1,<2",
     "fsspec",
     "tblib<3.2.0",
-    "teancity==8.2.3",
+    "tenacity==8.2.3",
 ]
 
 [project.optional-dependencies]
