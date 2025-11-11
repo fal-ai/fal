@@ -1,5 +1,6 @@
 import concurrent.futures
 import hashlib
+import math
 import os
 import re
 from dataclasses import dataclass
@@ -9,6 +10,11 @@ from typing import Dict, List, Optional, Tuple
 
 import httpx
 from rich.tree import Tree
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 import fal.flags as flags
 from fal._version import version_tuple
@@ -22,7 +28,11 @@ from fal.exceptions import (
 
 USER_AGENT = f"fal-sdk/{'.'.join(map(str, version_tuple))} (python)"
 FILE_SIZE_LIMIT = 1024 * 1024 * 1024  # 1GB
-DEFAULT_CONCURRENCY_UPLOADS = 10
+# This is set to 1 to prevent thread explosion with nested ThreadPoolExecutors
+DEFAULT_CONCURRENCY_UPLOADS = 1
+MULTIPART_CHUNK_SIZE = 10 * 1024 * 1024  # 10MB
+
+MULTIPART_WORKERS = 10
 
 
 def print_path_tree(file_paths):
@@ -59,19 +69,19 @@ def sanitize_relative_path(rel_path: str) -> str:
     return pure_path.as_posix()
 
 
-# This is the same function we use in the backend to compute file hashes
-# It is important that this is the same
-def compute_hash(file_path: Path, mode: int) -> str:
-    file_hash = hashlib.sha256()
+def compute_file_hashes(file_path: Path, mode: int) -> Tuple[str, str]:
+    sha256_hash = hashlib.sha256()
+    md5_hash = hashlib.md5()
+
     with file_path.open("rb") as f:
-        for chunk in iter(lambda: f.read(4096), b""):
-            file_hash.update(chunk)
+        for chunk in iter(lambda: f.read(8192), b""):
+            sha256_hash.update(chunk)
+            md5_hash.update(chunk)
 
-    # Include metadata in hash
     metadata_string = f"{mode}"
-    file_hash.update(metadata_string.encode("utf-8"))
+    sha256_hash.update(metadata_string.encode("utf-8"))
 
-    return file_hash.hexdigest()
+    return sha256_hash.hexdigest(), md5_hash.hexdigest()
 
 
 def normalize_path(
@@ -111,6 +121,7 @@ class FileMetadata:
     mtime: float
     mode: int
     hash: str
+    md5: str
     relative_path: str
     absolute_path: str
 
@@ -125,12 +136,13 @@ class FileMetadata:
                 message=f"{file_path} is larger than {FILE_SIZE_LIMIT} bytes."
             )
 
-        file_hash = compute_hash(file_path, stat.st_mode)
+        file_hash, file_md5 = compute_file_hashes(file_path, stat.st_mode)
         return FileMetadata(
             size=stat.st_size,
             mtime=stat.st_mtime,
             mode=stat.st_mode,
             hash=file_hash,
+            md5=file_md5,
             relative_path=relative,
             absolute_path=absolute,
         )
@@ -142,6 +154,14 @@ class FileMetadata:
             "mode": str(self.mode),
             "hash": self.hash,
         }
+
+
+def _retry_if_server_or_network_error(exception: BaseException) -> bool:
+    if isinstance(exception, httpx.RequestError):
+        return True
+    if isinstance(exception, httpx.HTTPStatusError):
+        return exception.response.status_code >= 500
+    return False
 
 
 class FileSync:
@@ -161,23 +181,12 @@ class FileSync:
                 **self.creds.to_headers(),
                 "User-Agent": USER_AGENT,
             },
-        )
-
-    @cached_property
-    def _tus_client(self):
-        # Import it here to avoid loading unless we use it
-        from tusclient import client  # noqa: PLC0415
-
-        from fal.flags import REST_URL  # noqa: PLC0415
-        from fal.sdk import get_default_credentials  # noqa: PLC0415
-
-        creds = get_default_credentials()
-        return client.TusClient(
-            f"{REST_URL}/files/tus",
-            headers={
-                **creds.to_headers(),
-                "User-Agent": USER_AGENT,
-            },
+            timeout=httpx.Timeout(
+                connect=30,
+                read=4 * 60,
+                write=5 * 60,
+                pool=30,
+            ),
         )
 
     def _request(self, method: str, path: str, **kwargs) -> httpx.Response:
@@ -227,32 +236,229 @@ class FileSync:
         return collected_files
 
     def check_hashes_on_server(self, hashes: List[str]) -> List[str]:
+        @retry(
+            stop=stop_after_attempt(5),
+            wait=wait_exponential(multiplier=1, min=1, max=10),
+            retry=_retry_if_server_or_network_error,
+            reraise=True,
+        )
+        def _check_with_retry():
+            try:
+                response = self._request(
+                    "POST", "/files/missing_hashes", json={"hashes": hashes}
+                )
+                response.raise_for_status()
+                return response.json()
+            except Exception as e:
+                if flags.DEBUG:
+                    console.print(f"{CROSS_ICON} Failed to check hashes on server: {e}")
+                raise
+
+        try:
+            return _check_with_retry()
+        except Exception as e:
+            raise FalServerlessException(
+                f"Failed to verify file hashes with the backend after 5 attempts. "
+                f"Please check your network connection and try again. Error: {e}"
+            ) from e
+
+    def _put_file_part(self, file_hash, lpath, upload_id, part_number, chunk_size):
+        offset = (part_number - 1) * chunk_size
+        with open(lpath, "rb") as fobj:
+            fobj.seek(offset)
+            chunk = fobj.read(chunk_size)
+            response = self._request(
+                "PUT",
+                f"/files/app/multipart/{file_hash}/{upload_id}/{part_number}",
+                files={"file_upload": (os.path.basename(lpath), chunk)},
+            )
+            data = response.json()
+            return {
+                "part_number": data["part_number"],
+                "etag": data["etag"],
+            }
+
+    def _get_upload_status(self, file_hash: str, upload_id: str):
+        response = self._request(
+            "GET",
+            f"/files/app/multipart/{file_hash}/{upload_id}/status",
+        )
+        return response.json()
+
+    def _put_file_multipart(self, lpath, rpath, metadata: FileMetadata):
+        upload_id = None
+        max_completion_retries = 3
+
         try:
             response = self._request(
-                "POST", "/files/missing_hashes", json={"hashes": hashes}
+                "POST",
+                f"/files/app/multipart/{metadata.hash}/initiate",
+                json={
+                    "hash": metadata.hash,
+                    "mode": str(metadata.mode),
+                    "mtime": str(metadata.mtime),
+                    "size": str(metadata.size),
+                },
             )
-            response.raise_for_status()
-            data = response.json()
-            return data
-        except Exception as e:
-            console.print(f"{CROSS_ICON} Failed to check hashes on server: {e}")
+            upload_id = response.json()["upload_id"]
 
-            return hashes
+            num_parts = math.ceil(metadata.size / MULTIPART_CHUNK_SIZE)
 
-    def upload_file_tus(
+            for retry_attempt in range(max_completion_retries):
+                if retry_attempt == 0:
+                    parts_to_upload = list(range(1, num_parts + 1))
+                else:
+                    if flags.DEBUG:
+                        console.print(
+                            f"Querying upload status (attempt {retry_attempt + 1})"
+                        )
+
+                    status = self._get_upload_status(metadata.hash, upload_id)
+                    uploaded_part_numbers = {
+                        p["part_number"] for p in status["uploaded_parts"]
+                    }
+
+                    parts_to_upload = [
+                        pnum
+                        for pnum in range(1, num_parts + 1)
+                        if pnum not in uploaded_part_numbers
+                    ]
+
+                    if not parts_to_upload:
+                        if flags.DEBUG:
+                            console.print("All parts uploaded, retrying completion")
+                    else:
+                        if flags.DEBUG:
+                            console.print(
+                                f"Re-uploading {len(parts_to_upload)} "
+                                f"missing parts: {parts_to_upload[:10]}"
+                            )
+
+                parts = []
+                failed_parts = []
+
+                with concurrent.futures.ThreadPoolExecutor(
+                    max_workers=MULTIPART_WORKERS
+                ) as executor:
+                    futures = {}
+                    for part_number in parts_to_upload:
+                        future = executor.submit(
+                            self._put_file_part,
+                            metadata.hash,
+                            lpath,
+                            upload_id,
+                            part_number,
+                            MULTIPART_CHUNK_SIZE,
+                        )
+                        futures[future] = part_number
+
+                    for future in concurrent.futures.as_completed(futures):
+                        part_number = futures[future]
+                        try:
+                            result = future.result()
+                            parts.append(result)
+                        except Exception as e:
+                            failed_parts.append((part_number, str(e)))
+                            if flags.DEBUG:
+                                console.print(
+                                    f"Failed to upload part {part_number}: {e}"
+                                )
+
+                if failed_parts:
+                    if retry_attempt == max_completion_retries - 1:
+                        raise RuntimeError(
+                            f"Failed to upload {len(failed_parts)} parts "
+                            f"after {max_completion_retries} attempts"
+                        )
+                    continue
+
+                status = self._get_upload_status(metadata.hash, upload_id)
+                all_parts = [
+                    {"part_number": p["part_number"], "etag": p["etag"]}
+                    for p in status["uploaded_parts"]
+                ]
+
+                all_parts.sort(key=lambda p: p["part_number"])
+
+                try:
+                    response = self._request(
+                        "POST",
+                        f"/files/app/multipart/{metadata.hash}/{upload_id}/complete",
+                        json={"parts": all_parts},
+                    )
+                    data = response.json()
+
+                    if data["etag"] != metadata.md5:
+                        raise RuntimeError(
+                            f"MD5 mismatch on {rpath}: {data['etag']} != {metadata.md5}"
+                        )
+                    return
+
+                except FalServerlessException as e:
+                    error_msg = str(e).lower()
+
+                    if "already exists" in error_msg:
+                        if flags.DEBUG:
+                            console.print(f"File {rpath} already exists, skipping")
+                        return
+
+                    if (
+                        "missing" in error_msg
+                        or "duplicate" in error_msg
+                        or "non-contiguous" in error_msg
+                    ):
+                        if retry_attempt == max_completion_retries - 1:
+                            raise RuntimeError(
+                                f"Upload completion failed "
+                                f"after {max_completion_retries} attempts: {e}"
+                            )
+                        if flags.DEBUG:
+                            console.print(
+                                f"Completion validation failed: {e}, retrying..."
+                            )
+                        continue
+
+                    raise
+
+            raise RuntimeError(
+                f"Failed to complete upload after {max_completion_retries} attempts"
+            )
+
+        except FalServerlessException as e:
+            if "already exists" in str(e).lower():
+                if flags.DEBUG:
+                    console.print(f"File {rpath} already exists, skipping")
+                return
+
+            if upload_id:
+                try:
+                    self._request(
+                        "POST",
+                        f"/files/app/multipart/{metadata.hash}/{upload_id}/cancel",
+                    )
+                except Exception as cancel_error:
+                    if flags.DEBUG:
+                        console.print(f"Failed to cancel upload: {cancel_error}")
+            raise
+        except Exception:
+            if upload_id:
+                try:
+                    self._request(
+                        "POST",
+                        f"/files/app/multipart/{metadata.hash}/{upload_id}/cancel",
+                    )
+                except Exception:
+                    pass
+            raise
+
+    def upload_file(
         self,
         file_path: str,
         metadata: FileMetadata,
-        chunk_size: int = 5 * 1024 * 1024,
     ) -> str:
-        uploader = self._tus_client.uploader(
-            file_path, chunk_size=chunk_size, metadata=metadata.to_dict()
-        )
-        uploader.upload()
-        if not uploader.url:
-            raise AppFileUploadException("Upload failed, no URL returned", file_path)
-
-        return uploader.url
+        rpath = metadata.relative_path
+        self._put_file_multipart(file_path, rpath, metadata)
+        return rpath
 
     def _matches_patterns(self, relative_path: str, patterns: List[re.Pattern]) -> bool:
         """Check if a file matches any of the patterns."""
@@ -261,7 +467,6 @@ class FileSync:
     def sync_files(
         self,
         paths: List[str],
-        chunk_size: int = 5 * 1024 * 1024,
         max_concurrency_uploads: int = DEFAULT_CONCURRENCY_UPLOADS,
         files_ignore: List[re.Pattern] = [],
         files_context_dir: Optional[str] = None,
@@ -322,9 +527,8 @@ class FileSync:
             # Embed it here to be able to pass it to the executor
             def upload_single_file(metadata: FileMetadata):
                 console.print(f"Uploading file: {metadata.relative_path}")
-                return self.upload_file_tus(
+                return self.upload_file(
                     metadata.absolute_path,
-                    chunk_size=chunk_size,
                     metadata=metadata,
                 )
 

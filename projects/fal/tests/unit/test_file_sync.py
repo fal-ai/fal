@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import fal.file_sync as file_sync_mod
+from fal.exceptions import FalServerlessException
 from fal.file_sync import FileSync
 
 
@@ -47,8 +48,6 @@ def test_request_success(file_sync):
 
 def test_request_failure_with_json_detail(file_sync):
     """Test HTTP request failure raises exception with JSON error detail"""
-    from fal.exceptions import FalServerlessException
-
     mock_response = MagicMock()
     mock_response.status_code = 400
     mock_response.json.return_value = {"detail": "Bad request"}
@@ -61,8 +60,6 @@ def test_request_failure_with_json_detail(file_sync):
 
 def test_request_404_raises_not_found(file_sync):
     """Test HTTP 404 raises specific not found exception"""
-    from fal.exceptions import FalServerlessException
-
     mock_response = MagicMock()
     mock_response.status_code = 404
 
@@ -72,29 +69,33 @@ def test_request_404_raises_not_found(file_sync):
             file_sync._request("GET", "/test")
 
 
-def test_compute_hash_basic_functionality(temp_dir):
-    """Test hash computation produces valid SHA256"""
+def test_compute_file_hashes_basic_functionality(temp_dir):
+    """Test hash computation produces valid SHA256 and MD5"""
     test_file = Path(temp_dir) / "test.txt"
     test_file.write_text("Hello, world!")
 
     stat = test_file.stat()
-    hash_result = file_sync_mod.compute_hash(test_file, stat.st_mode)
+    hash_result, md5_result = file_sync_mod.compute_file_hashes(test_file, stat.st_mode)
 
-    assert len(hash_result) == 64
+    assert len(hash_result) == 64  # SHA256
     assert all(c in "0123456789abcdef" for c in hash_result)
 
+    assert len(md5_result) == 32  # MD5
+    assert all(c in "0123456789abcdef" for c in md5_result)
 
-def test_compute_hash_different_content_different_hash(temp_dir):
+
+def test_compute_file_hashes_different_content_different_hash(temp_dir):
     """Test different file content produces different hashes"""
     file1 = Path(temp_dir) / "file1.txt"
     file2 = Path(temp_dir) / "file2.txt"
     file1.write_text("content1")
     file2.write_text("content2")
 
-    hash1 = file_sync_mod.compute_hash(file1, file1.stat().st_mode)
-    hash2 = file_sync_mod.compute_hash(file2, file2.stat().st_mode)
+    hash1, md5_1 = file_sync_mod.compute_file_hashes(file1, file1.stat().st_mode)
+    hash2, md5_2 = file_sync_mod.compute_file_hashes(file2, file2.stat().st_mode)
 
     assert hash1 != hash2
+    assert md5_1 != md5_2
 
 
 def test_get_file_metadata_structure(temp_dir):
@@ -108,7 +109,8 @@ def test_get_file_metadata_structure(temp_dir):
     )
 
     assert metadata.size == len(test_content)
-    assert len(metadata.hash) == 64
+    assert len(metadata.hash) == 64  # SHA256
+    assert len(metadata.md5) == 32  # MD5
 
 
 def test_get_file_metadata_file_too_large_error(temp_dir):
@@ -186,7 +188,7 @@ def test_collect_files_handles_nonexistent_gracefully(temp_dir):
     assert len(files) == 0
 
 
-def test_should_ignore_file_basic_patterns(file_sync):
+def test_matches_patterns_basic_patterns(file_sync):
     """Test basic regex patterns for ignoring files"""
     ignore_patterns_str = [r"\.pyc$", r"__pycache__/", r"\.git/"]
     ignore_patterns = [re.compile(pattern) for pattern in ignore_patterns_str]
@@ -201,7 +203,7 @@ def test_should_ignore_file_basic_patterns(file_sync):
     assert not file_sync._matches_patterns("src/main.py", ignore_patterns)
 
 
-def test_should_ignore_file_empty_patterns(file_sync):
+def test_matches_patterns_empty_patterns(file_sync):
     """Test behavior with empty ignore patterns"""
     result = file_sync._matches_patterns("test.py", [])
     assert not result
@@ -220,34 +222,67 @@ def test_check_hashes_on_server_success(file_sync):
         assert result == missing_hashes
 
 
-def test_check_hashes_on_server_error_returns_all_missing(file_sync):
-    """Test hash check handles server errors gracefully"""
-    test_hashes = ["hash1", "hash2"]
-
-    with patch.object(file_sync, "_request", side_effect=Exception("Network error")):
-        result = file_sync.check_hashes_on_server(test_hashes)
-        assert result == test_hashes
-
-
-def test_upload_file_tus_basic_functionality(file_sync, temp_dir):
-    """Test TUS file upload calls correct methods with parameters"""
+def test_upload_file_small_file_uses_post(file_sync, temp_dir):
+    """Test that small files are uploaded via a simple POST request"""
     test_file = Path(temp_dir) / "test.txt"
-    test_file.write_text("test content")
+    test_file.write_text("small content")
 
-    mock_uploader = MagicMock()
-    expected_url = "https://upload.server.com/files/abc123"
-    mock_uploader.url = expected_url
+    metadata = file_sync_mod.FileMetadata.from_path(
+        test_file, relative="test.txt", absolute=str(test_file)
+    )
 
-    with patch.object(file_sync, "_tus_client") as mock_client:
-        mock_client.uploader.return_value = mock_uploader
+    # Ensure the file is smaller than the threshold
+    assert metadata.size < file_sync_mod.MULTIPART_THRESHOLD
 
-        metadata = file_sync_mod.FileMetadata.from_path(
-            test_file, relative="test.txt", absolute=str(test_file)
+    # Mock the request and multipart methods
+    with patch.object(file_sync, "_request") as mock_request, patch.object(
+        file_sync, "_put_file_multipart"
+    ) as mock_multipart:
+        # Mock the progress bar
+        mock_progress = MagicMock()
+        mock_progress.add_task.return_value = 1
+
+        file_sync.upload_file(str(test_file), metadata, mock_progress)
+
+        # Check that the simple POST was called
+        mock_request.assert_called_once()
+        assert mock_request.call_args[0] == (
+            "POST",
+            f"/files/file/local/{metadata.relative_path}",
         )
-        result_url = file_sync.upload_file_tus(str(test_file), metadata)
 
-        assert result_url == expected_url
-        mock_uploader.upload.assert_called_once()
+        # Check that multipart was NOT called
+        mock_multipart.assert_not_called()
+        mock_progress.add_task.assert_called_once()
+
+
+def test_upload_file_large_file_uses_multipart(file_sync, temp_dir):
+    """Test that large files are uploaded via multipart"""
+    test_file = Path(temp_dir) / "test.txt"
+    test_file.write_text("large content")
+
+    metadata = file_sync_mod.FileMetadata.from_path(
+        test_file, relative="test.txt", absolute=str(test_file)
+    )
+
+    # Mock the constants to force multipart
+    with patch.object(file_sync_mod, "MULTIPART_THRESHOLD", 1):
+        # Ensure the file is larger than the (mocked) threshold
+        assert metadata.size > file_sync_mod.MULTIPART_THRESHOLD
+
+        # Mock the request and multipart methods
+        with patch.object(file_sync, "_request") as mock_request, patch.object(
+            file_sync, "_put_file_multipart"
+        ) as mock_multipart:
+            mock_progress = MagicMock()
+
+            file_sync.upload_file(str(test_file), metadata, mock_progress)
+
+            # Check that multipart was called
+            mock_multipart.assert_called_once()
+
+            # Check that the simple POST was NOT called
+            mock_request.assert_not_called()
 
 
 def test_sync_files_with_ignore_patterns(file_sync, temp_dir):
@@ -284,8 +319,8 @@ def test_sync_files_basic_workflow(file_sync, temp_dir):
 
     # Mock server to indicate all files need upload
     with patch.object(fs, "check_hashes_on_server") as mock_check, patch.object(
-        fs, "upload_file_tus", return_value="http://uploaded"
-    ):
+        fs, "upload_file", return_value="http://uploaded"
+    ) as mock_upload:
         # Make server say all hashes are missing (need upload)
         mock_check.side_effect = lambda hashes: hashes
 
@@ -293,6 +328,7 @@ def test_sync_files_basic_workflow(file_sync, temp_dir):
 
         assert len(all_files) >= 1
         assert len(errors) == 0
+        mock_upload.assert_called_once()
 
 
 def test_sync_files_deduplication(file_sync, temp_dir):
@@ -315,6 +351,7 @@ def test_close_client(file_sync):
     """Test HTTP client cleanup"""
     mock_client = MagicMock()
 
-    with patch.object(file_sync, "_client", mock_client):
-        file_sync.close()
-        mock_client.close.assert_called_once()
+    file_sync._client = mock_client
+
+    file_sync.close()
+    mock_client.close.assert_called_once()
