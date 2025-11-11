@@ -68,7 +68,7 @@ def sanitize_relative_path(rel_path: str) -> str:
 
     return pure_path.as_posix()
 
-
+# It is important to keep this function consistent with the one in cloud
 def compute_file_hashes(file_path: Path, mode: int) -> Tuple[str, str]:
     sha256_hash = hashlib.sha256()
     md5_hash = hashlib.md5()
