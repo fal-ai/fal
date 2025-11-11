@@ -84,6 +84,7 @@ _UNSET = object()
 SERVE_REQUIREMENTS = [
     f"fastapi=={fastapi_version}",
     f"pydantic=={pydantic_version}",
+    f"tblib=={tblib.__version__}",
     "uvicorn",
     "starlette_exporter",
     # workaround for prometheus_client 0.23.0
