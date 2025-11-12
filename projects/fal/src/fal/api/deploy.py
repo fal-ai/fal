@@ -102,7 +102,6 @@ def _deploy_from_reference(
         [file_path] = options
         file_path = str(file_path)  # type: ignore
 
-    user = _get_user()
     host = client._create_host(local_file_path=str(file_path))
     loaded = load_function_from(
         host,
@@ -114,7 +113,7 @@ def _deploy_from_reference(
     app_auth = auth or loaded.app_auth
     strategy = strategy or "rolling"
 
-    app_id = host.register(
+    result = host.register(
         func=isolated_function.func,
         options=isolated_function.options,
         application_name=app_name,
@@ -125,17 +124,9 @@ def _deploy_from_reference(
         scale=scale,
     )
 
-    assert app_id
-    env_host = _remove_http_and_port_from_url(host.url)
-    env_host = env_host.replace("api.", "").replace("alpha.", "")
-
-    env_host_parts = env_host.split(".")
-
-    # keep the last 3 parts
-    playground_host = ".".join(env_host_parts[-3:])
-
-    # just replace .ai for .run
-    endpoint_host = env_host.replace(".ai", ".run")
+    assert result
+    assert result.result
+    assert result.service_urls
 
     urls: dict[str, dict[str, str]] = {
         "playground": {},
@@ -143,18 +134,12 @@ def _deploy_from_reference(
         "async": {},
     }
     for endpoint in loaded.endpoints:
-        urls["playground"][endpoint] = (
-            f"https://{playground_host}/models/{user.username}/{app_name}{endpoint}"
-        )
-        urls["sync"][endpoint] = (
-            f"https://{endpoint_host}/{user.username}/{app_name}{endpoint}"
-        )
-        urls["async"][endpoint] = (
-            f"https://queue.{endpoint_host}/{user.username}/{app_name}{endpoint}"
-        )
+        urls["playground"][endpoint] = f"{result.service_urls.playground}{endpoint}"
+        urls["sync"][endpoint] = f"{result.service_urls.run}{endpoint}"
+        urls["async"][endpoint] = f"{result.service_urls.queue}{endpoint}"
 
     return DeploymentResult(
-        revision=app_id,
+        revision=result.result.application_id,
         app_name=app_name,
         urls=urls,
     )

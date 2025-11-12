@@ -640,7 +640,7 @@ class FalServerlessConnection:
         scale: bool = True,
         private_logs: bool = False,
         files: list[File] | None = None,
-    ) -> Iterator[isolate_proto.RegisterApplicationResult]:
+    ) -> Iterator[RegisterApplicationResult]:
         wrapped_function = to_serialized_object(function, serialization_method)
         if machine_requirements:
             wrapped_requirements = isolate_proto.MachineRequirements(
