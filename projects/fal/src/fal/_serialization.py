@@ -10,7 +10,10 @@ def include_module(name) -> None:
     # cloudpickle.register_pickle_by_value wants an imported module object,
     # but there is really no reason to go through that complication, as
     # it might be prone to errors.
+    if name == "<run_path>":
+        return
     cloudpickle.cloudpickle._PICKLE_BY_VALUE_MODULES.add(name)
+    print(f"Included module for pickle by value: {name}")
 
 
 def include_package_from_path(raw_path: str) -> None:
