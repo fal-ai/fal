@@ -41,10 +41,11 @@ def mocked_fal_serverless_host(host):
     return mock
 
 
-def mock_args(host, func_ref: Tuple[str, Optional[str]]):
+def mock_args(host, func_ref: Tuple[str, Optional[str]], team: Optional[str] = None):
     args = MagicMock()
     args.host = host
     args.func_ref = func_ref
+    args.team = team
     return args
 
 
@@ -146,6 +147,42 @@ def test_run_with_team_from_toml(
 
     # Ensure the client was initialized with the correct team
     mock_client.assert_called_once_with(host="my-host", team="my-team")
+
+    project_root, _ = find_project_root(None)
+
+    # Ensure the correct app is ran
+    mock_load_function_from.assert_called_once_with(
+        host, f"{project_root / 'src/team_app/inference.py'}", "TeamApp"
+    )
+
+
+@patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+@patch("fal.api.client.SyncServerlessClient")
+@patch("fal.utils.load_function_from")
+def test_run_with_team_from_toml_cli_team_override(
+    mock_load_function_from,
+    mock_client,
+    mock_parse_toml,
+    mock_find_toml,
+    mock_parse_pyproject_toml,
+):
+    """Test that team is read from pyproject.toml and passed to SyncServerlessClient"""
+    mock_parse_toml.return_value = mock_parse_pyproject_toml
+
+    host = mocked_fal_serverless_host("my-host")
+
+    # Mock the client instance
+    mock_client_instance = MagicMock()
+    mock_client_instance._create_host.return_value = host
+    mock_client.return_value = mock_client_instance
+
+    args = mock_args(func_ref=("team-app", None), host="my-host", team="my-cli-team")
+
+    _run(args)
+
+    # Ensure the client was initialized with the correct team
+    mock_client.assert_called_once_with(host="my-host", team="my-cli-team")
 
     project_root, _ = find_project_root(None)
 

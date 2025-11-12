@@ -9,13 +9,14 @@ from .parser import FalClientParser, RefAction, get_output_parser
 def _deploy(args):
     from ._utils import get_app_data_from_toml, is_app_name
 
-    team = None
+    team = args.team
     app_ref = args.app_ref
 
     # If the app_ref is an app name, get team from pyproject.toml
     if app_ref and is_app_name(app_ref):
         try:
-            *_, team = get_app_data_from_toml(app_ref[0])
+            *_, toml_team = get_app_data_from_toml(app_ref[0])
+            team = team or toml_team
         except (ValueError, FileNotFoundError):
             # If we can't find the app in pyproject.toml, team remains None
             pass

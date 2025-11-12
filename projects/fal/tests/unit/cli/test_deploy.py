@@ -45,6 +45,7 @@ def mock_args(
     auth: Optional[str] = None,
     strategy: Optional[str] = None,
     reset_scale: bool = False,
+    team: Optional[str] = None,
 ):
     args = MagicMock()
 
@@ -54,6 +55,7 @@ def mock_args(
     args.strategy = strategy
     args.app_scale_settings = reset_scale
     args.output = "pretty"
+    args.team = team
 
     return args
 
@@ -369,6 +371,36 @@ def test_deploy_with_team_from_toml(
 
     # Ensure the client was initialized with the correct team
     mock_client.assert_called_once_with(host="my-host", team="my-team")
+
+
+@patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+@patch("fal.cli.deploy.SyncServerlessClient")
+def test_deploy_with_team_from_toml_cli_team_override(
+    mock_client,
+    mock_parse_toml,
+    mock_find_toml,
+    mock_parse_pyproject_toml,
+):
+    """Test that team is read from pyproject.toml and passed to SyncServerlessClient"""
+    mock_parse_toml.return_value = mock_parse_pyproject_toml
+
+    # Mock the client instance
+    mock_client_instance = MagicMock()
+    mock_client.return_value = mock_client_instance
+    mock_client_instance.deploy.return_value = MagicMock(
+        revision="rev-123",
+        app_name="team-app",
+        urls={"playground": {}, "sync": {}, "async": {}},
+    )
+
+    args = mock_args(app_ref=("team-app", None), team="my-cli-team")
+    args.host = "my-host"
+
+    _deploy(args)
+
+    # Ensure the client was initialized with the correct team
+    mock_client.assert_called_once_with(host="my-host", team="my-cli-team")
 
 
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
