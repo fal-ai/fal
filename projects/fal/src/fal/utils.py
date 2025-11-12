@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-import fal._serialization
-from fal import App, wrap_app
-
-from .api import FalServerlessError, FalServerlessHost, IsolatedFunction
+if TYPE_CHECKING:
+    from .api import FalServerlessHost, IsolatedFunction
 
 
 @dataclass
@@ -25,6 +24,11 @@ def load_function_from(
     import os
     import runpy
     import sys
+
+    import fal._serialization
+    from fal import App, wrap_app
+
+    from .api import FalServerlessError, IsolatedFunction
 
     sys.path.append(os.getcwd())
     module = runpy.run_path(file_path)
