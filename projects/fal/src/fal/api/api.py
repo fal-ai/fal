@@ -68,6 +68,7 @@ from fal.sdk import (
     File,
     HostedRunState,
     MachineRequirements,
+    RegisterApplicationResult,
     get_agent_credentials,
     get_default_credentials,
 )
@@ -519,7 +520,7 @@ class FalServerlessHost(Host):
         metadata: Optional[dict[str, Any]] = None,
         deployment_strategy: DeploymentStrategyLiteral,
         scale: bool = True,
-    ) -> Optional[str]:
+    ) -> Optional[RegisterApplicationResult]:
         from isolate.backends.common import active_python
 
         environment_options = options.environment.copy()
@@ -589,7 +590,7 @@ class FalServerlessHost(Host):
                 self._log_printer.print(log)
 
             if partial_result.result:
-                return partial_result.result.application_id
+                return partial_result
 
         return None
 
