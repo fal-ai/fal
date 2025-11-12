@@ -8,12 +8,13 @@ def _run(args):
     from fal.api.client import SyncServerlessClient
     from fal.utils import load_function_from
 
-    team = None
+    team = args.team
     func_ref = args.func_ref
 
     if is_app_name(func_ref):
         app_name = func_ref[0]
-        app_ref, *_, team = get_app_data_from_toml(app_name)
+        app_ref, *_, toml_team = get_app_data_from_toml(app_name)
+        team = team or toml_team
         file_path, func_name = RefAction.split_ref(app_ref)
     else:
         file_path, func_name = func_ref
