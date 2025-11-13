@@ -1,7 +1,5 @@
 import re
 
-import rich
-
 # = or := only
 KV_SPLIT_RE = re.compile(r"(=|:=)")
 
@@ -22,6 +20,8 @@ def _api(args):
 
 
 def stream_run(model_id: str, params: dict):
+    import rich
+
     import fal.apps
 
     res = fal.apps.stream(model_id, params)  # type: ignore
@@ -36,6 +36,7 @@ def stream_run(model_id: str, params: dict):
 
 
 def queue_run(model_id: str, params: dict):
+    import rich
     from rich.console import Group
     from rich.live import Live
     from rich.panel import Panel
