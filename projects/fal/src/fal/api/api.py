@@ -1142,6 +1142,7 @@ class FalFastAPI(FastAPI):
 
 class RouteSignature(NamedTuple):
     path: str
+    method: str = "POST"
     is_websocket: bool = False
     input_modal: type | None = None
     buffering: int | None = None
@@ -1283,7 +1284,7 @@ class BaseServable:
                     signature.path,
                     endpoint,
                     name=endpoint.__name__,
-                    methods=["POST"],
+                    methods=[signature.method],
                 )
 
         self._add_extra_routes(_app)

@@ -634,7 +634,7 @@ class App(BaseServable):
 
 
 def endpoint(
-    path: str, *, is_websocket: bool = False
+    path: str, *, is_websocket: bool = False, method: str = "POST"
 ) -> Callable[[EndpointT], EndpointT]:
     """Designate the decorated function as an application endpoint."""
 
@@ -644,7 +644,9 @@ def endpoint(
                 f"Can't set multiple routes for the same function: {callable.__name__}"
             )
 
-        callable.route_signature = RouteSignature(path=path, is_websocket=is_websocket)  # type: ignore
+        callable.route_signature = RouteSignature(  # type: ignore
+            path=path, is_websocket=is_websocket, method=method
+        )
         return callable
 
     return marker_fn
