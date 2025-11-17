@@ -41,7 +41,8 @@ def get_gpu_type() -> str:
     """Detect the GPU type using nvidia-smi.
 
     Returns:
-        The GPU model name (e.g., "H100", "A100", "H200") or "UNKNOWN" if detection fails.
+        The GPU model name (e.g., "H100", "A100", "H200") or "UNKNOWN"
+        if detection fails.
 
     Example:
         >>> gpu_type = get_gpu_type()
@@ -53,6 +54,7 @@ def get_gpu_type() -> str:
             ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
             capture_output=True,
             text=True,
+            check=False,
         ).stdout
         matches = re.search(r"NVIDIA [a-zA-Z0-9]*", gpu_type_string)
         # check for matches - if there are none, return "UNKNOWN"
@@ -61,7 +63,7 @@ def get_gpu_type() -> str:
             return gpu_type[7:]  # remove `NVIDIA `
         else:
             return "UNKNOWN"
-    except:
+    except Exception:
         return "UNKNOWN"
 
 
@@ -111,10 +113,10 @@ def load_inductor_cache(cache_key: str) -> str:
         # Check for cache without gpu_type in the path
         try:
             old_source_path = GLOBAL_INDUCTOR_CACHES_DIR / f"{cache_key}.zip"
-            # Since old source exists, copy it over to global inductor caches
+            # Since old source exists, copy it over to global caches
             os.makedirs(cache_source_path.parent, exist_ok=True)
             shutil.copy(old_source_path, cache_source_path)
-        except:
+        except Exception:
             print(f"Failed to list: {e}")
 
     if not cache_source_path.exists():
@@ -141,8 +143,10 @@ def sync_inductor_cache(cache_key: str, unpacked_dir_hash: str) -> None:
     3. Saves it to GPU-specific global storage
 
     Args:
-        cache_key: Unique identifier for this cache (same as used in load_inductor_cache)
-        unpacked_dir_hash: Hash returned from load_inductor_cache (for change detection)
+        cache_key: Unique identifier for this cache (same as used in
+            load_inductor_cache)
+        unpacked_dir_hash: Hash returned from load_inductor_cache
+            (for change detection)
 
     Example:
         >>> sync_inductor_cache("flux/2", dir_hash)
@@ -158,8 +162,9 @@ def sync_inductor_cache(cache_key: str, unpacked_dir_hash: str) -> None:
     if not GLOBAL_INDUCTOR_CACHES_DIR.exists():
         GLOBAL_INDUCTOR_CACHES_DIR.mkdir(parents=True)
 
-    # If we updated the cache (the hashes of LOCAL_INDUCTOR_CACHE_DIR and unpacked_dir_hash differ),
-    # we pack the cache and move it to the global cache directory.
+    # If we updated the cache (the hashes of LOCAL_INDUCTOR_CACHE_DIR and
+    # unpacked_dir_hash differ), we pack the cache and move it to the
+    # global cache directory.
     new_dir_hash = _dir_hash(LOCAL_INDUCTOR_CACHE_DIR)
     if new_dir_hash == unpacked_dir_hash:
         print("No changes in the cache dir, skipping sync.")
@@ -213,4 +218,3 @@ def synchronized_inductor_cache(cache_key: str) -> Iterator[None]:
         yield
     finally:
         sync_inductor_cache(cache_key, unpacked_dir_hash)
-
