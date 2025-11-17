@@ -202,6 +202,136 @@
 <section id="submodules">
 <h2>Submodules<a class="headerlink" href="#submodules" title="Link to this heading">¶</a></h2>
 </section>
+<section id="module-fal.toolkit.compilation">
+<span id="fal-toolkit-compilation-module"></span><h2>fal.toolkit.compilation module<a class="headerlink" href="#module-fal.toolkit.compilation" title="Link to this heading">¶</a></h2>
+<p>PyTorch compilation cache management utilities.</p>
+<p>This module provides utilities for managing PyTorch Inductor compilation caches
+across workers. When using torch.compile(), PyTorch generates optimized CUDA kernels
+on first run, which can take 20-30 seconds. By sharing these compiled kernels across
+workers, subsequent workers can load pre-compiled kernels in ~2 seconds instead of
+recompiling.</p>
+<p>Typical usage in a model setup:</p>
+<blockquote>
+<div><dl class="simple">
+<dt>Manual cache management:</dt><dd><p>dir_hash = load_inductor_cache(“mymodel/v1”)
+self.model = torch.compile(self.model)
+self.warmup()  # Triggers compilation
+sync_inductor_cache(“mymodel/v1”, dir_hash)</p>
+</dd>
+<dt>Context manager (automatic):</dt><dd><dl class="simple">
+<dt>with synchronized_inductor_cache(“mymodel/v1”):</dt><dd><p>self.model = torch.compile(self.model)
+self.warmup()  # Compilation is automatically synced after</p>
+</dd>
+</dl>
+</dd>
+</dl>
+</div></blockquote>
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.toolkit.compilation.get_gpu_type">
+<span class="sig-prename descclassname"><span class="pre">fal.toolkit.compilation.</span></span><span class="sig-name descname"><span class="pre">get_gpu_type</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.compilation.get_gpu_type" title="Link to this definition">¶</a></dt>
+<dd><p>Detect the GPU type using nvidia-smi.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span></p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The GPU model name (e.g., “H100”, “A100”, “H200”) or “UNKNOWN”
+if detection fails.</p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">gpu_type</span> <span class="o">=</span> <span class="n">get_gpu_type</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Running on: </span><span class="si">{</span><span class="n">gpu_type</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="go">Running on: H100</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.toolkit.compilation.load_inductor_cache">
+<span class="sig-prename descclassname"><span class="pre">fal.toolkit.compilation.</span></span><span class="sig-name descname"><span class="pre">load_inductor_cache</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cache_key</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.compilation.load_inductor_cache" title="Link to this definition">¶</a></dt>
+<dd><p>Load PyTorch Inductor compilation cache from global storage.</p>
+<p>This function:
+1. Sets TORCHINDUCTOR_CACHE_DIR environment variable
+2. Looks for cached compiled kernels in GPU-specific global storage
+3. Unpacks the cache to local temporary directory
+4. Returns a hash of the unpacked directory for change detection</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>cache_key</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – Unique identifier for this cache (e.g., “flux/2”, “mymodel/v1”)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Hash of the unpacked cache directory, or empty string if cache not found.</p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">dir_hash</span> <span class="o">=</span> <span class="n">load_inductor_cache</span><span class="p">(</span><span class="s2">&quot;flux/2&quot;</span><span class="p">)</span>
+<span class="go">Found compilation cache at /data/inductor-caches/H100/flux/2.zip, unpacking...</span>
+<span class="go">Cache unpacked successfully.</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.toolkit.compilation.sync_inductor_cache">
+<span class="sig-prename descclassname"><span class="pre">fal.toolkit.compilation.</span></span><span class="sig-name descname"><span class="pre">sync_inductor_cache</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cache_key</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">unpacked_dir_hash</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.compilation.sync_inductor_cache" title="Link to this definition">¶</a></dt>
+<dd><p>Sync updated PyTorch Inductor cache back to global storage.</p>
+<p>This function:
+1. Checks if the local cache has changed (by comparing hashes)
+2. If changed, creates a zip archive of the new cache
+3. Saves it to GPU-specific global storage</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>cache_key</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – Unique identifier for this cache (same as used in
+load_inductor_cache)</p></li>
+<li><p><strong>unpacked_dir_hash</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – Hash returned from load_inductor_cache
+(for change detection)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">sync_inductor_cache</span><span class="p">(</span><span class="s2">&quot;flux/2&quot;</span><span class="p">,</span> <span class="n">dir_hash</span><span class="p">)</span>
+<span class="go">No changes in the cache dir, skipping sync.</span>
+<span class="go"># or</span>
+<span class="go">Changes detected in the cache dir, syncing...</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.toolkit.compilation.synchronized_inductor_cache">
+<span class="sig-prename descclassname"><span class="pre">fal.toolkit.compilation.</span></span><span class="sig-name descname"><span class="pre">synchronized_inductor_cache</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cache_key</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.compilation.synchronized_inductor_cache" title="Link to this definition">¶</a></dt>
+<dd><p>Context manager to automatically load and sync PyTorch Inductor cache.</p>
+<p>This wraps load_inductor_cache and sync_inductor_cache for convenience.
+The cache is loaded on entry and synced on exit (even if an exception occurs).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>cache_key</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – Unique identifier for this cache (e.g., “flux/2”, “mymodel/v1”)</p>
+</dd>
+<dt class="field-even">Yields<span class="colon">:</span></dt>
+<dd class="field-even"><p>None</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Iterator</span></code>[<code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code>]</span></p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="k">with</span> <span class="n">synchronized_inductor_cache</span><span class="p">(</span><span class="s2">&quot;mymodel/v1&quot;</span><span class="p">):</span>
+<span class="gp">... </span>    <span class="bp">self</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="p">)</span>
+<span class="gp">... </span>    <span class="bp">self</span><span class="o">.</span><span class="n">warmup</span><span class="p">()</span>  <span class="c1"># Compilation happens here</span>
+<span class="go"># Cache is automatically synced after the with block</span>
+</pre></div>
+</div>
+</dd></dl>
+
+</section>
 <section id="module-fal.toolkit.exceptions">
 <span id="fal-toolkit-exceptions-module"></span><h2>fal.toolkit.exceptions module<a class="headerlink" href="#module-fal.toolkit.exceptions" title="Link to this heading">¶</a></h2>
 <dl class="py exception">
@@ -965,6 +1095,27 @@ the HTTP request. Defaults to <cite>None</cite>.</p></li>
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="fal.toolkit.get_gpu_type">
+<span class="sig-prename descclassname"><span class="pre">fal.toolkit.</span></span><span class="sig-name descname"><span class="pre">get_gpu_type</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.get_gpu_type" title="Link to this definition">¶</a></dt>
+<dd><p>Detect the GPU type using nvidia-smi.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span></p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The GPU model name (e.g., “H100”, “A100”, “H200”) or “UNKNOWN”
+if detection fails.</p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">gpu_type</span> <span class="o">=</span> <span class="n">get_gpu_type</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Running on: </span><span class="si">{</span><span class="n">gpu_type</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="go">Running on: H100</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="fal.toolkit.get_image_size">
 <span class="sig-prename descclassname"><span class="pre">fal.toolkit.</span></span><span class="sig-name descname"><span class="pre">get_image_size</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">source</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.get_image_size" title="Link to this definition">¶</a></dt>
 <dd><dl class="field-list simple">
@@ -972,6 +1123,34 @@ the HTTP request. Defaults to <cite>None</cite>.</p></li>
 <dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference internal" href="fal.toolkit.image.html#fal.toolkit.image.image.ImageSize" title="fal.toolkit.image.image.ImageSize"><code class="xref py py-class docutils literal notranslate"><span class="pre">ImageSize</span></code></a></span></p>
 </dd>
 </dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.toolkit.load_inductor_cache">
+<span class="sig-prename descclassname"><span class="pre">fal.toolkit.</span></span><span class="sig-name descname"><span class="pre">load_inductor_cache</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cache_key</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.load_inductor_cache" title="Link to this definition">¶</a></dt>
+<dd><p>Load PyTorch Inductor compilation cache from global storage.</p>
+<p>This function:
+1. Sets TORCHINDUCTOR_CACHE_DIR environment variable
+2. Looks for cached compiled kernels in GPU-specific global storage
+3. Unpacks the cache to local temporary directory
+4. Returns a hash of the unpacked directory for change detection</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>cache_key</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – Unique identifier for this cache (e.g., “flux/2”, “mymodel/v1”)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Hash of the unpacked cache directory, or empty string if cache not found.</p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">dir_hash</span> <span class="o">=</span> <span class="n">load_inductor_cache</span><span class="p">(</span><span class="s2">&quot;flux/2&quot;</span><span class="p">)</span>
+<span class="go">Found compilation cache at /data/inductor-caches/H100/flux/2.zip, unpacking...</span>
+<span class="go">Cache unpacked successfully.</span>
+</pre></div>
+</div>
 </dd></dl>
 
 <dl class="py function">
@@ -985,6 +1164,62 @@ quantization techniques. Only applicable under fal’s cloud environment.</p>
 <dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type">torch.nn.Module</span></p>
 </dd>
 </dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.toolkit.sync_inductor_cache">
+<span class="sig-prename descclassname"><span class="pre">fal.toolkit.</span></span><span class="sig-name descname"><span class="pre">sync_inductor_cache</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cache_key</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">unpacked_dir_hash</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.sync_inductor_cache" title="Link to this definition">¶</a></dt>
+<dd><p>Sync updated PyTorch Inductor cache back to global storage.</p>
+<p>This function:
+1. Checks if the local cache has changed (by comparing hashes)
+2. If changed, creates a zip archive of the new cache
+3. Saves it to GPU-specific global storage</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>cache_key</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – Unique identifier for this cache (same as used in
+load_inductor_cache)</p></li>
+<li><p><strong>unpacked_dir_hash</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – Hash returned from load_inductor_cache
+(for change detection)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">sync_inductor_cache</span><span class="p">(</span><span class="s2">&quot;flux/2&quot;</span><span class="p">,</span> <span class="n">dir_hash</span><span class="p">)</span>
+<span class="go">No changes in the cache dir, skipping sync.</span>
+<span class="go"># or</span>
+<span class="go">Changes detected in the cache dir, syncing...</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.toolkit.synchronized_inductor_cache">
+<span class="sig-prename descclassname"><span class="pre">fal.toolkit.</span></span><span class="sig-name descname"><span class="pre">synchronized_inductor_cache</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cache_key</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.synchronized_inductor_cache" title="Link to this definition">¶</a></dt>
+<dd><p>Context manager to automatically load and sync PyTorch Inductor cache.</p>
+<p>This wraps load_inductor_cache and sync_inductor_cache for convenience.
+The cache is loaded on entry and synced on exit (even if an exception occurs).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>cache_key</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – Unique identifier for this cache (e.g., “flux/2”, “mymodel/v1”)</p>
+</dd>
+<dt class="field-even">Yields<span class="colon">:</span></dt>
+<dd class="field-even"><p>None</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Iterator</span></code>[<code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code>]</span></p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="k">with</span> <span class="n">synchronized_inductor_cache</span><span class="p">(</span><span class="s2">&quot;mymodel/v1&quot;</span><span class="p">):</span>
+<span class="gp">... </span>    <span class="bp">self</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="p">)</span>
+<span class="gp">... </span>    <span class="bp">self</span><span class="o">.</span><span class="n">warmup</span><span class="p">()</span>  <span class="c1"># Compilation happens here</span>
+<span class="go"># Cache is automatically synced after the with block</span>
+</pre></div>
+</div>
 </dd></dl>
 
 </section>

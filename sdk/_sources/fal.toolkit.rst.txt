@@ -16,6 +16,14 @@ Subpackages
 Submodules
 ----------
 
+fal.toolkit.compilation module
+------------------------------
+
+.. automodule:: fal.toolkit.compilation
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 fal.toolkit.exceptions module
 -----------------------------
 
