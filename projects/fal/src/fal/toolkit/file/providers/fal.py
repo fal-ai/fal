@@ -7,7 +7,7 @@ import threading
 from base64 import b64encode
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, Generator, Generic, TypeVar
 from urllib.error import HTTPError, URLError
@@ -95,8 +95,21 @@ class FalV2Token:
     base_upload_url: str
     expires_at: datetime
 
-    def is_expired(self) -> bool:
-        return datetime.now(timezone.utc) >= self.expires_at
+    def is_expired(self, offset: timedelta | int | None = None) -> bool:
+        """
+        Return whether the token has expired.
+
+        If `offset` is provided, return whether the token *will have* expired as of
+        `now + offset`, rather than whether it is *currently* expired. Offsets can be
+        either a number of seconds or a `timedelta` object.
+        """
+        as_of = datetime.now(timezone.utc)
+        if offset is not None:
+            if isinstance(offset, timedelta):
+                as_of += offset
+            else:
+                as_of += timedelta(seconds=offset)
+        return as_of >= self.expires_at
 
 
 class FalV3Token(FalV2Token):
@@ -117,9 +130,16 @@ class FalV2TokenManager:
         )
         self._lock: threading.Lock = threading.Lock()
 
-    def get_token(self) -> FalV2Token:
+    def get_token(self, valid_for: timedelta | int | None = None) -> FalV2Token:
+        """
+        Get a valid authentication token.
+
+        If `valid_for` is specified, return a token that's guaranteed to remain valid
+        for the specified duration. Durations can be specified as an integer number of
+        seconds, or as a `timedelta` object.
+        """
         with self._lock:
-            if self._token.is_expired():
+            if self._token.is_expired(offset=valid_for):
                 self._refresh_token()
             return self._token
 
