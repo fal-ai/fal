@@ -16,7 +16,11 @@ from fal.toolkit.utils import (
     FAL_REPOSITORY_DIR,
     clone_repository,
     download_file,
+    download_file_async,
+    download_file_to_dir_async,
     download_model_weights,
+    download_model_weights_async,
+    snapshot_download_async,
 )
 from fal.toolkit.video.video import Video, VideoField
 
@@ -38,9 +42,13 @@ __all__ = [
     "FAL_REPOSITORY_DIR",
     "clone_repository",
     "download_file",
+    "download_file_async",
+    "download_file_to_dir_async",
     "download_model_weights",
+    "download_model_weights_async",
     "get_gpu_type",
     "load_inductor_cache",
+    "snapshot_download_async",
     "sync_inductor_cache",
     "synchronized_inductor_cache",
 ]
