@@ -130,7 +130,10 @@ class FalV2TokenManager:
         )
         self._lock: threading.Lock = threading.Lock()
 
-    def get_token(self, valid_for: timedelta | int | None = None) -> FalV2Token:
+    def get_token(
+        self,
+        valid_for: timedelta | int | None = timedelta(hours=1),
+    ) -> FalV2Token:
         """
         Get a valid authentication token.
 
