@@ -25,6 +25,7 @@ def _apps_table(apps: list[AliasInfo]):
     table.add_column("Min Concurrency")
     table.add_column("Max Concurrency")
     table.add_column("Concurrency Buffer")
+    table.add_column("Scaling Delay")
     table.add_column("Max Multiplexing")
     table.add_column("Keep Alive")
     table.add_column("Request Timeout")
@@ -48,6 +49,7 @@ def _apps_table(apps: list[AliasInfo]):
             str(app.min_concurrency),
             str(app.max_concurrency),
             concurrency_buffer_str,
+            str(app.scaling_delay),
             str(app.max_multiplexing),
             str(app.keep_alive),
             str(app.request_timeout),
@@ -169,6 +171,7 @@ def _scale(args):
         and args.min_concurrency is None
         and args.concurrency_buffer is None
         and args.concurrency_buffer_perc is None
+        and args.scaling_delay is None
         and args.request_timeout is None
         and args.startup_timeout is None
         and args.machine_types is None
@@ -185,6 +188,7 @@ def _scale(args):
         min_concurrency=args.min_concurrency,
         concurrency_buffer=args.concurrency_buffer,
         concurrency_buffer_perc=args.concurrency_buffer_perc,
+        scaling_delay=args.scaling_delay,
         request_timeout=args.request_timeout,
         startup_timeout=args.startup_timeout,
         machine_types=args.machine_types,
