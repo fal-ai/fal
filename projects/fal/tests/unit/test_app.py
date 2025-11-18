@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import os
+
+import pytest
+
 from fal import App
 from fal.container import ContainerImage
 
@@ -89,3 +93,32 @@ def test_non_host_classvars_do_not_leak_into_host_kwargs():
     assert "machine_type" not in hk
     assert "num_gpus" not in hk
     assert "app_auth" not in hk
+
+
+@pytest.mark.asyncio
+async def test_runner_state_lifecycle_complete():
+    """Test that FAL_RUNNER_STATE transitions through all phases correctly"""
+    states = []
+
+    class StateCheckApp(App):
+        def setup(self):
+            states.append(("setup", os.getenv("FAL_RUNNER_STATE")))
+
+        def teardown(self):
+            states.append(("teardown", os.getenv("FAL_RUNNER_STATE")))
+
+    app = StateCheckApp(_allow_init=True)
+
+    # Create a mock FastAPI app
+    import fastapi
+
+    fastapi_app = fastapi.FastAPI()
+
+    async with app.lifespan(fastapi_app):
+        states.append(("running", os.getenv("FAL_RUNNER_STATE")))
+
+    # Verify the full lifecycle
+    assert len(states) == 3
+    assert states[0] == ("setup", "SETUP")
+    assert states[1] == ("running", "RUNNING")
+    assert states[2] == ("teardown", "STOPPING")
