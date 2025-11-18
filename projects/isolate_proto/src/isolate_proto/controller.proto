@@ -199,6 +199,7 @@ message MachineRequirements {
     optional int32 startup_timeout = 14;
     optional int32 concurrency_buffer = 15;
     optional int32 concurrency_buffer_perc = 16;
+    optional int32 scaling_delay_seconds = 17;
 }
 
 enum ApplicationAuthMode {
@@ -266,6 +267,7 @@ message UpdateApplicationRequest {
     optional int32 startup_timeout = 9;
     optional int32 concurrency_buffer = 10;
     optional int32 concurrency_buffer_perc = 11;
+    optional int32 scaling_delay_seconds = 12;
 }
 
 message UpdateApplicationResult {
@@ -278,6 +280,7 @@ message ListApplicationsRequest {
 
 message ApplicationInfo {
     string application_id = 1;
+    google.protobuf.Timestamp created_at = 13;
     int32 max_concurrency = 2;
     int32 max_multiplexing = 3;
     int32 keep_alive = 4;
@@ -288,8 +291,8 @@ message ApplicationInfo {
     optional int32 startup_timeout = 10;
     repeated string valid_regions = 11;
     optional int32 concurrency_buffer = 12;
-    google.protobuf.Timestamp created_at = 13;
     optional int32 concurrency_buffer_perc = 14;
+    optional int32 scaling_delay_seconds = 15;
 }
 
 message ListApplicationsResult {
@@ -355,6 +358,7 @@ message AliasInfo {
     repeated string valid_regions = 12;
     optional int32 concurrency_buffer = 13;
     optional int32 concurrency_buffer_perc = 14;
+    optional int32 scaling_delay_seconds = 15;
 }
 
 message SetSecretRequest {
