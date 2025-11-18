@@ -17,6 +17,8 @@ from fal.toolkit.utils import (
     clone_repository,
     download_file,
     download_model_weights,
+    keep_directory_warm,
+    warm_up_directory,
 )
 from fal.toolkit.video.video import Video, VideoField
 
@@ -40,7 +42,9 @@ __all__ = [
     "download_file",
     "download_model_weights",
     "get_gpu_type",
+    "keep_directory_warm",
     "load_inductor_cache",
     "sync_inductor_cache",
     "synchronized_inductor_cache",
+    "warm_up_directory",
 ]

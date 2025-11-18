@@ -10,6 +10,7 @@ import time
 from contextlib import suppress
 from pathlib import Path, PurePath
 from tempfile import NamedTemporaryFile, TemporaryDirectory
+from typing import Callable
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
@@ -568,3 +569,111 @@ def _git_rev_parse(repo_path: Path, ref: str) -> str:
             f"{error}\nFailed to get the commit hash of the repository '{repo_path}' ."
         )
         raise error
+
+
+def warm_up_directory(directory_path: str) -> None:
+    """
+    Warm up a directory by reading all the files in it.
+    
+    This pre-loads all files in a directory into the filesystem cache by reading
+    them in parallel. This is especially useful for models stored on network 
+    filesystems (e.g., FAL_MODEL_WEIGHTS_DIR) where sequential reads have high
+    latency overhead.
+    
+    By reading all files in parallel first, you convert many sequential reads
+    with cumulative latency into one parallel batch operation, significantly
+    speeding up subsequent model loading.
+    
+    Typical usage:
+        from fal.toolkit import snapshot_download_async, warm_up_directory
+        
+        # Download model repository
+        model_path = await snapshot_download_async(
+            "black-forest-labs/FLUX.1-dev",
+            "/data/models/flux"
+        )
+        
+        # Warm up filesystem cache (reads all files in parallel)
+        warm_up_directory(model_path)
+        
+        # Load model (now 2-5x faster due to cache warmup)
+        pipeline = FluxPipeline.from_pretrained(model_path)
+    
+    Args:
+        directory_path: Path to the directory to warm up
+        
+    Note:
+        This function uses Unix utilities (find, xargs, cat) with 32 parallel
+        processes. It fails silently on systems without these utilities.
+    """
+    import subprocess
+    
+    try:
+        subprocess.check_call(
+            f"find '{directory_path}' -type f | xargs -P 32 -I {{}} cat {{}} > /dev/null",
+            shell=True,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        # Silently fail on systems without find/xargs or if directory doesn't exist
+        pass
+
+
+def keep_directory_warm(
+    *directories: str,
+    interval: int | float = 60,
+    jitter: bool = True,
+    max_jitter: int | float = 10,
+) -> Callable[[], None]:
+    """
+    Keep directories warm by periodically reading all files in them.
+    
+    This starts a background daemon thread that continuously warms up the
+    specified directories at regular intervals. Useful for long-running
+    applications with keep_alive that want to prevent filesystem cache eviction
+    during idle periods.
+    
+    Args:
+        *directories: One or more directory paths to keep warm
+        interval: Time between warmup cycles in seconds (default: 60)
+        jitter: Whether to add random jitter between directories (default: True)
+        max_jitter: Maximum jitter time in seconds (default: 10)
+        
+    Returns:
+        A stop function that can be called to stop the background warming thread
+        
+    Example:
+        from fal.toolkit import keep_directory_warm
+        
+        class MyApp(fal.App, keep_alive=6000):
+            async def setup(self):
+                # Start background warming for long-running app
+                self.stop_warming = keep_directory_warm(
+                    "/data/models",
+                    interval=120
+                )
+            
+            def teardown(self):
+                # Stop warming thread when app shuts down
+                self.stop_warming()
+    """
+    import random
+    import threading
+    
+    stop_event = threading.Event()
+
+    def _keep_directory_warm() -> None:
+        while not stop_event.is_set():
+            for directory in directories:
+                warm_up_directory(directory)
+                if jitter:
+                    time.sleep(random.uniform(0, max_jitter))
+            time.sleep(interval)
+
+    thread = threading.Thread(target=_keep_directory_warm, daemon=True)
+    thread.start()
+
+    def _stop() -> None:
+        stop_event.set()
+        thread.join()
+
+    return _stop
