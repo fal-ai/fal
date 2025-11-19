@@ -242,6 +242,11 @@ def _add_scale_parser(subparsers, parents):
         help="Concurrency buffer %",
     )
     parser.add_argument(
+        "--scaling-delay",
+        type=int,
+        help="Scaling delay (seconds).",
+    )
+    parser.add_argument(
         "--request-timeout",
         type=int,
         help="Request timeout (seconds).",
