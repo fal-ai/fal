@@ -531,6 +531,7 @@ class MachineRequirements:
     scaling_delay: int | None = None
     request_timeout: int | None = None
     startup_timeout: int | None = None
+    valid_regions: list[str] | None = None
 
     def __post_init__(self):
         if isinstance(self.machine_types, str):
@@ -655,6 +656,7 @@ class FalServerlessConnection:
                 max_multiplexing=machine_requirements.max_multiplexing,
                 request_timeout=machine_requirements.request_timeout,
                 startup_timeout=machine_requirements.startup_timeout,
+                valid_regions=machine_requirements.valid_regions,
             )
         else:
             wrapped_requirements = None
@@ -795,6 +797,7 @@ class FalServerlessConnection:
                 scaling_delay_seconds=machine_requirements.scaling_delay,
                 request_timeout=machine_requirements.request_timeout,
                 startup_timeout=machine_requirements.startup_timeout,
+                valid_regions=machine_requirements.valid_regions,
             )
         else:
             wrapped_requirements = None
