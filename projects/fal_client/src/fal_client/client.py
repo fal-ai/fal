@@ -508,6 +508,7 @@ class FalClientHTTPError(FalClientError):
     message: str
     status_code: int
     response_headers: dict[str, str]
+    response: httpx.Response
 
     def __str__(self) -> str:
         return f"{self.message}"
@@ -528,6 +529,7 @@ def _raise_for_status(response: httpx.Response) -> None:
             # converting to dict to avoid httpx.Headers,
             # which means we don't support multiple values per header
             dict(response.headers),
+            response=response,
         ) from exc
 
 
@@ -650,17 +652,45 @@ MAX_ATTEMPTS = 10
 BASE_DELAY = 0.1
 MAX_DELAY = 30
 RETRY_CODES = [408, 409, 429]
+INGRESS_ERROR_CODES = [502, 503, 504]
 
 
-def _should_retry(exc: httpx.HTTPError) -> bool:
+def _is_ingress_error(response: httpx.Response) -> bool:
+    """Tell apart ingress errors from client errors."""
+
+    if response.status_code not in INGRESS_ERROR_CODES:
+        return False
+
+    if "x-fal-request-id" in response.headers:
+        # this is clearly returned from our server
+        return False
+
+    # heuristic to detect an ingress error
+    if "nginx" in response.text:
+        return True
+
+    return False
+
+
+def _should_retry_response(
+    response: httpx.Response,
+    extra_retry_codes: list[int] = [],
+) -> bool:
+    if _is_ingress_error(response):
+        return True
+
+    if response.status_code in RETRY_CODES or response.status_code in extra_retry_codes:
+        return True
+
+    return False
+
+
+def _should_retry(exc: Exception, extra_retry_codes: list[int] = []) -> bool:
     if isinstance(exc, httpx.TransportError):
         return True
 
-    if (
-        isinstance(exc, httpx.HTTPStatusError)
-        and exc.response.status_code in RETRY_CODES
-    ):
-        return True
+    if isinstance(exc, (httpx.HTTPStatusError, FalClientHTTPError)):
+        return _should_retry_response(exc.response, extra_retry_codes)
 
     return False
 
@@ -684,13 +714,18 @@ def _get_retry_delay(
 
 
 def _maybe_retry_request(
-    client: httpx.Client, method: str, url: str, **kwargs: Any
+    client: httpx.Client,
+    method: str,
+    url: str,
+    *,
+    extra_retry_codes: list[int] = [],
+    **kwargs: Any,
 ) -> httpx.Response:
     for attempt in range(1, MAX_ATTEMPTS + 1):
         try:
             return _request(client, method, url, **kwargs)
-        except httpx.HTTPError as exc:
-            if _should_retry(exc) and attempt < MAX_ATTEMPTS:
+        except (httpx.HTTPError, FalClientHTTPError) as exc:
+            if _should_retry(exc, extra_retry_codes) and attempt < MAX_ATTEMPTS:
                 delay = _get_retry_delay(
                     attempt, BASE_DELAY, MAX_DELAY, "exponential", True
                 )
@@ -705,13 +740,18 @@ def _maybe_retry_request(
 
 
 async def _async_maybe_retry_request(
-    client: httpx.AsyncClient, method: str, url: str, **kwargs: Any
+    client: httpx.AsyncClient,
+    method: str,
+    url: str,
+    *,
+    extra_retry_codes: list[int] = [],
+    **kwargs: Any,
 ) -> httpx.Response:
     for attempt in range(1, MAX_ATTEMPTS + 1):
         try:
             return await _async_request(client, method, url, **kwargs)
-        except httpx.HTTPError as exc:
-            if _should_retry(exc) and attempt < MAX_ATTEMPTS:
+        except (httpx.HTTPError, FalClientHTTPError) as exc:
+            if _should_retry(exc, extra_retry_codes) and attempt < MAX_ATTEMPTS:
                 delay = _get_retry_delay(attempt, 0.1, 10, "exponential", True)
                 logger.debug(
                     f"Retrying request to {url} due to {exc} ({MAX_ATTEMPTS - attempt} attempts left)"
@@ -788,7 +828,11 @@ class SyncRequestHandle(_BaseRequestHandle):
 
     def cancel(self) -> None:
         """Cancel the request."""
-        response = _maybe_retry_request(self.client, "PUT", self.cancel_url)
+        response = _maybe_retry_request(
+            self.client,
+            "PUT",
+            self.cancel_url,
+        )
         _raise_for_status(response)
 
 
@@ -852,14 +896,20 @@ class AsyncRequestHandle(_BaseRequestHandle):
             continue
 
         response = await _async_maybe_retry_request(
-            self.client, "GET", self.response_url
+            self.client,
+            "GET",
+            self.response_url,
         )
         _raise_for_status(response)
         return response.json()
 
     async def cancel(self) -> None:
         """Cancel the request."""
-        response = await _async_maybe_retry_request(self.client, "PUT", self.cancel_url)
+        response = await _async_maybe_retry_request(
+            self.client,
+            "PUT",
+            self.cancel_url,
+        )
         _raise_for_status(response)
 
 

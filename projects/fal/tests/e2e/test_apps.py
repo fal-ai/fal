@@ -350,13 +350,19 @@ def register_app(
     suffix: str = "",
 ):
     app_alias = str(uuid.uuid4()) + "-test-alias" + ("-" + suffix if suffix else "")
-    app_revision = host.register(
+    result = host.register(
         func=app.func,
         options=app.options,
         application_name=app_alias,
         application_auth_mode="private",
         deployment_strategy="recreate",
     )
+
+    assert result
+    assert result.result
+    assert result.service_urls
+    app_revision = result.result.application_id
+
     try:
         yield app_alias, app_revision
     finally:
@@ -727,13 +733,17 @@ def test_app_deploy_scale(host: api.FalServerlessHost):
     from dataclasses import replace
 
     app_alias = str(uuid.uuid4()) + "-alias"
-    app_revision = addition_app.host.register(
+    result = addition_app.host.register(
         func=addition_app.func,
         options=addition_app.options,
         application_name=app_alias,
         application_auth_mode="private",
         deployment_strategy="recreate",
     )
+    assert result
+    assert result.result
+    assert result.service_urls
+    app_revision = result.result.application_id
 
     options = replace(
         addition_app.options,
@@ -751,7 +761,11 @@ def test_app_deploy_scale(host: api.FalServerlessHost):
         deployment_strategy="recreate",
     )
 
-    app_revision = addition_app.host.register(**kwargs, scale=False)
+    result = addition_app.host.register(**kwargs, scale=False)
+    assert result
+    assert result.result
+    assert result.service_urls
+    app_revision = result.result.application_id
 
     with host._connection as client:
         res = client.list_aliases()
@@ -763,7 +777,11 @@ def test_app_deploy_scale(host: api.FalServerlessHost):
         # max_concurrency is alias-specific
         assert found.max_concurrency == 1, "Expected max_concurrency to stay the same"
 
-    app_revision = addition_app.host.register(**kwargs, scale=True)
+    result = addition_app.host.register(**kwargs, scale=True)
+    assert result
+    assert result.result
+    assert result.service_urls
+    app_revision = result.result.application_id
 
     with host._connection as client:
         res = client.list_aliases()
