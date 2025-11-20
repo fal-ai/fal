@@ -1090,7 +1090,9 @@ class Bundle:
                         # it absolute
                         absolute_file_path = os.path.join(norm_path, file_path)
                         arcname = os.path.relpath(absolute_file_path, root)
-                        cls._add_file(zipfile, absolute_file_path, arcname)
+
+                        if not spec.match_file(arcname):
+                            cls._add_file(zipfile, absolute_file_path, arcname)
                 else:
                     # Single file - check if it should be included
                     arcname = os.path.relpath(norm_path, root)
