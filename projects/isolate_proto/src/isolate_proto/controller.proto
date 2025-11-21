@@ -410,10 +410,8 @@ message RunnerInfo {
         DEAD = 3; // will be replaced with TERMINATED
         DOCKER_PULL = 4;
         DRAINING = 5;
-        STOPPING = 6;
-        STOPPED = 7;
-        TERMINATING = 8;
-        TERMINATED = 9;
+        TERMINATING = 6;
+        TERMINATED = 7;
     }
 
     optional State state = 8;

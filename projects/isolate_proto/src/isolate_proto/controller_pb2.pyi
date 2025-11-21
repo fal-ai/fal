@@ -1224,10 +1224,8 @@ class RunnerInfo(google.protobuf.message.Message):
         """will be replaced with TERMINATED"""
         DOCKER_PULL: RunnerInfo._State.ValueType  # 4
         DRAINING: RunnerInfo._State.ValueType  # 5
-        STOPPING: RunnerInfo._State.ValueType  # 6
-        STOPPED: RunnerInfo._State.ValueType  # 7
-        TERMINATING: RunnerInfo._State.ValueType  # 8
-        TERMINATED: RunnerInfo._State.ValueType  # 9
+        TERMINATING: RunnerInfo._State.ValueType  # 6
+        TERMINATED: RunnerInfo._State.ValueType  # 7
 
     class State(_State, metaclass=_StateEnumTypeWrapper): ...
     RUNNING: RunnerInfo.State.ValueType  # 0
@@ -1237,10 +1235,8 @@ class RunnerInfo(google.protobuf.message.Message):
     """will be replaced with TERMINATED"""
     DOCKER_PULL: RunnerInfo.State.ValueType  # 4
     DRAINING: RunnerInfo.State.ValueType  # 5
-    STOPPING: RunnerInfo.State.ValueType  # 6
-    STOPPED: RunnerInfo.State.ValueType  # 7
-    TERMINATING: RunnerInfo.State.ValueType  # 8
-    TERMINATED: RunnerInfo.State.ValueType  # 9
+    TERMINATING: RunnerInfo.State.ValueType  # 6
+    TERMINATED: RunnerInfo.State.ValueType  # 7
 
     RUNNER_ID_FIELD_NUMBER: builtins.int
     IN_FLIGHT_REQUESTS_FIELD_NUMBER: builtins.int
