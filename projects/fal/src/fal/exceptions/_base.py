@@ -38,7 +38,7 @@ class FieldException(FalServerlessException):
     message: str
     status_code: int = 422
     type: str = "value_error"
-    billable_units: str | None = None
+    billable_units: int | float | str | None = None
 
     def to_pydantic_format(self) -> dict[str, list[dict]]:
         return dict(

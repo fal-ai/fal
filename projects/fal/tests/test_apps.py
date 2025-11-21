@@ -45,6 +45,10 @@ class StatefulInput(BaseModel):
     value: int
 
 
+class FieldInput(BaseModel):
+    value: int | str | float
+
+
 class Output(BaseModel):
     result: int
 
@@ -225,6 +229,14 @@ class ExceptionApp(fal.App, keep_alive=300, max_concurrency=1):
             field="rhs",
             message="rhs must be an integer",
             billable_units="1",
+        )
+
+    @fal.endpoint("/field-exception-units")
+    def field_exception_units(self, input: FieldInput) -> Output:
+        raise FieldException(
+            field="value",
+            message="value must be a valid value",
+            billable_units=input.value,
         )
 
     @fal.endpoint("/cuda-exception")
@@ -1017,6 +1029,79 @@ def test_field_exception_billing(test_exception_app: AppClient):
         # For errors raised on runtime, developers should be handling the billing.
         # Therefore not adding billing units.
         assert not hasattr(response.headers, "x-fal-billable-units")
+
+
+def test_field_exception_int_billable_units_formatting(test_exception_app: AppClient):
+    """Test that int billable_units are formatted without decimal places."""
+    with httpx.Client() as httpx_client:
+        url = test_exception_app.url + "/field-exception-units"
+        response = httpx_client.post(
+            url,
+            json={"value": 42},
+            timeout=30,
+        )
+
+        assert response.status_code == 422
+        assert response.headers.get("x-fal-billable-units") == "42"
+
+
+def test_field_exception_float_billable_units_formatting(test_exception_app: AppClient):
+    """Test that float billable_units are formatted with 8 decimal places."""
+    with httpx.Client() as httpx_client:
+        url = test_exception_app.url + "/field-exception-units"
+        response = httpx_client.post(
+            url,
+            json={"value": 3.14159265},
+            timeout=30,
+        )
+
+        assert response.status_code == 422
+        assert response.headers.get("x-fal-billable-units") == "3.14159265"
+
+
+def test_field_exception_scientific_notation_small(test_exception_app: AppClient):
+    """Test that small scientific notation values are properly formatted."""
+    with httpx.Client() as httpx_client:
+        url = test_exception_app.url + "/field-exception-units"
+        response = httpx_client.post(
+            url,
+            json={"value": 1.23e-5},
+            timeout=30,
+        )
+
+        assert response.status_code == 422
+        # 1.23e-5 = 0.0000123 (float type uses .8f format)
+        assert response.headers.get("x-fal-billable-units") == "0.00001230"
+
+
+def test_field_exception_scientific_notation_large(test_exception_app: AppClient):
+    """Test that large scientific notation values are properly formatted."""
+    with httpx.Client() as httpx_client:
+        url = test_exception_app.url + "/field-exception-units"
+        response = httpx_client.post(
+            url,
+            json={"value": 1.23e10},
+            timeout=30,
+        )
+
+        assert response.status_code == 422
+        # 1.23e10 = 12300000000.0 (float type uses .8f format)
+        assert response.headers.get("x-fal-billable-units") == "12300000000.00000000"
+
+
+def test_field_exception_invalid_billable_units(test_exception_app: AppClient):
+    """Test that invalid billable_units (non-numeric string) raises an error."""
+    with httpx.Client() as httpx_client:
+        url = test_exception_app.url + "/field-exception-units"
+        response = httpx_client.post(
+            url,
+            json={"value": "not_a_number"},
+            timeout=30,
+        )
+
+        # should return 500 internal server error due to ValueError when
+        # converting to float
+        assert response.status_code == 500
 
 
 def test_kill_runner(host: api.FalServerlessHost, test_sleep_app: str):

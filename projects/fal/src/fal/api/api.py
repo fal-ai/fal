@@ -1217,7 +1217,12 @@ class BaseServable:
         async def field_exception_handler(request: Request, exc: FieldException):
             headers = {}
             if exc.billable_units:
-                headers["x-fal-billable-units"] = exc.billable_units
+                # poor man's validation. we dont want people to pass in
+                # non-numeric values.
+                units_float = float(exc.billable_units)
+                # we dont want to add 8 decimal places for ints.
+                format_string = ".0f" if isinstance(exc.billable_units, int) else ".8f"
+                headers["x-fal-billable-units"] = format(units_float, format_string)
             return JSONResponse(
                 exc.to_pydantic_format(), exc.status_code, headers=headers
             )
