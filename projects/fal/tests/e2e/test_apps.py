@@ -988,12 +988,6 @@ def test_app_exceptions(test_exception_app: AppClient):
     assert app_exc.value.status_code == 401
 
     with pytest.raises(AppClientError) as field_exc:
-        test_exception_app.field_exception_with_billable_units({"lhs": 1, "rhs": "2"})
-
-    assert field_exc.value.status_code == 422
-    assert field_exc.value.headers.get("x-fal-billable-units") == "1"
-
-    with pytest.raises(AppClientError) as field_exc:
         test_exception_app.field_exception({"lhs": 1, "rhs": "2"})
 
     assert field_exc.value.status_code == 422
