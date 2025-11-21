@@ -19,6 +19,7 @@ def test_app_classvars_propagate_to_host_kwargs():
         max_concurrency = 3
         concurrency_buffer = 4
         concurrency_buffer_perc = 50
+        scaling_delay = 33
         max_multiplexing = 7
         kind = "container"
         image = ContainerImage.from_dockerfile_str(
@@ -32,6 +33,7 @@ def test_app_classvars_propagate_to_host_kwargs():
     assert hk["max_concurrency"] == 3
     assert hk["concurrency_buffer"] == 4
     assert hk["concurrency_buffer_perc"] == 50
+    assert hk["scaling_delay"] == 33
     assert hk["max_multiplexing"] == 7
     assert hk["kind"] == "container"
     assert isinstance(hk["image"], ContainerImage)
@@ -48,6 +50,7 @@ def test_app_files_classvars_propagate_to_host_kwargs():
         max_concurrency = 3
         concurrency_buffer = 4
         concurrency_buffer_perc = 50
+        scaling_delay = 33
         max_multiplexing = 7
 
     hk = VarsApp.host_kwargs
@@ -60,6 +63,7 @@ def test_app_files_classvars_propagate_to_host_kwargs():
     assert hk["max_concurrency"] == 3
     assert hk["concurrency_buffer"] == 4
     assert hk["concurrency_buffer_perc"] == 50
+    assert hk["scaling_delay"] == 33
     assert hk["max_multiplexing"] == 7
 
 
