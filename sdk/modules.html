@@ -148,6 +148,7 @@
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.provide_hints"><code class="docutils literal notranslate"><span class="pre">App.provide_hints()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.request_timeout"><code class="docutils literal notranslate"><span class="pre">App.request_timeout</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.requirements"><code class="docutils literal notranslate"><span class="pre">App.requirements</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.scaling_delay"><code class="docutils literal notranslate"><span class="pre">App.scaling_delay</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.setup"><code class="docutils literal notranslate"><span class="pre">App.setup()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.startup_timeout"><code class="docutils literal notranslate"><span class="pre">App.startup_timeout</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.teardown"><code class="docutils literal notranslate"><span class="pre">App.teardown()</span></code></a></li>
@@ -304,6 +305,7 @@
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.AliasInfo.min_concurrency"><code class="docutils literal notranslate"><span class="pre">AliasInfo.min_concurrency</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.AliasInfo.request_timeout"><code class="docutils literal notranslate"><span class="pre">AliasInfo.request_timeout</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.AliasInfo.revision"><code class="docutils literal notranslate"><span class="pre">AliasInfo.revision</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.AliasInfo.scaling_delay"><code class="docutils literal notranslate"><span class="pre">AliasInfo.scaling_delay</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.AliasInfo.startup_timeout"><code class="docutils literal notranslate"><span class="pre">AliasInfo.startup_timeout</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.AliasInfo.valid_regions"><code class="docutils literal notranslate"><span class="pre">AliasInfo.valid_regions</span></code></a></li>
 </ul>
@@ -320,6 +322,7 @@
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.ApplicationInfo.max_multiplexing"><code class="docutils literal notranslate"><span class="pre">ApplicationInfo.max_multiplexing</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.ApplicationInfo.min_concurrency"><code class="docutils literal notranslate"><span class="pre">ApplicationInfo.min_concurrency</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.ApplicationInfo.request_timeout"><code class="docutils literal notranslate"><span class="pre">ApplicationInfo.request_timeout</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.ApplicationInfo.scaling_delay"><code class="docutils literal notranslate"><span class="pre">ApplicationInfo.scaling_delay</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.ApplicationInfo.startup_timeout"><code class="docutils literal notranslate"><span class="pre">ApplicationInfo.startup_timeout</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.ApplicationInfo.valid_regions"><code class="docutils literal notranslate"><span class="pre">ApplicationInfo.valid_regions</span></code></a></li>
 </ul>
@@ -431,6 +434,7 @@
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.MachineRequirements.min_concurrency"><code class="docutils literal notranslate"><span class="pre">MachineRequirements.min_concurrency</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.MachineRequirements.num_gpus"><code class="docutils literal notranslate"><span class="pre">MachineRequirements.num_gpus</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.MachineRequirements.request_timeout"><code class="docutils literal notranslate"><span class="pre">MachineRequirements.request_timeout</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.MachineRequirements.scaling_delay"><code class="docutils literal notranslate"><span class="pre">MachineRequirements.scaling_delay</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.MachineRequirements.scheduler"><code class="docutils literal notranslate"><span class="pre">MachineRequirements.scheduler</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.MachineRequirements.scheduler_options"><code class="docutils literal notranslate"><span class="pre">MachineRequirements.scheduler_options</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.MachineRequirements.startup_timeout"><code class="docutils literal notranslate"><span class="pre">MachineRequirements.startup_timeout</span></code></a></li>
@@ -634,6 +638,7 @@
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.provide_hints"><code class="docutils literal notranslate"><span class="pre">App.provide_hints()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.request_timeout"><code class="docutils literal notranslate"><span class="pre">App.request_timeout</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.requirements"><code class="docutils literal notranslate"><span class="pre">App.requirements</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.scaling_delay"><code class="docutils literal notranslate"><span class="pre">App.scaling_delay</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.setup"><code class="docutils literal notranslate"><span class="pre">App.setup()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.startup_timeout"><code class="docutils literal notranslate"><span class="pre">App.startup_timeout</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.teardown"><code class="docutils literal notranslate"><span class="pre">App.teardown()</span></code></a></li>
