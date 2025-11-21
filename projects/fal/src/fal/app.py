@@ -391,6 +391,7 @@ class App(BaseServable):
     max_concurrency: ClassVar[Optional[int]] = None
     concurrency_buffer: ClassVar[Optional[int]] = None
     concurrency_buffer_perc: ClassVar[Optional[int]] = None
+    scaling_delay: ClassVar[Optional[int]] = None
     max_multiplexing: ClassVar[Optional[int]] = None
     kind: ClassVar[Optional[str]] = None
     image: ClassVar[Optional[ContainerImage]] = None
@@ -433,6 +434,9 @@ class App(BaseServable):
 
         if cls.concurrency_buffer_perc is not None:
             cls.host_kwargs["concurrency_buffer_perc"] = cls.concurrency_buffer_perc
+
+        if cls.scaling_delay is not None:
+            cls.host_kwargs["scaling_delay"] = cls.scaling_delay
 
         if cls.max_multiplexing is not None:
             cls.host_kwargs["max_multiplexing"] = cls.max_multiplexing

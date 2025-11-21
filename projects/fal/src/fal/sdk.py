@@ -246,6 +246,7 @@ class ApplicationInfo:
     min_concurrency: int
     concurrency_buffer: int
     concurrency_buffer_perc: int
+    scaling_delay: int
     machine_types: list[str]
     request_timeout: int
     startup_timeout: int
@@ -265,6 +266,7 @@ class AliasInfo:
     min_concurrency: int
     concurrency_buffer: int
     concurrency_buffer_perc: int
+    scaling_delay: int
     machine_types: list[str]
     request_timeout: int
     startup_timeout: int
@@ -414,6 +416,7 @@ def _from_grpc_application_info(
         min_concurrency=message.min_concurrency,
         concurrency_buffer=message.concurrency_buffer,
         concurrency_buffer_perc=message.concurrency_buffer_perc,
+        scaling_delay=message.scaling_delay_seconds,
         machine_types=list(message.machine_types),
         request_timeout=message.request_timeout,
         startup_timeout=message.startup_timeout,
@@ -444,6 +447,7 @@ def _from_grpc_alias_info(message: isolate_proto.AliasInfo) -> AliasInfo:
         min_concurrency=message.min_concurrency,
         concurrency_buffer=message.concurrency_buffer,
         concurrency_buffer_perc=message.concurrency_buffer_perc,
+        scaling_delay=message.scaling_delay_seconds,
         machine_types=list(message.machine_types),
         request_timeout=message.request_timeout,
         startup_timeout=message.startup_timeout,
@@ -537,6 +541,7 @@ class MachineRequirements:
     min_concurrency: int | None = None
     concurrency_buffer: int | None = None
     concurrency_buffer_perc: int | None = None
+    scaling_delay: int | None = None
     request_timeout: int | None = None
     startup_timeout: int | None = None
 
@@ -659,6 +664,7 @@ class FalServerlessConnection:
                 min_concurrency=machine_requirements.min_concurrency,
                 concurrency_buffer=machine_requirements.concurrency_buffer,
                 concurrency_buffer_perc=machine_requirements.concurrency_buffer_perc,
+                scaling_delay_seconds=machine_requirements.scaling_delay,
                 max_multiplexing=machine_requirements.max_multiplexing,
                 request_timeout=machine_requirements.request_timeout,
                 startup_timeout=machine_requirements.startup_timeout,
@@ -718,6 +724,7 @@ class FalServerlessConnection:
         min_concurrency: int | None = None,
         concurrency_buffer: int | None = None,
         concurrency_buffer_perc: int | None = None,
+        scaling_delay: int | None = None,
         request_timeout: int | None = None,
         startup_timeout: int | None = None,
         valid_regions: list[str] | None = None,
@@ -731,6 +738,7 @@ class FalServerlessConnection:
             min_concurrency=min_concurrency,
             concurrency_buffer=concurrency_buffer,
             concurrency_buffer_perc=concurrency_buffer_perc,
+            scaling_delay_seconds=scaling_delay,
             request_timeout=request_timeout,
             startup_timeout=startup_timeout,
             valid_regions=valid_regions,
@@ -797,6 +805,7 @@ class FalServerlessConnection:
                 min_concurrency=machine_requirements.min_concurrency,
                 concurrency_buffer=machine_requirements.concurrency_buffer,
                 concurrency_buffer_perc=machine_requirements.concurrency_buffer_perc,
+                scaling_delay_seconds=machine_requirements.scaling_delay,
                 request_timeout=machine_requirements.request_timeout,
                 startup_timeout=machine_requirements.startup_timeout,
             )
