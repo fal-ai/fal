@@ -485,6 +485,8 @@ class App(BaseServable):
 
     @asynccontextmanager
     async def lifespan(self, app: fastapi.FastAPI):
+        os.environ["FAL_RUNNER_STATE"] = "SETUP"
+
         # We want to not do any directory changes for container apps,
         # since we don't have explicit checks to see the kind of app
         # We check for app_files here and check kind and app_files earlier
@@ -493,9 +495,13 @@ class App(BaseServable):
             _include_app_files_path(self.local_file_path, self.app_files_context_dir)
         _print_python_packages()
         await _call_any_fn(self.setup)
+
+        os.environ["FAL_RUNNER_STATE"] = "RUNNING"
+
         try:
             yield
         finally:
+            os.environ["FAL_RUNNER_STATE"] = "STOPPING"
             await _call_any_fn(self.teardown)
 
     def health(self):
