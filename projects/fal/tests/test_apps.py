@@ -223,14 +223,6 @@ class ExceptionApp(fal.App, keep_alive=300, max_concurrency=1):
             message="rhs must be an integer",
         )
 
-    @fal.endpoint("/field-exception-with-billable-units")
-    def field_exception_with_billable_units(self, input: Input) -> Output:
-        raise FieldException(
-            field="rhs",
-            message="rhs must be an integer",
-            billable_units="1",
-        )
-
     @fal.endpoint("/field-exception-units")
     def field_exception_units(self, input: FieldInput) -> Output:
         raise FieldException(
