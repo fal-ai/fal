@@ -14,9 +14,6 @@ import json
 from collections import namedtuple
 from typing import Tuple, Union, cast
 
-from fal.cli._utils import get_app_data_from_toml, is_app_name
-from fal.cli.parser import RefAction
-
 User = namedtuple("User", ["user_id", "username"])
 
 
@@ -87,7 +84,7 @@ def _deploy_from_reference(
     strategy: Optional[DeploymentStrategyLiteral],
     scale: bool,
 ) -> DeploymentResult:
-    from fal.api import FalServerlessError, FalServerlessHost
+    from fal.api import FalServerlessError
     from fal.utils import load_function_from
 
     file_path, func_name = app_ref
@@ -105,8 +102,7 @@ def _deploy_from_reference(
         [file_path] = options
         file_path = str(file_path)  # type: ignore
 
-    user = _get_user()
-    host = FalServerlessHost(client._grpc_host, local_file_path=str(file_path))
+    host = client._create_host(local_file_path=str(file_path))
     loaded = load_function_from(
         host,
         file_path,  # type: ignore
@@ -117,27 +113,20 @@ def _deploy_from_reference(
     app_auth = auth or loaded.app_auth
     strategy = strategy or "rolling"
 
-    app_id = host.register(
+    result = host.register(
         func=isolated_function.func,
         options=isolated_function.options,
         application_name=app_name,
         application_auth_mode=app_auth,  # type: ignore
+        source_code=loaded.source_code,
         metadata=isolated_function.options.host.get("metadata", {}),
         deployment_strategy=strategy,
         scale=scale,
     )
 
-    assert app_id
-    env_host = _remove_http_and_port_from_url(host.url)
-    env_host = env_host.replace("api.", "").replace("alpha.", "")
-
-    env_host_parts = env_host.split(".")
-
-    # keep the last 3 parts
-    playground_host = ".".join(env_host_parts[-3:])
-
-    # just replace .ai for .run
-    endpoint_host = env_host.replace(".ai", ".run")
+    assert result
+    assert result.result
+    assert result.service_urls
 
     urls: dict[str, dict[str, str]] = {
         "playground": {},
@@ -145,18 +134,12 @@ def _deploy_from_reference(
         "async": {},
     }
     for endpoint in loaded.endpoints:
-        urls["playground"][endpoint] = (
-            f"https://{playground_host}/models/{user.username}/{app_name}{endpoint}"
-        )
-        urls["sync"][endpoint] = (
-            f"https://{endpoint_host}/{user.username}/{app_name}{endpoint}"
-        )
-        urls["async"][endpoint] = (
-            f"https://queue.{endpoint_host}/{user.username}/{app_name}{endpoint}"
-        )
+        urls["playground"][endpoint] = f"{result.service_urls.playground}{endpoint}"
+        urls["sync"][endpoint] = f"{result.service_urls.run}{endpoint}"
+        urls["async"][endpoint] = f"{result.service_urls.queue}{endpoint}"
 
     return DeploymentResult(
-        revision=app_id,
+        revision=result.result.application_id,
         app_name=app_name,
         urls=urls,
     )
@@ -171,6 +154,9 @@ def deploy(
     strategy: DeploymentStrategyLiteral = "rolling",
     reset_scale: bool = False,
 ) -> DeploymentResult:
+    from fal.cli._utils import get_app_data_from_toml, is_app_name
+    from fal.cli.parser import RefAction
+
     if isinstance(app_ref, tuple):
         app_ref_tuple = app_ref
     elif app_ref:
@@ -185,9 +171,10 @@ def deploy(
             raise ValueError("Cannot use --app-name or --auth with app name reference.")
 
         app_name = app_ref_tuple[0]
-        app_ref, app_auth, app_strategy, app_scale_settings = get_app_data_from_toml(
+        app_ref, app_auth, app_strategy, app_scale_settings, _ = get_app_data_from_toml(
             app_name
         )
+
         file_path, func_name = RefAction.split_ref(app_ref)
 
     # path/to/myfile.py::MyApp

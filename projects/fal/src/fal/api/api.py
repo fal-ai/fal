@@ -68,6 +68,7 @@ from fal.sdk import (
     File,
     HostedRunState,
     MachineRequirements,
+    RegisterApplicationResult,
     get_agent_credentials,
     get_default_credentials,
 )
@@ -84,6 +85,7 @@ _UNSET = object()
 SERVE_REQUIREMENTS = [
     f"fastapi=={fastapi_version}",
     f"pydantic=={pydantic_version}",
+    f"tblib=={tblib.__version__}",
     "uvicorn",
     "starlette_exporter",
     # workaround for prometheus_client 0.23.0
@@ -432,6 +434,7 @@ class FalServerlessHost(Host):
             "min_concurrency",
             "concurrency_buffer",
             "concurrency_buffer_perc",
+            "scaling_delay",
             "max_multiplexing",
             "setup_function",
             "metadata",
@@ -514,10 +517,11 @@ class FalServerlessHost(Host):
         *,
         application_name: Optional[str] = None,
         application_auth_mode: Optional[AuthModeLiteral] = None,
+        source_code: Optional[str] = None,
         metadata: Optional[dict[str, Any]] = None,
         deployment_strategy: DeploymentStrategyLiteral,
         scale: bool = True,
-    ) -> Optional[str]:
+    ) -> Optional[RegisterApplicationResult]:
         from isolate.backends.common import active_python
 
         environment_options = options.environment.copy()
@@ -535,6 +539,7 @@ class FalServerlessHost(Host):
         min_concurrency = options.host.get("min_concurrency")
         concurrency_buffer = options.host.get("concurrency_buffer")
         concurrency_buffer_perc = options.host.get("concurrency_buffer_perc")
+        scaling_delay = options.host.get("scaling_delay")
         max_multiplexing = options.host.get("max_multiplexing")
         exposed_port = options.get_exposed_port()
         request_timeout = options.host.get("request_timeout")
@@ -552,6 +557,7 @@ class FalServerlessHost(Host):
             min_concurrency=min_concurrency,
             concurrency_buffer=concurrency_buffer,
             concurrency_buffer_perc=concurrency_buffer_perc,
+            scaling_delay=scaling_delay,
             request_timeout=request_timeout,
             startup_timeout=startup_timeout,
         )
@@ -574,6 +580,7 @@ class FalServerlessHost(Host):
             environments,
             application_name=application_name,
             auth_mode=application_auth_mode,
+            source_code=source_code,
             machine_requirements=machine_requirements,
             metadata=metadata,
             deployment_strategy=deployment_strategy,
@@ -586,7 +593,7 @@ class FalServerlessHost(Host):
                 self._log_printer.print(log)
 
             if partial_result.result:
-                return partial_result.result.application_id
+                return partial_result
 
         return None
 
@@ -613,6 +620,7 @@ class FalServerlessHost(Host):
         min_concurrency = options.host.get("min_concurrency")
         concurrency_buffer = options.host.get("concurrency_buffer")
         concurrency_buffer_perc = options.host.get("concurrency_buffer_perc")
+        scaling_delay = options.host.get("scaling_delay")
         max_multiplexing = options.host.get("max_multiplexing")
         base_image = options.host.get("_base_image", None)
         scheduler = options.host.get("_scheduler", None)
@@ -634,6 +642,7 @@ class FalServerlessHost(Host):
             min_concurrency=min_concurrency,
             concurrency_buffer=concurrency_buffer,
             concurrency_buffer_perc=concurrency_buffer_perc,
+            scaling_delay=scaling_delay,
             request_timeout=request_timeout,
             startup_timeout=startup_timeout,
         )
@@ -828,6 +837,7 @@ def function(
     min_concurrency: int = FAL_SERVERLESS_DEFAULT_MIN_CONCURRENCY,
     concurrency_buffer: int = FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER,
     concurrency_buffer_perc: int = FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER_PERC,
+    scaling_delay: int | None = None,
     request_timeout: int | None = None,
     startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
@@ -859,6 +869,7 @@ def function(
     min_concurrency: int = FAL_SERVERLESS_DEFAULT_MIN_CONCURRENCY,
     concurrency_buffer: int = FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER,
     concurrency_buffer_perc: int = FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER_PERC,
+    scaling_delay: int | None = None,
     request_timeout: int | None = None,
     startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
@@ -942,6 +953,7 @@ def function(
     min_concurrency: int = FAL_SERVERLESS_DEFAULT_MIN_CONCURRENCY,
     concurrency_buffer: int = FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER,
     concurrency_buffer_perc: int = FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER_PERC,
+    scaling_delay: int | None = None,
     request_timeout: int | None = None,
     startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
@@ -978,6 +990,7 @@ def function(
     min_concurrency: int = FAL_SERVERLESS_DEFAULT_MIN_CONCURRENCY,
     concurrency_buffer: int = FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER,
     concurrency_buffer_perc: int = FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER_PERC,
+    scaling_delay: int | None = None,
     request_timeout: int | None = None,
     startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
@@ -1008,6 +1021,7 @@ def function(
     min_concurrency: int = FAL_SERVERLESS_DEFAULT_MIN_CONCURRENCY,
     concurrency_buffer: int = FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER,
     concurrency_buffer_perc: int = FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER_PERC,
+    scaling_delay: int | None = None,
     request_timeout: int | None = None,
     startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
@@ -1038,6 +1052,7 @@ def function(
     min_concurrency: int = FAL_SERVERLESS_DEFAULT_MIN_CONCURRENCY,
     concurrency_buffer: int = FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER,
     concurrency_buffer_perc: int = FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER_PERC,
+    scaling_delay: int | None = None,
     request_timeout: int | None = None,
     startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,

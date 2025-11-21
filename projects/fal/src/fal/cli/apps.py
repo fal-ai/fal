@@ -25,6 +25,7 @@ def _apps_table(apps: list[AliasInfo]):
     table.add_column("Min Concurrency")
     table.add_column("Max Concurrency")
     table.add_column("Concurrency Buffer")
+    table.add_column("Scaling Delay")
     table.add_column("Max Multiplexing")
     table.add_column("Keep Alive")
     table.add_column("Request Timeout")
@@ -48,6 +49,7 @@ def _apps_table(apps: list[AliasInfo]):
             str(app.min_concurrency),
             str(app.max_concurrency),
             concurrency_buffer_str,
+            str(app.scaling_delay),
             str(app.max_multiplexing),
             str(app.keep_alive),
             str(app.request_timeout),
@@ -169,6 +171,7 @@ def _scale(args):
         and args.min_concurrency is None
         and args.concurrency_buffer is None
         and args.concurrency_buffer_perc is None
+        and args.scaling_delay is None
         and args.request_timeout is None
         and args.startup_timeout is None
         and args.machine_types is None
@@ -185,6 +188,7 @@ def _scale(args):
         min_concurrency=args.min_concurrency,
         concurrency_buffer=args.concurrency_buffer,
         concurrency_buffer_perc=args.concurrency_buffer_perc,
+        scaling_delay=args.scaling_delay,
         request_timeout=args.request_timeout,
         startup_timeout=args.startup_timeout,
         machine_types=args.machine_types,
@@ -238,6 +242,11 @@ def _add_scale_parser(subparsers, parents):
         help="Concurrency buffer %",
     )
     parser.add_argument(
+        "--scaling-delay",
+        type=int,
+        help="Scaling delay (seconds).",
+    )
+    parser.add_argument(
         "--request-timeout",
         type=int,
         help="Request timeout (seconds).",
@@ -260,6 +269,32 @@ def _add_scale_parser(subparsers, parents):
         help="Valid regions (pass several items to set multiple).",
     )
     parser.set_defaults(func=_scale)
+
+
+def _rollout(args):
+    client = SyncServerlessClient(host=args.host, team=args.team)
+    client.apps.rollout(args.app_name, force=args.force)
+    args.console.log(f"Rolled out application {args.app_name}")
+
+
+def _add_rollout_parser(subparsers, parents):
+    rollout_help = "Rollout application."
+    parser = subparsers.add_parser(
+        "rollout",
+        description=rollout_help,
+        help=rollout_help,
+        parents=parents,
+    )
+    parser.add_argument(
+        "app_name",
+        help="Application name.",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Force rollout.",
+    )
+    parser.set_defaults(func=_rollout)
 
 
 def _set_rev(args):
@@ -431,6 +466,7 @@ def add_parser(main_subparsers, parents):
     _add_list_rev_parser(subparsers, parents)
     _add_set_rev_parser(subparsers, parents)
     _add_scale_parser(subparsers, parents)
+    _add_rollout_parser(subparsers, parents)
     _add_runners_parser(subparsers, parents)
     _add_delete_parser(subparsers, parents)
     _add_delete_rev_parser(subparsers, parents)

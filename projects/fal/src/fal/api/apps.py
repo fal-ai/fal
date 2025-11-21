@@ -48,6 +48,7 @@ def scale_app(
     min_concurrency: int | None = None,
     concurrency_buffer: int | None = None,
     concurrency_buffer_perc: int | None = None,
+    scaling_delay: int | None = None,
     request_timeout: int | None = None,
     startup_timeout: int | None = None,
     machine_types: list[str] | None = None,
@@ -62,8 +63,22 @@ def scale_app(
             min_concurrency=min_concurrency,
             concurrency_buffer=concurrency_buffer,
             concurrency_buffer_perc=concurrency_buffer_perc,
+            scaling_delay=scaling_delay,
             request_timeout=request_timeout,
             startup_timeout=startup_timeout,
             machine_types=machine_types,
             valid_regions=regions,
+        )
+
+
+def rollout_app(
+    client: SyncServerlessClient,
+    app_name: str,
+    *,
+    force: bool = False,
+) -> None:
+    with FalServerlessClient(client._grpc_host, client._credentials).connect() as conn:
+        conn.rollout_application(
+            application_name=app_name,
+            force=force,
         )

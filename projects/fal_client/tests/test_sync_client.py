@@ -187,6 +187,22 @@ def test_fal_client_encode(client: fal_client.SyncClient, tmp_path):
             ),
             True,
         ),
+        (
+            httpx.HTTPStatusError(
+                message="test",
+                request=httpx.Request("GET", "https://example.com"),
+                response=httpx.Response(status_code=502, text="nginx error"),
+            ),
+            True,
+        ),
+        (
+            httpx.HTTPStatusError(
+                message="test",
+                request=httpx.Request("GET", "https://example.com"),
+                response=httpx.Response(status_code=504, text="nginx error"),
+            ),
+            True,
+        ),
     ],
 )
 def test_retry(mocker, exc, retried, monkeypatch):

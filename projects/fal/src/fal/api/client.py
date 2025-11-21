@@ -4,7 +4,7 @@ import os
 from dataclasses import dataclass
 from typing import List, Optional
 
-from fal.api import FAL_SERVERLESS_DEFAULT_URL
+from fal.api import FAL_SERVERLESS_DEFAULT_URL, FalServerlessHost
 from fal.sdk import (
     AliasInfo,
     Credentials,
@@ -38,6 +38,7 @@ class _AppsNamespace:
         min_concurrency: int | None = None,
         concurrency_buffer: int | None = None,
         concurrency_buffer_perc: int | None = None,
+        scaling_delay: int | None = None,
         request_timeout: int | None = None,
         startup_timeout: int | None = None,
         machine_types: List[str] | None = None,
@@ -52,11 +53,15 @@ class _AppsNamespace:
             min_concurrency=min_concurrency,
             concurrency_buffer=concurrency_buffer,
             concurrency_buffer_perc=concurrency_buffer_perc,
+            scaling_delay=scaling_delay,
             request_timeout=request_timeout,
             startup_timeout=startup_timeout,
             machine_types=machine_types,
             regions=regions,
         )
+
+    def rollout(self, app_name: str, *, force: bool = False) -> None:
+        return apps_api.rollout_app(self.client, app_name, force=force)
 
 
 class _RunnersNamespace:
@@ -65,6 +70,12 @@ class _RunnersNamespace:
 
     def list(self, *, since=None) -> List[RunnerInfo]:
         return runners_api.list_runners(self.client, since=since)
+
+    def stop(self, runner_id: str) -> None:
+        return runners_api.stop_runner(self.client, runner_id)
+
+    def kill(self, runner_id: str) -> None:
+        return runners_api.kill_runner(self.client, runner_id)
 
 
 @dataclass
@@ -114,3 +125,10 @@ class SyncServerlessClient:
                     os.environ["FAL_PROFILE"] = prev
 
         return get_default_credentials(team=self.team)
+
+    def _create_host(self, *, local_file_path: str = "") -> FalServerlessHost:
+        return FalServerlessHost(
+            self._grpc_host,
+            local_file_path=local_file_path,
+            credentials=self._credentials,
+        )

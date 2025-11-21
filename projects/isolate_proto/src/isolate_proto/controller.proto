@@ -31,6 +31,8 @@ service IsolateController {
     rpc ListApplications (ListApplicationsRequest) returns (ListApplicationsResult) {};
     // Delete a function
     rpc DeleteApplication (DeleteApplicationRequest) returns (DeleteApplicationResult) {};
+    // Rollout an application
+    rpc RolloutApplication (RolloutApplicationRequest) returns (RolloutApplicationResult) {};
     // Set alias to point to an existing application.
     rpc SetAlias (SetAliasRequest) returns (SetAliasResult) {};
     // Delete an alias.
@@ -43,10 +45,14 @@ service IsolateController {
     rpc ListSecrets (ListSecretsRequest) returns (ListSecretsResponse) {}
     // List alias runners in detail
     rpc ListAliasRunners (ListAliasRunnersRequest) returns (ListAliasRunnersResponse) {}
+    // Stop a runner
+    rpc StopRunner (StopRunnerRequest) returns (StopRunnerResponse) {}
     // Kill a runner
     rpc KillRunner (KillRunnerRequest) returns (KillRunnerResponse) {}
     // List all runners
     rpc ListRunners (ListRunnersRequest) returns (ListRunnersResponse) {}
+    // Open interactive shell in a runner
+    rpc ShellRunner (stream ShellRunnerInput) returns (stream ShellRunnerOutput) {}
 }
 
 message HostedMap {
@@ -193,6 +199,7 @@ message MachineRequirements {
     optional int32 startup_timeout = 14;
     optional int32 concurrency_buffer = 15;
     optional int32 concurrency_buffer_perc = 16;
+    optional int32 scaling_delay_seconds = 17;
 }
 
 enum ApplicationAuthMode {
@@ -234,6 +241,8 @@ message RegisterApplicationRequest {
     optional bool private_logs = 11;
     // Optional files to be included
     repeated File files = 12;
+    // Source code of the app implementation
+    optional string source_code = 13;
 }
 
 message RegisterApplicationResultType {
@@ -258,6 +267,7 @@ message UpdateApplicationRequest {
     optional int32 startup_timeout = 9;
     optional int32 concurrency_buffer = 10;
     optional int32 concurrency_buffer_perc = 11;
+    optional int32 scaling_delay_seconds = 12;
 }
 
 message UpdateApplicationResult {
@@ -270,6 +280,7 @@ message ListApplicationsRequest {
 
 message ApplicationInfo {
     string application_id = 1;
+    google.protobuf.Timestamp created_at = 13;
     int32 max_concurrency = 2;
     int32 max_multiplexing = 3;
     int32 keep_alive = 4;
@@ -280,8 +291,8 @@ message ApplicationInfo {
     optional int32 startup_timeout = 10;
     repeated string valid_regions = 11;
     optional int32 concurrency_buffer = 12;
-    google.protobuf.Timestamp created_at = 13;
     optional int32 concurrency_buffer_perc = 14;
+    optional int32 scaling_delay_seconds = 15;
 }
 
 message ListApplicationsResult {
@@ -293,6 +304,15 @@ message DeleteApplicationRequest {
 }
 
 message DeleteApplicationResult {
+    // Empty. For future use.
+}
+
+message RolloutApplicationRequest {
+    string application_name = 1;
+    optional bool force = 2;
+}
+
+message RolloutApplicationResult {
     // Empty. For future use.
 }
 
@@ -338,6 +358,7 @@ message AliasInfo {
     repeated string valid_regions = 12;
     optional int32 concurrency_buffer = 13;
     optional int32 concurrency_buffer_perc = 14;
+    optional int32 scaling_delay_seconds = 15;
 }
 
 message SetSecretRequest {
@@ -386,12 +407,24 @@ message RunnerInfo {
         RUNNING = 0;
         PENDING = 1;
         SETUP = 2;
-        DEAD = 3;
+        DEAD = 3; // TERMINATED
         DOCKER_PULL = 4;
+        DRAINING = 5;
+        STOPPING = 6;
+        STOPPED = 7;
     }
 
     optional State state = 8;
 }
+
+message StopRunnerRequest {
+    string runner_id = 1;
+}
+
+message StopRunnerResponse {
+    // Empty. For future use.
+}
+
 
 message KillRunnerRequest {
     string runner_id = 1;
@@ -408,4 +441,22 @@ message ListRunnersResponse {
 
 message KillRunnerResponse {
     // Empty. For future use.
+}
+
+message TerminalSize {
+    int32 height = 1;
+    int32 width = 2;
+}
+
+message ShellRunnerInput {
+    string runner_id = 1;
+    bytes data = 2;
+    bool close = 3;
+    optional TerminalSize tty_size = 4;
+}
+
+message ShellRunnerOutput {
+    bytes data = 1;
+    bool close = 2;
+    optional int32 exit_code = 3;
 }
