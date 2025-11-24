@@ -27,7 +27,7 @@ from typing import (
     cast,
     overload,
 )
-from zipfile import ZipFile
+from zipfile import ZipFile, ZIP_DEFLATED
 
 import cloudpickle
 import grpc
@@ -1070,7 +1070,7 @@ class Bundle:
 
         spec = pathspec.PathSpec.from_lines("gitwildmatch", ignore)
 
-        with ZipFile(buffer, "w") as zipfile:
+        with ZipFile(buffer, "w", compression=ZIP_DEFLATED, compresslevel=9) as zipfile:
             for path in paths:
                 if not os.path.isabs(path):
                     str_path = os.path.join(root, path)
