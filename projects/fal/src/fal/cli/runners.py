@@ -241,13 +241,24 @@ def _list(args):
     if args.state:
         states = set(args.state)
         if "all" not in states:
-            runners = [r for r in runners if r.state.value in states]
+            runners = [
+                r
+                for r in runners
+                if r.state.value.lower() in states
+                or (
+                    "terminated" in states and r.state.value.lower() == "dead"
+                )  # TODO for backwards compatibility. remove later
+            ]
 
     pending_runners = [
         runner for runner in runners if runner.state == RunnerState.PENDING
     ]
     setup_runners = [runner for runner in runners if runner.state == RunnerState.SETUP]
-    dead_runners = [runner for runner in runners if runner.state == RunnerState.DEAD]
+    terminated_runners = [
+        runner
+        for runner in runners
+        if runner.state == RunnerState.DEAD or runner.state == RunnerState.TERMINATED
+    ]
     if args.output == "pretty":
         args.console.print(
             "Runners: "
@@ -255,7 +266,7 @@ def _list(args):
                 len(runners)
                 - len(pending_runners)
                 - len(setup_runners)
-                - len(dead_runners)
+                - len(terminated_runners)
             )
         )
         args.console.print(f"Runners Pending: {len(pending_runners)}")
@@ -315,14 +326,14 @@ def _add_list_parser(subparsers, parents):
         action=SinceAction,
         limit="1 day",
         help=(
-            "Show dead runners since the given time. "
+            "Show terminated runners since the given time. "
             "Accepts 'now', relative like '30m', '1h', '1d', "
             "or an ISO timestamp. Max 24 hours."
         ),
     )
     parser.add_argument(
         "--state",
-        choices=["all", "running", "pending", "setup", "dead"],
+        choices=["all", "running", "pending", "setup", "terminated"],
         nargs="+",
         default=None,
         help=("Filter by runner state(s). Choose one or more, or 'all'(default)."),
