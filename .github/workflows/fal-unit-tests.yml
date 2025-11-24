@@ -29,7 +29,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        deps: ["pydantic==1.10.18", "pydantic==2.5.0"]
+        deps: ["pydantic==1.10.18", "pydantic==2.11.7"]
         python: ["3.8", "3.12"]
     steps:
       - uses: actions/checkout@v4
