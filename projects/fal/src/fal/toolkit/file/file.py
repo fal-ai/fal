@@ -16,8 +16,7 @@ from fastapi import Request
 if not hasattr(pydantic, "__version__") or pydantic.__version__.startswith("1."):
     IS_PYDANTIC_V2 = False
 else:
-    from pydantic import GetCoreSchemaHandler
-    from pydantic_core import CoreSchema, core_schema
+    from pydantic import model_validator
 
     IS_PYDANTIC_V2 = True
 
@@ -137,14 +136,16 @@ class File(BaseModel):
     # Pydantic custom validator for input type conversion
     if IS_PYDANTIC_V2:
 
+        @model_validator(mode="before")
         @classmethod
-        def __get_pydantic_core_schema__(
-            cls, source_type: Any, handler: GetCoreSchemaHandler
-        ) -> CoreSchema:
-            return core_schema.no_info_before_validator_function(
-                cls.__convert_from_str,
-                handler(source_type),
-            )
+        def __convert_from_str_v2(cls, value: Any):
+            if isinstance(value, str):
+                parsed_url = urlparse(value)
+                if parsed_url.scheme not in ["http", "https", "data"]:
+                    raise ValueError("value must be a valid URL")
+                # Return a mapping so the model can be constructed normally
+                return {"url": parsed_url.geturl()}
+            return value
 
     else:
 
