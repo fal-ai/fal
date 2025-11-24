@@ -280,8 +280,8 @@ class RunnerState(Enum):
     DOCKER_PULL = "DOCKER_PULL"
     DEAD = "DEAD"
     DRAINING = "DRAINING"
-    STOPPING = "STOPPING"
-    STOPPED = "STOPPED"
+    TERMINATING = "TERMINATING"
+    TERMINATED = "TERMINATED"
 
 
 @dataclass
