@@ -4,8 +4,22 @@ import os
 
 import pytest
 
-from fal import App
+from fal import App, endpoint
 from fal.container import ContainerImage
+
+
+def test_app_regions_propagate_to_function_options():
+    from fal.app import wrap_app
+
+    class RegionsApp(App):
+        regions = ["us-east", "eu-west"]
+
+        @endpoint("/")
+        def hello(self) -> str:
+            return "Hello, world!"
+
+    fn = wrap_app(RegionsApp)
+    assert fn.options.host.get("regions") == ["us-east", "eu-west"]
 
 
 def test_app_default_app_name_is_generated_from_class_name():

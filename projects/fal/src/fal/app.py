@@ -134,6 +134,7 @@ def wrap_app(cls: type[App], **kwargs) -> IsolatedFunction:
         local_python_modules=cls.local_python_modules,
         machine_type=cls.machine_type,
         num_gpus=cls.num_gpus,
+        regions=cls.regions,
         **cls.host_kwargs,
         **kwargs,
         metadata=metadata,
@@ -372,6 +373,7 @@ class App(BaseServable):
     local_python_modules: ClassVar[list[str]] = []
     machine_type: ClassVar[str | list[str]] = "S"
     num_gpus: ClassVar[int | None] = None
+    regions: ClassVar[Optional[list[str]]] = None
     host_kwargs: ClassVar[dict[str, Any]] = {
         "_scheduler": "nomad",
         "_scheduler_options": {
