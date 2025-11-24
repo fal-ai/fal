@@ -383,14 +383,14 @@ def _add_runners_parser(subparsers, parents):
         action=SinceAction,
         limit="1 day",
         help=(
-            "Show dead runners since the given time. "
+            "Show terminated runners since the given time. "
             "Accepts 'now', relative like '30m', '1h', '1d', "
             "or an ISO timestamp. Max 24 hours."
         ),
     )
     parser.add_argument(
         "--state",
-        choices=["all", "running", "pending", "setup", "dead"],
+        choices=["all", "running", "pending", "setup", "terminated"],
         nargs="+",
         default=None,
         help=("Filter by runner state(s). Choose one or more, or 'all'(default)."),
