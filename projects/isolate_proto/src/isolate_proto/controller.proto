@@ -244,6 +244,8 @@ message RegisterApplicationRequest {
     repeated File files = 12;
     // Source code of the app implementation
     optional string source_code = 13;
+    // Optional health check path for runners
+    optional string health_check_path = 14;
 }
 
 message RegisterApplicationResultType {
