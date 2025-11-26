@@ -1114,6 +1114,21 @@ def test_field_exception_invalid_billable_units(test_exception_app: AppClient):
         assert response.status_code == 500
 
 
+def test_field_exception_default_billable_units(test_exception_app: AppClient):
+    """Test that when billable_units is not set (None), no header is included."""
+    with httpx.Client() as httpx_client:
+        url = test_exception_app.url + "/field-exception"
+        response = httpx_client.post(
+            url,
+            json={"lhs": 1, "rhs": 2},
+            timeout=30,
+        )
+
+        assert response.status_code == 422
+        # When billable_units is None (default), header should not be present
+        assert "x-fal-billable-units" not in response.headers
+
+
 @pytest.mark.flaky(max_runs=3)
 def test_stop_runner(host: api.FalServerlessHost, test_sleep_app: str):
     def submit_and_wait_for_runner():
