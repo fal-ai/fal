@@ -1087,6 +1087,9 @@ def function(  # type: ignore
     if config.get("image"):
         kind = "container"
 
+    if kind == "container" and config.get("app_files"):
+        raise ValueError("app_files is not supported for container apps.")
+
     options = host.parse_options(kind=kind, **config)
 
     def wrapper(func: Callable[ArgsT, ReturnT]):
