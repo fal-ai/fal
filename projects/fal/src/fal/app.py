@@ -445,16 +445,11 @@ class App(BaseServable):
 
         if cls.kind is not None:
             cls.host_kwargs["kind"] = cls.kind
-            if cls.kind == "container" and cls.app_files:
-                raise ValueError("app_files is not supported for container apps.")
 
         if cls.image is not None:
             cls.host_kwargs["image"] = cls.image
 
         cls.app_name = getattr(cls, "app_name") or app_name
-
-        if kwargs.get("kind") and cls.app_files:
-            raise ValueError("app_files is not supported for container apps.")
 
         if cls.__init__ is not App.__init__:
             raise ValueError(
