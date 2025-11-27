@@ -626,6 +626,7 @@ class FalServerlessConnection:
         auth_mode: Optional[AuthModeLiteral] = None,
         *,
         source_code: str | None = None,
+        health_check_path: str | None = None,
         serialization_method: str = _DEFAULT_SERIALIZATION_METHOD,
         machine_requirements: MachineRequirements | None = None,
         metadata: dict[str, Any] | None = None,
@@ -697,6 +698,7 @@ class FalServerlessConnection:
             private_logs=private_logs,
             files=files,
             source_code=source_code,
+            health_check_path=health_check_path,
         )
         for partial_result in self.stub.RegisterApplication(request):
             yield from_grpc(partial_result)

@@ -448,6 +448,7 @@ class FalServerlessHost(Host):
             "app_files",
             "app_files_ignore",
             "app_files_context_dir",
+            "health_check_path",
         }
     )
 
@@ -565,6 +566,8 @@ class FalServerlessHost(Host):
             valid_regions=regions,
         )
 
+        health_check_path = options.host.get("health_check_path")
+
         app_files = self._app_files_sync(options)
 
         partial_func = _prepare_partial_func(func)
@@ -588,6 +591,7 @@ class FalServerlessHost(Host):
             metadata=metadata,
             deployment_strategy=deployment_strategy,
             scale=scale,
+            health_check_path=health_check_path,
             # By default, logs are public
             private_logs=options.host.get("private_logs", False),
             files=app_files,
@@ -1166,6 +1170,7 @@ class FalFastAPI(FastAPI):
 class RouteSignature(NamedTuple):
     path: str
     is_websocket: bool = False
+    is_health_check: bool = False
     input_modal: type | None = None
     buffering: int | None = None
     session_timeout: float | None = None
