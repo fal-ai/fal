@@ -99,6 +99,10 @@ class SyncServerlessClient:
         return self.host or FAL_SERVERLESS_DEFAULT_URL
 
     @property
+    def _rest_url(self) -> str:
+        return f"https://{self._grpc_host.replace('api', 'rest', 1)}"
+
+    @property
     def _credentials(self) -> Credentials:
         from fal.sdk import FalServerlessKeyCredentials, get_default_credentials
 

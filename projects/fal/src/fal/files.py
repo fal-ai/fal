@@ -4,7 +4,7 @@ import os
 import posixpath
 from concurrent.futures import ThreadPoolExecutor
 from functools import cached_property
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from fsspec import AbstractFileSystem
 
@@ -28,18 +28,35 @@ def _compute_md5(lpath, chunk_size=8192):
 
 
 class FalFileSystem(AbstractFileSystem):
+    def __init__(
+        self,
+        *,
+        host: Optional[str] = None,
+        team: Optional[str] = None,
+        profile: Optional[str] = None,
+        **kwargs,
+    ):
+        self.host = host
+        self.team = team
+        self.profile = profile
+        super().__init__(**kwargs)
+
     @cached_property
     def _client(self) -> "httpx.Client":
         from httpx import Client, Timeout
 
-        from fal.flags import REST_URL
-        from fal.sdk import get_default_credentials
+        from fal.api.client import SyncServerlessClient
 
-        creds = get_default_credentials()
+        client = SyncServerlessClient(
+            host=self.host,
+            team=self.team,
+            profile=self.profile,
+        )
+
         return Client(
-            base_url=REST_URL,
+            base_url=client._rest_url,
             headers={
-                **creds.to_headers(),
+                **client._credentials.to_headers(),
                 "User-Agent": USER_AGENT,
             },
             timeout=Timeout(
