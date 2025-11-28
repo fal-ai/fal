@@ -249,7 +249,7 @@ message RegisterApplicationRequest {
     // Optional health check path for runners
     optional string health_check_path = 14;
     // Target environment for deployment (defaults to "main")
-    optional string environment_name = 14;
+    optional string environment_name = 15;
 }
 
 message RegisterApplicationResultType {
