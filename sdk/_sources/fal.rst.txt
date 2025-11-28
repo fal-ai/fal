@@ -83,14 +83,6 @@ fal.project module
    :undoc-members:
    :show-inheritance:
 
-fal.rest\_client module
------------------------
-
-.. automodule:: fal.rest_client
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 fal.sdk module
 --------------
 
