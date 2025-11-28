@@ -649,6 +649,39 @@ cancellation or with an event, like aiohttp.</p>
 </dd></dl>
 
 </section>
+<section id="module-fal.api.keys">
+<span id="fal-api-keys-module"></span><h2>fal.api.keys module<a class="headerlink" href="#module-fal.api.keys" title="Link to this heading">¶</a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.api.keys.create_key">
+<span class="sig-prename descclassname"><span class="pre">fal.api.keys.</span></span><span class="sig-name descname"><span class="pre">create_key</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">client</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scope</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">description</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.keys.create_key" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">tuple</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.api.keys.list_keys">
+<span class="sig-prename descclassname"><span class="pre">fal.api.keys.</span></span><span class="sig-name descname"><span class="pre">list_keys</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">client</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.keys.list_keys" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<a class="reference internal" href="fal.html#fal.sdk.UserKeyInfo" title="fal.sdk.UserKeyInfo"><code class="xref py py-class docutils literal notranslate"><span class="pre">UserKeyInfo</span></code></a>]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.api.keys.revoke_key">
+<span class="sig-prename descclassname"><span class="pre">fal.api.keys.</span></span><span class="sig-name descname"><span class="pre">revoke_key</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">client</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">key_id</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.keys.revoke_key" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
 <section id="module-fal.api.runners">
 <span id="fal-api-runners-module"></span><h2>fal.api.runners module<a class="headerlink" href="#module-fal.api.runners" title="Link to this heading">¶</a></h2>
 <dl class="py function">
@@ -674,6 +707,39 @@ cancellation or with an event, like aiohttp.</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="fal.api.runners.stop_runner">
 <span class="sig-prename descclassname"><span class="pre">fal.api.runners.</span></span><span class="sig-name descname"><span class="pre">stop_runner</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">client</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">runner_id</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.runners.stop_runner" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+<section id="module-fal.api.secrets">
+<span id="fal-api-secrets-module"></span><h2>fal.api.secrets module<a class="headerlink" href="#module-fal.api.secrets" title="Link to this heading">¶</a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.api.secrets.list_secrets">
+<span class="sig-prename descclassname"><span class="pre">fal.api.secrets.</span></span><span class="sig-name descname"><span class="pre">list_secrets</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">client</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.secrets.list_secrets" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<a class="reference internal" href="fal.html#fal.sdk.ServerlessSecret" title="fal.sdk.ServerlessSecret"><code class="xref py py-class docutils literal notranslate"><span class="pre">ServerlessSecret</span></code></a>]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.api.secrets.set_secret">
+<span class="sig-prename descclassname"><span class="pre">fal.api.secrets.</span></span><span class="sig-name descname"><span class="pre">set_secret</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">client</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">value</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.secrets.set_secret" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.api.secrets.unset_secret">
+<span class="sig-prename descclassname"><span class="pre">fal.api.secrets.</span></span><span class="sig-name descname"><span class="pre">unset_secret</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">client</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">name</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.secrets.unset_secret" title="Link to this definition">¶</a></dt>
 <dd><dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
