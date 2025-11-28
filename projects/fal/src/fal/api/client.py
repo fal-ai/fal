@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 from fal.api import FAL_SERVERLESS_DEFAULT_URL, FalServerlessHost
 from fal.sdk import (
@@ -10,6 +10,9 @@ from fal.sdk import (
     Credentials,
     RunnerInfo,
 )
+
+if TYPE_CHECKING:
+    from openapi_fal_rest.client import Client
 
 from . import apps as apps_api
 from . import deploy as deploy_api
@@ -100,7 +103,9 @@ class SyncServerlessClient:
 
     @property
     def _rest_url(self) -> str:
-        return f"https://{self._grpc_host.replace('api', 'rest', 1)}"
+        from fal.flags import REST_SCHEME
+
+        return f"{REST_SCHEME}://{self._grpc_host.replace('api', 'rest', 1)}"
 
     @property
     def _credentials(self) -> Credentials:
@@ -135,4 +140,18 @@ class SyncServerlessClient:
             self._grpc_host,
             local_file_path=local_file_path,
             credentials=self._credentials,
+        )
+
+    def _create_rest_client(self) -> Client:
+        from openapi_fal_rest.client import Client
+
+        import fal.flags as flags
+
+        return Client(
+            self._rest_url,
+            headers=self._credentials.to_headers(),
+            timeout=30,
+            verify_ssl=not flags.TEST_MODE,
+            raise_on_unexpected_status=False,
+            follow_redirects=True,
         )
