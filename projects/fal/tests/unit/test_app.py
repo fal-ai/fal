@@ -4,6 +4,7 @@ import os
 
 import pytest
 
+import fal
 from fal import App, endpoint
 from fal.container import ContainerImage
 
@@ -140,3 +141,21 @@ async def test_runner_state_lifecycle_complete():
     assert states[0] == ("setup", "SETUP")
     assert states[1] == ("running", "RUNNING")
     assert states[2] == ("teardown", "STOPPING")
+
+
+def test_function_decorator_rejects_app_files_with_container_kind():
+    """Test that app_files cannot be used with kind='container'."""
+    image = ContainerImage.from_dockerfile_str("FROM python:3.11-slim")
+
+    error_message = "app_files is not supported for container apps"
+    with pytest.raises(ValueError, match=error_message):
+
+        @fal.function("container", app_files=["a.py"])
+        def container_because_kind_is_container():
+            pass
+
+    with pytest.raises(ValueError, match=error_message):
+
+        @fal.function(image=image, app_files=["a.py"])
+        def container_because_image_is_provided():
+            pass

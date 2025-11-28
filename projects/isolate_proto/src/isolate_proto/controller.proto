@@ -246,6 +246,8 @@ message RegisterApplicationRequest {
     repeated File files = 12;
     // Source code of the app implementation
     optional string source_code = 13;
+    // Optional health check path for runners
+    optional string health_check_path = 14;
     // Target environment for deployment (defaults to "main")
     optional string environment_name = 14;
 }

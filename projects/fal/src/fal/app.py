@@ -445,16 +445,13 @@ class App(BaseServable):
 
         if cls.kind is not None:
             cls.host_kwargs["kind"] = cls.kind
-            if cls.kind == "container" and cls.app_files:
-                raise ValueError("app_files is not supported for container apps.")
 
         if cls.image is not None:
             cls.host_kwargs["image"] = cls.image
 
-        cls.app_name = getattr(cls, "app_name") or app_name
+        cls.host_kwargs["health_check_path"] = cls.get_health_check_endpoint()
 
-        if kwargs.get("kind") and cls.app_files:
-            raise ValueError("app_files is not supported for container apps.")
+        cls.app_name = getattr(cls, "app_name") or app_name
 
         if cls.__init__ is not App.__init__:
             raise ValueError(
@@ -477,6 +474,24 @@ class App(BaseServable):
             for _, endpoint in inspect.getmembers(cls, inspect.isfunction)
             if (signature := getattr(endpoint, "route_signature", None))
         ]
+
+    @classmethod
+    def get_health_check_endpoint(cls) -> Optional[str]:
+        paths = [
+            signature.path
+            for _, endpoint in inspect.getmembers(cls, inspect.isfunction)
+            if (signature := getattr(endpoint, "route_signature", None))
+            and signature.is_health_check
+        ]
+        if len(paths) > 1:
+            raise ValueError(
+                f"Multiple health check endpoints found: {', '.join(paths)}"
+                "An app can only have one health check endpoint."
+            )
+        elif len(paths) == 1:
+            return paths[0]
+        else:
+            return None
 
     def collect_routes(self) -> dict[RouteSignature, Callable[..., Any]]:
         return {
@@ -646,7 +661,7 @@ class App(BaseServable):
 
 
 def endpoint(
-    path: str, *, is_websocket: bool = False
+    path: str, *, is_websocket: bool = False, is_health_check: bool = False
 ) -> Callable[[EndpointT], EndpointT]:
     """Designate the decorated function as an application endpoint."""
 
@@ -656,7 +671,11 @@ def endpoint(
                 f"Can't set multiple routes for the same function: {callable.__name__}"
             )
 
-        callable.route_signature = RouteSignature(path=path, is_websocket=is_websocket)  # type: ignore
+        callable.route_signature = RouteSignature(  # type: ignore
+            path=path,
+            is_websocket=is_websocket,
+            is_health_check=is_health_check,
+        )
         return callable
 
     return marker_fn
