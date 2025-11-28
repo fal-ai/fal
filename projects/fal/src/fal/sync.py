@@ -4,21 +4,21 @@ import hashlib
 import os
 import zipfile
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-import openapi_fal_rest.api.files.check_dir_hash as check_dir_hash_api
-import openapi_fal_rest.api.files.upload_local_file as upload_local_file_api
-import openapi_fal_rest.models.body_upload_local_file as upload_file_model
-import openapi_fal_rest.models.hash_check as hash_check_model
-import openapi_fal_rest.types as rest_types
+if TYPE_CHECKING:
+    from openapi_fal_rest.client import Client
+
 from pathspec import PathSpec
 
-from fal.rest_client import REST_CLIENT
 
+def _check_hash(client: Client, target_path: str, hash_string: str) -> bool:
+    import openapi_fal_rest.api.files.check_dir_hash as check_dir_hash_api
+    import openapi_fal_rest.models.hash_check as hash_check_model
 
-def _check_hash(target_path: str, hash_string: str) -> bool:
     response = check_dir_hash_api.sync_detailed(
         target_path,
-        client=REST_CLIENT,
+        client=client,
         json_body=hash_check_model.HashCheck(hash_string),
     )
 
@@ -26,7 +26,13 @@ def _check_hash(target_path: str, hash_string: str) -> bool:
     return response.status_code == 200 and res
 
 
-def _upload_file(source_path: str, target_path: str, unzip: bool = False):
+def _upload_file(
+    client: Client, source_path: str, target_path: str, unzip: bool = False
+):
+    import openapi_fal_rest.api.files.upload_local_file as upload_local_file_api
+    import openapi_fal_rest.models.body_upload_local_file as upload_file_model
+    import openapi_fal_rest.types as rest_types
+
     with open(source_path, "rb") as file_to_upload:
         body = upload_file_model.BodyUploadLocalFile(
             rest_types.File(
@@ -39,7 +45,7 @@ def _upload_file(source_path: str, target_path: str, unzip: bool = False):
 
         response = upload_local_file_api.sync_detailed(
             target_path,
-            client=REST_CLIENT,
+            client=client,
             unzip=unzip,
             multipart_data=body,
         )
@@ -94,6 +100,8 @@ def _zip_directory(dir_path: str, zip_path: str) -> None:
 
 
 def sync_dir(local_dir: str | Path, remote_dir: str, force_upload=False) -> str:
+    from fal.api.client import SyncServerlessClient
+
     local_dir_abs = os.path.expanduser(local_dir)
     if not os.path.isabs(remote_dir) or not remote_dir.startswith("/data"):
         raise ValueError(
@@ -106,9 +114,11 @@ def sync_dir(local_dir: str | Path, remote_dir: str, force_upload=False) -> str:
     # Compute the local directory hash
     local_hash = _compute_directory_hash(local_dir_abs)
 
+    client = SyncServerlessClient()._create_rest_client()
+
     print(f"Syncing {local_dir} with {remote_dir}...")
 
-    if _check_hash(remote_dir, local_hash) and not force_upload:
+    if _check_hash(client, remote_dir, local_hash) and not force_upload:
         print(f"{remote_dir} already uploaded and matches {local_dir}")
         return remote_dir
 
@@ -121,7 +131,7 @@ def sync_dir(local_dir: str | Path, remote_dir: str, force_upload=False) -> str:
     _zip_directory(local_dir_abs, zip_path)
 
     # Upload the zipped directory to the serverless environment
-    _upload_file(zip_path, remote_dir, unzip=True)
+    _upload_file(client, zip_path, remote_dir, unzip=True)
 
     os.remove(zip_path)
 
