@@ -485,7 +485,7 @@ class App(BaseServable):
         ]
         if len(paths) > 1:
             raise ValueError(
-                f"Multiple health check endpoints found: {', '.join(paths)}"
+                f"Multiple health check endpoints found: {', '.join(paths)}. "
                 "An app can only have one health check endpoint."
             )
         elif len(paths) == 1:
