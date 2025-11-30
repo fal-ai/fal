@@ -38,6 +38,7 @@ from fal.toolkit.file.providers.fal import LIFECYCLE_PREFERENCE
 
 REALTIME_APP_REQUIREMENTS = ["websockets", "msgpack"]
 REQUEST_ID_KEY = "x-fal-request-id"
+REQUEST_ENDPOINT_KEY = "x-fal-endpoint"
 DEFAULT_APP_FILES_IGNORE = [
     r"\.pyc$",
     r"__pycache__/",
@@ -612,12 +613,18 @@ class App(BaseServable):
                 return await call_next(request)
 
             request_id = request.headers.get(REQUEST_ID_KEY)
-            if request_id is None:
+            request_endpoint = request.headers.get(REQUEST_ENDPOINT_KEY)
+
+            if request_id is None and request_endpoint is None:
                 return await call_next(request)
 
-            await _set_logger_labels(
-                {"fal_request_id": request_id}, channel=self.isolate_channel
-            )
+            labels_to_set = {}
+            if request_id:
+                labels_to_set["fal_request_id"] = request_id
+            if request_endpoint:
+                labels_to_set["fal_endpoint"] = request_endpoint
+
+            await _set_logger_labels(labels_to_set, channel=self.isolate_channel)
 
             async def _unset_at_end():
                 await _set_logger_labels({}, channel=self.isolate_channel)  # type: ignore
