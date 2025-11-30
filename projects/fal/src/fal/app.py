@@ -135,6 +135,7 @@ def wrap_app(cls: type[App], **kwargs) -> IsolatedFunction:
         local_python_modules=cls.local_python_modules,
         machine_type=cls.machine_type,
         num_gpus=cls.num_gpus,
+        regions=cls.regions,
         **cls.host_kwargs,
         **kwargs,
         metadata=metadata,
@@ -373,6 +374,7 @@ class App(BaseServable):
     local_python_modules: ClassVar[list[str]] = []
     machine_type: ClassVar[str | list[str]] = "S"
     num_gpus: ClassVar[int | None] = None
+    regions: ClassVar[Optional[list[str]]] = None
     host_kwargs: ClassVar[dict[str, Any]] = {
         "_scheduler": "nomad",
         "_scheduler_options": {
@@ -392,6 +394,7 @@ class App(BaseServable):
     max_concurrency: ClassVar[Optional[int]] = None
     concurrency_buffer: ClassVar[Optional[int]] = None
     concurrency_buffer_perc: ClassVar[Optional[int]] = None
+    scaling_delay: ClassVar[Optional[int]] = None
     max_multiplexing: ClassVar[Optional[int]] = None
     kind: ClassVar[Optional[str]] = None
     image: ClassVar[Optional[ContainerImage]] = None
@@ -435,21 +438,21 @@ class App(BaseServable):
         if cls.concurrency_buffer_perc is not None:
             cls.host_kwargs["concurrency_buffer_perc"] = cls.concurrency_buffer_perc
 
+        if cls.scaling_delay is not None:
+            cls.host_kwargs["scaling_delay"] = cls.scaling_delay
+
         if cls.max_multiplexing is not None:
             cls.host_kwargs["max_multiplexing"] = cls.max_multiplexing
 
         if cls.kind is not None:
             cls.host_kwargs["kind"] = cls.kind
-            if cls.kind == "container" and cls.app_files:
-                raise ValueError("app_files is not supported for container apps.")
 
         if cls.image is not None:
             cls.host_kwargs["image"] = cls.image
 
-        cls.app_name = getattr(cls, "app_name") or app_name
+        cls.host_kwargs["health_check_path"] = cls.get_health_check_endpoint()
 
-        if kwargs.get("kind") and cls.app_files:
-            raise ValueError("app_files is not supported for container apps.")
+        cls.app_name = getattr(cls, "app_name") or app_name
 
         if cls.__init__ is not App.__init__:
             raise ValueError(
@@ -473,6 +476,24 @@ class App(BaseServable):
             if (signature := getattr(endpoint, "route_signature", None))
         ]
 
+    @classmethod
+    def get_health_check_endpoint(cls) -> Optional[str]:
+        paths = [
+            signature.path
+            for _, endpoint in inspect.getmembers(cls, inspect.isfunction)
+            if (signature := getattr(endpoint, "route_signature", None))
+            and signature.is_health_check
+        ]
+        if len(paths) > 1:
+            raise ValueError(
+                f"Multiple health check endpoints found: {', '.join(paths)}. "
+                "An app can only have one health check endpoint."
+            )
+        elif len(paths) == 1:
+            return paths[0]
+        else:
+            return None
+
     def collect_routes(self) -> dict[RouteSignature, Callable[..., Any]]:
         return {
             signature: endpoint
@@ -482,6 +503,8 @@ class App(BaseServable):
 
     @asynccontextmanager
     async def lifespan(self, app: fastapi.FastAPI):
+        os.environ["FAL_RUNNER_STATE"] = "SETUP"
+
         # We want to not do any directory changes for container apps,
         # since we don't have explicit checks to see the kind of app
         # We check for app_files here and check kind and app_files earlier
@@ -490,9 +513,13 @@ class App(BaseServable):
             _include_app_files_path(self.local_file_path, self.app_files_context_dir)
         _print_python_packages()
         await _call_any_fn(self.setup)
+
+        os.environ["FAL_RUNNER_STATE"] = "RUNNING"
+
         try:
             yield
         finally:
+            os.environ["FAL_RUNNER_STATE"] = "STOPPING"
             await _call_any_fn(self.teardown)
 
     def health(self):
@@ -641,7 +668,7 @@ class App(BaseServable):
 
 
 def endpoint(
-    path: str, *, is_websocket: bool = False
+    path: str, *, is_websocket: bool = False, is_health_check: bool = False
 ) -> Callable[[EndpointT], EndpointT]:
     """Designate the decorated function as an application endpoint."""
 
@@ -651,7 +678,11 @@ def endpoint(
                 f"Can't set multiple routes for the same function: {callable.__name__}"
             )
 
-        callable.route_signature = RouteSignature(path=path, is_websocket=is_websocket)  # type: ignore
+        callable.route_signature = RouteSignature(  # type: ignore
+            path=path,
+            is_websocket=is_websocket,
+            is_health_check=is_health_check,
+        )
         return callable
 
     return marker_fn

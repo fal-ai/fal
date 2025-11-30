@@ -15,7 +15,10 @@ from datetime import datetime, timedelta, timezone
 from http import HTTPStatus
 from queue import Empty, Queue
 from threading import Thread
-from typing import Iterator, List
+from typing import TYPE_CHECKING, Iterator, List
+
+if TYPE_CHECKING:
+    from openapi_fal_rest.client import Client
 
 import grpc
 import httpx
@@ -24,7 +27,6 @@ from rich.console import Console
 from structlog.typing import EventDict
 
 from fal.api.client import SyncServerlessClient
-from fal.rest_client import REST_CLIENT
 from fal.sdk import RunnerInfo, RunnerState
 
 from .parser import FalClientParser, SinceAction, get_output_parser
@@ -241,13 +243,24 @@ def _list(args):
     if args.state:
         states = set(args.state)
         if "all" not in states:
-            runners = [r for r in runners if r.state.value in states]
+            runners = [
+                r
+                for r in runners
+                if r.state.value.lower() in states
+                or (
+                    "terminated" in states and r.state.value.lower() == "dead"
+                )  # TODO for backwards compatibility. remove later
+            ]
 
     pending_runners = [
         runner for runner in runners if runner.state == RunnerState.PENDING
     ]
     setup_runners = [runner for runner in runners if runner.state == RunnerState.SETUP]
-    dead_runners = [runner for runner in runners if runner.state == RunnerState.DEAD]
+    terminated_runners = [
+        runner
+        for runner in runners
+        if runner.state == RunnerState.DEAD or runner.state == RunnerState.TERMINATED
+    ]
     if args.output == "pretty":
         args.console.print(
             "Runners: "
@@ -255,7 +268,7 @@ def _list(args):
                 len(runners)
                 - len(pending_runners)
                 - len(setup_runners)
-                - len(dead_runners)
+                - len(terminated_runners)
             )
         )
         args.console.print(f"Runners Pending: {len(pending_runners)}")
@@ -315,14 +328,14 @@ def _add_list_parser(subparsers, parents):
         action=SinceAction,
         limit="1 day",
         help=(
-            "Show dead runners since the given time. "
+            "Show terminated runners since the given time. "
             "Accepts 'now', relative like '30m', '1h', '1d', "
             "or an ISO timestamp. Max 24 hours."
         ),
     )
     parser.add_argument(
         "--state",
-        choices=["all", "running", "pending", "setup", "dead"],
+        choices=["all", "running", "pending", "setup", "terminated"],
         nargs="+",
         default=None,
         help=("Filter by runner state(s). Choose one or more, or 'all'(default)."),
@@ -381,10 +394,10 @@ class RestRunnerInfo:
     ended_at: datetime | None
 
 
-def _get_runner_info(runner_id: str) -> RestRunnerInfo:
-    headers = REST_CLIENT.get_headers()
+def _get_runner_info(rest_client: Client, runner_id: str) -> RestRunnerInfo:
+    headers = rest_client.get_headers()
     with httpx.Client(
-        base_url=REST_CLIENT.base_url, headers=headers, timeout=30
+        base_url=rest_client.base_url, headers=headers, timeout=30
     ) as client:
         resp = client.get(f"/runners/{runner_id}")
         if resp.status_code == HTTPStatus.NOT_FOUND:
@@ -418,16 +431,19 @@ def _get_runner_info(runner_id: str) -> RestRunnerInfo:
 
 
 def _stream_logs(
-    base_params: dict[str, str], since: datetime | None, until: datetime | None
+    rest_client: Client,
+    base_params: dict[str, str],
+    since: datetime | None,
+    until: datetime | None,
 ) -> Iterator[dict]:
-    headers = REST_CLIENT.get_headers()
+    headers = rest_client.get_headers()
     params: dict[str, str] = base_params.copy()
     if since is not None:
         params["since"] = _to_iso_naive(since)
     if until is not None:
         params["until"] = _to_iso_naive(until)
     with httpx.Client(
-        base_url=REST_CLIENT.base_url,
+        base_url=rest_client.base_url,
         headers=headers,
         timeout=None,
         follow_redirects=True,
@@ -454,11 +470,14 @@ DEFAULT_PAGE_SIZE = 1000
 
 
 def _iter_logs(
-    base_params: dict[str, str], start: datetime | None, end: datetime | None
+    rest_client: Client,
+    base_params: dict[str, str],
+    start: datetime | None,
+    end: datetime | None,
 ) -> Iterator[dict]:
-    headers = REST_CLIENT.get_headers()
+    headers = rest_client.get_headers()
     with httpx.Client(
-        base_url=REST_CLIENT.base_url,
+        base_url=rest_client.base_url,
         headers=headers,
         timeout=300,
         follow_redirects=True,
@@ -481,6 +500,7 @@ def _iter_logs(
 
 
 def _get_logs(
+    rest_client: Client,
     params: dict[str, str],
     since: datetime | None,
     until: datetime | None,
@@ -489,12 +509,12 @@ def _get_logs(
     oldest: bool = False,
 ) -> Iterator[dict]:
     if lines_count is None:
-        yield from _iter_logs(params, since, until)
+        yield from _iter_logs(rest_client, params, since, until)
         return
 
     if oldest:
         produced = 0
-        for log in _iter_logs(params, since, until):
+        for log in _iter_logs(rest_client, params, since, until):
             if produced >= lines_count:
                 break
             produced += 1
@@ -503,7 +523,7 @@ def _get_logs(
 
     # newest tail: collect into a fixed-size deque, then yield
     tail: deque[dict] = deque(maxlen=lines_count)
-    for log in _iter_logs(params, since, until):
+    for log in _iter_logs(rest_client, params, since, until):
         tail.append(log)
     for log in tail:
         yield log
@@ -546,7 +566,9 @@ def _logs(args):
     if args.search is not None:
         params["search"] = args.search
 
-    runner_info = _get_runner_info(args.id)
+    client = SyncServerlessClient(host=args.host, team=args.team)
+    rest_client = client._create_rest_client()
+    runner_info = _get_runner_info(rest_client, args.id)
     follow: bool = args.follow
     since = args.since
     if follow:
@@ -592,9 +614,11 @@ def _logs(args):
             args.parser.error("Invalid -n|--lines value. Use an integer or +integer.")
 
     if follow:
-        logs_gen = _stream_logs(params, since, until)
+        logs_gen = _stream_logs(rest_client, params, since, until)
     else:
-        logs_gen = _get_logs(params, since, until, lines_count, oldest=lines_oldest)
+        logs_gen = _get_logs(
+            rest_client, params, since, until, lines_count, oldest=lines_oldest
+        )
 
     printer = LogPrinter(args.console)
 

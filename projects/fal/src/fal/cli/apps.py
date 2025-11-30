@@ -14,6 +14,12 @@ from .parser import FalClientParser, SinceAction, get_output_parser
 if TYPE_CHECKING:
     from fal.sdk import AliasInfo, ApplicationInfo
 
+CODE_SPECIFIC_SCALING_PARAMS = [
+    "max_multiplexing",
+    "startup_timeout",
+    "machine_types",
+]
+
 
 def _apps_table(apps: list[AliasInfo]):
     from rich.table import Table
@@ -25,6 +31,7 @@ def _apps_table(apps: list[AliasInfo]):
     table.add_column("Min Concurrency")
     table.add_column("Max Concurrency")
     table.add_column("Concurrency Buffer")
+    table.add_column("Scaling Delay")
     table.add_column("Max Multiplexing")
     table.add_column("Keep Alive")
     table.add_column("Request Timeout")
@@ -48,6 +55,7 @@ def _apps_table(apps: list[AliasInfo]):
             str(app.min_concurrency),
             str(app.max_concurrency),
             concurrency_buffer_str,
+            str(app.scaling_delay),
             str(app.max_multiplexing),
             str(app.keep_alive),
             str(app.request_timeout),
@@ -169,6 +177,7 @@ def _scale(args):
         and args.min_concurrency is None
         and args.concurrency_buffer is None
         and args.concurrency_buffer_perc is None
+        and args.scaling_delay is None
         and args.request_timeout is None
         and args.startup_timeout is None
         and args.machine_types is None
@@ -185,6 +194,7 @@ def _scale(args):
         min_concurrency=args.min_concurrency,
         concurrency_buffer=args.concurrency_buffer,
         concurrency_buffer_perc=args.concurrency_buffer_perc,
+        scaling_delay=args.scaling_delay,
         request_timeout=args.request_timeout,
         startup_timeout=args.startup_timeout,
         machine_types=args.machine_types,
@@ -193,6 +203,18 @@ def _scale(args):
     table = _apps_table([app_info])
 
     args.console.print(table)
+
+    code_specific_changes = set()
+    for param in CODE_SPECIFIC_SCALING_PARAMS:
+        if getattr(args, param) is not None:
+            code_specific_changes.add(f"[bold]{param}[/bold]")
+
+    if len(code_specific_changes) > 0:
+        args.console.print(
+            "[bold yellow]Note:[/bold yellow] Please be aware that "
+            f"{', '.join(code_specific_changes)} will be reset on the next deployment. "
+            "See https://docs.fal.ai/serverless/deployment-operations/scale-your-application#code-specific-settings-reset-on-deploy for details."  # noqa: E501
+        )
 
 
 def _add_scale_parser(subparsers, parents):
@@ -236,6 +258,11 @@ def _add_scale_parser(subparsers, parents):
         "--concurrency-buffer-perc",
         type=int,
         help="Concurrency buffer %",
+    )
+    parser.add_argument(
+        "--scaling-delay",
+        type=int,
+        help="Scaling delay (seconds).",
     )
     parser.add_argument(
         "--request-timeout",
@@ -374,14 +401,14 @@ def _add_runners_parser(subparsers, parents):
         action=SinceAction,
         limit="1 day",
         help=(
-            "Show dead runners since the given time. "
+            "Show terminated runners since the given time. "
             "Accepts 'now', relative like '30m', '1h', '1d', "
             "or an ISO timestamp. Max 24 hours."
         ),
     )
     parser.add_argument(
         "--state",
-        choices=["all", "running", "pending", "setup", "dead"],
+        choices=["all", "running", "pending", "setup", "terminated"],
         nargs="+",
         default=None,
         help=("Filter by runner state(s). Choose one or more, or 'all'(default)."),

@@ -199,6 +199,8 @@ message MachineRequirements {
     optional int32 startup_timeout = 14;
     optional int32 concurrency_buffer = 15;
     optional int32 concurrency_buffer_perc = 16;
+    optional int32 scaling_delay_seconds = 17;
+    repeated string valid_regions = 18;
 }
 
 enum ApplicationAuthMode {
@@ -242,6 +244,8 @@ message RegisterApplicationRequest {
     repeated File files = 12;
     // Source code of the app implementation
     optional string source_code = 13;
+    // Optional health check path for runners
+    optional string health_check_path = 14;
 }
 
 message RegisterApplicationResultType {
@@ -266,6 +270,7 @@ message UpdateApplicationRequest {
     optional int32 startup_timeout = 9;
     optional int32 concurrency_buffer = 10;
     optional int32 concurrency_buffer_perc = 11;
+    optional int32 scaling_delay_seconds = 12;
 }
 
 message UpdateApplicationResult {
@@ -278,6 +283,7 @@ message ListApplicationsRequest {
 
 message ApplicationInfo {
     string application_id = 1;
+    google.protobuf.Timestamp created_at = 13;
     int32 max_concurrency = 2;
     int32 max_multiplexing = 3;
     int32 keep_alive = 4;
@@ -288,8 +294,8 @@ message ApplicationInfo {
     optional int32 startup_timeout = 10;
     repeated string valid_regions = 11;
     optional int32 concurrency_buffer = 12;
-    google.protobuf.Timestamp created_at = 13;
     optional int32 concurrency_buffer_perc = 14;
+    optional int32 scaling_delay_seconds = 15;
 }
 
 message ListApplicationsResult {
@@ -355,6 +361,7 @@ message AliasInfo {
     repeated string valid_regions = 12;
     optional int32 concurrency_buffer = 13;
     optional int32 concurrency_buffer_perc = 14;
+    optional int32 scaling_delay_seconds = 15;
 }
 
 message SetSecretRequest {
@@ -403,11 +410,11 @@ message RunnerInfo {
         RUNNING = 0;
         PENDING = 1;
         SETUP = 2;
-        DEAD = 3; // TERMINATED
+        DEAD = 3; // will be replaced with TERMINATED
         DOCKER_PULL = 4;
         DRAINING = 5;
-        STOPPING = 6;
-        STOPPED = 7;
+        TERMINATING = 6;
+        TERMINATED = 7;
     }
 
     optional State state = 8;

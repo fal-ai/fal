@@ -34,7 +34,14 @@ def apps_runners(
 
     if state and "all" not in set(state):
         states = set(state)
-        alias_runners = [r for r in alias_runners if r.state.value in states]
+        alias_runners = [
+            r
+            for r in alias_runners
+            if r.state.value.lower() in states
+            or (
+                "terminated" in states and r.state.value.lower() == "dead"
+            )  # TODO for backwards compatibility. remove later
+        ]
     return alias_runners
 
 
@@ -48,6 +55,7 @@ def scale_app(
     min_concurrency: int | None = None,
     concurrency_buffer: int | None = None,
     concurrency_buffer_perc: int | None = None,
+    scaling_delay: int | None = None,
     request_timeout: int | None = None,
     startup_timeout: int | None = None,
     machine_types: list[str] | None = None,
@@ -62,6 +70,7 @@ def scale_app(
             min_concurrency=min_concurrency,
             concurrency_buffer=concurrency_buffer,
             concurrency_buffer_perc=concurrency_buffer_perc,
+            scaling_delay=scaling_delay,
             request_timeout=request_timeout,
             startup_timeout=startup_timeout,
             machine_types=machine_types,
