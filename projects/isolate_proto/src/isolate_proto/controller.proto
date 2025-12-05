@@ -337,6 +337,7 @@ message SetAliasRequest {
     string alias = 1;
     string revision = 2;
     optional ApplicationAuthMode auth_mode = 3;
+    optional string environment_name = 4;
 }
 
 message SetAliasResult {

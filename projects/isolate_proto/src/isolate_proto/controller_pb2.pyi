@@ -964,19 +964,25 @@ class SetAliasRequest(google.protobuf.message.Message):
     ALIAS_FIELD_NUMBER: builtins.int
     REVISION_FIELD_NUMBER: builtins.int
     AUTH_MODE_FIELD_NUMBER: builtins.int
+    ENVIRONMENT_NAME_FIELD_NUMBER: builtins.int
     alias: builtins.str
     revision: builtins.str
     auth_mode: global___ApplicationAuthMode.ValueType
+    environment_name: builtins.str
     def __init__(
         self,
         *,
         alias: builtins.str = ...,
         revision: builtins.str = ...,
         auth_mode: global___ApplicationAuthMode.ValueType | None = ...,
+        environment_name: builtins.str | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing_extensions.Literal["_auth_mode", b"_auth_mode", "auth_mode", b"auth_mode"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing_extensions.Literal["_auth_mode", b"_auth_mode", "alias", b"alias", "auth_mode", b"auth_mode", "revision", b"revision"]) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["_auth_mode", b"_auth_mode", "_environment_name", b"_environment_name", "auth_mode", b"auth_mode", "environment_name", b"environment_name"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["_auth_mode", b"_auth_mode", "_environment_name", b"_environment_name", "alias", b"alias", "auth_mode", b"auth_mode", "environment_name", b"environment_name", "revision", b"revision"]) -> None: ...
+    @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_auth_mode", b"_auth_mode"]) -> typing_extensions.Literal["auth_mode"] | None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_environment_name", b"_environment_name"]) -> typing_extensions.Literal["environment_name"] | None: ...
 
 global___SetAliasRequest = SetAliasRequest
 
