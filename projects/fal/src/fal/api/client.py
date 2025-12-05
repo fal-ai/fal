@@ -28,13 +28,28 @@ class _AppsNamespace:
     def __init__(self, client: SyncServerlessClient):
         self.client = client
 
-    def list(self, *, filter: str | None = None) -> List[AliasInfo]:
-        return apps_api.list_apps(self.client, filter=filter)
+    def list(
+        self, *, filter: str | None = None, environment_name: str | None = None
+    ) -> List[AliasInfo]:
+        return apps_api.list_apps(
+            self.client, filter=filter, environment_name=environment_name
+        )
 
     def runners(
-        self, app_name: str, *, since=None, state: List[str] | None = None
+        self,
+        app_name: str,
+        *,
+        since=None,
+        state: List[str] | None = None,
+        environment_name: str | None = None,
     ) -> List[RunnerInfo]:
-        return apps_api.apps_runners(self.client, app_name, since=since, state=state)
+        return apps_api.apps_runners(
+            self.client,
+            app_name,
+            since=since,
+            state=state,
+            environment_name=environment_name,
+        )
 
     def scale(
         self,
@@ -51,6 +66,7 @@ class _AppsNamespace:
         startup_timeout: int | None = None,
         machine_types: List[str] | None = None,
         regions: List[str] | None = None,
+        environment_name: str | None = None,
     ) -> apps_api.AliasInfo:
         return apps_api.scale_app(
             self.client,
@@ -66,10 +82,15 @@ class _AppsNamespace:
             startup_timeout=startup_timeout,
             machine_types=machine_types,
             regions=regions,
+            environment_name=environment_name,
         )
 
-    def rollout(self, app_name: str, *, force: bool = False) -> None:
-        return apps_api.rollout_app(self.client, app_name, force=force)
+    def rollout(
+        self, app_name: str, *, force: bool = False, environment_name: str | None = None
+    ) -> None:
+        return apps_api.rollout_app(
+            self.client, app_name, force=force, environment_name=environment_name
+        )
 
 
 class _RunnersNamespace:
@@ -172,11 +193,14 @@ class SyncServerlessClient:
 
         return get_default_credentials(team=self.team)
 
-    def _create_host(self, *, local_file_path: str = "") -> FalServerlessHost:
+    def _create_host(
+        self, *, local_file_path: str = "", environment_name: str | None = None
+    ) -> FalServerlessHost:
         return FalServerlessHost(
             self._grpc_host,
             local_file_path=local_file_path,
             credentials=self._credentials,
+            environment_name=environment_name,
         )
 
     def _create_rest_client(self) -> Client:

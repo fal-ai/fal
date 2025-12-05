@@ -22,7 +22,7 @@ def _run(args):
         file_path = str(Path(file_path).absolute())
 
     client = SyncServerlessClient(host=args.host, team=team)
-    host = client._create_host(local_file_path=file_path)
+    host = client._create_host(local_file_path=file_path, environment_name=args.env)
 
     loaded = load_function_from(host, file_path, func_name)
 
@@ -46,5 +46,10 @@ def add_parser(main_subparsers, parents):
         "func_ref",
         action=RefAction,
         help="Function reference. Configure team in pyproject.toml for app names.",
+    )
+    parser.add_argument(
+        "--env",
+        dest="env",
+        help="Target environment (defaults to main).",
     )
     parser.set_defaults(func=_run)

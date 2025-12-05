@@ -27,6 +27,11 @@ def _add_set_parser(subparsers, parents):
         action=DictAction,
         help="Secret NAME=VALUE pairs.",
     )
+    parser.add_argument(
+        "--env",
+        dest="env",
+        help="Target environment (defaults to main).",
+    )
     parser.set_defaults(func=_set)
 
 
@@ -70,6 +75,11 @@ def _add_list_parser(subparsers, parents):
         help=list_help,
         parents=[*parents, get_output_parser()],
     )
+    parser.add_argument(
+        "--env",
+        dest="env",
+        help="Target environment (defaults to main).",
+    )
     parser.set_defaults(func=_list)
 
 
@@ -90,6 +100,11 @@ def _add_unset_parser(subparsers, parents):
         "secret",
         metavar="NAME",
         help="Secret's name.",
+    )
+    parser.add_argument(
+        "--env",
+        dest="env",
+        help="Target environment (defaults to main).",
     )
     parser.set_defaults(func=_unset)
 
