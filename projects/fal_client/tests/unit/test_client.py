@@ -1,18 +1,24 @@
-import pytest
-import httpx
 import asyncio
-from unittest.mock import Mock, patch, AsyncMock
+import json
+from contextlib import asynccontextmanager, contextmanager
+from unittest.mock import AsyncMock, Mock, patch
+
+import httpx
+import msgpack
+import pytest
 
 from fal_client.client import (
-    Queued,
-    InProgress,
-    Completed,
-    _BaseRequestHandle,
-    FalClientHTTPError,
-    SyncClient,
     AsyncClient,
-    SyncRequestHandle,
     AsyncRequestHandle,
+    Completed,
+    FalClientHTTPError,
+    InProgress,
+    Queued,
+    RealtimeConnection,
+    RealtimeError,
+    SyncClient,
+    SyncRequestHandle,
+    _BaseRequestHandle,
 )
 
 
@@ -714,3 +720,138 @@ async def test_async_handle_retries_ingress(monkeypatch):
 
     # 2 per operation
     assert client.request.await_count == 6
+
+
+def test_realtime_connection_decodes_messages():
+    fake_ws = Mock()
+    payload = {"foo": "bar"}
+    fake_ws.recv.side_effect = [
+        json.dumps({"type": "x-fal-message", "action": "ping"}),
+        msgpack.packb(payload, use_bin_type=True),
+    ]
+    connection = RealtimeConnection(fake_ws)
+
+    assert connection.recv() == payload
+
+
+def test_realtime_connection_raises_on_error():
+    fake_ws = Mock()
+    fake_ws.recv.return_value = json.dumps(
+        {"type": "x-fal-error", "error": "BAD_REQUEST", "reason": "nope"}
+    )
+    connection = RealtimeConnection(fake_ws)
+
+    with pytest.raises(RealtimeError):
+        connection.recv()
+
+
+def test_sync_client_realtime_builds_url(mocker):
+    client = SyncClient(key="test-key")
+    token_response = Mock()
+    token_response.json.return_value = "jwt-token"
+    mock_request = mocker.patch(
+        "fal_client.client._maybe_retry_request", return_value=token_response
+    )
+
+    fake_ws = Mock()
+    fake_ws.recv.side_effect = [msgpack.packb({"ok": True}, use_bin_type=True)]
+
+    @contextmanager
+    def fake_connect(url: str):
+        assert url.startswith("wss://")
+        assert "fal_jwt_token=jwt-token" in url
+        assert "max_buffering=10" in url
+        yield fake_ws
+
+    mocker.patch("fal_client.client._connect_sync_ws", fake_connect)
+
+    with client.realtime("1234-test", max_buffering=10) as connection:
+        result = connection.recv()
+
+    assert result == {"ok": True}
+    assert mock_request.call_args[1]["json"]["allowed_apps"] == ["test"]
+
+
+@pytest.mark.asyncio
+async def test_async_client_realtime_builds_url(mocker):
+    client = AsyncClient(key="test-key")
+    token_response = Mock()
+    token_response.json.return_value = "jwt-token"
+    mock_request = mocker.patch(
+        "fal_client.client._async_maybe_retry_request",
+        new_callable=AsyncMock,
+        return_value=token_response,
+    )
+
+    fake_ws = AsyncMock()
+    fake_ws.recv = AsyncMock(
+        side_effect=[msgpack.packb({"ok": True}, use_bin_type=True)]
+    )
+
+    @asynccontextmanager
+    async def fake_connect(url: str):
+        assert url.startswith("wss://")
+        assert "fal_jwt_token=jwt-token" in url
+        assert "max_buffering=5" in url
+        yield fake_ws
+
+    mocker.patch("fal_client.client._connect_async_ws", fake_connect)
+
+    async with client.realtime("1234-test", max_buffering=5) as connection:
+        result = await connection.recv()
+
+    assert result == {"ok": True}
+    assert mock_request.await_args.kwargs["json"]["allowed_apps"] == ["test"]
+
+
+def test_sync_client_ws_connect_custom_path(mocker):
+    client = SyncClient(key="test-key")
+    token_response = Mock()
+    token_response.json.return_value = "jwt-token"
+    mock_request = mocker.patch(
+        "fal_client.client._maybe_retry_request", return_value=token_response
+    )
+
+    fake_ws = Mock()
+
+    @contextmanager
+    def fake_connect(url: str):
+        assert url.startswith("wss://")
+        assert "/custom" in url
+        assert "fal_jwt_token=jwt-token" in url
+        yield fake_ws
+
+    mocker.patch("fal_client.client._connect_sync_ws", fake_connect)
+
+    with client.ws_connect("1234-test", path="custom") as ws:
+        assert ws is fake_ws
+
+    assert mock_request.call_args[1]["json"]["allowed_apps"] == ["test"]
+
+
+@pytest.mark.asyncio
+async def test_async_client_ws_connect_custom_path(mocker):
+    client = AsyncClient(key="test-key")
+    token_response = Mock()
+    token_response.json.return_value = "jwt-token"
+    mock_request = mocker.patch(
+        "fal_client.client._async_maybe_retry_request",
+        new_callable=AsyncMock,
+        return_value=token_response,
+    )
+
+    fake_ws = AsyncMock()
+
+    @asynccontextmanager
+    async def fake_connect(url: str):
+        assert url.startswith("wss://")
+        assert "/chat" in url
+        assert "fal_jwt_token=jwt-token" in url
+        yield fake_ws
+
+    mocker.patch("fal_client.client._connect_async_ws", fake_connect)
+
+    async with client.ws_connect("1234-test", path="chat") as ws:
+        assert ws is fake_ws
+
+    assert mock_request.await_args.kwargs["json"]["allowed_apps"] == ["test"]
