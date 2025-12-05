@@ -26,6 +26,7 @@ def _apps_table(apps: list[AliasInfo]):
 
     table = Table()
     table.add_column("Name", no_wrap=True)
+    table.add_column("Env")
     table.add_column("Revision")
     table.add_column("Auth")
     table.add_column("Min Concurrency")
@@ -50,6 +51,7 @@ def _apps_table(apps: list[AliasInfo]):
 
         table.add_row(
             app.alias,
+            app.environment_name or "main",
             app.revision,
             app.auth_mode,
             str(app.min_concurrency),
@@ -70,7 +72,7 @@ def _apps_table(apps: list[AliasInfo]):
 
 def _list(args):
     client = SyncServerlessClient(host=args.host, team=args.team)
-    apps = client.apps.list(filter=args.filter)
+    apps = client.apps.list(filter=args.filter, environment_name=args.env)
 
     if args.sort_by_runners:
         apps.sort(key=lambda x: x.active_runners)
@@ -106,6 +108,11 @@ def _add_list_parser(subparsers, parents):
         type=str,
         help="Filter applications by alias contents",
     )
+    parser.add_argument(
+        "--env",
+        dest="env",
+        help="Target environment (defaults to main).",
+    )
     parser.set_defaults(func=_list)
 
 
@@ -114,6 +121,7 @@ def _app_rev_table(revs: list[ApplicationInfo]):
 
     table = Table()
     table.add_column("Revision", no_wrap=True)
+    table.add_column("Env")
     table.add_column("Min Concurrency")
     table.add_column("Max Concurrency")
     table.add_column("Max Multiplexing")
@@ -128,6 +136,7 @@ def _app_rev_table(revs: list[ApplicationInfo]):
     for rev in revs:
         table.add_row(
             rev.application_id,
+            rev.environment_name or "main",
             str(rev.min_concurrency),
             str(rev.max_concurrency),
             str(rev.max_multiplexing),
@@ -146,7 +155,7 @@ def _app_rev_table(revs: list[ApplicationInfo]):
 def _list_rev(args):
     client = get_client(args.host, args.team)
     with client.connect() as connection:
-        revs = connection.list_applications(args.app_name)
+        revs = connection.list_applications(args.app_name, environment_name=args.env)
         table = _app_rev_table(revs)
 
     args.console.print(table)
@@ -164,6 +173,11 @@ def _add_list_rev_parser(subparsers, parents):
         "app_name",
         nargs="?",
         help="Application name.",
+    )
+    parser.add_argument(
+        "--env",
+        dest="env",
+        help="Target environment (defaults to main).",
     )
     parser.set_defaults(func=_list_rev)
 
@@ -199,6 +213,7 @@ def _scale(args):
         startup_timeout=args.startup_timeout,
         machine_types=args.machine_types,
         regions=args.regions,
+        environment_name=args.env,
     )
     table = _apps_table([app_info])
 
@@ -286,12 +301,17 @@ def _add_scale_parser(subparsers, parents):
         nargs="+",
         help="Valid regions (pass several items to set multiple).",
     )
+    parser.add_argument(
+        "--env",
+        dest="env",
+        help="Target environment (defaults to main).",
+    )
     parser.set_defaults(func=_scale)
 
 
 def _rollout(args):
     client = SyncServerlessClient(host=args.host, team=args.team)
-    client.apps.rollout(args.app_name, force=args.force)
+    client.apps.rollout(args.app_name, force=args.force, environment_name=args.env)
     args.console.log(f"Rolled out application {args.app_name}")
 
 
@@ -312,13 +332,20 @@ def _add_rollout_parser(subparsers, parents):
         action="store_true",
         help="Force rollout.",
     )
+    parser.add_argument(
+        "--env",
+        dest="env",
+        help="Target environment (defaults to main).",
+    )
     parser.set_defaults(func=_rollout)
 
 
 def _set_rev(args):
     client = get_client(args.host, args.team)
     with client.connect() as connection:
-        alias_info = connection.create_alias(args.app_name, args.app_rev, args.auth)
+        alias_info = connection.create_alias(
+            args.app_name, args.app_rev, args.auth, environment_name=args.env
+        )
         table = _apps_table([alias_info])
 
     args.console.print(table)
@@ -348,6 +375,11 @@ def _add_set_rev_parser(subparsers, parents):
         default=None,
         help="Application authentication mode.",
     )
+    parser.add_argument(
+        "--env",
+        dest="env",
+        help="Target environment (defaults to main).",
+    )
     parser.set_defaults(func=_set_rev)
 
 
@@ -355,7 +387,7 @@ def _runners(args):
     client = SyncServerlessClient(host=args.host, team=args.team)
     start_time = args.since
     alias_runners = client.apps.runners(
-        args.app_name, since=start_time, state=args.state
+        args.app_name, since=start_time, state=args.state, environment_name=args.env
     )
     if args.output == "pretty":
         runners_table = runners.runners_table(alias_runners)
@@ -413,13 +445,18 @@ def _add_runners_parser(subparsers, parents):
         default=None,
         help=("Filter by runner state(s). Choose one or more, or 'all'(default)."),
     )
+    parser.add_argument(
+        "--env",
+        dest="env",
+        help="Target environment (defaults to main).",
+    )
     parser.set_defaults(func=_runners)
 
 
 def _delete(args):
     client = get_client(args.host, args.team)
     with client.connect() as connection:
-        res = connection.delete_alias(args.app_name)
+        res = connection.delete_alias(args.app_name, environment_name=args.env)
         if res is None:
             args.console.print(f"Application {args.app_name!r} not found.")
         else:
@@ -437,6 +474,11 @@ def _add_delete_parser(subparsers, parents):
     parser.add_argument(
         "app_name",
         help="Application name.",
+    )
+    parser.add_argument(
+        "--env",
+        dest="env",
+        help="Target environment (defaults to main).",
     )
     parser.set_defaults(func=_delete)
 

@@ -6,7 +6,7 @@ def _set(args):
     client = get_client(args.host, args.team)
     with client.connect() as connection:
         for name, value in args.secrets.items():
-            connection.set_secret(name, value)
+            connection.set_secret(name, value, environment_name=args.env)
 
 
 def _add_set_parser(subparsers, parents):
@@ -27,6 +27,11 @@ def _add_set_parser(subparsers, parents):
         action=DictAction,
         help="Secret NAME=VALUE pairs.",
     )
+    parser.add_argument(
+        "--env",
+        dest="env",
+        help="Target environment (defaults to main).",
+    )
     parser.set_defaults(func=_set)
 
 
@@ -35,12 +40,13 @@ def _list(args):
 
     client = get_client(args.host, args.team)
     with client.connect() as connection:
-        secrets = list(connection.list_secrets())
+        secrets = list(connection.list_secrets(environment_name=args.env))
 
         if args.output == "json":
             json_secrets = [
                 {
                     "name": secret.name,
+                    "environment": secret.environment_name or "main",
                     "created_at": str(secret.created_at),
                 }
                 for secret in secrets
@@ -51,10 +57,15 @@ def _list(args):
 
             table = Table()
             table.add_column("Secret Name")
+            table.add_column("Environment")
             table.add_column("Created At")
 
             for secret in secrets:
-                table.add_row(secret.name, str(secret.created_at))
+                table.add_row(
+                    secret.name,
+                    secret.environment_name or "main",
+                    str(secret.created_at),
+                )
 
             args.console.print(table)
         else:
@@ -71,13 +82,18 @@ def _add_list_parser(subparsers, parents):
         help=list_help,
         parents=[*parents, get_output_parser()],
     )
+    parser.add_argument(
+        "--env",
+        dest="env",
+        help="Target environment (defaults to main).",
+    )
     parser.set_defaults(func=_list)
 
 
 def _unset(args):
     client = get_client(args.host, args.team)
     with client.connect() as connection:
-        connection.delete_secret(args.secret)
+        connection.delete_secret(args.secret, environment_name=args.env)
 
 
 def _add_unset_parser(subparsers, parents):
@@ -92,6 +108,11 @@ def _add_unset_parser(subparsers, parents):
         "secret",
         metavar="NAME",
         help="Secret's name.",
+    )
+    parser.add_argument(
+        "--env",
+        dest="env",
+        help="Target environment (defaults to main).",
     )
     parser.set_defaults(func=_unset)
 

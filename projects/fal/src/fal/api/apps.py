@@ -13,9 +13,10 @@ def list_apps(
     client: SyncServerlessClient,
     *,
     filter: Optional[str] = None,
+    environment_name: Optional[str] = None,
 ) -> List[AliasInfo]:
     with FalServerlessClient(client._grpc_host, client._credentials).connect() as conn:
-        apps = conn.list_aliases()
+        apps = conn.list_aliases(environment_name=environment_name)
 
     if filter:
         apps = [a for a in apps if filter in a.alias]
@@ -28,9 +29,12 @@ def apps_runners(
     *,
     since: Optional[datetime] = None,
     state: Optional[list[str]] = None,
+    environment_name: Optional[str] = None,
 ) -> List[RunnerInfo]:
     with FalServerlessClient(client._grpc_host, client._credentials).connect() as conn:
-        alias_runners = conn.list_alias_runners(alias=app_name, start_time=since)
+        alias_runners = conn.list_alias_runners(
+            alias=app_name, start_time=since, environment_name=environment_name
+        )
 
     if state and "all" not in set(state):
         states = set(state)
@@ -60,6 +64,7 @@ def scale_app(
     startup_timeout: int | None = None,
     machine_types: list[str] | None = None,
     regions: list[str] | None = None,
+    environment_name: str | None = None,
 ) -> AliasInfo:
     with FalServerlessClient(client._grpc_host, client._credentials).connect() as conn:
         return conn.update_application(
@@ -75,6 +80,7 @@ def scale_app(
             startup_timeout=startup_timeout,
             machine_types=machine_types,
             valid_regions=regions,
+            environment_name=environment_name,
         )
 
 
@@ -83,9 +89,11 @@ def rollout_app(
     app_name: str,
     *,
     force: bool = False,
+    environment_name: str | None = None,
 ) -> None:
     with FalServerlessClient(client._grpc_host, client._credentials).connect() as conn:
         conn.rollout_application(
             application_name=app_name,
             force=force,
+            environment_name=environment_name,
         )
