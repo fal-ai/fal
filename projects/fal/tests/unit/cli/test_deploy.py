@@ -14,6 +14,33 @@ def test_deploy():
     assert args.app_ref == ("myfile.py", "MyApp")
 
 
+def test_deploy_with_env():
+    args = parse_args(["deploy", "myfile.py::MyApp", "--env", "dev"])
+    assert args.func == _deploy
+    assert args.app_ref == ("myfile.py", "MyApp")
+    assert args.env == "dev"
+
+
+def test_deploy_with_env_and_other_options():
+    args = parse_args(
+        [
+            "deploy",
+            "myfile.py::MyApp",
+            "--app-name",
+            "my-app",
+            "--auth",
+            "public",
+            "--env",
+            "staging",
+        ]
+    )
+    assert args.func == _deploy
+    assert args.app_ref == ("myfile.py", "MyApp")
+    assert args.app_name == "my-app"
+    assert args.auth == "public"
+    assert args.env == "staging"
+
+
 @pytest.fixture
 def mock_parse_pyproject_toml():
     return {
