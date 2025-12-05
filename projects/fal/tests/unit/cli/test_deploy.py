@@ -73,6 +73,7 @@ def mock_args(
     strategy: Optional[str] = None,
     reset_scale: bool = False,
     team: Optional[str] = None,
+    env: Optional[str] = None,
 ):
     args = MagicMock()
 
@@ -83,6 +84,7 @@ def mock_args(
     args.app_scale_settings = reset_scale
     args.output = "pretty"
     args.team = team
+    args.env = env
 
     return args
 
@@ -110,6 +112,7 @@ def test_deploy_with_toml_success(
         "shared",
         strategy="rolling",
         scale=False,
+        environment_name=None,
     )
 
 
@@ -136,6 +139,7 @@ def test_deploy_with_toml_no_auth(
         None,
         strategy=None,
         scale=False,
+        environment_name=None,
     )
 
 
@@ -247,6 +251,7 @@ def test_deploy_with_toml_deployment_strategy(
         "shared",
         strategy="rolling",
         scale=False,
+        environment_name=None,
     )
 
 
@@ -271,6 +276,7 @@ def test_deploy_with_toml_default_deployment_strategy(
         None,
         strategy=None,
         scale=False,
+        environment_name=None,
     )
 
 
@@ -295,6 +301,7 @@ def test_deploy_with_cli_auth(
         "shared",
         strategy=None,
         scale=False,
+        environment_name=None,
     )
 
 
@@ -319,6 +326,7 @@ def test_deploy_with_cli_deployment_strategy(
         None,
         strategy="rolling",
         scale=False,
+        environment_name=None,
     )
 
 
@@ -343,6 +351,7 @@ def test_deploy_with_cli_reset_scale(
         None,
         strategy=None,
         scale=True,
+        environment_name=None,
     )
 
 
@@ -367,6 +376,7 @@ def test_deploy_with_cli_scale(
         None,
         strategy=None,
         scale=False,
+        environment_name=None,
     )
 
 
