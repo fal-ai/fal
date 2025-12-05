@@ -662,14 +662,32 @@ def _serialize_max_buffering(value: int | None) -> str | None:
     return str(value)
 
 
-def _build_realtime_url(application: str, token: str, max_buffering: int | None) -> str:
+def _build_runner_ws_url(
+    application: str,
+    token: str,
+    *,
+    path: str = "",
+    max_buffering: int | None = None,
+) -> str:
     app_id = AppId.from_endpoint_id(application)
     app_path = _format_app_path(app_id)
+    url = f"{REALTIME_URL_FORMAT}{app_path}"
+    if path:
+        url += "/" + path.lstrip("/")
     query: dict[str, str] = {"fal_jwt_token": token}
     serialized_buffering = _serialize_max_buffering(max_buffering)
     if serialized_buffering is not None:
         query["max_buffering"] = serialized_buffering
-    return f"{REALTIME_URL_FORMAT}{app_path}/realtime?{urlencode(query)}"
+    return f"{url}?{urlencode(query)}"
+
+
+def _build_realtime_url(application: str, token: str, max_buffering: int | None) -> str:
+    return _build_runner_ws_url(
+        application,
+        token,
+        path="realtime",
+        max_buffering=max_buffering,
+    )
 
 
 def _parse_token_response(data: Any) -> str:
@@ -788,7 +806,7 @@ class AsyncRealtimeConnection:
 
 
 @contextmanager
-def _connect_sync_realtime(url: str) -> Iterator[Any]:
+def _connect_sync_ws(url: str) -> Iterator["Connection"]:
     from websockets.sync import client
 
     with client.connect(
@@ -800,7 +818,7 @@ def _connect_sync_realtime(url: str) -> Iterator[Any]:
 
 
 @asynccontextmanager
-async def _connect_async_realtime(url: str) -> AsyncIterator[Any]:
+async def _connect_async_ws(url: str) -> AsyncIterator["WebSocketClientProtocol"]:
     import websockets
 
     async with websockets.connect(
@@ -1378,8 +1396,29 @@ class AsyncClient:
             application, token_expiration=token_expiration
         )
         url = _build_realtime_url(application, token, max_buffering)
-        async with _connect_async_realtime(url) as ws:
+        async with _connect_async_ws(url) as ws:
             yield AsyncRealtimeConnection(ws)
+
+    @asynccontextmanager
+    async def ws_connect(
+        self,
+        application: str,
+        *,
+        path: str = "",
+        max_buffering: int | None = None,
+        token_expiration: int = REALTIME_TOKEN_EXPIRATION_SECONDS,
+    ) -> AsyncIterator["WebSocketClientProtocol"]:
+        token = await self._get_realtime_token(
+            application, token_expiration=token_expiration
+        )
+        url = _build_runner_ws_url(
+            application,
+            token,
+            path=path,
+            max_buffering=max_buffering,
+        )
+        async with _connect_async_ws(url) as ws:
+            yield ws
 
 
 @dataclass(frozen=True)
@@ -1661,8 +1700,27 @@ class SyncClient:
     ) -> Iterator[RealtimeConnection]:
         token = self._get_realtime_token(application, token_expiration=token_expiration)
         url = _build_realtime_url(application, token, max_buffering)
-        with _connect_sync_realtime(url) as ws:
+        with _connect_sync_ws(url) as ws:
             yield RealtimeConnection(ws)
+
+    @contextmanager
+    def ws_connect(
+        self,
+        application: str,
+        *,
+        path: str = "",
+        max_buffering: int | None = None,
+        token_expiration: int = REALTIME_TOKEN_EXPIRATION_SECONDS,
+    ) -> Iterator["Connection"]:
+        token = self._get_realtime_token(application, token_expiration=token_expiration)
+        url = _build_runner_ws_url(
+            application,
+            token,
+            path=path,
+            max_buffering=max_buffering,
+        )
+        with _connect_sync_ws(url) as ws:
+            yield ws
 
 
 def encode(data: str | bytes, content_type: str) -> str:
