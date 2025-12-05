@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import json
 import math
 import os
 import mimetypes
@@ -11,6 +12,7 @@ import time
 import base64
 import threading
 import logging
+from contextlib import asynccontextmanager, contextmanager
 from datetime import datetime, timezone
 from dataclasses import dataclass, field
 from functools import cached_property
@@ -27,8 +29,13 @@ from typing import (
 from urllib.parse import urlencode
 
 import httpx
+import msgpack
 from httpx_sse import aconnect_sse, connect_sse
 from fal_client.auth import FAL_RUN_HOST, fetch_credentials
+
+if TYPE_CHECKING:
+    from websockets.client import WebSocketClientProtocol
+    from websockets.sync.connection import Connection
 
 logger = logging.getLogger(__name__)
 
@@ -632,6 +639,178 @@ class AppId:
         )
 
 
+REALTIME_TOKEN_EXPIRATION_SECONDS = 120
+REALTIME_OPEN_TIMEOUT = 90.0
+REALTIME_MAX_BUFFERING = (1, 60)
+
+
+def _format_app_path(app_id: AppId) -> str:
+    prefix = f"{app_id.namespace}/" if app_id.namespace else ""
+    suffix = f"/{app_id.path}" if app_id.path else ""
+    return f"{prefix}{app_id.owner}/{app_id.alias}{suffix}"
+
+
+def _serialize_max_buffering(value: int | None) -> str | None:
+    if value is None:
+        return None
+
+    min_value, max_value = REALTIME_MAX_BUFFERING
+    if not (min_value <= value <= max_value):
+        raise ValueError(
+            f"max_buffering must be between {min_value} and {max_value} (inclusive)"
+        )
+    return str(value)
+
+
+def _build_realtime_url(application: str, token: str, max_buffering: int | None) -> str:
+    app_id = AppId.from_endpoint_id(application)
+    app_path = _format_app_path(app_id)
+    query: dict[str, str] = {"fal_jwt_token": token}
+    serialized_buffering = _serialize_max_buffering(max_buffering)
+    if serialized_buffering is not None:
+        query["max_buffering"] = serialized_buffering
+    return f"{REALTIME_URL_FORMAT}{app_path}/realtime?{urlencode(query)}"
+
+
+def _parse_token_response(data: Any) -> str:
+    if isinstance(data, str):
+        return data
+    if isinstance(data, dict):
+        if isinstance(data.get("token"), str):
+            return data["token"]
+        if isinstance(data.get("detail"), str):
+            return data["detail"]
+    raise RuntimeError("Unexpected realtime token response format")
+
+
+class RealtimeError(RuntimeError):
+    """Raised when the realtime endpoint sends an error payload."""
+
+    def __init__(
+        self,
+        error: str,
+        reason: str | None = None,
+        payload: Optional[dict[str, Any]] = None,
+    ):
+        self.error = error
+        self.reason = reason or ""
+        self.payload = payload or {}
+        message = error if not self.reason else f"{error}: {self.reason}"
+        super().__init__(message)
+
+
+def _decode_realtime_message(message: Any) -> dict[str, Any] | None:
+    if isinstance(message, memoryview):
+        message = message.tobytes()
+
+    if isinstance(message, (bytes, bytearray)):
+        return msgpack.unpackb(message, raw=False)
+
+    if isinstance(message, str):
+        try:
+            payload = json.loads(message)
+        except json.JSONDecodeError:
+            return {"type": "text", "payload": message}
+
+        msg_type = payload.get("type")
+        if msg_type == "x-fal-error":
+            raise RealtimeError(
+                payload.get("error", "UNKNOWN_ERROR"),
+                payload.get("reason"),
+                payload,
+            )
+        if msg_type == "x-fal-message":
+            # meta message, skip it silently
+            return None
+        return payload
+
+    return {"payload": message}
+
+
+@dataclass
+class RealtimeConnection:
+    """Synchronous realtime connection wrapper."""
+
+    _ws: "Connection"
+
+    def send(self, arguments: dict[str, Any]) -> None:
+        payload = msgpack.packb(arguments, use_bin_type=True)
+        self._ws.send(payload)
+
+    def recv(self) -> dict[str, Any]:
+        while True:
+            response = self._ws.recv()
+            decoded = _decode_realtime_message(response)
+            if decoded is None:
+                continue
+            return decoded
+
+    def close(self) -> None:
+        close = getattr(self._ws, "close", None)
+        if callable(close):
+            close()
+
+    def __enter__(self) -> RealtimeConnection:
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.close()
+
+
+@dataclass
+class AsyncRealtimeConnection:
+    """Asynchronous realtime connection wrapper."""
+
+    _ws: "WebSocketClientProtocol"
+
+    async def send(self, arguments: dict[str, Any]) -> None:
+        payload = msgpack.packb(arguments, use_bin_type=True)
+        await self._ws.send(payload)
+
+    async def recv(self) -> dict[str, Any]:
+        while True:
+            response = await self._ws.recv()
+            decoded = _decode_realtime_message(response)
+            if decoded is None:
+                continue
+            return decoded
+
+    async def close(self) -> None:
+        close = getattr(self._ws, "close", None)
+        if callable(close):
+            await close()
+
+    async def __aenter__(self) -> AsyncRealtimeConnection:
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb) -> None:
+        await self.close()
+
+
+@contextmanager
+def _connect_sync_realtime(url: str) -> Iterator[Any]:
+    from websockets.sync import client
+
+    with client.connect(
+        url,
+        open_timeout=REALTIME_OPEN_TIMEOUT,
+        max_size=None,
+    ) as ws:
+        yield ws
+
+
+@asynccontextmanager
+async def _connect_async_realtime(url: str) -> AsyncIterator[Any]:
+    import websockets
+
+    async with websockets.connect(
+        url,
+        open_timeout=REALTIME_OPEN_TIMEOUT,
+        max_size=None,
+    ) as ws:
+        yield ws
+
+
 def _request(
     client: httpx.Client, method: str, url: str, **kwargs: Any
 ) -> httpx.Response:
@@ -948,6 +1127,24 @@ class AsyncClient:
             timeout=self.default_timeout,
         )
 
+    async def _get_realtime_token(
+        self,
+        application: str,
+        *,
+        token_expiration: int = REALTIME_TOKEN_EXPIRATION_SECONDS,
+    ) -> str:
+        payload = {
+            "allowed_apps": [AppId.from_endpoint_id(application).alias],
+            "token_expiration": token_expiration,
+        }
+        response = await _async_maybe_retry_request(
+            self._client,
+            "POST",
+            f"{REST_URL}/tokens/",
+            json=payload,
+        )
+        return _parse_token_response(response.json())
+
     async def run(
         self,
         application: str,
@@ -1169,6 +1366,21 @@ class AsyncClient:
             image.save(buffer, format=format)
             return await self.upload(buffer.getvalue(), f"image/{format}")
 
+    @asynccontextmanager
+    async def realtime(
+        self,
+        application: str,
+        *,
+        max_buffering: int | None = None,
+        token_expiration: int = REALTIME_TOKEN_EXPIRATION_SECONDS,
+    ) -> AsyncIterator[AsyncRealtimeConnection]:
+        token = await self._get_realtime_token(
+            application, token_expiration=token_expiration
+        )
+        url = _build_realtime_url(application, token, max_buffering)
+        async with _connect_async_realtime(url) as ws:
+            yield AsyncRealtimeConnection(ws)
+
 
 @dataclass(frozen=True)
 class SyncClient:
@@ -1205,6 +1417,24 @@ class SyncClient:
             },
             timeout=self.default_timeout,
         )
+
+    def _get_realtime_token(
+        self,
+        application: str,
+        *,
+        token_expiration: int = REALTIME_TOKEN_EXPIRATION_SECONDS,
+    ) -> str:
+        payload = {
+            "allowed_apps": [AppId.from_endpoint_id(application).alias],
+            "token_expiration": token_expiration,
+        }
+        response = _maybe_retry_request(
+            self._client,
+            "POST",
+            f"{REST_URL}/tokens/",
+            json=payload,
+        )
+        return _parse_token_response(response.json())
 
     def run(
         self,
@@ -1420,6 +1650,19 @@ class SyncClient:
         with io.BytesIO() as buffer:
             image.save(buffer, format=format)
             return self.upload(buffer.getvalue(), f"image/{format}")
+
+    @contextmanager
+    def realtime(
+        self,
+        application: str,
+        *,
+        max_buffering: int | None = None,
+        token_expiration: int = REALTIME_TOKEN_EXPIRATION_SECONDS,
+    ) -> Iterator[RealtimeConnection]:
+        token = self._get_realtime_token(application, token_expiration=token_expiration)
+        url = _build_realtime_url(application, token, max_buffering)
+        with _connect_sync_realtime(url) as ws:
+            yield RealtimeConnection(ws)
 
 
 def encode(data: str | bytes, content_type: str) -> str:
