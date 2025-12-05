@@ -1,6 +1,8 @@
 from fal_client.client import (
     AsyncClient,
+    AsyncRealtimeConnection,
     SyncClient,
+    RealtimeConnection,
     Status,
     Queued,
     InProgress,
@@ -15,6 +17,8 @@ from fal_client.client import (
 __all__ = [
     "SyncClient",
     "AsyncClient",
+    "RealtimeConnection",
+    "AsyncRealtimeConnection",
     "Status",
     "Queued",
     "InProgress",
@@ -29,6 +33,8 @@ __all__ = [
     "run_async",
     "submit_async",
     "stream_async",
+    "realtime",
+    "realtime_async",
     "cancel",
     "cancel_async",
     "status",
@@ -48,6 +54,7 @@ status = sync_client.status
 result = sync_client.result
 cancel = sync_client.cancel
 stream = sync_client.stream
+realtime = sync_client.realtime
 upload = sync_client.upload
 upload_file = sync_client.upload_file
 upload_image = sync_client.upload_image
@@ -60,6 +67,7 @@ status_async = async_client.status
 result_async = async_client.result
 cancel_async = async_client.cancel
 stream_async = async_client.stream
+realtime_async = async_client.realtime
 upload_async = async_client.upload
 upload_file_async = async_client.upload_file
 upload_image_async = async_client.upload_image

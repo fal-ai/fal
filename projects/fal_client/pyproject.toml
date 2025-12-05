@@ -17,6 +17,8 @@ requires-python = ">=3.8"
 dependencies = [
     "httpx>=0.21.0,<1",
     "httpx-sse>=0.4.0,<0.5",
+    "msgpack>=1.0.7,<2",
+    "websockets>=12.0",
 ]
 
 [project.optional-dependencies]
