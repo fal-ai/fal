@@ -144,6 +144,21 @@ class IsolateControllerStub(object):
                 request_serializer=controller__pb2.ShellRunnerInput.SerializeToString,
                 response_deserializer=controller__pb2.ShellRunnerOutput.FromString,
                 _registered_method=True)
+        self.ListEnvironments = channel.unary_unary(
+                '/controller.IsolateController/ListEnvironments',
+                request_serializer=controller__pb2.ListEnvironmentsRequest.SerializeToString,
+                response_deserializer=controller__pb2.ListEnvironmentsResponse.FromString,
+                _registered_method=True)
+        self.CreateEnvironment = channel.unary_unary(
+                '/controller.IsolateController/CreateEnvironment',
+                request_serializer=controller__pb2.CreateEnvironmentRequest.SerializeToString,
+                response_deserializer=controller__pb2.CreateEnvironmentResponse.FromString,
+                _registered_method=True)
+        self.DeleteEnvironment = channel.unary_unary(
+                '/controller.IsolateController/DeleteEnvironment',
+                request_serializer=controller__pb2.DeleteEnvironmentRequest.SerializeToString,
+                response_deserializer=controller__pb2.DeleteEnvironmentResponse.FromString,
+                _registered_method=True)
 
 
 class IsolateControllerServicer(object):
@@ -299,6 +314,27 @@ class IsolateControllerServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ListEnvironments(self, request, context):
+        """List all environments for a user
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CreateEnvironment(self, request, context):
+        """Create a new environment
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DeleteEnvironment(self, request, context):
+        """Delete an environment
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_IsolateControllerServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -406,6 +442,21 @@ def add_IsolateControllerServicer_to_server(servicer, server):
                     servicer.ShellRunner,
                     request_deserializer=controller__pb2.ShellRunnerInput.FromString,
                     response_serializer=controller__pb2.ShellRunnerOutput.SerializeToString,
+            ),
+            'ListEnvironments': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListEnvironments,
+                    request_deserializer=controller__pb2.ListEnvironmentsRequest.FromString,
+                    response_serializer=controller__pb2.ListEnvironmentsResponse.SerializeToString,
+            ),
+            'CreateEnvironment': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreateEnvironment,
+                    request_deserializer=controller__pb2.CreateEnvironmentRequest.FromString,
+                    response_serializer=controller__pb2.CreateEnvironmentResponse.SerializeToString,
+            ),
+            'DeleteEnvironment': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeleteEnvironment,
+                    request_deserializer=controller__pb2.DeleteEnvironmentRequest.FromString,
+                    response_serializer=controller__pb2.DeleteEnvironmentResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -975,6 +1026,87 @@ class IsolateController(object):
             '/controller.IsolateController/ShellRunner',
             controller__pb2.ShellRunnerInput.SerializeToString,
             controller__pb2.ShellRunnerOutput.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListEnvironments(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/controller.IsolateController/ListEnvironments',
+            controller__pb2.ListEnvironmentsRequest.SerializeToString,
+            controller__pb2.ListEnvironmentsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CreateEnvironment(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/controller.IsolateController/CreateEnvironment',
+            controller__pb2.CreateEnvironmentRequest.SerializeToString,
+            controller__pb2.CreateEnvironmentResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DeleteEnvironment(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/controller.IsolateController/DeleteEnvironment',
+            controller__pb2.DeleteEnvironmentRequest.SerializeToString,
+            controller__pb2.DeleteEnvironmentResponse.FromString,
             options,
             channel_credentials,
             insecure,
