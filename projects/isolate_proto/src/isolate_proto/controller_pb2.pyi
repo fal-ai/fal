@@ -116,6 +116,7 @@ class HostedRun(google.protobuf.message.Message):
     FUNCTION_FIELD_NUMBER: builtins.int
     SETUP_FUNC_FIELD_NUMBER: builtins.int
     FILES_FIELD_NUMBER: builtins.int
+    TEARDOWN_FUNC_FIELD_NUMBER: builtins.int
     @property
     def environments(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[server_pb2.EnvironmentDefinition]:
         """Environment definitions."""
@@ -131,6 +132,8 @@ class HostedRun(google.protobuf.message.Message):
     @property
     def files(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[global___File]:
         """Optional files to be included"""
+    @property
+    def teardown_func(self) -> common_pb2.SerializedObject: ...
     def __init__(
         self,
         *,
@@ -139,13 +142,16 @@ class HostedRun(google.protobuf.message.Message):
         function: common_pb2.SerializedObject | None = ...,
         setup_func: common_pb2.SerializedObject | None = ...,
         files: collections.abc.Iterable[global___File] | None = ...,
+        teardown_func: common_pb2.SerializedObject | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing_extensions.Literal["_machine_requirements", b"_machine_requirements", "_setup_func", b"_setup_func", "function", b"function", "machine_requirements", b"machine_requirements", "setup_func", b"setup_func"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing_extensions.Literal["_machine_requirements", b"_machine_requirements", "_setup_func", b"_setup_func", "environments", b"environments", "files", b"files", "function", b"function", "machine_requirements", b"machine_requirements", "setup_func", b"setup_func"]) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["_machine_requirements", b"_machine_requirements", "_setup_func", b"_setup_func", "_teardown_func", b"_teardown_func", "function", b"function", "machine_requirements", b"machine_requirements", "setup_func", b"setup_func", "teardown_func", b"teardown_func"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["_machine_requirements", b"_machine_requirements", "_setup_func", b"_setup_func", "_teardown_func", b"_teardown_func", "environments", b"environments", "files", b"files", "function", b"function", "machine_requirements", b"machine_requirements", "setup_func", b"setup_func", "teardown_func", b"teardown_func"]) -> None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_machine_requirements", b"_machine_requirements"]) -> typing_extensions.Literal["machine_requirements"] | None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_setup_func", b"_setup_func"]) -> typing_extensions.Literal["setup_func"] | None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_teardown_func", b"_teardown_func"]) -> typing_extensions.Literal["teardown_func"] | None: ...
 
 global___HostedRun = HostedRun
 
@@ -552,6 +558,7 @@ class RegisterApplicationRequest(google.protobuf.message.Message):
     FILES_FIELD_NUMBER: builtins.int
     SOURCE_CODE_FIELD_NUMBER: builtins.int
     HEALTH_CHECK_PATH_FIELD_NUMBER: builtins.int
+    TEARDOWN_FUNC_FIELD_NUMBER: builtins.int
     @property
     def environments(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[server_pb2.EnvironmentDefinition]:
         """Environment definitions."""
@@ -588,6 +595,9 @@ class RegisterApplicationRequest(google.protobuf.message.Message):
     """Source code of the app implementation"""
     health_check_path: builtins.str
     """Optional health check path for runners"""
+    @property
+    def teardown_func(self) -> common_pb2.SerializedObject:
+        """Optional teardown function to clean up before termination"""
     def __init__(
         self,
         *,
@@ -605,9 +615,10 @@ class RegisterApplicationRequest(google.protobuf.message.Message):
         files: collections.abc.Iterable[global___File] | None = ...,
         source_code: builtins.str | None = ...,
         health_check_path: builtins.str | None = ...,
+        teardown_func: common_pb2.SerializedObject | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing_extensions.Literal["_application_name", b"_application_name", "_auth_mode", b"_auth_mode", "_deployment_strategy", b"_deployment_strategy", "_health_check_path", b"_health_check_path", "_machine_requirements", b"_machine_requirements", "_max_concurrency", b"_max_concurrency", "_metadata", b"_metadata", "_private_logs", b"_private_logs", "_scale", b"_scale", "_setup_func", b"_setup_func", "_source_code", b"_source_code", "application_name", b"application_name", "auth_mode", b"auth_mode", "deployment_strategy", b"deployment_strategy", "function", b"function", "health_check_path", b"health_check_path", "machine_requirements", b"machine_requirements", "max_concurrency", b"max_concurrency", "metadata", b"metadata", "private_logs", b"private_logs", "scale", b"scale", "setup_func", b"setup_func", "source_code", b"source_code"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing_extensions.Literal["_application_name", b"_application_name", "_auth_mode", b"_auth_mode", "_deployment_strategy", b"_deployment_strategy", "_health_check_path", b"_health_check_path", "_machine_requirements", b"_machine_requirements", "_max_concurrency", b"_max_concurrency", "_metadata", b"_metadata", "_private_logs", b"_private_logs", "_scale", b"_scale", "_setup_func", b"_setup_func", "_source_code", b"_source_code", "application_name", b"application_name", "auth_mode", b"auth_mode", "deployment_strategy", b"deployment_strategy", "environments", b"environments", "files", b"files", "function", b"function", "health_check_path", b"health_check_path", "machine_requirements", b"machine_requirements", "max_concurrency", b"max_concurrency", "metadata", b"metadata", "private_logs", b"private_logs", "scale", b"scale", "setup_func", b"setup_func", "source_code", b"source_code"]) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["_application_name", b"_application_name", "_auth_mode", b"_auth_mode", "_deployment_strategy", b"_deployment_strategy", "_health_check_path", b"_health_check_path", "_machine_requirements", b"_machine_requirements", "_max_concurrency", b"_max_concurrency", "_metadata", b"_metadata", "_private_logs", b"_private_logs", "_scale", b"_scale", "_setup_func", b"_setup_func", "_source_code", b"_source_code", "_teardown_func", b"_teardown_func", "application_name", b"application_name", "auth_mode", b"auth_mode", "deployment_strategy", b"deployment_strategy", "function", b"function", "health_check_path", b"health_check_path", "machine_requirements", b"machine_requirements", "max_concurrency", b"max_concurrency", "metadata", b"metadata", "private_logs", b"private_logs", "scale", b"scale", "setup_func", b"setup_func", "source_code", b"source_code", "teardown_func", b"teardown_func"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["_application_name", b"_application_name", "_auth_mode", b"_auth_mode", "_deployment_strategy", b"_deployment_strategy", "_health_check_path", b"_health_check_path", "_machine_requirements", b"_machine_requirements", "_max_concurrency", b"_max_concurrency", "_metadata", b"_metadata", "_private_logs", b"_private_logs", "_scale", b"_scale", "_setup_func", b"_setup_func", "_source_code", b"_source_code", "_teardown_func", b"_teardown_func", "application_name", b"application_name", "auth_mode", b"auth_mode", "deployment_strategy", b"deployment_strategy", "environments", b"environments", "files", b"files", "function", b"function", "health_check_path", b"health_check_path", "machine_requirements", b"machine_requirements", "max_concurrency", b"max_concurrency", "metadata", b"metadata", "private_logs", b"private_logs", "scale", b"scale", "setup_func", b"setup_func", "source_code", b"source_code", "teardown_func", b"teardown_func"]) -> None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_application_name", b"_application_name"]) -> typing_extensions.Literal["application_name"] | None: ...
     @typing.overload
@@ -630,6 +641,8 @@ class RegisterApplicationRequest(google.protobuf.message.Message):
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_setup_func", b"_setup_func"]) -> typing_extensions.Literal["setup_func"] | None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_source_code", b"_source_code"]) -> typing_extensions.Literal["source_code"] | None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_teardown_func", b"_teardown_func"]) -> typing_extensions.Literal["teardown_func"] | None: ...
 
 global___RegisterApplicationRequest = RegisterApplicationRequest
 

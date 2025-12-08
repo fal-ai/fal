@@ -83,6 +83,7 @@ message HostedRun {
     optional SerializedObject setup_func = 4;
     // Optional files to be included
     repeated File files = 5;
+    optional SerializedObject teardown_func = 6;
 }
 
 message CreateUserKeyRequest {
@@ -246,6 +247,8 @@ message RegisterApplicationRequest {
     optional string source_code = 13;
     // Optional health check path for runners
     optional string health_check_path = 14;
+    // Optional teardown function to clean up before termination
+    optional SerializedObject teardown_func = 15;
 }
 
 message RegisterApplicationResultType {
