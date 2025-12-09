@@ -545,6 +545,20 @@ class MachineRequirements:
 
 
 @dataclass
+class HealthCheck:
+    start_period: int = field(default=30, kw_only=True)
+    timeout: int = field(default=5, kw_only=True)
+    threshold: int = field(default=3, kw_only=True)
+    call_regularly: bool = field(default=True, kw_only=True)
+    allow_on_busy: bool = field(default=True, kw_only=True)
+
+
+@dataclass
+class ApplicationHealthCheckConfig(HealthCheck):
+    path: str
+
+
+@dataclass
 class FalServerlessConnection:
     hostname: str
     credentials: Credentials
@@ -626,7 +640,7 @@ class FalServerlessConnection:
         auth_mode: Optional[AuthModeLiteral] = None,
         *,
         source_code: str | None = None,
-        health_check_path: str | None = None,
+        health_check_config: ApplicationHealthCheckConfig | None = None,
         serialization_method: str = _DEFAULT_SERIALIZATION_METHOD,
         machine_requirements: MachineRequirements | None = None,
         metadata: dict[str, Any] | None = None,
@@ -686,6 +700,18 @@ class FalServerlessConnection:
             deployment_strategy.upper()
         ].to_proto()
 
+        if health_check_config:
+            wrapped_health_check_config = isolate_proto.ApplicationHealthCheckConfig(
+                path=health_check_config.path,
+                start_period=health_check_config.start_period,
+                timeout=health_check_config.timeout,
+                threshold=health_check_config.threshold,
+                call_regularly=health_check_config.call_regularly,
+                allow_on_busy=health_check_config.allow_on_busy,
+            )
+        else:
+            wrapped_health_check_config = None
+
         request = isolate_proto.RegisterApplicationRequest(
             function=wrapped_function,
             environments=environments,
@@ -698,7 +724,7 @@ class FalServerlessConnection:
             private_logs=private_logs,
             files=files,
             source_code=source_code,
-            health_check_path=health_check_path,
+            health_check_config=wrapped_health_check_config,
         )
         for partial_result in self.stub.RegisterApplication(request):
             yield from_grpc(partial_result)

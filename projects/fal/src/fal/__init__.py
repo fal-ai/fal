@@ -5,7 +5,7 @@ from fal.api import FalServerlessHost, LocalHost, cached, function
 from fal.api import function as isolated  # noqa: F401
 from fal.app import App, endpoint, realtime, wrap_app  # noqa: F401
 from fal.container import ContainerImage
-from fal.sdk import FalServerlessKeyCredentials
+from fal.sdk import FalServerlessKeyCredentials, HealthCheck
 from fal.sync import sync_dir
 
 from ._version import __version__, version_tuple  # noqa: F401
@@ -23,6 +23,7 @@ __all__ = [
     "endpoint",
     "realtime",
     # "wrap_app",
+    "HealthCheck",
     "FalServerlessKeyCredentials",
     "sync_dir",
     "__version__",
