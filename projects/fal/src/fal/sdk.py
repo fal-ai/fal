@@ -546,9 +546,9 @@ class MachineRequirements:
 
 @dataclass
 class HealthCheck:
-    start_period: int = field(default=30, kw_only=True)
-    timeout: int = field(default=5, kw_only=True)
-    threshold: int = field(default=3, kw_only=True)
+    start_period_seconds: int = field(default=30, kw_only=True)
+    timeout_seconds: int = field(default=5, kw_only=True)
+    failure_threshold: int = field(default=3, kw_only=True)
     call_regularly: bool = field(default=True, kw_only=True)
     allow_on_busy: bool = field(default=True, kw_only=True)
 
@@ -703,9 +703,9 @@ class FalServerlessConnection:
         if health_check_config:
             wrapped_health_check_config = isolate_proto.ApplicationHealthCheckConfig(
                 path=health_check_config.path,
-                start_period=health_check_config.start_period,
-                timeout=health_check_config.timeout,
-                threshold=health_check_config.threshold,
+                start_period_seconds=health_check_config.start_period_seconds,
+                timeout_seconds=health_check_config.timeout_seconds,
+                failure_threshold=health_check_config.failure_threshold,
                 call_regularly=health_check_config.call_regularly,
                 allow_on_busy=health_check_config.allow_on_busy,
             )

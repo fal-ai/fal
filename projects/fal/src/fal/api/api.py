@@ -1182,7 +1182,7 @@ class RouteSignature(NamedTuple):
 class BaseServable:
     version: ClassVar[str] = "unknown"
 
-    def collect_routes(self) -> dict[RouteSignature, Callable[..., Any]]:
+    def collect_routes(self) -> list[tuple[RouteSignature, Callable[..., Any]]]:
         raise NotImplementedError
 
     def _add_extra_middlewares(self, app: FastAPI):
@@ -1300,7 +1300,7 @@ class BaseServable:
         if not routes:
             raise ValueError("An application must have at least one route!")
 
-        for signature, endpoint in routes.items():
+        for signature, endpoint in routes:
             if signature.is_websocket:
                 _app.add_api_websocket_route(
                     signature.path,
@@ -1388,10 +1388,10 @@ class ServeWrapper(BaseServable):
     def __init__(self, func: Callable):
         self._func = func
 
-    def collect_routes(self) -> dict[RouteSignature, Callable[..., Any]]:
-        return {
-            RouteSignature("/"): self._func,
-        }
+    def collect_routes(self) -> list[tuple[RouteSignature, Callable[..., Any]]]:
+        return [
+            (RouteSignature("/"), self._func),
+        ]
 
     def __call__(self, *args, **kwargs) -> None:
         if len(args) != 0 or len(kwargs) != 0:

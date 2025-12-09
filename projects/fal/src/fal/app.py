@@ -124,8 +124,8 @@ def wrap_app(cls: type[App], **kwargs) -> IsolatedFunction:
     metadata["openapi"] = app.openapi()
 
     routes = app.collect_routes()
-    initialize_and_serve._routes = [r.path for r in routes.keys()] or ["/"]  # type: ignore[attr-defined]
-    realtime_app = any(route.is_websocket for route in routes)
+    initialize_and_serve._routes = [s.path for s, _ in routes] or ["/"]  # type: ignore[attr-defined]
+    realtime_app = any(s.is_websocket for s, _ in routes)
 
     kind = cls.host_kwargs.pop("kind", "virtualenv")
 
@@ -502,19 +502,19 @@ class App(BaseServable):
         health_check = list(health_checks.values())[0]
         return ApplicationHealthCheckConfig(
             path=path,
-            start_period=health_check.start_period,
-            timeout=health_check.timeout,
-            threshold=health_check.threshold,
+            start_period_seconds=health_check.start_period_seconds,
+            timeout_seconds=health_check.timeout_seconds,
+            failure_threshold=health_check.failure_threshold,
             call_regularly=health_check.call_regularly,
             allow_on_busy=health_check.allow_on_busy,
         )
 
-    def collect_routes(self) -> dict[RouteSignature, Callable[..., Any]]:
-        return {
-            signature: endpoint
+    def collect_routes(self) -> list[tuple[RouteSignature, Callable[..., Any]]]:
+        return [
+            (signature, endpoint)
             for _, endpoint in inspect.getmembers(self, inspect.ismethod)
             if (signature := getattr(endpoint, "route_signature", None))
-        }
+        ]
 
     @asynccontextmanager
     async def lifespan(self, app: fastapi.FastAPI):
