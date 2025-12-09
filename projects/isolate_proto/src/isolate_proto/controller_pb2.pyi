@@ -541,6 +541,46 @@ class MachineRequirements(google.protobuf.message.Message):
 global___MachineRequirements = MachineRequirements
 
 @typing_extensions.final
+class ApplicationHealthCheckConfig(google.protobuf.message.Message):
+    DESCRIPTOR: google.protobuf.descriptor.Descriptor
+
+    PATH_FIELD_NUMBER: builtins.int
+    START_PERIOD_FIELD_NUMBER: builtins.int
+    TIMEOUT_FIELD_NUMBER: builtins.int
+    THRESHOLD_FIELD_NUMBER: builtins.int
+    CALL_REGULARLY_FIELD_NUMBER: builtins.int
+    ALLOW_ON_BUSY_FIELD_NUMBER: builtins.int
+    path: builtins.str
+    """path to the health check endpoint"""
+    start_period: builtins.int
+    """minimum time the runner has been running
+    before considering the runner unhealthy when health check fails
+    """
+    timeout: builtins.int
+    """timeout in seconds for the health check request"""
+    threshold: builtins.int
+    """number of consecutive failures before considering the runner unhealthy"""
+    call_regularly: builtins.bool
+    """perform health check every 15s.
+    If false, only do it when the x-fal-runner-health-check header is present
+    """
+    allow_on_busy: builtins.bool
+    """do not perform health check if the runner has inflight requests"""
+    def __init__(
+        self,
+        *,
+        path: builtins.str = ...,
+        start_period: builtins.int = ...,
+        timeout: builtins.int = ...,
+        threshold: builtins.int = ...,
+        call_regularly: builtins.bool = ...,
+        allow_on_busy: builtins.bool = ...,
+    ) -> None: ...
+    def ClearField(self, field_name: typing_extensions.Literal["allow_on_busy", b"allow_on_busy", "call_regularly", b"call_regularly", "path", b"path", "start_period", b"start_period", "threshold", b"threshold", "timeout", b"timeout"]) -> None: ...
+
+global___ApplicationHealthCheckConfig = ApplicationHealthCheckConfig
+
+@typing_extensions.final
 class RegisterApplicationRequest(google.protobuf.message.Message):
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
@@ -559,6 +599,7 @@ class RegisterApplicationRequest(google.protobuf.message.Message):
     SOURCE_CODE_FIELD_NUMBER: builtins.int
     HEALTH_CHECK_PATH_FIELD_NUMBER: builtins.int
     ENVIRONMENT_NAME_FIELD_NUMBER: builtins.int
+    HEALTH_CHECK_CONFIG_FIELD_NUMBER: builtins.int
     @property
     def environments(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[server_pb2.EnvironmentDefinition]:
         """Environment definitions."""
@@ -594,9 +635,12 @@ class RegisterApplicationRequest(google.protobuf.message.Message):
     source_code: builtins.str
     """Source code of the app implementation"""
     health_check_path: builtins.str
-    """Optional health check path for runners"""
+    """@deprecated Optional health check path for runners"""
     environment_name: builtins.str
     """Target environment for deployment (defaults to "main")"""
+    @property
+    def health_check_config(self) -> global___ApplicationHealthCheckConfig:
+        """Optional health check config for runners"""
     def __init__(
         self,
         *,
@@ -615,9 +659,10 @@ class RegisterApplicationRequest(google.protobuf.message.Message):
         source_code: builtins.str | None = ...,
         health_check_path: builtins.str | None = ...,
         environment_name: builtins.str | None = ...,
+        health_check_config: global___ApplicationHealthCheckConfig | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing_extensions.Literal["_application_name", b"_application_name", "_auth_mode", b"_auth_mode", "_deployment_strategy", b"_deployment_strategy", "_environment_name", b"_environment_name", "_health_check_path", b"_health_check_path", "_machine_requirements", b"_machine_requirements", "_max_concurrency", b"_max_concurrency", "_metadata", b"_metadata", "_private_logs", b"_private_logs", "_scale", b"_scale", "_setup_func", b"_setup_func", "_source_code", b"_source_code", "application_name", b"application_name", "auth_mode", b"auth_mode", "deployment_strategy", b"deployment_strategy", "environment_name", b"environment_name", "function", b"function", "health_check_path", b"health_check_path", "machine_requirements", b"machine_requirements", "max_concurrency", b"max_concurrency", "metadata", b"metadata", "private_logs", b"private_logs", "scale", b"scale", "setup_func", b"setup_func", "source_code", b"source_code"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing_extensions.Literal["_application_name", b"_application_name", "_auth_mode", b"_auth_mode", "_deployment_strategy", b"_deployment_strategy", "_environment_name", b"_environment_name", "_health_check_path", b"_health_check_path", "_machine_requirements", b"_machine_requirements", "_max_concurrency", b"_max_concurrency", "_metadata", b"_metadata", "_private_logs", b"_private_logs", "_scale", b"_scale", "_setup_func", b"_setup_func", "_source_code", b"_source_code", "application_name", b"application_name", "auth_mode", b"auth_mode", "deployment_strategy", b"deployment_strategy", "environment_name", b"environment_name", "environments", b"environments", "files", b"files", "function", b"function", "health_check_path", b"health_check_path", "machine_requirements", b"machine_requirements", "max_concurrency", b"max_concurrency", "metadata", b"metadata", "private_logs", b"private_logs", "scale", b"scale", "setup_func", b"setup_func", "source_code", b"source_code"]) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["_application_name", b"_application_name", "_auth_mode", b"_auth_mode", "_deployment_strategy", b"_deployment_strategy", "_environment_name", b"_environment_name", "_health_check_config", b"_health_check_config", "_health_check_path", b"_health_check_path", "_machine_requirements", b"_machine_requirements", "_max_concurrency", b"_max_concurrency", "_metadata", b"_metadata", "_private_logs", b"_private_logs", "_scale", b"_scale", "_setup_func", b"_setup_func", "_source_code", b"_source_code", "application_name", b"application_name", "auth_mode", b"auth_mode", "deployment_strategy", b"deployment_strategy", "environment_name", b"environment_name", "function", b"function", "health_check_config", b"health_check_config", "health_check_path", b"health_check_path", "machine_requirements", b"machine_requirements", "max_concurrency", b"max_concurrency", "metadata", b"metadata", "private_logs", b"private_logs", "scale", b"scale", "setup_func", b"setup_func", "source_code", b"source_code"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["_application_name", b"_application_name", "_auth_mode", b"_auth_mode", "_deployment_strategy", b"_deployment_strategy", "_environment_name", b"_environment_name", "_health_check_config", b"_health_check_config", "_health_check_path", b"_health_check_path", "_machine_requirements", b"_machine_requirements", "_max_concurrency", b"_max_concurrency", "_metadata", b"_metadata", "_private_logs", b"_private_logs", "_scale", b"_scale", "_setup_func", b"_setup_func", "_source_code", b"_source_code", "application_name", b"application_name", "auth_mode", b"auth_mode", "deployment_strategy", b"deployment_strategy", "environment_name", b"environment_name", "environments", b"environments", "files", b"files", "function", b"function", "health_check_config", b"health_check_config", "health_check_path", b"health_check_path", "machine_requirements", b"machine_requirements", "max_concurrency", b"max_concurrency", "metadata", b"metadata", "private_logs", b"private_logs", "scale", b"scale", "setup_func", b"setup_func", "source_code", b"source_code"]) -> None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_application_name", b"_application_name"]) -> typing_extensions.Literal["application_name"] | None: ...
     @typing.overload
@@ -626,6 +671,8 @@ class RegisterApplicationRequest(google.protobuf.message.Message):
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_deployment_strategy", b"_deployment_strategy"]) -> typing_extensions.Literal["deployment_strategy"] | None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_environment_name", b"_environment_name"]) -> typing_extensions.Literal["environment_name"] | None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_health_check_config", b"_health_check_config"]) -> typing_extensions.Literal["health_check_config"] | None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_health_check_path", b"_health_check_path"]) -> typing_extensions.Literal["health_check_path"] | None: ...
     @typing.overload
