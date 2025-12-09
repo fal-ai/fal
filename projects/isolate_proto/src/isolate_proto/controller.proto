@@ -228,13 +228,13 @@ message ApplicationHealthCheckConfig {
 
     // minimum time the runner has been running
     // before considering the runner unhealthy when health check fails
-    int32 start_period = 2;
+    int32 start_period_seconds = 2;
 
     // timeout in seconds for the health check request
-    int32 timeout = 3;
+    int32 timeout_seconds = 3;
 
     // number of consecutive failures before considering the runner unhealthy
-    int32 threshold = 4;
+    int32 failure_threshold = 4;
 
     // perform health check every 15s.
     // If false, only do it when the x-fal-runner-health-check header is present

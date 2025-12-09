@@ -545,20 +545,20 @@ class ApplicationHealthCheckConfig(google.protobuf.message.Message):
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
     PATH_FIELD_NUMBER: builtins.int
-    START_PERIOD_FIELD_NUMBER: builtins.int
-    TIMEOUT_FIELD_NUMBER: builtins.int
-    THRESHOLD_FIELD_NUMBER: builtins.int
+    START_PERIOD_SECONDS_FIELD_NUMBER: builtins.int
+    TIMEOUT_SECONDS_FIELD_NUMBER: builtins.int
+    FAILURE_THRESHOLD_FIELD_NUMBER: builtins.int
     CALL_REGULARLY_FIELD_NUMBER: builtins.int
     ALLOW_ON_BUSY_FIELD_NUMBER: builtins.int
     path: builtins.str
     """path to the health check endpoint"""
-    start_period: builtins.int
+    start_period_seconds: builtins.int
     """minimum time the runner has been running
     before considering the runner unhealthy when health check fails
     """
-    timeout: builtins.int
+    timeout_seconds: builtins.int
     """timeout in seconds for the health check request"""
-    threshold: builtins.int
+    failure_threshold: builtins.int
     """number of consecutive failures before considering the runner unhealthy"""
     call_regularly: builtins.bool
     """perform health check every 15s.
@@ -570,13 +570,13 @@ class ApplicationHealthCheckConfig(google.protobuf.message.Message):
         self,
         *,
         path: builtins.str = ...,
-        start_period: builtins.int = ...,
-        timeout: builtins.int = ...,
-        threshold: builtins.int = ...,
+        start_period_seconds: builtins.int = ...,
+        timeout_seconds: builtins.int = ...,
+        failure_threshold: builtins.int = ...,
         call_regularly: builtins.bool = ...,
         allow_on_busy: builtins.bool = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing_extensions.Literal["allow_on_busy", b"allow_on_busy", "call_regularly", b"call_regularly", "path", b"path", "start_period", b"start_period", "threshold", b"threshold", "timeout", b"timeout"]) -> None: ...
+    def ClearField(self, field_name: typing_extensions.Literal["allow_on_busy", b"allow_on_busy", "call_regularly", b"call_regularly", "failure_threshold", b"failure_threshold", "path", b"path", "start_period_seconds", b"start_period_seconds", "timeout_seconds", b"timeout_seconds"]) -> None: ...
 
 global___ApplicationHealthCheckConfig = ApplicationHealthCheckConfig
 
