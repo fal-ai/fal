@@ -698,7 +698,6 @@ class FalServerlessConnection:
             private_logs=private_logs,
             files=files,
             source_code=source_code,
-            health_check_path=health_check_path,
         )
         for partial_result in self.stub.RegisterApplication(request):
             yield from_grpc(partial_result)
