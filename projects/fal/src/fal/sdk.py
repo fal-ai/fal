@@ -546,16 +546,21 @@ class MachineRequirements:
 
 @dataclass
 class HealthCheck:
-    start_period_seconds: int = field(default=0, kw_only=True)
-    timeout_seconds: int = field(default=5, kw_only=True)
-    failure_threshold: int = field(default=3, kw_only=True)
-    call_regularly: bool = field(default=True, kw_only=True)
-    allow_on_busy: bool = field(default=True, kw_only=True)
+    start_period_seconds: int = 0
+    timeout_seconds: int = 5
+    failure_threshold: int = 3
+    call_regularly: bool = True
+    allow_on_busy: bool = True
 
 
 @dataclass
-class ApplicationHealthCheckConfig(HealthCheck):
+class ApplicationHealthCheckConfig:
     path: str
+    start_period_seconds: int
+    timeout_seconds: int
+    failure_threshold: int
+    call_regularly: bool
+    allow_on_busy: bool
 
 
 @dataclass
