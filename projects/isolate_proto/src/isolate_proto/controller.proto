@@ -228,20 +228,20 @@ message ApplicationHealthCheckConfig {
 
     // minimum time the runner has been running
     // before considering the runner unhealthy when health check fails
-    int32 start_period_seconds = 2;
+    optional int32 start_period_seconds = 2;
 
     // timeout in seconds for the health check request
-    int32 timeout_seconds = 3;
+    optional int32 timeout_seconds = 3;
 
     // number of consecutive failures before considering the runner unhealthy
-    int32 failure_threshold = 4;
+    optional int32 failure_threshold = 4;
 
     // perform health check every 15s.
     // If false, only do it when the x-fal-runner-health-check header is present
-    bool call_regularly = 5;
+    optional bool call_regularly = 5;
 
     // do not perform health check if the runner has inflight requests
-    bool allow_on_busy = 6;
+    optional bool allow_on_busy = 6;
 }
 
 message RegisterApplicationRequest {

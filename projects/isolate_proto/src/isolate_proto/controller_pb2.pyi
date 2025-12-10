@@ -570,13 +570,24 @@ class ApplicationHealthCheckConfig(google.protobuf.message.Message):
         self,
         *,
         path: builtins.str = ...,
-        start_period_seconds: builtins.int = ...,
-        timeout_seconds: builtins.int = ...,
-        failure_threshold: builtins.int = ...,
-        call_regularly: builtins.bool = ...,
-        allow_on_busy: builtins.bool = ...,
+        start_period_seconds: builtins.int | None = ...,
+        timeout_seconds: builtins.int | None = ...,
+        failure_threshold: builtins.int | None = ...,
+        call_regularly: builtins.bool | None = ...,
+        allow_on_busy: builtins.bool | None = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing_extensions.Literal["allow_on_busy", b"allow_on_busy", "call_regularly", b"call_regularly", "failure_threshold", b"failure_threshold", "path", b"path", "start_period_seconds", b"start_period_seconds", "timeout_seconds", b"timeout_seconds"]) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["_allow_on_busy", b"_allow_on_busy", "_call_regularly", b"_call_regularly", "_failure_threshold", b"_failure_threshold", "_start_period_seconds", b"_start_period_seconds", "_timeout_seconds", b"_timeout_seconds", "allow_on_busy", b"allow_on_busy", "call_regularly", b"call_regularly", "failure_threshold", b"failure_threshold", "start_period_seconds", b"start_period_seconds", "timeout_seconds", b"timeout_seconds"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["_allow_on_busy", b"_allow_on_busy", "_call_regularly", b"_call_regularly", "_failure_threshold", b"_failure_threshold", "_start_period_seconds", b"_start_period_seconds", "_timeout_seconds", b"_timeout_seconds", "allow_on_busy", b"allow_on_busy", "call_regularly", b"call_regularly", "failure_threshold", b"failure_threshold", "path", b"path", "start_period_seconds", b"start_period_seconds", "timeout_seconds", b"timeout_seconds"]) -> None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_allow_on_busy", b"_allow_on_busy"]) -> typing_extensions.Literal["allow_on_busy"] | None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_call_regularly", b"_call_regularly"]) -> typing_extensions.Literal["call_regularly"] | None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_failure_threshold", b"_failure_threshold"]) -> typing_extensions.Literal["failure_threshold"] | None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_start_period_seconds", b"_start_period_seconds"]) -> typing_extensions.Literal["start_period_seconds"] | None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_timeout_seconds", b"_timeout_seconds"]) -> typing_extensions.Literal["timeout_seconds"] | None: ...
 
 global___ApplicationHealthCheckConfig = ApplicationHealthCheckConfig
 
