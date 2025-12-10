@@ -114,9 +114,9 @@ def wrap_app(cls: type[App], **kwargs) -> IsolatedFunction:
     if host:
         cls.local_file_path = host.local_file_path
 
-    def initialize_and_serve():
+    async def initialize_and_serve():
         app = cls()
-        app.serve()
+        await app.serve()
 
     metadata = {}
     app = cls(_allow_init=True)
@@ -125,6 +125,7 @@ def wrap_app(cls: type[App], **kwargs) -> IsolatedFunction:
 
     routes = app.collect_routes()
     initialize_and_serve._routes = [r.path for r in routes.keys()] or ["/"]  # type: ignore[attr-defined]
+    initialize_and_serve._run_as_main_thread = True  # type: ignore[attr-defined]
     realtime_app = any(route.is_websocket for route in routes)
 
     kind = cls.host_kwargs.pop("kind", "virtualenv")
@@ -516,11 +517,11 @@ class App(BaseServable):
 
         os.environ["FAL_RUNNER_STATE"] = "RUNNING"
 
-        try:
-            yield
-        finally:
-            os.environ["FAL_RUNNER_STATE"] = "STOPPING"
-            await _call_any_fn(self.teardown)
+        yield
+
+    async def _shutdown_app(self):
+        os.environ["FAL_RUNNER_STATE"] = "STOPPING"
+        await _call_any_fn(self.teardown)
 
     def health(self):
         return {"version": self.version}
