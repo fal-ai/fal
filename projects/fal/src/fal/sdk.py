@@ -546,7 +546,7 @@ class MachineRequirements:
 
 @dataclass
 class HealthCheck:
-    start_period_seconds: int = field(default=30, kw_only=True)
+    start_period_seconds: int = field(default=0, kw_only=True)
     timeout_seconds: int = field(default=5, kw_only=True)
     failure_threshold: int = field(default=3, kw_only=True)
     call_regularly: bool = field(default=True, kw_only=True)
