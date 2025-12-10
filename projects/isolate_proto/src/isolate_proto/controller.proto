@@ -222,7 +222,27 @@ enum DeploymentStrategy {
     ROLLING = 1;
 }
 
+message ApplicationHealthCheckConfig {
+    // path to the health check endpoint
+    string path = 1;
 
+    // minimum time the runner has been running
+    // before considering the runner unhealthy when health check fails
+    optional int32 start_period_seconds = 2;
+
+    // timeout in seconds for the health check request
+    optional int32 timeout_seconds = 3;
+
+    // number of consecutive failures before considering the runner unhealthy
+    optional int32 failure_threshold = 4;
+
+    // perform health check every 15s.
+    // If false, only do it when the x-fal-runner-health-check header is present
+    optional bool call_regularly = 5;
+
+    // do not perform health check if the runner has inflight requests
+    optional bool allow_on_busy = 6;
+}
 
 message RegisterApplicationRequest {
     // Environment definitions.
@@ -252,8 +272,8 @@ message RegisterApplicationRequest {
     repeated File files = 12;
     // Source code of the app implementation
     optional string source_code = 13;
-    // Optional health check path for runners
-    optional string health_check_path = 14;
+    // Optional health check config for runners
+    optional ApplicationHealthCheckConfig health_check_config = 14;
     // Target environment for deployment (defaults to "main")
     optional string environment_name = 15;
 }
