@@ -5,9 +5,10 @@ import inspect
 import os
 import sys
 import threading
+import uuid
 from collections import defaultdict
 from concurrent.futures import Future, ThreadPoolExecutor
-from contextlib import asynccontextmanager, suppress
+from contextlib import asynccontextmanager, contextmanager, suppress
 from dataclasses import dataclass, field, replace
 from functools import wraps
 from os import PathLike
@@ -1169,6 +1170,18 @@ class FalFastAPI(FastAPI):
 
 
 class FalServer(uvicorn.Server):
+    _shutdown_condition: Callable[[], bool] | None = None
+    _shutdown_timeout: float = 60
+
+    def ok_to_shutdown(self) -> bool:
+        return self._shutdown_condition is not None and self._shutdown_condition()
+
+    def set_shutdown_condition(
+        self, condition: Callable[[], bool], timeout: float = 60
+    ):
+        self._shutdown_condition = condition
+        self._shutdown_timeout = timeout
+
     async def main_loop(self) -> None:
         counter = 0
         should_exit = await self.on_tick(counter)
@@ -1180,6 +1193,13 @@ class FalServer(uvicorn.Server):
                 should_exit = await self.on_tick(counter)
             except asyncio.CancelledError:
                 should_exit = True
+
+        counter = 0
+        while not self.ok_to_shutdown() and counter < self._shutdown_timeout / 100:
+            if counter % 100 == 0:
+                print(f"Waiting for shutdown condition to be met: {counter // 100}s")
+            await asyncio.sleep(0.01)
+            counter += 1
 
 
 class RouteSignature(NamedTuple):
@@ -1195,6 +1215,9 @@ class RouteSignature(NamedTuple):
 
 class BaseServable:
     version: ClassVar[str] = "unknown"
+
+    _shutdown_locks: set[str] = set()
+    _shutdown_timeout: float = 60
 
     def collect_routes(self) -> dict[RouteSignature, Callable[..., Any]]:
         raise NotImplementedError
@@ -1345,6 +1368,15 @@ class BaseServable:
                 "Failed to generate OpenAPI metadata for function"
             ) from e
 
+    @contextmanager
+    def shutdown_guard(self):
+        lock_id = uuid.uuid4().hex
+        self._shutdown_locks.add(lock_id)
+        try:
+            yield
+        finally:
+            self._shutdown_locks.remove(lock_id)
+
     async def serve(self) -> None:
         import asyncio
 
@@ -1372,10 +1404,13 @@ class BaseServable:
 
         metrics_task = asyncio.create_task(metrics_server.serve())
 
+        server.set_shutdown_condition(
+            lambda: len(self._shutdown_locks) == 0, timeout=self._shutdown_timeout
+        )
         await server.serve()
 
         metrics_task.cancel()
-        await asyncio.wait([metrics_task], timeout=2)
+        await asyncio.wait_for(metrics_task, timeout=2)
 
 
 class ServeWrapper(BaseServable):
