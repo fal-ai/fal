@@ -560,7 +560,7 @@ class HealthCheck:
             before considering the runner unhealthy when health check fails. \
             To prevent the health check from failing too early, \
             this will be replaced by startup_timeout of the application \
-            if it’s less than it. Defaults to 30.
+            if it's less than it. Defaults to 30.
             timeout_seconds: Timeout in seconds for the health check \
             request. Defaults to 5 seconds.
             failure_threshold: Number of consecutive failures \
