@@ -517,11 +517,11 @@ class App(BaseServable):
 
         os.environ["FAL_RUNNER_STATE"] = "RUNNING"
 
-        yield
-
-    async def _shutdown_app(self):
-        os.environ["FAL_RUNNER_STATE"] = "STOPPING"
-        await _call_any_fn(self.teardown)
+        try:
+            yield
+        finally:
+            os.environ["FAL_RUNNER_STATE"] = "TERMINATING"
+            await _call_any_fn(self.teardown)
 
     def health(self):
         return {"version": self.version}

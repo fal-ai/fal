@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import inspect
 import os
 import sys
@@ -1167,6 +1168,20 @@ class FalFastAPI(FastAPI):
         return spec
 
 
+class FalServer(uvicorn.Server):
+    async def main_loop(self) -> None:
+        counter = 0
+        should_exit = await self.on_tick(counter)
+        while not should_exit:
+            counter += 1
+            counter = counter % 864000
+            try:
+                await asyncio.sleep(0.1)
+                should_exit = await self.on_tick(counter)
+            except asyncio.CancelledError:
+                should_exit = True
+
+
 class RouteSignature(NamedTuple):
     path: str
     is_websocket: bool = False
@@ -1318,9 +1333,6 @@ class BaseServable:
 
         return _app
 
-    async def _shutdown_app(self) -> None:
-        """Teardown the application after serving."""
-
     def openapi(self) -> dict[str, Any]:
         """
         Build the OpenAPI specification for the served function.
@@ -1347,45 +1359,23 @@ class BaseServable:
 
         # We use the default workers=1 config because setup function can be heavy
         # and it runs once per worker.
-        server = uvicorn.Server(
+        server = FalServer(
             config=uvicorn.Config(
                 app, host="0.0.0.0", port=8080, timeout_keep_alive=300, lifespan="on"
             )
         )
         metrics_app = FastAPI()
         metrics_app.add_route("/metrics", handle_metrics)
-        metrics_server = uvicorn.Server(
+        metrics_server = FalServer(
             config=uvicorn.Config(metrics_app, host="0.0.0.0", port=9090)
         )
 
-        async def _serve() -> None:
-            tasks = {
-                asyncio.create_task(server.serve()): server,
-                asyncio.create_task(metrics_server.serve()): metrics_server,
-            }
+        metrics_task = asyncio.create_task(metrics_server.serve())
 
-            _, pending = await asyncio.wait(
-                tasks.keys(),
-                return_when=asyncio.FIRST_COMPLETED,
-            )
-            if not pending:
-                return
+        await server.serve()
 
-            # try graceful shutdown
-            for task in pending:
-                tasks[task].should_exit = True
-            _, pending = await asyncio.wait(pending, timeout=2)
-            if not pending:
-                return
-
-            for task in pending:
-                task.cancel()
-            await asyncio.wait(pending)
-
-        with suppress(asyncio.CancelledError):
-            await _serve()
-
-        await self._shutdown_app()
+        metrics_task.cancel()
+        await asyncio.wait([metrics_task], timeout=2)
 
 
 class ServeWrapper(BaseServable):
