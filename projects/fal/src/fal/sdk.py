@@ -552,14 +552,15 @@ class HealthCheck:
         timeout_seconds: Optional[int] = None,
         failure_threshold: Optional[int] = None,
         call_regularly: Optional[bool] = None,
-        allow_on_busy: Optional[bool] = None,
     ):
         """Health check configuration for a runner.
 
         Args:
             start_period_seconds: Minimum time the runner has been running \
             before considering the runner unhealthy when health check fails. \
-            Defaults to startup_timeout of the application, or 30s if not set.
+            To prevent the health check from failing too early, \
+            this will be replaced by startup_timeout of the application \
+            if it’s less than it. Defaults to 30.
             timeout_seconds: Timeout in seconds for the health check \
             request. Defaults to 5 seconds.
             failure_threshold: Number of consecutive failures \
@@ -567,15 +568,13 @@ class HealthCheck:
             call_regularly: Perform health check every 15s. \
             If false, only do it when the x-fal-runner-health-check header is present. \
             Defaults to True.
-            allow_on_busy: Do not perform health check \
-            if the runner has inflight requests. Defaults to False.
         """
 
         self.start_period_seconds = start_period_seconds
         self.timeout_seconds = timeout_seconds
         self.failure_threshold = failure_threshold
         self.call_regularly = call_regularly
-        self.allow_on_busy = allow_on_busy
+        self.allow_on_busy = None
 
 
 @dataclass
