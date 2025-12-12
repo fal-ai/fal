@@ -49,4 +49,3 @@ def test_delete_alias():
     args = parse_args(["env", "delete", "staging"])
     assert args.func == _delete
     assert args.name == "staging"
-

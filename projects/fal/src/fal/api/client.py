@@ -127,14 +127,18 @@ class _SecretsNamespace:
     def __init__(self, client: SyncServerlessClient):
         self.client = client
 
-    def set(self, name: str, value: str) -> None:
-        return secrets_api.set_secret(self.client, name, value)
+    def set(self, name: str, value: str, environment_name: str | None = None) -> None:
+        return secrets_api.set_secret(
+            self.client, name, value, environment_name=environment_name
+        )
 
-    def list(self) -> List[ServerlessSecret]:
-        return secrets_api.list_secrets(self.client)
+    def list(self, environment_name: str | None = None) -> List[ServerlessSecret]:
+        return secrets_api.list_secrets(self.client, environment_name=environment_name)
 
-    def unset(self, name: str) -> None:
-        return secrets_api.unset_secret(self.client, name)
+    def unset(self, name: str, environment_name: str | None = None) -> None:
+        return secrets_api.unset_secret(
+            self.client, name, environment_name=environment_name
+        )
 
 
 @dataclass

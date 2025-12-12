@@ -6,7 +6,7 @@ from .parser import DictAction, FalClientParser
 def _set(args):
     client = SyncServerlessClient(host=args.host, team=args.team)
     for name, value in args.secrets.items():
-        client.secrets.set(name, value)
+        client.secrets.set(name, value, environment_name=args.env)
 
 
 def _add_set_parser(subparsers, parents):
@@ -39,7 +39,7 @@ def _list(args):
     import json
 
     client = SyncServerlessClient(host=args.host, team=args.team)
-    secrets = client.secrets.list()
+    secrets = client.secrets.list(environment_name=args.env)
 
     if args.output == "json":
         json_secrets = [
@@ -85,7 +85,7 @@ def _add_list_parser(subparsers, parents):
 
 def _unset(args):
     client = SyncServerlessClient(host=args.host, team=args.team)
-    client.secrets.unset(args.secret)
+    client.secrets.unset(args.secret, environment_name=args.env)
 
 
 def _add_unset_parser(subparsers, parents):
