@@ -575,6 +575,17 @@ class HealthCheck:
             Defaults to True.
         """
 
+        if (
+            call_regularly is False
+            and failure_threshold is not None
+            and failure_threshold > 1
+        ):
+            raise ValueError(
+                "failure_threshold must be 1 if call_regularly is set to False. "
+                "When health check is invoked by `x-fal-runner-health-check` header, "
+                "The runner will be terminated immediately if it fails."
+            )
+
         self.start_period_seconds = start_period_seconds
         self.timeout_seconds = timeout_seconds
         self.failure_threshold = failure_threshold
