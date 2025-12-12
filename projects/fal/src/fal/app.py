@@ -506,7 +506,6 @@ class App(BaseServable):
             timeout_seconds=health_check.timeout_seconds,
             failure_threshold=health_check.failure_threshold,
             call_regularly=health_check.call_regularly,
-            allow_on_busy=health_check.allow_on_busy,
         )
 
     def collect_routes(self) -> list[tuple[RouteSignature, Callable[..., Any]]]:

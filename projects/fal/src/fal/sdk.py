@@ -574,7 +574,6 @@ class HealthCheck:
         self.timeout_seconds = timeout_seconds
         self.failure_threshold = failure_threshold
         self.call_regularly = call_regularly
-        self.allow_on_busy = None
 
 
 @dataclass
@@ -584,7 +583,6 @@ class ApplicationHealthCheckConfig:
     timeout_seconds: Optional[int]
     failure_threshold: Optional[int]
     call_regularly: Optional[bool]
-    allow_on_busy: Optional[bool]
 
 
 @dataclass
@@ -736,7 +734,6 @@ class FalServerlessConnection:
                 timeout_seconds=health_check_config.timeout_seconds,
                 failure_threshold=health_check_config.failure_threshold,
                 call_regularly=health_check_config.call_regularly,
-                allow_on_busy=health_check_config.allow_on_busy,
             )
         else:
             wrapped_health_check_config = None
