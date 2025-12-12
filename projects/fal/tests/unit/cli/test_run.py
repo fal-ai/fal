@@ -14,6 +14,13 @@ def test_run():
     assert args.func_ref == ("/my/path.py", "myfunc")
 
 
+def test_run_with_env():
+    args = parse_args(["run", "/my/path.py::myfunc", "--env", "dev"])
+    assert args.func == _run
+    assert args.func_ref == ("/my/path.py", "myfunc")
+    assert args.env == "dev"
+
+
 @pytest.fixture
 def mock_parse_pyproject_toml():
     return {

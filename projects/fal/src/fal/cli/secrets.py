@@ -6,7 +6,7 @@ from .parser import DictAction, FalClientParser
 def _set(args):
     client = SyncServerlessClient(host=args.host, team=args.team)
     for name, value in args.secrets.items():
-        client.secrets.set(name, value)
+        client.secrets.set(name, value, environment_name=args.env)
 
 
 def _add_set_parser(subparsers, parents):
@@ -27,6 +27,11 @@ def _add_set_parser(subparsers, parents):
         action=DictAction,
         help="Secret NAME=VALUE pairs.",
     )
+    parser.add_argument(
+        "--env",
+        dest="env",
+        help="Target environment (defaults to main).",
+    )
     parser.set_defaults(func=_set)
 
 
@@ -34,7 +39,7 @@ def _list(args):
     import json
 
     client = SyncServerlessClient(host=args.host, team=args.team)
-    secrets = client.secrets.list()
+    secrets = client.secrets.list(environment_name=args.env)
 
     if args.output == "json":
         json_secrets = [
@@ -70,12 +75,17 @@ def _add_list_parser(subparsers, parents):
         help=list_help,
         parents=[*parents, get_output_parser()],
     )
+    parser.add_argument(
+        "--env",
+        dest="env",
+        help="Target environment (defaults to main).",
+    )
     parser.set_defaults(func=_list)
 
 
 def _unset(args):
     client = SyncServerlessClient(host=args.host, team=args.team)
-    client.secrets.unset(args.secret)
+    client.secrets.unset(args.secret, environment_name=args.env)
 
 
 def _add_unset_parser(subparsers, parents):
@@ -90,6 +100,11 @@ def _add_unset_parser(subparsers, parents):
         "secret",
         metavar="NAME",
         help="Secret's name.",
+    )
+    parser.add_argument(
+        "--env",
+        dest="env",
+        help="Target environment (defaults to main).",
     )
     parser.set_defaults(func=_unset)
 

@@ -8,22 +8,31 @@ if TYPE_CHECKING:
     from .client import SyncServerlessClient
 
 
-def set_secret(client: SyncServerlessClient, name: str, value: str) -> None:
+def set_secret(
+    client: SyncServerlessClient,
+    name: str,
+    value: str,
+    environment_name: str | None = None,
+) -> None:
     from fal.sdk import FalServerlessClient
 
     with FalServerlessClient(client._grpc_host, client._credentials).connect() as conn:
-        conn.set_secret(name, value)
+        conn.set_secret(name, value, environment_name=environment_name)
 
 
-def list_secrets(client: SyncServerlessClient) -> List[ServerlessSecret]:
+def list_secrets(
+    client: SyncServerlessClient, environment_name: str | None = None
+) -> List[ServerlessSecret]:
     from fal.sdk import FalServerlessClient
 
     with FalServerlessClient(client._grpc_host, client._credentials).connect() as conn:
-        return list(conn.list_secrets())
+        return list(conn.list_secrets(environment_name=environment_name))
 
 
-def unset_secret(client: SyncServerlessClient, name: str) -> None:
+def unset_secret(
+    client: SyncServerlessClient, name: str, environment_name: str | None = None
+) -> None:
     from fal.sdk import FalServerlessClient
 
     with FalServerlessClient(client._grpc_host, client._credentials).connect() as conn:
-        conn.delete_secret(name)
+        conn.delete_secret(name, environment_name=environment_name)
