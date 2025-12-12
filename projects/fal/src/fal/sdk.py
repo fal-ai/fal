@@ -545,6 +545,11 @@ class MachineRequirements:
 
 
 class HealthCheck:
+    start_period_seconds: Optional[int] = None
+    timeout_seconds: Optional[int] = None
+    failure_threshold: Optional[int] = None
+    call_regularly: Optional[bool] = None
+
     def __init__(
         self,
         *,
@@ -574,6 +579,16 @@ class HealthCheck:
         self.timeout_seconds = timeout_seconds
         self.failure_threshold = failure_threshold
         self.call_regularly = call_regularly
+
+    def __hash__(self):
+        return hash(
+            (
+                self.start_period_seconds,
+                self.timeout_seconds,
+                self.failure_threshold,
+                self.call_regularly,
+            )
+        )
 
 
 @dataclass
