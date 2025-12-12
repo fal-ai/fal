@@ -53,6 +53,12 @@ service IsolateController {
     rpc ListRunners (ListRunnersRequest) returns (ListRunnersResponse) {}
     // Open interactive shell in a runner
     rpc ShellRunner (stream ShellRunnerInput) returns (stream ShellRunnerOutput) {}
+    // List all environments for a user
+    rpc ListEnvironments (ListEnvironmentsRequest) returns (ListEnvironmentsResponse) {}
+    // Create a new environment
+    rpc CreateEnvironment (CreateEnvironmentRequest) returns (CreateEnvironmentResponse) {}
+    // Delete an environment
+    rpc DeleteEnvironment (DeleteEnvironmentRequest) returns (DeleteEnvironmentResponse) {}
 }
 
 message HostedMap {
@@ -83,6 +89,8 @@ message HostedRun {
     optional SerializedObject setup_func = 4;
     // Optional files to be included
     repeated File files = 5;
+    // Environment for ephemeral run (defaults to "main")
+    optional string environment_name = 6;
 }
 
 message CreateUserKeyRequest {
@@ -200,6 +208,7 @@ message MachineRequirements {
     optional int32 concurrency_buffer = 15;
     optional int32 concurrency_buffer_perc = 16;
     optional int32 scaling_delay_seconds = 17;
+    repeated string valid_regions = 18;
 }
 
 enum ApplicationAuthMode {
@@ -213,7 +222,27 @@ enum DeploymentStrategy {
     ROLLING = 1;
 }
 
+message ApplicationHealthCheckConfig {
+    // path to the health check endpoint
+    string path = 1;
 
+    // minimum time the runner has been running
+    // before considering the runner unhealthy when health check fails
+    optional int32 start_period_seconds = 2;
+
+    // timeout in seconds for the health check request
+    optional int32 timeout_seconds = 3;
+
+    // number of consecutive failures before considering the runner unhealthy
+    optional int32 failure_threshold = 4;
+
+    // perform health check every 15s.
+    // If false, only do it when the x-fal-runner-health-check header is present
+    optional bool call_regularly = 5;
+
+    // do not perform health check if the runner has inflight requests
+    optional bool allow_on_busy = 6;
+}
 
 message RegisterApplicationRequest {
     // Environment definitions.
@@ -243,6 +272,12 @@ message RegisterApplicationRequest {
     repeated File files = 12;
     // Source code of the app implementation
     optional string source_code = 13;
+    // @deprecated Optional health check path for runners
+    optional string health_check_path = 14;
+    // Target environment for deployment (defaults to "main")
+    optional string environment_name = 15;
+    // Optional health check config for runners
+    optional ApplicationHealthCheckConfig health_check_config = 16;
 }
 
 message RegisterApplicationResultType {
@@ -268,6 +303,7 @@ message UpdateApplicationRequest {
     optional int32 concurrency_buffer = 10;
     optional int32 concurrency_buffer_perc = 11;
     optional int32 scaling_delay_seconds = 12;
+    optional string environment_name = 13;
 }
 
 message UpdateApplicationResult {
@@ -276,6 +312,7 @@ message UpdateApplicationResult {
 
 message ListApplicationsRequest {
     optional string application_name = 1;
+    optional string environment_name = 2;
 }
 
 message ApplicationInfo {
@@ -293,6 +330,7 @@ message ApplicationInfo {
     optional int32 concurrency_buffer = 12;
     optional int32 concurrency_buffer_perc = 14;
     optional int32 scaling_delay_seconds = 15;
+    optional string environment_name = 16;
 }
 
 message ListApplicationsResult {
@@ -310,6 +348,7 @@ message DeleteApplicationResult {
 message RolloutApplicationRequest {
     string application_name = 1;
     optional bool force = 2;
+    optional string environment_name = 3;
 }
 
 message RolloutApplicationResult {
@@ -320,6 +359,7 @@ message SetAliasRequest {
     string alias = 1;
     string revision = 2;
     optional ApplicationAuthMode auth_mode = 3;
+    optional string environment_name = 4;
 }
 
 message SetAliasResult {
@@ -329,6 +369,7 @@ message SetAliasResult {
 
 message DeleteAliasRequest {
     string alias = 1;
+    optional string environment_name = 2;
 }
 
 message DeleteAliasResult {
@@ -336,7 +377,8 @@ message DeleteAliasResult {
 }
 
 message ListAliasesRequest {
-    // Empty. For future use.
+    // Filter by environment (defaults to "main")
+    optional string environment_name = 1;
 }
 
 message ListAliasesResult {
@@ -359,11 +401,14 @@ message AliasInfo {
     optional int32 concurrency_buffer = 13;
     optional int32 concurrency_buffer_perc = 14;
     optional int32 scaling_delay_seconds = 15;
+    optional string environment_name = 16;
 }
 
 message SetSecretRequest {
     string name = 1;
     optional string value = 2;
+    // Target environment (defaults to "main")
+    optional string environment_name = 3;
 }
 
 message SetSecretResponse {
@@ -371,13 +416,15 @@ message SetSecretResponse {
 }
 
 message ListSecretsRequest {
-    // Empty. For future use.
+    // Filter by environment (defaults to "main")
+    optional string environment_name = 1;
 }
 
 message Secret {
     string name = 1;
     optional google.protobuf.Timestamp created_time = 2;
     // Could also include the value/scope of the secret in the future.
+    optional string environment_name = 3;
 }
 
 message ListSecretsResponse {
@@ -388,6 +435,7 @@ message ListAliasRunnersRequest {
     string alias = 1;
     optional bool list_pending = 2;
     optional google.protobuf.Timestamp start_time = 3;
+    optional string environment_name = 4;
 }
 
 message ListAliasRunnersResponse {
@@ -407,11 +455,11 @@ message RunnerInfo {
         RUNNING = 0;
         PENDING = 1;
         SETUP = 2;
-        DEAD = 3; // TERMINATED
+        DEAD = 3; // will be replaced with TERMINATED
         DOCKER_PULL = 4;
         DRAINING = 5;
-        STOPPING = 6;
-        STOPPED = 7;
+        TERMINATING = 6;
+        TERMINATED = 7;
     }
 
     optional State state = 8;
@@ -459,4 +507,36 @@ message ShellRunnerOutput {
     bytes data = 1;
     bool close = 2;
     optional int32 exit_code = 3;
+}
+
+message ListEnvironmentsRequest {
+    // Empty. For future use.
+}
+
+message ListEnvironmentsResponse {
+    repeated EnvironmentInfo environments = 1;
+}
+
+message EnvironmentInfo {
+    string name = 1;
+    optional string description = 2;
+    bool is_default = 3;
+    google.protobuf.Timestamp created_at = 4;
+}
+
+message CreateEnvironmentRequest {
+    string name = 1;
+    optional string description = 2;
+}
+
+message CreateEnvironmentResponse {
+    EnvironmentInfo environment = 1;
+}
+
+message DeleteEnvironmentRequest {
+    string name = 1;
+}
+
+message DeleteEnvironmentResponse {
+    // Empty. For future use.
 }

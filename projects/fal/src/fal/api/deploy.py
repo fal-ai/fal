@@ -12,7 +12,10 @@ if TYPE_CHECKING:
 
 import json
 from collections import namedtuple
-from typing import Tuple, Union, cast
+from typing import TYPE_CHECKING, Tuple, Union, cast
+
+if TYPE_CHECKING:
+    from openapi_fal_rest.client import Client
 
 User = namedtuple("User", ["user_id", "username"])
 
@@ -41,17 +44,16 @@ def _remove_http_and_port_from_url(url):
     return url
 
 
-def _get_user() -> User:
+def _get_user(client: Client) -> User:
     from http import HTTPStatus
 
     import openapi_fal_rest.api.users.get_current_user as get_current_user
 
     from fal.api import FalServerlessError
-    from fal.rest_client import REST_CLIENT
 
     try:
         user_details_response = get_current_user.sync_detailed(
-            client=REST_CLIENT,
+            client=client,
         )
     except Exception as e:
         raise FalServerlessError(f"Error fetching user details: {str(e)}")

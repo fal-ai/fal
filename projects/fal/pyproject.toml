@@ -22,8 +22,8 @@ authors = [{ name = "Features & Labels <support@fal.ai>"}]
 readme = "README.md"
 requires-python = ">=3.8"
 dependencies = [
-    "isolate[build]>=0.18.0,<0.21.0",
-    "isolate-proto>=0.24.1,<0.25.0",
+    "isolate[build]>=0.18.0,<0.22.0",
+    "isolate-proto>=0.29.2",
     "grpcio>=1.64.0,<2",
     "dill==0.3.7",
     "cloudpickle==3.0.0",
@@ -38,9 +38,10 @@ dependencies = [
     "rich_argparse",
     "packaging>=21.3",
     "pathspec>=0.11.1,<1",
-    "pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,<2.11",
+    "pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*",
     # serve=True dependencies
-    "fastapi>=0.99.1,<1",
+    # https://github.com/fastapi/fastapi/issues/14221
+    "fastapi>=0.99.1,<0.119",
     "starlette-exporter>=0.21.0",
     # rest-api-client dependencies
     "httpx>=0.15.4",

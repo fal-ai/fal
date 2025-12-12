@@ -14,6 +14,12 @@ from .parser import FalClientParser, SinceAction, get_output_parser
 if TYPE_CHECKING:
     from fal.sdk import AliasInfo, ApplicationInfo
 
+CODE_SPECIFIC_SCALING_PARAMS = [
+    "max_multiplexing",
+    "startup_timeout",
+    "machine_types",
+]
+
 
 def _apps_table(apps: list[AliasInfo]):
     from rich.table import Table
@@ -197,6 +203,18 @@ def _scale(args):
     table = _apps_table([app_info])
 
     args.console.print(table)
+
+    code_specific_changes = set()
+    for param in CODE_SPECIFIC_SCALING_PARAMS:
+        if getattr(args, param) is not None:
+            code_specific_changes.add(f"[bold]{param}[/bold]")
+
+    if len(code_specific_changes) > 0:
+        args.console.print(
+            "[bold yellow]Note:[/bold yellow] Please be aware that "
+            f"{', '.join(code_specific_changes)} will be reset on the next deployment. "
+            "See https://docs.fal.ai/serverless/deployment-operations/scale-your-application#code-specific-settings-reset-on-deploy for details."  # noqa: E501
+        )
 
 
 def _add_scale_parser(subparsers, parents):
@@ -383,14 +401,14 @@ def _add_runners_parser(subparsers, parents):
         action=SinceAction,
         limit="1 day",
         help=(
-            "Show dead runners since the given time. "
+            "Show terminated runners since the given time. "
             "Accepts 'now', relative like '30m', '1h', '1d', "
             "or an ISO timestamp. Max 24 hours."
         ),
     )
     parser.add_argument(
         "--state",
-        choices=["all", "running", "pending", "setup", "dead"],
+        choices=["all", "running", "pending", "setup", "terminated"],
         nargs="+",
         default=None,
         help=("Filter by runner state(s). Choose one or more, or 'all'(default)."),

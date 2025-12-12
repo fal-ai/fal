@@ -1,21 +1,20 @@
+from fal.api.client import SyncServerlessClient
 from fal.sdk import KeyScope
 
-from ._utils import get_client
 from .parser import FalClientParser
 
 
 def _create(args):
-    client = get_client(args.host, args.team)
-    with client.connect() as connection:
-        parsed_scope = KeyScope(args.scope)
-        result = connection.create_user_key(parsed_scope, args.desc)
-        args.console.print(
-            f"Generated key id and key secret, with the scope `{args.scope}`.\n"
-            "This is the only time the secret will be visible.\n"
-            "You will need to generate a new key pair if you lose access to this "
-            "secret."
-        )
-        args.console.print(f"FAL_KEY='{result[1]}:{result[0]}'")
+    client = SyncServerlessClient(host=args.host, team=args.team)
+    parsed_scope = KeyScope(args.scope)
+    key_id, key_secret = client.keys.create(scope=parsed_scope, description=args.desc)
+    args.console.print(
+        f"Generated key id and key secret, with the scope `{args.scope}`.\n"
+        "This is the only time the secret will be visible.\n"
+        "You will need to generate a new key pair if you lose access to this "
+        "secret."
+    )
+    args.console.print(f"FAL_KEY='{key_id}:{key_secret}'")
 
 
 def _add_create_parser(subparsers, parents):
@@ -42,41 +41,40 @@ def _add_create_parser(subparsers, parents):
 def _list(args):
     import json
 
-    client = get_client(args.host, args.team)
-    with client.connect() as connection:
-        keys = connection.list_user_keys()
+    client = SyncServerlessClient(host=args.host, team=args.team)
+    keys = client.keys.list()
 
-        if args.output == "json":
-            json_keys = [
-                {
-                    "key_id": key.key_id,
-                    "created_at": str(key.created_at),
-                    "scope": str(key.scope.value),
-                    "description": key.alias,
-                }
-                for key in keys
-            ]
-            args.console.print(json.dumps({"keys": json_keys}))
-        elif args.output == "pretty":
-            from rich.table import Table
+    if args.output == "json":
+        json_keys = [
+            {
+                "key_id": key.key_id,
+                "created_at": str(key.created_at),
+                "scope": str(key.scope.value),
+                "description": key.alias,
+            }
+            for key in keys
+        ]
+        args.console.print(json.dumps({"keys": json_keys}))
+    elif args.output == "pretty":
+        from rich.table import Table
 
-            table = Table()
-            table.add_column("Key ID")
-            table.add_column("Created At")
-            table.add_column("Scope")
-            table.add_column("Description")
+        table = Table()
+        table.add_column("Key ID")
+        table.add_column("Created At")
+        table.add_column("Scope")
+        table.add_column("Description")
 
-            for key in keys:
-                table.add_row(
-                    key.key_id,
-                    str(key.created_at),
-                    str(key.scope.value),
-                    key.alias,
-                )
+        for key in keys:
+            table.add_row(
+                key.key_id,
+                str(key.created_at),
+                str(key.scope.value),
+                key.alias,
+            )
 
-            args.console.print(table)
-        else:
-            raise AssertionError(f"Invalid output format: {args.output}")
+        args.console.print(table)
+    else:
+        raise AssertionError(f"Invalid output format: {args.output}")
 
 
 def _add_list_parser(subparsers, parents):
@@ -93,9 +91,8 @@ def _add_list_parser(subparsers, parents):
 
 
 def _revoke(args):
-    client = get_client(args.host, args.team)
-    with client.connect() as connection:
-        connection.revoke_user_key(args.key_id)
+    client = SyncServerlessClient(host=args.host, team=args.team)
+    client.keys.revoke(args.key_id)
 
 
 def _add_revoke_parser(subparsers, parents):

@@ -4,8 +4,23 @@ import os
 
 import pytest
 
-from fal import App
+import fal
+from fal import App, endpoint
 from fal.container import ContainerImage
+
+
+def test_app_regions_propagate_to_function_options():
+    from fal.app import wrap_app
+
+    class RegionsApp(App):
+        regions = ["us-east", "eu-west"]
+
+        @endpoint("/")
+        def hello(self) -> str:
+            return "Hello, world!"
+
+    fn = wrap_app(RegionsApp)
+    assert fn.options.host.get("regions") == ["us-east", "eu-west"]
 
 
 def test_app_default_app_name_is_generated_from_class_name():
@@ -126,3 +141,21 @@ async def test_runner_state_lifecycle_complete():
     assert states[0] == ("setup", "SETUP")
     assert states[1] == ("running", "RUNNING")
     assert states[2] == ("teardown", "STOPPING")
+
+
+def test_function_decorator_rejects_app_files_with_container_kind():
+    """Test that app_files cannot be used with kind='container'."""
+    image = ContainerImage.from_dockerfile_str("FROM python:3.11-slim")
+
+    error_message = "app_files is not supported for container apps"
+    with pytest.raises(ValueError, match=error_message):
+
+        @fal.function("container", app_files=["a.py"])
+        def container_because_kind_is_container():
+            pass
+
+    with pytest.raises(ValueError, match=error_message):
+
+        @fal.function(image=image, app_files=["a.py"])
+        def container_because_image_is_provided():
+            pass

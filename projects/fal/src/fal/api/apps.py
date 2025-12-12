@@ -34,7 +34,14 @@ def apps_runners(
 
     if state and "all" not in set(state):
         states = set(state)
-        alias_runners = [r for r in alias_runners if r.state.value in states]
+        alias_runners = [
+            r
+            for r in alias_runners
+            if r.state.value.lower() in states
+            or (
+                "terminated" in states and r.state.value.lower() == "dead"
+            )  # TODO for backwards compatibility. remove later
+        ]
     return alias_runners
 
 

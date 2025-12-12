@@ -19,7 +19,6 @@ from rich.syntax import Syntax
 import fal
 from fal import flags
 from fal.exceptions import FalServerlessException
-from fal.rest_client import REST_CLIENT
 
 JSONType = Union[Dict[str, Any], List[Any], str, int, float, bool, None, "Leaf"]
 SchemaType = Dict[str, Any]
@@ -372,6 +371,11 @@ class Workflow:
     to_dict = to_json
 
     def publish(self, title: str, *, is_public: bool = True):
+        from fal.api.client import SyncServerlessClient
+
+        client = SyncServerlessClient()
+        rest_client = client._create_rest_client()
+
         workflow_contents = publish_workflow.TypedWorkflow(
             name=self.name,
             title=title,
@@ -379,7 +383,7 @@ class Workflow:
             is_public=is_public,
         )
         published_workflow = publish_workflow.sync(
-            client=REST_CLIENT,
+            client=rest_client,
             json_body=workflow_contents,
         )
         if isinstance(published_workflow, Exception):

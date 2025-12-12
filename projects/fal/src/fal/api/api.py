@@ -428,6 +428,7 @@ class FalServerlessHost(Host):
         {
             "machine_type",
             "machine_types",
+            "regions",
             "num_gpus",
             "keep_alive",
             "max_concurrency",
@@ -447,6 +448,7 @@ class FalServerlessHost(Host):
             "app_files",
             "app_files_ignore",
             "app_files_context_dir",
+            "health_check_path",
         }
     )
 
@@ -544,6 +546,7 @@ class FalServerlessHost(Host):
         exposed_port = options.get_exposed_port()
         request_timeout = options.host.get("request_timeout")
         startup_timeout = options.host.get("startup_timeout")
+        regions = options.host.get("regions")
         machine_requirements = MachineRequirements(
             machine_types=machine_type,  # type: ignore
             num_gpus=options.host.get("num_gpus"),
@@ -560,7 +563,10 @@ class FalServerlessHost(Host):
             scaling_delay=scaling_delay,
             request_timeout=request_timeout,
             startup_timeout=startup_timeout,
+            valid_regions=regions,
         )
+
+        health_check_path = options.host.get("health_check_path")
 
         app_files = self._app_files_sync(options)
 
@@ -585,6 +591,7 @@ class FalServerlessHost(Host):
             metadata=metadata,
             deployment_strategy=deployment_strategy,
             scale=scale,
+            health_check_path=health_check_path,
             # By default, logs are public
             private_logs=options.host.get("private_logs", False),
             files=app_files,
@@ -831,6 +838,7 @@ def function(
     # FalServerlessHost options
     metadata: dict[str, Any] | None = None,
     machine_type: str | list[str] = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
+    regions: list[str] | None = None,
     num_gpus: int | None = None,
     keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
     max_multiplexing: int = FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING,
@@ -863,6 +871,7 @@ def function(
     # FalServerlessHost options
     metadata: dict[str, Any] | None = None,
     machine_type: str | list[str] = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
+    regions: list[str] | None = None,
     num_gpus: int | None = None,
     keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
     max_multiplexing: int = FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING,
@@ -947,6 +956,7 @@ def function(
     # FalServerlessHost options
     metadata: dict[str, Any] | None = None,
     machine_type: str | list[str] = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
+    regions: list[str] | None = None,
     num_gpus: int | None = None,
     keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
     max_multiplexing: int = FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING,
@@ -984,6 +994,7 @@ def function(
     # FalServerlessHost options
     metadata: dict[str, Any] | None = None,
     machine_type: str | list[str] = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
+    regions: list[str] | None = None,
     num_gpus: int | None = None,
     keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
     max_multiplexing: int = FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING,
@@ -1015,6 +1026,7 @@ def function(
     # FalServerlessHost options
     metadata: dict[str, Any] | None = None,
     machine_type: str | list[str] = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
+    regions: list[str] | None = None,
     num_gpus: int | None = None,
     keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
     max_multiplexing: int = FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING,
@@ -1046,6 +1058,7 @@ def function(
     # FalServerlessHost options
     metadata: dict[str, Any] | None = None,
     machine_type: str | list[str] = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
+    regions: list[str] | None = None,
     num_gpus: int | None = None,
     keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
     max_multiplexing: int = FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING,
@@ -1077,6 +1090,9 @@ def function(  # type: ignore
     # NOTE: assuming kind="container" if image is provided
     if config.get("image"):
         kind = "container"
+
+    if kind == "container" and config.get("app_files"):
+        raise ValueError("app_files is not supported for container apps.")
 
     options = host.parse_options(kind=kind, **config)
 
@@ -1154,6 +1170,7 @@ class FalFastAPI(FastAPI):
 class RouteSignature(NamedTuple):
     path: str
     is_websocket: bool = False
+    is_health_check: bool = False
     input_modal: type | None = None
     buffering: int | None = None
     session_timeout: float | None = None

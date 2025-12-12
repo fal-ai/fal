@@ -14,6 +14,7 @@ from fastapi import Request, WebSocket
 from httpx import HTTPStatusError
 from isolate.backends.common import active_python
 from openapi_fal_rest.api.applications import app_metadata
+from openapi_fal_rest.client import Client
 from pydantic import BaseModel
 from pydantic import __version__ as pydantic_version
 
@@ -30,10 +31,15 @@ from fal.exceptions import (
     RequestCancelledException,
 )
 from fal.exceptions._cuda import _CUDA_OOM_MESSAGE, _CUDA_OOM_STATUS_CODE
-from fal.rest_client import REST_CLIENT
 from fal.sdk import RunnerState
 from fal.toolkit.utils.endpoint import cancel_on_disconnect
 from fal.workflows import Workflow
+
+
+@pytest.fixture(scope="module")
+def rest_client() -> Generator[Client, None, None]:
+    client = api.client.SyncServerlessClient()
+    yield client._create_rest_client()
 
 
 class Input(BaseModel):
@@ -349,8 +355,8 @@ def host() -> Generator[api.Host, None, None]:
 
 
 @pytest.fixture(scope="module")
-def user() -> Generator[User, None, None]:
-    user = _get_user()
+def user(rest_client: Client) -> Generator[User, None, None]:
+    user = _get_user(rest_client)
     yield user
 
 
@@ -653,7 +659,7 @@ def test_app_client_async(test_sleep_app: str):
 @pytest.mark.xfail(
     reason="Temporary disabled while investigating backend issue. Ping @efiop"
 )
-def test_traceback_logs(test_exception_app: AppClient):
+def test_traceback_logs(test_exception_app: AppClient, rest_client: Client):
     date = (
         datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=1)
     ).isoformat()
@@ -662,15 +668,15 @@ def test_traceback_logs(test_exception_app: AppClient):
         test_exception_app.fail({})
 
     with httpx.Client(
-        base_url=REST_CLIENT.base_url,
-        headers=REST_CLIENT.get_headers(),
+        base_url=rest_client.base_url,
+        headers=rest_client.get_headers(),
         timeout=300,
     ) as client:
         # Give some time for logs to propagate through the logging subsystem.
         for _ in range(10):
             time.sleep(2)
             response = client.get(
-                REST_CLIENT.base_url + f"/logs/?traceback=true&since={date}"
+                rest_client.base_url + f"/logs/?traceback=true&since={date}"
             )
 
             logs = response.json()
@@ -688,10 +694,12 @@ def test_traceback_logs(test_exception_app: AppClient):
             ), "Logs should contain the traceback message"
 
 
-def test_app_openapi_spec_metadata(base_app: Tuple[str, str], user: User):
+def test_app_openapi_spec_metadata(
+    base_app: Tuple[str, str], user: User, rest_client: Client
+):
     app_alias, _ = base_app
     res = app_metadata.sync_detailed(
-        app_alias_or_id=app_alias, app_user_id=user.user_id, client=REST_CLIENT
+        app_alias_or_id=app_alias, app_user_id=user.user_id, client=rest_client
     )
 
     assert res.status_code == 200, f"Failed to fetch metadata for app {app_alias}"
@@ -704,11 +712,11 @@ def test_app_openapi_spec_metadata(base_app: Tuple[str, str], user: User):
         assert key in openapi_spec, f"{key} key missing from openapi {openapi_spec}"
 
 
-def test_app_no_serve_spec_metadata(test_fastapi_app: str):
+def test_app_no_serve_spec_metadata(test_fastapi_app: str, rest_client: Client):
     # We do not store the openapi spec for apps that do not use serve=True
     user_id, _, app_id = test_fastapi_app.partition("/")
     res = app_metadata.sync_detailed(
-        app_alias_or_id=app_id, app_user_id=user_id, client=REST_CLIENT
+        app_alias_or_id=app_id, app_user_id=user_id, client=rest_client
     )
 
     assert (
@@ -932,7 +940,7 @@ def delete_workflow_on_exit(client: httpx.Client, workflow_url: str):
         client.delete(workflow_url)
 
 
-def test_workflows(test_app: str):
+def test_workflows(test_app: str, rest_client: Client):
     workflow = Workflow(
         name="test_workflow_" + secrets.token_hex(),
         input_schema={},
@@ -968,12 +976,12 @@ def test_workflows(test_app: str):
     assert data["result"] == 5
 
     with httpx.Client(
-        base_url=REST_CLIENT.base_url,
-        headers=REST_CLIENT.get_headers(),
+        base_url=rest_client.base_url,
+        headers=rest_client.get_headers(),
         timeout=300,
     ) as client:
         with delete_workflow_on_exit(
-            client, REST_CLIENT.base_url + "/workflows/" + workflow_id
+            client, rest_client.base_url + "/workflows/" + workflow_id
         ):
             data = fal.apps.run(
                 "workflows/" + workflow_id, arguments={"lhs": 2, "rhs": 3}
