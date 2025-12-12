@@ -77,6 +77,7 @@ def get_retry_delay(
 
     return min(delay, max_delay)
 
+
 @lru_cache(maxsize=1)
 def _pillow_has_avif_support() -> bool:
     import PIL
@@ -86,9 +87,11 @@ def _pillow_has_avif_support() -> bool:
     minor = int(minor)
     return (major, minor) >= (11, 2)
 
+
 @lru_cache(maxsize=1)
 def _register_heif_opener():
     from PIL.Image import MIME
+
     try:
         from pillow_heif import register_heif_opener
     except ModuleNotFoundError:
@@ -98,6 +101,7 @@ def _register_heif_opener():
     else:
         if getattr(MIME, "HEIF", None) is None:
             register_heif_opener()
+
 
 @lru_cache(maxsize=1)
 def _register_avif_opener():
@@ -112,6 +116,7 @@ def _register_avif_opener():
     else:
         if getattr(MIME, "AVIF", None) is None:
             register_avif_opener()
+
 
 @lru_cache(maxsize=1)
 def _register_custom_pil_openers():
@@ -475,7 +480,7 @@ async def read_image_from_url_async(
 ):
     from PIL import Image as PILImage
 
-    register_custom_pil_openers()
+    _register_custom_pil_openers()
 
     loop = asyncio.get_running_loop()
 
@@ -1006,8 +1011,8 @@ class ImageUrl(HttpsOrDataUrl):
             raise ImageTooLargeException(
                 input=self,
                 location=self._loc,
-                max_width=config.max_width,  # type: ignore[arg-type]
-                max_height=config.max_height,  # type: ignore[arg-type]
+                max_width=config.max_width,  # type: ignore[call-arg]
+                max_height=config.max_height,  # type: ignore[call-arg]
                 billable_units=0,
             )
 
