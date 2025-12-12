@@ -27,3 +27,8 @@ dmypy.json
 tmp/
 
 /docs/
+
+venv
+
+
+

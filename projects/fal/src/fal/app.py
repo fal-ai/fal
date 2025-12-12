@@ -6,12 +6,14 @@ import json
 import os
 import queue
 import re
+import sys
 import threading
 import time
 import typing
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass
-from typing import Any, Callable, ClassVar, Literal, TypeVar
+from pathlib import Path
+from typing import Any, Callable, ClassVar, Optional, TypeVar
 
 import fastapi
 import grpc.aio as async_grpc
@@ -27,13 +29,22 @@ from fal.api import (
 from fal.api import (
     function as fal_function,
 )
+from fal.container import ContainerImage
 from fal.exceptions import FalServerlessException, RequestCancelledException
 from fal.logging import get_logger
+from fal.sdk import AuthModeLiteral
 from fal.toolkit.file import request_lifecycle_preference
 from fal.toolkit.file.providers.fal import LIFECYCLE_PREFERENCE
 
 REALTIME_APP_REQUIREMENTS = ["websockets", "msgpack"]
 REQUEST_ID_KEY = "x-fal-request-id"
+DEFAULT_APP_FILES_IGNORE = [
+    r"\.pyc$",
+    r"__pycache__/",
+    r"\.git/",
+    r"\.DS_Store$",
+]
+
 
 EndpointT = TypeVar("EndpointT", bound=Callable[..., Any])
 logger = get_logger(__name__)
@@ -92,13 +103,15 @@ async def _set_logger_labels(
         code = await res.code()
         assert str(code) == "StatusCode.OK", str(code)
     except BaseException:
-        # NOTE hiding this for now to not print on every request
-        # logger.debug("Failed to set logger labels", exc_info=True)
-        pass
+        logger.debug("Failed to set logger labels", exc_info=True)
 
 
 def wrap_app(cls: type[App], **kwargs) -> IsolatedFunction:
     include_modules_from(cls)
+
+    host = kwargs.get("host", None)
+    if host:
+        cls.local_file_path = host.local_file_path
 
     def initialize_and_serve():
         app = cls()
@@ -121,6 +134,7 @@ def wrap_app(cls: type[App], **kwargs) -> IsolatedFunction:
         local_python_modules=cls.local_python_modules,
         machine_type=cls.machine_type,
         num_gpus=cls.num_gpus,
+        regions=cls.regions,
         **cls.host_kwargs,
         **kwargs,
         metadata=metadata,
@@ -297,11 +311,69 @@ def _print_python_packages() -> None:
     print("[debug] Python packages installed:", ", ".join(packages))
 
 
+def _include_app_files_path(
+    local_file_path: str | None, app_files_context_dir: str | None
+):
+    base_cloud_dir = Path("/app")
+    if local_file_path is None:
+        return
+
+    # In case of container apps, the /app directory is not created by default
+    # so we need to check if it exists before proceeding
+    if not base_cloud_dir.exists():
+        return
+
+    base_path = Path(local_file_path).resolve()
+    if base_path.is_dir():
+        original_script_dir = base_path
+    else:
+        original_script_dir = base_path.parent
+
+    if app_files_context_dir:
+        context_path = Path(app_files_context_dir)
+        if context_path.is_absolute():
+            final_script_dir = context_path.resolve()
+        else:
+            final_script_dir = (original_script_dir / context_path).resolve()
+
+        # relative path between the original script dir
+        # and where the app_files_context_dir is targetting
+        relative_path = os.path.relpath(original_script_dir, final_script_dir)
+        # cloud final_path based on the `/app` base dir,
+        final_path = base_cloud_dir / Path(relative_path)
+    else:
+        # if no app_files_context_dir is provided, the base directory is the root
+        final_path = base_cloud_dir
+
+    # Create the final path if it doesn't exist
+    # This is for cases when fal app is not in root
+    # and its parent directory is not in app_files
+    # Which means that the relative path to app won't be created by default
+    final_path.mkdir(parents=True, exist_ok=True)
+
+    # Add local files deployment path to sys.path so imports
+    # work correctly in the isolate agent
+    # Append the final path to sys.path first so that the
+    # relative directory is resolved first in case of conflicts
+    sys.path.append(str(final_path))
+
+    # Add the base cloud dir path to sys.path so that
+    # the app can access the files in the top level directory
+    # This is for cases when fal app is not in root,
+    # and user wants to access the files without using relative imports
+    sys.path.append(str(base_cloud_dir))
+
+    # Change the current working directory to the path of the app
+    # so that the app can access the files in the current directory
+    os.chdir(str(final_path))
+
+
 class App(BaseServable):
     requirements: ClassVar[list[str]] = []
     local_python_modules: ClassVar[list[str]] = []
-    machine_type: ClassVar[str] = "S"
+    machine_type: ClassVar[str | list[str]] = "S"
     num_gpus: ClassVar[int | None] = None
+    regions: ClassVar[Optional[list[str]]] = None
     host_kwargs: ClassVar[dict[str, Any]] = {
         "_scheduler": "nomad",
         "_scheduler_options": {
@@ -310,10 +382,22 @@ class App(BaseServable):
         "resolver": "uv",
         "keep_alive": 60,
     }
-    app_name: ClassVar[str]
-    app_auth: ClassVar[Literal["private", "public", "shared", None]] = None
-    request_timeout: ClassVar[int | None] = None
-    startup_timeout: ClassVar[int | None] = None
+    app_name: ClassVar[Optional[str]] = None
+    app_auth: ClassVar[Optional[AuthModeLiteral]] = None
+    app_files: ClassVar[list[str]] = []
+    app_files_ignore: ClassVar[list[str]] = DEFAULT_APP_FILES_IGNORE
+    app_files_context_dir: ClassVar[Optional[str]] = None
+    request_timeout: ClassVar[Optional[int]] = None
+    startup_timeout: ClassVar[Optional[int]] = None
+    min_concurrency: ClassVar[Optional[int]] = None
+    max_concurrency: ClassVar[Optional[int]] = None
+    concurrency_buffer: ClassVar[Optional[int]] = None
+    concurrency_buffer_perc: ClassVar[Optional[int]] = None
+    scaling_delay: ClassVar[Optional[int]] = None
+    max_multiplexing: ClassVar[Optional[int]] = None
+    kind: ClassVar[Optional[str]] = None
+    image: ClassVar[Optional[ContainerImage]] = None
+    local_file_path: ClassVar[Optional[str]] = None
 
     isolate_channel: async_grpc.Channel | None = None
 
@@ -328,7 +412,44 @@ class App(BaseServable):
         if cls.startup_timeout is not None:
             cls.host_kwargs["startup_timeout"] = cls.startup_timeout
 
-        cls.app_name = getattr(cls, "app_name", app_name)
+        if cls.app_files:
+            cls.host_kwargs["app_files"] = cls.app_files
+
+        if cls.app_files_ignore:
+            cls.host_kwargs["app_files_ignore"] = cls.app_files_ignore
+
+        if cls.app_files_context_dir is not None:
+            cls.host_kwargs["app_files_context_dir"] = cls.app_files_context_dir
+            if not cls.app_files:
+                raise ValueError(
+                    "app_files_context_dir is only supported when app_files is provided"
+                )
+
+        if cls.min_concurrency is not None:
+            cls.host_kwargs["min_concurrency"] = cls.min_concurrency
+
+        if cls.max_concurrency is not None:
+            cls.host_kwargs["max_concurrency"] = cls.max_concurrency
+
+        if cls.concurrency_buffer is not None:
+            cls.host_kwargs["concurrency_buffer"] = cls.concurrency_buffer
+
+        if cls.concurrency_buffer_perc is not None:
+            cls.host_kwargs["concurrency_buffer_perc"] = cls.concurrency_buffer_perc
+
+        if cls.scaling_delay is not None:
+            cls.host_kwargs["scaling_delay"] = cls.scaling_delay
+
+        if cls.max_multiplexing is not None:
+            cls.host_kwargs["max_multiplexing"] = cls.max_multiplexing
+
+        if cls.kind is not None:
+            cls.host_kwargs["kind"] = cls.kind
+
+        if cls.image is not None:
+            cls.host_kwargs["image"] = cls.image
+
+        cls.app_name = getattr(cls, "app_name") or app_name
 
         if cls.__init__ is not App.__init__:
             raise ValueError(
@@ -361,11 +482,23 @@ class App(BaseServable):
 
     @asynccontextmanager
     async def lifespan(self, app: fastapi.FastAPI):
+        os.environ["FAL_RUNNER_STATE"] = "SETUP"
+
+        # We want to not do any directory changes for container apps,
+        # since we don't have explicit checks to see the kind of app
+        # We check for app_files here and check kind and app_files earlier
+        # to ensure that container apps don't have app_files
+        if self.app_files:
+            _include_app_files_path(self.local_file_path, self.app_files_context_dir)
         _print_python_packages()
         await _call_any_fn(self.setup)
+
+        os.environ["FAL_RUNNER_STATE"] = "RUNNING"
+
         try:
             yield
         finally:
+            os.environ["FAL_RUNNER_STATE"] = "STOPPING"
             await _call_any_fn(self.teardown)
 
     def health(self):

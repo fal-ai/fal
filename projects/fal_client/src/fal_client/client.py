@@ -14,7 +14,16 @@ import logging
 from datetime import datetime, timezone
 from dataclasses import dataclass, field
 from functools import cached_property
-from typing import Any, AsyncIterator, Dict, Iterator, TYPE_CHECKING, Optional, Literal
+from typing import (
+    Any,
+    AsyncIterator,
+    Dict,
+    Iterator,
+    TYPE_CHECKING,
+    Optional,
+    Literal,
+    Callable,
+)
 from urllib.parse import urlencode
 
 import httpx
@@ -67,7 +76,7 @@ class CDNTokenManager:
 
     def _refresh_token(self) -> CDNToken:
         with httpx.Client() as client:
-            response = client.post(self._url, headers=self._headers, data=b"{}")
+            response = client.post(self._url, headers=self._headers, json={})
             response.raise_for_status()
             data = response.json()
 
@@ -102,9 +111,9 @@ class AsyncCDNTokenManager:
             "Content-Type": "application/json",
         }
 
-    async def _refresh_token(self) -> None:
+    async def _refresh_token(self) -> CDNToken:
         async with httpx.AsyncClient() as client:
-            response = await client.post(self._url, headers=self._headers, data=b"{}")
+            response = await client.post(self._url, headers=self._headers, json={})
             response.raise_for_status()
             data = response.json()
 
@@ -499,6 +508,7 @@ class FalClientHTTPError(FalClientError):
     message: str
     status_code: int
     response_headers: dict[str, str]
+    response: httpx.Response
 
     def __str__(self) -> str:
         return f"{self.message}"
@@ -519,6 +529,7 @@ def _raise_for_status(response: httpx.Response) -> None:
             # converting to dict to avoid httpx.Headers,
             # which means we don't support multiple values per header
             dict(response.headers),
+            response=response,
         ) from exc
 
 
@@ -641,17 +652,45 @@ MAX_ATTEMPTS = 10
 BASE_DELAY = 0.1
 MAX_DELAY = 30
 RETRY_CODES = [408, 409, 429]
+INGRESS_ERROR_CODES = [502, 503, 504]
 
 
-def _should_retry(exc: httpx.HTTPError) -> bool:
+def _is_ingress_error(response: httpx.Response) -> bool:
+    """Tell apart ingress errors from client errors."""
+
+    if response.status_code not in INGRESS_ERROR_CODES:
+        return False
+
+    if "x-fal-request-id" in response.headers:
+        # this is clearly returned from our server
+        return False
+
+    # heuristic to detect an ingress error
+    if "nginx" in response.text:
+        return True
+
+    return False
+
+
+def _should_retry_response(
+    response: httpx.Response,
+    extra_retry_codes: list[int] = [],
+) -> bool:
+    if _is_ingress_error(response):
+        return True
+
+    if response.status_code in RETRY_CODES or response.status_code in extra_retry_codes:
+        return True
+
+    return False
+
+
+def _should_retry(exc: Exception, extra_retry_codes: list[int] = []) -> bool:
     if isinstance(exc, httpx.TransportError):
         return True
 
-    if (
-        isinstance(exc, httpx.HTTPStatusError)
-        and exc.response.status_code in RETRY_CODES
-    ):
-        return True
+    if isinstance(exc, (httpx.HTTPStatusError, FalClientHTTPError)):
+        return _should_retry_response(exc.response, extra_retry_codes)
 
     return False
 
@@ -675,13 +714,18 @@ def _get_retry_delay(
 
 
 def _maybe_retry_request(
-    client: httpx.Client, method: str, url: str, **kwargs: Any
+    client: httpx.Client,
+    method: str,
+    url: str,
+    *,
+    extra_retry_codes: list[int] = [],
+    **kwargs: Any,
 ) -> httpx.Response:
     for attempt in range(1, MAX_ATTEMPTS + 1):
         try:
             return _request(client, method, url, **kwargs)
-        except httpx.HTTPError as exc:
-            if _should_retry(exc) and attempt < MAX_ATTEMPTS:
+        except (httpx.HTTPError, FalClientHTTPError) as exc:
+            if _should_retry(exc, extra_retry_codes) and attempt < MAX_ATTEMPTS:
                 delay = _get_retry_delay(
                     attempt, BASE_DELAY, MAX_DELAY, "exponential", True
                 )
@@ -691,16 +735,23 @@ def _maybe_retry_request(
                 time.sleep(delay)
                 continue
             raise
+    # Should be unreachable, added for type checkers
+    raise RuntimeError("Failed to perform request")
 
 
 async def _async_maybe_retry_request(
-    client: httpx.AsyncClient, method: str, url: str, **kwargs: Any
+    client: httpx.AsyncClient,
+    method: str,
+    url: str,
+    *,
+    extra_retry_codes: list[int] = [],
+    **kwargs: Any,
 ) -> httpx.Response:
     for attempt in range(1, MAX_ATTEMPTS + 1):
         try:
             return await _async_request(client, method, url, **kwargs)
-        except httpx.HTTPError as exc:
-            if _should_retry(exc) and attempt < MAX_ATTEMPTS:
+        except (httpx.HTTPError, FalClientHTTPError) as exc:
+            if _should_retry(exc, extra_retry_codes) and attempt < MAX_ATTEMPTS:
                 delay = _get_retry_delay(attempt, 0.1, 10, "exponential", True)
                 logger.debug(
                     f"Retrying request to {url} due to {exc} ({MAX_ATTEMPTS - attempt} attempts left)"
@@ -708,6 +759,8 @@ async def _async_maybe_retry_request(
                 await asyncio.sleep(delay)
                 continue
             raise
+    # Should be unreachable, added for type checkers
+    raise RuntimeError("Failed to perform request")
 
 
 @dataclass(frozen=True)
@@ -716,7 +769,10 @@ class SyncRequestHandle(_BaseRequestHandle):
 
     @classmethod
     def from_request_id(
-        cls, client: httpx.Client, application: str, request_id: str
+        cls,
+        client: httpx.Client,
+        application: str,
+        request_id: str,
     ) -> SyncRequestHandle:
         app_id = AppId.from_endpoint_id(application)
         prefix = f"{app_id.namespace}/" if app_id.namespace else ""
@@ -772,7 +828,11 @@ class SyncRequestHandle(_BaseRequestHandle):
 
     def cancel(self) -> None:
         """Cancel the request."""
-        response = _maybe_retry_request(self.client, "PUT", self.cancel_url)
+        response = _maybe_retry_request(
+            self.client,
+            "PUT",
+            self.cancel_url,
+        )
         _raise_for_status(response)
 
 
@@ -782,7 +842,10 @@ class AsyncRequestHandle(_BaseRequestHandle):
 
     @classmethod
     def from_request_id(
-        cls, client: httpx.AsyncClient, application: str, request_id: str
+        cls,
+        client: httpx.AsyncClient,
+        application: str,
+        request_id: str,
     ) -> AsyncRequestHandle:
         app_id = AppId.from_endpoint_id(application)
         prefix = f"{app_id.namespace}/" if app_id.namespace else ""
@@ -833,14 +896,20 @@ class AsyncRequestHandle(_BaseRequestHandle):
             continue
 
         response = await _async_maybe_retry_request(
-            self.client, "GET", self.response_url
+            self.client,
+            "GET",
+            self.response_url,
         )
         _raise_for_status(response)
         return response.json()
 
     async def cancel(self) -> None:
         """Cancel the request."""
-        response = await _async_maybe_retry_request(self.client, "PUT", self.cancel_url)
+        response = await _async_maybe_retry_request(
+            self.client,
+            "PUT",
+            self.cancel_url,
+        )
         _raise_for_status(response)
 
 
@@ -887,6 +956,7 @@ class AsyncClient:
         path: str = "",
         timeout: float | None = None,
         hint: str | None = None,
+        headers: dict[str, str] = {},
     ) -> AnyJSON:
         """Run an application with the given arguments (which will be JSON serialized). The path parameter can be used to
         specify a subpath when applicable. This method will return the result of the inference call directly.
@@ -896,9 +966,9 @@ class AsyncClient:
         if path:
             url += "/" + path.lstrip("/")
 
-        headers = {}
+        _headers: dict[str, str] = {**headers}
         if hint is not None:
-            headers["X-Fal-Runner-Hint"] = hint
+            _headers["X-Fal-Runner-Hint"] = hint
 
         response = await _async_maybe_retry_request(
             self._client,
@@ -906,7 +976,7 @@ class AsyncClient:
             url,
             json=arguments,
             timeout=timeout,
-            headers=headers,
+            headers=_headers,
         )
         _raise_for_status(response)
         return response.json()
@@ -920,6 +990,7 @@ class AsyncClient:
         hint: str | None = None,
         webhook_url: str | None = None,
         priority: Optional[Priority] = None,
+        headers: dict[str, str] = {},
     ) -> AsyncRequestHandle:
         """Submit an application with the given arguments (which will be JSON serialized). The path parameter can be used to
         specify a subpath when applicable. This method will return a handle to the request that can be used to check the status
@@ -932,12 +1003,12 @@ class AsyncClient:
         if webhook_url is not None:
             url += "?" + urlencode({"fal_webhook": webhook_url})
 
-        headers = {}
+        _headers: dict[str, str] = {**headers}
         if hint is not None:
-            headers["X-Fal-Runner-Hint"] = hint
+            _headers["X-Fal-Runner-Hint"] = hint
 
         if priority is not None:
-            headers["X-Fal-Queue-Priority"] = priority
+            _headers["X-Fal-Queue-Priority"] = priority
 
         response = await _async_maybe_retry_request(
             self._client,
@@ -945,6 +1016,7 @@ class AsyncClient:
             url,
             json=arguments,
             timeout=self.default_timeout,
+            headers=_headers,
         )
         _raise_for_status(response)
 
@@ -965,9 +1037,10 @@ class AsyncClient:
         path: str = "",
         hint: str | None = None,
         with_logs: bool = False,
-        on_enqueue: Optional[callable[[Queued], None]] = None,
-        on_queue_update: Optional[callable[[Status], None]] = None,
+        on_enqueue: Optional[Callable[[str], None]] = None,
+        on_queue_update: Optional[Callable[[Status], None]] = None,
         priority: Optional[Priority] = None,
+        headers: dict[str, str] = {},
     ) -> AnyJSON:
         handle = await self.submit(
             application,
@@ -975,6 +1048,7 @@ class AsyncClient:
             path=path,
             hint=hint,
             priority=priority,
+            headers=headers,
         )
 
         if on_enqueue is not None:
@@ -1060,7 +1134,7 @@ class AsyncClient:
 
         response = await client.post(
             CDN_URL + "/files/upload",
-            data=data,
+            content=data,
             headers=headers,
         )
         _raise_for_status(response)
@@ -1077,7 +1151,7 @@ class AsyncClient:
         if os.path.getsize(path) > MULTIPART_THRESHOLD:
             client = await self._get_cdn_client()
             return await AsyncMultipartUpload.save_file(
-                file_path=path,
+                file_path=str(path),
                 client=client,
                 token_manager=self._token_manager,
                 content_type=mime_type,
@@ -1140,6 +1214,7 @@ class SyncClient:
         path: str = "",
         timeout: float | None = None,
         hint: str | None = None,
+        headers: dict[str, str] = {},
     ) -> AnyJSON:
         """Run an application with the given arguments (which will be JSON serialized). The path parameter can be used to
         specify a subpath when applicable. This method will return the result of the inference call directly.
@@ -1149,9 +1224,9 @@ class SyncClient:
         if path:
             url += "/" + path.lstrip("/")
 
-        headers = {}
+        _headers: dict[str, str] = {**headers}
         if hint is not None:
-            headers["X-Fal-Runner-Hint"] = hint
+            _headers["X-Fal-Runner-Hint"] = hint
 
         response = _maybe_retry_request(
             self._client,
@@ -1159,7 +1234,7 @@ class SyncClient:
             url,
             json=arguments,
             timeout=timeout,
-            headers=headers,
+            headers=_headers,
         )
         _raise_for_status(response)
         return response.json()
@@ -1173,6 +1248,7 @@ class SyncClient:
         hint: str | None = None,
         webhook_url: str | None = None,
         priority: Optional[Priority] = None,
+        headers: dict[str, str] = {},
     ) -> SyncRequestHandle:
         """Submit an application with the given arguments (which will be JSON serialized). The path parameter can be used to
         specify a subpath when applicable. This method will return a handle to the request that can be used to check the status
@@ -1185,12 +1261,12 @@ class SyncClient:
         if webhook_url is not None:
             url += "?" + urlencode({"fal_webhook": webhook_url})
 
-        headers = {}
+        _headers: dict[str, str] = {**headers}
         if hint is not None:
-            headers["X-Fal-Runner-Hint"] = hint
+            _headers["X-Fal-Runner-Hint"] = hint
 
         if priority is not None:
-            headers["X-Fal-Queue-Priority"] = priority
+            _headers["X-Fal-Queue-Priority"] = priority
 
         response = _maybe_retry_request(
             self._client,
@@ -1198,7 +1274,7 @@ class SyncClient:
             url,
             json=arguments,
             timeout=self.default_timeout,
-            headers=headers,
+            headers=_headers,
         )
         _raise_for_status(response)
 
@@ -1219,9 +1295,10 @@ class SyncClient:
         path: str = "",
         hint: str | None = None,
         with_logs: bool = False,
-        on_enqueue: Optional[callable[[Queued], None]] = None,
-        on_queue_update: Optional[callable[[Status], None]] = None,
+        on_enqueue: Optional[Callable[[str], None]] = None,
+        on_queue_update: Optional[Callable[[Status], None]] = None,
         priority: Optional[Priority] = None,
+        headers: dict[str, str] = {},
     ) -> AnyJSON:
         handle = self.submit(
             application,
@@ -1229,6 +1306,7 @@ class SyncClient:
             path=path,
             hint=hint,
             priority=priority,
+            headers=headers,
         )
 
         if on_enqueue is not None:
@@ -1310,7 +1388,7 @@ class SyncClient:
 
         response = client.post(
             CDN_URL + "/files/upload",
-            data=data,
+            content=data,
             headers=headers,
         )
         _raise_for_status(response)
@@ -1327,7 +1405,7 @@ class SyncClient:
         if os.path.getsize(path) > MULTIPART_THRESHOLD:
             client = self._get_cdn_client()
             return MultipartUpload.save_file(
-                file_path=path,
+                file_path=str(path),
                 client=client,
                 token_manager=self._token_manager,
                 content_type=mime_type,

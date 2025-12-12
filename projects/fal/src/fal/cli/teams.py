@@ -18,12 +18,14 @@ def add_parser(main_subparsers, parents):
         required=True,
     )
 
+    from .parser import get_output_parser
+
     list_help = "List teams."
     list_parser = subparsers.add_parser(
         "list",
         description=list_help,
         help=list_help,
-        parents=parents,
+        parents=[*parents, get_output_parser()],
     )
     list_parser.set_defaults(func=_list_accounts)
 

@@ -17,6 +17,15 @@ class GoogleColabState:
         self.lock = Lock()
         self.secret: Optional[str] = None
 
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        state["lock"] = None  # type: ignore
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self.lock = Lock()
+
 
 _colab_state = GoogleColabState()
 

@@ -22,8 +22,8 @@ authors = [{ name = "Features & Labels <support@fal.ai>"}]
 readme = "README.md"
 requires-python = ">=3.8"
 dependencies = [
-    "isolate[build]>=0.18.0,<0.20.0",
-    "isolate-proto>=0.12.0,<0.13.0",
+    "isolate[build]>=0.18.0,<0.22.0",
+    "isolate-proto>=0.26.0",
     "grpcio>=1.64.0,<2",
     "dill==0.3.7",
     "cloudpickle==3.0.0",
@@ -34,24 +34,29 @@ dependencies = [
     "grpc-interceptor>=0.15.0,<1",
     "colorama>=0.4.6,<1",
     "portalocker>=2.7.0,<3",
-    "rich>=13.3.2,<14",
+    "rich>=13.3.2,<15",
     "rich_argparse",
     "packaging>=21.3",
     "pathspec>=0.11.1,<1",
-    "pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,<2.11",
+    "pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*",
     # serve=True dependencies
-    "fastapi>=0.99.1,<1",
+    # https://github.com/fastapi/fastapi/issues/14221
+    "fastapi>=0.99.1,<0.119",
     "starlette-exporter>=0.21.0",
     # rest-api-client dependencies
     "httpx>=0.15.4",
+    "httpx-sse",
     "attrs>=21.3.0",
     "python-dateutil>=2.8.0,<3",
     "types-python-dateutil>=2.8.0,<3",
+    "dateparser>=1.2.0,<2",
+    "types-dateparser>=1.2.0,<2",
+    "tuspy==1.1.0",
     # For 3.9 and earlier, importlib-metadata's newer versions are included in the standard library.
     'importlib-metadata>=4.4; python_version < "3.10"',
     "msgpack>=1.0.7,<2",
     "websockets>=12.0",
-    "pillow>=10.2.0,<11",
+    "pillow>=10.2.0,<12",
     "pyjwt[crypto]>=2.8.0,<3",
     "uvicorn>=0.29.0,<1",
     "cookiecutter",
@@ -74,6 +79,7 @@ test = [
     "pytest-timeout",
     "flaky",
     "boto3",
+    "numpy",
 ]
 dev = [
     "fal[docs,test]",

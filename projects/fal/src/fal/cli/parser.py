@@ -1,5 +1,7 @@
 import argparse
 import sys
+from datetime import datetime, timedelta
+from typing import Optional
 
 import rich_argparse
 
@@ -53,6 +55,92 @@ class DictAction(argparse.Action):
             d[key] = value
 
         setattr(args, self.dest, d)
+
+
+class SinceAction(argparse.Action):
+    LIMIT_LEEWAY = timedelta(minutes=1)
+
+    def _parse_since(self, value: str) -> Optional[datetime]:
+        import dateparser
+
+        return dateparser.parse(
+            value,
+            settings={
+                "PREFER_DATES_FROM": "past",
+            },
+        )
+
+    def __init__(self, *args, **kwargs):
+        self._limit = kwargs.pop("limit", None)
+        if self._limit:
+            if not isinstance(self._limit, str):
+                raise ValueError(
+                    f"Invalid 'limit' value for SinceAction: {self._limit!r}"
+                )
+
+            self._limit_dt = self._parse_since(self._limit)
+            if not self._limit_dt:
+                raise ValueError(
+                    f"Invalid 'limit' value for SinceAction: {self._limit!r}"
+                )
+
+        super().__init__(*args, **kwargs)
+
+        # If a default is provided as a string like "1h ago", parse it into a datetime
+        # so callers can rely on receiving a datetime even when the flag isn't passed.
+        default_value = getattr(self, "default", None)
+        if default_value is not None and default_value is not argparse.SUPPRESS:
+            if isinstance(default_value, str):
+                dt = self._parse_since(default_value)
+                if not dt:
+                    raise ValueError(
+                        f"Invalid 'default' value for SinceAction: {default_value!r}"
+                    )
+                if (
+                    self._limit
+                    and self._limit_dt is not None
+                    and dt < self._limit_dt - self.LIMIT_LEEWAY
+                ):
+                    raise ValueError(
+                        "Default since value is older than the allowed limit "
+                        f"{self._limit}."
+                    )
+                self.default = dt
+            elif isinstance(default_value, datetime):
+                if (
+                    self._limit
+                    and self._limit_dt is not None
+                    and default_value < self._limit_dt - self.LIMIT_LEEWAY
+                ):
+                    raise ValueError(
+                        "Default since value is older than the allowed limit "
+                        f"{self._limit}."
+                    )
+
+    def __call__(self, parser, args, values, option_string=None):  # noqa: ARG002
+        if values is None:
+            setattr(args, self.dest, None)
+            return
+
+        dt = self._parse_since(values)
+        if not dt:
+            raise argparse.ArgumentError(
+                self,
+                (
+                    f"Invalid since value: {values}. "
+                    "Use 'now', relative like '15m' or '24h ago', "
+                    "or an ISO timestamp."
+                ),
+            )
+
+        if self._limit and self._limit_dt is not None:
+            if dt < self._limit_dt - self.LIMIT_LEEWAY:
+                raise argparse.ArgumentError(
+                    self,
+                    f"Since value is older than the allowed limit {self._limit}.",
+                )
+
+        setattr(args, self.dest, dt)
 
 
 def _find_parser(parser, func):
@@ -114,5 +202,12 @@ def get_output_parser():
         default="pretty",
         choices=["pretty", "json"],
         help="Modify the command output",
+    )
+    group.add_argument(
+        "--json",
+        action="store_const",
+        const="json",
+        dest="output",
+        help="Output in JSON format (same as --output json)",
     )
     return parser

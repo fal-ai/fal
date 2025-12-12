@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 USER_AGENT = "fal-sdk/1.14.0 (python)"
 MULTIPART_THRESHOLD = 10 * 1024 * 1024  # 10MB
 MULTIPART_CHUNK_SIZE = 10 * 1024 * 1024  # 10MB
-MULTIPART_WORKERS = 2  # only 2 because our REST is currently struggling with more
+MULTIPART_WORKERS = 10
 
 
 def _compute_md5(lpath, chunk_size=8192):
@@ -30,7 +30,7 @@ def _compute_md5(lpath, chunk_size=8192):
 class FalFileSystem(AbstractFileSystem):
     @cached_property
     def _client(self) -> "httpx.Client":
-        from httpx import Client
+        from httpx import Client, Timeout
 
         from fal.flags import REST_URL
         from fal.sdk import get_default_credentials
@@ -42,6 +42,12 @@ class FalFileSystem(AbstractFileSystem):
                 **creds.to_headers(),
                 "User-Agent": USER_AGENT,
             },
+            timeout=Timeout(
+                connect=30,
+                read=4 * 60,  # multipart complete can take time
+                write=5 * 60,  # we could be uploading slowly
+                pool=30,
+            ),
         )
 
     def _request(self, method, path, **kwargs):
@@ -224,6 +230,7 @@ class FalFileSystem(AbstractFileSystem):
             "POST",
             f"/files/file/url/{abs_rpath}",
             json={"url": url},
+            timeout=10 * 60,  # 10 minutes in seconds
         )
         self.dircache.clear()
 

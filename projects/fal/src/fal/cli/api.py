@@ -2,8 +2,6 @@ import re
 
 import rich
 
-import fal.apps
-
 # = or := only
 KV_SPLIT_RE = re.compile(r"(=|:=)")
 
@@ -24,6 +22,8 @@ def _api(args):
 
 
 def stream_run(model_id: str, params: dict):
+    import fal.apps
+
     res = fal.apps.stream(model_id, params)  # type: ignore
     for line in res:
         if isinstance(line, str):
@@ -40,6 +40,8 @@ def queue_run(model_id: str, params: dict):
     from rich.live import Live
     from rich.panel import Panel
     from rich.text import Text
+
+    import fal.apps
 
     handle = fal.apps.submit(model_id, params)  # type: ignore
     logs = []  # type: ignore

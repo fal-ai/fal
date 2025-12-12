@@ -40,35 +40,54 @@ def _add_create_parser(subparsers, parents):
 
 
 def _list(args):
-    from rich.table import Table
-
-    table = Table()
-    table.add_column("Key ID")
-    table.add_column("Created At")
-    table.add_column("Scope")
-    table.add_column("Description")
+    import json
 
     client = get_client(args.host, args.team)
     with client.connect() as connection:
         keys = connection.list_user_keys()
-        for key in keys:
-            table.add_row(
-                key.key_id,
-                str(key.created_at),
-                str(key.scope.value),
-                key.alias,
-            )
 
-    args.console.print(table)
+        if args.output == "json":
+            json_keys = [
+                {
+                    "key_id": key.key_id,
+                    "created_at": str(key.created_at),
+                    "scope": str(key.scope.value),
+                    "description": key.alias,
+                }
+                for key in keys
+            ]
+            args.console.print(json.dumps({"keys": json_keys}))
+        elif args.output == "pretty":
+            from rich.table import Table
+
+            table = Table()
+            table.add_column("Key ID")
+            table.add_column("Created At")
+            table.add_column("Scope")
+            table.add_column("Description")
+
+            for key in keys:
+                table.add_row(
+                    key.key_id,
+                    str(key.created_at),
+                    str(key.scope.value),
+                    key.alias,
+                )
+
+            args.console.print(table)
+        else:
+            raise AssertionError(f"Invalid output format: {args.output}")
 
 
 def _add_list_parser(subparsers, parents):
+    from .parser import get_output_parser
+
     list_help = "List keys."
     parser = subparsers.add_parser(
         "list",
         description=list_help,
         help=list_help,
-        parents=parents,
+        parents=[*parents, get_output_parser()],
     )
     parser.set_defaults(func=_list)
 

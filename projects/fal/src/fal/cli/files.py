@@ -42,6 +42,13 @@ def _mv(args):
     fs.mv(args.source, args.destination)
 
 
+def _rm(args):
+    from fal.files import FalFileSystem
+
+    fs = FalFileSystem()
+    fs.rm(args.path)
+
+
 def add_parser(main_subparsers, parents):
     files_help = "Manage fal files."
     parser = main_subparsers.add_parser(
@@ -126,3 +133,13 @@ def add_parser(main_subparsers, parents):
     mv_parser.add_argument("source", type=str, help="Remote source path")
     mv_parser.add_argument("destination", type=str, help="Remote destination path")
     mv_parser.set_defaults(func=_mv)
+
+    rm_help = "Recursively remove a remote file or directory."
+    rm_parser = subparsers.add_parser(
+        "rm",
+        description=rm_help,
+        help=rm_help,
+        parents=parents,
+    )
+    rm_parser.add_argument("path", type=str, help="Remote path")
+    rm_parser.set_defaults(func=_rm)

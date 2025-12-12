@@ -21,6 +21,7 @@ from typing import (
     Iterator,
     Literal,
     NamedTuple,
+    Optional,
     TypeVar,
     cast,
     overload,
@@ -42,6 +43,7 @@ from typing_extensions import Concatenate, ParamSpec
 
 import fal.flags as flags
 from fal._serialization import include_module, include_modules_from, patch_pickle
+from fal.console import console
 from fal.container import ContainerImage
 from fal.exceptions import (
     AppException,
@@ -50,17 +52,23 @@ from fal.exceptions import (
     FieldException,
 )
 from fal.exceptions._cuda import _is_cuda_oom_exception
+from fal.file_sync import FileSync
 from fal.logging.isolate import IsolateLogPrinter
 from fal.sdk import (
     FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER,
+    FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER_PERC,
     FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
     FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING,
     FAL_SERVERLESS_DEFAULT_MIN_CONCURRENCY,
+    AuthModeLiteral,
     Credentials,
+    DeploymentStrategyLiteral,
     FalServerlessClient,
     FalServerlessConnection,
+    File,
     HostedRunState,
     MachineRequirements,
+    RegisterApplicationResult,
     get_agent_credentials,
     get_default_credentials,
 )
@@ -80,6 +88,9 @@ SERVE_REQUIREMENTS = [
     f"tblib=={tblib.__version__}",
     "uvicorn",
     "starlette_exporter",
+    # workaround for prometheus_client 0.23.0
+    # https://github.com/prometheus/client_python/issues/1135
+    "packaging",
     "structlog",
     "tomli",
     "tomli-w",
@@ -417,11 +428,14 @@ class FalServerlessHost(Host):
         {
             "machine_type",
             "machine_types",
+            "regions",
             "num_gpus",
             "keep_alive",
             "max_concurrency",
             "min_concurrency",
             "concurrency_buffer",
+            "concurrency_buffer_perc",
+            "scaling_delay",
             "max_multiplexing",
             "setup_function",
             "metadata",
@@ -431,16 +445,25 @@ class FalServerlessHost(Host):
             "_base_image",
             "_scheduler",
             "_scheduler_options",
+            "app_files",
+            "app_files_ignore",
+            "app_files_context_dir",
         }
     )
 
     url: str = FAL_SERVERLESS_DEFAULT_URL
+    local_file_path: str = ""
     credentials: Credentials = field(default_factory=get_default_credentials)
-    _lock: threading.Lock = field(default_factory=threading.Lock)
 
-    _log_printer = IsolateLogPrinter(debug=flags.DEBUG)
+    _lock: threading.Lock = field(default_factory=threading.Lock, init=False)
 
-    _thread_pool: ThreadPoolExecutor = field(default_factory=ThreadPoolExecutor)
+    _log_printer: IsolateLogPrinter = field(
+        default_factory=lambda: IsolateLogPrinter(debug=flags.DEBUG), init=False
+    )
+
+    _thread_pool: ThreadPoolExecutor = field(
+        default_factory=ThreadPoolExecutor, init=False
+    )
 
     def __getstate__(self) -> dict[str, Any]:
         state = self.__dict__.copy()
@@ -458,17 +481,48 @@ class FalServerlessHost(Host):
             client = FalServerlessClient(self.url, self.credentials)
             return client.connect()
 
+    def _app_files_sync(self, options: Options) -> list[File]:
+        import re  # noqa: PLC0415
+
+        app_files: list[str] = options.host.get("app_files", [])
+        app_files_ignore_str = options.host.get("app_files_ignore", [])
+        app_files_ignore = [re.compile(pattern) for pattern in app_files_ignore_str]
+        app_files_context_dir = options.host.get("app_files_context_dir", None)
+        res = []
+        if app_files:
+            sync = FileSync(self.local_file_path)
+            files, errors = sync.sync_files(
+                app_files,
+                files_ignore=app_files_ignore,
+                files_context_dir=app_files_context_dir,
+            )
+            if errors:
+                for error in errors:
+                    console.print(
+                        f"Error uploading file {error.relative_path}: {error.message}"
+                    )
+
+                raise FalServerlessException("Error uploading files")
+
+            res = [
+                File(relative_path=file.relative_path, hash=file.hash) for file in files
+            ]
+
+        return res
+
     @_handle_grpc_error()
     def register(
         self,
         func: Callable[ArgsT, ReturnT],
         options: Options,
-        application_name: str | None = None,
-        application_auth_mode: Literal["public", "shared", "private"] | None = None,
-        metadata: dict[str, Any] | None = None,
-        deployment_strategy: Literal["recreate", "rolling"] = "recreate",
+        *,
+        application_name: Optional[str] = None,
+        application_auth_mode: Optional[AuthModeLiteral] = None,
+        source_code: Optional[str] = None,
+        metadata: Optional[dict[str, Any]] = None,
+        deployment_strategy: DeploymentStrategyLiteral,
         scale: bool = True,
-    ) -> str | None:
+    ) -> Optional[RegisterApplicationResult]:
         from isolate.backends.common import active_python
 
         environment_options = options.environment.copy()
@@ -485,10 +539,13 @@ class FalServerlessHost(Host):
         max_concurrency = options.host.get("max_concurrency")
         min_concurrency = options.host.get("min_concurrency")
         concurrency_buffer = options.host.get("concurrency_buffer")
+        concurrency_buffer_perc = options.host.get("concurrency_buffer_perc")
+        scaling_delay = options.host.get("scaling_delay")
         max_multiplexing = options.host.get("max_multiplexing")
         exposed_port = options.get_exposed_port()
         request_timeout = options.host.get("request_timeout")
         startup_timeout = options.host.get("startup_timeout")
+        regions = options.host.get("regions")
         machine_requirements = MachineRequirements(
             machine_types=machine_type,  # type: ignore
             num_gpus=options.host.get("num_gpus"),
@@ -501,9 +558,14 @@ class FalServerlessHost(Host):
             max_concurrency=max_concurrency,
             min_concurrency=min_concurrency,
             concurrency_buffer=concurrency_buffer,
+            concurrency_buffer_perc=concurrency_buffer_perc,
+            scaling_delay=scaling_delay,
             request_timeout=request_timeout,
             startup_timeout=startup_timeout,
+            valid_regions=regions,
         )
+
+        app_files = self._app_files_sync(options)
 
         partial_func = _prepare_partial_func(func)
 
@@ -521,18 +583,20 @@ class FalServerlessHost(Host):
             environments,
             application_name=application_name,
             auth_mode=application_auth_mode,
+            source_code=source_code,
             machine_requirements=machine_requirements,
             metadata=metadata,
             deployment_strategy=deployment_strategy,
             scale=scale,
             # By default, logs are public
             private_logs=options.host.get("private_logs", False),
+            files=app_files,
         ):
             for log in partial_result.logs:
                 self._log_printer.print(log)
 
             if partial_result.result:
-                return partial_result.result.application_id
+                return partial_result
 
         return None
 
@@ -558,6 +622,8 @@ class FalServerlessHost(Host):
         max_concurrency = options.host.get("max_concurrency")
         min_concurrency = options.host.get("min_concurrency")
         concurrency_buffer = options.host.get("concurrency_buffer")
+        concurrency_buffer_perc = options.host.get("concurrency_buffer_perc")
+        scaling_delay = options.host.get("scaling_delay")
         max_multiplexing = options.host.get("max_multiplexing")
         base_image = options.host.get("_base_image", None)
         scheduler = options.host.get("_scheduler", None)
@@ -578,9 +644,13 @@ class FalServerlessHost(Host):
             max_concurrency=max_concurrency,
             min_concurrency=min_concurrency,
             concurrency_buffer=concurrency_buffer,
+            concurrency_buffer_perc=concurrency_buffer_perc,
+            scaling_delay=scaling_delay,
             request_timeout=request_timeout,
             startup_timeout=startup_timeout,
         )
+
+        app_files = self._app_files_sync(options)
 
         return_value = _UNSET
         # Allow isolate provided arguments (such as setup function) to take
@@ -591,6 +661,7 @@ class FalServerlessHost(Host):
             environments,
             machine_requirements=machine_requirements,
             setup_function=setup_function,
+            files=app_files,
         ):
             result_handler(partial_result)
 
@@ -763,11 +834,14 @@ def function(
     # FalServerlessHost options
     metadata: dict[str, Any] | None = None,
     machine_type: str | list[str] = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
+    regions: list[str] | None = None,
     num_gpus: int | None = None,
     keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
     max_multiplexing: int = FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING,
     min_concurrency: int = FAL_SERVERLESS_DEFAULT_MIN_CONCURRENCY,
     concurrency_buffer: int = FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER,
+    concurrency_buffer_perc: int = FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER_PERC,
+    scaling_delay: int | None = None,
     request_timeout: int | None = None,
     startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
@@ -793,11 +867,14 @@ def function(
     # FalServerlessHost options
     metadata: dict[str, Any] | None = None,
     machine_type: str | list[str] = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
+    regions: list[str] | None = None,
     num_gpus: int | None = None,
     keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
     max_multiplexing: int = FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING,
     min_concurrency: int = FAL_SERVERLESS_DEFAULT_MIN_CONCURRENCY,
     concurrency_buffer: int = FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER,
+    concurrency_buffer_perc: int = FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER_PERC,
+    scaling_delay: int | None = None,
     request_timeout: int | None = None,
     startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
@@ -875,11 +952,14 @@ def function(
     # FalServerlessHost options
     metadata: dict[str, Any] | None = None,
     machine_type: str | list[str] = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
+    regions: list[str] | None = None,
     num_gpus: int | None = None,
     keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
     max_multiplexing: int = FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING,
     min_concurrency: int = FAL_SERVERLESS_DEFAULT_MIN_CONCURRENCY,
     concurrency_buffer: int = FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER,
+    concurrency_buffer_perc: int = FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER_PERC,
+    scaling_delay: int | None = None,
     request_timeout: int | None = None,
     startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
@@ -910,11 +990,14 @@ def function(
     # FalServerlessHost options
     metadata: dict[str, Any] | None = None,
     machine_type: str | list[str] = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
+    regions: list[str] | None = None,
     num_gpus: int | None = None,
     keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
     max_multiplexing: int = FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING,
     min_concurrency: int = FAL_SERVERLESS_DEFAULT_MIN_CONCURRENCY,
     concurrency_buffer: int = FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER,
+    concurrency_buffer_perc: int = FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER_PERC,
+    scaling_delay: int | None = None,
     request_timeout: int | None = None,
     startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
@@ -939,11 +1022,14 @@ def function(
     # FalServerlessHost options
     metadata: dict[str, Any] | None = None,
     machine_type: str | list[str] = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
+    regions: list[str] | None = None,
     num_gpus: int | None = None,
     keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
     max_multiplexing: int = FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING,
     min_concurrency: int = FAL_SERVERLESS_DEFAULT_MIN_CONCURRENCY,
     concurrency_buffer: int = FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER,
+    concurrency_buffer_perc: int = FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER_PERC,
+    scaling_delay: int | None = None,
     request_timeout: int | None = None,
     startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
@@ -968,11 +1054,14 @@ def function(
     # FalServerlessHost options
     metadata: dict[str, Any] | None = None,
     machine_type: str | list[str] = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
+    regions: list[str] | None = None,
     num_gpus: int | None = None,
     keep_alive: int = FAL_SERVERLESS_DEFAULT_KEEP_ALIVE,
     max_multiplexing: int = FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING,
     min_concurrency: int = FAL_SERVERLESS_DEFAULT_MIN_CONCURRENCY,
     concurrency_buffer: int = FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER,
+    concurrency_buffer_perc: int = FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER_PERC,
+    scaling_delay: int | None = None,
     request_timeout: int | None = None,
     startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
@@ -997,6 +1086,9 @@ def function(  # type: ignore
     # NOTE: assuming kind="container" if image is provided
     if config.get("image"):
         kind = "container"
+
+    if kind == "container" and config.get("app_files"):
+        raise ValueError("app_files is not supported for container apps.")
 
     options = host.parse_options(kind=kind, **config)
 

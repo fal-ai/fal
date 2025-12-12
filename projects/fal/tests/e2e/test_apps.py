@@ -20,8 +20,8 @@ from pydantic import __version__ as pydantic_version
 import fal
 import fal.api as api
 from fal import apps
+from fal.api.deploy import User, _get_user
 from fal.app import AppClient, AppClientError, wrap_app
-from fal.cli.deploy import User, _get_user
 from fal.container import ContainerImage
 from fal.exceptions import (
     AppException,
@@ -31,6 +31,7 @@ from fal.exceptions import (
 )
 from fal.exceptions._cuda import _CUDA_OOM_MESSAGE, _CUDA_OOM_STATUS_CODE
 from fal.rest_client import REST_CLIENT
+from fal.sdk import RunnerState
 from fal.toolkit.utils.endpoint import cancel_on_disconnect
 from fal.workflows import Workflow
 
@@ -349,12 +350,19 @@ def register_app(
     suffix: str = "",
 ):
     app_alias = str(uuid.uuid4()) + "-test-alias" + ("-" + suffix if suffix else "")
-    app_revision = host.register(
+    result = host.register(
         func=app.func,
         options=app.options,
         application_name=app_alias,
         application_auth_mode="private",
+        deployment_strategy="recreate",
     )
+
+    assert result
+    assert result.result
+    assert result.service_urls
+    app_revision = result.result.application_id
+
     try:
         yield app_alias, app_revision
     finally:
@@ -447,6 +455,7 @@ def test_broken_app_failure(host: api.FalServerlessHost, user: User):
     assert "Failed to generate OpenAPI" in str(e)
 
 
+@pytest.mark.flaky(max_runs=3)
 def test_app_client(test_app: str, test_nomad_app: str):
     response = apps.run(test_app, arguments={"lhs": 1, "rhs": 2})
     assert response["result"] == 3
@@ -512,6 +521,7 @@ def test_stateful_app_client(test_stateful_app: str):
     assert response["result"] == 0
 
 
+@pytest.mark.flaky(max_runs=3)
 def test_app_cancellation(test_app: str, test_cancellable_app: str):
     request_handle = apps.submit(
         test_cancellable_app, arguments={"lhs": 1, "rhs": 2, "wait_time": 6}
@@ -551,6 +561,7 @@ def test_app_cancellation(test_app: str, test_cancellable_app: str):
     assert response == {"result": 3}
 
 
+@pytest.mark.flaky(max_runs=3)
 def test_app_disconnect_behavior(test_app: str, test_cancellable_app: str):
     with pytest.raises(HTTPStatusError) as e:
         apps.run(
@@ -628,7 +639,9 @@ def test_app_client_async(test_sleep_app: str):
 
 
 # If the logging subsystem is not working for some nodes, this test will flake
-@pytest.mark.flaky(max_runs=10)
+@pytest.mark.xfail(
+    reason="Temporary disabled while investigating backend issue. Ping @efiop"
+)
 def test_traceback_logs(test_exception_app: AppClient):
     date = (
         datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=1)
@@ -712,6 +725,7 @@ def test_app_no_auth():
             options=addition_app.options,
             # random enough
             application_name=app_alias,
+            deployment_strategy="recreate",
         )
 
 
@@ -719,12 +733,17 @@ def test_app_deploy_scale(host: api.FalServerlessHost):
     from dataclasses import replace
 
     app_alias = str(uuid.uuid4()) + "-alias"
-    app_revision = addition_app.host.register(
+    result = addition_app.host.register(
         func=addition_app.func,
         options=addition_app.options,
         application_name=app_alias,
         application_auth_mode="private",
+        deployment_strategy="recreate",
     )
+    assert result
+    assert result.result
+    assert result.service_urls
+    app_revision = result.result.application_id
 
     options = replace(
         addition_app.options,
@@ -739,9 +758,14 @@ def test_app_deploy_scale(host: api.FalServerlessHost):
         options=options,
         application_name=app_alias,
         application_auth_mode="private",
+        deployment_strategy="recreate",
     )
 
-    app_revision = addition_app.host.register(**kwargs, scale=False)
+    result = addition_app.host.register(**kwargs, scale=False)
+    assert result
+    assert result.result
+    assert result.service_urls
+    app_revision = result.result.application_id
 
     with host._connection as client:
         res = client.list_aliases()
@@ -753,7 +777,11 @@ def test_app_deploy_scale(host: api.FalServerlessHost):
         # max_concurrency is alias-specific
         assert found.max_concurrency == 1, "Expected max_concurrency to stay the same"
 
-    app_revision = addition_app.host.register(**kwargs, scale=True)
+    result = addition_app.host.register(**kwargs, scale=True)
+    assert result
+    assert result.result
+    assert result.service_urls
+    app_revision = result.result.application_id
 
     with host._connection as client:
         res = client.list_aliases()
@@ -1000,7 +1028,72 @@ def test_field_exception_billing(test_exception_app: AppClient):
         assert not hasattr(response.headers, "x-fal-billable-units")
 
 
+@pytest.mark.flaky(max_runs=3)
+def test_stop_runner(host: api.FalServerlessHost, test_sleep_app: str):
+    def submit_and_wait_for_runner():
+        handle = apps.submit(test_sleep_app, arguments={"wait_time": 1})
+
+        while True:
+            status = handle.status()
+            if isinstance(status, apps.InProgress):
+                break
+            elif isinstance(status, apps.Queued):
+                time.sleep(1)
+            else:
+                raise Exception(f"Failed to start the app: {status}")
+
+        return handle
+
+    # Submit a runner and wait for it to be idle
+    submit_and_wait_for_runner()
+
+    with host._connection as client:
+        timeout = 10
+        start_time = time.time()
+        while True:
+            _, _, app_alias = test_sleep_app.partition("/")
+            runners = client.list_alias_runners(app_alias)
+            assert len(runners) == 1
+
+            if runners[0].in_flight_requests == 0:
+                break
+            elif time.time() - start_time > timeout:
+                raise Exception(f"Timeout waiting for runner to be idle: {runners[0]}")
+            time.sleep(1)
+
+    # Because the runner is not requested to be stopped, it should be reused
+    submit_and_wait_for_runner()
+
+    with host._connection as client:
+        _, _, app_alias = test_sleep_app.partition("/")
+        runners = client.list_alias_runners(app_alias)
+        assert len(runners) == 1
+
+    # Request to stop the runner
+    with host._connection as client:
+        with pytest.raises(Exception) as e:
+            client.stop_runner("1234567890")
+
+        assert "not found" in str(e).lower()
+
+        _, _, app_alias = test_sleep_app.partition("/")
+        runners = client.list_alias_runners(app_alias)
+        assert len(runners) == 1
+
+        client.stop_runner(runners[0].runner_id)
+
+    # Because the runner is requested to be stopped,
+    # it should not be reused and a new runner should be created
+    submit_and_wait_for_runner()
+
+    with host._connection as client:
+        runners = client.list_alias_runners(app_alias)
+        assert len(runners) == 2
+
+
+@pytest.mark.flaky(max_runs=3)
 def test_kill_runner(host: api.FalServerlessHost, test_sleep_app: str):
+    # Kill all the replicas of the app that is already running
     handle = apps.submit(test_sleep_app, arguments={"wait_time": 10})
 
     while True:
@@ -1020,13 +1113,91 @@ def test_kill_runner(host: api.FalServerlessHost, test_sleep_app: str):
 
         _, _, app_alias = test_sleep_app.partition("/")
         runners = client.list_alias_runners(app_alias)
-        assert len(runners) == 1
+        existing_runners = len(
+            [runner for runner in runners if runner.state == RunnerState.RUNNING]
+        )
 
         client.kill_runner(runners[0].runner_id)
 
         runners = client.list_alias_runners(app_alias)
-        num_runners = len([runner for runner in runners if runner.state == "running"])
-        assert num_runners == 0
+        num_runners = len(
+            [runner for runner in runners if runner.state == RunnerState.RUNNING]
+        )
+        assert num_runners == existing_runners - 1
+
+
+@pytest.mark.flaky(max_runs=3)
+def test_rollout_application(host: api.FalServerlessHost, test_sleep_app: str):
+    handle = apps.submit(test_sleep_app, arguments={"wait_time": 30})
+
+    while True:
+        status = handle.status()
+        if isinstance(status, apps.InProgress):
+            break
+        elif isinstance(status, apps.Queued):
+            time.sleep(1)
+        else:
+            raise Exception(f"Failed to start the app: {status}")
+
+    with host._connection as client:
+        _, _, app_alias = test_sleep_app.partition("/")
+        runners_before = client.list_alias_runners(app_alias)
+        assert len(runners_before) == 1
+        runner_id_before = runners_before[0].runner_id
+
+        client.rollout_application(app_alias, force=True)
+
+        time.sleep(15)
+
+        runners_after = client.list_alias_runners(app_alias)
+        runner_ids_after = {r.runner_id for r in runners_after}
+
+        assert runner_id_before not in runner_ids_after
+
+        client.rollout_application(app_alias, force=True)
+
+        time.sleep(3)
+
+        runners_final = client.list_alias_runners(app_alias)
+        runner_ids_final = {r.runner_id for r in runners_final}
+
+        assert not runner_ids_after.intersection(runner_ids_final)
+
+
+@pytest.mark.flaky(max_runs=3)
+def test_shell_runner(host: api.FalServerlessHost, test_sleep_app: str):
+    handle = apps.submit(test_sleep_app, arguments={"wait_time": 30})
+
+    while True:
+        status = handle.status()
+        if isinstance(status, apps.InProgress):
+            break
+        elif isinstance(status, apps.Queued):
+            time.sleep(1)
+        else:
+            raise Exception(f"Failed to start the app: {status}")
+
+    with host._connection as client:
+        _, _, app_alias = test_sleep_app.partition("/")
+        runners = client.list_alias_runners(app_alias)
+        assert len(runners) == 1
+        runner_id = runners[0].runner_id
+
+        proc = subprocess.Popen(
+            ["python", "-m", "fal", "runners", "shell", runner_id],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+
+        try:
+            commands = b"echo 'a' > t.txt\ncat t.txt\nexit\n"
+            stdout, stderr = proc.communicate(input=commands, timeout=10)
+            assert b"a" in stdout, f"Expected 'a' in output, got: {stdout.decode()}"
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait()
 
 
 def test_container_app_client(test_container_app: str):

@@ -38,6 +38,7 @@ FAL_SERVERLESS_DEFAULT_KEEP_ALIVE = 10
 FAL_SERVERLESS_DEFAULT_MAX_MULTIPLEXING = 1
 FAL_SERVERLESS_DEFAULT_MIN_CONCURRENCY = 0
 FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER = 0
+FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER_PERC = 0
 ALIAS_AUTH_MODES = ["public", "private", "shared"]
 
 logger = get_logger(__name__)
@@ -45,7 +46,8 @@ logger = get_logger(__name__)
 patch_pickle()
 
 
-AuthMode = Optional[Literal["public", "private", "shared"]]
+AuthModeLiteral = Literal["public", "private", "shared"]
+DeploymentStrategyLiteral = Literal["recreate", "rolling"]
 
 
 class ServerCredentials:
@@ -229,6 +231,12 @@ class HostedRunStatus:
 
 
 @dataclass
+class File:
+    hash: str
+    relative_path: str
+
+
+@dataclass
 class ApplicationInfo:
     application_id: str
     keep_alive: int
@@ -237,6 +245,8 @@ class ApplicationInfo:
     active_runners: int
     min_concurrency: int
     concurrency_buffer: int
+    concurrency_buffer_perc: int
+    scaling_delay: int
     machine_types: list[str]
     request_timeout: int
     startup_timeout: int
@@ -255,6 +265,8 @@ class AliasInfo:
     active_runners: int
     min_concurrency: int
     concurrency_buffer: int
+    concurrency_buffer_perc: int
+    scaling_delay: int
     machine_types: list[str]
     request_timeout: int
     startup_timeout: int
@@ -262,18 +274,14 @@ class AliasInfo:
 
 
 class RunnerState(Enum):
-    RUNNING = "running"
-    PENDING = "pending"
-    UNKNOWN = "unknown"
-
-    @staticmethod
-    def from_proto(proto: isolate_proto.RunnerInfo.State) -> RunnerState:
-        if proto is isolate_proto.RunnerInfo.State.RUNNING:
-            return RunnerState.RUNNING
-        elif proto is isolate_proto.RunnerInfo.State.PENDING:
-            return RunnerState.PENDING
-        else:
-            return RunnerState.UNKNOWN
+    RUNNING = "RUNNING"
+    PENDING = "PENDING"
+    SETUP = "SETUP"
+    DOCKER_PULL = "DOCKER_PULL"
+    DEAD = "DEAD"
+    DRAINING = "DRAINING"
+    TERMINATING = "TERMINATING"
+    TERMINATED = "TERMINATED"
 
 
 @dataclass
@@ -394,6 +402,8 @@ def _from_grpc_application_info(
         active_runners=message.active_runners,
         min_concurrency=message.min_concurrency,
         concurrency_buffer=message.concurrency_buffer,
+        concurrency_buffer_perc=message.concurrency_buffer_perc,
+        scaling_delay=message.scaling_delay_seconds,
         machine_types=list(message.machine_types),
         request_timeout=message.request_timeout,
         startup_timeout=message.startup_timeout,
@@ -423,6 +433,8 @@ def _from_grpc_alias_info(message: isolate_proto.AliasInfo) -> AliasInfo:
         active_runners=message.active_runners,
         min_concurrency=message.min_concurrency,
         concurrency_buffer=message.concurrency_buffer,
+        concurrency_buffer_perc=message.concurrency_buffer_perc,
+        scaling_delay=message.scaling_delay_seconds,
         machine_types=list(message.machine_types),
         request_timeout=message.request_timeout,
         startup_timeout=message.startup_timeout,
@@ -447,7 +459,7 @@ def _from_grpc_runner_info(message: isolate_proto.RunnerInfo) -> RunnerInfo:
         external_metadata=external_metadata,
         revision=message.revision,
         alias=message.alias,
-        state=RunnerState.from_proto(message.state),
+        state=RunnerState(isolate_proto.RunnerInfo.State.Name(message.state)),
     )
 
 
@@ -515,8 +527,11 @@ class MachineRequirements:
     max_multiplexing: int | None = None
     min_concurrency: int | None = None
     concurrency_buffer: int | None = None
+    concurrency_buffer_perc: int | None = None
+    scaling_delay: int | None = None
     request_timeout: int | None = None
     startup_timeout: int | None = None
+    valid_regions: list[str] | None = None
 
     def __post_init__(self):
         if isinstance(self.machine_types, str):
@@ -608,15 +623,17 @@ class FalServerlessConnection:
         function: Callable[..., ResultT],
         environments: list[isolate_proto.EnvironmentDefinition],
         application_name: str | None = None,
-        auth_mode: AuthMode = None,
+        auth_mode: Optional[AuthModeLiteral] = None,
         *,
+        source_code: str | None = None,
         serialization_method: str = _DEFAULT_SERIALIZATION_METHOD,
         machine_requirements: MachineRequirements | None = None,
         metadata: dict[str, Any] | None = None,
-        deployment_strategy: Literal["recreate", "rolling"] = "recreate",
+        deployment_strategy: DeploymentStrategyLiteral,
         scale: bool = True,
         private_logs: bool = False,
-    ) -> Iterator[isolate_proto.RegisterApplicationResult]:
+        files: list[File] | None = None,
+    ) -> Iterator[RegisterApplicationResult]:
         wrapped_function = to_serialized_object(function, serialization_method)
         if machine_requirements:
             wrapped_requirements = isolate_proto.MachineRequirements(
@@ -634,12 +651,21 @@ class FalServerlessConnection:
                 max_concurrency=machine_requirements.max_concurrency,
                 min_concurrency=machine_requirements.min_concurrency,
                 concurrency_buffer=machine_requirements.concurrency_buffer,
+                concurrency_buffer_perc=machine_requirements.concurrency_buffer_perc,
+                scaling_delay_seconds=machine_requirements.scaling_delay,
                 max_multiplexing=machine_requirements.max_multiplexing,
                 request_timeout=machine_requirements.request_timeout,
                 startup_timeout=machine_requirements.startup_timeout,
+                valid_regions=machine_requirements.valid_regions,
             )
         else:
             wrapped_requirements = None
+
+        if files:
+            files = [
+                isolate_proto.File(hash=file.hash, relative_path=file.relative_path)
+                for file in files
+            ]
 
         if auth_mode == "public":
             auth = isolate_proto.ApplicationAuthMode.PUBLIC
@@ -669,6 +695,8 @@ class FalServerlessConnection:
             deployment_strategy=deployment_strategy_proto,
             scale=scale,
             private_logs=private_logs,
+            files=files,
+            source_code=source_code,
         )
         for partial_result in self.stub.RegisterApplication(request):
             yield from_grpc(partial_result)
@@ -684,6 +712,8 @@ class FalServerlessConnection:
         max_concurrency: int | None = None,
         min_concurrency: int | None = None,
         concurrency_buffer: int | None = None,
+        concurrency_buffer_perc: int | None = None,
+        scaling_delay: int | None = None,
         request_timeout: int | None = None,
         startup_timeout: int | None = None,
         valid_regions: list[str] | None = None,
@@ -696,6 +726,8 @@ class FalServerlessConnection:
             max_concurrency=max_concurrency,
             min_concurrency=min_concurrency,
             concurrency_buffer=concurrency_buffer,
+            concurrency_buffer_perc=concurrency_buffer_perc,
+            scaling_delay_seconds=scaling_delay,
             request_timeout=request_timeout,
             startup_timeout=startup_timeout,
             valid_regions=valid_regions,
@@ -722,6 +754,17 @@ class FalServerlessConnection:
         request = isolate_proto.DeleteApplicationRequest(application_id=application_id)
         self.stub.DeleteApplication(request)
 
+    def rollout_application(
+        self,
+        application_name: str,
+        force: bool = False,
+    ) -> None:
+        request = isolate_proto.RolloutApplicationRequest(
+            application_name=application_name,
+            force=force,
+        )
+        self.stub.RolloutApplication(request)
+
     def run(
         self,
         function: Callable[..., ResultT],
@@ -730,6 +773,7 @@ class FalServerlessConnection:
         serialization_method: str = _DEFAULT_SERIALIZATION_METHOD,
         machine_requirements: MachineRequirements | None = None,
         setup_function: Callable[[], InputT] | None = None,
+        files: list[File] | None = None,
     ) -> Iterator[HostedRunResult[ResultT]]:
         wrapped_function = to_serialized_object(function, serialization_method)
         if machine_requirements:
@@ -749,16 +793,24 @@ class FalServerlessConnection:
                 max_multiplexing=machine_requirements.max_multiplexing,
                 min_concurrency=machine_requirements.min_concurrency,
                 concurrency_buffer=machine_requirements.concurrency_buffer,
+                concurrency_buffer_perc=machine_requirements.concurrency_buffer_perc,
+                scaling_delay_seconds=machine_requirements.scaling_delay,
                 request_timeout=machine_requirements.request_timeout,
                 startup_timeout=machine_requirements.startup_timeout,
+                valid_regions=machine_requirements.valid_regions,
             )
         else:
             wrapped_requirements = None
-
+        if files:
+            files = [
+                isolate_proto.File(hash=file.hash, relative_path=file.relative_path)
+                for file in files
+            ]
         request = isolate_proto.HostedRun(
             function=wrapped_function,
             environments=environments,
             machine_requirements=wrapped_requirements,
+            files=files,
         )
         if setup_function:
             request.setup_func.MergeFrom(
@@ -774,7 +826,7 @@ class FalServerlessConnection:
         self,
         alias: str,
         revision: str,
-        auth_mode: AuthMode,
+        auth_mode: Optional[AuthModeLiteral],
     ) -> AliasInfo:
         if auth_mode == "public":
             auth = isolate_proto.ApplicationAuthMode.PUBLIC
@@ -808,8 +860,18 @@ class FalServerlessConnection:
         response: isolate_proto.ListAliasesResult = self.stub.ListAliases(request)
         return [from_grpc(alias) for alias in response.aliases]
 
-    def list_alias_runners(self, alias: str) -> list[RunnerInfo]:
-        request = isolate_proto.ListAliasRunnersRequest(alias=alias, list_pending=True)
+    def list_alias_runners(
+        self,
+        alias: str,
+        *,
+        list_pending: bool = True,
+        start_time: datetime | None = None,
+    ) -> list[RunnerInfo]:
+        kwargs = {"alias": alias, "list_pending": list_pending}
+        if start_time:
+            kwargs["start_time"] = isolate_proto.timestamp_from_datetime(start_time)
+
+        request = isolate_proto.ListAliasRunnersRequest(**kwargs)
         response = self.stub.ListAliasRunners(request)
         return [from_grpc(runner) for runner in response.runners]
 
@@ -832,11 +894,21 @@ class FalServerlessConnection:
             for secret in response.secrets
         ]
 
+    def stop_runner(self, runner_id: str) -> None:
+        request = isolate_proto.StopRunnerRequest(runner_id=runner_id)
+        self.stub.StopRunner(request)
+
     def kill_runner(self, runner_id: str) -> None:
         request = isolate_proto.KillRunnerRequest(runner_id=runner_id)
         self.stub.KillRunner(request)
 
-    def list_runners(self) -> list[RunnerInfo]:
-        request = isolate_proto.ListRunnersRequest(list_pending=True)
+    def list_runners(self, start_time: datetime | None = None) -> list[RunnerInfo]:
+        kwargs = {
+            "list_pending": True,
+        }
+        if start_time:
+            kwargs["start_time"] = isolate_proto.timestamp_from_datetime(start_time)
+
+        request = isolate_proto.ListRunnersRequest(**kwargs)
         response = self.stub.ListRunners(request)
         return [from_grpc(runner) for runner in response.runners]
