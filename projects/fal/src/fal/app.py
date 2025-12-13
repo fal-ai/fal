@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import inspect
 import json
 import os
@@ -52,7 +53,7 @@ DEFAULT_APP_FILES_IGNORE = [
     r"\.git/",
     r"\.DS_Store$",
 ]
-
+LOG_CONTEXT_PREFIX = "LOG_"
 
 EndpointT = TypeVar("EndpointT", bound=Callable[..., Any])
 logger = get_logger(__name__)
@@ -89,9 +90,31 @@ async def open_isolate_channel(address: str) -> async_grpc.Channel | None:
     return channel
 
 
+def merge_contextvars(logger_labels: dict[str, str]) -> dict[str, str]:
+    ctx = contextvars.copy_context()
+    for k in ctx:
+        if k.name.startswith(LOG_CONTEXT_PREFIX) and ctx[k] is not Ellipsis:
+            logger_labels.setdefault(k.name[len(LOG_CONTEXT_PREFIX) :], ctx[k])
+    return logger_labels
+
+
+def clear_contextvars() -> None:
+    ctx = contextvars.copy_context()
+    for k in ctx:
+        if k.name.startswith(LOG_CONTEXT_PREFIX):
+            k.set(Ellipsis)
+
+
 async def _set_logger_labels(
     logger_labels: dict[str, str], channel: async_grpc.Channel
 ):
+    # Set the labels into the current context so isolate agent can use them for
+    # associating log lines with the current request context
+    if not logger_labels:
+        clear_contextvars()
+    else:
+        merge_contextvars(logger_labels)
+
     try:
         import sys
 
