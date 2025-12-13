@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import asyncio
 import inspect
 import os
 import sys
 import threading
+import uuid
 from collections import defaultdict
 from concurrent.futures import Future, ThreadPoolExecutor
-from contextlib import asynccontextmanager, suppress
+from contextlib import asynccontextmanager, contextmanager, suppress
 from dataclasses import dataclass, field, replace
 from functools import wraps
 from os import PathLike
@@ -1167,6 +1169,39 @@ class FalFastAPI(FastAPI):
         return spec
 
 
+class FalServer(uvicorn.Server):
+    _shutdown_condition: Callable[[], bool] | None = None
+    _shutdown_timeout: float = 60
+
+    def ok_to_shutdown(self) -> bool:
+        return self._shutdown_condition is not None and self._shutdown_condition()
+
+    def set_shutdown_condition(
+        self, condition: Callable[[], bool], timeout: float = 60
+    ):
+        self._shutdown_condition = condition
+        self._shutdown_timeout = timeout
+
+    async def main_loop(self) -> None:
+        counter = 0
+        should_exit = await self.on_tick(counter)
+        while not should_exit:
+            counter += 1
+            counter = counter % 864000
+            try:
+                await asyncio.sleep(0.1)
+                should_exit = await self.on_tick(counter)
+            except asyncio.CancelledError:
+                should_exit = True
+
+        counter = 0
+        while not self.ok_to_shutdown() and counter < self._shutdown_timeout / 100:
+            if counter % 100 == 0:
+                print(f"Waiting for shutdown condition to be met: {counter // 100}s")
+            await asyncio.sleep(0.01)
+            counter += 1
+
+
 class RouteSignature(NamedTuple):
     path: str
     is_websocket: bool = False
@@ -1180,6 +1215,9 @@ class RouteSignature(NamedTuple):
 
 class BaseServable:
     version: ClassVar[str] = "unknown"
+
+    _shutdown_locks: set[str] = set()
+    _shutdown_timeout: float = 60
 
     def collect_routes(self) -> dict[RouteSignature, Callable[..., Any]]:
         raise NotImplementedError
@@ -1330,12 +1368,20 @@ class BaseServable:
                 "Failed to generate OpenAPI metadata for function"
             ) from e
 
-    def serve(self) -> None:
+    @contextmanager
+    def shutdown_guard(self):
+        lock_id = uuid.uuid4().hex
+        self._shutdown_locks.add(lock_id)
+        try:
+            yield
+        finally:
+            self._shutdown_locks.remove(lock_id)
+
+    async def serve(self) -> None:
         import asyncio
 
         from prometheus_client import Gauge
         from starlette_exporter import handle_metrics
-        from uvicorn import Config
 
         # NOTE: this uses the global prometheus registry
         app_info = Gauge("fal_app_info", "Fal application information", ["version"])
@@ -1345,40 +1391,26 @@ class BaseServable:
 
         # We use the default workers=1 config because setup function can be heavy
         # and it runs once per worker.
-        server = Server(
-            config=Config(app, host="0.0.0.0", port=8080, timeout_keep_alive=300)
+        server = FalServer(
+            config=uvicorn.Config(
+                app, host="0.0.0.0", port=8080, timeout_keep_alive=300, lifespan="on"
+            )
         )
         metrics_app = FastAPI()
         metrics_app.add_route("/metrics", handle_metrics)
-        metrics_server = Server(config=Config(metrics_app, host="0.0.0.0", port=9090))
+        metrics_server = FalServer(
+            config=uvicorn.Config(metrics_app, host="0.0.0.0", port=9090)
+        )
 
-        async def _serve() -> None:
-            tasks = {
-                asyncio.create_task(server.serve()): server,
-                asyncio.create_task(metrics_server.serve()): metrics_server,
-            }
+        metrics_task = asyncio.create_task(metrics_server.serve())
 
-            _, pending = await asyncio.wait(
-                tasks.keys(),
-                return_when=asyncio.FIRST_COMPLETED,
-            )
-            if not pending:
-                return
+        server.set_shutdown_condition(
+            lambda: len(self._shutdown_locks) == 0, timeout=self._shutdown_timeout
+        )
+        await server.serve()
 
-            # try graceful shutdown
-            for task in pending:
-                tasks[task].should_exit = True
-            _, pending = await asyncio.wait(pending, timeout=2)
-            if not pending:
-                return
-
-            for task in pending:
-                task.cancel()
-            await asyncio.wait(pending)
-
-        with suppress(asyncio.CancelledError):
-            asyncio.set_event_loop(asyncio.new_event_loop())
-            asyncio.run(_serve())
+        metrics_task.cancel()
+        await asyncio.wait_for(metrics_task, timeout=2)
 
 
 class ServeWrapper(BaseServable):
@@ -1392,13 +1424,13 @@ class ServeWrapper(BaseServable):
             RouteSignature("/"): self._func,
         }
 
-    def __call__(self, *args, **kwargs) -> None:
+    async def __call__(self, *args, **kwargs) -> None:
         if len(args) != 0 or len(kwargs) != 0:
             print(
                 f"[warning] {self._func.__name__} function is served with no arguments."
             )
 
-        self.serve()
+        await self.serve()
 
 
 @dataclass
@@ -1518,7 +1550,7 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
         if serve_mode:
             # This type can be safely ignored because this case only happens when it
             # is a ServedIsolatedFunction
-            serve_func: Callable[[], None] = ServeWrapper(self.raw_func)
+            serve_func = ServeWrapper(self.raw_func)
             return serve_func  # type: ignore
         else:
             return self.raw_func
@@ -1544,15 +1576,3 @@ class ServedIsolatedFunction(
     def on(
         self, host: Host | None = None, *, serve: Literal[False], **config: Any
     ) -> IsolatedFunction[ArgsT, ReturnT]: ...
-
-
-class Server(uvicorn.Server):
-    """Server is a uvicorn.Server that actually plays nicely with signals.
-    By default, uvicorn's Server class overwrites the signal handler for SIGINT,
-    swallowing the signal and preventing other tasks from cancelling.
-    This class allows the task to be gracefully cancelled using asyncio's built-in task
-    cancellation or with an event, like aiohttp.
-    """
-
-    def install_signal_handlers(self) -> None:
-        pass
