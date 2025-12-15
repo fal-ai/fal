@@ -80,10 +80,27 @@ def _add_create_parser(subparsers, parents):
 
 
 def _delete(args):
+    if not args.yes:
+        args.console.print(
+            f"[bold yellow]Warning:[/bold yellow] Deleting environment "
+            f"'{args.name}' will permanently delete:\n"
+            "  • All secrets in this environment\n"
+            "  • All apps deployed to this environment\n"
+        )
+        confirmation = input(
+            f"Type the environment name '{args.name}' to confirm deletion: "
+        ).strip()
+
+        if confirmation != args.name:
+            args.console.print(
+                "[red]Deletion cancelled.[/red] Environment name did not match."
+            )
+            return
+
     client = get_client(args.host, args.team)
     with client.connect() as connection:
         connection.delete_environment(args.name)
-        args.console.print(f"Deleted environment '{args.name}'")
+        args.console.print(f"[green]Deleted environment '{args.name}'[/green]")
 
 
 def _add_delete_parser(subparsers, parents):
@@ -97,6 +114,11 @@ def _add_delete_parser(subparsers, parents):
     parser.add_argument(
         "name",
         help="Environment name.",
+    )
+    parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="Skip confirmation prompt.",
     )
     parser.set_defaults(func=_delete)
 

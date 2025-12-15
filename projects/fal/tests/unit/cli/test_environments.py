@@ -49,3 +49,27 @@ def test_delete_alias():
     args = parse_args(["env", "delete", "staging"])
     assert args.func == _delete
     assert args.name == "staging"
+
+
+def test_delete_has_yes_flag():
+    """Test that the delete command accepts --yes flag"""
+    args = parse_args(["environments", "delete", "dev", "--yes"])
+    assert args.func == _delete
+    assert args.name == "dev"
+    assert args.yes is True
+
+
+def test_delete_without_yes_flag():
+    """Test that the delete command works without --yes flag (requires confirmation)"""
+    args = parse_args(["environments", "delete", "dev"])
+    assert args.func == _delete
+    assert args.name == "dev"
+    assert args.yes is False
+
+
+def test_delete_alias_with_yes():
+    """Test that the delete alias accepts --yes flag"""
+    args = parse_args(["env", "delete", "staging", "--yes"])
+    assert args.func == _delete
+    assert args.name == "staging"
+    assert args.yes is True
