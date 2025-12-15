@@ -698,16 +698,20 @@ class FalServerlessHost(Host):
             from fal.console import console
 
             if service_urls := partial_result.service_urls:
-                console.print("Playground:")
+                from fal.flags import URL_OUTPUT
+
                 endpoints = getattr(func, "_routes", ["/"])  # type: ignore[attr-defined]
-                for endpoint in endpoints:
-                    console.print(f"\t{service_urls.playground}{endpoint}")
-                console.print("Synchronous Endpoints:")
-                for endpoint in endpoints:
-                    console.print(f"\t{service_urls.run}{endpoint}")
-                console.print("Asynchronous Endpoints (Recommended):")
-                for endpoint in endpoints:
-                    console.print(f"\t{service_urls.queue}{endpoint}")
+                if URL_OUTPUT != "none":
+                    console.print("Playground:")
+                    for endpoint in endpoints:
+                        console.print(f"\t{service_urls.playground}{endpoint}")
+                if URL_OUTPUT == "all":
+                    console.print("Synchronous Endpoints:")
+                    for endpoint in endpoints:
+                        console.print(f"\t{service_urls.run}{endpoint}")
+                    console.print("Asynchronous Endpoints (Recommended):")
+                    for endpoint in endpoints:
+                        console.print(f"\t{service_urls.queue}{endpoint}")
 
             for log in partial_result.logs:
                 if (

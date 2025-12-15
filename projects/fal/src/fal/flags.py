@@ -34,3 +34,7 @@ FAL_RUN_HOST = (
 )
 
 DONT_OPEN_LINKS = bool_envvar("FAL_DONT_OPEN_LINKS")
+
+# Controls which URLs are printed when running/deploying apps
+# Valid values: "all" (default), "playground", "none"
+URL_OUTPUT = os.getenv("FAL_URL_OUTPUT", "all").lower().strip()
