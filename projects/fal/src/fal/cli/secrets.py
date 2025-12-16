@@ -45,6 +45,7 @@ def _list(args):
         json_secrets = [
             {
                 "name": secret.name,
+                "environment": secret.environment_name,
                 "created_at": str(secret.created_at),
             }
             for secret in secrets
@@ -55,10 +56,15 @@ def _list(args):
 
         table = Table()
         table.add_column("Secret Name")
+        table.add_column("Environment")
         table.add_column("Created At")
 
         for secret in secrets:
-            table.add_row(secret.name, str(secret.created_at))
+            table.add_row(
+                secret.name,
+                secret.environment_name or "main",
+                str(secret.created_at),
+            )
 
         args.console.print(table)
     else:

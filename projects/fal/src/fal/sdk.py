@@ -982,11 +982,13 @@ class FalServerlessConnection:
         start_time: datetime | None = None,
         environment_name: str | None = None,
     ) -> list[RunnerInfo]:
-        kwargs: dict[str, Any] = {"alias": alias, "list_pending": list_pending}
+        kwargs: dict[str, Any] = {
+            "alias": alias,
+            "list_pending": list_pending,
+            "environment_name": environment_name,
+        }
         if start_time:
             kwargs["start_time"] = isolate_proto.timestamp_from_datetime(start_time)
-        if environment_name:
-            kwargs["environment_name"] = environment_name
 
         request = isolate_proto.ListAliasRunnersRequest(**kwargs)
         response = self.stub.ListAliasRunners(request)
