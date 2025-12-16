@@ -1,4 +1,5 @@
 """Integration tests for environment management using the API layer."""
+
 from __future__ import annotations
 
 import uuid
@@ -19,6 +20,7 @@ def test_env_name():
 def client():
     """Create a SyncServerlessClient for API layer testing."""
     import os
+
     host = os.getenv("FAL_HOST")
     api_key = os.getenv("FAL_KEY")
     return SyncServerlessClient(host=host, api_key=api_key)
@@ -105,9 +107,7 @@ def test_delete_nonexistent_environment(client: SyncServerlessClient):
         client.environments.delete(f"nonexistent-env-{uuid.uuid4().hex[:8]}")
 
 
-def test_create_duplicate_environment(
-    client: SyncServerlessClient, test_env_name: str
-):
+def test_create_duplicate_environment(client: SyncServerlessClient, test_env_name: str):
     """Test creating an environment with a duplicate name raises FalServerlessError."""
     # Create first environment
     client.environments.create(test_env_name)

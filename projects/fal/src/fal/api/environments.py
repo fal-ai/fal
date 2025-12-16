@@ -36,4 +36,3 @@ def delete_environment(client: SyncServerlessClient, name: str) -> None:
 
     with FalServerlessClient(client._grpc_host, client._credentials).connect() as conn:
         conn.delete_environment(name)
-

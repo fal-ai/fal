@@ -105,7 +105,10 @@ def _deploy_from_reference(
         [file_path] = options
         file_path = str(file_path)  # type: ignore
 
-    host = client._create_host(local_file_path=str(file_path))
+    host = client._create_host(
+        local_file_path=str(file_path),
+        environment_name=environment_name,
+    )
     loaded = load_function_from(
         host,
         file_path,  # type: ignore
