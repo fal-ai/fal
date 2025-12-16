@@ -299,7 +299,7 @@ class HealthCheckApp(fal.App, keep_alive=300, max_concurrency=1, request_timeout
             start_period_seconds=10,
             timeout_seconds=10,
             failure_threshold=3,
-            call_regularly=False,
+            call_regularly=True,
         ),
     )
     def health(self) -> Output:
