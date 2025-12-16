@@ -55,8 +55,8 @@ def _list(args):
         from rich.table import Table
 
         table = Table()
-        table.add_column("Secret Name")
-        table.add_column("Environment")
+        table.add_column("Name")
+        table.add_column("Env")
         table.add_column("Created At")
 
         for secret in secrets:
