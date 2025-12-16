@@ -402,6 +402,7 @@ message AliasInfo {
     optional int32 concurrency_buffer_perc = 14;
     optional int32 scaling_delay_seconds = 15;
     optional string environment_name = 16;
+    bool is_rolling = 17;
 }
 
 message SetSecretRequest {
