@@ -1,13 +1,13 @@
-from ._utils import get_client
+from fal.api.client import SyncServerlessClient
+
 from .parser import FalClientParser, get_output_parser
 
 
 def _list(args):
     import json
 
-    client = get_client(args.host, args.team)
-    with client.connect() as connection:
-        environments = connection.list_environments()
+    client = SyncServerlessClient(host=args.host, team=args.team)
+    environments = client.environments.list()
 
     if args.output == "json":
         json_envs = [
@@ -54,10 +54,9 @@ def _add_list_parser(subparsers, parents):
 
 
 def _create(args):
-    client = get_client(args.host, args.team)
-    with client.connect() as connection:
-        env = connection.create_environment(args.name, description=args.description)
-        args.console.print(f"Created environment '{env.name}'")
+    client = SyncServerlessClient(host=args.host, team=args.team)
+    env = client.environments.create(args.name, description=args.description)
+    args.console.print(f"Created environment '{env.name}'")
 
 
 def _add_create_parser(subparsers, parents):
@@ -97,10 +96,9 @@ def _delete(args):
             )
             return
 
-    client = get_client(args.host, args.team)
-    with client.connect() as connection:
-        connection.delete_environment(args.name)
-        args.console.print(f"[green]Deleted environment '{args.name}'[/green]")
+    client = SyncServerlessClient(host=args.host, team=args.team)
+    client.environments.delete(args.name)
+    args.console.print(f"[green]Deleted environment '{args.name}'[/green]")
 
 
 def _add_delete_parser(subparsers, parents):

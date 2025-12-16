@@ -8,6 +8,7 @@ from fal.api import FAL_SERVERLESS_DEFAULT_URL, FalServerlessHost
 from fal.sdk import (
     AliasInfo,
     Credentials,
+    EnvironmentInfo,
     KeyScope,
     RunnerInfo,
     ServerlessSecret,
@@ -19,6 +20,7 @@ if TYPE_CHECKING:
 
 from . import apps as apps_api
 from . import deploy as deploy_api
+from . import environments as environments_api
 from . import keys as keys_api
 from . import runners as runners_api
 from . import secrets as secrets_api
@@ -141,6 +143,22 @@ class _SecretsNamespace:
         )
 
 
+class _EnvironmentsNamespace:
+    def __init__(self, client: SyncServerlessClient):
+        self.client = client
+
+    def create(self, name: str, description: str | None = None) -> EnvironmentInfo:
+        return environments_api.create_environment(
+            self.client, name, description=description
+        )
+
+    def list(self) -> List[EnvironmentInfo]:
+        return environments_api.list_environments(self.client)
+
+    def delete(self, name: str) -> None:
+        return environments_api.delete_environment(self.client, name)
+
+
 @dataclass
 class SyncServerlessClient:
     host: Optional[str] = None
@@ -153,6 +171,7 @@ class SyncServerlessClient:
         self.runners = _RunnersNamespace(self)
         self.keys = _KeysNamespace(self)
         self.secrets = _SecretsNamespace(self)
+        self.environments = _EnvironmentsNamespace(self)
 
     # Top-level verbs
     def deploy(self, *args, **kwargs):
