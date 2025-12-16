@@ -478,30 +478,33 @@ class App(BaseServable):
 
     @classmethod
     def get_health_check_config(cls) -> Optional[ApplicationHealthCheckConfig]:
-        health_checks: dict[str, HealthCheck] = {}
+        health_check_path: str | None = None
+        health_check: HealthCheck | None = None
+
         for _, endpoint in inspect.getmembers(cls, inspect.isfunction):
             signature = getattr(endpoint, "route_signature", None)
             if not signature or not signature.health_check:
                 continue
+
             if signature.is_websocket:
                 raise ValueError(
                     "Health check endpoints cannot be websocket endpoints."
                 )
-            health_checks[signature.path] = signature.health_check
 
-        if len(health_checks) > 1:
-            raise ValueError(
-                "Multiple health check endpoints found: "
-                f"{', '.join(health_checks.keys())}. "
-                "An app can only have one health check endpoint."
-            )
-        elif len(health_checks) == 0:
+            if health_check is not None:
+                raise ValueError(
+                    "Multiple health check endpoints found. "
+                    "An app can only have one health check endpoint."
+                )
+
+            health_check_path = signature.path
+            health_check = signature.health_check
+
+        if health_check is None or health_check_path is None:
             return None
 
-        path = list(health_checks.keys())[0]
-        health_check = list(health_checks.values())[0]
         return ApplicationHealthCheckConfig(
-            path=path,
+            path=health_check_path,
             start_period_seconds=health_check.start_period_seconds,
             timeout_seconds=health_check.timeout_seconds,
             failure_threshold=health_check.failure_threshold,
