@@ -125,7 +125,7 @@ def add_parser(main_subparsers, parents):
     envs_help = "Manage fal environments."
     parser = main_subparsers.add_parser(
         "environments",
-        aliases=["env"],
+        aliases=["envs"],
         parents=parents,
         description=envs_help,
         help=envs_help,

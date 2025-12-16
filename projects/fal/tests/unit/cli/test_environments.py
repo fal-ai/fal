@@ -8,7 +8,7 @@ def test_list():
 
 
 def test_list_alias():
-    args = parse_args(["env", "list"])
+    args = parse_args(["envs", "list"])
     assert args.func == _list
 
 
@@ -34,7 +34,7 @@ def test_create_with_description():
 
 
 def test_create_alias():
-    args = parse_args(["env", "create", "staging"])
+    args = parse_args(["envs", "create", "staging"])
     assert args.func == _create
     assert args.name == "staging"
 
@@ -46,7 +46,7 @@ def test_delete():
 
 
 def test_delete_alias():
-    args = parse_args(["env", "delete", "staging"])
+    args = parse_args(["envs", "delete", "staging"])
     assert args.func == _delete
     assert args.name == "staging"
 
@@ -69,7 +69,7 @@ def test_delete_without_yes_flag():
 
 def test_delete_alias_with_yes():
     """Test that the delete alias accepts --yes flag"""
-    args = parse_args(["env", "delete", "staging", "--yes"])
+    args = parse_args(["envs", "delete", "staging", "--yes"])
     assert args.func == _delete
     assert args.name == "staging"
     assert args.yes is True
