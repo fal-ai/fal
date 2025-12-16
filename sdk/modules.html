@@ -134,7 +134,7 @@
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.concurrency_buffer"><code class="docutils literal notranslate"><span class="pre">App.concurrency_buffer</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.concurrency_buffer_perc"><code class="docutils literal notranslate"><span class="pre">App.concurrency_buffer_perc</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.get_endpoints"><code class="docutils literal notranslate"><span class="pre">App.get_endpoints()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.get_health_check_endpoint"><code class="docutils literal notranslate"><span class="pre">App.get_health_check_endpoint()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.get_health_check_config"><code class="docutils literal notranslate"><span class="pre">App.get_health_check_config()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.health"><code class="docutils literal notranslate"><span class="pre">App.health()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.host_kwargs"><code class="docutils literal notranslate"><span class="pre">App.host_kwargs</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.app.App.image"><code class="docutils literal notranslate"><span class="pre">App.image</span></code></a></li>
@@ -307,6 +307,14 @@
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.AliasInfo.valid_regions"><code class="docutils literal notranslate"><span class="pre">AliasInfo.valid_regions</span></code></a></li>
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.sdk.ApplicationHealthCheckConfig"><code class="docutils literal notranslate"><span class="pre">ApplicationHealthCheckConfig</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.ApplicationHealthCheckConfig.call_regularly"><code class="docutils literal notranslate"><span class="pre">ApplicationHealthCheckConfig.call_regularly</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.ApplicationHealthCheckConfig.failure_threshold"><code class="docutils literal notranslate"><span class="pre">ApplicationHealthCheckConfig.failure_threshold</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.ApplicationHealthCheckConfig.path"><code class="docutils literal notranslate"><span class="pre">ApplicationHealthCheckConfig.path</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.ApplicationHealthCheckConfig.start_period_seconds"><code class="docutils literal notranslate"><span class="pre">ApplicationHealthCheckConfig.start_period_seconds</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.ApplicationHealthCheckConfig.timeout_seconds"><code class="docutils literal notranslate"><span class="pre">ApplicationHealthCheckConfig.timeout_seconds</span></code></a></li>
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="fal.html#fal.sdk.ApplicationInfo"><code class="docutils literal notranslate"><span class="pre">ApplicationInfo</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.ApplicationInfo.active_runners"><code class="docutils literal notranslate"><span class="pre">ApplicationInfo.active_runners</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.ApplicationInfo.application_id"><code class="docutils literal notranslate"><span class="pre">ApplicationInfo.application_id</span></code></a></li>
@@ -388,6 +396,13 @@
 <li class="toctree-l3"><a class="reference internal" href="fal.html#fal.sdk.File"><code class="docutils literal notranslate"><span class="pre">File</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.File.hash"><code class="docutils literal notranslate"><span class="pre">File.hash</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.File.relative_path"><code class="docutils literal notranslate"><span class="pre">File.relative_path</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.sdk.HealthCheck"><code class="docutils literal notranslate"><span class="pre">HealthCheck</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.HealthCheck.call_regularly"><code class="docutils literal notranslate"><span class="pre">HealthCheck.call_regularly</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.HealthCheck.failure_threshold"><code class="docutils literal notranslate"><span class="pre">HealthCheck.failure_threshold</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.HealthCheck.start_period_seconds"><code class="docutils literal notranslate"><span class="pre">HealthCheck.start_period_seconds</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.sdk.HealthCheck.timeout_seconds"><code class="docutils literal notranslate"><span class="pre">HealthCheck.timeout_seconds</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="fal.html#fal.sdk.HostedRunResult"><code class="docutils literal notranslate"><span class="pre">HostedRunResult</span></code></a><ul>
@@ -621,7 +636,7 @@
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.concurrency_buffer"><code class="docutils literal notranslate"><span class="pre">App.concurrency_buffer</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.concurrency_buffer_perc"><code class="docutils literal notranslate"><span class="pre">App.concurrency_buffer_perc</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.get_endpoints"><code class="docutils literal notranslate"><span class="pre">App.get_endpoints()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.get_health_check_endpoint"><code class="docutils literal notranslate"><span class="pre">App.get_health_check_endpoint()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.get_health_check_config"><code class="docutils literal notranslate"><span class="pre">App.get_health_check_config()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.health"><code class="docutils literal notranslate"><span class="pre">App.health()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.host_kwargs"><code class="docutils literal notranslate"><span class="pre">App.host_kwargs</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.image"><code class="docutils literal notranslate"><span class="pre">App.image</span></code></a></li>
@@ -663,6 +678,13 @@
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.FalServerlessKeyCredentials.key_secret"><code class="docutils literal notranslate"><span class="pre">FalServerlessKeyCredentials.key_secret</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.FalServerlessKeyCredentials.to_grpc"><code class="docutils literal notranslate"><span class="pre">FalServerlessKeyCredentials.to_grpc()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.FalServerlessKeyCredentials.to_headers"><code class="docutils literal notranslate"><span class="pre">FalServerlessKeyCredentials.to_headers()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.HealthCheck"><code class="docutils literal notranslate"><span class="pre">HealthCheck</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.HealthCheck.call_regularly"><code class="docutils literal notranslate"><span class="pre">HealthCheck.call_regularly</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.HealthCheck.failure_threshold"><code class="docutils literal notranslate"><span class="pre">HealthCheck.failure_threshold</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.HealthCheck.start_period_seconds"><code class="docutils literal notranslate"><span class="pre">HealthCheck.start_period_seconds</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.HealthCheck.timeout_seconds"><code class="docutils literal notranslate"><span class="pre">HealthCheck.timeout_seconds</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="fal.html#fal.cached"><code class="docutils literal notranslate"><span class="pre">cached()</span></code></a></li>
