@@ -51,6 +51,7 @@ class MissingCredentialsError(Exception):
 
 
 FAL_RUN_HOST = os.environ.get("FAL_RUN_HOST", "fal.run")
+FAL_QUEUE_RUN_HOST = os.environ.get("FAL_QUEUE_RUN_HOST", f"queue.{FAL_RUN_HOST}")
 
 
 def fetch_credentials() -> str:
