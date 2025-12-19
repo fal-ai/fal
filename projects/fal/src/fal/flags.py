@@ -42,9 +42,21 @@ REST_URL = f"{REST_SCHEME}://{REST_HOST}"
 
 # fal.run / env.fal.run
 FAL_RUN_HOST = _RUN_HOST_ENV or (
-    GRPC_HOST.replace("api.", "", 1).replace("alpha.", "", 1).replace(".ai", ".run", 1)
+    GRPC_HOST.replace("fal.dev", "run.fal.dev")
+    .replace("api.", "", 1)
+    .replace("alpha.", "", 1)
+    if GRPC_HOST.endswith("fal.dev")
+    else GRPC_HOST.replace("api.", "", 1)
+    .replace("alpha.", "", 1)
+    .replace(".ai", ".run", 1)
 )
 
-FAL_QUEUE_RUN_HOST = _QUEUE_RUN_HOST_ENV or f"queue.{FAL_RUN_HOST}"
+FAL_QUEUE_RUN_HOST = _QUEUE_RUN_HOST_ENV or (
+    FAL_RUN_HOST.replace("run.fal.dev", "queue.run.fal.dev")
+    if FAL_RUN_HOST.endswith("run.fal.dev")
+    else f"queue.{FAL_RUN_HOST}"
+    if FAL_RUN_HOST.endswith(".run")
+    else FAL_RUN_HOST
+)
 
 DONT_OPEN_LINKS = bool_envvar("FAL_DONT_OPEN_LINKS")
