@@ -90,12 +90,9 @@ async def open_isolate_channel(address: str) -> async_grpc.Channel | None:
     return channel
 
 
-def merge_contextvars(logger_labels: dict[str, str]) -> dict[str, str]:
-    ctx = contextvars.copy_context()
-    for k in ctx:
-        if k.name.startswith(LOG_CONTEXT_PREFIX) and ctx[k] is not Ellipsis:
-            logger_labels.setdefault(k.name[len(LOG_CONTEXT_PREFIX) :], ctx[k])
-    return logger_labels
+def merge_contextvars(logger_labels: dict[str, str]) -> None:
+    for k, v in logger_labels.items():
+        ContextVar(f"{LOG_CONTEXT_PREFIX}{k}").set(v)  # type: ignore
 
 
 def clear_contextvars() -> None:
