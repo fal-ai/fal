@@ -8,6 +8,7 @@ from fal.api import FAL_SERVERLESS_DEFAULT_URL, FalServerlessHost
 from fal.sdk import (
     AliasInfo,
     Credentials,
+    EnvironmentInfo,
     KeyScope,
     RunnerInfo,
     ServerlessSecret,
@@ -19,6 +20,7 @@ if TYPE_CHECKING:
 
 from . import apps as apps_api
 from . import deploy as deploy_api
+from . import environments as environments_api
 from . import keys as keys_api
 from . import runners as runners_api
 from . import secrets as secrets_api
@@ -28,13 +30,28 @@ class _AppsNamespace:
     def __init__(self, client: SyncServerlessClient):
         self.client = client
 
-    def list(self, *, filter: str | None = None) -> List[AliasInfo]:
-        return apps_api.list_apps(self.client, filter=filter)
+    def list(
+        self, *, filter: str | None = None, environment_name: str | None = None
+    ) -> List[AliasInfo]:
+        return apps_api.list_apps(
+            self.client, filter=filter, environment_name=environment_name
+        )
 
     def runners(
-        self, app_name: str, *, since=None, state: List[str] | None = None
+        self,
+        app_name: str,
+        *,
+        since=None,
+        state: List[str] | None = None,
+        environment_name: str | None = None,
     ) -> List[RunnerInfo]:
-        return apps_api.apps_runners(self.client, app_name, since=since, state=state)
+        return apps_api.apps_runners(
+            self.client,
+            app_name,
+            since=since,
+            state=state,
+            environment_name=environment_name,
+        )
 
     def scale(
         self,
@@ -51,6 +68,7 @@ class _AppsNamespace:
         startup_timeout: int | None = None,
         machine_types: List[str] | None = None,
         regions: List[str] | None = None,
+        environment_name: str | None = None,
     ) -> apps_api.AliasInfo:
         return apps_api.scale_app(
             self.client,
@@ -66,10 +84,15 @@ class _AppsNamespace:
             startup_timeout=startup_timeout,
             machine_types=machine_types,
             regions=regions,
+            environment_name=environment_name,
         )
 
-    def rollout(self, app_name: str, *, force: bool = False) -> None:
-        return apps_api.rollout_app(self.client, app_name, force=force)
+    def rollout(
+        self, app_name: str, *, force: bool = False, environment_name: str | None = None
+    ) -> None:
+        return apps_api.rollout_app(
+            self.client, app_name, force=force, environment_name=environment_name
+        )
 
 
 class _RunnersNamespace:
@@ -106,14 +129,34 @@ class _SecretsNamespace:
     def __init__(self, client: SyncServerlessClient):
         self.client = client
 
-    def set(self, name: str, value: str) -> None:
-        return secrets_api.set_secret(self.client, name, value)
+    def set(self, name: str, value: str, environment_name: str | None = None) -> None:
+        return secrets_api.set_secret(
+            self.client, name, value, environment_name=environment_name
+        )
 
-    def list(self) -> List[ServerlessSecret]:
-        return secrets_api.list_secrets(self.client)
+    def list(self, environment_name: str | None = None) -> List[ServerlessSecret]:
+        return secrets_api.list_secrets(self.client, environment_name=environment_name)
 
-    def unset(self, name: str) -> None:
-        return secrets_api.unset_secret(self.client, name)
+    def unset(self, name: str, environment_name: str | None = None) -> None:
+        return secrets_api.unset_secret(
+            self.client, name, environment_name=environment_name
+        )
+
+
+class _EnvironmentsNamespace:
+    def __init__(self, client: SyncServerlessClient):
+        self.client = client
+
+    def create(self, name: str, description: str | None = None) -> EnvironmentInfo:
+        return environments_api.create_environment(
+            self.client, name, description=description
+        )
+
+    def list(self) -> List[EnvironmentInfo]:
+        return environments_api.list_environments(self.client)
+
+    def delete(self, name: str) -> None:
+        return environments_api.delete_environment(self.client, name)
 
 
 @dataclass
@@ -128,6 +171,7 @@ class SyncServerlessClient:
         self.runners = _RunnersNamespace(self)
         self.keys = _KeysNamespace(self)
         self.secrets = _SecretsNamespace(self)
+        self.environments = _EnvironmentsNamespace(self)
 
     # Top-level verbs
     def deploy(self, *args, **kwargs):
@@ -172,11 +216,14 @@ class SyncServerlessClient:
 
         return get_default_credentials(team=self.team)
 
-    def _create_host(self, *, local_file_path: str = "") -> FalServerlessHost:
+    def _create_host(
+        self, *, local_file_path: str = "", environment_name: str | None = None
+    ) -> FalServerlessHost:
         return FalServerlessHost(
             self._grpc_host,
             local_file_path=local_file_path,
             credentials=self._credentials,
+            environment_name=environment_name,
         )
 
     def _create_rest_client(self) -> Client:

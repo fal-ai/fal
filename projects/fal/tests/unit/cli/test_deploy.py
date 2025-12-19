@@ -14,6 +14,33 @@ def test_deploy():
     assert args.app_ref == ("myfile.py", "MyApp")
 
 
+def test_deploy_with_env():
+    args = parse_args(["deploy", "myfile.py::MyApp", "--env", "dev"])
+    assert args.func == _deploy
+    assert args.app_ref == ("myfile.py", "MyApp")
+    assert args.env == "dev"
+
+
+def test_deploy_with_env_and_other_options():
+    args = parse_args(
+        [
+            "deploy",
+            "myfile.py::MyApp",
+            "--app-name",
+            "my-app",
+            "--auth",
+            "public",
+            "--env",
+            "staging",
+        ]
+    )
+    assert args.func == _deploy
+    assert args.app_ref == ("myfile.py", "MyApp")
+    assert args.app_name == "my-app"
+    assert args.auth == "public"
+    assert args.env == "staging"
+
+
 @pytest.fixture
 def mock_parse_pyproject_toml():
     return {
@@ -46,6 +73,7 @@ def mock_args(
     strategy: Optional[str] = None,
     reset_scale: bool = False,
     team: Optional[str] = None,
+    env: Optional[str] = None,
 ):
     args = MagicMock()
 
@@ -56,6 +84,7 @@ def mock_args(
     args.app_scale_settings = reset_scale
     args.output = "pretty"
     args.team = team
+    args.env = env
 
     return args
 
@@ -83,6 +112,7 @@ def test_deploy_with_toml_success(
         "shared",
         strategy="rolling",
         scale=False,
+        environment_name=None,
     )
 
 
@@ -109,6 +139,7 @@ def test_deploy_with_toml_no_auth(
         None,
         strategy=None,
         scale=False,
+        environment_name=None,
     )
 
 
@@ -220,6 +251,7 @@ def test_deploy_with_toml_deployment_strategy(
         "shared",
         strategy="rolling",
         scale=False,
+        environment_name=None,
     )
 
 
@@ -244,6 +276,7 @@ def test_deploy_with_toml_default_deployment_strategy(
         None,
         strategy=None,
         scale=False,
+        environment_name=None,
     )
 
 
@@ -268,6 +301,7 @@ def test_deploy_with_cli_auth(
         "shared",
         strategy=None,
         scale=False,
+        environment_name=None,
     )
 
 
@@ -292,6 +326,7 @@ def test_deploy_with_cli_deployment_strategy(
         None,
         strategy="rolling",
         scale=False,
+        environment_name=None,
     )
 
 
@@ -316,6 +351,7 @@ def test_deploy_with_cli_reset_scale(
         None,
         strategy=None,
         scale=True,
+        environment_name=None,
     )
 
 
@@ -340,6 +376,7 @@ def test_deploy_with_cli_scale(
         None,
         strategy=None,
         scale=False,
+        environment_name=None,
     )
 
 

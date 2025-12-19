@@ -2,37 +2,37 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, List
 
+from .api import _handle_grpc_error
+
 if TYPE_CHECKING:
-    from fal.sdk import ServerlessSecret
+    from fal.sdk import EnvironmentInfo
 
     from .client import SyncServerlessClient
 
 
-def set_secret(
+@_handle_grpc_error()
+def create_environment(
     client: SyncServerlessClient,
     name: str,
-    value: str,
-    environment_name: str | None = None,
-) -> None:
+    description: str | None = None,
+) -> EnvironmentInfo:
     from fal.sdk import FalServerlessClient
 
     with FalServerlessClient(client._grpc_host, client._credentials).connect() as conn:
-        conn.set_secret(name, value, environment_name=environment_name)
+        return conn.create_environment(name, description=description)
 
 
-def list_secrets(
-    client: SyncServerlessClient, environment_name: str | None = None
-) -> List[ServerlessSecret]:
+@_handle_grpc_error()
+def list_environments(client: SyncServerlessClient) -> List[EnvironmentInfo]:
     from fal.sdk import FalServerlessClient
 
     with FalServerlessClient(client._grpc_host, client._credentials).connect() as conn:
-        return list(conn.list_secrets(environment_name=environment_name))
+        return list(conn.list_environments())
 
 
-def unset_secret(
-    client: SyncServerlessClient, name: str, environment_name: str | None = None
-) -> None:
+@_handle_grpc_error()
+def delete_environment(client: SyncServerlessClient, name: str) -> None:
     from fal.sdk import FalServerlessClient
 
     with FalServerlessClient(client._grpc_host, client._credentials).connect() as conn:
-        conn.delete_secret(name, environment_name=environment_name)
+        conn.delete_environment(name)
