@@ -49,6 +49,36 @@ patch_pickle()
 AuthModeLiteral = Literal["public", "private", "shared"]
 DeploymentStrategyLiteral = Literal["recreate", "rolling"]
 
+ENVIRONMENT_SEPARATOR = "--"
+
+
+def construct_alias(base_name: str, environment_name: str | None = None) -> str:
+    """Construct the full alias with environment suffix.
+
+    Examples:
+    - ("my-app", None) → "my-app"
+    - ("my-app", "main") → "my-app"
+    - ("my-app", "staging") → "my-app--staging"
+    """
+    if not environment_name or environment_name == "main":
+        return base_name
+    return f"{base_name}{ENVIRONMENT_SEPARATOR}{environment_name}"
+
+
+def deconstruct_alias(full_alias: str, environment_name: str | None = None) -> str:
+    """Extract base name from full alias for display.
+
+    Examples:
+    - ("my-app--staging", "staging") → "my-app"
+    - ("my-app", "main") → "my-app"
+    - ("my-app", None) → "my-app"
+    """
+    if environment_name and environment_name != "main":
+        suffix = f"{ENVIRONMENT_SEPARATOR}{environment_name}"
+        if full_alias.endswith(suffix):
+            return full_alias[: -len(suffix)]
+    return full_alias
+
 
 class ServerCredentials:
     def to_grpc(self) -> grpc.ChannelCredentials:
@@ -778,11 +808,17 @@ class FalServerlessConnection:
         else:
             wrapped_health_check_config = None
 
+        full_application_name = (
+            construct_alias(application_name, environment_name)
+            if application_name
+            else None
+        )
+
         request = isolate_proto.RegisterApplicationRequest(
             function=wrapped_function,
             environments=environments,
             machine_requirements=wrapped_requirements,
-            application_name=application_name,
+            application_name=full_application_name,
             auth_mode=auth,
             metadata=struct_metadata,
             deployment_strategy=deployment_strategy_proto,
@@ -816,8 +852,10 @@ class FalServerlessConnection:
         *,
         environment_name: str | None = None,
     ) -> AliasInfo:
+        full_application_name = construct_alias(application_name, environment_name)
+
         request = isolate_proto.UpdateApplicationRequest(
-            application_name=application_name,
+            application_name=full_application_name,
             keep_alive=keep_alive,
             max_multiplexing=max_multiplexing,
             max_concurrency=max_concurrency,
@@ -842,8 +880,14 @@ class FalServerlessConnection:
         *,
         environment_name: str | None = None,
     ) -> list[ApplicationInfo]:
+        full_application_name = (
+            construct_alias(application_name, environment_name)
+            if application_name
+            else None
+        )
+
         request = isolate_proto.ListApplicationsRequest(
-            application_name=application_name,
+            application_name=full_application_name,
             environment_name=environment_name,
         )
         res: isolate_proto.ListApplicationsResult = self.stub.ListApplications(request)
@@ -863,8 +907,10 @@ class FalServerlessConnection:
         *,
         environment_name: str | None = None,
     ) -> None:
+        full_application_name = construct_alias(application_name, environment_name)
+
         request = isolate_proto.RolloutApplicationRequest(
-            application_name=application_name,
+            application_name=full_application_name,
             force=force,
             environment_name=environment_name,
         )
@@ -946,8 +992,10 @@ class FalServerlessConnection:
         else:
             auth = None
 
+        full_alias = construct_alias(alias, environment_name)
+
         request = isolate_proto.SetAliasRequest(
-            alias=alias,
+            alias=full_alias,
             revision=revision,
             auth_mode=auth,
             environment_name=environment_name,
@@ -958,8 +1006,10 @@ class FalServerlessConnection:
     def delete_alias(
         self, alias: str, *, environment_name: str | None = None
     ) -> str | None:
+        full_alias = construct_alias(alias, environment_name)
+
         request = isolate_proto.DeleteAliasRequest(
-            alias=alias, environment_name=environment_name
+            alias=full_alias, environment_name=environment_name
         )
         try:
             res: isolate_proto.DeleteAliasResult = self.stub.DeleteAlias(request)
@@ -982,8 +1032,10 @@ class FalServerlessConnection:
         start_time: datetime | None = None,
         environment_name: str | None = None,
     ) -> list[RunnerInfo]:
+        full_alias = construct_alias(alias, environment_name)
+
         kwargs: dict[str, Any] = {
-            "alias": alias,
+            "alias": full_alias,
             "list_pending": list_pending,
             "environment_name": environment_name,
         }

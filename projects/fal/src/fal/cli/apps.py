@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 import fal.cli.runners as runners
 from fal.api.client import SyncServerlessClient
-from fal.sdk import RunnerState
+from fal.sdk import RunnerState, deconstruct_alias
 
 from ._utils import get_client
 from .parser import FalClientParser, SinceAction, get_output_parser
@@ -49,8 +49,10 @@ def _apps_table(apps: list[AliasInfo]):
         else:
             concurrency_buffer_str = str(app.concurrency_buffer)
 
+        display_name = deconstruct_alias(app.alias, app.environment_name)
+
         table.add_row(
-            app.alias,
+            display_name,
             app.environment_name or "main",
             app.revision,
             app.auth_mode,
