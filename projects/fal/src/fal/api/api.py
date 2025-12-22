@@ -1252,7 +1252,17 @@ class BaseServable:
 
         @_app.exception_handler(FieldException)
         async def field_exception_handler(request: Request, exc: FieldException):
-            return JSONResponse(exc.to_pydantic_format(), exc.status_code)
+            headers = {}
+            if exc.billable_units:
+                # poor man's validation. we dont want people to pass in
+                # non-numeric values.
+                units_float = float(exc.billable_units)
+                # we dont want to add 8 decimal places for ints.
+                format_string = ".0f" if isinstance(exc.billable_units, int) else ".8f"
+                headers["x-fal-billable-units"] = format(units_float, format_string)
+            return JSONResponse(
+                exc.to_pydantic_format(), exc.status_code, headers=headers
+            )
 
         # ref: https://github.com/fastapi/fastapi/blob/37c8e7d76b4b47eb2c4cced6b4de59eb3d5f08eb/fastapi/exception_handlers.py#L20
         @_app.exception_handler(RequestValidationError)
