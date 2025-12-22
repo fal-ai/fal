@@ -38,19 +38,23 @@ def _deploy(args):
             json.dumps({"revision": app_id, "app_name": resolved_app_name})
         )
     elif args.output == "pretty":
+        from fal.flags import URL_OUTPUT
+
         args.console.print(
             "Registered a new revision for function "
             f"'{resolved_app_name}' (revision='{app_id}')."
         )
-        args.console.print("Playground:")
-        for url in res.urls.get("playground", {}).values():
-            args.console.print(f"\t{url}")
-        args.console.print("Synchronous Endpoints:")
-        for url in res.urls.get("sync", {}).values():
-            args.console.print(f"\t{url}")
-        args.console.print("Asynchronous Endpoints (Recommended):")
-        for url in res.urls.get("async", {}).values():
-            args.console.print(f"\t{url}")
+        if URL_OUTPUT != "none":
+            args.console.print("Playground:")
+            for url in res.urls.get("playground", {}).values():
+                args.console.print(f"\t{url}")
+        if URL_OUTPUT == "all":
+            args.console.print("Synchronous Endpoints:")
+            for url in res.urls.get("sync", {}).values():
+                args.console.print(f"\t{url}")
+            args.console.print("Asynchronous Endpoints (Recommended):")
+            for url in res.urls.get("async", {}).values():
+                args.console.print(f"\t{url}")
     else:
         raise AssertionError(f"Invalid output format: {args.output}")
 
