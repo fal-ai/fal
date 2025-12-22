@@ -1239,6 +1239,12 @@ class BaseServable:
             # This is supposed to make it easier to understand to the user
             # that the error comes from the app and not our platform.
             if exc.detail == "Not Found":
+                # For 404 errors (non-existent endpoints), set billable units to 0.
+                # This prevents users from being charged when they hit endpoints that
+                # don't exist. Without this, the platform would use the default billable
+                # units for the endpoint, incorrectly charging users for failed requests
+                headers = dict(exc.headers) if exc.headers else {}
+                headers["x-fal-billable-units"] = "0"
                 return JSONResponse(
                     {"detail": f"Path {request.url.path} not found"}, 404
                 )
