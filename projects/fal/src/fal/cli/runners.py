@@ -93,19 +93,20 @@ def runners_requests_table(runners: list[RunnerInfo]):
     table.add_column("Runner ID")
     table.add_column("Request ID")
     table.add_column("Caller ID")
-    table.add_column("Started At")
+    table.add_column("Time Running")
 
     for runner in runners:
         for lease in runner.external_metadata.get("leases", []):
             if not (req_id := lease.get("request_id")):
                 continue
 
-            started_at = None
+            running_for = None
             try:
                 if leased_at_epoch := lease.get("leased_at_epoch"):
                     started_at = datetime.fromtimestamp(
                         float(leased_at_epoch), timezone.utc
                     )
+                    running_for = datetime.now(timezone.utc) - started_at
             except Exception:
                 pass
 
@@ -113,7 +114,7 @@ def runners_requests_table(runners: list[RunnerInfo]):
                 runner.runner_id,
                 req_id,
                 lease.get("caller_user_id") or "",
-                str(started_at or ""),
+                str(running_for or ""),
             )
 
     return table
