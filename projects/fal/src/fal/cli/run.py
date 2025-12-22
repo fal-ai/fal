@@ -24,7 +24,7 @@ def _run(args):
     client = SyncServerlessClient(host=args.host, team=team)
     host = client._create_host(local_file_path=file_path)
 
-    loaded = load_function_from(host, file_path, func_name)
+    loaded = load_function_from(host, file_path, func_name, force=args.no_cache)
 
     isolated_function = loaded.function
     # let our exc handlers handle UserFunctionException
@@ -34,7 +34,7 @@ def _run(args):
 
 def add_parser(main_subparsers, parents):
     run_help = "Run fal function."
-    epilog = "Examples:\n" "  fal run path/to/myfile.py::myfunc\n" "  fal run my-app\n"
+    epilog = "Examples:\n  fal run path/to/myfile.py::myfunc\n  fal run my-app\n"
     parser = main_subparsers.add_parser(
         "run",
         description=run_help,
@@ -46,5 +46,10 @@ def add_parser(main_subparsers, parents):
         "func_ref",
         action=RefAction,
         help="Function reference. Configure team in pyproject.toml for app names.",
+    )
+    parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Do not use the cache for building the container image.",
     )
     parser.set_defaults(func=_run)
