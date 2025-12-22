@@ -54,7 +54,8 @@ jobs:
       - name: Run integration tests
         env:
           FAL_KEY: ${{ secrets.FAL_CLOUD_KEY_ID }}:${{ secrets.FAL_CLOUD_KEY_SECRET }}
-          FAL_HOST: api.${{ vars.FAL_CLOUD_INTEGRATION_TEST_HOST }}
+          FAL_HOST: api.fal.dev
+          FAL_RUN_HOST: run.fal.dev
         run: |
           pytest -n auto -v projects/fal/tests/integration
 

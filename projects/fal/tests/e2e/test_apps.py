@@ -298,6 +298,25 @@ class CancellableApp(fal.App, keep_alive=300, max_concurrency=1, request_timeout
         return Output(result=0)
 
 
+class HealthCheckApp(fal.App, keep_alive=300, max_concurrency=1, request_timeout=4):
+    @fal.endpoint("/")
+    def run(self, input: Input) -> Output:
+        time.sleep(input.wait_time)
+        return Output(result=input.lhs + input.rhs)
+
+    @fal.endpoint(
+        "/health",
+        health_check=fal.HealthCheck(
+            start_period_seconds=10,
+            timeout_seconds=10,
+            failure_threshold=3,
+            call_regularly=True,
+        ),
+    )
+    def health(self) -> Output:
+        return Output(result=0)
+
+
 class RTInput(BaseModel):
     prompt: str
 
@@ -449,6 +468,13 @@ def test_cancellable_app(host: api.FalServerlessHost, user: User):
 def test_exception_app():
     with AppClient.connect(ExceptionApp) as client:
         yield client
+
+
+@pytest.fixture(scope="module")
+def test_health_check_app(host: api.FalServerlessHost, user: User):
+    health_check_app = wrap_app(HealthCheckApp)
+    with register_app(host, health_check_app, "health-check") as (app_alias, _):
+        yield f"{user.username}/{app_alias}"
 
 
 @pytest.fixture(scope="module")

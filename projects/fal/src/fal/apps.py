@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from websockets.sync.connection import Connection
 
 _STREAM_URL_FORMAT = f"https://{flags.FAL_RUN_HOST}/{{app_id}}"
-_QUEUE_URL_FORMAT = f"https://queue.{flags.FAL_RUN_HOST}/{{app_id}}"
+_QUEUE_URL_FORMAT = f"https://{flags.FAL_QUEUE_RUN_HOST}/{{app_id}}"
 _REALTIME_URL_FORMAT = f"wss://{flags.FAL_RUN_HOST}/{{app_id}}"
 _WS_URL_FORMAT = f"wss://ws.{flags.FAL_RUN_HOST}/{{app_id}}"
 
