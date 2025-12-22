@@ -116,6 +116,26 @@ def container_addition_app(input: Input) -> Output:
     machine_type="S",
     serve=True,
     max_concurrency=1,
+    force=False,
+)
+def container_cache_enabled_app(input: Input) -> Output:
+    print("starting...")
+    for _ in range(input.wait_time):
+        print("sleeping...")
+        time.sleep(1)
+
+    return Output(result=input.lhs + input.rhs)
+
+
+@fal.function(
+    kind="container",
+    image=ContainerImage.from_dockerfile_str(
+        f"FROM python:{actual_python}-slim\n# {git_revision_short_hash()}",
+    ),
+    keep_alive=60,
+    machine_type="S",
+    serve=True,
+    max_concurrency=1,
     force=True,
 )
 def container_no_cache_app(input: Input) -> Output:
@@ -1271,6 +1291,17 @@ def test_container_no_cache_app_client(host: api.FalServerlessHost):
     with redirect_stdout(stdout):
         with register_app(host, container_no_cache_app, "container") as (app_alias, _):
             pass
+
+    stdout = StringIO()
+    with redirect_stdout(stdout):
+        with register_app(host, container_cache_enabled_app, "container") as (
+            app_alias,
+            _,
+        ):
+            pass
+
+    logs = stdout.getvalue()
+    assert re.search(r"Image \S+ already exists", logs) is not None
 
     stdout = StringIO()
     with redirect_stdout(stdout):
