@@ -28,7 +28,7 @@ def _deploy(args):
         auth=args.auth,
         strategy=args.strategy,
         reset_scale=args.app_scale_settings,
-        force=args.no_cache,
+        force_env_build=args.no_cache,
     )
     app_id = res.revision
     resolved_app_name = res.app_name
