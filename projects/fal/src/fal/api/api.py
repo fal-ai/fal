@@ -1107,7 +1107,7 @@ def function(  # type: ignore
     if kind == "container" and config.get("app_files"):
         raise ValueError("app_files is not supported for container apps.")
 
-    if config.get("force_env_build"):
+    if config.get("force_env_build") is not None:
         force_env_build = config.pop("force_env_build")
         config["force"] = force_env_build
 
