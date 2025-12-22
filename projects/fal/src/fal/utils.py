@@ -77,7 +77,7 @@ def load_function_from(
     file_path: str,
     function_name: str | None = None,
     *,
-    force: bool = False,
+    force_env_build: bool = False,
 ) -> LoadedFunction:
     import os
     import runpy
@@ -102,7 +102,7 @@ def load_function_from(
     endpoints = ["/"]
     if isinstance(target, type) and issubclass(target, App):
         endpoints = target.get_endpoints() or ["/"]
-        target = wrap_app(target, host=host, force=force)
+        target = wrap_app(target, host=host, force_env_build=force_env_build)
 
     if not isinstance(target, IsolatedFunction):
         raise FalServerlessError(

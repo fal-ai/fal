@@ -24,7 +24,9 @@ def _run(args):
     client = SyncServerlessClient(host=args.host, team=team)
     host = client._create_host(local_file_path=file_path)
 
-    loaded = load_function_from(host, file_path, func_name, force=args.no_cache)
+    loaded = load_function_from(
+        host, file_path, func_name, force_env_build=args.no_cache
+    )
 
     isolated_function = loaded.function
     # let our exc handlers handle UserFunctionException

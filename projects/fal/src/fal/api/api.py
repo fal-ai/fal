@@ -805,6 +805,7 @@ def function(
     exposed_port: int | None = None,
     max_concurrency: int | None = None,
     local_python_modules: list[str] | None = None,
+    force_env_build: bool = False,
 ) -> Callable[
     [Callable[Concatenate[ArgsT], ReturnT]], IsolatedFunction[ArgsT, ReturnT]
 ]: ...
@@ -822,6 +823,7 @@ def function(
     exposed_port: int | None = None,
     max_concurrency: int | None = None,
     local_python_modules: list[str] | None = None,
+    force_env_build: bool = False,
 ) -> Callable[
     [Callable[Concatenate[ArgsT], ReturnT]], ServedIsolatedFunction[ArgsT, ReturnT]
 ]: ...
@@ -854,6 +856,7 @@ def function(
     request_timeout: int | None = None,
     startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
+    force_env_build: bool = False,
     _base_image: str | None = None,
     _scheduler: str | None = None,
 ) -> Callable[
@@ -887,6 +890,7 @@ def function(
     request_timeout: int | None = None,
     startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
+    force_env_build: bool = False,
     _base_image: str | None = None,
     _scheduler: str | None = None,
 ) -> Callable[
@@ -1044,8 +1048,8 @@ def function(
     request_timeout: int | None = None,
     startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
+    force_env_build: bool = False,
     _base_image: str | None = None,
-    force: bool = False,
     _scheduler: str | None = None,
 ) -> Callable[
     [Callable[Concatenate[ArgsT], ReturnT]], IsolatedFunction[ArgsT, ReturnT]
@@ -1077,7 +1081,7 @@ def function(
     request_timeout: int | None = None,
     startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
-    force: bool = False,
+    force_env_build: bool = False,
     _base_image: str | None = None,
     _scheduler: str | None = None,
 ) -> Callable[
@@ -1102,6 +1106,10 @@ def function(  # type: ignore
 
     if kind == "container" and config.get("app_files"):
         raise ValueError("app_files is not supported for container apps.")
+
+    if config.get("force_env_build"):
+        force_env_build = config.pop("force_env_build")
+        config["force"] = force_env_build
 
     options = host.parse_options(kind=kind, **config)
 
