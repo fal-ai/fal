@@ -976,7 +976,7 @@ def function(
     request_timeout: int | None = None,
     startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
-    force: bool = False,
+    force_env_build: bool = False,
     _base_image: str | None = None,
     _scheduler: str | None = None,
 ) -> Callable[
@@ -1015,7 +1015,7 @@ def function(
     request_timeout: int | None = None,
     startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
-    force: bool = False,
+    force_env_build: bool = False,
     _base_image: str | None = None,
     _scheduler: str | None = None,
 ) -> Callable[

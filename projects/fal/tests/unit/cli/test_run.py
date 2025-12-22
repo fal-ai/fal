@@ -79,7 +79,10 @@ def test_run_with_toml_success(
 
     # Ensure the correct app is ran
     mock_load_function_from.assert_called_once_with(
-        host, f"{project_root / 'src/my_app/inference.py'}", "MyApp", force=False
+        host,
+        f"{project_root / 'src/my_app/inference.py'}",
+        "MyApp",
+        force_env_build=False,
     )
 
 
@@ -158,7 +161,10 @@ def test_run_with_team_from_toml(
 
     # Ensure the correct app is ran
     mock_load_function_from.assert_called_once_with(
-        host, f"{project_root / 'src/team_app/inference.py'}", "TeamApp", force=False
+        host,
+        f"{project_root / 'src/team_app/inference.py'}",
+        "TeamApp",
+        force_env_build=False,
     )
 
 
@@ -194,7 +200,10 @@ def test_run_with_team_from_toml_cli_team_override(
 
     # Ensure the correct app is ran
     mock_load_function_from.assert_called_once_with(
-        host, f"{project_root / 'src/team_app/inference.py'}", "TeamApp", force=False
+        host,
+        f"{project_root / 'src/team_app/inference.py'}",
+        "TeamApp",
+        force_env_build=False,
     )
 
 

@@ -120,7 +120,7 @@ def container_addition_app(input: Input) -> Output:
     machine_type="S",
     serve=True,
     max_concurrency=1,
-    force=False,
+    force_env_build=False,
 )
 def container_cache_enabled_app(input: Input) -> Output:
     print("starting...")
@@ -140,7 +140,7 @@ def container_cache_enabled_app(input: Input) -> Output:
     machine_type="S",
     serve=True,
     max_concurrency=1,
-    force=True,
+    force_env_build=True,
 )
 def container_no_cache_app(input: Input) -> Output:
     print("starting...")
