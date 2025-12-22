@@ -1246,7 +1246,9 @@ class BaseServable:
                 headers = dict(exc.headers) if exc.headers else {}
                 headers["x-fal-billable-units"] = "0"
                 return JSONResponse(
-                    {"detail": f"Path {request.url.path} not found"}, 404
+                    {"detail": f"Path {request.url.path} not found"},
+                    404,
+                    headers=headers,
                 )
             else:
                 # If it's not a generic 404, just return the original message.
