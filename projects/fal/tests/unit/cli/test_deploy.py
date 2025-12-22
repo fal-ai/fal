@@ -46,6 +46,7 @@ def mock_args(
     strategy: Optional[str] = None,
     reset_scale: bool = False,
     team: Optional[str] = None,
+    no_cache: bool = False,
 ):
     args = MagicMock()
 
@@ -56,6 +57,7 @@ def mock_args(
     args.app_scale_settings = reset_scale
     args.output = "pretty"
     args.team = team
+    args.no_cache = no_cache
 
     return args
 
@@ -83,6 +85,7 @@ def test_deploy_with_toml_success(
         "shared",
         strategy="rolling",
         scale=False,
+        force=False,
     )
 
 
@@ -109,6 +112,7 @@ def test_deploy_with_toml_no_auth(
         None,
         strategy=None,
         scale=False,
+        force=False,
     )
 
 
@@ -220,6 +224,7 @@ def test_deploy_with_toml_deployment_strategy(
         "shared",
         strategy="rolling",
         scale=False,
+        force=False,
     )
 
 
@@ -244,6 +249,7 @@ def test_deploy_with_toml_default_deployment_strategy(
         None,
         strategy=None,
         scale=False,
+        force=False,
     )
 
 
@@ -268,6 +274,7 @@ def test_deploy_with_cli_auth(
         "shared",
         strategy=None,
         scale=False,
+        force=False,
     )
 
 
@@ -292,6 +299,7 @@ def test_deploy_with_cli_deployment_strategy(
         None,
         strategy="rolling",
         scale=False,
+        force=False,
     )
 
 
@@ -316,6 +324,7 @@ def test_deploy_with_cli_reset_scale(
         None,
         strategy=None,
         scale=True,
+        force=False,
     )
 
 
@@ -340,6 +349,32 @@ def test_deploy_with_cli_scale(
         None,
         strategy=None,
         scale=False,
+        force=False,
+    )
+
+
+@patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+@patch("fal.api.deploy._deploy_from_reference")
+def test_deploy_with_cli_no_cache(
+    mock_deploy_ref, mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml
+):
+    mock_parse_toml.return_value = mock_parse_pyproject_toml
+
+    args = mock_args(app_ref=("src/my_app/inference.py", "MyApp"), no_cache=True)
+
+    _deploy(args)
+
+    project_root, _ = find_project_root(None)
+
+    mock_deploy_ref.assert_called_once_with(
+        mock_deploy_ref.call_args[0][0],
+        (f"{project_root / 'src/my_app/inference.py'}", "MyApp"),
+        None,
+        None,
+        strategy=None,
+        scale=False,
+        force=True,
     )
 
 
