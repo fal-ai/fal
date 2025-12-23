@@ -46,7 +46,7 @@ def mock_args(
     strategy: Optional[str] = None,
     reset_scale: bool = False,
     team: Optional[str] = None,
-    no_cache: bool = False,
+    force_env_build: bool = False,
 ):
     args = MagicMock()
 
@@ -57,7 +57,7 @@ def mock_args(
     args.app_scale_settings = reset_scale
     args.output = "pretty"
     args.team = team
-    args.no_cache = no_cache
+    args.force_env_build = force_env_build
 
     return args
 

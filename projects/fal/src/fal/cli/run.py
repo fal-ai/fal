@@ -25,7 +25,7 @@ def _run(args):
     host = client._create_host(local_file_path=file_path)
 
     loaded = load_function_from(
-        host, file_path, func_name, force_env_build=args.no_cache
+        host, file_path, func_name, force_env_build=args.force_env_build
     )
 
     isolated_function = loaded.function
@@ -50,8 +50,8 @@ def add_parser(main_subparsers, parents):
         help="Function reference. Configure team in pyproject.toml for app names.",
     )
     parser.add_argument(
-        "--no-cache",
+        "--force-env-build",
         action="store_true",
-        help="Do not use the cache for building the container image.",
+        help="Ignore the environment build cache and force rebuild.",
     )
     parser.set_defaults(func=_run)
