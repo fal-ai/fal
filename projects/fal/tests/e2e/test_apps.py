@@ -1,11 +1,13 @@
 import asyncio
 import json
+import re
 import secrets
 import subprocess
 import time
 import uuid
-from contextlib import contextmanager, suppress
+from contextlib import contextmanager, redirect_stdout, suppress
 from datetime import datetime, timedelta, timezone
+from io import StringIO
 from typing import Generator, List, Tuple, Union
 
 import httpx
@@ -101,6 +103,46 @@ nomad_addition_app = addition_app.on(_scheduler="nomad")
     max_concurrency=1,
 )
 def container_addition_app(input: Input) -> Output:
+    print("starting...")
+    for _ in range(input.wait_time):
+        print("sleeping...")
+        time.sleep(1)
+
+    return Output(result=input.lhs + input.rhs)
+
+
+@fal.function(
+    kind="container",
+    image=ContainerImage.from_dockerfile_str(
+        f"FROM python:{actual_python}-slim\n# {git_revision_short_hash()}",
+    ),
+    keep_alive=60,
+    machine_type="S",
+    serve=True,
+    max_concurrency=1,
+    force_env_build=False,
+)
+def container_cache_enabled_app(input: Input) -> Output:
+    print("starting...")
+    for _ in range(input.wait_time):
+        print("sleeping...")
+        time.sleep(1)
+
+    return Output(result=input.lhs + input.rhs)
+
+
+@fal.function(
+    kind="container",
+    image=ContainerImage.from_dockerfile_str(
+        f"FROM python:{actual_python}-slim\n# {git_revision_short_hash()}",
+    ),
+    keep_alive=60,
+    machine_type="S",
+    serve=True,
+    max_concurrency=1,
+    force_env_build=True,
+)
+def container_no_cache_app(input: Input) -> Output:
     print("starting...")
     for _ in range(input.wait_time):
         print("sleeping...")
@@ -1357,6 +1399,32 @@ def test_container_app_client(test_container_app: str):
 def test_container_build_args_app_client(test_container_build_args_app: str):
     response = apps.run(test_container_build_args_app, {})
     assert response == "built with build args"
+
+
+def test_container_no_cache_app_client(host: api.FalServerlessHost):
+    stdout = StringIO()
+    with redirect_stdout(stdout):
+        with register_app(host, container_no_cache_app, "container") as (app_alias, _):
+            pass
+
+    stdout = StringIO()
+    with redirect_stdout(stdout):
+        with register_app(host, container_cache_enabled_app, "container") as (
+            app_alias,
+            _,
+        ):
+            pass
+
+    logs = stdout.getvalue()
+    assert re.search(r"Image \S+ already exists", logs) is not None
+
+    stdout = StringIO()
+    with redirect_stdout(stdout):
+        with register_app(host, container_no_cache_app, "container") as (app_alias, _):
+            pass
+
+    logs = stdout.getvalue()
+    assert re.search(r"Image \S+ already exists", logs) is None
 
 
 class HintsApp(fal.App, keep_alive=300, max_concurrency=1):
