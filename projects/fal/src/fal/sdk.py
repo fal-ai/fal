@@ -675,7 +675,7 @@ class FalServerlessConnection:
         self.stub.RevokeUserKey(request)
 
     def define_environment(
-        self, kind: str, **options: Any
+        self, kind: str, force: bool = False, **options: Any
     ) -> isolate_proto.EnvironmentDefinition:
         struct = isolate_proto.Struct()
         struct.update(options)
@@ -683,6 +683,7 @@ class FalServerlessConnection:
         return isolate_proto.EnvironmentDefinition(
             kind=kind,
             configuration=struct,
+            force=force,
         )
 
     def register(
