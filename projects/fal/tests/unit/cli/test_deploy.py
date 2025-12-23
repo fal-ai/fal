@@ -356,12 +356,12 @@ def test_deploy_with_cli_scale(
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
 @patch("fal.cli._utils.parse_pyproject_toml")
 @patch("fal.api.deploy._deploy_from_reference")
-def test_deploy_with_cli_no_cache(
+def test_deploy_with_cli_force_env_build(
     mock_deploy_ref, mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml
 ):
     mock_parse_toml.return_value = mock_parse_pyproject_toml
 
-    args = mock_args(app_ref=("src/my_app/inference.py", "MyApp"), no_cache=True)
+    args = mock_args(app_ref=("src/my_app/inference.py", "MyApp"), force_env_build=True)
 
     _deploy(args)
 
