@@ -803,6 +803,20 @@ def test_404_response(test_app: str, request: pytest.FixtureRequest):
         apps.run(test_app, path="/other", arguments={"lhs": 1, "rhs": 2})
 
 
+def test_404_billable_units(test_exception_app: AppClient):
+    """Test that 404 responses include x-fal-billable-units: 0 header."""
+    with httpx.Client() as httpx_client:
+        url = test_exception_app.url + "/non-existent-endpoint"
+        response = httpx_client.post(
+            url,
+            json={},
+            timeout=30,
+        )
+
+        assert response.status_code == 404
+        assert response.headers.get("x-fal-billable-units") == "0"
+
+
 def test_app_no_auth():
     # This will just pass for users with shared apps access
     app_alias = str(uuid.uuid4()) + "-alias"
