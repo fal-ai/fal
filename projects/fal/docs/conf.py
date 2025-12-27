@@ -16,8 +16,17 @@ author = 'FAL Team'
 extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.napoleon',
-    'sphinx_autodoc_typehints'
+    'sphinx_autodoc_typehints',
+    'sphinx_markdown_builder',
 ]
+
+# -- Autodoc configuration ---------------------------------------------------
+# Include type hints in function/class signatures
+autodoc_typehints = 'signature'
+
+# sphinx-autodoc-typehints settings
+typehints_document_rtype = True
+always_document_param_types = True
 
 templates_path = ['_templates']
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
