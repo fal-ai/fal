@@ -315,17 +315,35 @@ def _print_python_packages() -> None:
     print("[debug] Python packages installed:", ", ".join(packages))
 
 
-def _include_app_files_path(
-    local_file_path: str | None, app_files_context_dir: str | None
+def _include_files_path(
+    local_file_path: str | None,
+    files_context_dir: str | None,
+    base_cloud_dirs: str | list[str] | None = "/app",
 ):
-    base_cloud_dir = Path("/app")
+    """
+    Include the files path to sys.path. This is used to allow the app to access the
+    files in the local file path.
+
+    Args:
+        local_file_path: Path to the script on the local machine
+        files_context_dir: Context directory (app_files_context_dir,
+            docker_context_dir)
+        base_cloud_dirs: Base directory or directories in the container where
+            files are located (defaults to /app, but can be parsed from
+            Dockerfile WORKDIR/COPY dest). Can be a single string or list of
+            strings for multiple destinations.
+    """
     if local_file_path is None:
         return
 
-    # In case of container apps, the /app directory is not created by default
-    # so we need to check if it exists before proceeding
-    if not base_cloud_dir.exists():
+    if base_cloud_dirs is None:
         return
+
+    # Normalize to list for uniform processing
+    if isinstance(base_cloud_dirs, str):
+        cloud_dirs = [base_cloud_dirs]
+    else:
+        cloud_dirs = base_cloud_dirs
 
     base_path = Path(local_file_path).resolve()
     if base_path.is_dir():
@@ -333,43 +351,50 @@ def _include_app_files_path(
     else:
         original_script_dir = base_path.parent
 
-    if app_files_context_dir:
-        context_path = Path(app_files_context_dir)
-        if context_path.is_absolute():
-            final_script_dir = context_path.resolve()
+    # Process each cloud directory
+    first_final_path = None
+    for base_cloud_dir in cloud_dirs:
+        base_cloud_path = Path(base_cloud_dir)
+
+        # Check if the base directory exists before proceeding
+        if not base_cloud_path.exists():
+            continue
+
+        if files_context_dir:
+            context_path = Path(files_context_dir)
+            if context_path.is_absolute():
+                final_script_dir = context_path.resolve()
+            else:
+                final_script_dir = (original_script_dir / context_path).resolve()
+
+            # relative path between the original script dir
+            # and where the files_context_dir is targeting
+            relative_path = os.path.relpath(original_script_dir, final_script_dir)
+            # cloud final_path based on the base cloud dir
+            final_path = base_cloud_path / Path(relative_path)
         else:
-            final_script_dir = (original_script_dir / context_path).resolve()
+            # if no files_context_dir is provided, base dir is the root
+            final_path = base_cloud_path
 
-        # relative path between the original script dir
-        # and where the app_files_context_dir is targetting
-        relative_path = os.path.relpath(original_script_dir, final_script_dir)
-        # cloud final_path based on the `/app` base dir,
-        final_path = base_cloud_dir / Path(relative_path)
-    else:
-        # if no app_files_context_dir is provided, the base directory is the root
-        final_path = base_cloud_dir
+        # Create the final path if it doesn't exist
+        # This is for cases when fal app is not in root
+        # and its parent directory is not in app_files
+        # Which means that relative path to app won't be created by default
+        final_path.mkdir(parents=True, exist_ok=True)
 
-    # Create the final path if it doesn't exist
-    # This is for cases when fal app is not in root
-    # and its parent directory is not in app_files
-    # Which means that the relative path to app won't be created by default
-    final_path.mkdir(parents=True, exist_ok=True)
+        # Track first final path for cwd change
+        if first_final_path is None:
+            first_final_path = final_path
 
-    # Add local files deployment path to sys.path so imports
-    # work correctly in the isolate agent
-    # Append the final path to sys.path first so that the
-    # relative directory is resolved first in case of conflicts
-    sys.path.append(str(final_path))
+        # Add to sys.path so imports work
+        # Add the relative directory resolved path
+        sys.path.append(str(final_path))
+        # Add the base cloud dir for top-level access
+        sys.path.append(str(base_cloud_path))
 
-    # Add the base cloud dir path to sys.path so that
-    # the app can access the files in the top level directory
-    # This is for cases when fal app is not in root,
-    # and user wants to access the files without using relative imports
-    sys.path.append(str(base_cloud_dir))
-
-    # Change the current working directory to the path of the app
-    # so that the app can access the files in the current directory
-    os.chdir(str(final_path))
+    # Change cwd to first final path (where the main app script is)
+    if first_final_path is not None:
+        os.chdir(str(first_final_path))
 
 
 class App(BaseServable):
@@ -525,12 +550,21 @@ class App(BaseServable):
     async def lifespan(self, app: fastapi.FastAPI):
         os.environ["FAL_RUNNER_STATE"] = "SETUP"
 
-        # We want to not do any directory changes for container apps,
-        # since we don't have explicit checks to see the kind of app
-        # We check for app_files here and check kind and app_files earlier
-        # to ensure that container apps don't have app_files
+        # Configure sys.path based on deployment type:
+        # - app_files: files synced to /app via TUS protocol
+        # - container with WORKDIR: files baked into image at workdir
+        # - container with COPY (fallback): files baked into image at workdir
+        #   (parsed from Dockerfile COPY destinations)
         if self.app_files:
-            _include_app_files_path(self.local_file_path, self.app_files_context_dir)
+            # For app_files deployments (always use /app)
+            _include_files_path(self.local_file_path, self.app_files_context_dir)
+        elif self.image is not None and self.image.get_copy_sources():
+            # Use workdir parsed from Dockerfile (COPY dest or WORKDIR directive)
+            _include_files_path(
+                self.local_file_path,
+                str(self.image.docker_context_dir),
+                self.image.workdir,
+            )
         _print_python_packages()
         await _call_any_fn(self.setup)
 

@@ -483,20 +483,52 @@ class FalServerlessHost(Host):
             client = FalServerlessClient(self.url, self.credentials)
             return client.connect()
 
-    def _app_files_sync(self, options: Options) -> list[File]:
-        import re  # noqa: PLC0415
+    def files_sync(self, options: Options) -> list[File]:
+        """
+        Sync files to the server. This method checks the kind of the environment
+        and syncs the files accordingly.
 
-        app_files: list[str] = options.host.get("app_files", [])
-        app_files_ignore_str = options.host.get("app_files_ignore", [])
-        app_files_ignore = [re.compile(pattern) for pattern in app_files_ignore_str]
-        app_files_context_dir = options.host.get("app_files_context_dir", None)
+        Args:
+            options: The options for the environment.
+        Returns:
+            The list of files that were synced.
+        """
+        import re
+
+        if options.environment.get("kind") == "container":
+            # Container files
+            image_dict: dict[str, Any] = options.environment.get("image", {})
+            files_list = image_dict.get("docker_files_list", [])
+            files_ignore_str = image_dict.get("docker_ignore", [])
+            files_context_dir = image_dict.get("docker_context_dir")
+        else:
+            # app_files
+            files_list = options.host.get("app_files", [])
+            files_ignore_str = options.host.get("app_files_ignore", [])
+            files_context_dir = options.host.get("app_files_context_dir")
+
+        # Compile regex patterns (both containers and app_files use regex now)
+        files_ignore = [re.compile(pattern) for pattern in files_ignore_str]
+        return self._files_sync(
+            files_list,
+            files_ignore=files_ignore,
+            files_context_dir=files_context_dir,
+        )
+
+    def _files_sync(
+        self,
+        files_list: list[str],
+        files_ignore: Optional[list] = None,
+        files_context_dir: Optional[str] = None,
+    ) -> list[File]:
+        """Sync files using regex patterns for ignore matching (app_files)."""
         res = []
-        if app_files:
+        if files_list:
             sync = FileSync(self.local_file_path)
             files, errors = sync.sync_files(
-                app_files,
-                files_ignore=app_files_ignore,
-                files_context_dir=app_files_context_dir,
+                files_list,
+                files_ignore=files_ignore,
+                files_context_dir=files_context_dir,
             )
             if errors:
                 for error in errors:
@@ -569,7 +601,7 @@ class FalServerlessHost(Host):
 
         health_check_config = options.host.get("health_check_config")
 
-        app_files = self._app_files_sync(options)
+        files = self.files_sync(options)
 
         partial_func = _prepare_partial_func(func)
 
@@ -595,7 +627,7 @@ class FalServerlessHost(Host):
             health_check_config=health_check_config,
             # By default, logs are public
             private_logs=options.host.get("private_logs", False),
-            files=app_files,
+            files=files,
         ):
             for log in partial_result.logs:
                 self._log_printer.print(log)
@@ -655,7 +687,8 @@ class FalServerlessHost(Host):
             startup_timeout=startup_timeout,
         )
 
-        app_files = self._app_files_sync(options)
+        files = self.files_sync(options)
+        console.print("files", files)
 
         return_value = _UNSET
         # Allow isolate provided arguments (such as setup function) to take
@@ -666,7 +699,7 @@ class FalServerlessHost(Host):
             environments,
             machine_requirements=machine_requirements,
             setup_function=setup_function,
-            files=app_files,
+            files=files,
         ):
             result_handler(partial_result)
 

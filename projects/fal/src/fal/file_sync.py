@@ -255,7 +255,7 @@ class FileSync:
         return uploader.url
 
     def _matches_patterns(self, relative_path: str, patterns: List[re.Pattern]) -> bool:
-        """Check if a file matches any of the patterns."""
+        """Check if a file matches any of the regex patterns."""
         return any(pattern.search(relative_path) for pattern in patterns)
 
     def sync_files(
@@ -263,12 +263,21 @@ class FileSync:
         paths: List[str],
         chunk_size: int = 5 * 1024 * 1024,
         max_concurrency_uploads: int = DEFAULT_CONCURRENCY_UPLOADS,
-        files_ignore: List[re.Pattern] = [],
+        files_ignore: Optional[List[re.Pattern]] = None,
         files_context_dir: Optional[str] = None,
     ) -> Tuple[List[FileMetadata], List[AppFileUploadException]]:
+        """Sync files to the server.
+
+        Args:
+            paths: List of file paths or glob patterns to sync
+            chunk_size: Upload chunk size in bytes
+            max_concurrency_uploads: Maximum concurrent uploads
+            files_ignore: List of compiled regex patterns for ignoring files
+            files_context_dir: Context directory for relative paths
+        """
         files = self.collect_files(paths, files_context_dir)
 
-        # Filter out ignored files
+        # Filter out ignored files using regex patterns (app_files)
         if files_ignore:
             filtered_files: List[FileMetadata] = []
             for metadata in files:
@@ -286,6 +295,7 @@ class FileSync:
         seen_paths = set()
         seen_relative_paths = set()
         for metadata in files:
+            console.print("metadata", metadata)
             abs_path = metadata.absolute_path
             rel_path = metadata.relative_path
             if abs_path not in seen_paths:
@@ -310,6 +320,7 @@ class FileSync:
         files_to_upload: List[FileMetadata] = []
         for file in unique_files:
             if file.hash in missing_hashes:
+                console.print("file", file)
                 # No longer missing as we are uploading it
                 # Removing it avoids duplicate uploads
                 missing_hashes.remove(file.hash)
