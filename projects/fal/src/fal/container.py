@@ -4,7 +4,7 @@ import re
 import shlex
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Literal, Optional
+from typing import Dict, List, Literal, Optional, Union
 
 Builder = Literal["depot", "service", "worker"]
 BUILDERS = {"depot", "service", "worker"}
@@ -312,7 +312,7 @@ class DockerfileParser:
 
         return None
 
-    def get_effective_workdir(self) -> str | list[str] | None:
+    def get_effective_workdir(self) -> Union[str, List[str], None]:
         """Get the effective working directory where files will be placed.
 
         Priority:
@@ -515,7 +515,7 @@ class ContainerImage:
             )
 
     @property
-    def workdir(self) -> str | list[str] | None:
+    def workdir(self) -> Union[str, List[str], None]:
         """
         Get the effective working directory where files are placed in the container.w
 
