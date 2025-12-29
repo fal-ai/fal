@@ -272,10 +272,12 @@ message RegisterApplicationRequest {
     repeated File files = 12;
     // Source code of the app implementation
     optional string source_code = 13;
-    // Optional health check config for runners
-    optional ApplicationHealthCheckConfig health_check_config = 14;
+    // @deprecated Optional health check path for runners
+    optional string health_check_path = 14;
     // Target environment for deployment (defaults to "main")
     optional string environment_name = 15;
+    // Optional health check config for runners
+    optional ApplicationHealthCheckConfig health_check_config = 16;
 }
 
 message RegisterApplicationResultType {
@@ -400,6 +402,7 @@ message AliasInfo {
     optional int32 concurrency_buffer_perc = 14;
     optional int32 scaling_delay_seconds = 15;
     optional string environment_name = 16;
+    bool is_rolling = 17;
 }
 
 message SetSecretRequest {

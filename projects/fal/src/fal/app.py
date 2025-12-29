@@ -11,7 +11,7 @@ import threading
 import time
 import typing
 from contextlib import asynccontextmanager, contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, ClassVar, Optional, TypeVar
 
@@ -32,7 +32,7 @@ from fal.api import (
 from fal.container import ContainerImage
 from fal.exceptions import FalServerlessException, RequestCancelledException
 from fal.logging import get_logger
-from fal.sdk import AuthModeLiteral
+from fal.sdk import ApplicationHealthCheckConfig, AuthModeLiteral, HealthCheck
 from fal.toolkit.file import request_lifecycle_preference
 from fal.toolkit.file.providers.fal import LIFECYCLE_PREFERENCE
 
@@ -155,6 +155,7 @@ def wrap_app(cls: type[App], **kwargs) -> IsolatedFunction:
 class AppClientError(FalServerlessException):
     message: str
     status_code: int
+    headers: dict[str, str] = field(default_factory=dict)
 
 
 class EndpointClient:
@@ -181,6 +182,7 @@ class EndpointClient:
                 raise AppClientError(
                     f"Failed to POST {url}: {resp.status_code} {resp.text}",
                     status_code=resp.status_code,
+                    headers=resp.headers,
                 )
             resp_dict = resp.json()
 
@@ -272,6 +274,7 @@ class AppClient:
                                 "Health check failed with non-retryable error: "
                                 f"{resp.status_code} {resp.text}",
                                 status_code=resp.status_code,
+                                headers=resp.headers,
                             )
 
                     time.sleep(health_check_interval)
@@ -451,7 +454,7 @@ class App(BaseServable):
         if cls.image is not None:
             cls.host_kwargs["image"] = cls.image
 
-        cls.host_kwargs["health_check_path"] = cls.get_health_check_endpoint()
+        cls.host_kwargs["health_check_config"] = cls.get_health_check_config()
 
         cls.app_name = getattr(cls, "app_name") or app_name
 
@@ -478,22 +481,39 @@ class App(BaseServable):
         ]
 
     @classmethod
-    def get_health_check_endpoint(cls) -> Optional[str]:
-        paths = [
-            signature.path
-            for _, endpoint in inspect.getmembers(cls, inspect.isfunction)
-            if (signature := getattr(endpoint, "route_signature", None))
-            and signature.is_health_check
-        ]
-        if len(paths) > 1:
-            raise ValueError(
-                f"Multiple health check endpoints found: {', '.join(paths)}. "
-                "An app can only have one health check endpoint."
-            )
-        elif len(paths) == 1:
-            return paths[0]
-        else:
+    def get_health_check_config(cls) -> Optional[ApplicationHealthCheckConfig]:
+        health_check_path: str | None = None
+        health_check: HealthCheck | None = None
+
+        for _, endpoint in inspect.getmembers(cls, inspect.isfunction):
+            signature = getattr(endpoint, "route_signature", None)
+            if not signature or not signature.health_check:
+                continue
+
+            if signature.is_websocket:
+                raise ValueError(
+                    "Health check endpoints cannot be websocket endpoints."
+                )
+
+            if health_check is not None:
+                raise ValueError(
+                    "Multiple health check endpoints found. "
+                    "An app can only have one health check endpoint."
+                )
+
+            health_check_path = signature.path
+            health_check = signature.health_check
+
+        if health_check is None or health_check_path is None:
             return None
+
+        return ApplicationHealthCheckConfig(
+            path=health_check_path,
+            start_period_seconds=health_check.start_period_seconds,
+            timeout_seconds=health_check.timeout_seconds,
+            failure_threshold=health_check.failure_threshold,
+            call_regularly=health_check.call_regularly,
+        )
 
     def collect_routes(self) -> dict[RouteSignature, Callable[..., Any]]:
         return {
@@ -659,6 +679,7 @@ class App(BaseServable):
             return JSONResponse({"detail": str(exc)}, 499)
 
     def _add_extra_routes(self, app: fastapi.FastAPI):
+        # TODO remove this once we have a proper health check endpoint
         @app.get("/health")
         def health():
             return self.health()
@@ -669,7 +690,10 @@ class App(BaseServable):
 
 
 def endpoint(
-    path: str, *, is_websocket: bool = False, is_health_check: bool = False
+    path: str,
+    *,
+    is_websocket: bool = False,
+    health_check: HealthCheck | None = None,
 ) -> Callable[[EndpointT], EndpointT]:
     """Designate the decorated function as an application endpoint."""
 
@@ -682,7 +706,7 @@ def endpoint(
         callable.route_signature = RouteSignature(  # type: ignore
             path=path,
             is_websocket=is_websocket,
-            is_health_check=is_health_check,
+            health_check=health_check,
         )
         return callable
 

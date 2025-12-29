@@ -23,6 +23,7 @@ from isolate.server.interface import from_grpc, to_serialized_object, to_struct
 from fal import flags
 from fal._serialization import patch_pickle
 from fal.auth import UserAccess, key_credentials
+from fal.console import console
 from fal.logging import get_logger
 from fal.logging.trace import TraceContextInterceptor
 
@@ -544,6 +545,71 @@ class MachineRequirements:
             raise ValueError("No machine type provided.")
 
 
+class HealthCheck:
+    start_period_seconds: Optional[int] = None
+    timeout_seconds: Optional[int] = None
+    failure_threshold: Optional[int] = None
+    call_regularly: Optional[bool] = None
+
+    def __init__(
+        self,
+        *,
+        start_period_seconds: Optional[int] = None,
+        timeout_seconds: Optional[int] = None,
+        failure_threshold: Optional[int] = None,
+        call_regularly: Optional[bool] = None,
+    ):
+        """Health check configuration for a runner.
+
+        Args:
+            start_period_seconds: Minimum time the runner has been running \
+            before considering the runner unhealthy when health check fails. \
+            To prevent the health check from failing too early, \
+            this will be replaced by startup_timeout of the application \
+            if it's less than it. Defaults to 30.
+            timeout_seconds: Timeout in seconds for the health check \
+            request. Defaults to 5 seconds.
+            failure_threshold: Number of consecutive failures \
+            before considering the runner as unhealthy. Defaults to 3.
+            call_regularly: Perform health check every 15s. \
+            If false, only do it when the x-fal-runner-health-check header is present. \
+            Defaults to True.
+        """
+
+        if call_regularly is False:
+            if failure_threshold is not None or start_period_seconds is not None:
+                console.print(
+                    "[bold yellow]Note:[/bold yellow] [dim]failure_threshold[/dim] "
+                    "and [dim]start_period_seconds[/dim] are ignored when "
+                    "[dim]call_regularly[/dim] is set to False. "
+                    "See https://docs.fal.ai/serverless/development/add-health-check-endpoint#manual-health-checks for details."  # noqa: E501
+                )
+
+        self.start_period_seconds = start_period_seconds
+        self.timeout_seconds = timeout_seconds
+        self.failure_threshold = failure_threshold
+        self.call_regularly = call_regularly
+
+    def __hash__(self):
+        return hash(
+            (
+                self.start_period_seconds,
+                self.timeout_seconds,
+                self.failure_threshold,
+                self.call_regularly,
+            )
+        )
+
+
+@dataclass
+class ApplicationHealthCheckConfig:
+    path: str
+    start_period_seconds: Optional[int]
+    timeout_seconds: Optional[int]
+    failure_threshold: Optional[int]
+    call_regularly: Optional[bool]
+
+
 @dataclass
 class FalServerlessConnection:
     hostname: str
@@ -608,7 +674,7 @@ class FalServerlessConnection:
         self.stub.RevokeUserKey(request)
 
     def define_environment(
-        self, kind: str, **options: Any
+        self, kind: str, force: bool = False, **options: Any
     ) -> isolate_proto.EnvironmentDefinition:
         struct = isolate_proto.Struct()
         struct.update(options)
@@ -616,6 +682,7 @@ class FalServerlessConnection:
         return isolate_proto.EnvironmentDefinition(
             kind=kind,
             configuration=struct,
+            force=force,
         )
 
     def register(
@@ -626,7 +693,7 @@ class FalServerlessConnection:
         auth_mode: Optional[AuthModeLiteral] = None,
         *,
         source_code: str | None = None,
-        health_check_path: str | None = None,
+        health_check_config: ApplicationHealthCheckConfig | None = None,
         serialization_method: str = _DEFAULT_SERIALIZATION_METHOD,
         machine_requirements: MachineRequirements | None = None,
         metadata: dict[str, Any] | None = None,
@@ -686,6 +753,17 @@ class FalServerlessConnection:
             deployment_strategy.upper()
         ].to_proto()
 
+        if health_check_config:
+            wrapped_health_check_config = isolate_proto.ApplicationHealthCheckConfig(
+                path=health_check_config.path,
+                start_period_seconds=health_check_config.start_period_seconds,
+                timeout_seconds=health_check_config.timeout_seconds,
+                failure_threshold=health_check_config.failure_threshold,
+                call_regularly=health_check_config.call_regularly,
+            )
+        else:
+            wrapped_health_check_config = None
+
         request = isolate_proto.RegisterApplicationRequest(
             function=wrapped_function,
             environments=environments,
@@ -698,6 +776,7 @@ class FalServerlessConnection:
             private_logs=private_logs,
             files=files,
             source_code=source_code,
+            health_check_config=wrapped_health_check_config,
         )
         for partial_result in self.stub.RegisterApplication(request):
             yield from_grpc(partial_result)

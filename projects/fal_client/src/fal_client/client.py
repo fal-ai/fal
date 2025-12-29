@@ -31,7 +31,7 @@ from urllib.parse import urlencode
 import httpx
 import msgpack
 from httpx_sse import aconnect_sse, connect_sse
-from fal_client.auth import FAL_RUN_HOST, fetch_credentials
+from fal_client.auth import FAL_QUEUE_RUN_HOST, FAL_RUN_HOST, fetch_credentials
 
 if TYPE_CHECKING:
     from websockets.client import WebSocketClientProtocol
@@ -46,7 +46,7 @@ AnyJSON = Dict[str, Any]
 Priority = Literal["normal", "low"]
 
 RUN_URL_FORMAT = f"https://{FAL_RUN_HOST}/"
-QUEUE_URL_FORMAT = f"https://queue.{FAL_RUN_HOST}/"
+QUEUE_URL_FORMAT = f"https://{FAL_QUEUE_RUN_HOST}/"
 REALTIME_URL_FORMAT = f"wss://{FAL_RUN_HOST}/"
 REST_URL = "https://rest.alpha.fal.ai"
 CDN_URL = "https://v3.fal.media"
