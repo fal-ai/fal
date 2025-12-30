@@ -1185,14 +1185,6 @@ class FalFastAPI(FastAPI):
         return spec
 
 
-class FalServer(uvicorn.Server):
-    """
-    A subclass of uvicorn.Server that adds some fal-specific functionality.
-    """
-
-    ...
-
-
 class RouteSignature(NamedTuple):
     path: str
     is_websocket: bool = False
@@ -1389,14 +1381,14 @@ class BaseServable:
 
         # We use the default workers=1 config because setup function can be heavy
         # and it runs once per worker.
-        server = FalServer(
+        server = uvicorn.Server(
             config=uvicorn.Config(
                 app, host="0.0.0.0", port=8080, timeout_keep_alive=300, lifespan="on"
             )
         )
         metrics_app = FastAPI()
         metrics_app.add_route("/metrics", handle_metrics)
-        metrics_server = FalServer(
+        metrics_server = uvicorn.Server(
             config=uvicorn.Config(metrics_app, host="0.0.0.0", port=9090)
         )
 
