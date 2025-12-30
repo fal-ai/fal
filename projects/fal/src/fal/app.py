@@ -537,8 +537,8 @@ class App(BaseServable):
             # For containers, just add workdir to sys.path
             # Docker already set cwd from WORKDIR, no chdir needed
             # isolate's runpy.run_path() overrides sys.path[0], so cwd is never added
-            if workdirs := self.image.workdir:
-                sys.path.append(workdirs)
+            if workdir := self.image.workdir:
+                sys.path.append(workdir)
             else:
                 # Display the warning only COPY/ADD commands are used
                 from fal.console import console
