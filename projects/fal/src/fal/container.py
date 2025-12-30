@@ -4,7 +4,7 @@ import re
 import shlex
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Literal, Optional, Union
+from typing import Dict, List, Literal, Optional
 
 Builder = Literal["depot", "service", "worker"]
 BUILDERS = {"depot", "service", "worker"}
@@ -206,84 +206,6 @@ class DockerfileParser:
 
         return workdir
 
-    def get_all_copy_destinations(self) -> List[str]:
-        """Get all unique root destination directories from COPY/ADD commands.
-
-        Parses all COPY/ADD commands that copy local files and extracts
-        all absolute destination paths. Filters out subdirectories when a
-        parent directory is already included (e.g., if /app and /app/src
-        are both destinations, only /app is returned).
-
-        Returns:
-            List of unique root-level absolute destination directory paths.
-            Empty list if no absolute destinations found.
-
-        Example:
-            >>> dockerfile = '''
-            ... FROM python:3.11
-            ... COPY config.yaml /etc/myapp/
-            ... COPY app.py /app/
-            ... COPY src/ /app/src/
-            ... COPY data/ /data/
-            ... '''
-            >>> parser = DockerfileParser(dockerfile)
-            >>> parser.get_all_copy_destinations()
-            ['/etc/myapp', '/app', '/data']  # /app/src excluded (parent /app included)
-        """
-        destinations = []
-
-        # Regex to match COPY or ADD instructions
-        instruction_pattern = re.compile(
-            r"^(?P<instruction>COPY|ADD)\s+(?P<rest>.+?)\s*$",
-            re.MULTILINE | re.IGNORECASE,
-        )
-
-        for match in instruction_pattern.finditer(self.normalized_content):
-            instruction = match.group("instruction").upper()
-            rest = match.group("rest").strip()
-
-            # Skip COPY --from=... (multi-stage builds)
-            if instruction == "COPY" and re.match(r"--from=", rest, re.IGNORECASE):
-                continue
-
-            # Skip ADD with URLs
-            if instruction == "ADD" and re.match(r"https?://", rest, re.IGNORECASE):
-                continue
-
-            # Parse the destination (last argument)
-            dest = self._parse_copy_destination(rest)
-            if dest and dest.startswith("/"):
-                # Normalize destination (strip trailing filename if present)
-                # e.g., /app/ -> /app, /app/file.txt -> /app
-                if dest.endswith("/"):
-                    normalized = dest.rstrip("/") or "/"
-                else:
-                    # If it looks like a file, use parent directory
-                    parent = str(Path(dest).parent)
-                    normalized = parent if parent != "." else "/"
-
-                # Add to list if not already present
-                if normalized not in destinations:
-                    destinations.append(normalized)
-
-        # Filter out subdirectories when parent is already in list
-        # Sort by length (shorter paths first) to check parents first
-        destinations.sort(key=len)
-        filtered: list[str] = []
-        for dest in destinations:
-            # Check if any existing path is a parent of this dest
-            is_subdir = False
-            for existing in filtered:
-                # Check if dest is a subdirectory of existing
-                # e.g., /app/src is subdir of /app
-                if dest.startswith(existing + "/") or dest == existing:
-                    is_subdir = True
-                    break
-            if not is_subdir:
-                filtered.append(dest)
-
-        return filtered
-
     def _parse_copy_destination(self, args_str: str) -> Optional[str]:
         """Parse the destination from COPY/ADD arguments.
 
@@ -312,28 +234,20 @@ class DockerfileParser:
 
         return None
 
-    def get_effective_workdir(self) -> Union[str, List[str], None]:
+    def get_effective_workdir(self) -> Optional[str]:
         """Get the effective working directory where files will be placed.
 
         Priority:
         1. WORKDIR directive (single canonical location)
-        2. All absolute COPY destinations (when no WORKDIR)
-        3. None if no WORKDIR and no absolute destinations
+        2. None if no WORKDIR and no absolute destinations
 
         Returns:
-            - str: Single path if WORKDIR exists or only one absolute COPY destination
-            - list[str]: Multiple paths if no WORKDIR and multiple absolute COPY dest
-            - None: No WORKDIR and no absolute COPY destinations
+            - str: path string if WORKDIR exists
+            - None: No WORKDIR
         """
-        # Priority 1: WORKDIR directive (single canonical location)
+        # WORKDIR directive (single canonical location)
         if workdir := self.get_workdir():
             return workdir
-
-        # Priority 2: All absolute COPY destinations (when no WORKDIR)
-        copy_dests = self.get_all_copy_destinations()
-        if copy_dests:
-            # Return list if multiple, single string if one
-            return copy_dests if len(copy_dests) > 1 else copy_dests[0]
 
         # No WORKDIR, no absolute destinations
         return None
@@ -515,17 +429,16 @@ class ContainerImage:
             )
 
     @property
-    def workdir(self) -> Union[str, List[str], None]:
+    def workdir(self) -> Optional[str]:
         """
-        Get the effective working directory where files are placed in the container.w
+        Get the effective working directory where files are placed in the container.
 
         This is determined by parsing the Dockerfile:
         1. First checks for WORKDIR directive
-        2. Then checks for absolute COPY destinations (e.g., COPY . /app/)
-        3. Falls back to "/" if neither is specified
+        2. Falls back to None if neither is specified
 
         Returns:
-            The directory path where copied files reside in the container.
+            The path string if WORKDIR exists, otherwise None.
         """
         # Parse the effective workdir from Dockerfile
         parser = DockerfileParser(self.dockerfile_str)
