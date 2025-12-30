@@ -688,7 +688,6 @@ class FalServerlessHost(Host):
         )
 
         files = self.files_sync(options)
-        console.print("files", files)
 
         return_value = _UNSET
         # Allow isolate provided arguments (such as setup function) to take
