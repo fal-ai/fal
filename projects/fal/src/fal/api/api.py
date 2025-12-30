@@ -1400,12 +1400,33 @@ class BaseServable:
             config=uvicorn.Config(metrics_app, host="0.0.0.0", port=9090)
         )
 
-        metrics_task = asyncio.create_task(metrics_server.serve())
+        async def _serve() -> None:
+            tasks = {
+                asyncio.create_task(server.serve()): server,
+                asyncio.create_task(metrics_server.serve()): metrics_server,
+            }
 
-        await server.serve()
+            _, pending = await asyncio.wait(
+                tasks.keys(),
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if not pending:
+                return
 
-        metrics_task.cancel()
-        await asyncio.wait_for(metrics_task, timeout=2)
+            # try graceful shutdown
+            for task in pending:
+                tasks[task].should_exit = True
+            _, pending = await asyncio.wait(pending, timeout=2)
+            if not pending:
+                return
+
+            for task in pending:
+                task.cancel()
+
+            with suppress(asyncio.CancelledError):
+                await asyncio.wait(pending)
+
+        await _serve()
 
 
 class ServeWrapper(BaseServable):

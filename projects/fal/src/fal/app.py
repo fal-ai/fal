@@ -114,9 +114,21 @@ def wrap_app(cls: type[App], **kwargs) -> IsolatedFunction:
     if host:
         cls.local_file_path = host.local_file_path
 
-    async def initialize_and_serve():
+    def initialize_and_serve():
+        import isolate
+
         app = cls()
-        await app.serve()
+
+        if isolate.version_tuple[1] >= 22:
+            return app.serve()
+        else:
+            asyncio.set_event_loop(asyncio.new_event_loop())
+            asyncio.run(app.serve())
+
+    # if the function is not marked with _run_on_main_thread, it runs on a thread pool
+    # however in thread pool, the function cannot receive SIGTERM
+    # we run the function on main thread so SIGTERM can be propagated to the app
+    initialize_and_serve._run_on_main_thread = True  # type: ignore[attr-defined]
 
     metadata = {}
     app = cls(_allow_init=True)
@@ -125,7 +137,6 @@ def wrap_app(cls: type[App], **kwargs) -> IsolatedFunction:
 
     routes = app.collect_routes()
     initialize_and_serve._routes = [r.path for r in routes.keys()] or ["/"]  # type: ignore[attr-defined]
-    initialize_and_serve._run_on_main_thread = True  # type: ignore[attr-defined]
     realtime_app = any(route.is_websocket for route in routes)
 
     kind = cls.host_kwargs.pop("kind", "virtualenv")
