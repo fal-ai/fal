@@ -452,6 +452,7 @@ class App(BaseServable):
 
         if cls.image is not None:
             cls.host_kwargs["image"] = cls.image
+            cls.host_kwargs["kind"] = "container"
 
         cls.host_kwargs["health_check_config"] = cls.get_health_check_config()
 
@@ -461,6 +462,15 @@ class App(BaseServable):
             raise ValueError(
                 "App classes should not override __init__ directly. "
                 "Use setup() instead."
+            )
+
+        if cls.requirements and cls.host_kwargs.get("kind") == "container":
+            from fal.console import console
+
+            console.print(
+                "\n[yellow]WARNING:[/yellow] Using [bold]requirements[/bold] with "
+                "container apps is not recommended. For better performance, "
+                "install dependencies in the Dockerfile instead.\n"
             )
 
     def __init__(self, *, _allow_init: bool = False):
@@ -527,27 +537,15 @@ class App(BaseServable):
 
         # Configure sys.path based on deployment type:
         # - app_files: files synced to /app via TUS protocol
-        # - container with WORKDIR: files baked into image at workdir
-        # - container with COPY (fallback): files baked into image at workdir
-        #   (parsed from Dockerfile COPY destinations)
+        # - container: files baked into image
         if self.app_files:
             # For app_files deployments (always use /app)
             _include_app_files_path(self.local_file_path, self.app_files_context_dir)
-        elif self.image is not None and self.image.get_copy_sources():
-            # For containers, just add workdir to sys.path
-            # Docker already set cwd from WORKDIR, no chdir needed
-            # isolate's runpy.run_path() overrides sys.path[0], so cwd is never added
-            if workdir := self.image.workdir:
-                sys.path.append(workdir)
-            else:
-                # Display the warning only COPY/ADD commands are used
-                from fal.console import console
-
-                console.print(
-                    "[yellow]Warning: No WORKDIR found in Dockerfile. "
-                    "This may cause issues with imports. "
-                    "Please add a WORKDIR directive to your Dockerfile.[/yellow]"
-                )
+        elif self.image is not None:
+            # For containers, add the working directory to sys.path
+            # isolate's runpy.run_path() overrides sys.path[0],
+            # so the working directory is never added to sys.path
+            sys.path.insert(0, "")
         _print_python_packages()
         await _call_any_fn(self.setup)
 

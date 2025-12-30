@@ -295,7 +295,6 @@ class FileSync:
         seen_paths = set()
         seen_relative_paths = set()
         for metadata in files:
-            console.print("metadata", metadata)
             abs_path = metadata.absolute_path
             rel_path = metadata.relative_path
             if abs_path not in seen_paths:
@@ -320,7 +319,6 @@ class FileSync:
         files_to_upload: List[FileMetadata] = []
         for file in unique_files:
             if file.hash in missing_hashes:
-                console.print("file", file)
                 # No longer missing as we are uploading it
                 # Removing it avoids duplicate uploads
                 missing_hashes.remove(file.hash)

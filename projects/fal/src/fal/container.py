@@ -146,66 +146,6 @@ class DockerfileParser:
             return False
         return True
 
-    def get_workdir(self) -> Optional[str]:
-        """Get the effective WORKDIR from the Dockerfile.
-
-        Parses all WORKDIR directives and resolves relative paths according to
-        Docker's behavior:
-        - Absolute paths (starting with /) set the workdir directly
-        - Relative paths are resolved against the current workdir
-        - Paths with variables ($VAR or ${VAR}) are returned as-is
-
-        Returns:
-            The effective WORKDIR path, or None if no WORKDIR is specified.
-        """
-        from pathlib import PurePosixPath
-
-        workdir = None
-
-        workdir_pattern = re.compile(
-            r"^\s*WORKDIR\s+(?P<path>.+?)\s*$",
-            re.MULTILINE | re.IGNORECASE,
-        )
-
-        for match in workdir_pattern.finditer(self.normalized_content):
-            path = match.group("path").strip()
-            # Remove quotes if present
-            if (path.startswith('"') and path.endswith('"')) or (
-                path.startswith("'") and path.endswith("'")
-            ):
-                path = path[1:-1]
-
-            # Check if path contains variables - if so, return as-is
-            if "$" in path:
-                # Path contains environment/build variables
-                # We can't resolve these, so just set it directly
-                workdir = path
-            elif path.startswith("/"):
-                # Absolute path - set directly
-                workdir = path
-            else:
-                # Relative path - resolve against current workdir
-                if workdir is None:
-                    # First WORKDIR is relative, base it from root
-                    workdir = "/"
-                # Resolve the relative path and normalize (.., ., etc.)
-                resolved = PurePosixPath(workdir) / path
-                # Normalize by processing parts to handle .. and .
-                parts: list[str] = []
-                for part in resolved.parts:
-                    if part == "/":
-                        continue
-                    elif part == "..":
-                        # Go up one directory if possible
-                        if parts:
-                            parts.pop()
-                    elif part != ".":
-                        # Add normal parts, skip "."
-                        parts.append(part)
-                workdir = "/" + "/".join(parts) if parts else "/"
-
-        return workdir
-
     def _parse_copy_destination(self, args_str: str) -> Optional[str]:
         """Parse the destination from COPY/ADD arguments.
 
@@ -232,24 +172,6 @@ class DockerfileParser:
         except (json.JSONDecodeError, ValueError):
             pass
 
-        return None
-
-    def get_effective_workdir(self) -> Optional[str]:
-        """Get the effective working directory where files will be placed.
-
-        Priority:
-        1. WORKDIR directive (single canonical location)
-        2. None if no WORKDIR and no absolute destinations
-
-        Returns:
-            - str: path string if WORKDIR exists
-            - None: No WORKDIR
-        """
-        # WORKDIR directive (single canonical location)
-        if workdir := self.get_workdir():
-            return workdir
-
-        # No WORKDIR, no absolute destinations
         return None
 
 
@@ -428,22 +350,6 @@ class ContainerImage:
                 f"Invalid builder: {self.builder}, must be one of {BUILDERS}"
             )
 
-    @property
-    def workdir(self) -> Optional[str]:
-        """
-        Get the effective working directory where files are placed in the container.
-
-        This is determined by parsing the Dockerfile:
-        1. First checks for WORKDIR directive
-        2. Falls back to None if neither is specified
-
-        Returns:
-            The path string if WORKDIR exists, otherwise None.
-        """
-        # Parse the effective workdir from Dockerfile
-        parser = DockerfileParser(self.dockerfile_str)
-        return parser.get_effective_workdir()
-
     @classmethod
     def from_dockerfile_str(cls, text: str, **kwargs) -> "ContainerImage":
         """
@@ -474,12 +380,9 @@ class ContainerImage:
             "compression": self.compression,
             "force_compression": self.force_compression,
             "secrets": self.secrets,
-            "docker_context_dir": str(self.docker_context_dir)
-            if self.docker_context_dir
-            else None,
+            "docker_context_dir": str(self.docker_context_dir),
             "docker_files_list": self.get_copy_sources(),
             "docker_ignore": self._dockerignore,
-            "workdir": self.workdir,
         }
 
     def get_copy_sources(self) -> List[str]:

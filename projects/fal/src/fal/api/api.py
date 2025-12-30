@@ -499,8 +499,21 @@ class FalServerlessHost(Host):
             # Container files
             image_dict: dict[str, Any] = options.environment.get("image", {})
             files_list = image_dict.get("docker_files_list", [])
-            files_ignore_str = image_dict.get("docker_ignore", [])
+            files_ignore_str: list[str] = image_dict.get("docker_ignore", [])
             files_context_dir = image_dict.get("docker_context_dir")
+
+            # Auto-exclude the app file
+            if self.local_file_path and files_list:
+                from pathlib import Path
+
+                context = Path(files_context_dir or ".").resolve()
+                app_file = Path(self.local_file_path).resolve()
+                try:
+                    rel_path = os.path.relpath(app_file, context)
+                    if not rel_path.startswith(".."):
+                        files_ignore_str.append(f"^{re.escape(rel_path)}$")
+                except ValueError:
+                    pass  # Different drives on Windows
         else:
             # app_files
             files_list = options.host.get("app_files", [])
