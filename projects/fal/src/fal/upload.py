@@ -1,19 +1,24 @@
 import concurrent.futures
+import logging
 import math
 import os
-from abc import ABC, abstractmethod
-from typing import Any, Callable, Dict, List, Optional, cast
+import queue
+import time
+from threading import Lock, Thread
+from typing import Any, Callable, Dict, List, Optional, Tuple, cast
 
 import httpx
 
 from fal.exceptions import FalServerlessException
+
+logger = logging.getLogger(__name__)
 
 MULTIPART_CHUNK_SIZE = 10 * 1024 * 1024  # 10MB per part
 MULTIPART_MAX_CONCURRENCY = 10
 MULTIPART_THRESHOLD = 10 * 1024 * 1024  # 10MB
 
 
-class BaseMultipartUpload(ABC):
+class BaseMultipartUpload:
     def __init__(
         self,
         client: httpx.Client,
@@ -25,6 +30,7 @@ class BaseMultipartUpload(ABC):
         self.max_concurrency = max_concurrency
         self._upload_id: Optional[str] = None
         self._parts: List[Dict[str, object]] = []
+        self._parts_lock = Lock()
 
     @property
     def upload_id(self) -> str:
@@ -33,19 +39,16 @@ class BaseMultipartUpload(ABC):
         return self._upload_id
 
     @property
-    @abstractmethod
     def initiate_url(self) -> str:
-        pass
+        raise NotImplementedError("Subclasses must implement initiate_url")
 
     @property
-    @abstractmethod
     def part_url(self) -> str:
-        pass
+        raise NotImplementedError("Subclasses must implement part_url")
 
     @property
-    @abstractmethod
     def complete_url(self) -> str:
-        pass
+        raise NotImplementedError("Subclasses must implement complete_url")
 
     @property
     def cancel_url(self) -> Optional[str]:
@@ -57,19 +60,75 @@ class BaseMultipartUpload(ABC):
     def get_complete_payload(self, parts: List[Dict[str, object]]) -> dict:
         return {"parts": parts}
 
-    def _request(self, method: str, path: str, **kwargs) -> httpx.Response:
-        response = self.client.request(method, path, **kwargs)
-        if response.status_code == 409:
-            raise FileExistsError("File already exists on server")
-        elif response.status_code == 404:
-            raise FalServerlessException("Not Found")
-        elif response.status_code != 200:
+    def _request(
+        self,
+        method: str,
+        path: str,
+        max_retries: int = 3,
+        **kwargs,
+    ) -> httpx.Response:
+        last_exception = None
+
+        for attempt in range(max_retries):
             try:
-                detail = response.json()["detail"]
-            except Exception:
-                detail = response.text
-            raise FalServerlessException(detail)
-        return response
+                response = self.client.request(method, path, **kwargs)
+
+                if response.status_code in (200, 201, 204):
+                    return response
+                elif response.status_code == 409:
+                    raise FileExistsError("File already exists on server")
+                elif response.status_code == 404:
+                    raise FalServerlessException("Not Found")
+                elif response.status_code == 429:
+                    # Rate limited, retry after if available
+                    retry_after = int(response.headers.get("Retry-After", 2))
+                    if attempt < max_retries - 1:
+                        logger.warning(f"Rate limited, retrying after {retry_after}s")
+                        time.sleep(retry_after)
+                        continue
+                    raise FalServerlessException("Rate limit exceeded")
+                elif response.status_code >= 500:
+                    # Server error, retry with exponential backoff
+                    if attempt < max_retries - 1:
+                        backoff = 2**attempt
+                        logger.warning(
+                            f"Server error {response.status_code}, "
+                            f"retrying in {backoff}s ({attempt + 1} of {max_retries})"
+                        )
+                        time.sleep(backoff)
+                        continue
+                    # Last attempt failed
+                    try:
+                        detail = response.json()["detail"]
+                    except Exception:
+                        detail = response.text
+                    raise FalServerlessException(detail)
+                else:
+                    # Client error (4xx) - don't retry
+                    try:
+                        detail = response.json()["detail"]
+                    except Exception:
+                        detail = response.text
+                    raise FalServerlessException(detail)
+
+            except (httpx.TimeoutException, httpx.NetworkError) as e:
+                last_exception = e
+                if attempt < max_retries - 1:
+                    backoff = 2**attempt
+                    logger.warning(
+                        f"Network error: {e}, "
+                        f"retrying in {backoff}s (attempt {attempt + 1}/{max_retries})"
+                    )
+                    time.sleep(backoff)
+                    continue
+                raise FalServerlessException(
+                    f"Network error after {max_retries} retries: {e}"
+                )
+
+        # Should not reach here, but handle it anyway
+        raise FalServerlessException(
+            f"Request failed after {max_retries} retries: {last_exception}"
+        )
 
     def initiate(self) -> str:
         payload = self.get_initiate_payload()
@@ -79,7 +138,7 @@ class BaseMultipartUpload(ABC):
         self._upload_id = data["upload_id"]
         return self.upload_id
 
-    def upload_part(
+    def _upload_part(
         self, part_number: int, data: bytes, filename: str = ""
     ) -> Dict[str, object]:
         file_name = filename or "chunk"
@@ -93,11 +152,15 @@ class BaseMultipartUpload(ABC):
             "part_number": result["part_number"],
             "etag": result["etag"],
         }
-        self._parts.append(part_info)
+        with self._parts_lock:
+            self._parts.append(part_info)
         return part_info
 
     def complete(self) -> str:
-        sorted_parts = sorted(self._parts, key=lambda p: cast(int, p["part_number"]))
+        with self._parts_lock:
+            sorted_parts = sorted(
+                self._parts, key=lambda p: cast(int, p["part_number"])
+            )
         payload = self.get_complete_payload(sorted_parts)
         response = self._request("POST", self.complete_url, json=payload)
         data = response.json()
@@ -107,8 +170,8 @@ class BaseMultipartUpload(ABC):
         if self._upload_id and self.cancel_url:
             try:
                 self._request("POST", self.cancel_url)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Failed to cancel upload {self._upload_id}: {e}")
 
     def upload_file(
         self,
@@ -123,28 +186,57 @@ class BaseMultipartUpload(ABC):
         except FileExistsError:
             return ""
 
+        chunk_queue: queue.Queue[Optional[Tuple[int, bytes]]] = queue.Queue(
+            maxsize=self.max_concurrency * 2
+        )
+        read_error: List[Exception] = []
+
+        def reader_thread():
+            """Reads file chunks and puts them in bounded queue"""
+            try:
+                with open(file_path, "rb") as f:
+                    for part_number in range(1, num_parts + 1):
+                        chunk = f.read(self.chunk_size)
+                        if chunk:
+                            chunk_queue.put((part_number, chunk))
+                # Sentinel to signal completion
+                chunk_queue.put(None)
+            except Exception as e:
+                read_error.append(e)
+                chunk_queue.put(None)
+
+        reader = Thread(target=reader_thread, daemon=True)
+        reader.start()
+
         try:
             with concurrent.futures.ThreadPoolExecutor(
                 max_workers=self.max_concurrency
             ) as executor:
                 futures = []
 
-                for part_number in range(1, num_parts + 1):
+                while True:
+                    item = chunk_queue.get()
+                    if item is None:
+                        break
 
-                    def _upload_part(pn: int) -> Dict[str, object]:
-                        with open(file_path, "rb") as f:
-                            start = (pn - 1) * self.chunk_size
-                            f.seek(start)
-                            chunk = f.read(self.chunk_size)
-                            result = self.upload_part(pn, chunk)
-                            if on_part_complete:
-                                on_part_complete(pn)
-                            return result
+                    part_number, chunk = item
+                    future = executor.submit(
+                        self._upload_part,
+                        part_number,
+                        chunk,
+                    )
+                    futures.append((part_number, future))
 
-                    futures.append(executor.submit(_upload_part, part_number))
-
-                for future in concurrent.futures.as_completed(futures):
+                # Wait for all uploads to complete
+                for part_number, future in futures:
                     future.result()
+                    if on_part_complete:
+                        on_part_complete(part_number)
+
+            reader.join()
+
+            if read_error:
+                raise read_error[0]
 
             return self.complete()
         except FileExistsError:
@@ -162,10 +254,12 @@ class AppFileMultipartUpload(BaseMultipartUpload):
         metadata: dict,
         chunk_size: int = MULTIPART_CHUNK_SIZE,
         max_concurrency: int = MULTIPART_MAX_CONCURRENCY,
+        verify_hash: bool = True,
     ):
         super().__init__(client, chunk_size, max_concurrency)
         self.file_hash = file_hash
         self.metadata = metadata
+        self.verify_hash = verify_hash
 
     @property
     def initiate_url(self) -> str:
@@ -191,6 +285,16 @@ class AppFileMultipartUpload(BaseMultipartUpload):
             "parts": parts,
             "metadata": self.metadata,
         }
+
+    def upload_file(
+        self,
+        file_path: str,
+        on_part_complete: Optional[Callable[[int], None]] = None,
+    ) -> str:
+        etag = super().upload_file(file_path, on_part_complete)
+        if self.verify_hash and etag and etag != self.file_hash:
+            raise RuntimeError(f"Hash mismatch: expected {self.file_hash}, got {etag}")
+        return etag
 
 
 class DataFileMultipartUpload(BaseMultipartUpload):
