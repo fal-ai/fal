@@ -229,25 +229,25 @@ def test_check_hashes_on_server_error_returns_all_missing(file_sync):
         assert result == test_hashes
 
 
-def test_upload_file_tus_basic_functionality(file_sync, temp_dir):
-    """Test TUS file upload calls correct methods with parameters"""
+def test_upload_file_multipart_basic_functionality(file_sync, temp_dir):
+    """Test multipart file upload calls correct methods with parameters"""
     test_file = Path(temp_dir) / "test.txt"
     test_file.write_text("test content")
 
-    mock_uploader = MagicMock()
-    expected_url = "https://upload.server.com/files/abc123"
-    mock_uploader.url = expected_url
+    metadata = file_sync_mod.FileMetadata.from_path(
+        test_file, relative="test.txt", absolute=str(test_file)
+    )
 
-    with patch.object(file_sync, "_tus_client") as mock_client:
-        mock_client.uploader.return_value = mock_uploader
+    with patch("fal.file_sync.AppFileMultipartUpload") as MockMultipart:
+        mock_instance = MagicMock()
+        mock_instance.upload_file.return_value = "test_etag"
+        MockMultipart.return_value = mock_instance
 
-        metadata = file_sync_mod.FileMetadata.from_path(
-            test_file, relative="test.txt", absolute=str(test_file)
-        )
-        result_url = file_sync.upload_file_tus(str(test_file), metadata)
+        result = file_sync.upload_file_multipart(str(test_file), metadata)
 
-        assert result_url == expected_url
-        mock_uploader.upload.assert_called_once()
+        assert result == "test_etag"
+        MockMultipart.assert_called_once()
+        mock_instance.upload_file.assert_called_once_with(str(test_file))
 
 
 def test_sync_files_with_ignore_patterns(file_sync, temp_dir):
@@ -284,7 +284,7 @@ def test_sync_files_basic_workflow(file_sync, temp_dir):
 
     # Mock server to indicate all files need upload
     with patch.object(fs, "check_hashes_on_server") as mock_check, patch.object(
-        fs, "upload_file_tus", return_value="http://uploaded"
+        fs, "upload_file_multipart", return_value="test_etag"
     ):
         # Make server say all hashes are missing (need upload)
         mock_check.side_effect = lambda hashes: hashes
