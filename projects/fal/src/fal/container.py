@@ -310,6 +310,7 @@ class ContainerImage:
     # Build context directory
     docker_context_dir: Optional[os.PathLike] = field(default=None)
     dockerignore: Optional[List[str]] = field(default=None)
+    dockerignore_path: Optional[os.PathLike] = field(default=None)
 
     def __post_init__(self) -> None:
         # Validate dockerfile first
@@ -325,13 +326,13 @@ class ContainerImage:
             self.docker_context_dir = Path.cwd()
 
         # Initialize dockerignore patterns (converted to regex)
-        # Priority: explicit list > .dockerignore file in context > defaults
-        if self.dockerignore is None:
-            # Check for .dockerignore file in context_dir, or use defaults
-            handler = DockerignoreHandler(context_dir=self.docker_context_dir)
-        else:
-            # Use provided patterns
-            handler = DockerignoreHandler(dockerignore=self.dockerignore)
+        # Priority rules:
+        # explicit list > explicit path > .dockerignore file in context > defaults
+        handler = DockerignoreHandler(
+            context_dir=self.docker_context_dir,
+            dockerignore=self.dockerignore,
+            dockerignore_path=self.dockerignore_path,
+        )
 
         # Convert gitignore patterns to regex for use with re.compile()
         # This avoids requiring pathspec on workers
@@ -349,6 +350,13 @@ class ContainerImage:
             raise ValueError(
                 f"Invalid builder: {self.builder}, must be one of {BUILDERS}"
             )
+
+    @property
+    def source_files(self) -> List[str]:
+        """
+        Get list of files to sync from COPY/ADD commands.
+        """
+        return self.get_copy_sources()
 
     @classmethod
     def from_dockerfile_str(cls, text: str, **kwargs) -> "ContainerImage":
@@ -381,7 +389,7 @@ class ContainerImage:
             "force_compression": self.force_compression,
             "secrets": self.secrets,
             "docker_context_dir": str(self.docker_context_dir),
-            "docker_files_list": self.get_copy_sources(),
+            "docker_files_list": self.source_files,
             "docker_ignore": self._dockerignore,
         }
 

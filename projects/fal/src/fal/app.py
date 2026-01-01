@@ -453,6 +453,9 @@ class App(BaseServable):
         if cls.image is not None:
             cls.host_kwargs["image"] = cls.image
             cls.host_kwargs["kind"] = "container"
+            # For consistency, check also here (same check with function decorator)
+            if cls.app_files:
+                raise ValueError("app_files is not supported for container apps.")
 
         cls.host_kwargs["health_check_config"] = cls.get_health_check_config()
 
