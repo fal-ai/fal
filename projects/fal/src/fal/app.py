@@ -104,6 +104,10 @@ async def _set_logger_labels(
         code = await res.code()
         assert str(code) == "StatusCode.OK", str(code)
     except BaseException:
+        # ignore if shutting down
+        if os.environ.get("FAL_RUNNER_STATE") == "TERMINATING":
+            return
+
         logger.debug("Failed to set logger labels", exc_info=True)
 
 
@@ -115,11 +119,11 @@ def wrap_app(cls: type[App], **kwargs) -> IsolatedFunction:
         cls.local_file_path = host.local_file_path
 
     def initialize_and_serve():
-        import isolate
+        import threading
 
         app = cls()
 
-        if isolate.version_tuple[1] >= 22:
+        if threading.current_thread() == threading.main_thread():
             return app.serve()
         else:
             asyncio.set_event_loop(asyncio.new_event_loop())
