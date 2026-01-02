@@ -52,6 +52,8 @@ REST_URL = "https://rest.alpha.fal.ai"
 CDN_URL = "https://v3.fal.media"
 USER_AGENT = "fal-client/0.2.2 (python)"
 
+SIGNED_URL_DURATION = 600
+
 
 @dataclass
 class CDNToken:
@@ -153,6 +155,7 @@ class MultipartUpload:
         chunk_size: int | None = None,
         content_type: str | None = None,
         max_concurrency: int | None = None,
+        private: bool = False,
     ) -> None:
         self.file_name = file_name
         self._client = client
@@ -163,6 +166,7 @@ class MultipartUpload:
         self._access_url: str | None = None
         self._upload_id: str | None = None
         self._parts: list[dict] = []
+        self._private = private
 
     @property
     def access_url(self) -> str:
@@ -191,6 +195,7 @@ class MultipartUpload:
             self._client,
             "POST",
             url,
+            params={"private": True} if self._private else {},
             headers={
                 **self.auth_headers,
                 "Accept": "application/json",
@@ -248,6 +253,7 @@ class MultipartUpload:
         content_type: str | None = None,
         chunk_size: int | None = None,
         max_concurrency: int | None = None,
+        private: bool = False,
     ):
         import concurrent.futures
 
@@ -258,6 +264,7 @@ class MultipartUpload:
             chunk_size=chunk_size,
             content_type=content_type,
             max_concurrency=max_concurrency,
+            private=private,
         )
         multipart.create()
         parts = math.ceil(len(data) / multipart.chunk_size)
@@ -285,6 +292,7 @@ class MultipartUpload:
         chunk_size: int | None = None,
         content_type: str | None = None,
         max_concurrency: int | None = None,
+        private: bool = False,
     ) -> str:
         import concurrent.futures
 
@@ -297,6 +305,7 @@ class MultipartUpload:
             chunk_size=chunk_size,
             content_type=content_type,
             max_concurrency=max_concurrency,
+            private=private,
         )
         multipart.create()
         parts = math.ceil(size / multipart.chunk_size)
@@ -329,6 +338,7 @@ class AsyncMultipartUpload:
         chunk_size: int | None = None,
         content_type: str | None = None,
         max_concurrency: int | None = None,
+        private: bool = False,
     ) -> None:
         self.file_name = file_name
         self._client = client
@@ -339,6 +349,7 @@ class AsyncMultipartUpload:
         self._access_url: str | None = None
         self._upload_id: str | None = None
         self._parts: list[dict] = []
+        self._private = private
 
     @property
     def access_url(self) -> str:
@@ -368,6 +379,7 @@ class AsyncMultipartUpload:
             self._client,
             "POST",
             url,
+            params={"private": True} if self._private else {},
             headers={
                 **headers,
                 "Accept": "application/json",
@@ -427,6 +439,7 @@ class AsyncMultipartUpload:
         content_type: str | None = None,
         chunk_size: int | None = None,
         max_concurrency: int | None = None,
+        private: bool = False,
     ) -> str:
         multipart = cls(
             file_name=file_name,
@@ -435,6 +448,7 @@ class AsyncMultipartUpload:
             chunk_size=chunk_size,
             content_type=content_type,
             max_concurrency=max_concurrency,
+            private=private,
         )
         await multipart.create()
         parts = math.ceil(len(data) / multipart.chunk_size)
@@ -469,6 +483,7 @@ class AsyncMultipartUpload:
         chunk_size: int | None = None,
         content_type: str | None = None,
         max_concurrency: int | None = None,
+        private: bool = False,
     ) -> str:
         file_name = os.path.basename(file_path)
         size = os.path.getsize(file_path)
@@ -479,6 +494,7 @@ class AsyncMultipartUpload:
             chunk_size=chunk_size,
             content_type=content_type,
             max_concurrency=max_concurrency,
+            private=private,
         )
         await multipart.create()
         parts = math.ceil(size / multipart.chunk_size)
@@ -1114,6 +1130,7 @@ class AsyncRequestHandle(_BaseRequestHandle):
 class AsyncClient:
     key: str | None = field(default=None, repr=False)
     default_timeout: float = 120.0
+    acl_enabled: bool = False
 
     def _get_key(self) -> str:
         if self.key is None:
@@ -1162,6 +1179,22 @@ class AsyncClient:
             json=payload,
         )
         return _parse_token_response(response.json())
+
+    async def _get_signed_url(self, access_url: str) -> str:
+        if not access_url.startswith(CDN_URL + "/files/b/"):
+            raise ValueError(f"Invalid access URL: {access_url}")
+
+        client = await self._get_cdn_client()
+        response = await _async_maybe_retry_request(
+            client,
+            "POST",
+            f"{access_url}/sign",
+            json={"duration": SIGNED_URL_DURATION, "scope": ["read"]},
+        )
+        _raise_for_status(response)
+        signed_url = response.text
+
+        return signed_url
 
     async def run(
         self,
@@ -1335,13 +1368,17 @@ class AsyncClient:
         if len(data) > MULTIPART_THRESHOLD:
             if file_name is None:
                 file_name = "upload.bin"
-            return await AsyncMultipartUpload.save(
+            access_url = await AsyncMultipartUpload.save(
                 client=client,
                 token_manager=self._token_manager,
                 file_name=file_name,
                 data=data,
                 content_type=content_type,
+                private=self.acl_enabled,
             )
+            if self.acl_enabled:
+                access_url = await self._get_signed_url(access_url)
+            return access_url
 
         headers = {"Content-Type": content_type}
         if file_name is not None:
@@ -1349,12 +1386,16 @@ class AsyncClient:
 
         response = await client.post(
             CDN_URL + "/files/upload",
+            params={"private": True} if self.acl_enabled else {},
             content=data,
             headers=headers,
         )
         _raise_for_status(response)
 
-        return response.json()["access_url"]
+        access_url = response.json()["access_url"]
+        if self.acl_enabled:
+            access_url = await self._get_signed_url(access_url)
+        return access_url
 
     async def upload_file(self, path: os.PathLike) -> str:
         """Upload a file from the local filesystem to the CDN and return the access URL."""
@@ -1365,12 +1406,16 @@ class AsyncClient:
 
         if os.path.getsize(path) > MULTIPART_THRESHOLD:
             client = await self._get_cdn_client()
-            return await AsyncMultipartUpload.save_file(
+            access_url = await AsyncMultipartUpload.save_file(
                 file_path=str(path),
                 client=client,
                 token_manager=self._token_manager,
                 content_type=mime_type,
+                private=self.acl_enabled,
             )
+            if self.acl_enabled:
+                access_url = await self._get_signed_url(access_url)
+            return access_url
 
         with open(path, "rb") as file:
             return await self.upload(
@@ -1425,6 +1470,7 @@ class AsyncClient:
 class SyncClient:
     key: str | None = field(default=None, repr=False)
     default_timeout: float = 120.0
+    acl_enabled: bool = False
 
     def _get_key(self) -> str:
         if self.key is None:
@@ -1474,6 +1520,20 @@ class SyncClient:
             json=payload,
         )
         return _parse_token_response(response.json())
+
+    def _get_signed_url(self, access_url: str) -> str:
+        if not access_url.startswith(CDN_URL + "/files/b/"):
+            raise ValueError(f"Invalid access URL: {access_url}")
+
+        client = self._get_cdn_client()
+        response = client.post(
+            f"{access_url}/sign",
+            json={"duration": SIGNED_URL_DURATION, "scope": ["read"]},
+        )
+        _raise_for_status(response)
+        signed_url = response.text
+
+        return signed_url
 
     def run(
         self,
@@ -1643,13 +1703,17 @@ class SyncClient:
         if len(data) > MULTIPART_THRESHOLD:
             if file_name is None:
                 file_name = "upload.bin"
-            return MultipartUpload.save(
+            access_url = MultipartUpload.save(
                 client=client,
                 token_manager=self._token_manager,
                 file_name=file_name,
                 data=data,
                 content_type=content_type,
+                private=self.acl_enabled,
             )
+            if self.acl_enabled:
+                access_url = self._get_signed_url(access_url)
+            return access_url
 
         headers = {"Content-Type": content_type}
         if file_name is not None:
@@ -1662,7 +1726,10 @@ class SyncClient:
         )
         _raise_for_status(response)
 
-        return response.json()["access_url"]
+        access_url = response.json()["access_url"]
+        if self.acl_enabled:
+            access_url = self._get_signed_url(access_url)
+        return access_url
 
     def upload_file(self, path: os.PathLike) -> str:
         """Upload a file from the local filesystem to the CDN and return the access URL."""
@@ -1673,12 +1740,15 @@ class SyncClient:
 
         if os.path.getsize(path) > MULTIPART_THRESHOLD:
             client = self._get_cdn_client()
-            return MultipartUpload.save_file(
+            access_url = MultipartUpload.save_file(
                 file_path=str(path),
                 client=client,
                 token_manager=self._token_manager,
                 content_type=mime_type,
             )
+            if self.acl_enabled:
+                access_url = self._get_signed_url(access_url)
+            return access_url
 
         with open(path, "rb") as file:
             return self.upload(file.read(), mime_type, file_name=os.path.basename(path))
