@@ -712,6 +712,210 @@ def endpoint(
     return marker_fn
 
 
+def webrtc(
+    path: str,
+    *,
+    ice_servers: list[str] | None = None,
+    rtc_config: Any | None = None,
+) -> Callable[[EndpointT], EndpointT]:
+    """
+    Designate the decorated function as a WebRTC endpoint.
+
+    This decorator:
+    - Handles WebRTC signaling (offer/answer/ICE) automatically
+    - Configures STUN/TURN servers (defaults to Google STUN)
+    - Exposes RTCPeerConnection and WebSocket to the handler
+    - Filters signaling messages from control messages
+
+    Args:
+        path: The endpoint path
+        ice_servers: Custom list of ICE server URLs (defaults to Google STUN)
+        rtc_config: Full RTCConfiguration object for advanced use
+
+    Example:
+        @fal.webrtc("/video")
+        async def video_call(self, pc: RTCPeerConnection, ws: WebSocket):
+            # Add tracks
+            pc.addTrack(VideoTrack())
+
+            # Handle incoming tracks
+            @pc.on("track")
+            async def on_track(track):
+                frame = await track.recv()
+
+            # Handle control messages (signaling is automatic)
+            async for msg in ws.iter_text():
+                handle_control(json.loads(msg))
+    """
+
+    def decorator(func: EndpointT) -> EndpointT:
+        # Don't use @wraps to avoid exposing internal type annotations to FastAPI
+        async def wrapper(self, websocket: WebSocket):  # type: ignore
+            import json
+            from contextlib import suppress
+
+            from aiortc import (
+                RTCConfiguration,
+                RTCIceCandidate,
+                RTCIceServer,
+                RTCPeerConnection,
+                RTCSessionDescription,
+            )
+
+            # Configure ICE servers
+            if rtc_config is not None:
+                config = rtc_config
+            else:
+                # Default to Google STUN if no custom servers specified
+                ice_server_urls = (
+                    ice_servers
+                    if ice_servers is not None
+                    else ["stun:stun.l.google.com:19302"]
+                )
+
+                config = RTCConfiguration(
+                    iceServers=[RTCIceServer(urls=ice_server_urls)]
+                    if ice_server_urls
+                    else []
+                )
+
+            # Create peer connection
+            pc = RTCPeerConnection(configuration=config)
+
+            # Accept websocket
+            await websocket.accept()
+
+            # Queue for control messages (non-signaling)
+            control_queue: asyncio.Queue[str] = asyncio.Queue()
+
+            # Send server's ICE candidates to client as they're discovered
+            @pc.on("icecandidate")
+            def on_server_ice(candidate):
+                if candidate:
+                    asyncio.create_task(
+                        websocket.send_text(
+                            json.dumps(
+                                {
+                                    "type": "icecandidate",
+                                    "candidate": {
+                                        "candidate": candidate.candidate,
+                                        "sdpMid": candidate.sdpMid,
+                                        "sdpMLineIndex": candidate.sdpMLineIndex,
+                                    },
+                                }
+                            )
+                        )
+                    )
+
+            # Background task to handle signaling messages
+            async def signaling_loop():
+                try:
+                    while True:
+                        msg_text = await websocket.receive_text()
+                        msg = json.loads(msg_text)
+                        msg_type = msg.get("type")
+
+                        if msg_type == "offer":
+                            # Handle offer from client
+                            await pc.setRemoteDescription(
+                                RTCSessionDescription(sdp=msg["sdp"], type="offer")
+                            )
+
+                            # Create and send answer
+                            answer = await pc.createAnswer()
+                            await pc.setLocalDescription(answer)
+
+                            await websocket.send_text(
+                                json.dumps(
+                                    {"type": "answer", "sdp": pc.localDescription.sdp}
+                                )
+                            )
+
+                        elif msg_type == "icecandidate":
+                            # Handle ICE candidate from client
+                            cand = msg.get("candidate")
+                            if cand:
+                                await pc.addIceCandidate(
+                                    RTCIceCandidate(
+                                        sdpMid=cand.get("sdpMid"),
+                                        sdpMLineIndex=cand.get("sdpMLineIndex"),
+                                        candidate=cand.get("candidate"),
+                                    )
+                                )
+
+                        elif msg_type == "close":
+                            break
+
+                        else:
+                            # Non-signaling message - route to user's handler
+                            await control_queue.put(msg_text)
+
+                except Exception:
+                    pass
+
+            # Filtered websocket that only exposes control messages to user
+            class FilteredWebSocket:
+                """Wrapper that filters out signaling messages."""
+
+                async def receive_text(self):
+                    return await control_queue.get()
+
+                def iter_text(self):
+                    """Async iterator for control messages."""
+                    return self._iter_text_impl()
+
+                async def _iter_text_impl(self):
+                    while True:
+                        yield await control_queue.get()
+
+                async def send_text(self, data):
+                    return await websocket.send_text(data)
+
+                # Delegate other WebSocket methods
+                async def send_bytes(self, data):
+                    return await websocket.send_bytes(data)
+
+                async def send_json(self, data):
+                    return await websocket.send_json(data)
+
+                async def close(self, code=1000):
+                    return await websocket.close(code)
+
+            filtered_ws = FilteredWebSocket()
+
+            # Start signaling handler in background
+            signaling_task = asyncio.create_task(signaling_loop())
+
+            try:
+                # Call user's handler with filtered websocket
+                await func(self, pc, filtered_ws)
+            finally:
+                signaling_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await signaling_task
+                await pc.close()
+
+        # Copy metadata without type annotations
+        wrapper.__name__ = func.__name__
+        wrapper.__module__ = func.__module__
+        wrapper.__doc__ = func.__doc__
+
+        # Add WebSocket type annotation for FastAPI dependency injection
+        from fastapi import WebSocket
+
+        wrapper.__annotations__ = {"websocket": WebSocket}
+
+        # Mark as websocket endpoint
+        wrapper.route_signature = RouteSignature(  # type: ignore
+            path=path,
+            is_websocket=True,
+        )
+
+        return wrapper  # type: ignore
+
+    return decorator
+
+
 def _fal_websocket_template(
     func: EndpointT,
     route_signature: RouteSignature,

@@ -3,7 +3,7 @@ from __future__ import annotations
 from fal import apps  # noqa: F401
 from fal.api import FalServerlessHost, LocalHost, cached, function
 from fal.api import function as isolated  # noqa: F401
-from fal.app import App, endpoint, realtime, wrap_app  # noqa: F401
+from fal.app import App, endpoint, realtime, webrtc, wrap_app  # noqa: F401
 from fal.container import ContainerImage
 from fal.sdk import FalServerlessKeyCredentials, HealthCheck
 from fal.sync import sync_dir
@@ -22,6 +22,7 @@ __all__ = [
     "App",
     "endpoint",
     "realtime",
+    "webrtc",
     # "wrap_app",
     "HealthCheck",
     "FalServerlessKeyCredentials",
