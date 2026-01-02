@@ -1394,29 +1394,17 @@ class BaseServable:
 
         async def _serve() -> None:
             tasks = {
-                asyncio.create_task(server.serve()): server,
-                asyncio.create_task(metrics_server.serve()): metrics_server,
+                asyncio.create_task(server.serve()),
+                asyncio.create_task(metrics_server.serve()),
             }
 
-            _, pending = await asyncio.wait(
-                tasks.keys(),
-                return_when=asyncio.FIRST_COMPLETED,
+            await asyncio.wait(
+                tasks,
+                return_when=asyncio.ALL_COMPLETED,
             )
-            if not pending:
-                return
-
-            # try graceful shutdown
-            for task in pending:
-                tasks[task].should_exit = True
-            _, pending = await asyncio.wait(pending, timeout=2)
-            if not pending:
-                return
-
-            for task in pending:
-                task.cancel()
-
-            with suppress(asyncio.CancelledError):
-                await asyncio.wait(pending)
+            # we do not take care of pending tasks here.
+            # each task should be responsible for its own cleanup.
+            # graceful termination and timeout should be handled by external scheduler.
 
         await _serve()
 
