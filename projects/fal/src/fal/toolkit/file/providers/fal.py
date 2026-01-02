@@ -16,6 +16,7 @@ from urllib.request import Request, urlopen
 from urllib.response import addinfourl
 
 from fal.auth import key_credentials
+from fal.ref import get_current_app
 from fal.toolkit.exceptions import FileUploadException
 from fal.toolkit.file.types import FileData, FileRepository
 from fal.toolkit.utils.retry import retry
@@ -1213,7 +1214,7 @@ class InMemoryRepository(FileRepository):
         multipart_max_concurrency: int | None = None,
         object_lifecycle_preference: dict[str, str] | None = None,
     ) -> str:
-        return f'data:{file.content_type};base64,{b64encode(file.data).decode("utf-8")}'
+        return f"data:{file.content_type};base64,{b64encode(file.data).decode('utf-8')}"
 
 
 @dataclass
@@ -1271,10 +1272,17 @@ class FalFileRepositoryV3(FileRepository):
             raise FileUploadException("FAL_KEY must be set")
 
         key_id, key_secret = fal_key
-        return {
+        headers = {
             "Authorization": f"Key {key_id}:{key_secret}",
             "User-Agent": "fal/0.1.0",
         }
+
+        # Inject the CDN token if it is available
+        cdn_token = get_current_app().request_headers.get("x-fal-cdn-token")
+        if cdn_token:
+            headers["X-Fal-CDN-Token"] = cdn_token
+
+        return headers
 
     def save(
         self,
