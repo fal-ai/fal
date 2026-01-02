@@ -699,16 +699,20 @@ class FalServerlessHost(Host):
             from fal.console import console
 
             if service_urls := partial_result.service_urls:
-                console.print("Playground:")
+                from fal.flags import URL_OUTPUT
+
                 endpoints = getattr(func, "_routes", ["/"])  # type: ignore[attr-defined]
-                for endpoint in endpoints:
-                    console.print(f"\t{service_urls.playground}{endpoint}")
-                console.print("Synchronous Endpoints:")
-                for endpoint in endpoints:
-                    console.print(f"\t{service_urls.run}{endpoint}")
-                console.print("Asynchronous Endpoints (Recommended):")
-                for endpoint in endpoints:
-                    console.print(f"\t{service_urls.queue}{endpoint}")
+                if URL_OUTPUT != "none":
+                    console.print("Playground:")
+                    for endpoint in endpoints:
+                        console.print(f"\t{service_urls.playground}{endpoint}")
+                if URL_OUTPUT == "all":
+                    console.print("Synchronous Endpoints:")
+                    for endpoint in endpoints:
+                        console.print(f"\t{service_urls.run}{endpoint}")
+                    console.print("Asynchronous Endpoints (Recommended):")
+                    for endpoint in endpoints:
+                        console.print(f"\t{service_urls.queue}{endpoint}")
 
             for log in partial_result.logs:
                 if (
@@ -801,6 +805,7 @@ def function(
     exposed_port: int | None = None,
     max_concurrency: int | None = None,
     local_python_modules: list[str] | None = None,
+    force_env_build: bool = False,
 ) -> Callable[
     [Callable[Concatenate[ArgsT], ReturnT]], IsolatedFunction[ArgsT, ReturnT]
 ]: ...
@@ -818,6 +823,7 @@ def function(
     exposed_port: int | None = None,
     max_concurrency: int | None = None,
     local_python_modules: list[str] | None = None,
+    force_env_build: bool = False,
 ) -> Callable[
     [Callable[Concatenate[ArgsT], ReturnT]], ServedIsolatedFunction[ArgsT, ReturnT]
 ]: ...
@@ -850,6 +856,7 @@ def function(
     request_timeout: int | None = None,
     startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
+    force_env_build: bool = False,
     _base_image: str | None = None,
     _scheduler: str | None = None,
 ) -> Callable[
@@ -883,6 +890,7 @@ def function(
     request_timeout: int | None = None,
     startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
+    force_env_build: bool = False,
     _base_image: str | None = None,
     _scheduler: str | None = None,
 ) -> Callable[
@@ -968,6 +976,7 @@ def function(
     request_timeout: int | None = None,
     startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
+    force_env_build: bool = False,
     _base_image: str | None = None,
     _scheduler: str | None = None,
 ) -> Callable[
@@ -1006,6 +1015,7 @@ def function(
     request_timeout: int | None = None,
     startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
+    force_env_build: bool = False,
     _base_image: str | None = None,
     _scheduler: str | None = None,
 ) -> Callable[
@@ -1038,6 +1048,7 @@ def function(
     request_timeout: int | None = None,
     startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
+    force_env_build: bool = False,
     _base_image: str | None = None,
     _scheduler: str | None = None,
 ) -> Callable[
@@ -1070,6 +1081,7 @@ def function(
     request_timeout: int | None = None,
     startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
+    force_env_build: bool = False,
     _base_image: str | None = None,
     _scheduler: str | None = None,
 ) -> Callable[
@@ -1094,6 +1106,10 @@ def function(  # type: ignore
 
     if kind == "container" and config.get("app_files"):
         raise ValueError("app_files is not supported for container apps.")
+
+    if config.get("force_env_build") is not None:
+        force_env_build = config.pop("force_env_build")
+        config["force"] = force_env_build
 
     options = host.parse_options(kind=kind, **config)
 
@@ -1235,8 +1251,16 @@ class BaseServable:
             # This is supposed to make it easier to understand to the user
             # that the error comes from the app and not our platform.
             if exc.detail == "Not Found":
+                # For 404 errors (non-existent endpoints), set billable units to 0.
+                # This prevents users from being charged when they hit endpoints that
+                # don't exist. Without this, the platform would use the default billable
+                # units for the endpoint, incorrectly charging users for failed requests
+                headers = dict(exc.headers) if exc.headers else {}
+                headers["x-fal-billable-units"] = "0"
                 return JSONResponse(
-                    {"detail": f"Path {request.url.path} not found"}, 404
+                    {"detail": f"Path {request.url.path} not found"},
+                    404,
+                    headers=headers,
                 )
             else:
                 # If it's not a generic 404, just return the original message.
@@ -1248,7 +1272,17 @@ class BaseServable:
 
         @_app.exception_handler(FieldException)
         async def field_exception_handler(request: Request, exc: FieldException):
-            return JSONResponse(exc.to_pydantic_format(), exc.status_code)
+            headers = {}
+            if exc.billable_units:
+                # poor man's validation. we dont want people to pass in
+                # non-numeric values.
+                units_float = float(exc.billable_units)
+                # we dont want to add 8 decimal places for ints.
+                format_string = ".0f" if isinstance(exc.billable_units, int) else ".8f"
+                headers["x-fal-billable-units"] = format(units_float, format_string)
+            return JSONResponse(
+                exc.to_pydantic_format(), exc.status_code, headers=headers
+            )
 
         # ref: https://github.com/fastapi/fastapi/blob/37c8e7d76b4b47eb2c4cced6b4de59eb3d5f08eb/fastapi/exception_handlers.py#L20
         @_app.exception_handler(RequestValidationError)

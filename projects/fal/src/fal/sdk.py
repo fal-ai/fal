@@ -23,6 +23,7 @@ from isolate.server.interface import from_grpc, to_serialized_object, to_struct
 from fal import flags
 from fal._serialization import patch_pickle
 from fal.auth import UserAccess, key_credentials
+from fal.console import console
 from fal.logging import get_logger
 from fal.logging.trace import TraceContextInterceptor
 
@@ -575,16 +576,14 @@ class HealthCheck:
             Defaults to True.
         """
 
-        if (
-            call_regularly is False
-            and failure_threshold is not None
-            and failure_threshold > 1
-        ):
-            raise ValueError(
-                "failure_threshold must be 1 if call_regularly is set to False. "
-                "When health check is invoked by `x-fal-runner-health-check` header, "
-                "The runner will be terminated immediately if it fails."
-            )
+        if call_regularly is False:
+            if failure_threshold is not None or start_period_seconds is not None:
+                console.print(
+                    "[bold yellow]Note:[/bold yellow] [dim]failure_threshold[/dim] "
+                    "and [dim]start_period_seconds[/dim] are ignored when "
+                    "[dim]call_regularly[/dim] is set to False. "
+                    "See https://docs.fal.ai/serverless/development/add-health-check-endpoint#manual-health-checks for details."  # noqa: E501
+                )
 
         self.start_period_seconds = start_period_seconds
         self.timeout_seconds = timeout_seconds
@@ -675,7 +674,7 @@ class FalServerlessConnection:
         self.stub.RevokeUserKey(request)
 
     def define_environment(
-        self, kind: str, **options: Any
+        self, kind: str, force: bool = False, **options: Any
     ) -> isolate_proto.EnvironmentDefinition:
         struct = isolate_proto.Struct()
         struct.update(options)
@@ -683,6 +682,7 @@ class FalServerlessConnection:
         return isolate_proto.EnvironmentDefinition(
             kind=kind,
             configuration=struct,
+            force=force,
         )
 
     def register(
