@@ -221,8 +221,7 @@ def submit(app_id: str, arguments: dict[str, Any], *, path: str = "") -> Request
     response = client.post(
         url,
         json=arguments,
-        # headers=creds.to_headers(),
-        headers={**creds.to_headers(), "X-Fal-App": app_id.replace("/", "-")},
+        headers=creds.to_headers(),
     )
     response.raise_for_status()
 
