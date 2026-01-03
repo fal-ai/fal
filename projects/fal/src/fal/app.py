@@ -11,6 +11,7 @@ import threading
 import time
 import typing
 from contextlib import asynccontextmanager, contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, ClassVar, Optional, TypeVar
@@ -32,6 +33,7 @@ from fal.api import (
 from fal.container import ContainerImage
 from fal.exceptions import FalServerlessException, RequestCancelledException
 from fal.logging import get_logger
+from fal.ref import set_current_app
 from fal.sdk import ApplicationHealthCheckConfig, AuthModeLiteral, HealthCheck
 from fal.toolkit.file import request_lifecycle_preference
 from fal.toolkit.file.providers.fal import LIFECYCLE_PREFERENCE
@@ -116,6 +118,7 @@ def wrap_app(cls: type[App], **kwargs) -> IsolatedFunction:
 
     def initialize_and_serve():
         app = cls()
+        set_current_app(app)
         app.serve()
 
     metadata = {}
@@ -405,6 +408,8 @@ class App(BaseServable):
 
     isolate_channel: async_grpc.Channel | None = None
 
+    _fal_request_headers: ContextVar[dict[str, str]] | None = None
+
     def __init_subclass__(cls, **kwargs):
         app_name = kwargs.pop("name", None) or _to_fal_app_name(cls.__name__)
         parent_settings = getattr(cls, "host_kwargs", {})
@@ -525,6 +530,8 @@ class App(BaseServable):
     async def lifespan(self, app: fastapi.FastAPI):
         os.environ["FAL_RUNNER_STATE"] = "SETUP"
 
+        self._fal_request_headers = ContextVar("_fal_request_headers", default={})
+
         # We want to not do any directory changes for container apps,
         # since we don't have explicit checks to see the kind of app
         # We check for app_files here and check kind and app_files earlier
@@ -541,6 +548,12 @@ class App(BaseServable):
         finally:
             os.environ["FAL_RUNNER_STATE"] = "STOPPING"
             await _call_any_fn(self.teardown)
+
+    @property
+    def request_headers(self) -> dict[str, str]:
+        if self._fal_request_headers is None:
+            return {}
+        return self._fal_request_headers.get()
 
     def health(self):
         return {"version": self.version}
@@ -676,6 +689,20 @@ class App(BaseServable):
             # but it is sometimes used by servers to indicate that a client has closed
             # the connection without receiving a response
             return JSONResponse({"detail": str(exc)}, 499)
+
+        @app.middleware("http")
+        async def set_context_vars(request, call_next):
+            if self._fal_request_headers is None:
+                logger.warning("context variables are not set")
+                return await call_next(request)
+
+            request_headers = dict(request.headers)
+
+            token = self._fal_request_headers.set(request_headers)
+            try:
+                return await call_next(request)
+            finally:
+                self._fal_request_headers.reset(token)
 
     def _add_extra_routes(self, app: fastapi.FastAPI):
         # TODO remove this once we have a proper health check endpoint
