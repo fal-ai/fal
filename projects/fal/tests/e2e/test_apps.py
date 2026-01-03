@@ -33,6 +33,7 @@ from fal.exceptions import (
     RequestCancelledException,
 )
 from fal.exceptions._cuda import _CUDA_OOM_MESSAGE, _CUDA_OOM_STATUS_CODE
+from fal.ref import get_current_app
 from fal.sdk import RunnerState
 from fal.toolkit.utils.endpoint import cancel_on_disconnect
 from fal.workflows import Workflow
@@ -1453,3 +1454,51 @@ def test_hints_encoding():
             )
             assert resp.is_success
             assert resp.json()["result"] == 3
+
+
+def _external_get_request_id() -> str:
+    request_id = get_current_app().request_headers.get("x-request-id", "")
+    return request_id
+
+
+class AppRefOutput(BaseModel):
+    from_app: str
+    from_external_method: str
+
+
+class AppRefApp(fal.App, keep_alive=300, max_concurrency=1, max_multiplexing=3):
+    machine_type = "XS"
+
+    @fal.endpoint("/")
+    def run(self, request: Request) -> AppRefOutput:
+        request_id = request.headers.get("x-request-id", "")
+
+        # sleep to intentionally cause a race condition
+        time.sleep(3)
+
+        return AppRefOutput(
+            from_app=request_id,
+            from_external_method=_external_get_request_id(),
+        )
+
+
+@pytest.fixture(scope="module")
+def test_app_ref_app(host: api.FalServerlessHost, user: User):
+    app_ref_app = wrap_app(AppRefApp)
+    with register_app(host, app_ref_app, "app-ref") as (app_alias, _):
+        yield f"{user.username}/{app_alias}"
+
+
+def test_file_output_app(test_app_ref_app: str):
+    time.sleep(3)
+
+    handle_1 = apps.submit(test_app_ref_app, arguments={})
+    time.sleep(1)
+    handle_2 = apps.submit(test_app_ref_app, arguments={})
+    time.sleep(1)
+
+    result_1 = handle_1.get()
+    result_2 = handle_2.get()
+
+    assert result_1["from_app"] == result_1["from_external_method"]
+    assert result_2["from_app"] == result_2["from_external_method"]
