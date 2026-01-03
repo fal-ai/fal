@@ -5,7 +5,7 @@ import re
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path, PurePosixPath
-from typing import Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Pattern, Tuple
 
 import httpx
 from rich.tree import Tree
@@ -20,9 +20,41 @@ from fal.exceptions import (
     FileTooLargeError,
 )
 
+if TYPE_CHECKING:
+    from fal.api.api import Options
+
 USER_AGENT = f"fal-sdk/{'.'.join(map(str, version_tuple))} (python)"
 FILE_SIZE_LIMIT = 1024 * 1024 * 1024  # 1GB
 DEFAULT_CONCURRENCY_UPLOADS = 10
+
+
+@dataclass
+class FileSyncOptions:
+    files_list: List[str]
+    files_ignore: List[Pattern]
+    files_context_dir: Optional[str]
+
+    @classmethod
+    def from_options(cls, options: Options) -> "FileSyncOptions":
+        # Container files
+        if options.environment.get("kind") == "container":
+            image_dict: Dict[str, Any] = options.environment.get("image", {})
+            files_list = image_dict.get("docker_files_list", [])
+            files_ignore = image_dict.get("docker_ignore", [])
+            files_context_dir = image_dict.get("docker_context_dir")
+
+        else:  # App files
+            files_list = options.host.get("app_files", [])
+            files_ignore = options.host.get("app_files_ignore", [])
+            files_context_dir = options.host.get("app_files_context_dir")
+
+        # Compile regex patterns (both containers and app_files use regex now)
+        files_ignore = [re.compile(pattern) for pattern in files_ignore]
+        return cls(
+            files_list=files_list,
+            files_ignore=files_ignore,
+            files_context_dir=files_context_dir,
+        )
 
 
 def print_path_tree(file_paths):
@@ -255,7 +287,7 @@ class FileSync:
         return uploader.url
 
     def _matches_patterns(self, relative_path: str, patterns: List[re.Pattern]) -> bool:
-        """Check if a file matches any of the regex patterns."""
+        """Check if a file matches any of the patterns."""
         return any(pattern.search(relative_path) for pattern in patterns)
 
     def sync_files(
@@ -263,21 +295,12 @@ class FileSync:
         paths: List[str],
         chunk_size: int = 5 * 1024 * 1024,
         max_concurrency_uploads: int = DEFAULT_CONCURRENCY_UPLOADS,
-        files_ignore: Optional[List[re.Pattern]] = None,
+        files_ignore: List[re.Pattern] = [],
         files_context_dir: Optional[str] = None,
     ) -> Tuple[List[FileMetadata], List[AppFileUploadException]]:
-        """Sync files to the server.
-
-        Args:
-            paths: List of file paths or glob patterns to sync
-            chunk_size: Upload chunk size in bytes
-            max_concurrency_uploads: Maximum concurrent uploads
-            files_ignore: List of compiled regex patterns for ignoring files
-            files_context_dir: Context directory for relative paths
-        """
         files = self.collect_files(paths, files_context_dir)
 
-        # Filter out ignored files using regex patterns (app_files)
+        # Filter out ignored files
         if files_ignore:
             filtered_files: List[FileMetadata] = []
             for metadata in files:

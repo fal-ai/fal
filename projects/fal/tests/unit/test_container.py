@@ -111,6 +111,20 @@ COPY src/ /app/src/
         sources = parser.parse_copy_add_sources()
         assert sources == ["file.txt", "data.csv"]
 
+    def test_normalize_absolute_paths(self):
+        """Should normalize absolute source paths by stripping leading slash."""
+        parser = DockerfileParser("FROM python:3.11\nCOPY /absolute/path /app/")
+        sources = parser.parse_copy_add_sources()
+        # In Docker, absolute paths are relative to build context
+        assert sources == ["absolute/path"]
+
+    def test_normalize_absolute_path_in_multiple_sources(self):
+        """Should normalize absolute paths and keep relative ones."""
+        dockerfile = "FROM python:3.11\nCOPY file.txt /absolute/path dir/ /app/"
+        parser = DockerfileParser(dockerfile)
+        sources = parser.parse_copy_add_sources()
+        assert sources == ["file.txt", "absolute/path", "dir/"]
+
 
 class TestDockerfileParserFlags:
     """Tests for handling Docker flags in COPY/ADD."""
@@ -188,6 +202,41 @@ COPY config.yaml /app/
         sources = parser.parse_copy_add_sources()
         assert sources == ["app.py", "config.yaml"]
 
+    def test_json_form_with_flag(self):
+        """Should parse JSON form with flag."""
+        dockerfile = 'FROM python:3.11\nCOPY --chown=user:group ["app.py", "/app/"]'
+        parser = DockerfileParser(dockerfile)
+        sources = parser.parse_copy_add_sources()
+        assert sources == ["app.py"]
+
+    def test_json_form_multi_with_flag(self):
+        """Should parse JSON form with multiple sources and flag."""
+        dockerfile = 'FROM python:3.11\nCOPY --chown=user:group ["app.py", "config.yaml", "/app/"]'  # noqa: E501
+        parser = DockerfileParser(dockerfile)
+        sources = parser.parse_copy_add_sources()
+        assert sources == ["app.py", "config.yaml"]
+
+    def test_json_form_with_multiple_flags(self):
+        """Should parse JSON form with multiple flags."""
+        dockerfile = 'FROM python:3.11\nCOPY --chown=user:group --chmod=755 ["script.sh", "/app/"]'  # noqa: E501
+        parser = DockerfileParser(dockerfile)
+        sources = parser.parse_copy_add_sources()
+        assert sources == ["script.sh"]
+
+    def test_json_form__multi_with_multiple_flags(self):
+        """Should parse JSON form with multiple sources and multiple flags."""
+        dockerfile = 'FROM python:3.11\nCOPY --chown=user:group --chmod=755 ["script.sh", "config.yaml", "/app/"]'  # noqa: E501
+        parser = DockerfileParser(dockerfile)
+        sources = parser.parse_copy_add_sources()
+        assert sources == ["script.sh", "config.yaml"]
+
+    def test_json_form_with_all_flags(self):
+        """Should parse JSON form with all flags."""
+        dockerfile = 'FROM python:3.11\nCOPY --chown=user:group --chmod=755 --link ["script.sh", "/app/"]'  # noqa: E501
+        parser = DockerfileParser(dockerfile)
+        sources = parser.parse_copy_add_sources()
+        assert sources == ["script.sh"]
+
 
 class TestDockerfileParserLineContinuations:
     """Tests for line continuations in COPY/ADD."""
@@ -257,19 +306,6 @@ class TestDockerfileParserSkipCases:
         sources = parser.parse_copy_add_sources()
         assert sources == []
 
-    def test_skip_absolute_paths(self):
-        """Should skip absolute source paths."""
-        parser = DockerfileParser("FROM python:3.11\nCOPY /absolute/path /app/")
-        sources = parser.parse_copy_add_sources()
-        assert sources == []
-
-    def test_skip_absolute_path_in_multiple_sources(self):
-        """Should skip absolute paths but keep relative ones."""
-        dockerfile = "FROM python:3.11\nCOPY file.txt /absolute/path dir/ /app/"
-        parser = DockerfileParser(dockerfile)
-        sources = parser.parse_copy_add_sources()
-        assert sources == ["file.txt", "dir/"]
-
     def test_copy_with_url_keeps_local_files(self):
         """COPY with local files should work (only ADD skips URLs)."""
         dockerfile = "FROM python:3.11\nCOPY http-client.py /app/"
@@ -309,6 +345,24 @@ CMD ["python", "app.py"]
         parser = DockerfileParser("FROM python:3.11\nCOPY /app/")
         sources = parser.parse_copy_add_sources()
         assert sources == []
+
+    def test_invalid_json_dict_skipped(self):
+        """Should handle JSON that parses to dict (invalid Dockerfile syntax)."""
+        # This is invalid Docker syntax but shouldn't crash
+        parser = DockerfileParser('FROM python:3.11\nCOPY {"src": "dest"} /app/')
+        sources = parser.parse_copy_add_sources()
+        # Should not crash, returns whatever it can parse
+        print(f"{sources=}")
+        assert isinstance(sources, list)
+
+    def test_json_with_non_string_elements_skipped(self):
+        """Should handle JSON with non-string elements gracefully."""
+        # This is invalid Docker syntax but shouldn't crash
+        parser = DockerfileParser('FROM python:3.11\nCOPY [1, 2, "/app/"]')
+        sources = parser.parse_copy_add_sources()
+        # Should not crash - either returns empty or handles gracefully
+        print(f"{sources=}")
+        assert isinstance(sources, list)
 
     def test_quoted_paths_in_shell_form(self):
         """Should handle quoted paths in shell form."""
@@ -420,15 +474,15 @@ class TestContainerImageFromDockerfileStr:
         img = ContainerImage.from_dockerfile_str("FROM python:3.11")
         assert img.dockerfile_str == "FROM python:3.11"
         # docker_context_dir defaults to cwd when not provided
-        assert img.docker_context_dir is not None
+        assert img.context_dir is not None
 
     def test_context_dir_passed_through_for_dockerfile_str(self):
-        """docker_context_dir should be passed through even for from_dockerfile_str."""
+        """context_dir should be passed through even for from_dockerfile_str."""
         img = ContainerImage.from_dockerfile_str(
             "FROM python:3.11",
-            docker_context_dir="/some/path",
+            context_dir="/some/path",
         )
-        assert img.docker_context_dir == "/some/path"
+        assert img.context_dir == "/some/path"
 
     def test_kwargs_passed_through(self):
         """Other kwargs should be passed through."""
@@ -459,21 +513,19 @@ class TestContainerImageFromDockerfile:
 
         img = ContainerImage.from_dockerfile(str(dockerfile))
         # docker_context_dir defaults to cwd when not provided
-        assert img.docker_context_dir is not None
+        assert img.context_dir is not None
 
     def test_explicit_context_dir(self, tmp_path: Path):
-        """Explicit docker_context_dir should be passed through as-is."""
+        """Explicit context_dir should be passed through as-is."""
         dockerfile = tmp_path / "Dockerfile"
         dockerfile.write_text("FROM python:3.11")
 
-        img = ContainerImage.from_dockerfile(
-            str(dockerfile), docker_context_dir=tmp_path
-        )
-        assert img.docker_context_dir == tmp_path
+        img = ContainerImage.from_dockerfile(str(dockerfile), context_dir=tmp_path)
+        assert img.context_dir == tmp_path
 
 
 class TestContainerImageParseCopySources:
-    """Integration tests for ContainerImage.get_copy_sources().
+    """Integration tests for ContainerImage.get_copy_add_sources().
 
     Note: Detailed parsing tests are in TestDockerfileParserCopyAdd,
     TestDockerfileParserFlags, TestDockerfileParserJsonForm,
@@ -481,12 +533,12 @@ class TestContainerImageParseCopySources:
     This class only tests ContainerImage-specific integration.
     """
 
-    def test_get_copy_sources_delegates_to_parser(self):
+    def test_get_copy_add_sources_delegates_to_parser(self):
         """Should delegate to DockerfileParser.parse_copy_add_sources()."""
         img = ContainerImage(
             dockerfile_str="FROM python:3.11\nCOPY requirements.txt /app/",
         )
-        sources = img.get_copy_sources()
+        sources = img.get_copy_add_sources()
         assert sources == ["requirements.txt"]
 
     def test_from_dockerfile_returns_sources(self, tmp_path: Path):
@@ -496,9 +548,9 @@ class TestContainerImageParseCopySources:
         )
 
         img = ContainerImage.from_dockerfile(
-            str(tmp_path / "Dockerfile"), docker_context_dir=tmp_path
+            str(tmp_path / "Dockerfile"), context_dir=tmp_path
         )
-        sources = img.get_copy_sources()
+        sources = img.get_copy_add_sources()
 
         assert sources == ["src/", "config.yaml"]
 
@@ -521,7 +573,7 @@ class TestContainerImageDockerignore:
 
         img = ContainerImage(
             dockerfile_str="FROM python:3.11",
-            docker_context_dir=tmp_path,
+            context_dir=tmp_path,
         )
         patterns = img._dockerignore
         # Should return 3 regex patterns
@@ -535,7 +587,7 @@ class TestContainerImageDockerignore:
         """Should use default patterns (converted to regex) if no .dockerignore."""
         img = ContainerImage(
             dockerfile_str="FROM python:3.11",
-            docker_context_dir=tmp_path,
+            context_dir=tmp_path,
         )
         patterns = img._dockerignore
         from fal.container import DEFAULT_DOCKERIGNORE_PATTERNS
@@ -554,7 +606,7 @@ class TestContainerImageDockerignore:
 
         img = ContainerImage(
             dockerfile_str="FROM python:3.11",
-            docker_context_dir=tmp_path,
+            context_dir=tmp_path,
         )
         patterns = img._dockerignore
         # Comments and empty lines should be filtered out, only 2 patterns
@@ -576,7 +628,7 @@ class TestToDict:
             build_args={"VERSION": "1.0"},
             builder="depot",
             compression="zstd",
-            docker_context_dir=Path("/path/to/context"),
+            context_dir=Path("/path/to/context"),
         )
         d = img.to_dict()
 

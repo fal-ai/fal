@@ -29,271 +29,6 @@ DEFAULT_DOCKERIGNORE_PATTERNS = [
 ]
 
 
-class DockerfileParser:
-    """Parses Dockerfile content to extract information."""
-
-    def __init__(self, content: str):
-        """Initialize parser with Dockerfile content.
-
-        Args:
-            content: The Dockerfile content as a string
-        """
-        self.content = content
-        self._normalized_content: Optional[str] = None
-
-    @property
-    def normalized_content(self) -> str:
-        """Get Dockerfile content with line continuations resolved."""
-        if self._normalized_content is None:
-            # Handle line continuations (backslash)
-            self._normalized_content = re.sub(r"\\\n\s*", " ", self.content)
-        return self._normalized_content
-
-    def parse_copy_add_sources(self) -> List[str]:
-        """Parse COPY and ADD commands to extract source paths.
-            - Skips COPY --from=... (multi-stage builds)
-            - Skips ADD with URLs (http://, https://)
-            - Skips absolute paths (they reference paths inside the image)
-            - Handles both shell form and JSON form
-        Returns:
-            List of source paths/patterns referenced in COPY/ADD commands.
-        """
-        sources: List[str] = []
-
-        # Regex to match COPY or ADD instructions
-        instruction_pattern = re.compile(
-            r"^(?P<instruction>COPY|ADD)\s+(?P<rest>.+?)(?:\s*\\)?$",
-            re.MULTILINE | re.IGNORECASE,
-        )
-
-        for match in instruction_pattern.finditer(self.normalized_content):
-            instruction = match.group("instruction").upper()
-            rest = match.group("rest").strip()
-
-            # Skip COPY --from=... (multi-stage builds)
-            if instruction == "COPY" and re.match(r"--from=", rest, re.IGNORECASE):
-                continue
-
-            src_paths = self._parse_instruction_args(rest, instruction)
-            sources.extend(src_paths)
-
-        return sources
-
-    def _parse_instruction_args(self, args_str: str, instruction: str) -> List[str]:
-        """Parse arguments from COPY/ADD instruction.
-
-        Args:
-            args_str: The arguments string after the instruction
-            instruction: The instruction type (COPY or ADD)
-
-        Returns:
-            List of valid source paths
-        """
-        src_paths: List[str] = []
-
-        try:
-            # Try JSON form first: ["src1", "src2", "dest"]
-            if args_str.startswith("["):
-                args = json.loads(args_str)
-                if len(args) >= 2:
-                    # All but last are sources
-                    src_paths = args[:-1]
-            else:
-                # Shell form: handle flags like --chown, --chmod, --link
-                # Remove flags (--flag=value or --flag value patterns)
-                args_without_flags = re.sub(
-                    r"--\w+(?:=\S+|\s+\S+)?", "", args_str
-                ).strip()
-                args = shlex.split(args_without_flags)
-                if len(args) >= 2:
-                    # All but last are sources
-                    src_paths = args[:-1]
-
-            # Filter out invalid paths
-            return [
-                src
-                for src in src_paths
-                if self._is_valid_local_source(src, instruction)
-            ]
-
-        except (json.JSONDecodeError, ValueError):
-            # If parsing fails, skip this instruction
-            return []
-
-    @staticmethod
-    def _is_valid_local_source(src: str, instruction: str) -> bool:
-        """Check if source path is a valid local file reference.
-
-        Args:
-            src: The source path
-            instruction: The instruction type (COPY or ADD)
-
-        Returns:
-            True if it's a valid local source path
-        """
-        # Skip URLs for ADD
-        if instruction == "ADD" and re.match(r"https?://", src, re.IGNORECASE):
-            return False
-        # Skip absolute paths (they reference paths inside the image)
-        if src.startswith("/"):
-            from fal.console import console
-
-            console.print(
-                f"[yellow]WARNING: Skipping absolute source path '{src}' in "
-                f"{instruction} command. Use relative paths instead (e.g., '.{src}')."
-                "[/yellow]"
-            )
-            return False
-        return True
-
-    def _parse_copy_destination(self, args_str: str) -> Optional[str]:
-        """Parse the destination from COPY/ADD arguments.
-
-        Args:
-            args_str: The arguments string after COPY/ADD
-
-        Returns:
-            The destination path, or None if parsing fails.
-        """
-        # Remove flags like --chown, --chmod, --link
-        args_str = re.sub(r"--\w+(?:=\S+|\s+\S+)?\s*", "", args_str).strip()
-
-        try:
-            # Check for JSON form: ["src", "dest"]
-            if args_str.startswith("["):
-                args = json.loads(args_str)
-                if len(args) >= 2:
-                    return args[-1]  # Last element is destination
-            else:
-                # Shell form: src1 src2 ... dest
-                parts = shlex.split(args_str)
-                if parts:
-                    return parts[-1]  # Last element is destination
-        except (json.JSONDecodeError, ValueError):
-            pass
-
-        return None
-
-
-class DockerignoreHandler:
-    """Handles .dockerignore file loading and provides ignore patterns."""
-
-    def __init__(
-        self,
-        context_dir: Optional[os.PathLike] = None,
-        dockerignore: Optional[List[str]] = None,
-        dockerignore_path: Optional[os.PathLike] = None,
-    ):
-        """Initialize handler with optional context directory.
-
-        Priority for ignore patterns (highest to lowest):
-        1. docker_ignore - explicit list of patterns
-        2. docker_ignore_path - explicit path to .dockerignore file
-        3. context_dir/.dockerignore - check for .dockerignore in context
-        4. DEFAULT_DOCKERIGNORE_PATTERNS - fallback defaults
-
-        Args:
-            context_dir: Path to the build context directory
-            docker_ignore: Explicit list of ignore patterns (highest priority)
-            docker_ignore_path: Explicit path to .dockerignore file
-        """
-        self.context_dir = context_dir
-        self.docker_ignore = dockerignore
-        self.docker_ignore_path = dockerignore_path
-        self._pathspec = None  # Cache for pathspec matcher
-
-    @staticmethod
-    def _read_dockerignore_file(path: Path) -> List[str]:
-        """Read and parse .dockerignore file.
-
-        Args:
-            path: Path to .dockerignore file
-
-        Returns:
-            List of patterns (filtered, no comments or empty lines)
-        """
-        with open(path) as f:
-            lines = f.read().splitlines()
-
-        # Filter out empty lines and comments
-        return [
-            line.strip() for line in lines if line.strip() and not line.startswith("#")
-        ]
-
-    def get_patterns(self) -> List[str]:
-        """Get list of ignore patterns following priority order.
-
-        Priority (highest to lowest):
-        1. Explicit docker_ignore list
-        2. Explicit docker_ignore_path file
-        3. .dockerignore in context_dir
-        4. DEFAULT_DOCKERIGNORE_PATTERNS
-
-        Returns:
-            List of gitignore-style patterns
-
-        Example:
-            >>> # Explicit patterns
-            >>> handler = DockerignoreHandler(docker_ignore=["*.log", "tmp/"])
-            >>> patterns = handler.get_patterns()  # ["*.log", "tmp/"]
-            >>>
-            >>> # Explicit .dockerignore path
-            >>> handler = DockerignoreHandler(docker_ignore_path=".dockerignore")
-            >>> patterns = handler.get_patterns()  # reads from .dockerignore
-            >>>
-            >>> # context_dir/.dockerignore
-            >>> handler = DockerignoreHandler(context_dir=".")
-            >>> patterns = handler.get_patterns()  # checks ./.dockerignore
-            >>>
-            >>> # Defaults
-            >>> handler = DockerignoreHandler()
-            >>> patterns = handler.get_patterns()  # DEFAULT_DOCKERIGNORE_PATTERNS
-        """
-        # Explicit ignore list
-        if self.docker_ignore is not None:
-            return self.docker_ignore
-
-        # Explicit .dockerignore path
-        if self.docker_ignore_path is not None:
-            dockerignore_path = Path(self.docker_ignore_path)
-            if dockerignore_path.exists():
-                return self._read_dockerignore_file(dockerignore_path)
-            else:
-                raise FileNotFoundError(
-                    f"Specified .dockerignore file not found: {self.docker_ignore_path}"
-                )
-
-        # .dockerignore in context_dir
-        if self.context_dir is not None:
-            context_path = Path(self.context_dir)
-            dockerignore_path = context_path / ".dockerignore"
-            if dockerignore_path.exists():
-                return self._read_dockerignore_file(dockerignore_path)
-
-        # Fallback to defaults
-        return DEFAULT_DOCKERIGNORE_PATTERNS
-
-    def get_regex_patterns(self) -> List[str]:
-        """Convert gitignore patterns to regex patterns.
-
-        Uses pathspec's GitWildMatchPattern.pattern_to_regex() to convert
-        gitignore-style patterns to regex. This allows using standard re.compile()
-        for matching without requiring pathspec at runtime.
-
-        Returns:
-            List of regex pattern strings compatible with re.compile()
-        """
-        from pathspec.patterns.gitwildmatch import GitWildMatchPattern
-
-        patterns = self.get_patterns()
-        regex_patterns = []
-        for pattern in patterns:
-            regex, _ = GitWildMatchPattern.pattern_to_regex(pattern)
-            if regex:
-                regex_patterns.append(regex)
-        return regex_patterns
-
-
 @dataclass
 class ContainerImage:
     """ContainerImage represents a Docker image that can be built
@@ -308,7 +43,7 @@ class ContainerImage:
     force_compression: bool = DEFAULT_FORCE_COMPRESSION
     secrets: Dict[str, str] = field(default_factory=dict)
     # Build context directory
-    docker_context_dir: Optional[os.PathLike] = field(default=None)
+    context_dir: os.PathLike = field(default=Path.cwd())
     dockerignore: Optional[List[str]] = field(default=None)
     dockerignore_path: Optional[os.PathLike] = field(default=None)
 
@@ -321,22 +56,12 @@ class ContainerImage:
                 "ContainerImage.from_dockerfile() to create a container image."
             )
 
-        # Set docker_context_dir to cwd if not provided
-        if self.docker_context_dir is None:
-            self.docker_context_dir = Path.cwd()
-
-        # Initialize dockerignore patterns (converted to regex)
-        # Priority rules:
-        # explicit list > explicit path > .dockerignore file in context > defaults
-        handler = DockerignoreHandler(
-            context_dir=self.docker_context_dir,
+        # Initialize dockerignore
+        self._dockerignore = DockerignoreHandler(
+            context_dir=self.context_dir,
             dockerignore=self.dockerignore,
             dockerignore_path=self.dockerignore_path,
-        )
-
-        # Convert gitignore patterns to regex for use with re.compile()
-        # This avoids requiring pathspec on workers
-        self._dockerignore = handler.get_regex_patterns()
+        ).get_regex_patterns()
 
         if self.registries:
             for registry in self.registries.values():
@@ -351,31 +76,12 @@ class ContainerImage:
                 f"Invalid builder: {self.builder}, must be one of {BUILDERS}"
             )
 
-    @property
-    def source_files(self) -> List[str]:
-        """
-        Get list of files to sync from COPY/ADD commands.
-        """
-        return self.get_copy_sources()
-
     @classmethod
     def from_dockerfile_str(cls, text: str, **kwargs) -> "ContainerImage":
-        """
-        Create from Dockerfile string.
-
-        Args:
-            text: Dockerfile string
-        """
         return cls(dockerfile_str=text, **kwargs)
 
     @classmethod
     def from_dockerfile(cls, path: str, **kwargs) -> "ContainerImage":
-        """
-        Create from Dockerfile path.
-
-        Args:
-            path: Path to the Dockerfile
-        """
         with open(path) as fobj:
             return cls.from_dockerfile_str(fobj.read(), **kwargs)
 
@@ -388,12 +94,12 @@ class ContainerImage:
             "compression": self.compression,
             "force_compression": self.force_compression,
             "secrets": self.secrets,
-            "docker_context_dir": str(self.docker_context_dir),
-            "docker_files_list": self.source_files,
+            "docker_context_dir": str(self.context_dir),
+            "docker_files_list": self.get_copy_add_sources(),
             "docker_ignore": self._dockerignore,
         }
 
-    def get_copy_sources(self) -> List[str]:
+    def get_copy_add_sources(self) -> List[str]:
         """
         Get list of src paths/patterns from COPY/ADD commands. This method only
         parses the Dockerfile - it doesn't access the filesystem.
@@ -403,8 +109,7 @@ class ContainerImage:
             passed to FileSync.sync_files(). Returns empty list if no COPY/ADD commands
             found.
         """
-        parser = DockerfileParser(self.dockerfile_str)
-        return parser.parse_copy_add_sources()
+        return DockerfileParser(content=self.dockerfile_str).parse_copy_add_sources()
 
     def add_dockerignore(
         self,
@@ -416,29 +121,12 @@ class ContainerImage:
         Sets the internal dockerignore patterns using gitignore-style matching.
         You can provide either a list of patterns or a path to a .dockerignore file.
 
-        Patterns follow gitignore syntax:
-        - * matches any filename (not /)
-        - ** matches any path including /
-        - / at end matches directories only
-        - # for comments (in files)
-
         Args:
             patterns: List of gitignore-style patterns
             path: Path to a .dockerignore file
 
         Raises:
             ValueError: If both patterns and path are provided, or neither
-
-        Examples:
-            >>> # Gitignore-style patterns
-            >>> img = ContainerImage.from_dockerfile_str("FROM python:3.11")
-            >>> img.add_dockerignore(patterns=["*.log", "tmp/", "node_modules"])
-            >>>
-            >>> # Complex patterns with **
-            >>> img.add_dockerignore(patterns=["**/*.pyc", "**/__pycache__/"])
-            >>>
-            >>> # Using a .dockerignore file path
-            >>> img.add_dockerignore(path=".dockerignore")
         """
         if patterns is not None and path is not None:
             raise ValueError(
@@ -455,23 +143,174 @@ class ContainerImage:
             handler = DockerignoreHandler(dockerignore_path=path)
         else:
             # patterns is guaranteed to be not None here due to validation above
-            assert patterns is not None
             handler = DockerignoreHandler(dockerignore=patterns)
 
         # Convert gitignore patterns to regex
         self._dockerignore = handler.get_regex_patterns()
 
-    def _matches_ignore_patterns(self, relative_path: str) -> bool:
-        """
-        Check if a path matches any of the dockerignore patterns.
 
-        Args:
-            relative_path: Path relative to docker_context_dir
+@dataclass
+class DockerignoreHandler:
+    context_dir: Optional[os.PathLike] = None
+    dockerignore: Optional[List[str]] = None
+    dockerignore_path: Optional[os.PathLike] = None
+
+    def _read_dockerignore_file(self, path: Path) -> List[str]:
+        with open(path) as f:
+            lines = f.read().splitlines()
+
+        # Filter out empty lines and comments
+        return [
+            stripped
+            for line in lines
+            if (stripped := line.strip()) and not stripped.startswith("#")
+        ]
+
+    def get_patterns(self) -> List[str]:
+        """
+        Get list of ignore patterns.
+
+        Priority (highest to lowest):
+        1. Explicit dockerignore list
+        2. Explicit path to the .dockerignore file
+        3. .dockerignore file in the context directory
+        4. Default ignore patterns
 
         Returns:
-            True if the path should be ignored
+            List of ignore patterns
         """
-        for pattern in self._dockerignore:
-            if re.search(pattern, relative_path):
-                return True
-        return False
+        # Explicit ignore list
+        if self.dockerignore is not None:
+            return self.dockerignore
+
+        # Explicit .dockerignore path
+        if self.dockerignore_path is not None:
+            dockerignore_path = Path(self.dockerignore_path)
+            if dockerignore_path.is_file():
+                return self._read_dockerignore_file(dockerignore_path)
+            else:
+                raise FileNotFoundError(
+                    f"Specified .dockerignore file not found: {self.dockerignore_path}"
+                )
+
+        # .dockerignore in context_dir
+        if self.context_dir is not None:
+            context_path = Path(self.context_dir)
+            dockerignore_path = context_path / ".dockerignore"
+            if dockerignore_path.is_file():
+                return self._read_dockerignore_file(dockerignore_path)
+
+        # Fallback to defaults
+        return DEFAULT_DOCKERIGNORE_PATTERNS
+
+    def get_regex_patterns(self) -> List[str]:
+        from pathspec.patterns.gitwildmatch import GitWildMatchPattern
+
+        patterns = self.get_patterns()
+        regex_patterns = []
+        for pattern in patterns:
+            # Convert ignore patterns to regex, this way we can use `re` at runtime.
+            regex, _ = GitWildMatchPattern.pattern_to_regex(pattern)
+            if regex:
+                regex_patterns.append(regex)
+        return regex_patterns
+
+
+@dataclass
+class DockerfileParser:
+    content: str
+    normalized_content: str = field(init=False)
+
+    def __post_init__(self) -> None:
+        self.normalized_content = re.sub(r"\\\n\s*", " ", self.content)
+
+    def parse_copy_add_sources(self) -> List[str]:
+        """
+        Parse COPY and ADD commands to extract source paths.
+            - Skips COPY --from=... (multi-stage builds)
+            - Skips ADD with URLs (http://, https://)
+            - Normalizes absolute paths by stripping leading slash (Docker treats
+              them as relative to the build context)
+            - Handles both shell form and JSON form
+
+        Returns:
+            List of source paths/patterns referenced in COPY/ADD commands.
+        """
+        sources: List[str] = []
+
+        # Regex to match COPY or ADD instructions
+        instruction_pattern = re.compile(
+            r"^(?P<instruction>COPY|ADD)\s+(?P<rest>.+?)(?:\s*\\)?$",
+            re.MULTILINE | re.IGNORECASE,
+        )
+
+        for match in instruction_pattern.finditer(self.normalized_content):
+            instruction = match.group("instruction").upper()
+            rest = match.group("rest").strip()
+
+            if not self._is_valid_source(rest, instruction):
+                continue
+
+            src_paths = self._parse_instruction_args(rest, instruction)
+            sources.extend(src_paths)
+
+        return sources
+
+    def _is_valid_source(self, args: str, instruction: str) -> bool:
+        # Skip COPY --from=... (multi-stage builds)
+        if instruction == "COPY" and re.match(r"--from=", args, re.IGNORECASE):
+            return False
+
+        # Skip ADD with URLs (e.g., ADD https://example.com/file.tar.gz)
+        # Use re.search to handle cases where flags precede the URL
+        if instruction == "ADD" and re.search(r"https?://", args, re.IGNORECASE):
+            return False
+
+        return True
+
+    def _parse_instruction_args(self, args_str: str, instruction: str) -> List[str]:
+        """
+        Parse arguments from COPY/ADD instruction.
+
+        Args:
+            args_str: The arguments string after the instruction
+            instruction: The instruction type (COPY or ADD)
+
+        Returns:
+            List of valid source paths
+        """
+        src_paths: List[str] = []
+
+        try:
+            # Remove flags from the args string first
+            # Matches: --flag or --flag=value or --flag="value"
+            r = r'--\w+(?:=[^\s\]]+|="[^"]*")?'
+            args_str_clean = re.sub(r, "", args_str).strip()
+
+            if not args_str_clean:
+                return []
+
+            # Try JSON form first: ["src1", "src2", "dest"]
+            if args_str_clean.endswith("]"):
+                args = json.loads(args_str_clean)
+            else:
+                args = shlex.split(args_str_clean)
+
+            if len(args) >= 2:
+                # All but last are sources
+                src_paths = args[:-1]
+
+            # We normalize to relative paths (strip leading "/") because:
+            # - They're semantically identical in Docker
+            # - FileSync requires relative paths to context_dir
+            return [src_path.lstrip("/") for src_path in src_paths]
+
+        except (AttributeError, json.JSONDecodeError, TypeError, ValueError):
+            from fal.console import console
+
+            console.print(
+                f"[yellow][WARNING][/yellow] Failed to parse instruction arguments: "
+                f"{args_str}. Skipping this instruction. Please check the Dockerfile "
+                "syntax and try again."
+            )
+            return []

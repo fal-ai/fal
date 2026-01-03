@@ -539,7 +539,7 @@ class App(BaseServable):
         os.environ["FAL_RUNNER_STATE"] = "SETUP"
 
         # Configure sys.path based on deployment type:
-        # - app_files: files synced to /app via TUS protocol
+        # - app_files: files synced to /app
         # - container: files baked into image
         if self.app_files:
             # For app_files deployments (always use /app)

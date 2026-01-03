@@ -52,7 +52,7 @@ from fal.exceptions import (
     FieldException,
 )
 from fal.exceptions._cuda import _is_cuda_oom_exception
-from fal.file_sync import FileSync
+from fal.file_sync import FileSync, FileSyncOptions
 from fal.logging.isolate import IsolateLogPrinter
 from fal.sdk import (
     FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER,
@@ -483,65 +483,26 @@ class FalServerlessHost(Host):
             client = FalServerlessClient(self.url, self.credentials)
             return client.connect()
 
-    def files_sync(self, options: Options) -> list[File]:
-        """
-        Sync files to the server. This method checks the kind of the environment
-        and syncs the files accordingly.
+    def files_sync(self, options: FileSyncOptions) -> list[File]:
+        """Sync files to the server."""
+        # Auto-exclude the app file, it gets serialized separately
+        if self.local_file_path and options.files_list:
+            import re
+            from pathlib import Path
 
-        Args:
-            options: The options for the environment.
-        Returns:
-            The list of files that were synced.
-        """
-        import re
+            context = Path(options.files_context_dir or ".").resolve()
+            app_file = Path(self.local_file_path).resolve()
+            if app_file.is_relative_to(context):
+                rel_path = str(app_file.relative_to(context))
+                options.files_ignore.append(re.compile(f"^{re.escape(rel_path)}$"))
 
-        if options.environment.get("kind") == "container":
-            # Container files
-            image_dict: dict[str, Any] = options.environment.get("image", {})
-            files_list = image_dict.get("docker_files_list", [])
-            files_ignore_str: list[str] = image_dict.get("docker_ignore", [])
-            files_context_dir = image_dict.get("docker_context_dir")
-
-            # Auto-exclude the app file
-            if self.local_file_path and files_list:
-                from pathlib import Path
-
-                context = Path(files_context_dir or ".").resolve()
-                app_file = Path(self.local_file_path).resolve()
-                try:
-                    rel_path = os.path.relpath(app_file, context)
-                    if not rel_path.startswith(".."):
-                        files_ignore_str.append(f"^{re.escape(rel_path)}$")
-                except ValueError:
-                    pass  # Different drives on Windows
-        else:
-            # app_files
-            files_list = options.host.get("app_files", [])
-            files_ignore_str = options.host.get("app_files_ignore", [])
-            files_context_dir = options.host.get("app_files_context_dir")
-
-        # Compile regex patterns (both containers and app_files use regex now)
-        files_ignore = [re.compile(pattern) for pattern in files_ignore_str]
-        return self._files_sync(
-            files_list,
-            files_ignore=files_ignore,
-            files_context_dir=files_context_dir,
-        )
-
-    def _files_sync(
-        self,
-        files_list: list[str],
-        files_ignore: Optional[list] = None,
-        files_context_dir: Optional[str] = None,
-    ) -> list[File]:
-        """Sync files using regex patterns for ignore matching (app_files)."""
         res = []
-        if files_list:
+        if options.files_list:
             sync = FileSync(self.local_file_path)
             files, errors = sync.sync_files(
-                files_list,
-                files_ignore=files_ignore,
-                files_context_dir=files_context_dir,
+                options.files_list,
+                files_ignore=options.files_ignore,
+                files_context_dir=options.files_context_dir,
             )
             if errors:
                 for error in errors:
@@ -614,7 +575,7 @@ class FalServerlessHost(Host):
 
         health_check_config = options.host.get("health_check_config")
 
-        files = self.files_sync(options)
+        files = self.files_sync(FileSyncOptions.from_options(options))
 
         partial_func = _prepare_partial_func(func)
 
@@ -700,7 +661,7 @@ class FalServerlessHost(Host):
             startup_timeout=startup_timeout,
         )
 
-        files = self.files_sync(options)
+        files = self.files_sync(FileSyncOptions.from_options(options))
 
         return_value = _UNSET
         # Allow isolate provided arguments (such as setup function) to take
