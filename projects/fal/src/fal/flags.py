@@ -43,8 +43,6 @@ REST_URL = f"{REST_SCHEME}://{REST_HOST}"
 # fal.run / env.fal.run
 FAL_RUN_HOST = _RUN_HOST_ENV or (
     GRPC_HOST.replace("api.", "", 1).replace("alpha.", "", 1).replace(".ai", ".run", 1)
-    if not GRPC_HOST.endswith("fal.dev")
-    else GRPC_HOST.replace("api.", "", 1).replace("fal.dev", "run.fal.dev", 1)
 )
 
 FAL_QUEUE_RUN_HOST = _QUEUE_RUN_HOST_ENV or f"queue.{FAL_RUN_HOST}"
