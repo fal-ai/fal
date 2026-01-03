@@ -35,7 +35,7 @@ class FileSyncOptions:
     files_context_dir: Optional[str]
 
     @classmethod
-    def from_options(cls, options: Options) -> "FileSyncOptions":
+    def from_options(cls, options: "Options") -> "FileSyncOptions":
         # Container files
         if options.environment.get("kind") == "container":
             image_dict: Dict[str, Any] = options.environment.get("image", {})
