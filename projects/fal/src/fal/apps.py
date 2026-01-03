@@ -147,7 +147,7 @@ class RequestHandle:
         try:
             response.raise_for_status()
         except httpx.HTTPStatusError as e:
-            if response.headers["Content-Type"] != "application/json":
+            if "application/json" not in response.headers["Content-Type"]:
                 raise
             raise httpx.HTTPStatusError(
                 f"{response.status_code}: {response.text}",
@@ -221,7 +221,8 @@ def submit(app_id: str, arguments: dict[str, Any], *, path: str = "") -> Request
     response = client.post(
         url,
         json=arguments,
-        headers=creds.to_headers(),
+        # headers=creds.to_headers(),
+        headers={**creds.to_headers(), "X-Fal-App": app_id.replace("/", "-")},
     )
     response.raise_for_status()
 
