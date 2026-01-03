@@ -52,7 +52,7 @@ from fal.exceptions import (
     FieldException,
 )
 from fal.exceptions._cuda import _is_cuda_oom_exception
-from fal.file_sync import FileSync
+from fal.file_sync import FileSync, FileSyncOptions
 from fal.logging.isolate import IsolateLogPrinter
 from fal.sdk import (
     FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER,
@@ -483,20 +483,26 @@ class FalServerlessHost(Host):
             client = FalServerlessClient(self.url, self.credentials)
             return client.connect()
 
-    def _app_files_sync(self, options: Options) -> list[File]:
-        import re  # noqa: PLC0415
+    def files_sync(self, options: FileSyncOptions) -> list[File]:
+        """Sync files to the server."""
+        # Auto-exclude the app file, it gets serialized separately
+        if self.local_file_path and options.files_list:
+            import re
+            from pathlib import Path
 
-        app_files: list[str] = options.host.get("app_files", [])
-        app_files_ignore_str = options.host.get("app_files_ignore", [])
-        app_files_ignore = [re.compile(pattern) for pattern in app_files_ignore_str]
-        app_files_context_dir = options.host.get("app_files_context_dir", None)
+            context = Path(options.files_context_dir or ".").resolve()
+            app_file = Path(self.local_file_path).resolve()
+            if app_file.is_relative_to(context):
+                rel_path = str(app_file.relative_to(context))
+                options.files_ignore.append(re.compile(f"^{re.escape(rel_path)}$"))
+
         res = []
-        if app_files:
+        if options.files_list:
             sync = FileSync(self.local_file_path)
             files, errors = sync.sync_files(
-                app_files,
-                files_ignore=app_files_ignore,
-                files_context_dir=app_files_context_dir,
+                options.files_list,
+                files_ignore=options.files_ignore,
+                files_context_dir=options.files_context_dir,
             )
             if errors:
                 for error in errors:
@@ -569,7 +575,7 @@ class FalServerlessHost(Host):
 
         health_check_config = options.host.get("health_check_config")
 
-        app_files = self._app_files_sync(options)
+        files = self.files_sync(FileSyncOptions.from_options(options))
 
         partial_func = _prepare_partial_func(func)
 
@@ -595,7 +601,7 @@ class FalServerlessHost(Host):
             health_check_config=health_check_config,
             # By default, logs are public
             private_logs=options.host.get("private_logs", False),
-            files=app_files,
+            files=files,
         ):
             for log in partial_result.logs:
                 self._log_printer.print(log)
@@ -655,7 +661,7 @@ class FalServerlessHost(Host):
             startup_timeout=startup_timeout,
         )
 
-        app_files = self._app_files_sync(options)
+        files = self.files_sync(FileSyncOptions.from_options(options))
 
         return_value = _UNSET
         # Allow isolate provided arguments (such as setup function) to take
@@ -666,7 +672,7 @@ class FalServerlessHost(Host):
             environments,
             machine_requirements=machine_requirements,
             setup_function=setup_function,
-            files=app_files,
+            files=files,
         ):
             result_handler(partial_result)
 
