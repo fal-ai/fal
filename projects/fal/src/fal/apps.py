@@ -147,7 +147,7 @@ class RequestHandle:
         try:
             response.raise_for_status()
         except httpx.HTTPStatusError as e:
-            if response.headers["Content-Type"] != "application/json":
+            if "application/json" not in response.headers["Content-Type"]:
                 raise
             raise httpx.HTTPStatusError(
                 f"{response.status_code}: {response.text}",
