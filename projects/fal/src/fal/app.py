@@ -375,6 +375,11 @@ def _include_app_files_path(
     os.chdir(str(final_path))
 
 
+@dataclass
+class RequestContext:
+    headers: dict[str, str]
+
+
 class App(BaseServable):
     requirements: ClassVar[list[str]] = []
     local_python_modules: ClassVar[list[str]] = []
@@ -408,7 +413,7 @@ class App(BaseServable):
 
     isolate_channel: async_grpc.Channel | None = None
 
-    _fal_request_headers: ContextVar[dict[str, str]] | None = None
+    _current_request_context: ContextVar[RequestContext | None] | None = None
 
     def __init_subclass__(cls, **kwargs):
         app_name = kwargs.pop("name", None) or _to_fal_app_name(cls.__name__)
@@ -530,7 +535,9 @@ class App(BaseServable):
     async def lifespan(self, app: fastapi.FastAPI):
         os.environ["FAL_RUNNER_STATE"] = "SETUP"
 
-        self._fal_request_headers = ContextVar("_fal_request_headers", default={})
+        self._current_request_context = ContextVar(
+            "_current_request_context", default=RequestContext(headers={})
+        )
 
         # We want to not do any directory changes for container apps,
         # since we don't have explicit checks to see the kind of app
@@ -550,10 +557,10 @@ class App(BaseServable):
             await _call_any_fn(self.teardown)
 
     @property
-    def request_headers(self) -> dict[str, str]:
-        if self._fal_request_headers is None:
-            return {}
-        return self._fal_request_headers.get()
+    def current_request(self) -> RequestContext | None:
+        if self._current_request_context is None:
+            return None
+        return self._current_request_context.get()
 
     def health(self):
         return {"version": self.version}
@@ -691,18 +698,23 @@ class App(BaseServable):
             return JSONResponse({"detail": str(exc)}, 499)
 
         @app.middleware("http")
-        async def set_context_vars(request, call_next):
-            if self._fal_request_headers is None:
-                logger.warning("context variables are not set")
+        async def set_current_request_context(request, call_next):
+            if self._current_request_context is None:
+                from fastapi.logger import logger
+
+                logger.warning(
+                    "request context is not set. "
+                    "lifespan may not have worked as expected."
+                )
                 return await call_next(request)
 
-            request_headers = dict(request.headers)
+            context = RequestContext(headers=dict(request.headers))
 
-            token = self._fal_request_headers.set(request_headers)
+            token = self._current_request_context.set(context)
             try:
                 return await call_next(request)
             finally:
-                self._fal_request_headers.reset(token)
+                self._current_request_context.reset(token)
 
     def _add_extra_routes(self, app: fastapi.FastAPI):
         # TODO remove this once we have a proper health check endpoint

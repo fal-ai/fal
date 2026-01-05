@@ -1278,8 +1278,9 @@ class FalFileRepositoryV3(FileRepository):
         }
 
         # Inject the CDN token if it is available
-        if current_app := get_current_app():
-            if cdn_token := current_app.request_headers.get("x-fal-cdn-token"):
+        current_app = get_current_app()
+        if current_app and current_app.current_request:
+            if cdn_token := current_app.current_request.headers.get("x-fal-cdn-token"):
                 headers["X-Fal-CDN-Token"] = cdn_token
 
         return headers
