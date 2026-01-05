@@ -1199,9 +1199,6 @@ class RouteSignature(NamedTuple):
 class BaseServable:
     version: ClassVar[str] = "unknown"
 
-    _shutdown_locks: set[str] = set()
-    _shutdown_timeout: float = 60
-
     def collect_routes(self) -> dict[RouteSignature, Callable[..., Any]]:
         raise NotImplementedError
 
