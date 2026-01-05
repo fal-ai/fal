@@ -274,7 +274,7 @@ def test_multipart_upload_returns_md5_etag(temp_dir):
     part_response.status_code = 200
     part_response.json.return_value = {
         "part_number": 1,
-        "etag": "d8e8fca2dc0f896fd7cb4cb0031ba249"  # MD5 hash (32 chars)
+        "etag": "d8e8fca2dc0f896fd7cb4cb0031ba249",  # MD5 hash (32 chars)
     }
 
     complete_response = MagicMock()
@@ -286,7 +286,7 @@ def test_multipart_upload_returns_md5_etag(temp_dir):
     mock_client.request.side_effect = [
         initiate_response,
         part_response,
-        complete_response
+        complete_response,
     ]
 
     uploader = AppFileMultipartUpload(
@@ -306,8 +306,8 @@ def test_multipart_upload_returns_md5_etag(temp_dir):
 
 def test_multipart_upload_bounded_queue_limits_memory(temp_dir):
     """Test that bounded queue prevents loading entire file into memory"""
+
     from fal.upload import BaseMultipartUpload
-    import queue
 
     # Create a file with multiple chunks
     test_file = Path(temp_dir) / "large.txt"
@@ -331,21 +331,26 @@ def test_multipart_upload_bounded_queue_limits_memory(temp_dir):
         initiate_response,
         part_response,
         part_response,
-        complete_response
+        complete_response,
     ]
 
     class TestUpload(BaseMultipartUpload):
         @property
-        def initiate_url(self): return "/init"
+        def initiate_url(self):
+            return "/init"
+
         @property
-        def part_url(self): return "/part"
+        def part_url(self):
+            return "/part"
+
         @property
-        def complete_url(self): return "/complete"
+        def complete_url(self):
+            return "/complete"
 
     uploader = TestUpload(
         client=mock_client,
         chunk_size=10 * 1024 * 1024,  # 10MB
-        max_concurrency=2
+        max_concurrency=2,
     )
 
     # Should not raise MemoryError even with large file
