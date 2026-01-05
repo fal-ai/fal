@@ -410,6 +410,11 @@ class App(BaseServable):
         parent_settings = getattr(cls, "host_kwargs", {})
         cls.host_kwargs = {**parent_settings, **kwargs}
 
+        for key in parent_settings.keys():
+            val = getattr(cls, key, None)
+            if val is not None:
+                cls.host_kwargs[key] = val
+
         if cls.request_timeout is not None:
             cls.host_kwargs["request_timeout"] = cls.request_timeout
 
