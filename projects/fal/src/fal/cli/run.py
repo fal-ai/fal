@@ -24,7 +24,9 @@ def _run(args):
     client = SyncServerlessClient(host=args.host, team=team)
     host = client._create_host(local_file_path=file_path, environment_name=args.env)
 
-    loaded = load_function_from(host, file_path, func_name)
+    loaded = load_function_from(
+        host, file_path, func_name, force_env_build=args.force_env_build
+    )
 
     isolated_function = loaded.function
     # let our exc handlers handle UserFunctionException
@@ -34,7 +36,7 @@ def _run(args):
 
 def add_parser(main_subparsers, parents):
     run_help = "Run fal function."
-    epilog = "Examples:\n" "  fal run path/to/myfile.py::myfunc\n" "  fal run my-app\n"
+    epilog = "Examples:\n  fal run path/to/myfile.py::myfunc\n  fal run my-app\n"
     parser = main_subparsers.add_parser(
         "run",
         description=run_help,
@@ -46,6 +48,11 @@ def add_parser(main_subparsers, parents):
         "func_ref",
         action=RefAction,
         help="Function reference. Configure team in pyproject.toml for app names.",
+    )
+    parser.add_argument(
+        "--force-env-build",
+        action="store_true",
+        help="Ignore the environment build cache and force rebuild.",
     )
     parser.add_argument(
         "--env",

@@ -48,11 +48,17 @@ def mocked_fal_serverless_host(host):
     return mock
 
 
-def mock_args(host, func_ref: Tuple[str, Optional[str]], team: Optional[str] = None):
+def mock_args(
+    host,
+    func_ref: Tuple[str, Optional[str]],
+    team: Optional[str] = None,
+    force_env_build: bool = False,
+):
     args = MagicMock()
     args.host = host
     args.func_ref = func_ref
     args.team = team
+    args.force_env_build = force_env_build
     return args
 
 
@@ -80,7 +86,10 @@ def test_run_with_toml_success(
 
     # Ensure the correct app is ran
     mock_load_function_from.assert_called_once_with(
-        host, f"{project_root / 'src/my_app/inference.py'}", "MyApp"
+        host,
+        f"{project_root / 'src/my_app/inference.py'}",
+        "MyApp",
+        force_env_build=False,
     )
 
 
@@ -159,7 +168,10 @@ def test_run_with_team_from_toml(
 
     # Ensure the correct app is ran
     mock_load_function_from.assert_called_once_with(
-        host, f"{project_root / 'src/team_app/inference.py'}", "TeamApp"
+        host,
+        f"{project_root / 'src/team_app/inference.py'}",
+        "TeamApp",
+        force_env_build=False,
     )
 
 
@@ -195,7 +207,10 @@ def test_run_with_team_from_toml_cli_team_override(
 
     # Ensure the correct app is ran
     mock_load_function_from.assert_called_once_with(
-        host, f"{project_root / 'src/team_app/inference.py'}", "TeamApp"
+        host,
+        f"{project_root / 'src/team_app/inference.py'}",
+        "TeamApp",
+        force_env_build=False,
     )
 
 

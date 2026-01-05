@@ -73,6 +73,7 @@ def mock_args(
     strategy: Optional[str] = None,
     reset_scale: bool = False,
     team: Optional[str] = None,
+    force_env_build: bool = False,
     env: Optional[str] = None,
 ):
     args = MagicMock()
@@ -84,6 +85,7 @@ def mock_args(
     args.app_scale_settings = reset_scale
     args.output = "pretty"
     args.team = team
+    args.force_env_build = force_env_build
     args.env = env
 
     return args
@@ -112,6 +114,7 @@ def test_deploy_with_toml_success(
         "shared",
         strategy="rolling",
         scale=False,
+        force_env_build=False,
         environment_name=None,
     )
 
@@ -139,6 +142,7 @@ def test_deploy_with_toml_no_auth(
         None,
         strategy=None,
         scale=False,
+        force_env_build=False,
         environment_name=None,
     )
 
@@ -251,6 +255,7 @@ def test_deploy_with_toml_deployment_strategy(
         "shared",
         strategy="rolling",
         scale=False,
+        force_env_build=False,
         environment_name=None,
     )
 
@@ -276,6 +281,7 @@ def test_deploy_with_toml_default_deployment_strategy(
         None,
         strategy=None,
         scale=False,
+        force_env_build=False,
         environment_name=None,
     )
 
@@ -301,6 +307,7 @@ def test_deploy_with_cli_auth(
         "shared",
         strategy=None,
         scale=False,
+        force_env_build=False,
         environment_name=None,
     )
 
@@ -326,6 +333,7 @@ def test_deploy_with_cli_deployment_strategy(
         None,
         strategy="rolling",
         scale=False,
+        force_env_build=False,
         environment_name=None,
     )
 
@@ -351,6 +359,7 @@ def test_deploy_with_cli_reset_scale(
         None,
         strategy=None,
         scale=True,
+        force_env_build=False,
         environment_name=None,
     )
 
@@ -376,6 +385,33 @@ def test_deploy_with_cli_scale(
         None,
         strategy=None,
         scale=False,
+        force_env_build=False,
+        environment_name=None,
+    )
+
+
+@patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+@patch("fal.api.deploy._deploy_from_reference")
+def test_deploy_with_cli_force_env_build(
+    mock_deploy_ref, mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml
+):
+    mock_parse_toml.return_value = mock_parse_pyproject_toml
+
+    args = mock_args(app_ref=("src/my_app/inference.py", "MyApp"), force_env_build=True)
+
+    _deploy(args)
+
+    project_root, _ = find_project_root(None)
+
+    mock_deploy_ref.assert_called_once_with(
+        mock_deploy_ref.call_args[0][0],
+        (f"{project_root / 'src/my_app/inference.py'}", "MyApp"),
+        None,
+        None,
+        strategy=None,
+        scale=False,
+        force_env_build=True,
         environment_name=None,
     )
 

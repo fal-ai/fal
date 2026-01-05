@@ -85,6 +85,7 @@ def _deploy_from_reference(
     auth: Optional[AuthModeLiteral],
     strategy: Optional[DeploymentStrategyLiteral],
     scale: bool,
+    force_env_build: bool,
     environment_name: Optional[str] = None,
 ) -> DeploymentResult:
     from fal.api import FalServerlessError
@@ -113,6 +114,7 @@ def _deploy_from_reference(
         host,
         file_path,  # type: ignore
         func_name,  # type: ignore
+        force_env_build=force_env_build,
     )
     isolated_function = loaded.function
     app_name = app_name or loaded.app_name  # type: ignore
@@ -160,6 +162,7 @@ def deploy(
     auth: AuthModeLiteral | None = None,
     strategy: DeploymentStrategyLiteral = "rolling",
     reset_scale: bool = False,
+    force_env_build: bool = False,
     environment_name: str | None = None,
 ) -> DeploymentResult:
     from fal.cli._utils import get_app_data_from_toml, is_app_name
@@ -203,5 +206,6 @@ def deploy(
         app_auth,
         strategy=app_strategy,
         scale=app_scale_settings,
+        force_env_build=force_env_build,
         environment_name=environment_name,
     )

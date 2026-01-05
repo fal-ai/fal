@@ -28,6 +28,7 @@ def _deploy(args):
         auth=args.auth,
         strategy=args.strategy,
         reset_scale=args.app_scale_settings,
+        force_env_build=args.force_env_build,
         environment_name=args.env,
     )
     app_id = res.revision
@@ -38,19 +39,23 @@ def _deploy(args):
             json.dumps({"revision": app_id, "app_name": resolved_app_name})
         )
     elif args.output == "pretty":
+        from fal.flags import URL_OUTPUT
+
         args.console.print(
             "Registered a new revision for function "
             f"'{resolved_app_name}' (revision='{app_id}')."
         )
-        args.console.print("Playground:")
-        for url in res.urls.get("playground", {}).values():
-            args.console.print(f"\t{url}")
-        args.console.print("Synchronous Endpoints:")
-        for url in res.urls.get("sync", {}).values():
-            args.console.print(f"\t{url}")
-        args.console.print("Asynchronous Endpoints (Recommended):")
-        for url in res.urls.get("async", {}).values():
-            args.console.print(f"\t{url}")
+        if URL_OUTPUT != "none":
+            args.console.print("Playground:")
+            for url in res.urls.get("playground", {}).values():
+                args.console.print(f"\t{url}")
+        if URL_OUTPUT == "all":
+            args.console.print("Synchronous Endpoints:")
+            for url in res.urls.get("sync", {}).values():
+                args.console.print(f"\t{url}")
+            args.console.print("Asynchronous Endpoints (Recommended):")
+            for url in res.urls.get("async", {}).values():
+                args.console.print(f"\t{url}")
     else:
         raise AssertionError(f"Invalid output format: {args.output}")
 
@@ -134,6 +139,11 @@ def add_parser(main_subparsers, parents):
         action="store_true",
         dest="app_scale_settings",
         help="Use the application code for scale settings.",
+    )
+    parser.add_argument(
+        "--force-env-build",
+        action="store_true",
+        help="Ignore the environment build cache and force rebuild.",
     )
     parser.add_argument(
         "--env",

@@ -31,7 +31,13 @@ from urllib.parse import urlencode
 import httpx
 import msgpack
 from httpx_sse import aconnect_sse, connect_sse
-from fal_client.auth import FAL_RUN_HOST, fetch_credentials
+from fal_client.auth import (
+    AuthCredentials,
+    FAL_QUEUE_RUN_HOST,
+    FAL_RUN_HOST,
+    MissingCredentialsError,
+    fetch_auth_credentials,
+)
 
 if TYPE_CHECKING:
     from websockets.client import WebSocketClientProtocol
@@ -46,7 +52,7 @@ AnyJSON = Dict[str, Any]
 Priority = Literal["normal", "low"]
 
 RUN_URL_FORMAT = f"https://{FAL_RUN_HOST}/"
-QUEUE_URL_FORMAT = f"https://queue.{FAL_RUN_HOST}/"
+QUEUE_URL_FORMAT = f"https://{FAL_QUEUE_RUN_HOST}/"
 REALTIME_URL_FORMAT = f"wss://{FAL_RUN_HOST}/"
 REST_URL = "https://rest.alpha.fal.ai"
 CDN_URL = "https://v3.fal.media"
@@ -65,8 +71,8 @@ class CDNToken:
 
 
 class CDNTokenManager:
-    def __init__(self, key: str) -> None:
-        self._key = key
+    def __init__(self, auth: AuthCredentials) -> None:
+        self._auth = auth
         self._token: CDNToken = CDNToken(
             token="",
             token_type="",
@@ -76,7 +82,7 @@ class CDNTokenManager:
         self._lock: threading.Lock = threading.Lock()
         self._url = f"{REST_URL}/storage/auth/token?storage_type=fal-cdn-v3"
         self._headers = {
-            "Authorization": f"Key {self._key}",
+            "Authorization": self._auth.header_value,
             "Accept": "application/json",
             "Content-Type": "application/json",
         }
@@ -102,8 +108,8 @@ class CDNTokenManager:
 
 
 class AsyncCDNTokenManager:
-    def __init__(self, key: str) -> None:
-        self._key = key
+    def __init__(self, auth: AuthCredentials) -> None:
+        self._auth = auth
         self._token: CDNToken = CDNToken(
             token="",
             token_type="",
@@ -113,7 +119,7 @@ class AsyncCDNTokenManager:
         self._lock: asyncio.Lock = asyncio.Lock()
         self._url = f"{REST_URL}/storage/auth/token?storage_type=fal-cdn-v3"
         self._headers = {
-            "Authorization": f"Key {self._key}",
+            "Authorization": self._auth.header_value,
             "Accept": "application/json",
             "Content-Type": "application/json",
         }
@@ -1115,21 +1121,33 @@ class AsyncClient:
     key: str | None = field(default=None, repr=False)
     default_timeout: float = 120.0
 
-    def _get_key(self) -> str:
+    @cached_property
+    def _auth(self) -> AuthCredentials:
         if self.key is None:
-            return fetch_credentials()
-        return self.key
+            return fetch_auth_credentials()
+        return AuthCredentials("Key", self.key)
+
+    def _get_auth(self) -> AuthCredentials:
+        return self._auth
+
+    def _get_key(self) -> str:
+        auth = self._get_auth()
+        if auth.scheme.lower() != "key":
+            raise MissingCredentialsError(
+                "Key credentials are required for this operation. Set FAL_KEY or FAL_KEY_ID/FAL_KEY_SECRET."
+            )
+        return auth.token
 
     @cached_property
     def _token_manager(self) -> AsyncCDNTokenManager:
-        return AsyncCDNTokenManager(self._get_key())
+        return AsyncCDNTokenManager(self._get_auth())
 
     @cached_property
     def _client(self) -> httpx.AsyncClient:
-        key = self._get_key()
+        auth = self._get_auth()
         return httpx.AsyncClient(
             headers={
-                "Authorization": f"Key {key}",
+                "Authorization": auth.header_value,
                 "User-Agent": USER_AGENT,
             },
             timeout=self.default_timeout,
@@ -1426,17 +1444,29 @@ class SyncClient:
     key: str | None = field(default=None, repr=False)
     default_timeout: float = 120.0
 
-    def _get_key(self) -> str:
+    @cached_property
+    def _auth(self) -> AuthCredentials:
         if self.key is None:
-            return fetch_credentials()
-        return self.key
+            return fetch_auth_credentials()
+        return AuthCredentials("Key", self.key)
+
+    def _get_auth(self) -> AuthCredentials:
+        return self._auth
+
+    def _get_key(self) -> str:
+        auth = self._get_auth()
+        if auth.scheme.lower() != "key":
+            raise MissingCredentialsError(
+                "Key credentials are required for this operation. Set FAL_KEY or FAL_KEY_ID/FAL_KEY_SECRET."
+            )
+        return auth.token
 
     @cached_property
     def _client(self) -> httpx.Client:
-        key = self._get_key()
+        auth = self._get_auth()
         return httpx.Client(
             headers={
-                "Authorization": f"Key {key}",
+                "Authorization": auth.header_value,
                 "User-Agent": USER_AGENT,
             },
             timeout=self.default_timeout,
@@ -1445,7 +1475,7 @@ class SyncClient:
 
     @cached_property
     def _token_manager(self) -> CDNTokenManager:
-        return CDNTokenManager(self._get_key())
+        return CDNTokenManager(self._get_auth())
 
     def _get_cdn_client(self) -> httpx.Client:
         token = self._token_manager.get_token()
