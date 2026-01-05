@@ -14,5 +14,5 @@ def set_current_app(app: "App"):
     current_app = app
 
 
-def get_current_app() -> "App" | None:
+def get_current_app() -> Optional["App"]:
     return current_app
