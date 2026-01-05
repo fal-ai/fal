@@ -40,6 +40,38 @@
 <section id="module-fal_client.auth">
 <span id="fal-client-auth-module"></span><h2>fal_client.auth module<a class="headerlink" href="#module-fal_client.auth" title="Link to this heading">¶</a></h2>
 <dl class="py class">
+<dt class="sig sig-object py" id="fal_client.auth.AuthCredentials">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal_client.auth.</span></span><span class="sig-name descname"><span class="pre">AuthCredentials</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">scheme</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">token</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal_client.auth.AuthCredentials" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Represents an authorization header value.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="fal_client.auth.AuthCredentials.as_headers">
+<span class="sig-name descname"><span class="pre">as_headers</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#fal_client.auth.AuthCredentials.as_headers" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="fal_client.auth.AuthCredentials.header_value">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">header_value</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#fal_client.auth.AuthCredentials.header_value" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal_client.auth.AuthCredentials.scheme">
+<span class="sig-name descname"><span class="pre">scheme</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><a class="headerlink" href="#fal_client.auth.AuthCredentials.scheme" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal_client.auth.AuthCredentials.token">
+<span class="sig-name descname"><span class="pre">token</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><a class="headerlink" href="#fal_client.auth.AuthCredentials.token" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
 <dt class="sig sig-object py" id="fal_client.auth.GoogleColabState">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal_client.auth.</span></span><span class="sig-name descname"><span class="pre">GoogleColabState</span></span><a class="headerlink" href="#fal_client.auth.GoogleColabState" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
@@ -52,9 +84,25 @@
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="fal_client.auth.fetch_auth_credentials">
+<span class="sig-prename descclassname"><span class="pre">fal_client.auth.</span></span><span class="sig-name descname"><span class="pre">fetch_auth_credentials</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#fal_client.auth.fetch_auth_credentials" title="Link to this definition">¶</a></dt>
+<dd><p>Return credentials using this priority:
+1) FAL_KEY / FAL_KEY_ID+FAL_KEY_SECRET / Colab secret (unless FAL_FORCE_AUTH_BY_USER=1)
+2) Tokens saved by <cite>fal auth login</cite></p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference internal" href="#fal_client.auth.AuthCredentials" title="fal_client.auth.AuthCredentials"><code class="xref py py-class docutils literal notranslate"><span class="pre">AuthCredentials</span></code></a></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="fal_client.auth.fetch_credentials">
 <span class="sig-prename descclassname"><span class="pre">fal_client.auth.</span></span><span class="sig-name descname"><span class="pre">fetch_credentials</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#fal_client.auth.fetch_credentials" title="Link to this definition">¶</a></dt>
-<dd><dl class="field-list simple">
+<dd><p>Legacy helper kept for backwards compatibility.</p>
+<p>It only returns Key-based credentials; user-based auth (Bearer) will raise
+MissingCredentialsError so callers don’t accidentally send it as a key.</p>
+<dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span></p>
 </dd>
@@ -122,7 +170,7 @@
 
 <dl class="py class">
 <dt class="sig sig-object py" id="fal_client.client.AsyncCDNTokenManager">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal_client.client.</span></span><span class="sig-name descname"><span class="pre">AsyncCDNTokenManager</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">key</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal_client.client.AsyncCDNTokenManager" title="Link to this definition">¶</a></dt>
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal_client.client.</span></span><span class="sig-name descname"><span class="pre">AsyncCDNTokenManager</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">auth</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal_client.client.AsyncCDNTokenManager" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
 <dl class="py method">
 <dt class="sig sig-object py" id="fal_client.client.AsyncCDNTokenManager.get_token">
@@ -504,7 +552,7 @@ for InProgress and Completed statuses.</p>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="fal_client.client.CDNTokenManager">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal_client.client.</span></span><span class="sig-name descname"><span class="pre">CDNTokenManager</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">key</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal_client.client.CDNTokenManager" title="Link to this definition">¶</a></dt>
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal_client.client.</span></span><span class="sig-name descname"><span class="pre">CDNTokenManager</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">auth</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal_client.client.CDNTokenManager" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
 <dl class="py method">
 <dt class="sig sig-object py" id="fal_client.client.CDNTokenManager.get_token">
