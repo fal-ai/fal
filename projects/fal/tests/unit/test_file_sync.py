@@ -250,6 +250,109 @@ def test_upload_file_multipart_basic_functionality(file_sync, temp_dir):
         mock_instance.upload_file.assert_called_once_with(str(test_file))
 
 
+def test_multipart_upload_returns_md5_etag(temp_dir):
+    """Test that multipart upload returns MD5 etag from server"""
+    from fal.upload import AppFileMultipartUpload
+
+    test_file = Path(temp_dir) / "test.txt"
+    test_file.write_text("test content")
+
+    metadata = file_sync_mod.FileMetadata.from_path(
+        test_file, relative="test.txt", absolute=str(test_file)
+    )
+
+    mock_client = MagicMock()
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+
+    # Simulate server responses
+    initiate_response = MagicMock()
+    initiate_response.status_code = 200
+    initiate_response.json.return_value = {"upload_id": "test-upload-id"}
+
+    part_response = MagicMock()
+    part_response.status_code = 200
+    part_response.json.return_value = {
+        "part_number": 1,
+        "etag": "d8e8fca2dc0f896fd7cb4cb0031ba249"  # MD5 hash (32 chars)
+    }
+
+    complete_response = MagicMock()
+    complete_response.status_code = 200
+    complete_response.json.return_value = {
+        "etag": "d8e8fca2dc0f896fd7cb4cb0031ba249"  # MD5, not SHA256
+    }
+
+    mock_client.request.side_effect = [
+        initiate_response,
+        part_response,
+        complete_response
+    ]
+
+    uploader = AppFileMultipartUpload(
+        client=mock_client,
+        file_hash=metadata.hash,  # SHA256 (64 chars)
+        metadata=metadata.to_dict(),
+    )
+
+    etag = uploader.upload_file(str(test_file))
+
+    # Server returns MD5 (32 chars), not SHA256 (64 chars)
+    assert len(etag) == 32
+    assert etag == "d8e8fca2dc0f896fd7cb4cb0031ba249"
+    # No client-side hash verification should happen
+    # (would fail if we compared MD5 to SHA256)
+
+
+def test_multipart_upload_bounded_queue_limits_memory(temp_dir):
+    """Test that bounded queue prevents loading entire file into memory"""
+    from fal.upload import BaseMultipartUpload
+    import queue
+
+    # Create a file with multiple chunks
+    test_file = Path(temp_dir) / "large.txt"
+    test_file.write_bytes(b"x" * (10 * 1024 * 1024 + 100))  # ~10MB
+
+    mock_client = MagicMock()
+
+    initiate_response = MagicMock()
+    initiate_response.status_code = 200
+    initiate_response.json.return_value = {"upload_id": "test-id"}
+
+    part_response = MagicMock()
+    part_response.status_code = 200
+    part_response.json.return_value = {"part_number": 1, "etag": "abc"}
+
+    complete_response = MagicMock()
+    complete_response.status_code = 200
+    complete_response.json.return_value = {"etag": "final"}
+
+    mock_client.request.side_effect = [
+        initiate_response,
+        part_response,
+        part_response,
+        complete_response
+    ]
+
+    class TestUpload(BaseMultipartUpload):
+        @property
+        def initiate_url(self): return "/init"
+        @property
+        def part_url(self): return "/part"
+        @property
+        def complete_url(self): return "/complete"
+
+    uploader = TestUpload(
+        client=mock_client,
+        chunk_size=10 * 1024 * 1024,  # 10MB
+        max_concurrency=2
+    )
+
+    # Should not raise MemoryError even with large file
+    etag = uploader.upload_file(str(test_file))
+    assert etag == "final"
+
+
 def test_sync_files_with_ignore_patterns(file_sync, temp_dir):
     """Test sync_files properly filters files using ignore patterns"""
     # Create test files

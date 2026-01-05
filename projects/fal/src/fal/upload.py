@@ -254,12 +254,10 @@ class AppFileMultipartUpload(BaseMultipartUpload):
         metadata: dict,
         chunk_size: int = MULTIPART_CHUNK_SIZE,
         max_concurrency: int = MULTIPART_MAX_CONCURRENCY,
-        verify_hash: bool = True,
     ):
         super().__init__(client, chunk_size, max_concurrency)
         self.file_hash = file_hash
         self.metadata = metadata
-        self.verify_hash = verify_hash
 
     @property
     def initiate_url(self) -> str:
@@ -285,16 +283,6 @@ class AppFileMultipartUpload(BaseMultipartUpload):
             "parts": parts,
             "metadata": self.metadata,
         }
-
-    def upload_file(
-        self,
-        file_path: str,
-        on_part_complete: Optional[Callable[[int], None]] = None,
-    ) -> str:
-        etag = super().upload_file(file_path, on_part_complete)
-        if self.verify_hash and etag and etag != self.file_hash:
-            raise RuntimeError(f"Hash mismatch: expected {self.file_hash}, got {etag}")
-        return etag
 
 
 class DataFileMultipartUpload(BaseMultipartUpload):
