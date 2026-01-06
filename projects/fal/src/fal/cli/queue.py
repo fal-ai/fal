@@ -105,6 +105,6 @@ def add_parser(main_subparsers, parents):
     )
     flush_parser.add_argument(
         "caller_user_id",
-        help="Caller user ID.",
+        help="Only flush requests from this user ID. If not provided, all requests will be flushed.",  # noqa: E501
     )
     flush_parser.set_defaults(func=_queue_flush)
