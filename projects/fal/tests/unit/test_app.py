@@ -169,6 +169,7 @@ def test_app_classvars_propagate_to_host_kwargs_when_overriding_hidden_defaults(
         }
         keep_alive = 30
         resolver = "pip"
+        _app_var = "example"
 
     hk = VarsApp.host_kwargs
     assert hk["_scheduler"] == "kubernetes"
@@ -177,3 +178,4 @@ def test_app_classvars_propagate_to_host_kwargs_when_overriding_hidden_defaults(
     }
     assert hk["keep_alive"] == 30
     assert hk["resolver"] == "pip"
+    assert "_app_var" not in hk
