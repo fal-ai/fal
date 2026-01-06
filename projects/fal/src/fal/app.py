@@ -32,7 +32,12 @@ from fal.api import (
 from fal.container import ContainerImage
 from fal.exceptions import FalServerlessException, RequestCancelledException
 from fal.logging import get_logger
-from fal.sdk import ApplicationHealthCheckConfig, AuthModeLiteral, HealthCheck
+from fal.sdk import (
+    ApplicationHealthCheckConfig,
+    AuthModeLiteral,
+    HealthCheck,
+    RetryConditionLiteral,
+)
 from fal.toolkit.file import request_lifecycle_preference
 from fal.toolkit.file.providers.fal import LIFECYCLE_PREFERENCE
 
@@ -418,6 +423,7 @@ class App(BaseServable):
     kind: ClassVar[Optional[str]] = None
     image: ClassVar[Optional[ContainerImage]] = None
     local_file_path: ClassVar[Optional[str]] = None
+    skip_retry_conditions: ClassVar[Optional[list[RetryConditionLiteral]]] = None
 
     isolate_channel: async_grpc.Channel | None = None
 
@@ -468,6 +474,9 @@ class App(BaseServable):
 
         if cls.image is not None:
             cls.host_kwargs["image"] = cls.image
+
+        if cls.skip_retry_conditions is not None:
+            cls.host_kwargs["skip_retry_conditions"] = cls.skip_retry_conditions
 
         cls.host_kwargs["health_check_config"] = cls.get_health_check_config()
 

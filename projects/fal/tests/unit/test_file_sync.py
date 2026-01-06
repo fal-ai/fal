@@ -229,25 +229,133 @@ def test_check_hashes_on_server_error_returns_all_missing(file_sync):
         assert result == test_hashes
 
 
-def test_upload_file_tus_basic_functionality(file_sync, temp_dir):
-    """Test TUS file upload calls correct methods with parameters"""
+def test_upload_file_multipart_basic_functionality(file_sync, temp_dir):
+    """Test multipart file upload calls correct methods with parameters"""
     test_file = Path(temp_dir) / "test.txt"
     test_file.write_text("test content")
 
-    mock_uploader = MagicMock()
-    expected_url = "https://upload.server.com/files/abc123"
-    mock_uploader.url = expected_url
+    metadata = file_sync_mod.FileMetadata.from_path(
+        test_file, relative="test.txt", absolute=str(test_file)
+    )
 
-    with patch.object(file_sync, "_tus_client") as mock_client:
-        mock_client.uploader.return_value = mock_uploader
+    with patch("fal.file_sync.AppFileMultipartUpload") as MockMultipart:
+        mock_instance = MagicMock()
+        mock_instance.upload_file.return_value = "test_etag"
+        MockMultipart.return_value = mock_instance
 
-        metadata = file_sync_mod.FileMetadata.from_path(
-            test_file, relative="test.txt", absolute=str(test_file)
-        )
-        result_url = file_sync.upload_file_tus(str(test_file), metadata)
+        result = file_sync.upload_file_multipart(str(test_file), metadata)
 
-        assert result_url == expected_url
-        mock_uploader.upload.assert_called_once()
+        assert result == "test_etag"
+        MockMultipart.assert_called_once()
+        mock_instance.upload_file.assert_called_once_with(str(test_file))
+
+
+def test_multipart_upload_returns_md5_etag(temp_dir):
+    """Test that multipart upload returns MD5 etag from server"""
+    from fal.upload import AppFileMultipartUpload
+
+    test_file = Path(temp_dir) / "test.txt"
+    test_file.write_text("test content")
+
+    metadata = file_sync_mod.FileMetadata.from_path(
+        test_file, relative="test.txt", absolute=str(test_file)
+    )
+
+    mock_client = MagicMock()
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+
+    # Simulate server responses
+    initiate_response = MagicMock()
+    initiate_response.status_code = 200
+    initiate_response.json.return_value = {"upload_id": "test-upload-id"}
+
+    part_response = MagicMock()
+    part_response.status_code = 200
+    part_response.json.return_value = {
+        "part_number": 1,
+        "etag": "d8e8fca2dc0f896fd7cb4cb0031ba249",  # MD5 hash (32 chars)
+    }
+
+    complete_response = MagicMock()
+    complete_response.status_code = 200
+    complete_response.json.return_value = {
+        "etag": "d8e8fca2dc0f896fd7cb4cb0031ba249"  # MD5, not SHA256
+    }
+
+    mock_client.request.side_effect = [
+        initiate_response,
+        part_response,
+        complete_response,
+    ]
+
+    uploader = AppFileMultipartUpload(
+        client=mock_client,
+        file_hash=metadata.hash,  # SHA256 (64 chars)
+        metadata=metadata.to_dict(),
+    )
+
+    etag = uploader.upload_file(str(test_file))
+
+    # Server returns MD5 (32 chars), not SHA256 (64 chars)
+    assert len(etag) == 32
+    assert etag == "d8e8fca2dc0f896fd7cb4cb0031ba249"
+    # No client-side hash verification should happen
+    # (would fail if we compared MD5 to SHA256)
+
+
+def test_multipart_upload_bounded_queue_limits_memory(temp_dir):
+    """Test that bounded queue prevents loading entire file into memory"""
+
+    from fal.upload import BaseMultipartUpload
+
+    # Create a file with multiple chunks
+    test_file = Path(temp_dir) / "large.txt"
+    test_file.write_bytes(b"x" * (10 * 1024 * 1024 + 100))  # ~10MB
+
+    mock_client = MagicMock()
+
+    initiate_response = MagicMock()
+    initiate_response.status_code = 200
+    initiate_response.json.return_value = {"upload_id": "test-id"}
+
+    part_response = MagicMock()
+    part_response.status_code = 200
+    part_response.json.return_value = {"part_number": 1, "etag": "abc"}
+
+    complete_response = MagicMock()
+    complete_response.status_code = 200
+    complete_response.json.return_value = {"etag": "final"}
+
+    mock_client.request.side_effect = [
+        initiate_response,
+        part_response,
+        part_response,
+        complete_response,
+    ]
+
+    class TestUpload(BaseMultipartUpload):
+        @property
+        def initiate_url(self):
+            return "/init"
+
+        @property
+        def part_url(self):
+            return "/part"
+
+        @property
+        def complete_url(self):
+            return "/complete"
+
+    uploader = TestUpload(
+        client=mock_client,
+        chunk_size=10 * 1024 * 1024,  # 10MB
+        max_concurrency=2,
+    )
+
+    # Should not raise MemoryError even with large file
+    etag = uploader.upload_file(str(test_file))
+    assert etag == "final"
 
 
 def test_sync_files_with_ignore_patterns(file_sync, temp_dir):
@@ -284,7 +392,7 @@ def test_sync_files_basic_workflow(file_sync, temp_dir):
 
     # Mock server to indicate all files need upload
     with patch.object(fs, "check_hashes_on_server") as mock_check, patch.object(
-        fs, "upload_file_tus", return_value="http://uploaded"
+        fs, "upload_file_multipart", return_value="test_etag"
     ):
         # Make server say all hashes are missing (need upload)
         mock_check.side_effect = lambda hashes: hashes

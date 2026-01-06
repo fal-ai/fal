@@ -451,6 +451,7 @@ class FalServerlessHost(Host):
             "app_files_ignore",
             "app_files_context_dir",
             "health_check_config",
+            "skip_retry_conditions",
         }
     )
 
@@ -549,6 +550,8 @@ class FalServerlessHost(Host):
         request_timeout = options.host.get("request_timeout")
         startup_timeout = options.host.get("startup_timeout")
         regions = options.host.get("regions")
+        health_check_config = options.host.get("health_check_config")
+        skip_retry_conditions = options.host.get("skip_retry_conditions")
         machine_requirements = MachineRequirements(
             machine_types=machine_type,  # type: ignore
             num_gpus=options.host.get("num_gpus"),
@@ -567,8 +570,6 @@ class FalServerlessHost(Host):
             startup_timeout=startup_timeout,
             valid_regions=regions,
         )
-
-        health_check_config = options.host.get("health_check_config")
 
         app_files = self._app_files_sync(options)
 
@@ -597,6 +598,7 @@ class FalServerlessHost(Host):
             # By default, logs are public
             private_logs=options.host.get("private_logs", False),
             files=app_files,
+            skip_retry_conditions=skip_retry_conditions,
         ):
             for log in partial_result.logs:
                 self._log_printer.print(log)

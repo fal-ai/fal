@@ -44,6 +44,7 @@ def test_app_classvars_propagate_to_host_kwargs():
         image = ContainerImage.from_dockerfile_str(
             "FROM python:3.10-slim",
         )
+        skip_retry_conditions = ["timeout", "client_error"]
 
     hk = VarsApp.host_kwargs
     assert hk["request_timeout"] == 11
@@ -56,6 +57,7 @@ def test_app_classvars_propagate_to_host_kwargs():
     assert hk["max_multiplexing"] == 7
     assert hk["kind"] == "container"
     assert isinstance(hk["image"], ContainerImage)
+    assert hk["skip_retry_conditions"] == ["timeout", "client_error"]
 
 
 def test_app_files_classvars_propagate_to_host_kwargs():

@@ -49,6 +49,7 @@ patch_pickle()
 
 AuthModeLiteral = Literal["public", "private", "shared"]
 DeploymentStrategyLiteral = Literal["recreate", "rolling"]
+RetryConditionLiteral = Literal["timeout", "client_error", "server_error"]
 
 
 class ServerCredentials:
@@ -701,6 +702,7 @@ class FalServerlessConnection:
         scale: bool = True,
         private_logs: bool = False,
         files: list[File] | None = None,
+        skip_retry_conditions: list[RetryConditionLiteral] | None = None,
     ) -> Iterator[RegisterApplicationResult]:
         wrapped_function = to_serialized_object(function, serialization_method)
         if machine_requirements:
@@ -764,6 +766,14 @@ class FalServerlessConnection:
         else:
             wrapped_health_check_config = None
 
+        if skip_retry_conditions:
+            wrapped_skip_retry_conditions = [
+                isolate_proto.RetryCondition.Value(condition.upper())
+                for condition in skip_retry_conditions
+            ]
+        else:
+            wrapped_skip_retry_conditions = []
+
         request = isolate_proto.RegisterApplicationRequest(
             function=wrapped_function,
             environments=environments,
@@ -777,6 +787,7 @@ class FalServerlessConnection:
             files=files,
             source_code=source_code,
             health_check_config=wrapped_health_check_config,
+            skip_retry_conditions=wrapped_skip_retry_conditions,
         )
         for partial_result in self.stub.RegisterApplication(request):
             yield from_grpc(partial_result)
