@@ -24,16 +24,55 @@ from . import runners as runners_api
 from . import secrets as secrets_api
 
 
-class _AppsNamespace:
+class AppsNamespace:
+    """Namespace for app management operations.
+
+    Corresponds to `fal apps ...` CLI commands.
+
+    Accessed via `client.apps`.
+
+    Example:
+        from fal.api import SyncServerlessClient
+
+        client = SyncServerlessClient()
+        apps = client.apps.list()
+        client.apps.scale("my-app", max_concurrency=10)
+    """
+
     def __init__(self, client: SyncServerlessClient):
         self.client = client
 
     def list(self, *, filter: str | None = None) -> List[AliasInfo]:
+        """List all applications. Corresponds to `fal apps list`.
+
+        Args:
+            filter: Optional app name filter string.
+
+        Example:
+            apps = client.apps.list()
+            filtered = client.apps.list(filter="stable")
+        """
         return apps_api.list_apps(self.client, filter=filter)
 
     def runners(
         self, app_name: str, *, since=None, state: List[str] | None = None
     ) -> List[RunnerInfo]:
+        """List runners for a specific app. Corresponds to `fal apps runners <app>`.
+
+        Args:
+            app_name: Name of the application.
+            since: Only return runners started after this datetime.
+            state: Filter by runner state (e.g., ["running"]).
+
+        Example:
+            from datetime import datetime, timedelta
+
+            runners = client.apps.runners("my-app")
+            recent = client.apps.runners(
+                "my-app", since=datetime.now() - timedelta(hours=1)
+            )
+            running = client.apps.runners("my-app", state=["running"])
+        """
         return apps_api.apps_runners(self.client, app_name, since=since, state=state)
 
     def scale(
@@ -52,6 +91,30 @@ class _AppsNamespace:
         machine_types: List[str] | None = None,
         regions: List[str] | None = None,
     ) -> apps_api.AliasInfo:
+        """Adjust scaling settings for an application. Corresponds to `fal apps scale`.
+
+        Any omitted option keeps the current value.
+
+        Args:
+            app_name: Name of the application.
+            keep_alive: Keep-alive time in seconds.
+            max_multiplexing: Maximum request multiplexing.
+            max_concurrency: Maximum concurrent runners.
+            min_concurrency: Minimum concurrent runners.
+            request_timeout: Request timeout in seconds.
+            startup_timeout: Startup timeout in seconds.
+            machine_types: List of allowed machine types (e.g., ["GPU-H100"]).
+            regions: List of allowed regions (e.g., ["us-east-1"]).
+
+        Example:
+            client.apps.scale(
+                "my-app",
+                keep_alive=300,
+                max_concurrency=10,
+                min_concurrency=1,
+                machine_types=["GPU-H100", "GPU-H200"],
+            )
+        """
         return apps_api.scale_app(
             self.client,
             app_name,
@@ -72,65 +135,213 @@ class _AppsNamespace:
         return apps_api.rollout_app(self.client, app_name, force=force)
 
 
-class _RunnersNamespace:
+class RunnersNamespace:
+    """Namespace for runner management operations.
+
+    Corresponds to `fal runners ...` CLI commands.
+
+    Accessed via `client.runners`.
+
+    Example:
+        from fal.api import SyncServerlessClient
+
+        client = SyncServerlessClient()
+        runners = client.runners.list()
+        client.runners.stop("runner-id")
+    """
+
     def __init__(self, client: SyncServerlessClient):
         self.client = client
 
     def list(self, *, since=None) -> List[RunnerInfo]:
+        """List all runners. Corresponds to `fal runners list`.
+
+        Args:
+            since: Only return runners started after this datetime.
+
+        Example:
+            from datetime import datetime, timedelta
+
+            all_runners = client.runners.list()
+            recent = client.runners.list(since=datetime.now() - timedelta(minutes=10))
+        """
         return runners_api.list_runners(self.client, since=since)
 
     def stop(self, runner_id: str) -> None:
+        """Gracefully stop a runner.
+
+        Args:
+            runner_id: The ID of the runner to stop.
+        """
         return runners_api.stop_runner(self.client, runner_id)
 
     def kill(self, runner_id: str) -> None:
+        """Forcefully kill a runner.
+
+        Args:
+            runner_id: The ID of the runner to kill.
+        """
         return runners_api.kill_runner(self.client, runner_id)
 
 
-class _KeysNamespace:
+class KeysNamespace:
+    """Namespace for API key management. Corresponds to `fal keys ...` CLI commands.
+
+    Accessed via `client.keys`.
+
+    Example:
+        from fal.api import SyncServerlessClient
+
+        client = SyncServerlessClient()
+        keys = client.keys.list()
+        key_id, key_secret = client.keys.create(scope="admin")
+    """
+
     def __init__(self, client: SyncServerlessClient):
         self.client = client
 
     def create(
         self, *, scope: KeyScope, description: str | None = None
     ) -> tuple[str, str]:
+        """Create a new API key.
+
+        Args:
+            scope: Key scope (e.g., "admin").
+            description: Optional description for the key.
+
+        Returns:
+            Tuple of (key_id, key_secret).
+        """
         return keys_api.create_key(self.client, scope=scope, description=description)
 
     def list(self) -> List[UserKeyInfo]:
+        """List all API keys."""
         return keys_api.list_keys(self.client)
 
     def revoke(self, key_id: str) -> None:
+        """Revoke an API key.
+
+        Args:
+            key_id: The ID of the key to revoke.
+        """
         return keys_api.revoke_key(self.client, key_id)
 
 
-class _SecretsNamespace:
+class SecretsNamespace:
+    """Namespace for secrets management. Corresponds to `fal secrets ...` CLI commands.
+
+    Accessed via `client.secrets`.
+
+    Example:
+        from fal.api import SyncServerlessClient
+
+        client = SyncServerlessClient()
+        client.secrets.set("API_KEY", "my-secret-value")
+        secrets = client.secrets.list()
+    """
+
     def __init__(self, client: SyncServerlessClient):
         self.client = client
 
     def set(self, name: str, value: str) -> None:
+        """Set a secret value.
+
+        Args:
+            name: Name of the secret.
+            value: Value to store.
+        """
         return secrets_api.set_secret(self.client, name, value)
 
     def list(self) -> List[ServerlessSecret]:
+        """List all secrets (names only, not values)."""
         return secrets_api.list_secrets(self.client)
 
     def unset(self, name: str) -> None:
+        """Delete a secret.
+
+        Args:
+            name: Name of the secret to delete.
+        """
         return secrets_api.unset_secret(self.client, name)
 
 
 @dataclass
 class SyncServerlessClient:
+    """Synchronous Python client for fal Serverless.
+
+    Manage apps, runners, and deployments programmatically. The namespaces
+    and methods mirror the CLI so you can automate the same workflows from Python.
+
+    Args:
+        host: Optional. Override API host.
+        api_key: Optional. If omitted, read from env/profile.
+        profile: Optional. Named profile to use.
+        team: Optional. Team context for runner operations.
+
+    Example:
+        from fal.api import SyncServerlessClient
+
+        client = SyncServerlessClient()
+
+        # List apps
+        apps = client.apps.list()
+
+        # Scale an app
+        client.apps.scale("my-app", max_concurrency=10)
+
+        # Deploy
+        client.deploy("path/to/myfile.py::MyApp")
+
+    Namespaces:
+        - client.apps.*    - corresponds to `fal apps ...`
+        - client.runners.* - corresponds to `fal runners ...`
+        - client.keys.*    - corresponds to `fal keys ...`
+        - client.secrets.* - corresponds to `fal secrets ...`
+        - client.deploy()  - corresponds to `fal deploy ...`
+    """
+
     host: Optional[str] = None
     api_key: Optional[str] = None
     profile: Optional[str] = None
     team: Optional[str] = None
 
     def __post_init__(self) -> None:
-        self.apps = _AppsNamespace(self)
-        self.runners = _RunnersNamespace(self)
-        self.keys = _KeysNamespace(self)
-        self.secrets = _SecretsNamespace(self)
+        self.apps = AppsNamespace(self)
+        self.runners = RunnersNamespace(self)
+        self.keys = KeysNamespace(self)
+        self.secrets = SecretsNamespace(self)
 
-    # Top-level verbs
     def deploy(self, *args, **kwargs):
+        """Deploy an application. Corresponds to `fal deploy`.
+
+        If app_ref is omitted, discovery behavior matches the CLI
+        (e.g., uses pyproject.toml).
+
+        Args:
+            app_ref: Path to file, file::Class, or existing app name.
+            app_name: Override the application name.
+            auth: Authentication mode ("private" | "public").
+            strategy: Deployment strategy ("recreate" | "rolling").
+            reset_scale: If False, use previous scaling settings.
+
+        Example:
+            # Auto-discover from pyproject.toml
+            client.deploy()
+
+            # Deploy from a file path
+            client.deploy("path/to/myfile.py")
+
+            # Deploy a specific class
+            client.deploy("path/to/myfile.py::MyApp")
+
+            # With options
+            client.deploy(
+                app_ref="path/to/myfile.py::MyApp",
+                app_name="myapp",
+                auth="public",
+                strategy="rolling",
+            )
+        """
         return deploy_api.deploy(self, *args, **kwargs)
 
     # Internal helpers
