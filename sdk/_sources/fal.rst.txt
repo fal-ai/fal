@@ -99,6 +99,14 @@ fal.sync module
    :undoc-members:
    :show-inheritance:
 
+fal.upload module
+-----------------
+
+.. automodule:: fal.upload
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 fal.utils module
 ----------------
 

@@ -256,7 +256,7 @@
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.file_sync.FileSync.close"><code class="docutils literal notranslate"><span class="pre">FileSync.close()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.file_sync.FileSync.collect_files"><code class="docutils literal notranslate"><span class="pre">FileSync.collect_files()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.file_sync.FileSync.sync_files"><code class="docutils literal notranslate"><span class="pre">FileSync.sync_files()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.file_sync.FileSync.upload_file_tus"><code class="docutils literal notranslate"><span class="pre">FileSync.upload_file_tus()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.file_sync.FileSync.upload_file_multipart"><code class="docutils literal notranslate"><span class="pre">FileSync.upload_file_multipart()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="fal.html#fal.file_sync.compute_hash"><code class="docutils literal notranslate"><span class="pre">compute_hash()</span></code></a></li>
@@ -530,6 +530,39 @@
 </li>
 <li class="toctree-l2"><a class="reference internal" href="fal.html#module-fal.sync">fal.sync module</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="fal.html#fal.sync.sync_dir"><code class="docutils literal notranslate"><span class="pre">sync_dir()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="fal.html#module-fal.upload">fal.upload module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.upload.AppFileMultipartUpload"><code class="docutils literal notranslate"><span class="pre">AppFileMultipartUpload</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.upload.AppFileMultipartUpload.cancel_url"><code class="docutils literal notranslate"><span class="pre">AppFileMultipartUpload.cancel_url</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.upload.AppFileMultipartUpload.complete_url"><code class="docutils literal notranslate"><span class="pre">AppFileMultipartUpload.complete_url</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.upload.AppFileMultipartUpload.get_complete_payload"><code class="docutils literal notranslate"><span class="pre">AppFileMultipartUpload.get_complete_payload()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.upload.AppFileMultipartUpload.get_initiate_payload"><code class="docutils literal notranslate"><span class="pre">AppFileMultipartUpload.get_initiate_payload()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.upload.AppFileMultipartUpload.initiate_url"><code class="docutils literal notranslate"><span class="pre">AppFileMultipartUpload.initiate_url</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.upload.AppFileMultipartUpload.part_url"><code class="docutils literal notranslate"><span class="pre">AppFileMultipartUpload.part_url</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.upload.BaseMultipartUpload"><code class="docutils literal notranslate"><span class="pre">BaseMultipartUpload</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.upload.BaseMultipartUpload.cancel"><code class="docutils literal notranslate"><span class="pre">BaseMultipartUpload.cancel()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.upload.BaseMultipartUpload.cancel_url"><code class="docutils literal notranslate"><span class="pre">BaseMultipartUpload.cancel_url</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.upload.BaseMultipartUpload.complete"><code class="docutils literal notranslate"><span class="pre">BaseMultipartUpload.complete()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.upload.BaseMultipartUpload.complete_url"><code class="docutils literal notranslate"><span class="pre">BaseMultipartUpload.complete_url</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.upload.BaseMultipartUpload.get_complete_payload"><code class="docutils literal notranslate"><span class="pre">BaseMultipartUpload.get_complete_payload()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.upload.BaseMultipartUpload.get_initiate_payload"><code class="docutils literal notranslate"><span class="pre">BaseMultipartUpload.get_initiate_payload()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.upload.BaseMultipartUpload.initiate"><code class="docutils literal notranslate"><span class="pre">BaseMultipartUpload.initiate()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.upload.BaseMultipartUpload.initiate_url"><code class="docutils literal notranslate"><span class="pre">BaseMultipartUpload.initiate_url</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.upload.BaseMultipartUpload.part_url"><code class="docutils literal notranslate"><span class="pre">BaseMultipartUpload.part_url</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.upload.BaseMultipartUpload.upload_file"><code class="docutils literal notranslate"><span class="pre">BaseMultipartUpload.upload_file()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.upload.BaseMultipartUpload.upload_id"><code class="docutils literal notranslate"><span class="pre">BaseMultipartUpload.upload_id</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.upload.DataFileMultipartUpload"><code class="docutils literal notranslate"><span class="pre">DataFileMultipartUpload</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.upload.DataFileMultipartUpload.cancel_url"><code class="docutils literal notranslate"><span class="pre">DataFileMultipartUpload.cancel_url</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.upload.DataFileMultipartUpload.complete_url"><code class="docutils literal notranslate"><span class="pre">DataFileMultipartUpload.complete_url</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.upload.DataFileMultipartUpload.initiate_url"><code class="docutils literal notranslate"><span class="pre">DataFileMultipartUpload.initiate_url</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.upload.DataFileMultipartUpload.part_url"><code class="docutils literal notranslate"><span class="pre">DataFileMultipartUpload.part_url</span></code></a></li>
+</ul>
+</li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="fal.html#module-fal.utils">fal.utils module</a><ul>
