@@ -11,7 +11,7 @@ from PIL import Image
 async def client() -> fal_client.AsyncClient:
     client = fal_client.AsyncClient()
     try:
-        client._get_key()
+        client._get_auth()
     except fal_client.auth.MissingCredentialsError:
         pytest.skip("No credentials found")
     return client
