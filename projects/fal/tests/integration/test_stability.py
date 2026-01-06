@@ -716,12 +716,10 @@ def test_pydantic_file_model_fields_match_in_isolation(isolated_client):
         "virtualenv", requirements=[f"pydantic=={pydantic_version}", "pytest"]
     )
     def check_models():
-        FileType = RemoteOutput.model_fields["lora_file"].annotation
-
         class LocalOutput(BaseModel):
-            video: FileType | None = None
-            lora_file: FileType
-            config_file: FileType
+            video: File | None = None
+            lora_file: File
+            config_file: File
 
         remote_instance = RemoteOutput(
             video=None,
