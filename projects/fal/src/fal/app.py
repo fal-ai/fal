@@ -374,25 +374,25 @@ def _include_app_files_path(
 
 class App(BaseServable):
     """Create a fal serverless application.
-    
+
     Subclass this to define your application with custom setup, endpoints,
     and configuration. The App class handles model loading, request routing,
     and lifecycle management.
-    
+
     Example:
         >>> class TextToImage(fal.App, machine_type="GPU"):
         ...     requirements = ["diffusers", "torch"]
-        ...     
+        ...
         ...     def setup(self):
         ...         self.pipe = StableDiffusionPipeline.from_pretrained(
         ...             "runwayml/stable-diffusion-v1-5"
         ...         )
-        ...     
+        ...
         ...     @fal.endpoint("/")
         ...     def generate(self, prompt: str) -> dict:
         ...         image = self.pipe(prompt).images[0]
         ...         return {"url": fal.toolkit.upload_image(image)}
-    
+
     Attributes:
         requirements: List of pip packages to install in the environment.
             Supports standard pip syntax including version specifiers.
@@ -433,6 +433,7 @@ class App(BaseServable):
         image: Custom container image for the application. Use ContainerImage
             to specify a Dockerfile.
     """
+
     requirements: ClassVar[list[str]] = []
     local_python_modules: ClassVar[list[str]] = []
     machine_type: ClassVar[str | list[str]] = "S"

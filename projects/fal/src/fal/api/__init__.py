@@ -1,10 +1,10 @@
 from .api import *  # noqa: F403
 from .client import (  # noqa: F401
-    SyncServerlessClient,
     AppsNamespace,
-    RunnersNamespace,
     KeysNamespace,
+    RunnersNamespace,
     SecretsNamespace,
+    SyncServerlessClient,
 )
 
 __all__ = [
