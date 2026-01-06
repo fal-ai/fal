@@ -7,7 +7,13 @@ from fal.toolkit.compilation import (
     sync_inductor_cache,
     synchronized_inductor_cache,
 )
+from fal.toolkit.exceptions import (
+    FalTookitException,
+    FileUploadException,
+    KVStoreException,
+)
 from fal.toolkit.file import CompressedFile, File, FileField
+from fal.toolkit.kv import KVStore
 from fal.toolkit.image.image import Image, ImageField, ImageSizeInput, get_image_size
 from fal.toolkit.optimize import optimize
 from fal.toolkit.utils import (
@@ -18,9 +24,11 @@ from fal.toolkit.utils import (
     download_file,
     download_model_weights,
 )
+from fal.toolkit.utils.download_utils import DownloadError
 from fal.toolkit.video.video import Video, VideoField
 
 __all__ = [
+    # Classes
     "Audio",
     "AudioField",
     "CompressedFile",
@@ -29,13 +37,12 @@ __all__ = [
     "Image",
     "ImageField",
     "ImageSizeInput",
-    "get_image_size",
-    "optimize",
+    "KVStore",
     "Video",
     "VideoField",
-    "FAL_MODEL_WEIGHTS_DIR",
-    "FAL_PERSISTENT_DIR",
-    "FAL_REPOSITORY_DIR",
+    # Functions
+    "get_image_size",
+    "optimize",
     "clone_repository",
     "download_file",
     "download_model_weights",
@@ -43,4 +50,13 @@ __all__ = [
     "load_inductor_cache",
     "sync_inductor_cache",
     "synchronized_inductor_cache",
+    # Constants
+    "FAL_MODEL_WEIGHTS_DIR",
+    "FAL_PERSISTENT_DIR",
+    "FAL_REPOSITORY_DIR",
+    # Exceptions
+    "FalTookitException",
+    "FileUploadException",
+    "KVStoreException",
+    "DownloadError",
 ]
