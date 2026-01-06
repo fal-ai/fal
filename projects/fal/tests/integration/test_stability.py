@@ -702,3 +702,41 @@ def test_on_changes():
     assert "max_concurrency" not in op.host, "max_concurrency set in local gateway"
     assert "keep_alive" not in op.host, "keep_alive set in local host"
     assert "machine_type" not in op.host, "machine_type set in local host"
+
+
+def test_pydantic_file_model_fields_match_in_isolation(isolated_client):
+    from pydantic import BaseModel
+
+    class RemoteOutput(BaseModel):
+        video: File | None = None
+        lora_file: File
+        config_file: File
+
+    @isolated_client(
+        "virtualenv", requirements=[f"pydantic=={pydantic_version}", "pytest"]
+    )
+    def check_models():
+        FileType = RemoteOutput.model_fields["lora_file"].annotation
+
+        class LocalOutput(BaseModel):
+            video: FileType | None = None
+            lora_file: FileType
+            config_file: FileType
+
+        remote_instance = RemoteOutput(
+            video=None,
+            lora_file=File(url="https://example.com/a"),
+            config_file=File(url="https://example.com/b"),
+        )
+        local_instance = LocalOutput(
+            video=None,
+            lora_file=File(url="https://example.com/a"),
+            config_file=File(url="https://example.com/b"),
+        )
+
+        assert remote_instance.model_dump() == local_instance.model_dump()
+        assert list(getattr(remote_instance, "__dict__", {}).keys()) == list(
+            getattr(local_instance, "__dict__", {}).keys()
+        )
+
+    check_models()
