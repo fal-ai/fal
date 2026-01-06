@@ -29,7 +29,7 @@ def _queue_size(args):
         raise RuntimeError(f"Failed to get queue size: {detail}")
 
     data = resp.json()
-    size = data.get("size", 0)
+    size = data.get("size", data.get("queue_size", 0))
 
     if args.output == "json":
         args.console.print(json.dumps({"size": size}))
