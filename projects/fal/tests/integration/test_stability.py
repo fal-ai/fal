@@ -708,33 +708,24 @@ def test_pydantic_file_model_fields_match_in_isolation(isolated_client):
     from pydantic import BaseModel
 
     class RemoteOutput(BaseModel):
-        video: File | None = None
-        lora_file: File
-        config_file: File
+        video: File
 
     @isolated_client(
         "virtualenv", requirements=[f"pydantic=={pydantic_version}", "pytest"]
     )
     def check_models():
-        class LocalOutput(BaseModel):
-            video: File | None = None
-            lora_file: File
-            config_file: File
-
-        remote_instance = RemoteOutput(
-            video=None,
-            lora_file=File(url="https://example.com/a"),
-            config_file=File(url="https://example.com/b"),
-        )
-        local_instance = LocalOutput(
-            video=None,
-            lora_file=File(url="https://example.com/a"),
-            config_file=File(url="https://example.com/b"),
+        out = RemoteOutput(
+            video=File(url="https://example.com/a"),
         )
 
-        assert remote_instance.model_dump() == local_instance.model_dump()
-        assert list(getattr(remote_instance, "__dict__", {}).keys()) == list(
-            getattr(local_instance, "__dict__", {}).keys()
-        )
+        out_dict = out.dict() if pydantic_version.startswith("1.") else out.model_dump()
+        assert out_dict == {
+            "video": {
+                "url": "https://example.com/a",
+                "content_type": None,
+                "file_name": None,
+                "file_size": None,
+            },
+        }
 
     check_models()

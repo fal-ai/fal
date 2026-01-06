@@ -125,7 +125,7 @@ def _patch_pydantic_model_serialization() -> None:
         if issubclass(cls, pydantic.BaseModel):
             if getattr(cls, attr_name, None):
                 setattr(cls, attr_name, None)
-        clsdict = original_extract(cls)
+        clsdict = original_extract(cls)  # type: ignore[misc]
         if issubclass(cls, pydantic.BaseModel) and cls is not pydantic.BaseModel:
             clsdict["__pydantic_validator__"] = None
             clsdict["__pydantic_serializer__"] = None
