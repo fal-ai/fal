@@ -1457,7 +1457,7 @@ def test_hints_encoding():
 
 
 def _external_get_request_id() -> str:
-    request_id = get_current_app().request_headers.get("x-request-id", "")
+    request_id = get_current_app().current_request.headers.get("x-request-id", "")
     return request_id
 
 
@@ -1489,7 +1489,7 @@ def test_app_ref_app(host: api.FalServerlessHost, user: User):
         yield f"{user.username}/{app_alias}"
 
 
-def test_file_output_app(test_app_ref_app: str):
+def test_app_ref_app_client(test_app_ref_app: str):
     time.sleep(3)
 
     handle_1 = apps.submit(test_app_ref_app, arguments={})
