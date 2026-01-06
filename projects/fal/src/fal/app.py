@@ -384,7 +384,9 @@ class App(BaseServable):
         ...     requirements = ["diffusers", "torch"]
         ...     
         ...     def setup(self):
-        ...         self.pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+        ...         self.pipe = StableDiffusionPipeline.from_pretrained(
+        ...             "runwayml/stable-diffusion-v1-5"
+        ...         )
         ...     
         ...     @fal.endpoint("/")
         ...     def generate(self, prompt: str) -> dict:

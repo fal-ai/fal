@@ -25,7 +25,9 @@ from . import secrets as secrets_api
 
 
 class AppsNamespace:
-    """Namespace for app management operations. Corresponds to `fal apps ...` CLI commands.
+    """Namespace for app management operations.
+
+    Corresponds to `fal apps ...` CLI commands.
     
     Accessed via `client.apps`.
     
@@ -66,7 +68,9 @@ class AppsNamespace:
             from datetime import datetime, timedelta
             
             runners = client.apps.runners("my-app")
-            recent = client.apps.runners("my-app", since=datetime.now() - timedelta(hours=1))
+            recent = client.apps.runners(
+                "my-app", since=datetime.now() - timedelta(hours=1)
+            )
             running = client.apps.runners("my-app", state=["running"])
         """
         return apps_api.apps_runners(self.client, app_name, since=since, state=state)
@@ -132,7 +136,9 @@ class AppsNamespace:
 
 
 class RunnersNamespace:
-    """Namespace for runner management operations. Corresponds to `fal runners ...` CLI commands.
+    """Namespace for runner management operations.
+
+    Corresponds to `fal runners ...` CLI commands.
     
     Accessed via `client.runners`.
     
