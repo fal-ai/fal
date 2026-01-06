@@ -602,6 +602,19 @@ This option can be applied only to iterable types (list, tuple, set, and frozens
 
 </dd></dl>
 
+<dl class="py exception">
+<dt class="sig sig-object py" id="fal.toolkit.DownloadError">
+<em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.toolkit.</span></span><span class="sig-name descname"><span class="pre">DownloadError</span></span><a class="headerlink" href="#fal.toolkit.DownloadError" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Exception</span></code></p>
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="fal.toolkit.FalTookitException">
+<em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.toolkit.</span></span><span class="sig-name descname"><span class="pre">FalTookitException</span></span><a class="headerlink" href="#fal.toolkit.FalTookitException" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Exception</span></code></p>
+<p>Base exception for all toolkit exceptions</p>
+</dd></dl>
+
 <dl class="py class">
 <dt class="sig sig-object py" id="fal.toolkit.File">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.toolkit.</span></span><span class="sig-name descname"><span class="pre">File</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">data</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.File" title="Link to this definition">¶</a></dt>
@@ -765,6 +778,13 @@ This option can be applied only to iterable types (list, tuple, set, and frozens
 </dl>
 </dd></dl>
 
+<dl class="py exception">
+<dt class="sig sig-object py" id="fal.toolkit.FileUploadException">
+<em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.toolkit.</span></span><span class="sig-name descname"><span class="pre">FileUploadException</span></span><a class="headerlink" href="#fal.toolkit.FileUploadException" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#fal.toolkit.exceptions.FalTookitException" title="fal.toolkit.exceptions.FalTookitException"><code class="xref py py-class docutils literal notranslate"><span class="pre">FalTookitException</span></code></a></p>
+<p>Raised when file upload fails</p>
+</dd></dl>
+
 <dl class="py class">
 <dt class="sig sig-object py" id="fal.toolkit.Image">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.toolkit.</span></span><span class="sig-name descname"><span class="pre">Image</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">data</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.Image" title="Link to this definition">¶</a></dt>
@@ -902,6 +922,64 @@ This option can be applied only to iterable types (list, tuple, set, and frozens
 </p>
 </dd>
 </dl>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.toolkit.KVStore">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.toolkit.</span></span><span class="sig-name descname"><span class="pre">KVStore</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">db_name</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.KVStore" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>A key-value store client for interacting with the FAL KV service.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>db_name</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – The name of the database/namespace to use for this KV store.</p>
+</dd>
+</dl>
+<dl class="py property">
+<dt class="sig sig-object py" id="fal.toolkit.KVStore.auth_headers">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">auth_headers</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#fal.toolkit.KVStore.auth_headers" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.toolkit.KVStore.get">
+<span class="sig-name descname"><span class="pre">get</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">key</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.KVStore.get" title="Link to this definition">¶</a></dt>
+<dd><p>Retrieve a value from the key-value store.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>key</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – The key to retrieve the value for.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]</span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The value associated with the key, or None if the key doesn’t exist.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.toolkit.KVStore.set">
+<span class="sig-name descname"><span class="pre">set</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">key</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">value</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.KVStore.set" title="Link to this definition">¶</a></dt>
+<dd><p>Store a value in the key-value store.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>key</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – The key to store the value under.</p></li>
+<li><p><strong>value</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – The value to store.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="fal.toolkit.KVStoreException">
+<em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.toolkit.</span></span><span class="sig-name descname"><span class="pre">KVStoreException</span></span><a class="headerlink" href="#fal.toolkit.KVStoreException" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#fal.toolkit.exceptions.FalTookitException" title="fal.toolkit.exceptions.FalTookitException"><code class="xref py py-class docutils literal notranslate"><span class="pre">FalTookitException</span></code></a></p>
+<p>Raised when KV store operation fails</p>
 </dd></dl>
 
 <dl class="py class">
@@ -1073,7 +1151,7 @@ in megabytes. Defaults to <cite>None</cite>.</p></li>
 <dt class="field-even">Raises<span class="colon">:</span></dt>
 <dd class="field-even"><ul class="simple">
 <li><p><strong>ValueError</strong> – If the provided <cite>file_name</cite> contains a forward slash (‘/’).</p></li>
-<li><p><a class="reference internal" href="fal.toolkit.utils.html#fal.toolkit.utils.download_utils.DownloadError" title="fal.toolkit.utils.download_utils.DownloadError"><strong>DownloadError</strong></a> – If an error occurs during the download process.</p></li>
+<li><p><a class="reference internal" href="#fal.toolkit.DownloadError" title="fal.toolkit.DownloadError"><strong>DownloadError</strong></a> – If an error occurs during the download process.</p></li>
 </ul>
 </dd>
 </dl>

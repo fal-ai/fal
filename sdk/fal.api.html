@@ -116,7 +116,7 @@ Attach needed metadata for a better integration to fal.</p>
 <dl class="py exception">
 <dt class="sig sig-object py" id="fal.api.api.FalSerializationError">
 <em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.api.api.</span></span><span class="sig-name descname"><span class="pre">FalSerializationError</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">message</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.api.FalSerializationError" title="Link to this definition">¶</a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">FalServerlessException</span></code></p>
+<dd><p>Bases: <a class="reference internal" href="fal.exceptions.html#fal.exceptions.FalServerlessException" title="fal.exceptions._base.FalServerlessException"><code class="xref py py-class docutils literal notranslate"><span class="pre">FalServerlessException</span></code></a></p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="fal.api.api.FalSerializationError.message">
 <span class="sig-name descname"><span class="pre">message</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><a class="headerlink" href="#fal.api.api.FalSerializationError.message" title="Link to this definition">¶</a></dt>
@@ -127,7 +127,7 @@ Attach needed metadata for a better integration to fal.</p>
 <dl class="py exception">
 <dt class="sig sig-object py" id="fal.api.api.FalServerlessError">
 <em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.api.api.</span></span><span class="sig-name descname"><span class="pre">FalServerlessError</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">message</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.api.FalServerlessError" title="Link to this definition">¶</a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">FalServerlessException</span></code></p>
+<dd><p>Bases: <a class="reference internal" href="fal.exceptions.html#fal.exceptions.FalServerlessException" title="fal.exceptions._base.FalServerlessException"><code class="xref py py-class docutils literal notranslate"><span class="pre">FalServerlessException</span></code></a></p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="fal.api.api.FalServerlessError.message">
 <span class="sig-name descname"><span class="pre">message</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><a class="headerlink" href="#fal.api.api.FalServerlessError.message" title="Link to this definition">¶</a></dt>
@@ -241,7 +241,7 @@ environment options.</p>
 <dl class="py exception">
 <dt class="sig sig-object py" id="fal.api.api.InternalFalServerlessError">
 <em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.api.api.</span></span><span class="sig-name descname"><span class="pre">InternalFalServerlessError</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">message</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.api.InternalFalServerlessError" title="Link to this definition">¶</a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">FalServerlessException</span></code></p>
+<dd><p>Bases: <a class="reference internal" href="fal.exceptions.html#fal.exceptions.FalServerlessException" title="fal.exceptions._base.FalServerlessException"><code class="xref py py-class docutils literal notranslate"><span class="pre">FalServerlessException</span></code></a></p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="fal.api.api.InternalFalServerlessError.message">
 <span class="sig-name descname"><span class="pre">message</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><a class="headerlink" href="#fal.api.api.InternalFalServerlessError.message" title="Link to this definition">¶</a></dt>
@@ -490,7 +490,7 @@ cancellation or with an event, like aiohttp.</p>
 <dl class="py exception">
 <dt class="sig sig-object py" id="fal.api.api.UserFunctionException">
 <em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.api.api.</span></span><span class="sig-name descname"><span class="pre">UserFunctionException</span></span><a class="headerlink" href="#fal.api.api.UserFunctionException" title="Link to this definition">¶</a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">FalServerlessException</span></code></p>
+<dd><p>Bases: <a class="reference internal" href="fal.exceptions.html#fal.exceptions.FalServerlessException" title="fal.exceptions._base.FalServerlessException"><code class="xref py py-class docutils literal notranslate"><span class="pre">FalServerlessException</span></code></a></p>
 </dd></dl>
 
 <dl class="py function">
@@ -566,9 +566,317 @@ cancellation or with an event, like aiohttp.</p>
 <section id="module-fal.api.client">
 <span id="fal-api-client-module"></span><h2>fal.api.client module<a class="headerlink" href="#module-fal.api.client" title="Link to this heading">¶</a></h2>
 <dl class="py class">
+<dt class="sig sig-object py" id="fal.api.client.AppsNamespace">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.api.client.</span></span><span class="sig-name descname"><span class="pre">AppsNamespace</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">client</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.client.AppsNamespace" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Namespace for app management operations.</p>
+<p>Corresponds to <cite>fal apps …</cite> CLI commands.</p>
+<p>Accessed via <cite>client.apps</cite>.</p>
+<p class="rubric">Example</p>
+<p>from fal.api import SyncServerlessClient</p>
+<p>client = SyncServerlessClient()
+apps = client.apps.list()
+client.apps.scale(“my-app”, max_concurrency=10)</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.client.AppsNamespace.list">
+<span class="sig-name descname"><span class="pre">list</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filter</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.client.AppsNamespace.list" title="Link to this definition">¶</a></dt>
+<dd><p>List all applications. Corresponds to <cite>fal apps list</cite>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>filter</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code> | <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span>) – Optional app name filter string.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<a class="reference internal" href="fal.html#fal.sdk.AliasInfo" title="fal.sdk.AliasInfo"><code class="xref py py-class docutils literal notranslate"><span class="pre">AliasInfo</span></code></a>]</span></p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<p>apps = client.apps.list()
+filtered = client.apps.list(filter=”stable”)</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.client.AppsNamespace.rollout">
+<span class="sig-name descname"><span class="pre">rollout</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">app_name</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">force</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.client.AppsNamespace.rollout" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.client.AppsNamespace.runners">
+<span class="sig-name descname"><span class="pre">runners</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">app_name</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">since</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">state</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.client.AppsNamespace.runners" title="Link to this definition">¶</a></dt>
+<dd><p>List runners for a specific app. Corresponds to <cite>fal apps runners &lt;app&gt;</cite>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>app_name</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – Name of the application.</p></li>
+<li><p><strong>since</strong> – Only return runners started after this datetime.</p></li>
+<li><p><strong>state</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]</span>) – Filter by runner state (e.g., [“running”]).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<a class="reference internal" href="fal.html#fal.sdk.RunnerInfo" title="fal.sdk.RunnerInfo"><code class="xref py py-class docutils literal notranslate"><span class="pre">RunnerInfo</span></code></a>]</span></p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<p>from datetime import datetime, timedelta</p>
+<p>runners = client.apps.runners(“my-app”)
+recent = client.apps.runners(</p>
+<blockquote>
+<div><p>“my-app”, since=datetime.now() - timedelta(hours=1)</p>
+</div></blockquote>
+<p>)
+running = client.apps.runners(“my-app”, state=[“running”])</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.client.AppsNamespace.scale">
+<span class="sig-name descname"><span class="pre">scale</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">app_name</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">keep_alive</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_multiplexing</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_concurrency</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_concurrency</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">concurrency_buffer</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">concurrency_buffer_perc</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scaling_delay</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">request_timeout</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">startup_timeout</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">machine_types</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">regions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.client.AppsNamespace.scale" title="Link to this definition">¶</a></dt>
+<dd><p>Adjust scaling settings for an application. Corresponds to <cite>fal apps scale</cite>.</p>
+<p>Any omitted option keeps the current value.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>app_name</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – Name of the application.</p></li>
+<li><p><strong>keep_alive</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code> | <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span>) – Keep-alive time in seconds.</p></li>
+<li><p><strong>max_multiplexing</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code> | <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span>) – Maximum request multiplexing.</p></li>
+<li><p><strong>max_concurrency</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code> | <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span>) – Maximum concurrent runners.</p></li>
+<li><p><strong>min_concurrency</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code> | <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span>) – Minimum concurrent runners.</p></li>
+<li><p><strong>request_timeout</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code> | <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span>) – Request timeout in seconds.</p></li>
+<li><p><strong>startup_timeout</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code> | <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span>) – Startup timeout in seconds.</p></li>
+<li><p><strong>machine_types</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]</span>) – List of allowed machine types (e.g., [“GPU-H100”]).</p></li>
+<li><p><strong>regions</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]</span>) – List of allowed regions (e.g., [“us-east-1”]).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference internal" href="fal.html#fal.sdk.AliasInfo" title="fal.sdk.AliasInfo"><code class="xref py py-class docutils literal notranslate"><span class="pre">AliasInfo</span></code></a></span></p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<dl class="simple">
+<dt>client.apps.scale(</dt><dd><p>“my-app”,
+keep_alive=300,
+max_concurrency=10,
+min_concurrency=1,
+machine_types=[“GPU-H100”, “GPU-H200”],</p>
+</dd>
+</dl>
+<p>)</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.api.client.KeysNamespace">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.api.client.</span></span><span class="sig-name descname"><span class="pre">KeysNamespace</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">client</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.client.KeysNamespace" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Namespace for API key management. Corresponds to <cite>fal keys …</cite> CLI commands.</p>
+<p>Accessed via <cite>client.keys</cite>.</p>
+<p class="rubric">Example</p>
+<p>from fal.api import SyncServerlessClient</p>
+<p>client = SyncServerlessClient()
+keys = client.keys.list()
+key_id, key_secret = client.keys.create(scope=”admin”)</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.client.KeysNamespace.create">
+<span class="sig-name descname"><span class="pre">create</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scope</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">description</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.client.KeysNamespace.create" title="Link to this definition">¶</a></dt>
+<dd><p>Create a new API key.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>scope</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference internal" href="fal.html#fal.sdk.KeyScope" title="fal.sdk.KeyScope"><code class="xref py py-class docutils literal notranslate"><span class="pre">KeyScope</span></code></a></span>) – Key scope (e.g., “admin”).</p></li>
+<li><p><strong>description</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code> | <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span>) – Optional description for the key.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">tuple</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]</span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Tuple of (key_id, key_secret).</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.client.KeysNamespace.list">
+<span class="sig-name descname"><span class="pre">list</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.client.KeysNamespace.list" title="Link to this definition">¶</a></dt>
+<dd><p>List all API keys.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<a class="reference internal" href="fal.html#fal.sdk.UserKeyInfo" title="fal.sdk.UserKeyInfo"><code class="xref py py-class docutils literal notranslate"><span class="pre">UserKeyInfo</span></code></a>]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.client.KeysNamespace.revoke">
+<span class="sig-name descname"><span class="pre">revoke</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">key_id</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.client.KeysNamespace.revoke" title="Link to this definition">¶</a></dt>
+<dd><p>Revoke an API key.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>key_id</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – The ID of the key to revoke.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.api.client.RunnersNamespace">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.api.client.</span></span><span class="sig-name descname"><span class="pre">RunnersNamespace</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">client</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.client.RunnersNamespace" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Namespace for runner management operations.</p>
+<p>Corresponds to <cite>fal runners …</cite> CLI commands.</p>
+<p>Accessed via <cite>client.runners</cite>.</p>
+<p class="rubric">Example</p>
+<p>from fal.api import SyncServerlessClient</p>
+<p>client = SyncServerlessClient()
+runners = client.runners.list()
+client.runners.stop(“runner-id”)</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.client.RunnersNamespace.kill">
+<span class="sig-name descname"><span class="pre">kill</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">runner_id</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.client.RunnersNamespace.kill" title="Link to this definition">¶</a></dt>
+<dd><p>Forcefully kill a runner.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>runner_id</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – The ID of the runner to kill.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.client.RunnersNamespace.list">
+<span class="sig-name descname"><span class="pre">list</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">since</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.client.RunnersNamespace.list" title="Link to this definition">¶</a></dt>
+<dd><p>List all runners. Corresponds to <cite>fal runners list</cite>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>since</strong> – Only return runners started after this datetime.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<a class="reference internal" href="fal.html#fal.sdk.RunnerInfo" title="fal.sdk.RunnerInfo"><code class="xref py py-class docutils literal notranslate"><span class="pre">RunnerInfo</span></code></a>]</span></p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<p>from datetime import datetime, timedelta</p>
+<p>all_runners = client.runners.list()
+recent = client.runners.list(since=datetime.now() - timedelta(minutes=10))</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.client.RunnersNamespace.stop">
+<span class="sig-name descname"><span class="pre">stop</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">runner_id</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.client.RunnersNamespace.stop" title="Link to this definition">¶</a></dt>
+<dd><p>Gracefully stop a runner.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>runner_id</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – The ID of the runner to stop.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.api.client.SecretsNamespace">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.api.client.</span></span><span class="sig-name descname"><span class="pre">SecretsNamespace</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">client</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.client.SecretsNamespace" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Namespace for secrets management. Corresponds to <cite>fal secrets …</cite> CLI commands.</p>
+<p>Accessed via <cite>client.secrets</cite>.</p>
+<p class="rubric">Example</p>
+<p>from fal.api import SyncServerlessClient</p>
+<p>client = SyncServerlessClient()
+client.secrets.set(“API_KEY”, “my-secret-value”)
+secrets = client.secrets.list()</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.client.SecretsNamespace.list">
+<span class="sig-name descname"><span class="pre">list</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.client.SecretsNamespace.list" title="Link to this definition">¶</a></dt>
+<dd><p>List all secrets (names only, not values).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<a class="reference internal" href="fal.html#fal.sdk.ServerlessSecret" title="fal.sdk.ServerlessSecret"><code class="xref py py-class docutils literal notranslate"><span class="pre">ServerlessSecret</span></code></a>]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.client.SecretsNamespace.set">
+<span class="sig-name descname"><span class="pre">set</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">value</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.client.SecretsNamespace.set" title="Link to this definition">¶</a></dt>
+<dd><p>Set a secret value.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>name</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – Name of the secret.</p></li>
+<li><p><strong>value</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – Value to store.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.client.SecretsNamespace.unset">
+<span class="sig-name descname"><span class="pre">unset</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.client.SecretsNamespace.unset" title="Link to this definition">¶</a></dt>
+<dd><p>Delete a secret.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>name</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – Name of the secret to delete.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
 <dt class="sig sig-object py" id="fal.api.client.SyncServerlessClient">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.api.client.</span></span><span class="sig-name descname"><span class="pre">SyncServerlessClient</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">host</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">api_key</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">profile</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">team</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.client.SyncServerlessClient" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Synchronous Python client for fal Serverless.</p>
+<p>Manage apps, runners, and deployments programmatically. The namespaces
+and methods mirror the CLI so you can automate the same workflows from Python.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>host</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]</span>) – Optional. Override API host.</p></li>
+<li><p><strong>api_key</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]</span>) – Optional. If omitted, read from env/profile.</p></li>
+<li><p><strong>profile</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]</span>) – Optional. Named profile to use.</p></li>
+<li><p><strong>team</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]</span>) – Optional. Team context for runner operations.</p></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<p>from fal.api import SyncServerlessClient</p>
+<p>client = SyncServerlessClient()</p>
+<p># List apps
+apps = client.apps.list()</p>
+<p># Scale an app
+client.apps.scale(“my-app”, max_concurrency=10)</p>
+<p># Deploy
+client.deploy(“path/to/myfile.py::MyApp”)</p>
+<dl class="simple">
+<dt>Namespaces:</dt><dd><ul class="simple">
+<li><p>client.apps.*    - corresponds to <cite>fal apps …</cite></p></li>
+<li><p>client.runners.* - corresponds to <cite>fal runners …</cite></p></li>
+<li><p>client.keys.*    - corresponds to <cite>fal keys …</cite></p></li>
+<li><p>client.secrets.* - corresponds to <cite>fal secrets …</cite></p></li>
+<li><p>client.deploy()  - corresponds to <cite>fal deploy …</cite></p></li>
+</ul>
+</dd>
+</dl>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="fal.api.client.SyncServerlessClient.api_key">
 <span class="sig-name descname"><span class="pre">api_key</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.api.client.SyncServerlessClient.api_key" title="Link to this definition">¶</a></dt>
@@ -577,7 +885,37 @@ cancellation or with an event, like aiohttp.</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="fal.api.client.SyncServerlessClient.deploy">
 <span class="sig-name descname"><span class="pre">deploy</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.client.SyncServerlessClient.deploy" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<dd><p>Deploy an application. Corresponds to <cite>fal deploy</cite>.</p>
+<p>If app_ref is omitted, discovery behavior matches the CLI
+(e.g., uses pyproject.toml).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>app_ref</strong> – Path to file, <a class="reference external" href="file::Class">file::Class</a>, or existing app name.</p></li>
+<li><p><strong>app_name</strong> – Override the application name.</p></li>
+<li><p><strong>auth</strong> – Authentication mode (“private” | “public”).</p></li>
+<li><p><strong>strategy</strong> – Deployment strategy (“recreate” | “rolling”).</p></li>
+<li><p><strong>reset_scale</strong> – If False, use previous scaling settings.</p></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<p># Auto-discover from pyproject.toml
+client.deploy()</p>
+<p># Deploy from a file path
+client.deploy(“path/to/myfile.py”)</p>
+<p># Deploy a specific class
+client.deploy(“path/to/myfile.py::MyApp”)</p>
+<p># With options
+client.deploy(</p>
+<blockquote>
+<div><p>app_ref=”path/to/myfile.py::MyApp”,
+app_name=”myapp”,
+auth=”public”,
+strategy=”rolling”,</p>
+</div></blockquote>
+<p>)</p>
+</dd></dl>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="fal.api.client.SyncServerlessClient.host">
@@ -750,6 +1088,375 @@ cancellation or with an event, like aiohttp.</p>
 </section>
 <section id="module-fal.api">
 <span id="module-contents"></span><h2>Module contents<a class="headerlink" href="#module-fal.api" title="Link to this heading">¶</a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.api.AppsNamespace">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.api.</span></span><span class="sig-name descname"><span class="pre">AppsNamespace</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">client</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.AppsNamespace" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Namespace for app management operations.</p>
+<p>Corresponds to <cite>fal apps …</cite> CLI commands.</p>
+<p>Accessed via <cite>client.apps</cite>.</p>
+<p class="rubric">Example</p>
+<p>from fal.api import SyncServerlessClient</p>
+<p>client = SyncServerlessClient()
+apps = client.apps.list()
+client.apps.scale(“my-app”, max_concurrency=10)</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.AppsNamespace.list">
+<span class="sig-name descname"><span class="pre">list</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filter</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.AppsNamespace.list" title="Link to this definition">¶</a></dt>
+<dd><p>List all applications. Corresponds to <cite>fal apps list</cite>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>filter</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code> | <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span>) – Optional app name filter string.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<a class="reference internal" href="fal.html#fal.sdk.AliasInfo" title="fal.sdk.AliasInfo"><code class="xref py py-class docutils literal notranslate"><span class="pre">AliasInfo</span></code></a>]</span></p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<p>apps = client.apps.list()
+filtered = client.apps.list(filter=”stable”)</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.AppsNamespace.rollout">
+<span class="sig-name descname"><span class="pre">rollout</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">app_name</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">force</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.AppsNamespace.rollout" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.AppsNamespace.runners">
+<span class="sig-name descname"><span class="pre">runners</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">app_name</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">since</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">state</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.AppsNamespace.runners" title="Link to this definition">¶</a></dt>
+<dd><p>List runners for a specific app. Corresponds to <cite>fal apps runners &lt;app&gt;</cite>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>app_name</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – Name of the application.</p></li>
+<li><p><strong>since</strong> – Only return runners started after this datetime.</p></li>
+<li><p><strong>state</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]</span>) – Filter by runner state (e.g., [“running”]).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<a class="reference internal" href="fal.html#fal.sdk.RunnerInfo" title="fal.sdk.RunnerInfo"><code class="xref py py-class docutils literal notranslate"><span class="pre">RunnerInfo</span></code></a>]</span></p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<p>from datetime import datetime, timedelta</p>
+<p>runners = client.apps.runners(“my-app”)
+recent = client.apps.runners(</p>
+<blockquote>
+<div><p>“my-app”, since=datetime.now() - timedelta(hours=1)</p>
+</div></blockquote>
+<p>)
+running = client.apps.runners(“my-app”, state=[“running”])</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.AppsNamespace.scale">
+<span class="sig-name descname"><span class="pre">scale</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">app_name</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">keep_alive</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_multiplexing</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_concurrency</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_concurrency</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">concurrency_buffer</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">concurrency_buffer_perc</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scaling_delay</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">request_timeout</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">startup_timeout</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">machine_types</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">regions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.AppsNamespace.scale" title="Link to this definition">¶</a></dt>
+<dd><p>Adjust scaling settings for an application. Corresponds to <cite>fal apps scale</cite>.</p>
+<p>Any omitted option keeps the current value.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>app_name</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – Name of the application.</p></li>
+<li><p><strong>keep_alive</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code> | <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span>) – Keep-alive time in seconds.</p></li>
+<li><p><strong>max_multiplexing</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code> | <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span>) – Maximum request multiplexing.</p></li>
+<li><p><strong>max_concurrency</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code> | <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span>) – Maximum concurrent runners.</p></li>
+<li><p><strong>min_concurrency</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code> | <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span>) – Minimum concurrent runners.</p></li>
+<li><p><strong>request_timeout</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code> | <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span>) – Request timeout in seconds.</p></li>
+<li><p><strong>startup_timeout</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code> | <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span>) – Startup timeout in seconds.</p></li>
+<li><p><strong>machine_types</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]</span>) – List of allowed machine types (e.g., [“GPU-H100”]).</p></li>
+<li><p><strong>regions</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]</span>) – List of allowed regions (e.g., [“us-east-1”]).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference internal" href="fal.html#fal.sdk.AliasInfo" title="fal.sdk.AliasInfo"><code class="xref py py-class docutils literal notranslate"><span class="pre">AliasInfo</span></code></a></span></p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<dl class="simple">
+<dt>client.apps.scale(</dt><dd><p>“my-app”,
+keep_alive=300,
+max_concurrency=10,
+min_concurrency=1,
+machine_types=[“GPU-H100”, “GPU-H200”],</p>
+</dd>
+</dl>
+<p>)</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.api.KeysNamespace">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.api.</span></span><span class="sig-name descname"><span class="pre">KeysNamespace</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">client</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.KeysNamespace" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Namespace for API key management. Corresponds to <cite>fal keys …</cite> CLI commands.</p>
+<p>Accessed via <cite>client.keys</cite>.</p>
+<p class="rubric">Example</p>
+<p>from fal.api import SyncServerlessClient</p>
+<p>client = SyncServerlessClient()
+keys = client.keys.list()
+key_id, key_secret = client.keys.create(scope=”admin”)</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.KeysNamespace.create">
+<span class="sig-name descname"><span class="pre">create</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scope</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">description</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.KeysNamespace.create" title="Link to this definition">¶</a></dt>
+<dd><p>Create a new API key.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>scope</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference internal" href="fal.html#fal.sdk.KeyScope" title="fal.sdk.KeyScope"><code class="xref py py-class docutils literal notranslate"><span class="pre">KeyScope</span></code></a></span>) – Key scope (e.g., “admin”).</p></li>
+<li><p><strong>description</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code> | <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span>) – Optional description for the key.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">tuple</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]</span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Tuple of (key_id, key_secret).</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.KeysNamespace.list">
+<span class="sig-name descname"><span class="pre">list</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.KeysNamespace.list" title="Link to this definition">¶</a></dt>
+<dd><p>List all API keys.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<a class="reference internal" href="fal.html#fal.sdk.UserKeyInfo" title="fal.sdk.UserKeyInfo"><code class="xref py py-class docutils literal notranslate"><span class="pre">UserKeyInfo</span></code></a>]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.KeysNamespace.revoke">
+<span class="sig-name descname"><span class="pre">revoke</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">key_id</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.KeysNamespace.revoke" title="Link to this definition">¶</a></dt>
+<dd><p>Revoke an API key.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>key_id</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – The ID of the key to revoke.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.api.RunnersNamespace">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.api.</span></span><span class="sig-name descname"><span class="pre">RunnersNamespace</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">client</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.RunnersNamespace" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Namespace for runner management operations.</p>
+<p>Corresponds to <cite>fal runners …</cite> CLI commands.</p>
+<p>Accessed via <cite>client.runners</cite>.</p>
+<p class="rubric">Example</p>
+<p>from fal.api import SyncServerlessClient</p>
+<p>client = SyncServerlessClient()
+runners = client.runners.list()
+client.runners.stop(“runner-id”)</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.RunnersNamespace.kill">
+<span class="sig-name descname"><span class="pre">kill</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">runner_id</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.RunnersNamespace.kill" title="Link to this definition">¶</a></dt>
+<dd><p>Forcefully kill a runner.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>runner_id</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – The ID of the runner to kill.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.RunnersNamespace.list">
+<span class="sig-name descname"><span class="pre">list</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">since</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.RunnersNamespace.list" title="Link to this definition">¶</a></dt>
+<dd><p>List all runners. Corresponds to <cite>fal runners list</cite>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>since</strong> – Only return runners started after this datetime.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<a class="reference internal" href="fal.html#fal.sdk.RunnerInfo" title="fal.sdk.RunnerInfo"><code class="xref py py-class docutils literal notranslate"><span class="pre">RunnerInfo</span></code></a>]</span></p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<p>from datetime import datetime, timedelta</p>
+<p>all_runners = client.runners.list()
+recent = client.runners.list(since=datetime.now() - timedelta(minutes=10))</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.RunnersNamespace.stop">
+<span class="sig-name descname"><span class="pre">stop</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">runner_id</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.RunnersNamespace.stop" title="Link to this definition">¶</a></dt>
+<dd><p>Gracefully stop a runner.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>runner_id</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – The ID of the runner to stop.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.api.SecretsNamespace">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.api.</span></span><span class="sig-name descname"><span class="pre">SecretsNamespace</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">client</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.SecretsNamespace" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Namespace for secrets management. Corresponds to <cite>fal secrets …</cite> CLI commands.</p>
+<p>Accessed via <cite>client.secrets</cite>.</p>
+<p class="rubric">Example</p>
+<p>from fal.api import SyncServerlessClient</p>
+<p>client = SyncServerlessClient()
+client.secrets.set(“API_KEY”, “my-secret-value”)
+secrets = client.secrets.list()</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.SecretsNamespace.list">
+<span class="sig-name descname"><span class="pre">list</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.SecretsNamespace.list" title="Link to this definition">¶</a></dt>
+<dd><p>List all secrets (names only, not values).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<a class="reference internal" href="fal.html#fal.sdk.ServerlessSecret" title="fal.sdk.ServerlessSecret"><code class="xref py py-class docutils literal notranslate"><span class="pre">ServerlessSecret</span></code></a>]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.SecretsNamespace.set">
+<span class="sig-name descname"><span class="pre">set</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">value</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.SecretsNamespace.set" title="Link to this definition">¶</a></dt>
+<dd><p>Set a secret value.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>name</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – Name of the secret.</p></li>
+<li><p><strong>value</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – Value to store.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.SecretsNamespace.unset">
+<span class="sig-name descname"><span class="pre">unset</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.SecretsNamespace.unset" title="Link to this definition">¶</a></dt>
+<dd><p>Delete a secret.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>name</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – Name of the secret to delete.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.api.SyncServerlessClient">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.api.</span></span><span class="sig-name descname"><span class="pre">SyncServerlessClient</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">host</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">api_key</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">profile</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">team</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.SyncServerlessClient" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Synchronous Python client for fal Serverless.</p>
+<p>Manage apps, runners, and deployments programmatically. The namespaces
+and methods mirror the CLI so you can automate the same workflows from Python.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>host</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]</span>) – Optional. Override API host.</p></li>
+<li><p><strong>api_key</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]</span>) – Optional. If omitted, read from env/profile.</p></li>
+<li><p><strong>profile</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]</span>) – Optional. Named profile to use.</p></li>
+<li><p><strong>team</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]</span>) – Optional. Team context for runner operations.</p></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<p>from fal.api import SyncServerlessClient</p>
+<p>client = SyncServerlessClient()</p>
+<p># List apps
+apps = client.apps.list()</p>
+<p># Scale an app
+client.apps.scale(“my-app”, max_concurrency=10)</p>
+<p># Deploy
+client.deploy(“path/to/myfile.py::MyApp”)</p>
+<dl class="simple">
+<dt>Namespaces:</dt><dd><ul class="simple">
+<li><p>client.apps.*    - corresponds to <cite>fal apps …</cite></p></li>
+<li><p>client.runners.* - corresponds to <cite>fal runners …</cite></p></li>
+<li><p>client.keys.*    - corresponds to <cite>fal keys …</cite></p></li>
+<li><p>client.secrets.* - corresponds to <cite>fal secrets …</cite></p></li>
+<li><p>client.deploy()  - corresponds to <cite>fal deploy …</cite></p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.api.SyncServerlessClient.api_key">
+<span class="sig-name descname"><span class="pre">api_key</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.api.SyncServerlessClient.api_key" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.SyncServerlessClient.deploy">
+<span class="sig-name descname"><span class="pre">deploy</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.SyncServerlessClient.deploy" title="Link to this definition">¶</a></dt>
+<dd><p>Deploy an application. Corresponds to <cite>fal deploy</cite>.</p>
+<p>If app_ref is omitted, discovery behavior matches the CLI
+(e.g., uses pyproject.toml).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>app_ref</strong> – Path to file, <a class="reference external" href="file::Class">file::Class</a>, or existing app name.</p></li>
+<li><p><strong>app_name</strong> – Override the application name.</p></li>
+<li><p><strong>auth</strong> – Authentication mode (“private” | “public”).</p></li>
+<li><p><strong>strategy</strong> – Deployment strategy (“recreate” | “rolling”).</p></li>
+<li><p><strong>reset_scale</strong> – If False, use previous scaling settings.</p></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<p># Auto-discover from pyproject.toml
+client.deploy()</p>
+<p># Deploy from a file path
+client.deploy(“path/to/myfile.py”)</p>
+<p># Deploy a specific class
+client.deploy(“path/to/myfile.py::MyApp”)</p>
+<p># With options
+client.deploy(</p>
+<blockquote>
+<div><p>app_ref=”path/to/myfile.py::MyApp”,
+app_name=”myapp”,
+auth=”public”,
+strategy=”rolling”,</p>
+</div></blockquote>
+<p>)</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.api.SyncServerlessClient.host">
+<span class="sig-name descname"><span class="pre">host</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.api.SyncServerlessClient.host" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.api.SyncServerlessClient.profile">
+<span class="sig-name descname"><span class="pre">profile</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.api.SyncServerlessClient.profile" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.api.SyncServerlessClient.team">
+<span class="sig-name descname"><span class="pre">team</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.api.SyncServerlessClient.team" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
 </section>
 </section>
 

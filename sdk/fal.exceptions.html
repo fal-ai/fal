@@ -43,12 +43,178 @@
 <dl class="py exception">
 <dt class="sig sig-object py" id="fal.exceptions.auth.UnauthenticatedException">
 <em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.exceptions.auth.</span></span><span class="sig-name descname"><span class="pre">UnauthenticatedException</span></span><a class="headerlink" href="#fal.exceptions.auth.UnauthenticatedException" title="Link to this definition">¶</a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">FalServerlessException</span></code></p>
+<dd><p>Bases: <a class="reference internal" href="#fal.exceptions.FalServerlessException" title="fal.exceptions._base.FalServerlessException"><code class="xref py py-class docutils literal notranslate"><span class="pre">FalServerlessException</span></code></a></p>
 </dd></dl>
 
 </section>
 <section id="module-fal.exceptions">
 <span id="module-contents"></span><h2>Module contents<a class="headerlink" href="#module-fal.exceptions" title="Link to this heading">¶</a></h2>
+<dl class="py exception">
+<dt class="sig sig-object py" id="fal.exceptions.AppException">
+<em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.exceptions.</span></span><span class="sig-name descname"><span class="pre">AppException</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">message</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">status_code</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.exceptions.AppException" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#fal.exceptions.FalServerlessException" title="fal.exceptions._base.FalServerlessException"><code class="xref py py-class docutils literal notranslate"><span class="pre">FalServerlessException</span></code></a></p>
+<p>Base exception class for application-specific errors.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.exceptions.AppException.message">
+<span class="sig-name descname"><span class="pre">message</span></span><a class="headerlink" href="#fal.exceptions.AppException.message" title="Link to this definition">¶</a></dt>
+<dd><p>A descriptive message explaining the error.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.exceptions.AppException.status_code">
+<span class="sig-name descname"><span class="pre">status_code</span></span><a class="headerlink" href="#fal.exceptions.AppException.status_code" title="Link to this definition">¶</a></dt>
+<dd><p>The HTTP status code associated with the error.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id0">
+<span class="sig-name descname"><span class="pre">message</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><a class="headerlink" href="#id0" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id1">
+<span class="sig-name descname"><span class="pre">status_code</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></em><a class="headerlink" href="#id1" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="fal.exceptions.AppFileUploadException">
+<em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.exceptions.</span></span><span class="sig-name descname"><span class="pre">AppFileUploadException</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">message</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">relative_path</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.exceptions.AppFileUploadException" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#fal.exceptions.FalServerlessException" title="fal.exceptions._base.FalServerlessException"><code class="xref py py-class docutils literal notranslate"><span class="pre">FalServerlessException</span></code></a></p>
+<p>Raised when file upload fails</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.exceptions.AppFileUploadException.message">
+<span class="sig-name descname"><span class="pre">message</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><a class="headerlink" href="#fal.exceptions.AppFileUploadException.message" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.exceptions.AppFileUploadException.relative_path">
+<span class="sig-name descname"><span class="pre">relative_path</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><a class="headerlink" href="#fal.exceptions.AppFileUploadException.relative_path" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="fal.exceptions.CUDAOutOfMemoryException">
+<em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.exceptions.</span></span><span class="sig-name descname"><span class="pre">CUDAOutOfMemoryException</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">message</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'CUDA</span> <span class="pre">error:</span> <span class="pre">out</span> <span class="pre">of</span> <span class="pre">memory'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">status_code</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">503</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.exceptions.CUDAOutOfMemoryException" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#fal.exceptions.AppException" title="fal.exceptions._base.AppException"><code class="xref py py-class docutils literal notranslate"><span class="pre">AppException</span></code></a></p>
+<p>Exception raised when a CUDA operation runs out of memory.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.exceptions.CUDAOutOfMemoryException.message">
+<span class="sig-name descname"><span class="pre">message</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'CUDA</span> <span class="pre">error:</span> <span class="pre">out</span> <span class="pre">of</span> <span class="pre">memory'</span></em><a class="headerlink" href="#fal.exceptions.CUDAOutOfMemoryException.message" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.exceptions.CUDAOutOfMemoryException.status_code">
+<span class="sig-name descname"><span class="pre">status_code</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">503</span></em><a class="headerlink" href="#fal.exceptions.CUDAOutOfMemoryException.status_code" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="fal.exceptions.FalServerlessException">
+<em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.exceptions.</span></span><span class="sig-name descname"><span class="pre">FalServerlessException</span></span><a class="headerlink" href="#fal.exceptions.FalServerlessException" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Exception</span></code></p>
+<p>Base exception type for fal Serverless related flows and APIs.</p>
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="fal.exceptions.FieldException">
+<em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.exceptions.</span></span><span class="sig-name descname"><span class="pre">FieldException</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">field</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">message</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">status_code</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">422</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'value_error'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">billable_units</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.exceptions.FieldException" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#fal.exceptions.FalServerlessException" title="fal.exceptions._base.FalServerlessException"><code class="xref py py-class docutils literal notranslate"><span class="pre">FalServerlessException</span></code></a></p>
+<p>Exception raised for errors related to specific fields.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.exceptions.FieldException.field">
+<span class="sig-name descname"><span class="pre">field</span></span><a class="headerlink" href="#fal.exceptions.FieldException.field" title="Link to this definition">¶</a></dt>
+<dd><p>The field that caused the error.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.exceptions.FieldException.message">
+<span class="sig-name descname"><span class="pre">message</span></span><a class="headerlink" href="#fal.exceptions.FieldException.message" title="Link to this definition">¶</a></dt>
+<dd><p>A descriptive message explaining the error.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.exceptions.FieldException.status_code">
+<span class="sig-name descname"><span class="pre">status_code</span></span><a class="headerlink" href="#fal.exceptions.FieldException.status_code" title="Link to this definition">¶</a></dt>
+<dd><p>The HTTP status code associated with the error. Defaults to 422</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.exceptions.FieldException.type">
+<span class="sig-name descname"><span class="pre">type</span></span><a class="headerlink" href="#fal.exceptions.FieldException.type" title="Link to this definition">¶</a></dt>
+<dd><p>The type of error. Defaults to “value_error”</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.exceptions.FieldException.billable_units">
+<span class="sig-name descname"><span class="pre">billable_units</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code> <span class="pre">|</span> <code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code> <span class="pre">|</span> <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code> <span class="pre">|</span> <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0</span></em><a class="headerlink" href="#fal.exceptions.FieldException.billable_units" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id2">
+<span class="sig-name descname"><span class="pre">field</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><a class="headerlink" href="#id2" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id3">
+<span class="sig-name descname"><span class="pre">message</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><a class="headerlink" href="#id3" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id4">
+<span class="sig-name descname"><span class="pre">status_code</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">422</span></em><a class="headerlink" href="#id4" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.exceptions.FieldException.to_pydantic_format">
+<span class="sig-name descname"><span class="pre">to_pydantic_format</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#fal.exceptions.FieldException.to_pydantic_format" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code>]]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id5">
+<span class="sig-name descname"><span class="pre">type</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'value_error'</span></em><a class="headerlink" href="#id5" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="fal.exceptions.FileTooLargeError">
+<em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.exceptions.</span></span><span class="sig-name descname"><span class="pre">FileTooLargeError</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">message</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'File</span> <span class="pre">is</span> <span class="pre">too</span> <span class="pre">large.'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.exceptions.FileTooLargeError" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#fal.exceptions.FalServerlessException" title="fal.exceptions._base.FalServerlessException"><code class="xref py py-class docutils literal notranslate"><span class="pre">FalServerlessException</span></code></a></p>
+<p>Exception raised when the file is too large.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.exceptions.FileTooLargeError.message">
+<span class="sig-name descname"><span class="pre">message</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'File</span> <span class="pre">is</span> <span class="pre">too</span> <span class="pre">large.'</span></em><a class="headerlink" href="#fal.exceptions.FileTooLargeError.message" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="fal.exceptions.RequestCancelledException">
+<em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.exceptions.</span></span><span class="sig-name descname"><span class="pre">RequestCancelledException</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">message</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'Request</span> <span class="pre">cancelled</span> <span class="pre">by</span> <span class="pre">the</span> <span class="pre">client.'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.exceptions.RequestCancelledException" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#fal.exceptions.FalServerlessException" title="fal.exceptions._base.FalServerlessException"><code class="xref py py-class docutils literal notranslate"><span class="pre">FalServerlessException</span></code></a></p>
+<p>Exception raised when the request is cancelled by the client.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.exceptions.RequestCancelledException.message">
+<span class="sig-name descname"><span class="pre">message</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'Request</span> <span class="pre">cancelled</span> <span class="pre">by</span> <span class="pre">the</span> <span class="pre">client.'</span></em><a class="headerlink" href="#fal.exceptions.RequestCancelledException.message" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="fal.exceptions.UnauthenticatedException">
+<em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.exceptions.</span></span><span class="sig-name descname"><span class="pre">UnauthenticatedException</span></span><a class="headerlink" href="#fal.exceptions.UnauthenticatedException" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#fal.exceptions.FalServerlessException" title="fal.exceptions._base.FalServerlessException"><code class="xref py py-class docutils literal notranslate"><span class="pre">FalServerlessException</span></code></a></p>
+</dd></dl>
+
 </section>
 </section>
 
