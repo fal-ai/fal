@@ -1515,8 +1515,8 @@ class GracefulShutdownApp(
     keep_alive=300,
     max_concurrency=1,
     image=fal.ContainerImage.from_dockerfile_str(
-        """
-FROM python:3.12-slim
+        f"""
+FROM python:{actual_python}-slim
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git curl \
     && apt-get clean \
