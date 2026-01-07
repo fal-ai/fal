@@ -11,6 +11,7 @@ import threading
 import time
 import typing
 from contextlib import asynccontextmanager, contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, ClassVar, Optional, TypeVar
@@ -32,6 +33,7 @@ from fal.api import (
 from fal.container import ContainerImage
 from fal.exceptions import FalServerlessException, RequestCancelledException
 from fal.logging import get_logger
+from fal.ref import set_current_app
 from fal.sdk import (
     ApplicationHealthCheckConfig,
     AuthModeLiteral,
@@ -127,6 +129,7 @@ def wrap_app(cls: type[App], **kwargs) -> IsolatedFunction:
         import threading
 
         app = cls()
+        set_current_app(app)
 
         if threading.current_thread() == threading.main_thread():
             return app.serve()
@@ -393,6 +396,11 @@ def _include_app_files_path(
     os.chdir(str(final_path))
 
 
+@dataclass
+class RequestContext:
+    headers: fastapi.Header
+
+
 class App(BaseServable):
     """Create a fal serverless application.
 
@@ -487,6 +495,8 @@ class App(BaseServable):
     skip_retry_conditions: ClassVar[Optional[list[RetryConditionLiteral]]] = None
 
     isolate_channel: async_grpc.Channel | None = None
+
+    _current_request_context: ContextVar[RequestContext | None] | None = None
 
     def __init_subclass__(cls, **kwargs):
         app_name = kwargs.pop("name", None) or _to_fal_app_name(cls.__name__)
@@ -611,6 +621,10 @@ class App(BaseServable):
     async def lifespan(self, app: fastapi.FastAPI):
         os.environ["FAL_RUNNER_STATE"] = "SETUP"
 
+        self._current_request_context = ContextVar(
+            "_current_request_context", default=RequestContext(headers={})
+        )
+
         # We want to not do any directory changes for container apps,
         # since we don't have explicit checks to see the kind of app
         # We check for app_files here and check kind and app_files earlier
@@ -627,6 +641,12 @@ class App(BaseServable):
         finally:
             os.environ["FAL_RUNNER_STATE"] = "TERMINATING"
             await _call_any_fn(self.teardown)
+
+    @property
+    def current_request(self) -> RequestContext | None:
+        if self._current_request_context is None:
+            return None
+        return self._current_request_context.get()
 
     def health(self):
         return {"version": self.version}
@@ -762,6 +782,25 @@ class App(BaseServable):
             # but it is sometimes used by servers to indicate that a client has closed
             # the connection without receiving a response
             return JSONResponse({"detail": str(exc)}, 499)
+
+        @app.middleware("http")
+        async def set_current_request_context(request, call_next):
+            if self._current_request_context is None:
+                from fastapi.logger import logger
+
+                logger.warning(
+                    "request context is not set. "
+                    "lifespan may not have worked as expected."
+                )
+                return await call_next(request)
+
+            context = RequestContext(headers=request.headers)
+
+            token = self._current_request_context.set(context)
+            try:
+                return await call_next(request)
+            finally:
+                self._current_request_context.reset(token)
 
     def _add_extra_routes(self, app: fastapi.FastAPI):
         # TODO remove this once we have a proper health check endpoint
