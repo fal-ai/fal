@@ -73,7 +73,7 @@ Attach needed metadata for a better integration to fal.</p>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="fal.api.api.BaseServable.serve">
-<span class="sig-name descname"><span class="pre">serve</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.api.BaseServable.serve" title="Link to this definition">¶</a></dt>
+<em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">serve</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.api.BaseServable.serve" title="Link to this definition">¶</a></dt>
 <dd><dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
@@ -431,27 +431,6 @@ environment options.</p>
 <dt class="sig sig-object py" id="fal.api.api.ServedIsolatedFunction.on">
 <span class="sig-name descname"><span class="pre">on</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwds</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.api.ServedIsolatedFunction.on" title="Link to this definition">¶</a></dt>
 <dd><p>Helper for &#64;overload to raise when called.</p>
-</dd></dl>
-
-</dd></dl>
-
-<dl class="py class">
-<dt class="sig sig-object py" id="fal.api.api.Server">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.api.api.</span></span><span class="sig-name descname"><span class="pre">Server</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.api.Server" title="Link to this definition">¶</a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Server</span></code></p>
-<p>Server is a uvicorn.Server that actually plays nicely with signals.
-By default, uvicorn’s Server class overwrites the signal handler for SIGINT,
-swallowing the signal and preventing other tasks from cancelling.
-This class allows the task to be gracefully cancelled using asyncio’s built-in task
-cancellation or with an event, like aiohttp.</p>
-<dl class="py method">
-<dt class="sig sig-object py" id="fal.api.api.Server.install_signal_handlers">
-<span class="sig-name descname"><span class="pre">install_signal_handlers</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.api.Server.install_signal_handlers" title="Link to this definition">¶</a></dt>
-<dd><dl class="field-list simple">
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
-</dd>
-</dl>
 </dd></dl>
 
 </dd></dl>
