@@ -109,6 +109,10 @@ async def _set_logger_labels(
         code = await res.code()
         assert str(code) == "StatusCode.OK", str(code)
     except BaseException:
+        # ignore if shutting down
+        if os.environ.get("FAL_RUNNER_STATE") == "TERMINATING":
+            return
+
         logger.debug("Failed to set logger labels", exc_info=True)
 
 
@@ -120,8 +124,20 @@ def wrap_app(cls: type[App], **kwargs) -> IsolatedFunction:
         cls.local_file_path = host.local_file_path
 
     def initialize_and_serve():
+        import threading
+
         app = cls()
-        app.serve()
+
+        if threading.current_thread() == threading.main_thread():
+            return app.serve()
+        else:
+            asyncio.set_event_loop(asyncio.new_event_loop())
+            asyncio.run(app.serve())
+
+    # if the function is not marked with _run_on_main_thread, it runs on a thread pool
+    # however in thread pool, the function cannot receive SIGTERM
+    # we run the function on main thread so SIGTERM can be propagated to the app
+    initialize_and_serve._run_on_main_thread = True  # type: ignore[attr-defined]
 
     metadata = {}
     app = cls(_allow_init=True)
@@ -609,7 +625,7 @@ class App(BaseServable):
         try:
             yield
         finally:
-            os.environ["FAL_RUNNER_STATE"] = "STOPPING"
+            os.environ["FAL_RUNNER_STATE"] = "TERMINATING"
             await _call_any_fn(self.teardown)
 
     def health(self):
