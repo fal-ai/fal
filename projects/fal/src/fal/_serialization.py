@@ -142,31 +142,29 @@ def _patch_pydantic_model_serialization() -> None:
 
     def _pydantic_model_setstate(obj, state):
         obj = cloudpickle.cloudpickle._class_setstate(obj, state)
-        try:
-            if issubclass(obj, pydantic.BaseModel) and obj is not pydantic.BaseModel:
-                obj.model_rebuild(force=True)
-        except Exception:
-            pass
+        if (
+            isinstance(obj, type)
+            and issubclass(obj, pydantic.BaseModel)
+            and obj is not pydantic.BaseModel
+        ):
+            obj.model_rebuild(force=True)  # type: ignore[attr-defined]
         return obj
 
     def patched_dynamic(obj):
         reduce_tuple = original_dynamic(obj)
-        try:
-            if (
-                isinstance(obj, type)
-                and issubclass(obj, pydantic.BaseModel)
-                and obj is not pydantic.BaseModel
-            ):
-                return (
-                    reduce_tuple[0],
-                    reduce_tuple[1],
-                    reduce_tuple[2],
-                    reduce_tuple[3],
-                    reduce_tuple[4],
-                    _pydantic_model_setstate,
-                )
-        except Exception:
-            return reduce_tuple
+        if (
+            isinstance(obj, type)
+            and issubclass(obj, pydantic.BaseModel)
+            and obj is not pydantic.BaseModel
+        ):
+            return (
+                reduce_tuple[0],
+                reduce_tuple[1],
+                reduce_tuple[2],
+                reduce_tuple[3],
+                reduce_tuple[4],
+                _pydantic_model_setstate,
+            )
         return reduce_tuple
 
     cloudpickle.cloudpickle._dynamic_class_reduce = patched_dynamic
