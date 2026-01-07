@@ -398,7 +398,7 @@ def _include_app_files_path(
 
 @dataclass
 class RequestContext:
-    headers: dict[str, str]
+    headers: fastapi.Header
 
 
 class App(BaseServable):
@@ -794,7 +794,7 @@ class App(BaseServable):
                 )
                 return await call_next(request)
 
-            context = RequestContext(headers=dict(request.headers))
+            context = RequestContext(headers=request.headers)
 
             token = self._current_request_context.set(context)
             try:
