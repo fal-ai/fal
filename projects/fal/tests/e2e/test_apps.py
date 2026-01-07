@@ -1497,12 +1497,16 @@ def test_app_ref_app_client(test_app_ref_app: str):
     time.sleep(1)
     handle_2 = apps.submit(test_app_ref_app, arguments={})
     time.sleep(1)
+    handle_3 = apps.submit(test_app_ref_app, arguments={})
+    time.sleep(1)
 
     result_1 = handle_1.get()
     result_2 = handle_2.get()
+    result_3 = handle_3.get()
 
     assert result_1["from_app"] == result_1["from_external_method"]
     assert result_2["from_app"] == result_2["from_external_method"]
+    assert result_3["from_app"] == result_3["from_external_method"]
 
 
 # for now it only works in newly built containers
