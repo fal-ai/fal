@@ -469,6 +469,7 @@ message RunnerInfo {
         DRAINING = 5;
         TERMINATING = 6;
         TERMINATED = 7;
+        IDLE = 8;
     }
 
     optional State state = 8;
