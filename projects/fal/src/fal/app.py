@@ -469,6 +469,7 @@ class App(BaseServable):
     image: ClassVar[Optional[ContainerImage]] = None
     local_file_path: ClassVar[Optional[str]] = None
     skip_retry_conditions: ClassVar[Optional[list[RetryConditionLiteral]]] = None
+    enable_cdn_acl: ClassVar[Optional[bool]] = None
 
     isolate_channel: async_grpc.Channel | None = None
 
@@ -522,6 +523,9 @@ class App(BaseServable):
 
         if cls.skip_retry_conditions is not None:
             cls.host_kwargs["skip_retry_conditions"] = cls.skip_retry_conditions
+
+        if cls.enable_cdn_acl is not None:
+            cls.host_kwargs["enable_cdn_acl"] = cls.enable_cdn_acl
 
         cls.host_kwargs["health_check_config"] = cls.get_health_check_config()
 

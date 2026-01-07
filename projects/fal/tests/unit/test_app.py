@@ -45,6 +45,7 @@ def test_app_classvars_propagate_to_host_kwargs():
             "FROM python:3.10-slim",
         )
         skip_retry_conditions = ["timeout", "client_error"]
+        enable_cdn_acl = True
 
     hk = VarsApp.host_kwargs
     assert hk["request_timeout"] == 11
@@ -58,6 +59,7 @@ def test_app_classvars_propagate_to_host_kwargs():
     assert hk["kind"] == "container"
     assert isinstance(hk["image"], ContainerImage)
     assert hk["skip_retry_conditions"] == ["timeout", "client_error"]
+    assert hk["enable_cdn_acl"] is True
 
 
 def test_app_files_classvars_propagate_to_host_kwargs():

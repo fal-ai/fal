@@ -451,6 +451,7 @@ class FalServerlessHost(Host):
             "app_files_context_dir",
             "health_check_config",
             "skip_retry_conditions",
+            "enable_cdn_acl",
         }
     )
 
@@ -551,6 +552,7 @@ class FalServerlessHost(Host):
         regions = options.host.get("regions")
         health_check_config = options.host.get("health_check_config")
         skip_retry_conditions = options.host.get("skip_retry_conditions")
+        enable_cdn_acl = options.host.get("enable_cdn_acl", False)
         machine_requirements = MachineRequirements(
             machine_types=machine_type,  # type: ignore
             num_gpus=options.host.get("num_gpus"),
@@ -598,6 +600,7 @@ class FalServerlessHost(Host):
             private_logs=options.host.get("private_logs", False),
             files=app_files,
             skip_retry_conditions=skip_retry_conditions,
+            enable_cdn_acl=enable_cdn_acl,
         ):
             for log in partial_result.logs:
                 self._log_printer.print(log)

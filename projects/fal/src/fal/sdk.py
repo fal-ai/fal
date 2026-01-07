@@ -703,6 +703,7 @@ class FalServerlessConnection:
         private_logs: bool = False,
         files: list[File] | None = None,
         skip_retry_conditions: list[RetryConditionLiteral] | None = None,
+        enable_cdn_acl: bool = False,
     ) -> Iterator[RegisterApplicationResult]:
         wrapped_function = to_serialized_object(function, serialization_method)
         if machine_requirements:
@@ -788,6 +789,7 @@ class FalServerlessConnection:
             source_code=source_code,
             health_check_config=wrapped_health_check_config,
             skip_retry_conditions=wrapped_skip_retry_conditions,
+            # enable_cdn_acl=enable_cdn_acl,
         )
         for partial_result in self.stub.RegisterApplication(request):
             yield from_grpc(partial_result)
