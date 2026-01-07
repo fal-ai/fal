@@ -552,7 +552,7 @@ class FalServerlessHost(Host):
         regions = options.host.get("regions")
         health_check_config = options.host.get("health_check_config")
         skip_retry_conditions = options.host.get("skip_retry_conditions")
-        enable_cdn_acl = options.host.get("enable_cdn_acl", False)
+        enable_cdn_acl = options.host.get("enable_cdn_acl")
         machine_requirements = MachineRequirements(
             machine_types=machine_type,  # type: ignore
             num_gpus=options.host.get("num_gpus"),

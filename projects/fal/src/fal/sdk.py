@@ -703,7 +703,7 @@ class FalServerlessConnection:
         private_logs: bool = False,
         files: list[File] | None = None,
         skip_retry_conditions: list[RetryConditionLiteral] | None = None,
-        enable_cdn_acl: bool = False,
+        enable_cdn_acl: bool | None = None,
     ) -> Iterator[RegisterApplicationResult]:
         wrapped_function = to_serialized_object(function, serialization_method)
         if machine_requirements:
