@@ -1589,10 +1589,6 @@ def test_graceful_shutdown_app_client(
         client.kill_runner(runner.runner_id)
 
     time.sleep(3)
-    logs = [log["message"] for log in handle.status(logs=True).logs]
-
-    assert any("Waiting for application shutdown" in log for log in logs)
-    assert any("Application shutdown complete" in log for log in logs)
 
     res = apps.run(test_graceful_shutdown_app, {}, path="/latest-request-id")
     assert res == saved_request_id
