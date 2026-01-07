@@ -113,21 +113,64 @@ def _patch_pydantic_model_serialization() -> None:
     if not hasattr(pydantic, "__version__") or pydantic.__version__.startswith("1."):
         return
 
-    backup = "_original_extract_class_dict"
-    if getattr(cloudpickle.cloudpickle, backup, None):
-        return
-
-    original = cloudpickle.cloudpickle._extract_class_dict
+    # Strip cached validator/serializer so pydantic rebuilds them on first use.
+    extract_backup = "_original_extract_class_dict"
+    original_extract = getattr(cloudpickle.cloudpickle, extract_backup, None)
+    if original_extract is None:
+        original_extract = cloudpickle.cloudpickle._extract_class_dict
+        setattr(cloudpickle.cloudpickle, extract_backup, original_extract)
 
     def patched(cls):
         attr_name = "__pydantic_parent_namespace__"
-        if issubclass(cls, pydantic.BaseModel) and getattr(cls, attr_name, None):
-            setattr(cls, attr_name, None)
-
-        return original(cls)
+        if issubclass(cls, pydantic.BaseModel):
+            if getattr(cls, attr_name, None):
+                setattr(cls, attr_name, None)
+        clsdict = original_extract(cls)  # type: ignore[misc]
+        if issubclass(cls, pydantic.BaseModel) and cls is not pydantic.BaseModel:
+            clsdict["__pydantic_validator__"] = None
+            clsdict["__pydantic_serializer__"] = None
+            clsdict["__pydantic_complete__"] = False
+        return clsdict
 
     cloudpickle.cloudpickle._extract_class_dict = patched
-    setattr(cloudpickle.cloudpickle, backup, original)
+
+    reduce_backup = "_original_dynamic_class_reduce"
+    if getattr(cloudpickle.cloudpickle, reduce_backup, None):
+        return
+
+    original_dynamic = cloudpickle.cloudpickle._dynamic_class_reduce
+
+    def _pydantic_model_setstate(obj, state):
+        obj = cloudpickle.cloudpickle._class_setstate(obj, state)
+        try:
+            if issubclass(obj, pydantic.BaseModel) and obj is not pydantic.BaseModel:
+                obj.model_rebuild(force=True)
+        except Exception:
+            pass
+        return obj
+
+    def patched_dynamic(obj):
+        reduce_tuple = original_dynamic(obj)
+        try:
+            if (
+                isinstance(obj, type)
+                and issubclass(obj, pydantic.BaseModel)
+                and obj is not pydantic.BaseModel
+            ):
+                return (
+                    reduce_tuple[0],
+                    reduce_tuple[1],
+                    reduce_tuple[2],
+                    reduce_tuple[3],
+                    reduce_tuple[4],
+                    _pydantic_model_setstate,
+                )
+        except Exception:
+            return reduce_tuple
+        return reduce_tuple
+
+    cloudpickle.cloudpickle._dynamic_class_reduce = patched_dynamic
+    setattr(cloudpickle.cloudpickle, reduce_backup, original_dynamic)
 
 
 def _patch_lru_cache() -> None:
@@ -231,4 +274,5 @@ def patch_pickle() -> None:
     _patch_exceptions()
 
     include_module("fal")
+    include_module("fal.api.api")
     include_module("tblib")
