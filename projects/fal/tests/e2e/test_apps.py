@@ -24,7 +24,7 @@ import fal
 import fal.api as api
 from fal import apps
 from fal.api.deploy import User, _get_user
-from fal.app import AppClient, AppClientError, wrap_app
+from fal.app import REQUEST_ID_KEY, AppClient, AppClientError, wrap_app
 from fal.container import ContainerImage
 from fal.exceptions import (
     AppException,
@@ -1220,24 +1220,25 @@ def test_field_exception_default_billable_units(test_exception_app: AppClient):
         assert "x-fal-billable-units" not in response.headers
 
 
+def submit_and_wait_for_runner(app: str, arguments: dict = {}, *, path: str = ""):
+    handle = apps.submit(app, arguments=arguments, path=path)
+
+    while True:
+        status = handle.status()
+        if isinstance(status, apps.InProgress) or isinstance(status, apps.Completed):
+            break
+        elif isinstance(status, apps.Queued):
+            time.sleep(0.1)
+        else:
+            raise Exception(f"Failed to start the app: {status}")
+
+    return handle
+
+
 @pytest.mark.flaky(max_runs=3)
 def test_stop_runner(host: api.FalServerlessHost, test_sleep_app: str):
-    def submit_and_wait_for_runner():
-        handle = apps.submit(test_sleep_app, arguments={"wait_time": 1})
-
-        while True:
-            status = handle.status()
-            if isinstance(status, apps.InProgress):
-                break
-            elif isinstance(status, apps.Queued):
-                time.sleep(1)
-            else:
-                raise Exception(f"Failed to start the app: {status}")
-
-        return handle
-
     # Submit a runner and wait for it to be idle
-    submit_and_wait_for_runner()
+    submit_and_wait_for_runner(test_sleep_app, arguments={"wait_time": 1})
 
     with host._connection as client:
         timeout = 10
@@ -1254,7 +1255,7 @@ def test_stop_runner(host: api.FalServerlessHost, test_sleep_app: str):
             time.sleep(1)
 
     # Because the runner is not requested to be stopped, it should be reused
-    submit_and_wait_for_runner()
+    submit_and_wait_for_runner(test_sleep_app, arguments={"wait_time": 1})
 
     with host._connection as client:
         _, _, app_alias = test_sleep_app.partition("/")
@@ -1276,7 +1277,7 @@ def test_stop_runner(host: api.FalServerlessHost, test_sleep_app: str):
 
     # Because the runner is requested to be stopped,
     # it should not be reused and a new runner should be created
-    submit_and_wait_for_runner()
+    submit_and_wait_for_runner(test_sleep_app, arguments={"wait_time": 1})
 
     with host._connection as client:
         runners = client.list_alias_runners(app_alias)
@@ -1502,3 +1503,92 @@ def test_app_ref_app_client(test_app_ref_app: str):
 
     assert result_1["from_app"] == result_1["from_external_method"]
     assert result_2["from_app"] == result_2["from_external_method"]
+
+
+# for now it only works in newly built containers
+class GracefulShutdownApp(
+    fal.App,
+    keep_alive=300,
+    max_concurrency=1,
+    image=fal.ContainerImage.from_dockerfile_str(
+        """
+FROM python:3.12-slim
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git curl \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+"""
+    ),
+):
+    machine_type = "XS"
+    teardown_file = "/data/teardown.txt"
+    latest_request_id = None
+
+    @fal.endpoint("/")
+    async def sleep(self, input: SleepInput, request: Request) -> SleepOutput:
+        request_id = request.headers.get(REQUEST_ID_KEY)
+        if request_id is None:
+            raise Exception("No request id found")
+
+        self.latest_request_id = request_id
+
+        for i in range(input.wait_time):
+            print(f"sleeping {i + 1} of {input.wait_time}...", flush=True)
+            await asyncio.sleep(1)
+        return SleepOutput(slept=True)
+
+    @fal.endpoint("/latest-request-id")
+    async def fetch_latest_request_id(self) -> str:
+        with open(self.teardown_file) as f:
+            return f.read()
+
+    def teardown(self):
+        if self.latest_request_id is None:
+            return
+
+        with open(self.teardown_file, "w") as f:
+            print("teardown called, latest request id: ", self.latest_request_id)
+            f.write(self.latest_request_id)
+
+
+@pytest.fixture(scope="module")
+def test_graceful_shutdown_app(host: api.FalServerlessHost, user: User):
+    graceful_shutdown_app = wrap_app(GracefulShutdownApp)
+    with register_app(host, graceful_shutdown_app, "graceful-shutdown") as (
+        app_alias,
+        _,
+    ):
+        yield f"{user.username}/{app_alias}"
+
+
+def test_graceful_shutdown_app_client(
+    host: api.FalServerlessHost,
+    test_graceful_shutdown_app: str,
+):
+    time.sleep(3)  # Wait for the app to be deployed properly
+
+    handle = submit_and_wait_for_runner(
+        test_graceful_shutdown_app, arguments={"wait_time": 5}
+    )
+
+    time.sleep(3)
+
+    saved_request_id = handle.request_id
+    with host._connection as client:
+        _, _, app_alias = test_graceful_shutdown_app.partition("/")
+
+        runners = client.list_runners(start_time=datetime.now() - timedelta(seconds=10))
+        runner = next((r for r in runners if r.alias == app_alias), None)
+
+        assert runner is not None, f"Runner not found: {handle.fetch_result()}"
+
+        client.kill_runner(runner.runner_id)
+
+    time.sleep(3)
+    logs = [log["message"] for log in handle.status(logs=True).logs]
+
+    assert any("Waiting for application shutdown" in log for log in logs)
+    assert any("Application shutdown complete" in log for log in logs)
+
+    res = apps.run(test_graceful_shutdown_app, {}, path="/latest-request-id")
+    assert res == saved_request_id
