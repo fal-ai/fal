@@ -274,5 +274,4 @@ def patch_pickle() -> None:
     _patch_exceptions()
 
     include_module("fal")
-    include_module("fal.api.api")
     include_module("tblib")
