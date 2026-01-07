@@ -286,6 +286,8 @@ message RegisterApplicationRequest {
     optional ApplicationHealthCheckConfig health_check_config = 16;
     // Skip retry on certain conditions
     repeated RetryCondition skip_retry_conditions = 17; 
+    // Enable CDN ACL
+    optional bool enable_cdn_al = 18;
 }
 
 message RegisterApplicationResultType {
