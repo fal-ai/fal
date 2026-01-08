@@ -1584,7 +1584,7 @@ def test_graceful_shutdown_app_client(
         runners = client.list_runners(start_time=datetime.now() - timedelta(seconds=10))
         runner = next((r for r in runners if r.alias == app_alias), None)
 
-        assert runner is not None, f"Runner not found: {handle.fetch_result()}"
+        assert runner is not None, "Runner not found"
 
         client.kill_runner(runner.runner_id)
 
