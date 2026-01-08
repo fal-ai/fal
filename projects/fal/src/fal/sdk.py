@@ -276,6 +276,7 @@ class AliasInfo:
 
 
 class RunnerState(Enum):
+    IDLE = "IDLE"
     RUNNING = "RUNNING"
     PENDING = "PENDING"
     SETUP = "SETUP"
