@@ -276,7 +276,6 @@ class AliasInfo:
 
 
 class RunnerState(Enum):
-    IDLE = "IDLE"
     RUNNING = "RUNNING"
     PENDING = "PENDING"
     SETUP = "SETUP"
@@ -285,6 +284,7 @@ class RunnerState(Enum):
     DRAINING = "DRAINING"
     TERMINATING = "TERMINATING"
     TERMINATED = "TERMINATED"
+    IDLE = "IDLE"
 
 
 @dataclass
