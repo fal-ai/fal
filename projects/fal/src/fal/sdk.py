@@ -284,6 +284,7 @@ class RunnerState(Enum):
     DRAINING = "DRAINING"
     TERMINATING = "TERMINATING"
     TERMINATED = "TERMINATED"
+    IDLE = "IDLE"
 
 
 @dataclass
