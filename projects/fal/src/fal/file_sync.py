@@ -19,6 +19,10 @@ from fal.exceptions import (
     FalServerlessException,
     FileTooLargeError,
 )
+from fal.upload import (
+    MULTIPART_CHUNK_SIZE,
+    AppFileMultipartUpload,
+)
 
 if TYPE_CHECKING:
     from fal.api.api import Options
@@ -193,23 +197,12 @@ class FileSync:
                 **self.creds.to_headers(),
                 "User-Agent": USER_AGENT,
             },
-        )
-
-    @cached_property
-    def _tus_client(self):
-        # Import it here to avoid loading unless we use it
-        from tusclient import client  # noqa: PLC0415
-
-        from fal.flags import REST_URL  # noqa: PLC0415
-        from fal.sdk import get_default_credentials  # noqa: PLC0415
-
-        creds = get_default_credentials()
-        return client.TusClient(
-            f"{REST_URL}/files/tus",
-            headers={
-                **creds.to_headers(),
-                "User-Agent": USER_AGENT,
-            },
+            timeout=httpx.Timeout(
+                connect=30,
+                read=4 * 60,  # multipart complete can take time
+                write=5 * 60,  # we could be uploading slowly
+                pool=30,
+            ),
         )
 
     def _request(self, method: str, path: str, **kwargs) -> httpx.Response:
@@ -271,29 +264,30 @@ class FileSync:
 
             return hashes
 
-    def upload_file_tus(
+    def upload_file_multipart(
         self,
         file_path: str,
         metadata: FileMetadata,
-        chunk_size: int = 5 * 1024 * 1024,
+        chunk_size: int = MULTIPART_CHUNK_SIZE,
     ) -> str:
-        uploader = self._tus_client.uploader(
-            file_path, chunk_size=chunk_size, metadata=metadata.to_dict()
+        multipart = AppFileMultipartUpload(
+            client=self._client,
+            file_hash=metadata.hash,
+            metadata=metadata.to_dict(),
+            chunk_size=chunk_size,
         )
-        uploader.upload()
-        if not uploader.url:
-            raise AppFileUploadException("Upload failed, no URL returned", file_path)
-
-        return uploader.url
+        try:
+            return multipart.upload_file(file_path)
+        except Exception as e:
+            raise AppFileUploadException(str(e), metadata.relative_path)
 
     def _matches_patterns(self, relative_path: str, patterns: List[re.Pattern]) -> bool:
-        """Check if a file matches any of the patterns."""
         return any(pattern.search(relative_path) for pattern in patterns)
 
     def sync_files(
         self,
         paths: List[str],
-        chunk_size: int = 5 * 1024 * 1024,
+        chunk_size: int = MULTIPART_CHUNK_SIZE,
         max_concurrency_uploads: int = DEFAULT_CONCURRENCY_UPLOADS,
         files_ignore: List[re.Pattern] = [],
         files_context_dir: Optional[str] = None,
@@ -354,7 +348,7 @@ class FileSync:
             # Embed it here to be able to pass it to the executor
             def upload_single_file(metadata: FileMetadata):
                 console.print(f"Uploading file: {metadata.relative_path}")
-                return self.upload_file_tus(
+                return self.upload_file_multipart(
                     metadata.absolute_path,
                     chunk_size=chunk_size,
                     metadata=metadata,
@@ -384,5 +378,4 @@ class FileSync:
         return unique_files, errors
 
     def close(self):
-        """Close HTTP client."""
         self._client.close()
