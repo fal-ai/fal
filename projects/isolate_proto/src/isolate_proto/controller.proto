@@ -248,6 +248,7 @@ enum RetryCondition {
     TIMEOUT = 0;
     CLIENT_ERROR = 1;
     SERVER_ERROR = 2;
+    CONNECTION_ERROR = 3;
 }
 
 message RegisterApplicationRequest {

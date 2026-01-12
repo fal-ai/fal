@@ -64,12 +64,14 @@ class _RetryConditionEnumTypeWrapper(google.protobuf.internal.enum_type_wrapper.
     TIMEOUT: _RetryCondition.ValueType  # 0
     CLIENT_ERROR: _RetryCondition.ValueType  # 1
     SERVER_ERROR: _RetryCondition.ValueType  # 2
+    CONNECTION_ERROR: _RetryCondition.ValueType  # 3
 
 class RetryCondition(_RetryCondition, metaclass=_RetryConditionEnumTypeWrapper): ...
 
 TIMEOUT: RetryCondition.ValueType  # 0
 CLIENT_ERROR: RetryCondition.ValueType  # 1
 SERVER_ERROR: RetryCondition.ValueType  # 2
+CONNECTION_ERROR: RetryCondition.ValueType  # 3
 global___RetryCondition = RetryCondition
 
 @typing.final
