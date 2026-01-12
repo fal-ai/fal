@@ -49,6 +49,37 @@ patch_pickle()
 
 AuthModeLiteral = Literal["public", "private", "shared"]
 DeploymentStrategyLiteral = Literal["recreate", "rolling"]
+RetryConditionLiteral = Literal["timeout", "client_error", "server_error"]
+
+ENVIRONMENT_SEPARATOR = "--"
+
+
+def construct_alias(base_name: str, environment_name: str | None = None) -> str:
+    """Construct the full alias with environment suffix.
+
+    Examples:
+    - ("my-app", None) → "my-app"
+    - ("my-app", "main") → "my-app"
+    - ("my-app", "staging") → "my-app--staging"
+    """
+    if not environment_name or environment_name == "main":
+        return base_name
+    return f"{base_name}{ENVIRONMENT_SEPARATOR}{environment_name}"
+
+
+def deconstruct_alias(full_alias: str, environment_name: str | None = None) -> str:
+    """Extract base name from full alias for display.
+
+    Examples:
+    - ("my-app--staging", "staging") → "my-app"
+    - ("my-app", "main") → "my-app"
+    - ("my-app", None) → "my-app"
+    """
+    if environment_name and environment_name != "main":
+        suffix = f"{ENVIRONMENT_SEPARATOR}{environment_name}"
+        if full_alias.endswith(suffix):
+            return full_alias[: -len(suffix)]
+    return full_alias
 
 ENVIRONMENT_SEPARATOR = "--"
 
@@ -324,6 +355,7 @@ class RunnerState(Enum):
     DRAINING = "DRAINING"
     TERMINATING = "TERMINATING"
     TERMINATED = "TERMINATED"
+    IDLE = "IDLE"
 
 
 @dataclass
@@ -744,6 +776,7 @@ class FalServerlessConnection:
         scale: bool = True,
         private_logs: bool = False,
         files: list[File] | None = None,
+        skip_retry_conditions: list[RetryConditionLiteral] | None = None,
         environment_name: str | None = None,
     ) -> Iterator[RegisterApplicationResult]:
         wrapped_function = to_serialized_object(function, serialization_method)
@@ -808,6 +841,14 @@ class FalServerlessConnection:
         else:
             wrapped_health_check_config = None
 
+        if skip_retry_conditions:
+            wrapped_skip_retry_conditions = [
+                isolate_proto.RetryCondition.Value(condition.upper())
+                for condition in skip_retry_conditions
+            ]
+        else:
+            wrapped_skip_retry_conditions = []
+
         full_application_name = (
             construct_alias(application_name, environment_name)
             if application_name
@@ -827,6 +868,7 @@ class FalServerlessConnection:
             files=files,
             source_code=source_code,
             health_check_config=wrapped_health_check_config,
+            skip_retry_conditions=wrapped_skip_retry_conditions,
             environment_name=environment_name,
         )
         for partial_result in self.stub.RegisterApplication(request):

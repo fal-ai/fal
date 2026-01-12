@@ -274,7 +274,7 @@ def _add_scale_parser(subparsers, parents):
     parser.add_argument(
         "--concurrency-buffer-perc",
         type=int,
-        help="Concurrency buffer %",
+        help="Concurrency buffer %%",
     )
     parser.add_argument(
         "--scaling-delay",
@@ -284,7 +284,8 @@ def _add_scale_parser(subparsers, parents):
     parser.add_argument(
         "--request-timeout",
         type=int,
-        help="Request timeout (seconds).",
+        help="Request timeout (seconds). If a request takes longer, it is aborted and "
+        "the runner gracefully stopped as it could be in a bad state.",
     )
     parser.add_argument(
         "--startup-timeout",
