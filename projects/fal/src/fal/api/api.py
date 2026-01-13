@@ -1120,7 +1120,13 @@ def function(  # type: ignore
 
     if config.get("force_env_build") is not None:
         force_env_build = config.pop("force_env_build")
-        config["force"] = force_env_build
+        if kind == "container":
+            config["force"] = force_env_build
+        else:
+            console.print(
+                "[bold yellow]Note:[/bold yellow] [dim]--force--env-build[/dim]"
+                " is only supported for container apps as of now. Ignoring."
+            )
 
     options = host.parse_options(kind=kind, **config)
 
