@@ -49,7 +49,7 @@ patch_pickle()
 
 AuthModeLiteral = Literal["public", "private", "shared"]
 DeploymentStrategyLiteral = Literal["recreate", "rolling"]
-RetryConditionLiteral = Literal["timeout", "client_error", "server_error"]
+RetryConditionLiteral = Literal["timeout", "server_error", "connection_error"]
 
 
 class ServerCredentials:
