@@ -11,7 +11,7 @@ from fal_client.client import _maybe_retry_request
 def client() -> fal_client.SyncClient:
     client = fal_client.SyncClient()
     try:
-        client._get_key()
+        client._get_auth()
     except fal_client.auth.MissingCredentialsError:
         pytest.skip("Missing credentials")
     return client

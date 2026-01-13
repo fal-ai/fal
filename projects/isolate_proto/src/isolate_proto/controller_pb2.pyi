@@ -38,7 +38,7 @@ class ApplicationAuthMode(_ApplicationAuthMode, metaclass=_ApplicationAuthModeEn
 PRIVATE: ApplicationAuthMode.ValueType  # 0
 PUBLIC: ApplicationAuthMode.ValueType  # 1
 SHARED: ApplicationAuthMode.ValueType  # 2
-Global___ApplicationAuthMode: typing_extensions.TypeAlias = ApplicationAuthMode
+global___ApplicationAuthMode = ApplicationAuthMode
 
 class _DeploymentStrategy:
     ValueType = typing.NewType("ValueType", builtins.int)
@@ -53,7 +53,24 @@ class DeploymentStrategy(_DeploymentStrategy, metaclass=_DeploymentStrategyEnumT
 
 RECREATE: DeploymentStrategy.ValueType  # 0
 ROLLING: DeploymentStrategy.ValueType  # 1
-Global___DeploymentStrategy: typing_extensions.TypeAlias = DeploymentStrategy
+global___DeploymentStrategy = DeploymentStrategy
+
+class _RetryCondition:
+    ValueType = typing.NewType("ValueType", builtins.int)
+    V: typing_extensions.TypeAlias = ValueType
+
+class _RetryConditionEnumTypeWrapper(google.protobuf.internal.enum_type_wrapper._EnumTypeWrapper[_RetryCondition.ValueType], builtins.type):
+    DESCRIPTOR: google.protobuf.descriptor.EnumDescriptor
+    TIMEOUT: _RetryCondition.ValueType  # 0
+    CLIENT_ERROR: _RetryCondition.ValueType  # 1
+    SERVER_ERROR: _RetryCondition.ValueType  # 2
+
+class RetryCondition(_RetryCondition, metaclass=_RetryConditionEnumTypeWrapper): ...
+
+TIMEOUT: RetryCondition.ValueType  # 0
+CLIENT_ERROR: RetryCondition.ValueType  # 1
+SERVER_ERROR: RetryCondition.ValueType  # 2
+global___RetryCondition = RetryCondition
 
 @typing.final
 class HostedMap(google.protobuf.message.Message):
@@ -68,7 +85,7 @@ class HostedMap(google.protobuf.message.Message):
         """Environment definitions."""
 
     @property
-    def machine_requirements(self) -> Global___MachineRequirements:
+    def machine_requirements(self) -> global___MachineRequirements:
         """Machine requirements"""
 
     @property
@@ -83,7 +100,7 @@ class HostedMap(google.protobuf.message.Message):
         self,
         *,
         environments: collections.abc.Iterable[server_pb2.EnvironmentDefinition] | None = ...,
-        machine_requirements: Global___MachineRequirements | None = ...,
+        machine_requirements: global___MachineRequirements | None = ...,
         function: common_pb2.SerializedObject | None = ...,
         inputs: collections.abc.Iterable[common_pb2.SerializedObject] | None = ...,
     ) -> None: ...
@@ -91,7 +108,7 @@ class HostedMap(google.protobuf.message.Message):
     def ClearField(self, field_name: typing.Literal["_machine_requirements", b"_machine_requirements", "environments", b"environments", "function", b"function", "inputs", b"inputs", "machine_requirements", b"machine_requirements"]) -> None: ...
     def WhichOneof(self, oneof_group: typing.Literal["_machine_requirements", b"_machine_requirements"]) -> typing.Literal["machine_requirements"] | None: ...
 
-Global___HostedMap: typing_extensions.TypeAlias = HostedMap
+global___HostedMap = HostedMap
 
 @typing.final
 class File(google.protobuf.message.Message):
@@ -110,7 +127,7 @@ class File(google.protobuf.message.Message):
     ) -> None: ...
     def ClearField(self, field_name: typing.Literal["hash", b"hash", "relative_path", b"relative_path"]) -> None: ...
 
-Global___File: typing_extensions.TypeAlias = File
+global___File = File
 
 @typing.final
 class HostedRun(google.protobuf.message.Message):
@@ -129,7 +146,7 @@ class HostedRun(google.protobuf.message.Message):
         """Environment definitions."""
 
     @property
-    def machine_requirements(self) -> Global___MachineRequirements:
+    def machine_requirements(self) -> global___MachineRequirements:
         """Machine requirements"""
 
     @property
@@ -141,17 +158,17 @@ class HostedRun(google.protobuf.message.Message):
         """Optional setup function to pass as the first argument to the function."""
 
     @property
-    def files(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[Global___File]:
+    def files(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[global___File]:
         """Optional files to be included"""
 
     def __init__(
         self,
         *,
         environments: collections.abc.Iterable[server_pb2.EnvironmentDefinition] | None = ...,
-        machine_requirements: Global___MachineRequirements | None = ...,
+        machine_requirements: global___MachineRequirements | None = ...,
         function: common_pb2.SerializedObject | None = ...,
         setup_func: common_pb2.SerializedObject | None = ...,
-        files: collections.abc.Iterable[Global___File] | None = ...,
+        files: collections.abc.Iterable[global___File] | None = ...,
         environment_name: builtins.str | None = ...,
     ) -> None: ...
     def HasField(self, field_name: typing.Literal["_environment_name", b"_environment_name", "_machine_requirements", b"_machine_requirements", "_setup_func", b"_setup_func", "environment_name", b"environment_name", "function", b"function", "machine_requirements", b"machine_requirements", "setup_func", b"setup_func"]) -> builtins.bool: ...
@@ -163,7 +180,7 @@ class HostedRun(google.protobuf.message.Message):
     @typing.overload
     def WhichOneof(self, oneof_group: typing.Literal["_setup_func", b"_setup_func"]) -> typing.Literal["setup_func"] | None: ...
 
-Global___HostedRun: typing_extensions.TypeAlias = HostedRun
+global___HostedRun = HostedRun
 
 @typing.final
 class CreateUserKeyRequest(google.protobuf.message.Message):
@@ -184,21 +201,21 @@ class CreateUserKeyRequest(google.protobuf.message.Message):
 
     SCOPE_FIELD_NUMBER: builtins.int
     ALIAS_FIELD_NUMBER: builtins.int
-    scope: Global___CreateUserKeyRequest.Scope.ValueType
+    scope: global___CreateUserKeyRequest.Scope.ValueType
     """privilege scope of the key"""
     alias: builtins.str
     """optional alias of the key"""
     def __init__(
         self,
         *,
-        scope: Global___CreateUserKeyRequest.Scope.ValueType = ...,
+        scope: global___CreateUserKeyRequest.Scope.ValueType = ...,
         alias: builtins.str | None = ...,
     ) -> None: ...
     def HasField(self, field_name: typing.Literal["_alias", b"_alias", "alias", b"alias"]) -> builtins.bool: ...
     def ClearField(self, field_name: typing.Literal["_alias", b"_alias", "alias", b"alias", "scope", b"scope"]) -> None: ...
     def WhichOneof(self, oneof_group: typing.Literal["_alias", b"_alias"]) -> typing.Literal["alias"] | None: ...
 
-Global___CreateUserKeyRequest: typing_extensions.TypeAlias = CreateUserKeyRequest
+global___CreateUserKeyRequest = CreateUserKeyRequest
 
 @typing.final
 class CreateUserKeyResponse(google.protobuf.message.Message):
@@ -216,7 +233,7 @@ class CreateUserKeyResponse(google.protobuf.message.Message):
     ) -> None: ...
     def ClearField(self, field_name: typing.Literal["key_id", b"key_id", "key_secret", b"key_secret"]) -> None: ...
 
-Global___CreateUserKeyResponse: typing_extensions.TypeAlias = CreateUserKeyResponse
+global___CreateUserKeyResponse = CreateUserKeyResponse
 
 @typing.final
 class ListUserKeysRequest(google.protobuf.message.Message):
@@ -228,7 +245,7 @@ class ListUserKeysRequest(google.protobuf.message.Message):
         self,
     ) -> None: ...
 
-Global___ListUserKeysRequest: typing_extensions.TypeAlias = ListUserKeysRequest
+global___ListUserKeysRequest = ListUserKeysRequest
 
 @typing.final
 class ListUserKeysResponse(google.protobuf.message.Message):
@@ -236,15 +253,15 @@ class ListUserKeysResponse(google.protobuf.message.Message):
 
     USER_KEYS_FIELD_NUMBER: builtins.int
     @property
-    def user_keys(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[Global___UserKeyInfo]: ...
+    def user_keys(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[global___UserKeyInfo]: ...
     def __init__(
         self,
         *,
-        user_keys: collections.abc.Iterable[Global___UserKeyInfo] | None = ...,
+        user_keys: collections.abc.Iterable[global___UserKeyInfo] | None = ...,
     ) -> None: ...
     def ClearField(self, field_name: typing.Literal["user_keys", b"user_keys"]) -> None: ...
 
-Global___ListUserKeysResponse: typing_extensions.TypeAlias = ListUserKeysResponse
+global___ListUserKeysResponse = ListUserKeysResponse
 
 @typing.final
 class RevokeUserKeyRequest(google.protobuf.message.Message):
@@ -259,7 +276,7 @@ class RevokeUserKeyRequest(google.protobuf.message.Message):
     ) -> None: ...
     def ClearField(self, field_name: typing.Literal["key_id", b"key_id"]) -> None: ...
 
-Global___RevokeUserKeyRequest: typing_extensions.TypeAlias = RevokeUserKeyRequest
+global___RevokeUserKeyRequest = RevokeUserKeyRequest
 
 @typing.final
 class RevokeUserKeyResponse(google.protobuf.message.Message):
@@ -271,7 +288,7 @@ class RevokeUserKeyResponse(google.protobuf.message.Message):
         self,
     ) -> None: ...
 
-Global___RevokeUserKeyResponse: typing_extensions.TypeAlias = RevokeUserKeyResponse
+global___RevokeUserKeyResponse = RevokeUserKeyResponse
 
 @typing.final
 class UserKeyInfo(google.protobuf.message.Message):
@@ -282,7 +299,7 @@ class UserKeyInfo(google.protobuf.message.Message):
     SCOPE_FIELD_NUMBER: builtins.int
     ALIAS_FIELD_NUMBER: builtins.int
     key_id: builtins.str
-    scope: Global___CreateUserKeyRequest.Scope.ValueType
+    scope: global___CreateUserKeyRequest.Scope.ValueType
     alias: builtins.str
     @property
     def created_at(self) -> google.protobuf.timestamp_pb2.Timestamp: ...
@@ -291,13 +308,13 @@ class UserKeyInfo(google.protobuf.message.Message):
         *,
         key_id: builtins.str = ...,
         created_at: google.protobuf.timestamp_pb2.Timestamp | None = ...,
-        scope: Global___CreateUserKeyRequest.Scope.ValueType = ...,
+        scope: global___CreateUserKeyRequest.Scope.ValueType = ...,
         alias: builtins.str = ...,
     ) -> None: ...
     def HasField(self, field_name: typing.Literal["created_at", b"created_at"]) -> builtins.bool: ...
     def ClearField(self, field_name: typing.Literal["alias", b"alias", "created_at", b"created_at", "key_id", b"key_id", "scope", b"scope"]) -> None: ...
 
-Global___UserKeyInfo: typing_extensions.TypeAlias = UserKeyInfo
+global___UserKeyInfo = UserKeyInfo
 
 @typing.final
 class ServiceURLs(google.protobuf.message.Message):
@@ -321,7 +338,7 @@ class ServiceURLs(google.protobuf.message.Message):
     ) -> None: ...
     def ClearField(self, field_name: typing.Literal["playground", b"playground", "queue", b"queue", "run", b"run", "ws", b"ws"]) -> None: ...
 
-Global___ServiceURLs: typing_extensions.TypeAlias = ServiceURLs
+global___ServiceURLs = ServiceURLs
 
 @typing.final
 class HostedRunResult(google.protobuf.message.Message):
@@ -335,7 +352,7 @@ class HostedRunResult(google.protobuf.message.Message):
     run_id: builtins.str
     """Unique run id / token."""
     @property
-    def status(self) -> Global___HostedRunStatus:
+    def status(self) -> global___HostedRunStatus:
         """Optionally the status of the current run (in terms of
         fal cloud).
         """
@@ -351,17 +368,17 @@ class HostedRunResult(google.protobuf.message.Message):
         """
 
     @property
-    def service_urls(self) -> Global___ServiceURLs:
+    def service_urls(self) -> global___ServiceURLs:
         """Service URLs for the run"""
 
     def __init__(
         self,
         *,
         run_id: builtins.str = ...,
-        status: Global___HostedRunStatus | None = ...,
+        status: global___HostedRunStatus | None = ...,
         logs: collections.abc.Iterable[common_pb2.Log] | None = ...,
         return_value: common_pb2.SerializedObject | None = ...,
-        service_urls: Global___ServiceURLs | None = ...,
+        service_urls: global___ServiceURLs | None = ...,
     ) -> None: ...
     def HasField(self, field_name: typing.Literal["_return_value", b"_return_value", "_service_urls", b"_service_urls", "_status", b"_status", "return_value", b"return_value", "service_urls", b"service_urls", "status", b"status"]) -> builtins.bool: ...
     def ClearField(self, field_name: typing.Literal["_return_value", b"_return_value", "_service_urls", b"_service_urls", "_status", b"_status", "logs", b"logs", "return_value", b"return_value", "run_id", b"run_id", "service_urls", b"service_urls", "status", b"status"]) -> None: ...
@@ -372,7 +389,7 @@ class HostedRunResult(google.protobuf.message.Message):
     @typing.overload
     def WhichOneof(self, oneof_group: typing.Literal["_status", b"_status"]) -> typing.Literal["status"] | None: ...
 
-Global___HostedRunResult: typing_extensions.TypeAlias = HostedRunResult
+global___HostedRunResult = HostedRunResult
 
 @typing.final
 class InteractiveRunRequest(google.protobuf.message.Message):
@@ -380,16 +397,16 @@ class InteractiveRunRequest(google.protobuf.message.Message):
 
     HOSTED_RUN_FIELD_NUMBER: builtins.int
     @property
-    def hosted_run(self) -> Global___HostedRun: ...
+    def hosted_run(self) -> global___HostedRun: ...
     def __init__(
         self,
         *,
-        hosted_run: Global___HostedRun | None = ...,
+        hosted_run: global___HostedRun | None = ...,
     ) -> None: ...
     def HasField(self, field_name: typing.Literal["hosted_run", b"hosted_run"]) -> builtins.bool: ...
     def ClearField(self, field_name: typing.Literal["hosted_run", b"hosted_run"]) -> None: ...
 
-Global___InteractiveRunRequest: typing_extensions.TypeAlias = InteractiveRunRequest
+global___InteractiveRunRequest = InteractiveRunRequest
 
 @typing.final
 class InteractiveRunResponse(google.protobuf.message.Message):
@@ -397,16 +414,16 @@ class InteractiveRunResponse(google.protobuf.message.Message):
 
     HOSTED_RUN_RESULT_FIELD_NUMBER: builtins.int
     @property
-    def hosted_run_result(self) -> Global___HostedRunResult: ...
+    def hosted_run_result(self) -> global___HostedRunResult: ...
     def __init__(
         self,
         *,
-        hosted_run_result: Global___HostedRunResult | None = ...,
+        hosted_run_result: global___HostedRunResult | None = ...,
     ) -> None: ...
     def HasField(self, field_name: typing.Literal["hosted_run_result", b"hosted_run_result"]) -> builtins.bool: ...
     def ClearField(self, field_name: typing.Literal["hosted_run_result", b"hosted_run_result"]) -> None: ...
 
-Global___InteractiveRunResponse: typing_extensions.TypeAlias = InteractiveRunResponse
+global___InteractiveRunResponse = InteractiveRunResponse
 
 @typing.final
 class HostedRunStatus(google.protobuf.message.Message):
@@ -438,16 +455,16 @@ class HostedRunStatus(google.protobuf.message.Message):
     """
 
     STATE_FIELD_NUMBER: builtins.int
-    state: Global___HostedRunStatus.State.ValueType
+    state: global___HostedRunStatus.State.ValueType
     """The state of the run."""
     def __init__(
         self,
         *,
-        state: Global___HostedRunStatus.State.ValueType = ...,
+        state: global___HostedRunStatus.State.ValueType = ...,
     ) -> None: ...
     def ClearField(self, field_name: typing.Literal["state", b"state"]) -> None: ...
 
-Global___HostedRunStatus: typing_extensions.TypeAlias = HostedRunStatus
+global___HostedRunStatus = HostedRunStatus
 
 @typing.final
 class MachineRequirements(google.protobuf.message.Message):
@@ -553,7 +570,7 @@ class MachineRequirements(google.protobuf.message.Message):
     @typing.overload
     def WhichOneof(self, oneof_group: typing.Literal["_startup_timeout", b"_startup_timeout"]) -> typing.Literal["startup_timeout"] | None: ...
 
-Global___MachineRequirements: typing_extensions.TypeAlias = MachineRequirements
+global___MachineRequirements = MachineRequirements
 
 @typing.final
 class ApplicationHealthCheckConfig(google.protobuf.message.Message):
@@ -604,7 +621,7 @@ class ApplicationHealthCheckConfig(google.protobuf.message.Message):
     @typing.overload
     def WhichOneof(self, oneof_group: typing.Literal["_timeout_seconds", b"_timeout_seconds"]) -> typing.Literal["timeout_seconds"] | None: ...
 
-Global___ApplicationHealthCheckConfig: typing_extensions.TypeAlias = ApplicationHealthCheckConfig
+global___ApplicationHealthCheckConfig = ApplicationHealthCheckConfig
 
 @typing.final
 class RegisterApplicationRequest(google.protobuf.message.Message):
@@ -626,13 +643,14 @@ class RegisterApplicationRequest(google.protobuf.message.Message):
     HEALTH_CHECK_PATH_FIELD_NUMBER: builtins.int
     ENVIRONMENT_NAME_FIELD_NUMBER: builtins.int
     HEALTH_CHECK_CONFIG_FIELD_NUMBER: builtins.int
+    SKIP_RETRY_CONDITIONS_FIELD_NUMBER: builtins.int
     application_name: builtins.str
     """Name of the application"""
-    auth_mode: Global___ApplicationAuthMode.ValueType
+    auth_mode: global___ApplicationAuthMode.ValueType
     """If application has alias: auth mode to use"""
     max_concurrency: builtins.int
     """Max concurrency in gateway"""
-    deployment_strategy: Global___DeploymentStrategy.ValueType
+    deployment_strategy: global___DeploymentStrategy.ValueType
     """Deployment strategy"""
     scale: builtins.bool
     """To ignore/respect the scaling settings of the application
@@ -651,7 +669,7 @@ class RegisterApplicationRequest(google.protobuf.message.Message):
         """Environment definitions."""
 
     @property
-    def machine_requirements(self) -> Global___MachineRequirements:
+    def machine_requirements(self) -> global___MachineRequirements:
         """Machine requirements"""
 
     @property
@@ -667,35 +685,40 @@ class RegisterApplicationRequest(google.protobuf.message.Message):
         """metadata to store with the application"""
 
     @property
-    def files(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[Global___File]:
+    def files(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[global___File]:
         """Optional files to be included"""
 
     @property
-    def health_check_config(self) -> Global___ApplicationHealthCheckConfig:
+    def health_check_config(self) -> global___ApplicationHealthCheckConfig:
         """Optional health check config for runners"""
+
+    @property
+    def skip_retry_conditions(self) -> google.protobuf.internal.containers.RepeatedScalarFieldContainer[global___RetryCondition.ValueType]:
+        """Skip retry on certain conditions"""
 
     def __init__(
         self,
         *,
         environments: collections.abc.Iterable[server_pb2.EnvironmentDefinition] | None = ...,
-        machine_requirements: Global___MachineRequirements | None = ...,
+        machine_requirements: global___MachineRequirements | None = ...,
         function: common_pb2.SerializedObject | None = ...,
         setup_func: common_pb2.SerializedObject | None = ...,
         application_name: builtins.str | None = ...,
-        auth_mode: Global___ApplicationAuthMode.ValueType | None = ...,
+        auth_mode: global___ApplicationAuthMode.ValueType | None = ...,
         max_concurrency: builtins.int | None = ...,
         metadata: google.protobuf.struct_pb2.Struct | None = ...,
-        deployment_strategy: Global___DeploymentStrategy.ValueType | None = ...,
+        deployment_strategy: global___DeploymentStrategy.ValueType | None = ...,
         scale: builtins.bool | None = ...,
         private_logs: builtins.bool | None = ...,
-        files: collections.abc.Iterable[Global___File] | None = ...,
+        files: collections.abc.Iterable[global___File] | None = ...,
         source_code: builtins.str | None = ...,
         health_check_path: builtins.str | None = ...,
         environment_name: builtins.str | None = ...,
-        health_check_config: Global___ApplicationHealthCheckConfig | None = ...,
+        health_check_config: global___ApplicationHealthCheckConfig | None = ...,
+        skip_retry_conditions: collections.abc.Iterable[global___RetryCondition.ValueType] | None = ...,
     ) -> None: ...
     def HasField(self, field_name: typing.Literal["_application_name", b"_application_name", "_auth_mode", b"_auth_mode", "_deployment_strategy", b"_deployment_strategy", "_environment_name", b"_environment_name", "_health_check_config", b"_health_check_config", "_health_check_path", b"_health_check_path", "_machine_requirements", b"_machine_requirements", "_max_concurrency", b"_max_concurrency", "_metadata", b"_metadata", "_private_logs", b"_private_logs", "_scale", b"_scale", "_setup_func", b"_setup_func", "_source_code", b"_source_code", "application_name", b"application_name", "auth_mode", b"auth_mode", "deployment_strategy", b"deployment_strategy", "environment_name", b"environment_name", "function", b"function", "health_check_config", b"health_check_config", "health_check_path", b"health_check_path", "machine_requirements", b"machine_requirements", "max_concurrency", b"max_concurrency", "metadata", b"metadata", "private_logs", b"private_logs", "scale", b"scale", "setup_func", b"setup_func", "source_code", b"source_code"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing.Literal["_application_name", b"_application_name", "_auth_mode", b"_auth_mode", "_deployment_strategy", b"_deployment_strategy", "_environment_name", b"_environment_name", "_health_check_config", b"_health_check_config", "_health_check_path", b"_health_check_path", "_machine_requirements", b"_machine_requirements", "_max_concurrency", b"_max_concurrency", "_metadata", b"_metadata", "_private_logs", b"_private_logs", "_scale", b"_scale", "_setup_func", b"_setup_func", "_source_code", b"_source_code", "application_name", b"application_name", "auth_mode", b"auth_mode", "deployment_strategy", b"deployment_strategy", "environment_name", b"environment_name", "environments", b"environments", "files", b"files", "function", b"function", "health_check_config", b"health_check_config", "health_check_path", b"health_check_path", "machine_requirements", b"machine_requirements", "max_concurrency", b"max_concurrency", "metadata", b"metadata", "private_logs", b"private_logs", "scale", b"scale", "setup_func", b"setup_func", "source_code", b"source_code"]) -> None: ...
+    def ClearField(self, field_name: typing.Literal["_application_name", b"_application_name", "_auth_mode", b"_auth_mode", "_deployment_strategy", b"_deployment_strategy", "_environment_name", b"_environment_name", "_health_check_config", b"_health_check_config", "_health_check_path", b"_health_check_path", "_machine_requirements", b"_machine_requirements", "_max_concurrency", b"_max_concurrency", "_metadata", b"_metadata", "_private_logs", b"_private_logs", "_scale", b"_scale", "_setup_func", b"_setup_func", "_source_code", b"_source_code", "application_name", b"application_name", "auth_mode", b"auth_mode", "deployment_strategy", b"deployment_strategy", "environment_name", b"environment_name", "environments", b"environments", "files", b"files", "function", b"function", "health_check_config", b"health_check_config", "health_check_path", b"health_check_path", "machine_requirements", b"machine_requirements", "max_concurrency", b"max_concurrency", "metadata", b"metadata", "private_logs", b"private_logs", "scale", b"scale", "setup_func", b"setup_func", "skip_retry_conditions", b"skip_retry_conditions", "source_code", b"source_code"]) -> None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing.Literal["_application_name", b"_application_name"]) -> typing.Literal["application_name"] | None: ...
     @typing.overload
@@ -723,7 +746,7 @@ class RegisterApplicationRequest(google.protobuf.message.Message):
     @typing.overload
     def WhichOneof(self, oneof_group: typing.Literal["_source_code", b"_source_code"]) -> typing.Literal["source_code"] | None: ...
 
-Global___RegisterApplicationRequest: typing_extensions.TypeAlias = RegisterApplicationRequest
+global___RegisterApplicationRequest = RegisterApplicationRequest
 
 @typing.final
 class RegisterApplicationResultType(google.protobuf.message.Message):
@@ -738,7 +761,7 @@ class RegisterApplicationResultType(google.protobuf.message.Message):
     ) -> None: ...
     def ClearField(self, field_name: typing.Literal["application_id", b"application_id"]) -> None: ...
 
-Global___RegisterApplicationResultType: typing_extensions.TypeAlias = RegisterApplicationResultType
+global___RegisterApplicationResultType = RegisterApplicationResultType
 
 @typing.final
 class RegisterApplicationResult(google.protobuf.message.Message):
@@ -750,15 +773,15 @@ class RegisterApplicationResult(google.protobuf.message.Message):
     @property
     def logs(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[common_pb2.Log]: ...
     @property
-    def result(self) -> Global___RegisterApplicationResultType: ...
+    def result(self) -> global___RegisterApplicationResultType: ...
     @property
-    def service_urls(self) -> Global___ServiceURLs: ...
+    def service_urls(self) -> global___ServiceURLs: ...
     def __init__(
         self,
         *,
         logs: collections.abc.Iterable[common_pb2.Log] | None = ...,
-        result: Global___RegisterApplicationResultType | None = ...,
-        service_urls: Global___ServiceURLs | None = ...,
+        result: global___RegisterApplicationResultType | None = ...,
+        service_urls: global___ServiceURLs | None = ...,
     ) -> None: ...
     def HasField(self, field_name: typing.Literal["_result", b"_result", "_service_urls", b"_service_urls", "result", b"result", "service_urls", b"service_urls"]) -> builtins.bool: ...
     def ClearField(self, field_name: typing.Literal["_result", b"_result", "_service_urls", b"_service_urls", "logs", b"logs", "result", b"result", "service_urls", b"service_urls"]) -> None: ...
@@ -767,7 +790,7 @@ class RegisterApplicationResult(google.protobuf.message.Message):
     @typing.overload
     def WhichOneof(self, oneof_group: typing.Literal["_service_urls", b"_service_urls"]) -> typing.Literal["service_urls"] | None: ...
 
-Global___RegisterApplicationResult: typing_extensions.TypeAlias = RegisterApplicationResult
+global___RegisterApplicationResult = RegisterApplicationResult
 
 @typing.final
 class UpdateApplicationRequest(google.protobuf.message.Message):
@@ -841,7 +864,7 @@ class UpdateApplicationRequest(google.protobuf.message.Message):
     @typing.overload
     def WhichOneof(self, oneof_group: typing.Literal["_startup_timeout", b"_startup_timeout"]) -> typing.Literal["startup_timeout"] | None: ...
 
-Global___UpdateApplicationRequest: typing_extensions.TypeAlias = UpdateApplicationRequest
+global___UpdateApplicationRequest = UpdateApplicationRequest
 
 @typing.final
 class UpdateApplicationResult(google.protobuf.message.Message):
@@ -849,16 +872,16 @@ class UpdateApplicationResult(google.protobuf.message.Message):
 
     ALIAS_INFO_FIELD_NUMBER: builtins.int
     @property
-    def alias_info(self) -> Global___AliasInfo: ...
+    def alias_info(self) -> global___AliasInfo: ...
     def __init__(
         self,
         *,
-        alias_info: Global___AliasInfo | None = ...,
+        alias_info: global___AliasInfo | None = ...,
     ) -> None: ...
     def HasField(self, field_name: typing.Literal["alias_info", b"alias_info"]) -> builtins.bool: ...
     def ClearField(self, field_name: typing.Literal["alias_info", b"alias_info"]) -> None: ...
 
-Global___UpdateApplicationResult: typing_extensions.TypeAlias = UpdateApplicationResult
+global___UpdateApplicationResult = UpdateApplicationResult
 
 @typing.final
 class ListApplicationsRequest(google.protobuf.message.Message):
@@ -881,7 +904,7 @@ class ListApplicationsRequest(google.protobuf.message.Message):
     @typing.overload
     def WhichOneof(self, oneof_group: typing.Literal["_environment_name", b"_environment_name"]) -> typing.Literal["environment_name"] | None: ...
 
-Global___ListApplicationsRequest: typing_extensions.TypeAlias = ListApplicationsRequest
+global___ListApplicationsRequest = ListApplicationsRequest
 
 @typing.final
 class ApplicationInfo(google.protobuf.message.Message):
@@ -954,7 +977,7 @@ class ApplicationInfo(google.protobuf.message.Message):
     @typing.overload
     def WhichOneof(self, oneof_group: typing.Literal["_startup_timeout", b"_startup_timeout"]) -> typing.Literal["startup_timeout"] | None: ...
 
-Global___ApplicationInfo: typing_extensions.TypeAlias = ApplicationInfo
+global___ApplicationInfo = ApplicationInfo
 
 @typing.final
 class ListApplicationsResult(google.protobuf.message.Message):
@@ -962,15 +985,15 @@ class ListApplicationsResult(google.protobuf.message.Message):
 
     APPLICATIONS_FIELD_NUMBER: builtins.int
     @property
-    def applications(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[Global___ApplicationInfo]: ...
+    def applications(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[global___ApplicationInfo]: ...
     def __init__(
         self,
         *,
-        applications: collections.abc.Iterable[Global___ApplicationInfo] | None = ...,
+        applications: collections.abc.Iterable[global___ApplicationInfo] | None = ...,
     ) -> None: ...
     def ClearField(self, field_name: typing.Literal["applications", b"applications"]) -> None: ...
 
-Global___ListApplicationsResult: typing_extensions.TypeAlias = ListApplicationsResult
+global___ListApplicationsResult = ListApplicationsResult
 
 @typing.final
 class DeleteApplicationRequest(google.protobuf.message.Message):
@@ -985,7 +1008,7 @@ class DeleteApplicationRequest(google.protobuf.message.Message):
     ) -> None: ...
     def ClearField(self, field_name: typing.Literal["application_id", b"application_id"]) -> None: ...
 
-Global___DeleteApplicationRequest: typing_extensions.TypeAlias = DeleteApplicationRequest
+global___DeleteApplicationRequest = DeleteApplicationRequest
 
 @typing.final
 class DeleteApplicationResult(google.protobuf.message.Message):
@@ -997,7 +1020,7 @@ class DeleteApplicationResult(google.protobuf.message.Message):
         self,
     ) -> None: ...
 
-Global___DeleteApplicationResult: typing_extensions.TypeAlias = DeleteApplicationResult
+global___DeleteApplicationResult = DeleteApplicationResult
 
 @typing.final
 class RolloutApplicationRequest(google.protobuf.message.Message):
@@ -1023,7 +1046,7 @@ class RolloutApplicationRequest(google.protobuf.message.Message):
     @typing.overload
     def WhichOneof(self, oneof_group: typing.Literal["_force", b"_force"]) -> typing.Literal["force"] | None: ...
 
-Global___RolloutApplicationRequest: typing_extensions.TypeAlias = RolloutApplicationRequest
+global___RolloutApplicationRequest = RolloutApplicationRequest
 
 @typing.final
 class RolloutApplicationResult(google.protobuf.message.Message):
@@ -1035,7 +1058,7 @@ class RolloutApplicationResult(google.protobuf.message.Message):
         self,
     ) -> None: ...
 
-Global___RolloutApplicationResult: typing_extensions.TypeAlias = RolloutApplicationResult
+global___RolloutApplicationResult = RolloutApplicationResult
 
 @typing.final
 class SetAliasRequest(google.protobuf.message.Message):
@@ -1047,14 +1070,14 @@ class SetAliasRequest(google.protobuf.message.Message):
     ENVIRONMENT_NAME_FIELD_NUMBER: builtins.int
     alias: builtins.str
     revision: builtins.str
-    auth_mode: Global___ApplicationAuthMode.ValueType
+    auth_mode: global___ApplicationAuthMode.ValueType
     environment_name: builtins.str
     def __init__(
         self,
         *,
         alias: builtins.str = ...,
         revision: builtins.str = ...,
-        auth_mode: Global___ApplicationAuthMode.ValueType | None = ...,
+        auth_mode: global___ApplicationAuthMode.ValueType | None = ...,
         environment_name: builtins.str | None = ...,
     ) -> None: ...
     def HasField(self, field_name: typing.Literal["_auth_mode", b"_auth_mode", "_environment_name", b"_environment_name", "auth_mode", b"auth_mode", "environment_name", b"environment_name"]) -> builtins.bool: ...
@@ -1064,7 +1087,7 @@ class SetAliasRequest(google.protobuf.message.Message):
     @typing.overload
     def WhichOneof(self, oneof_group: typing.Literal["_environment_name", b"_environment_name"]) -> typing.Literal["environment_name"] | None: ...
 
-Global___SetAliasRequest: typing_extensions.TypeAlias = SetAliasRequest
+global___SetAliasRequest = SetAliasRequest
 
 @typing.final
 class SetAliasResult(google.protobuf.message.Message):
@@ -1072,18 +1095,18 @@ class SetAliasResult(google.protobuf.message.Message):
 
     ALIAS_INFO_FIELD_NUMBER: builtins.int
     @property
-    def alias_info(self) -> Global___AliasInfo:
+    def alias_info(self) -> global___AliasInfo:
         """Empty. For future use."""
 
     def __init__(
         self,
         *,
-        alias_info: Global___AliasInfo | None = ...,
+        alias_info: global___AliasInfo | None = ...,
     ) -> None: ...
     def HasField(self, field_name: typing.Literal["alias_info", b"alias_info"]) -> builtins.bool: ...
     def ClearField(self, field_name: typing.Literal["alias_info", b"alias_info"]) -> None: ...
 
-Global___SetAliasResult: typing_extensions.TypeAlias = SetAliasResult
+global___SetAliasResult = SetAliasResult
 
 @typing.final
 class DeleteAliasRequest(google.protobuf.message.Message):
@@ -1103,7 +1126,7 @@ class DeleteAliasRequest(google.protobuf.message.Message):
     def ClearField(self, field_name: typing.Literal["_environment_name", b"_environment_name", "alias", b"alias", "environment_name", b"environment_name"]) -> None: ...
     def WhichOneof(self, oneof_group: typing.Literal["_environment_name", b"_environment_name"]) -> typing.Literal["environment_name"] | None: ...
 
-Global___DeleteAliasRequest: typing_extensions.TypeAlias = DeleteAliasRequest
+global___DeleteAliasRequest = DeleteAliasRequest
 
 @typing.final
 class DeleteAliasResult(google.protobuf.message.Message):
@@ -1118,7 +1141,7 @@ class DeleteAliasResult(google.protobuf.message.Message):
     ) -> None: ...
     def ClearField(self, field_name: typing.Literal["revision", b"revision"]) -> None: ...
 
-Global___DeleteAliasResult: typing_extensions.TypeAlias = DeleteAliasResult
+global___DeleteAliasResult = DeleteAliasResult
 
 @typing.final
 class ListAliasesRequest(google.protobuf.message.Message):
@@ -1136,7 +1159,7 @@ class ListAliasesRequest(google.protobuf.message.Message):
     def ClearField(self, field_name: typing.Literal["_environment_name", b"_environment_name", "environment_name", b"environment_name"]) -> None: ...
     def WhichOneof(self, oneof_group: typing.Literal["_environment_name", b"_environment_name"]) -> typing.Literal["environment_name"] | None: ...
 
-Global___ListAliasesRequest: typing_extensions.TypeAlias = ListAliasesRequest
+global___ListAliasesRequest = ListAliasesRequest
 
 @typing.final
 class ListAliasesResult(google.protobuf.message.Message):
@@ -1144,15 +1167,15 @@ class ListAliasesResult(google.protobuf.message.Message):
 
     ALIASES_FIELD_NUMBER: builtins.int
     @property
-    def aliases(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[Global___AliasInfo]: ...
+    def aliases(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[global___AliasInfo]: ...
     def __init__(
         self,
         *,
-        aliases: collections.abc.Iterable[Global___AliasInfo] | None = ...,
+        aliases: collections.abc.Iterable[global___AliasInfo] | None = ...,
     ) -> None: ...
     def ClearField(self, field_name: typing.Literal["aliases", b"aliases"]) -> None: ...
 
-Global___ListAliasesResult: typing_extensions.TypeAlias = ListAliasesResult
+global___ListAliasesResult = ListAliasesResult
 
 @typing.final
 class AliasInfo(google.protobuf.message.Message):
@@ -1177,7 +1200,7 @@ class AliasInfo(google.protobuf.message.Message):
     IS_ROLLING_FIELD_NUMBER: builtins.int
     alias: builtins.str
     revision: builtins.str
-    auth_mode: Global___ApplicationAuthMode.ValueType
+    auth_mode: global___ApplicationAuthMode.ValueType
     max_concurrency: builtins.int
     max_multiplexing: builtins.int
     keep_alive: builtins.int
@@ -1199,7 +1222,7 @@ class AliasInfo(google.protobuf.message.Message):
         *,
         alias: builtins.str = ...,
         revision: builtins.str = ...,
-        auth_mode: Global___ApplicationAuthMode.ValueType = ...,
+        auth_mode: global___ApplicationAuthMode.ValueType = ...,
         max_concurrency: builtins.int = ...,
         max_multiplexing: builtins.int = ...,
         keep_alive: builtins.int = ...,
@@ -1230,7 +1253,7 @@ class AliasInfo(google.protobuf.message.Message):
     @typing.overload
     def WhichOneof(self, oneof_group: typing.Literal["_startup_timeout", b"_startup_timeout"]) -> typing.Literal["startup_timeout"] | None: ...
 
-Global___AliasInfo: typing_extensions.TypeAlias = AliasInfo
+global___AliasInfo = AliasInfo
 
 @typing.final
 class SetSecretRequest(google.protobuf.message.Message):
@@ -1257,7 +1280,7 @@ class SetSecretRequest(google.protobuf.message.Message):
     @typing.overload
     def WhichOneof(self, oneof_group: typing.Literal["_value", b"_value"]) -> typing.Literal["value"] | None: ...
 
-Global___SetSecretRequest: typing_extensions.TypeAlias = SetSecretRequest
+global___SetSecretRequest = SetSecretRequest
 
 @typing.final
 class SetSecretResponse(google.protobuf.message.Message):
@@ -1269,7 +1292,7 @@ class SetSecretResponse(google.protobuf.message.Message):
         self,
     ) -> None: ...
 
-Global___SetSecretResponse: typing_extensions.TypeAlias = SetSecretResponse
+global___SetSecretResponse = SetSecretResponse
 
 @typing.final
 class ListSecretsRequest(google.protobuf.message.Message):
@@ -1287,7 +1310,7 @@ class ListSecretsRequest(google.protobuf.message.Message):
     def ClearField(self, field_name: typing.Literal["_environment_name", b"_environment_name", "environment_name", b"environment_name"]) -> None: ...
     def WhichOneof(self, oneof_group: typing.Literal["_environment_name", b"_environment_name"]) -> typing.Literal["environment_name"] | None: ...
 
-Global___ListSecretsRequest: typing_extensions.TypeAlias = ListSecretsRequest
+global___ListSecretsRequest = ListSecretsRequest
 
 @typing.final
 class Secret(google.protobuf.message.Message):
@@ -1315,7 +1338,7 @@ class Secret(google.protobuf.message.Message):
     @typing.overload
     def WhichOneof(self, oneof_group: typing.Literal["_environment_name", b"_environment_name"]) -> typing.Literal["environment_name"] | None: ...
 
-Global___Secret: typing_extensions.TypeAlias = Secret
+global___Secret = Secret
 
 @typing.final
 class ListSecretsResponse(google.protobuf.message.Message):
@@ -1323,15 +1346,15 @@ class ListSecretsResponse(google.protobuf.message.Message):
 
     SECRETS_FIELD_NUMBER: builtins.int
     @property
-    def secrets(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[Global___Secret]: ...
+    def secrets(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[global___Secret]: ...
     def __init__(
         self,
         *,
-        secrets: collections.abc.Iterable[Global___Secret] | None = ...,
+        secrets: collections.abc.Iterable[global___Secret] | None = ...,
     ) -> None: ...
     def ClearField(self, field_name: typing.Literal["secrets", b"secrets"]) -> None: ...
 
-Global___ListSecretsResponse: typing_extensions.TypeAlias = ListSecretsResponse
+global___ListSecretsResponse = ListSecretsResponse
 
 @typing.final
 class ListAliasRunnersRequest(google.protobuf.message.Message):
@@ -1363,7 +1386,7 @@ class ListAliasRunnersRequest(google.protobuf.message.Message):
     @typing.overload
     def WhichOneof(self, oneof_group: typing.Literal["_start_time", b"_start_time"]) -> typing.Literal["start_time"] | None: ...
 
-Global___ListAliasRunnersRequest: typing_extensions.TypeAlias = ListAliasRunnersRequest
+global___ListAliasRunnersRequest = ListAliasRunnersRequest
 
 @typing.final
 class ListAliasRunnersResponse(google.protobuf.message.Message):
@@ -1371,15 +1394,15 @@ class ListAliasRunnersResponse(google.protobuf.message.Message):
 
     RUNNERS_FIELD_NUMBER: builtins.int
     @property
-    def runners(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[Global___RunnerInfo]: ...
+    def runners(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[global___RunnerInfo]: ...
     def __init__(
         self,
         *,
-        runners: collections.abc.Iterable[Global___RunnerInfo] | None = ...,
+        runners: collections.abc.Iterable[global___RunnerInfo] | None = ...,
     ) -> None: ...
     def ClearField(self, field_name: typing.Literal["runners", b"runners"]) -> None: ...
 
-Global___ListAliasRunnersResponse: typing_extensions.TypeAlias = ListAliasRunnersResponse
+global___ListAliasRunnersResponse = ListAliasRunnersResponse
 
 @typing.final
 class RunnerInfo(google.protobuf.message.Message):
@@ -1400,6 +1423,7 @@ class RunnerInfo(google.protobuf.message.Message):
         DRAINING: RunnerInfo._State.ValueType  # 5
         TERMINATING: RunnerInfo._State.ValueType  # 6
         TERMINATED: RunnerInfo._State.ValueType  # 7
+        IDLE: RunnerInfo._State.ValueType  # 8
 
     class State(_State, metaclass=_StateEnumTypeWrapper): ...
     RUNNING: RunnerInfo.State.ValueType  # 0
@@ -1411,6 +1435,7 @@ class RunnerInfo(google.protobuf.message.Message):
     DRAINING: RunnerInfo.State.ValueType  # 5
     TERMINATING: RunnerInfo.State.ValueType  # 6
     TERMINATED: RunnerInfo.State.ValueType  # 7
+    IDLE: RunnerInfo.State.ValueType  # 8
 
     RUNNER_ID_FIELD_NUMBER: builtins.int
     IN_FLIGHT_REQUESTS_FIELD_NUMBER: builtins.int
@@ -1426,7 +1451,7 @@ class RunnerInfo(google.protobuf.message.Message):
     uptime: builtins.float
     revision: builtins.str
     alias: builtins.str
-    state: Global___RunnerInfo.State.ValueType
+    state: global___RunnerInfo.State.ValueType
     @property
     def external_metadata(self) -> google.protobuf.struct_pb2.Struct: ...
     def __init__(
@@ -1439,7 +1464,7 @@ class RunnerInfo(google.protobuf.message.Message):
         revision: builtins.str = ...,
         alias: builtins.str = ...,
         external_metadata: google.protobuf.struct_pb2.Struct | None = ...,
-        state: Global___RunnerInfo.State.ValueType | None = ...,
+        state: global___RunnerInfo.State.ValueType | None = ...,
     ) -> None: ...
     def HasField(self, field_name: typing.Literal["_expiration_countdown", b"_expiration_countdown", "_external_metadata", b"_external_metadata", "_state", b"_state", "expiration_countdown", b"expiration_countdown", "external_metadata", b"external_metadata", "state", b"state"]) -> builtins.bool: ...
     def ClearField(self, field_name: typing.Literal["_expiration_countdown", b"_expiration_countdown", "_external_metadata", b"_external_metadata", "_state", b"_state", "alias", b"alias", "expiration_countdown", b"expiration_countdown", "external_metadata", b"external_metadata", "in_flight_requests", b"in_flight_requests", "revision", b"revision", "runner_id", b"runner_id", "state", b"state", "uptime", b"uptime"]) -> None: ...
@@ -1450,7 +1475,7 @@ class RunnerInfo(google.protobuf.message.Message):
     @typing.overload
     def WhichOneof(self, oneof_group: typing.Literal["_state", b"_state"]) -> typing.Literal["state"] | None: ...
 
-Global___RunnerInfo: typing_extensions.TypeAlias = RunnerInfo
+global___RunnerInfo = RunnerInfo
 
 @typing.final
 class StopRunnerRequest(google.protobuf.message.Message):
@@ -1465,7 +1490,7 @@ class StopRunnerRequest(google.protobuf.message.Message):
     ) -> None: ...
     def ClearField(self, field_name: typing.Literal["runner_id", b"runner_id"]) -> None: ...
 
-Global___StopRunnerRequest: typing_extensions.TypeAlias = StopRunnerRequest
+global___StopRunnerRequest = StopRunnerRequest
 
 @typing.final
 class StopRunnerResponse(google.protobuf.message.Message):
@@ -1477,7 +1502,7 @@ class StopRunnerResponse(google.protobuf.message.Message):
         self,
     ) -> None: ...
 
-Global___StopRunnerResponse: typing_extensions.TypeAlias = StopRunnerResponse
+global___StopRunnerResponse = StopRunnerResponse
 
 @typing.final
 class KillRunnerRequest(google.protobuf.message.Message):
@@ -1492,7 +1517,7 @@ class KillRunnerRequest(google.protobuf.message.Message):
     ) -> None: ...
     def ClearField(self, field_name: typing.Literal["runner_id", b"runner_id"]) -> None: ...
 
-Global___KillRunnerRequest: typing_extensions.TypeAlias = KillRunnerRequest
+global___KillRunnerRequest = KillRunnerRequest
 
 @typing.final
 class ListRunnersRequest(google.protobuf.message.Message):
@@ -1516,7 +1541,7 @@ class ListRunnersRequest(google.protobuf.message.Message):
     @typing.overload
     def WhichOneof(self, oneof_group: typing.Literal["_start_time", b"_start_time"]) -> typing.Literal["start_time"] | None: ...
 
-Global___ListRunnersRequest: typing_extensions.TypeAlias = ListRunnersRequest
+global___ListRunnersRequest = ListRunnersRequest
 
 @typing.final
 class ListRunnersResponse(google.protobuf.message.Message):
@@ -1524,15 +1549,15 @@ class ListRunnersResponse(google.protobuf.message.Message):
 
     RUNNERS_FIELD_NUMBER: builtins.int
     @property
-    def runners(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[Global___RunnerInfo]: ...
+    def runners(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[global___RunnerInfo]: ...
     def __init__(
         self,
         *,
-        runners: collections.abc.Iterable[Global___RunnerInfo] | None = ...,
+        runners: collections.abc.Iterable[global___RunnerInfo] | None = ...,
     ) -> None: ...
     def ClearField(self, field_name: typing.Literal["runners", b"runners"]) -> None: ...
 
-Global___ListRunnersResponse: typing_extensions.TypeAlias = ListRunnersResponse
+global___ListRunnersResponse = ListRunnersResponse
 
 @typing.final
 class KillRunnerResponse(google.protobuf.message.Message):
@@ -1544,7 +1569,7 @@ class KillRunnerResponse(google.protobuf.message.Message):
         self,
     ) -> None: ...
 
-Global___KillRunnerResponse: typing_extensions.TypeAlias = KillRunnerResponse
+global___KillRunnerResponse = KillRunnerResponse
 
 @typing.final
 class TerminalSize(google.protobuf.message.Message):
@@ -1562,7 +1587,7 @@ class TerminalSize(google.protobuf.message.Message):
     ) -> None: ...
     def ClearField(self, field_name: typing.Literal["height", b"height", "width", b"width"]) -> None: ...
 
-Global___TerminalSize: typing_extensions.TypeAlias = TerminalSize
+global___TerminalSize = TerminalSize
 
 @typing.final
 class ShellRunnerInput(google.protobuf.message.Message):
@@ -1576,20 +1601,20 @@ class ShellRunnerInput(google.protobuf.message.Message):
     data: builtins.bytes
     close: builtins.bool
     @property
-    def tty_size(self) -> Global___TerminalSize: ...
+    def tty_size(self) -> global___TerminalSize: ...
     def __init__(
         self,
         *,
         runner_id: builtins.str = ...,
         data: builtins.bytes = ...,
         close: builtins.bool = ...,
-        tty_size: Global___TerminalSize | None = ...,
+        tty_size: global___TerminalSize | None = ...,
     ) -> None: ...
     def HasField(self, field_name: typing.Literal["_tty_size", b"_tty_size", "tty_size", b"tty_size"]) -> builtins.bool: ...
     def ClearField(self, field_name: typing.Literal["_tty_size", b"_tty_size", "close", b"close", "data", b"data", "runner_id", b"runner_id", "tty_size", b"tty_size"]) -> None: ...
     def WhichOneof(self, oneof_group: typing.Literal["_tty_size", b"_tty_size"]) -> typing.Literal["tty_size"] | None: ...
 
-Global___ShellRunnerInput: typing_extensions.TypeAlias = ShellRunnerInput
+global___ShellRunnerInput = ShellRunnerInput
 
 @typing.final
 class ShellRunnerOutput(google.protobuf.message.Message):
@@ -1612,7 +1637,7 @@ class ShellRunnerOutput(google.protobuf.message.Message):
     def ClearField(self, field_name: typing.Literal["_exit_code", b"_exit_code", "close", b"close", "data", b"data", "exit_code", b"exit_code"]) -> None: ...
     def WhichOneof(self, oneof_group: typing.Literal["_exit_code", b"_exit_code"]) -> typing.Literal["exit_code"] | None: ...
 
-Global___ShellRunnerOutput: typing_extensions.TypeAlias = ShellRunnerOutput
+global___ShellRunnerOutput = ShellRunnerOutput
 
 @typing.final
 class ListEnvironmentsRequest(google.protobuf.message.Message):
@@ -1624,7 +1649,7 @@ class ListEnvironmentsRequest(google.protobuf.message.Message):
         self,
     ) -> None: ...
 
-Global___ListEnvironmentsRequest: typing_extensions.TypeAlias = ListEnvironmentsRequest
+global___ListEnvironmentsRequest = ListEnvironmentsRequest
 
 @typing.final
 class ListEnvironmentsResponse(google.protobuf.message.Message):
@@ -1632,15 +1657,15 @@ class ListEnvironmentsResponse(google.protobuf.message.Message):
 
     ENVIRONMENTS_FIELD_NUMBER: builtins.int
     @property
-    def environments(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[Global___EnvironmentInfo]: ...
+    def environments(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[global___EnvironmentInfo]: ...
     def __init__(
         self,
         *,
-        environments: collections.abc.Iterable[Global___EnvironmentInfo] | None = ...,
+        environments: collections.abc.Iterable[global___EnvironmentInfo] | None = ...,
     ) -> None: ...
     def ClearField(self, field_name: typing.Literal["environments", b"environments"]) -> None: ...
 
-Global___ListEnvironmentsResponse: typing_extensions.TypeAlias = ListEnvironmentsResponse
+global___ListEnvironmentsResponse = ListEnvironmentsResponse
 
 @typing.final
 class EnvironmentInfo(google.protobuf.message.Message):
@@ -1667,7 +1692,7 @@ class EnvironmentInfo(google.protobuf.message.Message):
     def ClearField(self, field_name: typing.Literal["_description", b"_description", "created_at", b"created_at", "description", b"description", "is_default", b"is_default", "name", b"name"]) -> None: ...
     def WhichOneof(self, oneof_group: typing.Literal["_description", b"_description"]) -> typing.Literal["description"] | None: ...
 
-Global___EnvironmentInfo: typing_extensions.TypeAlias = EnvironmentInfo
+global___EnvironmentInfo = EnvironmentInfo
 
 @typing.final
 class CreateEnvironmentRequest(google.protobuf.message.Message):
@@ -1687,7 +1712,7 @@ class CreateEnvironmentRequest(google.protobuf.message.Message):
     def ClearField(self, field_name: typing.Literal["_description", b"_description", "description", b"description", "name", b"name"]) -> None: ...
     def WhichOneof(self, oneof_group: typing.Literal["_description", b"_description"]) -> typing.Literal["description"] | None: ...
 
-Global___CreateEnvironmentRequest: typing_extensions.TypeAlias = CreateEnvironmentRequest
+global___CreateEnvironmentRequest = CreateEnvironmentRequest
 
 @typing.final
 class CreateEnvironmentResponse(google.protobuf.message.Message):
@@ -1695,16 +1720,16 @@ class CreateEnvironmentResponse(google.protobuf.message.Message):
 
     ENVIRONMENT_FIELD_NUMBER: builtins.int
     @property
-    def environment(self) -> Global___EnvironmentInfo: ...
+    def environment(self) -> global___EnvironmentInfo: ...
     def __init__(
         self,
         *,
-        environment: Global___EnvironmentInfo | None = ...,
+        environment: global___EnvironmentInfo | None = ...,
     ) -> None: ...
     def HasField(self, field_name: typing.Literal["environment", b"environment"]) -> builtins.bool: ...
     def ClearField(self, field_name: typing.Literal["environment", b"environment"]) -> None: ...
 
-Global___CreateEnvironmentResponse: typing_extensions.TypeAlias = CreateEnvironmentResponse
+global___CreateEnvironmentResponse = CreateEnvironmentResponse
 
 @typing.final
 class DeleteEnvironmentRequest(google.protobuf.message.Message):
@@ -1719,7 +1744,7 @@ class DeleteEnvironmentRequest(google.protobuf.message.Message):
     ) -> None: ...
     def ClearField(self, field_name: typing.Literal["name", b"name"]) -> None: ...
 
-Global___DeleteEnvironmentRequest: typing_extensions.TypeAlias = DeleteEnvironmentRequest
+global___DeleteEnvironmentRequest = DeleteEnvironmentRequest
 
 @typing.final
 class DeleteEnvironmentResponse(google.protobuf.message.Message):
@@ -1731,4 +1756,4 @@ class DeleteEnvironmentResponse(google.protobuf.message.Message):
         self,
     ) -> None: ...
 
-Global___DeleteEnvironmentResponse: typing_extensions.TypeAlias = DeleteEnvironmentResponse
+global___DeleteEnvironmentResponse = DeleteEnvironmentResponse

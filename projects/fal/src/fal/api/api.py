@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import inspect
 import os
 import sys
@@ -450,6 +451,7 @@ class FalServerlessHost(Host):
             "app_files_ignore",
             "app_files_context_dir",
             "health_check_config",
+            "skip_retry_conditions",
         }
     )
 
@@ -548,6 +550,8 @@ class FalServerlessHost(Host):
         request_timeout = options.host.get("request_timeout")
         startup_timeout = options.host.get("startup_timeout")
         regions = options.host.get("regions")
+        health_check_config = options.host.get("health_check_config")
+        skip_retry_conditions = options.host.get("skip_retry_conditions")
         machine_requirements = MachineRequirements(
             machine_types=machine_type,  # type: ignore
             num_gpus=options.host.get("num_gpus"),
@@ -566,8 +570,6 @@ class FalServerlessHost(Host):
             startup_timeout=startup_timeout,
             valid_regions=regions,
         )
-
-        health_check_config = options.host.get("health_check_config")
 
         app_files = self._app_files_sync(options)
 
@@ -596,6 +598,7 @@ class FalServerlessHost(Host):
             # By default, logs are public
             private_logs=options.host.get("private_logs", False),
             files=app_files,
+            skip_retry_conditions=skip_retry_conditions,
         ):
             for log in partial_result.logs:
                 self._log_printer.print(log)
@@ -1365,12 +1368,9 @@ class BaseServable:
                 "Failed to generate OpenAPI metadata for function"
             ) from e
 
-    def serve(self) -> None:
-        import asyncio
-
+    async def serve(self) -> None:
         from prometheus_client import Gauge
         from starlette_exporter import handle_metrics
-        from uvicorn import Config
 
         # NOTE: this uses the global prometheus registry
         app_info = Gauge("fal_app_info", "Fal application information", ["version"])
@@ -1380,40 +1380,32 @@ class BaseServable:
 
         # We use the default workers=1 config because setup function can be heavy
         # and it runs once per worker.
-        server = Server(
-            config=Config(app, host="0.0.0.0", port=8080, timeout_keep_alive=300)
+        server = uvicorn.Server(
+            config=uvicorn.Config(
+                app, host="0.0.0.0", port=8080, timeout_keep_alive=300, lifespan="on"
+            )
         )
         metrics_app = FastAPI()
         metrics_app.add_route("/metrics", handle_metrics)
-        metrics_server = Server(config=Config(metrics_app, host="0.0.0.0", port=9090))
+        metrics_server = uvicorn.Server(
+            config=uvicorn.Config(metrics_app, host="0.0.0.0", port=9090)
+        )
 
         async def _serve() -> None:
             tasks = {
-                asyncio.create_task(server.serve()): server,
-                asyncio.create_task(metrics_server.serve()): metrics_server,
+                asyncio.create_task(server.serve()),
+                asyncio.create_task(metrics_server.serve()),
             }
 
-            _, pending = await asyncio.wait(
-                tasks.keys(),
-                return_when=asyncio.FIRST_COMPLETED,
+            await asyncio.wait(
+                tasks,
+                return_when=asyncio.ALL_COMPLETED,
             )
-            if not pending:
-                return
+            # we do not take care of pending tasks here.
+            # each task should be responsible for its own cleanup.
+            # graceful termination and timeout should be handled by external scheduler.
 
-            # try graceful shutdown
-            for task in pending:
-                tasks[task].should_exit = True
-            _, pending = await asyncio.wait(pending, timeout=2)
-            if not pending:
-                return
-
-            for task in pending:
-                task.cancel()
-            await asyncio.wait(pending)
-
-        with suppress(asyncio.CancelledError):
-            asyncio.set_event_loop(asyncio.new_event_loop())
-            asyncio.run(_serve())
+        await _serve()
 
 
 class ServeWrapper(BaseServable):
@@ -1427,13 +1419,13 @@ class ServeWrapper(BaseServable):
             RouteSignature("/"): self._func,
         }
 
-    def __call__(self, *args, **kwargs) -> None:
+    async def __call__(self, *args, **kwargs) -> None:
         if len(args) != 0 or len(kwargs) != 0:
             print(
                 f"[warning] {self._func.__name__} function is served with no arguments."
             )
 
-        self.serve()
+        await self.serve()
 
 
 @dataclass
@@ -1553,7 +1545,7 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
         if serve_mode:
             # This type can be safely ignored because this case only happens when it
             # is a ServedIsolatedFunction
-            serve_func: Callable[[], None] = ServeWrapper(self.raw_func)
+            serve_func = ServeWrapper(self.raw_func)
             return serve_func  # type: ignore
         else:
             return self.raw_func
@@ -1579,15 +1571,3 @@ class ServedIsolatedFunction(
     def on(
         self, host: Host | None = None, *, serve: Literal[False], **config: Any
     ) -> IsolatedFunction[ArgsT, ReturnT]: ...
-
-
-class Server(uvicorn.Server):
-    """Server is a uvicorn.Server that actually plays nicely with signals.
-    By default, uvicorn's Server class overwrites the signal handler for SIGINT,
-    swallowing the signal and preventing other tasks from cancelling.
-    This class allows the task to be gracefully cancelled using asyncio's built-in task
-    cancellation or with an event, like aiohttp.
-    """
-
-    def install_signal_handlers(self) -> None:
-        pass

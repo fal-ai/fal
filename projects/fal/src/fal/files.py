@@ -1,25 +1,25 @@
-import concurrent.futures
-import math
+import hashlib
 import os
 import posixpath
-from concurrent.futures import ThreadPoolExecutor
 from functools import cached_property
 from typing import TYPE_CHECKING, Optional
 
 from fsspec import AbstractFileSystem
 
+from fal.upload import (
+    MULTIPART_CHUNK_SIZE,
+    MULTIPART_MAX_CONCURRENCY,
+    MULTIPART_THRESHOLD,
+    DataFileMultipartUpload,
+)
+
 if TYPE_CHECKING:
     import httpx
 
 USER_AGENT = "fal-sdk/1.14.0 (python)"
-MULTIPART_THRESHOLD = 10 * 1024 * 1024  # 10MB
-MULTIPART_CHUNK_SIZE = 10 * 1024 * 1024  # 10MB
-MULTIPART_WORKERS = 10
 
 
 def _compute_md5(lpath, chunk_size=8192):
-    import hashlib
-
     hasher = hashlib.md5()
     with open(lpath, "rb") as fobj:
         for chunk in iter(lambda: fobj.read(chunk_size), b""):
@@ -153,64 +153,27 @@ class FalFileSystem(AbstractFileSystem):
             response = self._request("GET", f"/files/file/{abs_rpath}")
             fobj.write(response.content)
 
-    def _put_file_part(self, rpath, lpath, upload_id, part_number, chunk_size):
-        offset = (part_number - 1) * chunk_size
-        with open(lpath, "rb") as fobj:
-            fobj.seek(offset)
-            chunk = fobj.read(chunk_size)
-            response = self._request(
-                "PUT",
-                f"/files/file/multipart/{rpath}/{upload_id}/{part_number}",
-                files={"file_upload": (posixpath.basename(lpath), chunk)},
-            )
-            data = response.json()
-            return {
-                "part_number": data["part_number"],
-                "etag": data["etag"],
-            }
-
     def _put_file_multipart(self, lpath, rpath, size, progress):
-        response = self._request(
-            "POST",
-            f"/files/file/multipart/{rpath}/initiate",
-        )
-        upload_id = response.json()["upload_id"]
-
-        parts = []
-        num_parts = math.ceil(size / MULTIPART_CHUNK_SIZE)
         md5 = _compute_md5(lpath)
 
+        num_parts = max(1, (size + MULTIPART_CHUNK_SIZE - 1) // MULTIPART_CHUNK_SIZE)
         task = progress.add_task(f"{os.path.basename(lpath)}", total=num_parts)
 
-        with ThreadPoolExecutor(max_workers=MULTIPART_WORKERS) as executor:
-            futures = []
+        def on_part_complete(part_number: int):
+            progress.advance(task)
 
-            for part_number in range(1, num_parts + 1):
-                futures.append(
-                    executor.submit(
-                        self._put_file_part,
-                        rpath,
-                        lpath,
-                        upload_id,
-                        part_number,
-                        MULTIPART_CHUNK_SIZE,
-                    )
-                )
-
-            for future in concurrent.futures.as_completed(futures):
-                parts.append(future.result())
-                progress.advance(task)
-
-        response = self._request(
-            "POST",
-            f"/files/file/multipart/{rpath}/{upload_id}/complete",
-            json={"parts": parts},
+        multipart = DataFileMultipartUpload(
+            client=self._client,
+            target_path=rpath,
+            chunk_size=MULTIPART_CHUNK_SIZE,
+            max_concurrency=MULTIPART_MAX_CONCURRENCY,
         )
-        data = response.json()
-        if data["etag"] != md5:
+
+        etag = multipart.upload_file(lpath, on_part_complete=on_part_complete)
+
+        if etag and etag != md5:
             raise RuntimeError(
-                f"MD5 mismatch on {rpath}: {data['etag']} != {md5}, "
-                "please contact support"
+                f"MD5 mismatch on {rpath}: {etag} != {md5}, " "please contact support"
             )
 
     def put_file(self, lpath, rpath, mode="overwrite", **kwargs):
