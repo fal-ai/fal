@@ -252,16 +252,35 @@
 </li>
 <li class="toctree-l2"><a class="reference internal" href="fal.html#module-fal.container">fal.container module</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="fal.html#fal.container.ContainerImage"><code class="docutils literal notranslate"><span class="pre">ContainerImage</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.container.ContainerImage.add_dockerignore"><code class="docutils literal notranslate"><span class="pre">ContainerImage.add_dockerignore()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.container.ContainerImage.build_args"><code class="docutils literal notranslate"><span class="pre">ContainerImage.build_args</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.container.ContainerImage.builder"><code class="docutils literal notranslate"><span class="pre">ContainerImage.builder</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.container.ContainerImage.compression"><code class="docutils literal notranslate"><span class="pre">ContainerImage.compression</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.container.ContainerImage.context_dir"><code class="docutils literal notranslate"><span class="pre">ContainerImage.context_dir</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.container.ContainerImage.dockerfile_str"><code class="docutils literal notranslate"><span class="pre">ContainerImage.dockerfile_str</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.container.ContainerImage.dockerignore"><code class="docutils literal notranslate"><span class="pre">ContainerImage.dockerignore</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.container.ContainerImage.dockerignore_path"><code class="docutils literal notranslate"><span class="pre">ContainerImage.dockerignore_path</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.container.ContainerImage.force_compression"><code class="docutils literal notranslate"><span class="pre">ContainerImage.force_compression</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.container.ContainerImage.from_dockerfile"><code class="docutils literal notranslate"><span class="pre">ContainerImage.from_dockerfile()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.container.ContainerImage.from_dockerfile_str"><code class="docutils literal notranslate"><span class="pre">ContainerImage.from_dockerfile_str()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.container.ContainerImage.get_copy_add_sources"><code class="docutils literal notranslate"><span class="pre">ContainerImage.get_copy_add_sources()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.container.ContainerImage.registries"><code class="docutils literal notranslate"><span class="pre">ContainerImage.registries</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.container.ContainerImage.secrets"><code class="docutils literal notranslate"><span class="pre">ContainerImage.secrets</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.container.ContainerImage.to_dict"><code class="docutils literal notranslate"><span class="pre">ContainerImage.to_dict()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.container.DockerfileParser"><code class="docutils literal notranslate"><span class="pre">DockerfileParser</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.container.DockerfileParser.content"><code class="docutils literal notranslate"><span class="pre">DockerfileParser.content</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.container.DockerfileParser.normalized_content"><code class="docutils literal notranslate"><span class="pre">DockerfileParser.normalized_content</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.container.DockerfileParser.parse_copy_add_sources"><code class="docutils literal notranslate"><span class="pre">DockerfileParser.parse_copy_add_sources()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.container.DockerignoreHandler"><code class="docutils literal notranslate"><span class="pre">DockerignoreHandler</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.container.DockerignoreHandler.context_dir"><code class="docutils literal notranslate"><span class="pre">DockerignoreHandler.context_dir</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.container.DockerignoreHandler.dockerignore"><code class="docutils literal notranslate"><span class="pre">DockerignoreHandler.dockerignore</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.container.DockerignoreHandler.dockerignore_path"><code class="docutils literal notranslate"><span class="pre">DockerignoreHandler.dockerignore_path</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.container.DockerignoreHandler.get_patterns"><code class="docutils literal notranslate"><span class="pre">DockerignoreHandler.get_patterns()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.container.DockerignoreHandler.get_regex_patterns"><code class="docutils literal notranslate"><span class="pre">DockerignoreHandler.get_regex_patterns()</span></code></a></li>
 </ul>
 </li>
 </ul>
@@ -284,6 +303,13 @@
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.file_sync.FileSync.collect_files"><code class="docutils literal notranslate"><span class="pre">FileSync.collect_files()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.file_sync.FileSync.sync_files"><code class="docutils literal notranslate"><span class="pre">FileSync.sync_files()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.file_sync.FileSync.upload_file_multipart"><code class="docutils literal notranslate"><span class="pre">FileSync.upload_file_multipart()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.html#fal.file_sync.FileSyncOptions"><code class="docutils literal notranslate"><span class="pre">FileSyncOptions</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.file_sync.FileSyncOptions.files_context_dir"><code class="docutils literal notranslate"><span class="pre">FileSyncOptions.files_context_dir</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.file_sync.FileSyncOptions.files_ignore"><code class="docutils literal notranslate"><span class="pre">FileSyncOptions.files_ignore</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.file_sync.FileSyncOptions.files_list"><code class="docutils literal notranslate"><span class="pre">FileSyncOptions.files_list</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.file_sync.FileSyncOptions.from_options"><code class="docutils literal notranslate"><span class="pre">FileSyncOptions.from_options()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="fal.html#fal.file_sync.compute_hash"><code class="docutils literal notranslate"><span class="pre">compute_hash()</span></code></a></li>
@@ -715,49 +741,54 @@
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.max_multiplexing"><code class="docutils literal notranslate"><span class="pre">App.max_multiplexing</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.kind"><code class="docutils literal notranslate"><span class="pre">App.kind</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.image"><code class="docutils literal notranslate"><span class="pre">App.image</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.html#id21"><code class="docutils literal notranslate"><span class="pre">App.app_auth</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.html#id22"><code class="docutils literal notranslate"><span class="pre">App.app_files</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.html#id23"><code class="docutils literal notranslate"><span class="pre">App.app_files_context_dir</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.html#id24"><code class="docutils literal notranslate"><span class="pre">App.app_files_ignore</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.html#id25"><code class="docutils literal notranslate"><span class="pre">App.app_name</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#id23"><code class="docutils literal notranslate"><span class="pre">App.app_auth</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#id24"><code class="docutils literal notranslate"><span class="pre">App.app_files</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#id25"><code class="docutils literal notranslate"><span class="pre">App.app_files_context_dir</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#id26"><code class="docutils literal notranslate"><span class="pre">App.app_files_ignore</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#id27"><code class="docutils literal notranslate"><span class="pre">App.app_name</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.collect_routes"><code class="docutils literal notranslate"><span class="pre">App.collect_routes()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.html#id26"><code class="docutils literal notranslate"><span class="pre">App.concurrency_buffer</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.html#id27"><code class="docutils literal notranslate"><span class="pre">App.concurrency_buffer_perc</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#id28"><code class="docutils literal notranslate"><span class="pre">App.concurrency_buffer</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#id29"><code class="docutils literal notranslate"><span class="pre">App.concurrency_buffer_perc</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.current_request"><code class="docutils literal notranslate"><span class="pre">App.current_request</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.get_endpoints"><code class="docutils literal notranslate"><span class="pre">App.get_endpoints()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.get_health_check_config"><code class="docutils literal notranslate"><span class="pre">App.get_health_check_config()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.health"><code class="docutils literal notranslate"><span class="pre">App.health()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.html#id28"><code class="docutils literal notranslate"><span class="pre">App.host_kwargs</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.html#id29"><code class="docutils literal notranslate"><span class="pre">App.image</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#id30"><code class="docutils literal notranslate"><span class="pre">App.host_kwargs</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#id31"><code class="docutils literal notranslate"><span class="pre">App.image</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.isolate_channel"><code class="docutils literal notranslate"><span class="pre">App.isolate_channel</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.html#id30"><code class="docutils literal notranslate"><span class="pre">App.kind</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#id32"><code class="docutils literal notranslate"><span class="pre">App.kind</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.lifespan"><code class="docutils literal notranslate"><span class="pre">App.lifespan()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.local_file_path"><code class="docutils literal notranslate"><span class="pre">App.local_file_path</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.html#id31"><code class="docutils literal notranslate"><span class="pre">App.local_python_modules</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.html#id32"><code class="docutils literal notranslate"><span class="pre">App.machine_type</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.html#id33"><code class="docutils literal notranslate"><span class="pre">App.max_concurrency</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.html#id34"><code class="docutils literal notranslate"><span class="pre">App.max_multiplexing</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.html#id35"><code class="docutils literal notranslate"><span class="pre">App.min_concurrency</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.html#id36"><code class="docutils literal notranslate"><span class="pre">App.num_gpus</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#id33"><code class="docutils literal notranslate"><span class="pre">App.local_python_modules</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#id34"><code class="docutils literal notranslate"><span class="pre">App.machine_type</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#id35"><code class="docutils literal notranslate"><span class="pre">App.max_concurrency</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#id36"><code class="docutils literal notranslate"><span class="pre">App.max_multiplexing</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#id37"><code class="docutils literal notranslate"><span class="pre">App.min_concurrency</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#id38"><code class="docutils literal notranslate"><span class="pre">App.num_gpus</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.provide_hints"><code class="docutils literal notranslate"><span class="pre">App.provide_hints()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.html#id37"><code class="docutils literal notranslate"><span class="pre">App.regions</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.html#id38"><code class="docutils literal notranslate"><span class="pre">App.request_timeout</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.html#id39"><code class="docutils literal notranslate"><span class="pre">App.requirements</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.html#id40"><code class="docutils literal notranslate"><span class="pre">App.scaling_delay</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#id39"><code class="docutils literal notranslate"><span class="pre">App.regions</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#id40"><code class="docutils literal notranslate"><span class="pre">App.request_timeout</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#id41"><code class="docutils literal notranslate"><span class="pre">App.requirements</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#id42"><code class="docutils literal notranslate"><span class="pre">App.scaling_delay</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.setup"><code class="docutils literal notranslate"><span class="pre">App.setup()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.skip_retry_conditions"><code class="docutils literal notranslate"><span class="pre">App.skip_retry_conditions</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="fal.html#id41"><code class="docutils literal notranslate"><span class="pre">App.startup_timeout</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#id43"><code class="docutils literal notranslate"><span class="pre">App.startup_timeout</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.App.teardown"><code class="docutils literal notranslate"><span class="pre">App.teardown()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="fal.html#fal.ContainerImage"><code class="docutils literal notranslate"><span class="pre">ContainerImage</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.ContainerImage.add_dockerignore"><code class="docutils literal notranslate"><span class="pre">ContainerImage.add_dockerignore()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.ContainerImage.build_args"><code class="docutils literal notranslate"><span class="pre">ContainerImage.build_args</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.ContainerImage.builder"><code class="docutils literal notranslate"><span class="pre">ContainerImage.builder</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.ContainerImage.compression"><code class="docutils literal notranslate"><span class="pre">ContainerImage.compression</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.ContainerImage.context_dir"><code class="docutils literal notranslate"><span class="pre">ContainerImage.context_dir</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.ContainerImage.dockerfile_str"><code class="docutils literal notranslate"><span class="pre">ContainerImage.dockerfile_str</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.ContainerImage.dockerignore"><code class="docutils literal notranslate"><span class="pre">ContainerImage.dockerignore</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.ContainerImage.dockerignore_path"><code class="docutils literal notranslate"><span class="pre">ContainerImage.dockerignore_path</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.ContainerImage.force_compression"><code class="docutils literal notranslate"><span class="pre">ContainerImage.force_compression</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.ContainerImage.from_dockerfile"><code class="docutils literal notranslate"><span class="pre">ContainerImage.from_dockerfile()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.ContainerImage.from_dockerfile_str"><code class="docutils literal notranslate"><span class="pre">ContainerImage.from_dockerfile_str()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.html#fal.ContainerImage.get_copy_add_sources"><code class="docutils literal notranslate"><span class="pre">ContainerImage.get_copy_add_sources()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.ContainerImage.registries"><code class="docutils literal notranslate"><span class="pre">ContainerImage.registries</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.ContainerImage.secrets"><code class="docutils literal notranslate"><span class="pre">ContainerImage.secrets</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.html#fal.ContainerImage.to_dict"><code class="docutils literal notranslate"><span class="pre">ContainerImage.to_dict()</span></code></a></li>
