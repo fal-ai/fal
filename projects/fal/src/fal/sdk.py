@@ -81,36 +81,6 @@ def deconstruct_alias(full_alias: str, environment_name: str | None = None) -> s
             return full_alias[: -len(suffix)]
     return full_alias
 
-ENVIRONMENT_SEPARATOR = "--"
-
-
-def construct_alias(base_name: str, environment_name: str | None = None) -> str:
-    """Construct the full alias with environment suffix.
-
-    Examples:
-    - ("my-app", None) → "my-app"
-    - ("my-app", "main") → "my-app"
-    - ("my-app", "staging") → "my-app--staging"
-    """
-    if not environment_name or environment_name == "main":
-        return base_name
-    return f"{base_name}{ENVIRONMENT_SEPARATOR}{environment_name}"
-
-
-def deconstruct_alias(full_alias: str, environment_name: str | None = None) -> str:
-    """Extract base name from full alias for display.
-
-    Examples:
-    - ("my-app--staging", "staging") → "my-app"
-    - ("my-app", "main") → "my-app"
-    - ("my-app", None) → "my-app"
-    """
-    if environment_name and environment_name != "main":
-        suffix = f"{ENVIRONMENT_SEPARATOR}{environment_name}"
-        if full_alias.endswith(suffix):
-            return full_alias[: -len(suffix)]
-    return full_alias
-
 
 class ServerCredentials:
     def to_grpc(self) -> grpc.ChannelCredentials:
