@@ -238,6 +238,10 @@ class FileSync:
             elif abs_path.is_dir():
                 # Recursively walk directory tree
                 for file_path in abs_path.rglob("*"):
+                    # Skip symlinks - they can point outside the project and cause
+                    # path traversal issues when resolved
+                    if file_path.is_symlink():
+                        continue
                     if file_path.is_file():
                         file_abs_str, file_rel_path = normalize_path(
                             str(file_path), self.local_file_path, files_context_dir

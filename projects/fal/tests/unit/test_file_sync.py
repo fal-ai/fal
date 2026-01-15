@@ -426,3 +426,34 @@ def test_close_client(file_sync):
     with patch.object(file_sync, "_client", mock_client):
         file_sync.close()
         mock_client.close.assert_called_once()
+
+
+def test_collect_files_skips_symlinks(temp_dir):
+    """Test that symlinks are skipped when collecting files from directories.
+
+    This prevents path traversal issues when symlinks point outside
+    the project directory (e.g., .venv/bin/python -> /usr/local/bin/python).
+    """
+    app_file = Path(temp_dir) / "app.py"
+    app_file.write_text("# app file")
+
+    # Create a directory with regular files and a symlink
+    sub_dir = Path(temp_dir) / "sub"
+    sub_dir.mkdir()
+
+    regular_file = sub_dir / "regular.txt"
+    regular_file.write_text("regular content")
+
+    # Create a symlink pointing outside the temp directory
+    symlink_file = sub_dir / "external_link"
+    # Point to a file that exists but is outside the project
+    symlink_file.symlink_to("/usr/bin/env")
+
+    fs = FileSync(str(app_file))
+    files = fs.collect_files(["sub/"])
+
+    # Should only collect the regular file, not the symlink
+    relative_paths = [f.relative_path for f in files]
+    assert "sub/regular.txt" in relative_paths
+    assert "sub/external_link" not in relative_paths
+    assert len(files) == 1
