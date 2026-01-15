@@ -426,3 +426,47 @@ def test_close_client(file_sync):
     with patch.object(file_sync, "_client", mock_client):
         file_sync.close()
         mock_client.close.assert_called_once()
+
+
+def test_multipart_upload_empty_file(temp_dir):
+    """Test that multipart upload handles empty files correctly"""
+    from fal.upload import AppFileMultipartUpload
+
+    # Create empty file
+    test_file = Path(temp_dir) / "__init__.py"
+    test_file.write_bytes(b"")
+
+    metadata = file_sync_mod.FileMetadata.from_path(
+        test_file, relative="__init__.py", absolute=str(test_file)
+    )
+
+    mock_client = MagicMock()
+
+    initiate_response = MagicMock()
+    initiate_response.status_code = 200
+    initiate_response.json.return_value = {"upload_id": "test-upload-id"}
+
+    part_response = MagicMock()
+    part_response.status_code = 200
+    part_response.json.return_value = {"part_number": 1, "etag": "d41d8cd98f00b204e9800998ecf8427e"}
+
+    complete_response = MagicMock()
+    complete_response.status_code = 200
+    complete_response.json.return_value = {"etag": "d41d8cd98f00b204e9800998ecf8427e"}
+
+    mock_client.request.side_effect = [
+        initiate_response,
+        part_response,
+        complete_response,
+    ]
+
+    uploader = AppFileMultipartUpload(
+        client=mock_client,
+        file_hash=metadata.hash,
+        metadata=metadata.to_dict(),
+    )
+
+    etag = uploader.upload_file(str(test_file))
+
+    assert etag == "d41d8cd98f00b204e9800998ecf8427e"
+    assert mock_client.request.call_count == 3  # initiate, part, complete
