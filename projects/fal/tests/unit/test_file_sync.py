@@ -448,7 +448,10 @@ def test_multipart_upload_empty_file(temp_dir):
 
     part_response = MagicMock()
     part_response.status_code = 200
-    part_response.json.return_value = {"part_number": 1, "etag": "d41d8cd98f00b204e9800998ecf8427e"}
+    part_response.json.return_value = {
+        "part_number": 1,
+        "etag": "d41d8cd98f00b204e9800998ecf8427e",
+    }
 
     complete_response = MagicMock()
     complete_response.status_code = 200
