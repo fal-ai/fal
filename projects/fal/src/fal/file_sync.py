@@ -81,7 +81,7 @@ def print_path_tree(file_paths):
     console.print(tree)
 
 
-def sanitize_relative_path(rel_path: str) -> str:
+def sanitize_relative_path(rel_path: str, original_path: Path) -> str:
     pure_path = PurePosixPath(rel_path)
 
     # Block files that are absolute or contain parent directory references
@@ -89,7 +89,10 @@ def sanitize_relative_path(rel_path: str) -> str:
         raise FalServerlessException(f"Absolute Path is not allowed: {rel_path}")
     if ".." in pure_path.parts or "." in pure_path.parts:
         raise FalServerlessException(
-            f"Parent directory reference is not allowed: {rel_path}"
+            "Parent directory reference is not allowed: "
+            + f"{rel_path} for {original_path}\n"
+            + "If you didn't mean to sync this file, please ignore it using "
+            + "`app_files_ignore`."
         )
 
     return pure_path.as_posix()
@@ -134,7 +137,7 @@ def normalize_path(
 
     try:
         relative_path = os.path.relpath(absolute_path, script_dir)
-        relative_path = sanitize_relative_path(relative_path)
+        relative_path = sanitize_relative_path(relative_path, path)
     except ValueError:
         raise ValueError(f"Invalid relative path: {absolute_path}")
 
