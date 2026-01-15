@@ -89,8 +89,8 @@ def sanitize_relative_path(rel_path: str, original_path: Path) -> str:
         raise FalServerlessException(f"Absolute Path is not allowed: {rel_path}")
     if ".." in pure_path.parts or "." in pure_path.parts:
         raise FalServerlessException(
-            f"Parent directory reference is not allowed: {rel_path} for {original_path}\n" +
-            "If you didn't mean to sync this file, please ignore it using `app_files_ignore`."
+            f"Parent directory reference is not allowed: {rel_path} for {original_path}\n"
+            + "If you didn't mean to sync this file, please ignore it using `app_files_ignore`."
         )
 
     return pure_path.as_posix()
