@@ -44,7 +44,7 @@ def test_app_classvars_propagate_to_host_kwargs():
         image = ContainerImage.from_dockerfile_str(
             "FROM python:3.10-slim",
         )
-        skip_retry_conditions = ["timeout", "client_error"]
+        skip_retry_conditions = ["timeout", "connection_error"]
 
     hk = VarsApp.host_kwargs
     assert hk["request_timeout"] == 11
@@ -57,7 +57,7 @@ def test_app_classvars_propagate_to_host_kwargs():
     assert hk["max_multiplexing"] == 7
     assert hk["kind"] == "container"
     assert isinstance(hk["image"], ContainerImage)
-    assert hk["skip_retry_conditions"] == ["timeout", "client_error"]
+    assert hk["skip_retry_conditions"] == ["timeout", "connection_error"]
 
 
 def test_app_files_classvars_propagate_to_host_kwargs():
@@ -161,3 +161,23 @@ def test_function_decorator_rejects_app_files_with_container_kind():
         @fal.function(image=image, app_files=["a.py"])
         def container_because_image_is_provided():
             pass
+
+
+def test_app_classvars_propagate_to_host_kwargs_when_overriding_hidden_defaults():
+    class VarsApp(App):
+        _scheduler = "kubernetes"
+        _scheduler_options = {
+            "storage_region": "us-west",
+        }
+        keep_alive = 30
+        resolver = "pip"
+        _app_var = "example"
+
+    hk = VarsApp.host_kwargs
+    assert hk["_scheduler"] == "kubernetes"
+    assert hk["_scheduler_options"] == {
+        "storage_region": "us-west",
+    }
+    assert hk["keep_alive"] == 30
+    assert hk["resolver"] == "pip"
+    assert "_app_var" not in hk
