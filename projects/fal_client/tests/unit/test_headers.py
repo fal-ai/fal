@@ -106,10 +106,35 @@ class TestAddHintHeader:
 class TestAddPriorityHeader:
     """Tests for add_priority_header function."""
 
-    def test_adds_priority_header(self) -> None:
-        """Adds queue priority header correctly."""
+    def test_adds_normal_priority_header(self) -> None:
+        """Adds queue priority header correctly with 'normal' value."""
         headers: dict[str, str] = {}
-        add_priority_header("high", headers)
+        add_priority_header("normal", headers)
 
         assert QUEUE_PRIORITY_HEADER in headers
-        assert headers[QUEUE_PRIORITY_HEADER] == "high"
+        assert headers[QUEUE_PRIORITY_HEADER] == "normal"
+
+    def test_adds_low_priority_header(self) -> None:
+        """Adds queue priority header correctly with 'low' value."""
+        headers: dict[str, str] = {}
+        add_priority_header("low", headers)
+
+        assert QUEUE_PRIORITY_HEADER in headers
+        assert headers[QUEUE_PRIORITY_HEADER] == "low"
+
+    def test_raises_for_invalid_priority(self) -> None:
+        """Raises ValueError for invalid priority value."""
+        headers: dict[str, str] = {}
+
+        with pytest.raises(ValueError) as exc_info:
+            add_priority_header("high", headers)  # type: ignore[arg-type]
+
+        assert "must be one of" in str(exc_info.value)
+        assert "high" in str(exc_info.value)
+
+    def test_raises_for_empty_priority(self) -> None:
+        """Raises ValueError for empty priority value."""
+        headers: dict[str, str] = {}
+
+        with pytest.raises(ValueError):
+            add_priority_header("", headers)  # type: ignore[arg-type]
