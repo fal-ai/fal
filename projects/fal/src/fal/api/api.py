@@ -1212,6 +1212,20 @@ class RouteSignature(NamedTuple):
     emit_timings: bool = False
 
 
+class FalServer(uvicorn.Server):
+    def set_handle_exit(self, handle_exit):
+        self._handle_exit = handle_exit
+
+    def handle_exit(self, sig, frame):
+        super().handle_exit(sig, frame)
+        try:
+            self._handle_exit(sig, frame)
+        except BaseException as e:
+            from fastapi.logger import logger
+
+            logger.exception(f"Error in handle_exit: {e}")
+
+
 class BaseServable:
     version: ClassVar[str] = "unknown"
 
@@ -1231,7 +1245,7 @@ class BaseServable:
     async def lifespan(self, app: FastAPI):
         yield
 
-    def _build_app(self) -> FastAPI:
+    def _build_app(self) -> FalFastAPI:
         import json
         import traceback
 
@@ -1382,6 +1396,9 @@ class BaseServable:
                 "Failed to generate OpenAPI metadata for function"
             ) from e
 
+    def handle_exit(self, sig, frame):
+        pass
+
     async def serve(self) -> None:
         from prometheus_client import Gauge
         from starlette_exporter import handle_metrics
@@ -1394,11 +1411,13 @@ class BaseServable:
 
         # We use the default workers=1 config because setup function can be heavy
         # and it runs once per worker.
-        server = uvicorn.Server(
+        server = FalServer(
             config=uvicorn.Config(
                 app, host="0.0.0.0", port=8080, timeout_keep_alive=300, lifespan="on"
             )
         )
+        server.set_handle_exit(self.handle_exit)
+
         metrics_app = FastAPI()
         metrics_app.add_route("/metrics", handle_metrics)
         metrics_server = uvicorn.Server(
