@@ -18,6 +18,9 @@ def _queue_size(args):
     url = f"{client.base_url}/applications/{user.username}/{args.app_name}/queue"
     headers = client.get_headers()
 
+    if args.by_user is True:
+        url += "?by_user=true"
+
     with httpx.Client(base_url=client.base_url, headers=headers, timeout=300) as c:
         resp = c.get(url)
 
@@ -32,9 +35,26 @@ def _queue_size(args):
     size = data.get("size", data.get("queue_size", 0))
 
     if args.output == "json":
-        args.console.print(json.dumps({"size": size}))
+        output = {"size": size}
+
+        if "by_user" in data:
+            output["by_user"] = data["by_user"]
+
+        args.console.print(json.dumps(output))
     else:
-        args.console.print(f"Queue size: {size}")
+        if "by_user" in data and size > 0:
+            from rich.table import Table
+
+            table = Table()
+            table.add_column("Name", no_wrap=True)
+            table.add_column("Count")
+
+            for user, count in data["by_user"].items():
+                table.add_row(user, str(count))
+
+            args.console.print(table)
+
+        args.console.print(f"Total queue size: {size}")
 
 
 def _queue_flush(args):
@@ -89,6 +109,12 @@ def add_parser(main_subparsers, parents):
     size_parser.add_argument(
         "app_name",
         help="Application name (do not prefix with owner).",
+    )
+    size_parser.add_argument(
+        "--by-user",
+        action="store_true",
+        default=False,
+        help="Group queue size by user.",
     )
     size_parser.set_defaults(func=_queue_size)
 
