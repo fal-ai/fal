@@ -22,6 +22,8 @@ import httpx
 
 from fal._serialization import include_modules_from
 from fal.api import (
+    DUMP_READY_PATH,
+    RESTORE_READY_PATH,
     SERVE_REQUIREMENTS,
     BaseServable,
     IsolatedFunction,
@@ -478,6 +480,8 @@ class App(BaseServable):
     }
     app_name: ClassVar[Optional[str]] = None
     app_auth: ClassVar[Optional[AuthModeLiteral]] = None
+    snapshot: ClassVar[bool] = False
+    snapshot_key: ClassVar[Optional[str]] = None
     app_files: ClassVar[list[str]] = []
     app_files_ignore: ClassVar[list[str]] = DEFAULT_APP_FILES_IGNORE
     app_files_context_dir: ClassVar[Optional[str]] = None
@@ -500,13 +504,25 @@ class App(BaseServable):
 
     def __init_subclass__(cls, **kwargs):
         app_name = kwargs.pop("name", None) or _to_fal_app_name(cls.__name__)
+        snapshot = kwargs.pop("snapshot", None)
+        snapshot_key = kwargs.pop("snapshot_key", None)
         parent_settings = getattr(cls, "host_kwargs", {})
         cls.host_kwargs = {**parent_settings, **kwargs}
+
+        if snapshot is not None:
+            cls.snapshot = bool(snapshot)
+        if snapshot_key is not None:
+            cls.snapshot_key = str(snapshot_key)
 
         for key in parent_settings.keys():
             val = getattr(cls, key, None)
             if val is not None:
                 cls.host_kwargs[key] = val
+
+        if cls.snapshot:
+            scheduler_options = dict(cls.host_kwargs.get("_scheduler_options", {}))
+            scheduler_options["enable_snapshots"] = True
+            cls.host_kwargs["_scheduler_options"] = scheduler_options
 
         if cls.request_timeout is not None:
             cls.host_kwargs["request_timeout"] = cls.request_timeout
@@ -660,6 +676,28 @@ class App(BaseServable):
             sys.path.insert(0, "")
         _print_python_packages()
         await _call_any_fn(self.setup)
+
+        if self.snapshot:
+            print(
+                f"[snapshot] Setup complete; creating {DUMP_READY_PATH}",
+                flush=True,
+            )
+            with open(DUMP_READY_PATH, "w", encoding="utf-8"):
+                pass
+            print(
+                f"[snapshot] Waiting for {RESTORE_READY_PATH}",
+                flush=True,
+            )
+            wait_iters = 0
+            while not os.path.exists(RESTORE_READY_PATH):
+                if wait_iters % 50 == 0:
+                    print(
+                        f"[snapshot] Still waiting for {RESTORE_READY_PATH}",
+                        flush=True,
+                    )
+                await asyncio.sleep(0.1)
+                wait_iters += 1
+            print("[snapshot] Restore ready signal received.", flush=True)
 
         os.environ["FAL_RUNNER_STATE"] = "RUNNING"
 
