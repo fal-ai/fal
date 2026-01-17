@@ -1219,7 +1219,7 @@ class FalServer(uvicorn.Server):
     def handle_exit(self, sig, frame):
         super().handle_exit(sig, frame)
         try:
-            self._handle_exit(sig, frame)
+            self._handle_exit()
         except BaseException as e:
             from fastapi.logger import logger
 
@@ -1396,7 +1396,7 @@ class BaseServable:
                 "Failed to generate OpenAPI metadata for function"
             ) from e
 
-    def handle_exit(self, sig, frame):
+    def handle_exit(self):
         pass
 
     async def serve(self) -> None:
