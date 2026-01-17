@@ -458,6 +458,7 @@ class FalServerlessHost(Host):
     url: str = FAL_SERVERLESS_DEFAULT_URL
     local_file_path: str = ""
     credentials: Credentials = field(default_factory=get_default_credentials)
+    environment_name: Optional[str] = None
 
     _lock: threading.Lock = field(default_factory=threading.Lock, init=False)
 
@@ -532,6 +533,7 @@ class FalServerlessHost(Host):
         metadata: Optional[dict[str, Any]] = None,
         deployment_strategy: DeploymentStrategyLiteral,
         scale: bool = True,
+        environment_name: Optional[str] = None,
     ) -> Optional[RegisterApplicationResult]:
         from isolate.backends.common import active_python
 
@@ -607,6 +609,7 @@ class FalServerlessHost(Host):
             private_logs=options.host.get("private_logs", False),
             files=files,
             skip_retry_conditions=skip_retry_conditions,
+            environment_name=environment_name,
         ):
             for log in partial_result.logs:
                 self._log_printer.print(log)
@@ -678,6 +681,7 @@ class FalServerlessHost(Host):
             machine_requirements=machine_requirements,
             setup_function=setup_function,
             files=files,
+            environment_name=self.environment_name,
         ):
             result_handler(partial_result)
 

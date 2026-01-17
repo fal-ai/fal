@@ -6,7 +6,7 @@ from .parser import DictAction, FalClientParser
 def _set(args):
     client = SyncServerlessClient(host=args.host, team=args.team)
     for name, value in args.secrets.items():
-        client.secrets.set(name, value)
+        client.secrets.set(name, value, environment_name=args.env)
 
 
 def _add_set_parser(subparsers, parents):
@@ -27,6 +27,11 @@ def _add_set_parser(subparsers, parents):
         action=DictAction,
         help="Secret NAME=VALUE pairs.",
     )
+    parser.add_argument(
+        "--env",
+        dest="env",
+        help="Target environment (defaults to main).",
+    )
     parser.set_defaults(func=_set)
 
 
@@ -34,12 +39,13 @@ def _list(args):
     import json
 
     client = SyncServerlessClient(host=args.host, team=args.team)
-    secrets = client.secrets.list()
+    secrets = client.secrets.list(environment_name=args.env)
 
     if args.output == "json":
         json_secrets = [
             {
                 "name": secret.name,
+                "environment": secret.environment_name,
                 "created_at": str(secret.created_at),
             }
             for secret in secrets
@@ -49,11 +55,16 @@ def _list(args):
         from rich.table import Table
 
         table = Table()
-        table.add_column("Secret Name")
+        table.add_column("Name")
+        table.add_column("Env")
         table.add_column("Created At")
 
         for secret in secrets:
-            table.add_row(secret.name, str(secret.created_at))
+            table.add_row(
+                secret.name,
+                secret.environment_name or "main",
+                str(secret.created_at),
+            )
 
         args.console.print(table)
     else:
@@ -70,12 +81,17 @@ def _add_list_parser(subparsers, parents):
         help=list_help,
         parents=[*parents, get_output_parser()],
     )
+    parser.add_argument(
+        "--env",
+        dest="env",
+        help="Target environment (defaults to main).",
+    )
     parser.set_defaults(func=_list)
 
 
 def _unset(args):
     client = SyncServerlessClient(host=args.host, team=args.team)
-    client.secrets.unset(args.secret)
+    client.secrets.unset(args.secret, environment_name=args.env)
 
 
 def _add_unset_parser(subparsers, parents):
@@ -90,6 +106,11 @@ def _add_unset_parser(subparsers, parents):
         "secret",
         metavar="NAME",
         help="Secret's name.",
+    )
+    parser.add_argument(
+        "--env",
+        dest="env",
+        help="Target environment (defaults to main).",
     )
     parser.set_defaults(func=_unset)
 
