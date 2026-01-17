@@ -1523,6 +1523,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 """
     ),
+    skip_retry_conditions=["server_error", "connection_error", "timeout"],
 ):
     machine_type = "XS"
     teardown_file = "/data/teardown.txt"
@@ -1593,7 +1594,13 @@ def test_graceful_shutdown_app_client(
 ):
     time.sleep(3)  # Wait for the app to be deployed properly
 
-    def kill_current_runner():
+    def graceful_shutdown(wait_time: int, path: str):
+        handle = submit_and_wait_for_runner(
+            test_graceful_shutdown_app, arguments={"wait_time": wait_time}, path=path
+        )
+        saved_request_id = handle.request_id
+
+        time.sleep(2)
         with host._connection as client:
             _, _, app_alias = test_graceful_shutdown_app.partition("/")
 
@@ -1605,24 +1612,21 @@ def test_graceful_shutdown_app_client(
             assert runner is not None, "Runner not found"
 
             client.kill_runner(runner.runner_id)
-
-    def graceful_shutdown(wait_time: int, path: str):
-        handle = submit_and_wait_for_runner(
-            test_graceful_shutdown_app, arguments={"wait_time": wait_time}, path=path
-        )
-        saved_request_id = handle.request_id
-
-        time.sleep(2)
-        kill_current_runner()
         time.sleep(2)
 
         res = apps.run(test_graceful_shutdown_app, {}, path="/latest-request-id")
-        return saved_request_id == res
+        teardown_called = res == saved_request_id
+        try:
+            request_processed = handle.fetch_result()["slept"]
+        except Exception:
+            request_processed = False
+
+        return teardown_called and request_processed
 
     assert graceful_shutdown(wait_time=5, path="/"), "app should be gracefully shutdown"
     assert not graceful_shutdown(
-        wait_time=30, path="/"
+        wait_time=60, path="/"
     ), "app should be forcefully killed if it takes too long to clean up"
     assert graceful_shutdown(
-        wait_time=30, path="/with-stop"
+        wait_time=60, path="/with-stop"
     ), "app should be called handle_exit on SIGTERM"
