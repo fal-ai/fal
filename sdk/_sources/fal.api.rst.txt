@@ -36,6 +36,14 @@ fal.api.deploy module
    :undoc-members:
    :show-inheritance:
 
+fal.api.environments module
+---------------------------
+
+.. automodule:: fal.api.environments
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 fal.api.keys module
 -------------------
 

@@ -68,6 +68,14 @@ fal.cli.doctor module
    :undoc-members:
    :show-inheritance:
 
+fal.cli.environments module
+---------------------------
+
+.. automodule:: fal.cli.environments
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 fal.cli.files module
 --------------------
 

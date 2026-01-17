@@ -65,6 +65,7 @@
 </li>
 <li class="toctree-l3"><a class="reference internal" href="fal.api.html#fal.api.api.FalServerlessHost"><code class="docutils literal notranslate"><span class="pre">FalServerlessHost</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="fal.api.html#fal.api.api.FalServerlessHost.credentials"><code class="docutils literal notranslate"><span class="pre">FalServerlessHost.credentials</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.api.html#fal.api.api.FalServerlessHost.environment_name"><code class="docutils literal notranslate"><span class="pre">FalServerlessHost.environment_name</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.api.html#fal.api.api.FalServerlessHost.files_sync"><code class="docutils literal notranslate"><span class="pre">FalServerlessHost.files_sync()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.api.html#fal.api.api.FalServerlessHost.local_file_path"><code class="docutils literal notranslate"><span class="pre">FalServerlessHost.local_file_path</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.api.html#fal.api.api.FalServerlessHost.register"><code class="docutils literal notranslate"><span class="pre">FalServerlessHost.register()</span></code></a></li>
@@ -197,6 +198,12 @@
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="fal.api.html#fal.api.deploy.deploy"><code class="docutils literal notranslate"><span class="pre">deploy()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="fal.api.html#module-fal.api.environments">fal.api.environments module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="fal.api.html#fal.api.environments.create_environment"><code class="docutils literal notranslate"><span class="pre">create_environment()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal.api.html#fal.api.environments.delete_environment"><code class="docutils literal notranslate"><span class="pre">delete_environment()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal.api.html#fal.api.environments.list_environments"><code class="docutils literal notranslate"><span class="pre">list_environments()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="fal.api.html#module-fal.api.keys">fal.api.keys module</a><ul>
@@ -367,6 +374,10 @@
 </li>
 <li class="toctree-l2"><a class="reference internal" href="fal.cli.html#module-fal.cli.doctor">fal.cli.doctor module</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="fal.cli.html#fal.cli.doctor.add_parser"><code class="docutils literal notranslate"><span class="pre">add_parser()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="fal.cli.html#module-fal.cli.environments">fal.cli.environments module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="fal.cli.html#fal.cli.environments.add_parser"><code class="docutils literal notranslate"><span class="pre">add_parser()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="fal.cli.html#module-fal.cli.files">fal.cli.files module</a><ul>
@@ -2117,7 +2128,7 @@ project root was discovered.</p>
 <span id="fal-sdk-module"></span><h2>fal.sdk module<a class="headerlink" href="#module-fal.sdk" title="Link to this heading">¶</a></h2>
 <dl class="py class">
 <dt class="sig sig-object py" id="fal.sdk.AliasInfo">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.sdk.</span></span><span class="sig-name descname"><span class="pre">AliasInfo</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">alias</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">revision</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">auth_mode</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">keep_alive</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_concurrency</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_multiplexing</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">active_runners</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_concurrency</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">concurrency_buffer</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">concurrency_buffer_perc</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scaling_delay</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">machine_types</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">request_timeout</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">startup_timeout</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">valid_regions</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.AliasInfo" title="Link to this definition">¶</a></dt>
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.sdk.</span></span><span class="sig-name descname"><span class="pre">AliasInfo</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">alias</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">revision</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">auth_mode</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">keep_alive</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_concurrency</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_multiplexing</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">active_runners</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_concurrency</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">concurrency_buffer</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">concurrency_buffer_perc</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scaling_delay</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">machine_types</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">request_timeout</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">startup_timeout</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">valid_regions</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">environment_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.AliasInfo" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="fal.sdk.AliasInfo.active_runners">
@@ -2142,6 +2153,11 @@ project root was discovered.</p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="fal.sdk.AliasInfo.concurrency_buffer_perc">
 <span class="sig-name descname"><span class="pre">concurrency_buffer_perc</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></em><a class="headerlink" href="#fal.sdk.AliasInfo.concurrency_buffer_perc" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.sdk.AliasInfo.environment_name">
+<span class="sig-name descname"><span class="pre">environment_name</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code> <span class="pre">|</span> <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.sdk.AliasInfo.environment_name" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
@@ -2229,7 +2245,7 @@ project root was discovered.</p>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="fal.sdk.ApplicationInfo">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.sdk.</span></span><span class="sig-name descname"><span class="pre">ApplicationInfo</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">application_id</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">keep_alive</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_concurrency</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_multiplexing</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">active_runners</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_concurrency</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">concurrency_buffer</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">concurrency_buffer_perc</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scaling_delay</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">machine_types</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">request_timeout</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">startup_timeout</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">valid_regions</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">created_at</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.ApplicationInfo" title="Link to this definition">¶</a></dt>
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.sdk.</span></span><span class="sig-name descname"><span class="pre">ApplicationInfo</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">application_id</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">keep_alive</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_concurrency</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_multiplexing</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">active_runners</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_concurrency</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">concurrency_buffer</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">concurrency_buffer_perc</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scaling_delay</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">machine_types</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">request_timeout</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">startup_timeout</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">valid_regions</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">created_at</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">environment_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.ApplicationInfo" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="fal.sdk.ApplicationInfo.active_runners">
@@ -2254,6 +2270,11 @@ project root was discovered.</p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="fal.sdk.ApplicationInfo.created_at">
 <span class="sig-name descname"><span class="pre">created_at</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">datetime</span></code></em><a class="headerlink" href="#fal.sdk.ApplicationInfo.created_at" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.sdk.ApplicationInfo.environment_name">
+<span class="sig-name descname"><span class="pre">environment_name</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code> <span class="pre">|</span> <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.sdk.ApplicationInfo.environment_name" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
@@ -2407,6 +2428,32 @@ project root was discovered.</p>
 </dd></dl>
 
 <dl class="py class">
+<dt class="sig sig-object py" id="fal.sdk.EnvironmentInfo">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.sdk.</span></span><span class="sig-name descname"><span class="pre">EnvironmentInfo</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">description</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">is_default</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">created_at</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.EnvironmentInfo" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.sdk.EnvironmentInfo.created_at">
+<span class="sig-name descname"><span class="pre">created_at</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">datetime</span></code></em><a class="headerlink" href="#fal.sdk.EnvironmentInfo.created_at" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.sdk.EnvironmentInfo.description">
+<span class="sig-name descname"><span class="pre">description</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code> <span class="pre">|</span> <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></em><a class="headerlink" href="#fal.sdk.EnvironmentInfo.description" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.sdk.EnvironmentInfo.is_default">
+<span class="sig-name descname"><span class="pre">is_default</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></em><a class="headerlink" href="#fal.sdk.EnvironmentInfo.is_default" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.sdk.EnvironmentInfo.name">
+<span class="sig-name descname"><span class="pre">name</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><a class="headerlink" href="#fal.sdk.EnvironmentInfo.name" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
 <dt class="sig sig-object py" id="fal.sdk.FalServerlessClient">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.sdk.</span></span><span class="sig-name descname"><span class="pre">FalServerlessClient</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">hostname</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">credentials=&lt;factory&gt;</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.FalServerlessClient" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
@@ -2443,10 +2490,20 @@ project root was discovered.</p>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="fal.sdk.FalServerlessConnection.create_alias">
-<span class="sig-name descname"><span class="pre">create_alias</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">alias</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">revision</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">auth_mode</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.FalServerlessConnection.create_alias" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">create_alias</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">alias</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">revision</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">auth_mode</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">environment_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.FalServerlessConnection.create_alias" title="Link to this definition">¶</a></dt>
 <dd><dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference internal" href="#fal.sdk.AliasInfo" title="fal.sdk.AliasInfo"><code class="xref py py-class docutils literal notranslate"><span class="pre">AliasInfo</span></code></a></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.sdk.FalServerlessConnection.create_environment">
+<span class="sig-name descname"><span class="pre">create_environment</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">description</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.FalServerlessConnection.create_environment" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference internal" href="#fal.sdk.EnvironmentInfo" title="fal.sdk.EnvironmentInfo"><code class="xref py py-class docutils literal notranslate"><span class="pre">EnvironmentInfo</span></code></a></span></p>
 </dd>
 </dl>
 </dd></dl>
@@ -2478,7 +2535,7 @@ project root was discovered.</p>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="fal.sdk.FalServerlessConnection.delete_alias">
-<span class="sig-name descname"><span class="pre">delete_alias</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">alias</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.FalServerlessConnection.delete_alias" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">delete_alias</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">alias</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">environment_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.FalServerlessConnection.delete_alias" title="Link to this definition">¶</a></dt>
 <dd><dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code> | <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
@@ -2497,8 +2554,18 @@ project root was discovered.</p>
 </dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="fal.sdk.FalServerlessConnection.delete_environment">
+<span class="sig-name descname"><span class="pre">delete_environment</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.FalServerlessConnection.delete_environment" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="fal.sdk.FalServerlessConnection.delete_secret">
-<span class="sig-name descname"><span class="pre">delete_secret</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.FalServerlessConnection.delete_secret" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">delete_secret</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">environment_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.FalServerlessConnection.delete_secret" title="Link to this definition">¶</a></dt>
 <dd><dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
@@ -2523,7 +2590,7 @@ project root was discovered.</p>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="fal.sdk.FalServerlessConnection.list_alias_runners">
-<span class="sig-name descname"><span class="pre">list_alias_runners</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">alias</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">list_pending</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">start_time</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.FalServerlessConnection.list_alias_runners" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">list_alias_runners</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">alias</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">list_pending</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">start_time</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">environment_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.FalServerlessConnection.list_alias_runners" title="Link to this definition">¶</a></dt>
 <dd><dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<a class="reference internal" href="#fal.sdk.RunnerInfo" title="fal.sdk.RunnerInfo"><code class="xref py py-class docutils literal notranslate"><span class="pre">RunnerInfo</span></code></a>]</span></p>
@@ -2533,7 +2600,7 @@ project root was discovered.</p>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="fal.sdk.FalServerlessConnection.list_aliases">
-<span class="sig-name descname"><span class="pre">list_aliases</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.FalServerlessConnection.list_aliases" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">list_aliases</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">environment_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.FalServerlessConnection.list_aliases" title="Link to this definition">¶</a></dt>
 <dd><dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<a class="reference internal" href="#fal.sdk.AliasInfo" title="fal.sdk.AliasInfo"><code class="xref py py-class docutils literal notranslate"><span class="pre">AliasInfo</span></code></a>]</span></p>
@@ -2543,10 +2610,20 @@ project root was discovered.</p>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="fal.sdk.FalServerlessConnection.list_applications">
-<span class="sig-name descname"><span class="pre">list_applications</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">application_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.FalServerlessConnection.list_applications" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">list_applications</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">application_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">environment_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.FalServerlessConnection.list_applications" title="Link to this definition">¶</a></dt>
 <dd><dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<a class="reference internal" href="#fal.sdk.ApplicationInfo" title="fal.sdk.ApplicationInfo"><code class="xref py py-class docutils literal notranslate"><span class="pre">ApplicationInfo</span></code></a>]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.sdk.FalServerlessConnection.list_environments">
+<span class="sig-name descname"><span class="pre">list_environments</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.FalServerlessConnection.list_environments" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<a class="reference internal" href="#fal.sdk.EnvironmentInfo" title="fal.sdk.EnvironmentInfo"><code class="xref py py-class docutils literal notranslate"><span class="pre">EnvironmentInfo</span></code></a>]</span></p>
 </dd>
 </dl>
 </dd></dl>
@@ -2563,7 +2640,7 @@ project root was discovered.</p>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="fal.sdk.FalServerlessConnection.list_secrets">
-<span class="sig-name descname"><span class="pre">list_secrets</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.FalServerlessConnection.list_secrets" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">list_secrets</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">environment_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.FalServerlessConnection.list_secrets" title="Link to this definition">¶</a></dt>
 <dd><dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<a class="reference internal" href="#fal.sdk.ServerlessSecret" title="fal.sdk.ServerlessSecret"><code class="xref py py-class docutils literal notranslate"><span class="pre">ServerlessSecret</span></code></a>]</span></p>
@@ -2583,7 +2660,7 @@ project root was discovered.</p>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="fal.sdk.FalServerlessConnection.register">
-<span class="sig-name descname"><span class="pre">register</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">function</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">environments</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">application_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">auth_mode</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">source_code</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">health_check_config</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">serialization_method</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'cloudpickle'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">machine_requirements</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">metadata</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">deployment_strategy</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scale</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">private_logs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">files</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">skip_retry_conditions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.FalServerlessConnection.register" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">register</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">function</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">environments</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">application_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">auth_mode</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">source_code</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">health_check_config</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">serialization_method</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'cloudpickle'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">machine_requirements</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">metadata</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">deployment_strategy</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scale</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">private_logs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">files</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">skip_retry_conditions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">environment_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.FalServerlessConnection.register" title="Link to this definition">¶</a></dt>
 <dd><dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Iterator</span></code>[<a class="reference internal" href="#fal.sdk.RegisterApplicationResult" title="fal.sdk.RegisterApplicationResult"><code class="xref py py-class docutils literal notranslate"><span class="pre">RegisterApplicationResult</span></code></a>]</span></p>
@@ -2603,7 +2680,7 @@ project root was discovered.</p>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="fal.sdk.FalServerlessConnection.rollout_application">
-<span class="sig-name descname"><span class="pre">rollout_application</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">application_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">force</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.FalServerlessConnection.rollout_application" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">rollout_application</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">application_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">force</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">environment_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.FalServerlessConnection.rollout_application" title="Link to this definition">¶</a></dt>
 <dd><dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
@@ -2613,7 +2690,7 @@ project root was discovered.</p>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="fal.sdk.FalServerlessConnection.run">
-<span class="sig-name descname"><span class="pre">run</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">function</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">environments</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">serialization_method</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'cloudpickle'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">machine_requirements</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">setup_function</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">files</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.FalServerlessConnection.run" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">run</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">function</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">environments</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">serialization_method</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'cloudpickle'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">machine_requirements</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">setup_function</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">files</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">environment_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.FalServerlessConnection.run" title="Link to this definition">¶</a></dt>
 <dd><dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Iterator</span></code>[<a class="reference internal" href="#fal.sdk.HostedRunResult" title="fal.sdk.HostedRunResult"><code class="xref py py-class docutils literal notranslate"><span class="pre">HostedRunResult</span></code></a>[<code class="xref py py-class docutils literal notranslate"><span class="pre">TypeVar</span></code>(<code class="docutils literal notranslate"><span class="pre">ResultT</span></code>)]]</span></p>
@@ -2633,7 +2710,7 @@ project root was discovered.</p>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="fal.sdk.FalServerlessConnection.set_secret">
-<span class="sig-name descname"><span class="pre">set_secret</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">value</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.FalServerlessConnection.set_secret" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">set_secret</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">value</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">environment_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.FalServerlessConnection.set_secret" title="Link to this definition">¶</a></dt>
 <dd><dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
@@ -2658,7 +2735,7 @@ project root was discovered.</p>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="fal.sdk.FalServerlessConnection.update_application">
-<span class="sig-name descname"><span class="pre">update_application</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">application_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">keep_alive</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_multiplexing</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_concurrency</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_concurrency</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">concurrency_buffer</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">concurrency_buffer_perc</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scaling_delay</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">request_timeout</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">startup_timeout</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">valid_regions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">machine_types</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.FalServerlessConnection.update_application" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">update_application</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">application_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">keep_alive</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_multiplexing</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_concurrency</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_concurrency</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">concurrency_buffer</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">concurrency_buffer_perc</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scaling_delay</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">request_timeout</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">startup_timeout</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">valid_regions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">machine_types</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">environment_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.FalServerlessConnection.update_application" title="Link to this definition">¶</a></dt>
 <dd><dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference internal" href="#fal.sdk.AliasInfo" title="fal.sdk.AliasInfo"><code class="xref py py-class docutils literal notranslate"><span class="pre">AliasInfo</span></code></a></span></p>
@@ -3110,11 +3187,16 @@ project root was discovered.</p>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="fal.sdk.ServerlessSecret">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.sdk.</span></span><span class="sig-name descname"><span class="pre">ServerlessSecret</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">created_at</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.ServerlessSecret" title="Link to this definition">¶</a></dt>
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.sdk.</span></span><span class="sig-name descname"><span class="pre">ServerlessSecret</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">created_at</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">environment_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.ServerlessSecret" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="fal.sdk.ServerlessSecret.created_at">
 <span class="sig-name descname"><span class="pre">created_at</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">datetime</span></code></em><a class="headerlink" href="#fal.sdk.ServerlessSecret.created_at" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.sdk.ServerlessSecret.environment_name">
+<span class="sig-name descname"><span class="pre">environment_name</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code> <span class="pre">|</span> <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.sdk.ServerlessSecret.environment_name" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
@@ -3210,6 +3292,36 @@ project root was discovered.</p>
 <span class="sig-name descname"><span class="pre">worker_id</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><a class="headerlink" href="#fal.sdk.WorkerStatus.worker_id" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.sdk.construct_alias">
+<span class="sig-prename descclassname"><span class="pre">fal.sdk.</span></span><span class="sig-name descname"><span class="pre">construct_alias</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">base_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">environment_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.construct_alias" title="Link to this definition">¶</a></dt>
+<dd><p>Construct the full alias with environment suffix.</p>
+<p>Examples:
+- (“my-app”, None) → “my-app”
+- (“my-app”, “main”) → “my-app”
+- (“my-app”, “staging”) → “my-app–staging”</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.sdk.deconstruct_alias">
+<span class="sig-prename descclassname"><span class="pre">fal.sdk.</span></span><span class="sig-name descname"><span class="pre">deconstruct_alias</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">full_alias</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">environment_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.sdk.deconstruct_alias" title="Link to this definition">¶</a></dt>
+<dd><p>Extract base name from full alias for display.</p>
+<p>Examples:
+- (“my-app–staging”, “staging”) → “my-app”
+- (“my-app”, “main”) → “my-app”
+- (“my-app”, None) → “my-app”</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span></p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py function">
