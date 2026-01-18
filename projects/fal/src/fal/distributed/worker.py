@@ -29,8 +29,6 @@ if TYPE_CHECKING:
     import torch.multiprocessing as mp
     from zmq.sugar.socket import Socket
 
-REQUEST_ID_SIZE = 16  # UUID bytes
-
 
 class DistributedWorker:
     """
@@ -373,12 +371,12 @@ class DistributedRunner:
             worker.rank_print(
                 f"Error during initialization: {e}\n{traceback.format_exc()}"
             )
-            socket.send(b"EXIT")
+            socket.send_multipart([b"EXIT"])
             socket.close()
             return
 
         # Wait until all workers are ready
-        socket.send(b"READY")
+        socket.send_multipart([b"READY"])
         dist.barrier()
 
         # Define execution methods to invoke from workers
@@ -407,7 +405,9 @@ class DistributedRunner:
             if worker.rank != 0:
                 return
 
-            socket.send(request_id + distributed_serialize(result, is_final=True))
+            socket.send_multipart(
+                [request_id, distributed_serialize(result, is_final=True)]
+            )
 
         def stream(payload: bytes, as_text_events: bool, request_id: bytes) -> None:
             """
@@ -429,7 +429,9 @@ class DistributedRunner:
                     try:
                         intermediate = worker.queue.get(timeout=0.1)
                         if intermediate is not None and worker.rank == 0:
-                            socket.send(request_id + intermediate)  # already serialized
+                            socket.send_multipart(
+                                [request_id, intermediate]
+                            )  # already serialized
                     except queue.Empty:
                         pass
                 result = future.result()
@@ -459,27 +461,35 @@ class DistributedRunner:
                 return
 
             if encoded_response is not None:
-                socket.send(request_id + encoded_response)
-            socket.send(request_id + b"DONE")
+                socket.send_multipart([request_id, encoded_response])
+            socket.send_multipart([request_id, b"DONE"])
 
         # Runtime code
         if rank == 0:
             worker.rank_print("Master worker is ready to receive tasks.")
             while True:
-                serialized_data = socket.recv()
-                streaming = serialized_data[0] == ord("1")
-                as_text_events = serialized_data[1] == ord("1")
-                remaining = serialized_data[2:]
+                parts = socket.recv_multipart()
+                command = parts[0]
 
-                # Check for EXIT command before extracting request_id
-                if remaining == b"EXIT":
-                    params = [remaining, streaming, as_text_events, b""]
+                # Check for EXIT command
+                if command == b"EXIT":
+                    params = [b"EXIT", False, False, b""]
                     dist.broadcast_object_list(params, src=0)
                     worker.rank_print("Received exit payload, exiting.")
                     break
 
-                request_id = remaining[:REQUEST_ID_SIZE]
-                payload = remaining[REQUEST_ID_SIZE:]
+                if command == b"invoke":
+                    request_id, payload = parts[1], parts[2]
+                    streaming = False
+                    as_text_events = False
+                elif command == b"stream":
+                    text_flag, request_id, payload = parts[1], parts[2], parts[3]
+                    streaming = True
+                    as_text_events = text_flag == b"1"
+                else:
+                    worker.rank_print(f"Unknown command: {command}")
+                    continue
+
                 params = [payload, streaming, as_text_events, request_id]
                 dist.broadcast_object_list(params, src=0)
 
@@ -513,7 +523,7 @@ class DistributedRunner:
         except Exception as e:
             worker.rank_print(f"Error during teardown: {e}\n{traceback.format_exc()}")
 
-        socket.send(b"EXIT")
+        socket.send_multipart([b"EXIT"])
         socket.close()
 
     async def start(self, timeout: int = 1800, **kwargs: Any) -> None:
@@ -640,7 +650,7 @@ class DistributedRunner:
         self.maybe_cancel_keepalive()
         worker_exits: set[int] = set()
         socket = self.get_zmq_socket()
-        await socket.send_multipart([b"0", b"00EXIT"])
+        await socket.send_multipart([b"0", b"EXIT"])
 
         wait_start = time.perf_counter()
         while len(worker_exits) < self.world_size:
@@ -696,14 +706,9 @@ class DistributedRunner:
         socket = self.get_zmq_socket()
         payload_serialized = distributed_serialize(payload, is_final=True)
         request_id = uuid.uuid4().bytes
+        text_flag = b"1" if as_text_events else b"0"
         await socket.send_multipart(
-            [
-                b"0",
-                b"1"
-                + (b"1" if as_text_events else b"0")
-                + request_id
-                + payload_serialized,
-            ]
+            [b"0", b"stream", text_flag, request_id, payload_serialized]
         )
 
         start_time = time.perf_counter()
@@ -713,7 +718,9 @@ class DistributedRunner:
         while True:
             iter_start_time = time.perf_counter()
             try:
-                rank, response = await socket.recv_multipart(flags=zmq.NOBLOCK)  # type: ignore[misc]
+                rank, response_request_id, response_data = await socket.recv_multipart(
+                    flags=zmq.NOBLOCK
+                )  # type: ignore[misc]
             except zmq.Again:
                 if timeout is not None and iter_start_time - start_time > timeout:
                     raise TimeoutError(f"Streaming timed out after {timeout} seconds.")
@@ -730,9 +737,6 @@ class DistributedRunner:
                 continue
 
             assert rank == b"0", "Expected response from worker with rank 0"
-
-            response_request_id = response[:REQUEST_ID_SIZE]
-            response_data = response[REQUEST_ID_SIZE:]
 
             if response_request_id != request_id:
                 print("[debug] Discarding stale response")
@@ -773,15 +777,15 @@ class DistributedRunner:
         payload_serialized = distributed_serialize(payload, is_final=True)
 
         request_id = uuid.uuid4().bytes
-        await socket.send_multipart([b"0", b"00" + request_id + payload_serialized])
+        await socket.send_multipart([b"0", b"invoke", request_id, payload_serialized])
 
         # Wait for the response from the worker
         start_time = time.perf_counter()
         while True:
             try:
-                rank, response = await socket.recv_multipart(flags=zmq.NOBLOCK)  # type: ignore[misc]
-                response_request_id = response[:REQUEST_ID_SIZE]
-                response_data = response[REQUEST_ID_SIZE:]
+                rank, response_request_id, response_data = await socket.recv_multipart(
+                    flags=zmq.NOBLOCK
+                )  # type: ignore[misc]
                 if response_request_id != request_id:
                     print("[debug] Discarding stale response")
                     # Stale response from other request, discard and continue
