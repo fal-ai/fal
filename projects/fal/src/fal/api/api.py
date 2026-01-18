@@ -1126,7 +1126,7 @@ def function(  # type: ignore
         force_env_build = config.pop("force_env_build")
         if kind == "container":
             config["force"] = force_env_build
-        else:
+        elif force_env_build:
             console.print(
                 "[bold yellow]Note:[/bold yellow] [dim]--force--env-build[/dim]"
                 " is only supported for container apps as of now. Ignoring."
