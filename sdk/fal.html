@@ -44,6 +44,7 @@
 <li class="toctree-l2"><a class="reference internal" href="fal.api.html#module-fal.api.api">fal.api.api module</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="fal.api.html#fal.api.api.BaseServable"><code class="docutils literal notranslate"><span class="pre">BaseServable</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="fal.api.html#fal.api.api.BaseServable.collect_routes"><code class="docutils literal notranslate"><span class="pre">BaseServable.collect_routes()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.api.html#fal.api.api.BaseServable.handle_exit"><code class="docutils literal notranslate"><span class="pre">BaseServable.handle_exit()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.api.html#fal.api.api.BaseServable.lifespan"><code class="docutils literal notranslate"><span class="pre">BaseServable.lifespan()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.api.html#fal.api.api.BaseServable.openapi"><code class="docutils literal notranslate"><span class="pre">BaseServable.openapi()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.api.html#fal.api.api.BaseServable.serve"><code class="docutils literal notranslate"><span class="pre">BaseServable.serve()</span></code></a></li>
@@ -57,6 +58,11 @@
 <li class="toctree-l3"><a class="reference internal" href="fal.api.html#fal.api.api.FalMissingDependencyError"><code class="docutils literal notranslate"><span class="pre">FalMissingDependencyError</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="fal.api.html#fal.api.api.FalSerializationError"><code class="docutils literal notranslate"><span class="pre">FalSerializationError</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="fal.api.html#fal.api.api.FalSerializationError.message"><code class="docutils literal notranslate"><span class="pre">FalSerializationError.message</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.api.html#fal.api.api.FalServer"><code class="docutils literal notranslate"><span class="pre">FalServer</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.api.html#fal.api.api.FalServer.handle_exit"><code class="docutils literal notranslate"><span class="pre">FalServer.handle_exit()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.api.html#fal.api.api.FalServer.set_handle_exit"><code class="docutils literal notranslate"><span class="pre">FalServer.set_handle_exit()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="fal.api.html#fal.api.api.FalServerlessError"><code class="docutils literal notranslate"><span class="pre">FalServerlessError</span></code></a><ul>
@@ -1044,6 +1050,12 @@ to specify a Dockerfile.</p>
 <dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<a class="reference internal" href="#fal.sdk.ApplicationHealthCheckConfig" title="fal.sdk.ApplicationHealthCheckConfig"><code class="xref py py-class docutils literal notranslate"><span class="pre">ApplicationHealthCheckConfig</span></code></a>]</span></p>
 </dd>
 </dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.app.App.handle_exit">
+<span class="sig-name descname"><span class="pre">handle_exit</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sig</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">frame</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.app.App.handle_exit" title="Link to this definition">¶</a></dt>
+<dd><p>Handle exit signal.</p>
 </dd></dl>
 
 <dl class="py method">
@@ -4277,6 +4289,12 @@ to specify a Dockerfile.</p>
 <dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<a class="reference internal" href="#fal.sdk.ApplicationHealthCheckConfig" title="fal.sdk.ApplicationHealthCheckConfig"><code class="xref py py-class docutils literal notranslate"><span class="pre">ApplicationHealthCheckConfig</span></code></a>]</span></p>
 </dd>
 </dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.App.handle_exit">
+<span class="sig-name descname"><span class="pre">handle_exit</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sig</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">frame</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.App.handle_exit" title="Link to this definition">¶</a></dt>
+<dd><p>Handle exit signal.</p>
 </dd></dl>
 
 <dl class="py method">
