@@ -207,6 +207,60 @@ async def test_invoke_discards_stale_responses():
 
 
 @pytest.mark.asyncio
+async def test_invoke_concurreny_invocation():
+    """Test that invoke() can be called concurrently without errors.
+
+    1. Invoke request A is sent to the worker
+    2. Invoke request B is sent to the worker (blocks)
+    3. Request A is received by the worker and the response is sent
+    4. Request B is received by the worker and the response is sent
+    """
+    runner = DistributedRunner(SimpleWorker, world_size=1)
+
+    # Create a mock socket
+    mock_socket = AsyncMock()
+
+    captured_payloads = asyncio.Queue()
+
+    processing = 0
+
+    async def capture_send(msg):
+        nonlocal processing
+        processing += 1
+        if processing > 1:
+            raise RuntimeError("Concurrent invocation not supported")
+
+        # Message format: [b"0", b"invoke", request_id, payload]
+        if len(msg) == 4 and msg[0] == b"0" and msg[1] == b"invoke":
+            request_id, payload = msg[2], msg[3]
+            await captured_payloads.put((request_id, payload))
+
+            # Wait before finishing the send
+            await asyncio.sleep(0.5)
+
+        processing -= 1
+
+    async def capture_recv(*args, **kwargs):
+        request_id, payload = await captured_payloads.get()
+        return (b"0", request_id, payload)
+
+    mock_socket.send_multipart = capture_send
+    mock_socket.recv_multipart = capture_recv
+
+    runner.zmq_socket = mock_socket
+    runner.context = MagicMock()
+    runner.context.processes = [MagicMock(is_alive=MagicMock(return_value=True))]
+
+    future = asyncio.create_task(runner.invoke({"test": "1"}))
+    await asyncio.sleep(0.1)
+    future2 = asyncio.create_task(runner.invoke({"test": "2"}))
+    result = await future
+    result2 = await future2
+    assert result == {"test": "1"}
+    assert result2 == {"test": "2"}
+
+
+@pytest.mark.asyncio
 async def test_stream_discards_stale_responses():
     """Test that stream() discards responses with mismatched request IDs.
 

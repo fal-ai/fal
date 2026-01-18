@@ -253,6 +253,7 @@ class DistributedRunner:
         self.keepalive_payload = keepalive_payload
         self.keepalive_interval = keepalive_interval
         self.keepalive_timer = None
+        self.lock = asyncio.Lock()
 
         if set_device is not None:
             warnings.warn("set_device is deprecated and will be removed in the future.")
@@ -691,6 +692,19 @@ class DistributedRunner:
         streaming_timeout: Optional[int] = None,
         as_text_events: bool = False,
     ) -> AsyncIterator[Any]:
+        async with self.lock:
+            async for result in self._stream(
+                payload, timeout, streaming_timeout, as_text_events
+            ):
+                yield result
+
+    async def _stream(
+        self,
+        payload: dict[str, Any] = {},
+        timeout: Optional[int] = None,
+        streaming_timeout: Optional[int] = None,
+        as_text_events: bool = False,
+    ) -> AsyncIterator[Any]:
         """
         Streams the result from the distributed worker.
         :param payload: The payload to send to the worker.
@@ -763,6 +777,15 @@ class DistributedRunner:
         payload: dict[str, Any] = {},
         timeout: Optional[int] = None,
     ) -> Any:
+        # Lock the invocation to prevent concurrent invocations
+        async with self.lock:
+            return await self._invoke(payload, timeout)
+
+    async def _invoke(
+        self,
+        payload: dict[str, Any],
+        timeout: Optional[int],
+    ) -> Any:
         """
         Invokes the distributed worker with the given payload.
         :param payload: The payload to send to the worker.
@@ -801,6 +824,9 @@ class DistributedRunner:
 
                 await asyncio.sleep(0.1)
                 self.ensure_alive()
+            except BaseException as e:
+                print(f"Error in invoke: {e}\n{traceback.format_exc()}")
+                raise e
 
         self.maybe_start_keepalive()  # Restart the keepalive timer
         assert rank == b"0", "Expected response from worker with rank 0"
