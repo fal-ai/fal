@@ -520,9 +520,12 @@ class App(BaseServable):
         ...         return {"url": fal.toolkit.upload_image(image)}
 
     Attributes:
-        requirements: List of pip packages to install in the environment.
+        requirements: Pip packages to install in the environment.
             Supports standard pip syntax including version specifiers.
-            Example: `["numpy==1.24.0", "torch>=2.0.0"]`
+            Use a list of strings for a single install step, or a list of lists
+            to install in multiple steps.
+            Example: `["numpy==1.24.0", "torch>=2.0.0"]` or
+            `[["setuptools", "wheel"], ["numpy==1.24.0"]]`
         local_python_modules: List of local Python module names to include
             in the deployment. Use for custom code not available on PyPI.
             Example: `["my_utils", "models"]`
@@ -560,7 +563,7 @@ class App(BaseServable):
             to specify a Dockerfile.
     """
 
-    requirements: ClassVar[list[str]] = []
+    requirements: ClassVar[list[str] | list[list[str]]] = []  # type: ignore[assignment]
     local_python_modules: ClassVar[list[str]] = []
     machine_type: ClassVar[str | list[str]] = "S"
     num_gpus: ClassVar[int | None] = None
@@ -663,15 +666,6 @@ class App(BaseServable):
             raise ValueError(
                 "App classes should not override __init__ directly. "
                 "Use setup() instead."
-            )
-
-        if cls.requirements and cls.host_kwargs.get("kind") == "container":
-            from fal.console import console
-
-            console.print(
-                "\n[yellow]WARNING:[/yellow] Using [bold]requirements[/bold] with "
-                "container apps is not recommended. For better performance, "
-                "install dependencies in the Dockerfile instead.\n"
             )
 
     def __init__(self, *, _allow_init: bool = False):
