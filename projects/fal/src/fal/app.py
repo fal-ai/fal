@@ -156,6 +156,7 @@ def wrap_app(cls: type[App], **kwargs) -> IsolatedFunction:
     wrapper = fal_function(
         kind,
         requirements=cls.requirements,
+        install_requirements=cls.install_requirements,
         local_python_modules=cls.local_python_modules,
         machine_type=cls.machine_type,
         num_gpus=cls.num_gpus,
@@ -426,6 +427,9 @@ class App(BaseServable):
         requirements: List of pip packages to install in the environment.
             Supports standard pip syntax including version specifiers.
             Example: `["numpy==1.24.0", "torch>=2.0.0"]`
+        install_requirements: List of pip packages installed before requirements.
+            Useful for packages that are needed to resolve or build other deps.
+            Example: `["setuptools", "wheel"]`
         local_python_modules: List of local Python module names to include
             in the deployment. Use for custom code not available on PyPI.
             Example: `["my_utils", "models"]`
@@ -464,6 +468,7 @@ class App(BaseServable):
     """
 
     requirements: ClassVar[list[str]] = []
+    install_requirements: ClassVar[list[str]] = []
     local_python_modules: ClassVar[list[str]] = []
     machine_type: ClassVar[str | list[str]] = "S"
     num_gpus: ClassVar[int | None] = None
@@ -568,13 +573,16 @@ class App(BaseServable):
                 "Use setup() instead."
             )
 
-        if cls.requirements and cls.host_kwargs.get("kind") == "container":
+        if (cls.requirements or cls.install_requirements) and cls.host_kwargs.get(
+            "kind"
+        ) == "container":
             from fal.console import console
 
             console.print(
-                "\n[yellow]WARNING:[/yellow] Using [bold]requirements[/bold] with "
-                "container apps is not recommended. For better performance, "
-                "install dependencies in the Dockerfile instead.\n"
+                "\n[yellow]WARNING:[/yellow] Using [bold]requirements[/bold] or "
+                "[bold]install_requirements[/bold] with container apps is not "
+                "recommended. For better performance, install dependencies in the "
+                "Dockerfile instead.\n"
             )
 
     def __init__(self, *, _allow_init: bool = False):
