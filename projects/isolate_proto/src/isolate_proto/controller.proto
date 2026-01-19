@@ -139,6 +139,7 @@ message ServiceURLs {
     string run = 2;
     string queue = 3;
     string ws = 4;
+    string log = 5;
 }
 
 message HostedRunResult {
