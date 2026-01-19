@@ -195,7 +195,7 @@ async def test_invoke_discards_stale_responses():
     runner.context.processes = [MagicMock(is_alive=MagicMock(return_value=True))]
 
     # Call invoke with a short timeout so we don't get the response
-    with pytest.raises(TimeoutError):
+    with pytest.raises(asyncio.TimeoutError):
         await asyncio.wait_for(runner.invoke({"test": "stale"}), timeout=0.1)
 
     result = await runner.invoke({"test": "correct"})
@@ -321,10 +321,14 @@ async def test_stream_discards_stale_responses():
     runner.context.processes = [MagicMock(is_alive=MagicMock(return_value=True))]
 
     # Start first stream and cancel it mid-flight
-    with pytest.raises(TimeoutError):
-        async with asyncio.timeout(0.1):
-            async for chunk in runner.stream({"test": "stale"}):
-                pass
+    # Note that asyncio.timeout is not available pre python 3.11,
+    #   so we need a helper function and wait_for instead.
+    async def consume_stream():
+        async for chunk in runner.stream({"test": "stale"}):
+            pass
+
+    with pytest.raises(asyncio.TimeoutError):
+        await asyncio.wait_for(consume_stream(), timeout=0.1)
 
     # Second stream should work correctly, discarding any stale chunks
     results = []
