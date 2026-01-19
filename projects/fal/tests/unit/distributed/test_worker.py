@@ -1,8 +1,13 @@
 import asyncio
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from fal.distributed.worker import DistributedRunner, DistributedWorker
+from fal.distributed.utils import distributed_serialize
+from fal.distributed.worker import (
+    DistributedRunner,
+    DistributedWorker,
+)
 
 
 class SimpleWorker(DistributedWorker):
@@ -142,3 +147,192 @@ def test_runner_terminate_when_not_started():
     """Test that terminate() is safe to call even when not started."""
     runner = DistributedRunner(SimpleWorker, world_size=1)
     runner.terminate()  # Should not crash
+
+
+@pytest.mark.asyncio
+async def test_invoke_discards_stale_responses():
+    """Test that invoke() discards responses with mismatched request IDs.
+
+    This tests the fix for a race condition where:
+    1. Request A is sent to the worker
+    2. Request A is cancelled mid-flight (after send, before receive)
+    3. Worker sends response for Request A
+    4. Request B is sent
+    5. Request B's recv loop should discard Request A's response
+    """
+    runner = DistributedRunner(SimpleWorker, world_size=1)
+
+    # Create a mock socket
+    mock_socket = AsyncMock()
+
+    # Track which request_ids and payloads sent
+    captured_payloads = asyncio.Queue()
+
+    async def capture_send(msg):
+        # Message format: [b"0", b"invoke", request_id, payload]
+        if len(msg) == 4 and msg[0] == b"0" and msg[1] == b"invoke":
+            request_id, payload = msg[2], msg[3]
+            await captured_payloads.put((request_id, payload))
+
+    mock_socket.send_multipart = capture_send
+
+    # recv_multipart will return stale response first, then correct response
+    call_count = 0
+
+    # Mimic implementation of what it will do in the worker
+    async def mock_echo_recv(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        request_id, payload = await captured_payloads.get()
+        await asyncio.sleep(0.5)
+        return (b"0", request_id, payload)
+
+    mock_socket.recv_multipart = mock_echo_recv
+
+    # Mock the runner state
+    runner.zmq_socket = mock_socket
+    runner.context = MagicMock()
+    runner.context.processes = [MagicMock(is_alive=MagicMock(return_value=True))]
+
+    # Call invoke with a short timeout so we don't get the response
+    with pytest.raises(TimeoutError):
+        await asyncio.wait_for(runner.invoke({"test": "stale"}), timeout=0.1)
+
+    result = await runner.invoke({"test": "correct"})
+
+    # Verify we got the correct response, not the stale one
+    assert result == {"test": "correct"}
+    # Verify recv was called twice (once for stale, once for correct)
+    assert call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_invoke_concurreny_invocation():
+    """Test that invoke() can be called concurrently without errors.
+
+    1. Invoke request A is sent to the worker
+    2. Invoke request B is sent to the worker (blocks)
+    3. Request A is received by the worker and the response is sent
+    4. Request B is received by the worker and the response is sent
+    """
+    runner = DistributedRunner(SimpleWorker, world_size=1)
+
+    # Create a mock socket
+    mock_socket = AsyncMock()
+
+    captured_payloads = asyncio.Queue()
+
+    processing = 0
+
+    async def capture_send(msg):
+        nonlocal processing
+        processing += 1
+        if processing > 1:
+            raise RuntimeError("Concurrent invocation not supported")
+
+        # Message format: [b"0", b"invoke", request_id, payload]
+        if len(msg) == 4 and msg[0] == b"0" and msg[1] == b"invoke":
+            request_id, payload = msg[2], msg[3]
+            await captured_payloads.put((request_id, payload))
+
+            # Wait before finishing the send
+            await asyncio.sleep(0.5)
+
+        processing -= 1
+
+    async def capture_recv(*args, **kwargs):
+        request_id, payload = await captured_payloads.get()
+        return (b"0", request_id, payload)
+
+    mock_socket.send_multipart = capture_send
+    mock_socket.recv_multipart = capture_recv
+
+    runner.zmq_socket = mock_socket
+    runner.context = MagicMock()
+    runner.context.processes = [MagicMock(is_alive=MagicMock(return_value=True))]
+
+    future = asyncio.create_task(runner.invoke({"test": "1"}))
+    await asyncio.sleep(0.1)
+    future2 = asyncio.create_task(runner.invoke({"test": "2"}))
+    result = await future
+    result2 = await future2
+    assert result == {"test": "1"}
+    assert result2 == {"test": "2"}
+
+
+@pytest.mark.asyncio
+async def test_stream_discards_stale_responses():
+    """Test that stream() discards responses with mismatched request IDs.
+
+    This tests the fix for a race condition where:
+    1. Stream request A is sent to the worker
+    2. Request A is cancelled mid-flight (after send, before all chunks received)
+    3. Worker sends chunks for Request A
+    4. Stream request B is sent
+    5. Request B's recv loop should discard Request A's chunks
+    """
+    runner = DistributedRunner(SimpleWorker, world_size=1)
+
+    mock_socket = AsyncMock()
+
+    # Track request IDs in order they're sent
+    request_ids: list[bytes] = []
+
+    async def capture_send(msg):
+        # Message format: [b"0", b"stream", text_flag, request_id, payload]
+        if len(msg) == 5 and msg[0] == b"0" and msg[1] == b"stream":
+            request_ids.append(msg[3])
+
+    mock_socket.send_multipart = capture_send
+
+    call_count = 0
+
+    async def mock_echo_recv(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+
+        if call_count == 1:
+            # First recv - simulate processing delay, then return chunk for request A
+            while len(request_ids) < 1:
+                await asyncio.sleep(0.01)
+            await asyncio.sleep(0.5)  # This will be cancelled by timeout
+            chunk_data = distributed_serialize({"chunk": "stale_1"}, is_final=False)
+            return (b"0", request_ids[0], chunk_data)
+        elif call_count == 2:
+            # Second recv - stale chunk from request A (arrives after request B started)
+            chunk_data = distributed_serialize({"chunk": "stale_2"}, is_final=False)
+            return (b"0", request_ids[0], chunk_data)
+        elif call_count == 3:
+            # Third recv - chunk for request B (correct)
+            while len(request_ids) < 2:
+                await asyncio.sleep(0.01)
+            chunk_data = distributed_serialize({"chunk": "correct"}, is_final=False)
+            return (b"0", request_ids[1], chunk_data)
+        elif call_count == 4:
+            # DONE marker for request B
+            return (b"0", request_ids[1], b"DONE")
+        else:
+            raise RuntimeError(f"Unexpected call {call_count}")
+
+    mock_socket.recv_multipart = mock_echo_recv
+
+    runner.zmq_socket = mock_socket
+    runner.context = MagicMock()
+    runner.context.processes = [MagicMock(is_alive=MagicMock(return_value=True))]
+
+    # Start first stream and cancel it mid-flight
+    with pytest.raises(TimeoutError):
+        async with asyncio.timeout(0.1):
+            async for chunk in runner.stream({"test": "stale"}):
+                pass
+
+    # Second stream should work correctly, discarding any stale chunks
+    results = []
+    async for chunk in runner.stream({"test": "correct"}):
+        results.append(chunk)
+
+    # Should only have the correct chunk, stale was discarded
+    assert len(results) == 1
+    assert results[0] == {"chunk": "correct"}
+    # recv called: 1 (cancelled), 2 (stale discarded), 3 (correct chunk), 4 (DONE)
+    assert call_count == 4

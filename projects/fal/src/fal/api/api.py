@@ -458,6 +458,7 @@ class FalServerlessHost(Host):
     url: str = FAL_SERVERLESS_DEFAULT_URL
     local_file_path: str = ""
     credentials: Credentials = field(default_factory=get_default_credentials)
+    environment_name: Optional[str] = None
 
     _lock: threading.Lock = field(default_factory=threading.Lock, init=False)
 
@@ -532,6 +533,7 @@ class FalServerlessHost(Host):
         metadata: Optional[dict[str, Any]] = None,
         deployment_strategy: DeploymentStrategyLiteral,
         scale: bool = True,
+        environment_name: Optional[str] = None,
     ) -> Optional[RegisterApplicationResult]:
         from isolate.backends.common import active_python
 
@@ -607,6 +609,7 @@ class FalServerlessHost(Host):
             private_logs=options.host.get("private_logs", False),
             files=files,
             skip_retry_conditions=skip_retry_conditions,
+            environment_name=environment_name,
         ):
             for log in partial_result.logs:
                 self._log_printer.print(log)
@@ -678,6 +681,7 @@ class FalServerlessHost(Host):
             machine_requirements=machine_requirements,
             setup_function=setup_function,
             files=files,
+            environment_name=self.environment_name,
         ):
             result_handler(partial_result)
 
@@ -1120,7 +1124,13 @@ def function(  # type: ignore
 
     if config.get("force_env_build") is not None:
         force_env_build = config.pop("force_env_build")
-        config["force"] = force_env_build
+        if kind == "container":
+            config["force"] = force_env_build
+        elif force_env_build:
+            console.print(
+                "[bold yellow]Note:[/bold yellow] [dim]--force--env-build[/dim]"
+                " is only supported for container apps as of now. Ignoring."
+            )
 
     options = host.parse_options(kind=kind, **config)
 
@@ -1206,6 +1216,20 @@ class RouteSignature(NamedTuple):
     emit_timings: bool = False
 
 
+class FalServer(uvicorn.Server):
+    def set_handle_exit(self, handle_exit):
+        self._handle_exit = handle_exit
+
+    def handle_exit(self, sig, frame):
+        super().handle_exit(sig, frame)
+        try:
+            self._handle_exit()
+        except BaseException as e:
+            from fastapi.logger import logger
+
+            logger.exception(f"Error in handle_exit: {e}")
+
+
 class BaseServable:
     version: ClassVar[str] = "unknown"
 
@@ -1225,7 +1249,7 @@ class BaseServable:
     async def lifespan(self, app: FastAPI):
         yield
 
-    def _build_app(self) -> FastAPI:
+    def _build_app(self) -> FalFastAPI:
         import json
         import traceback
 
@@ -1376,6 +1400,9 @@ class BaseServable:
                 "Failed to generate OpenAPI metadata for function"
             ) from e
 
+    def handle_exit(self):
+        pass
+
     async def serve(self) -> None:
         from prometheus_client import Gauge
         from starlette_exporter import handle_metrics
@@ -1388,11 +1415,13 @@ class BaseServable:
 
         # We use the default workers=1 config because setup function can be heavy
         # and it runs once per worker.
-        server = uvicorn.Server(
+        server = FalServer(
             config=uvicorn.Config(
                 app, host="0.0.0.0", port=8080, timeout_keep_alive=300, lifespan="on"
             )
         )
+        server.set_handle_exit(self.handle_exit)
+
         metrics_app = FastAPI()
         metrics_app.add_route("/metrics", handle_metrics)
         metrics_server = uvicorn.Server(

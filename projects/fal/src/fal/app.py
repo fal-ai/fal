@@ -681,6 +681,9 @@ class App(BaseServable):
     def setup(self):
         """Setup the application before serving."""
 
+    def handle_exit(self, sig, frame):
+        """Handle exit signal."""
+
     def teardown(self):
         """Teardown the application after serving."""
 
