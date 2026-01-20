@@ -25,18 +25,28 @@ from typing import (
     Optional,
     Literal,
     Callable,
+    Union,
 )
 from urllib.parse import urlencode
 
 import httpx
 import msgpack
 from httpx_sse import aconnect_sse, connect_sse
+
 from fal_client.auth import (
     AuthCredentials,
     FAL_QUEUE_RUN_HOST,
     FAL_RUN_HOST,
     MissingCredentialsError,
     fetch_auth_credentials,
+)
+from fal_client._headers import (
+    Priority,
+    add_priority_header,
+    add_timeout_header,
+    add_hint_header,
+    REQUEST_TIMEOUT_TYPE_HEADER,
+    REQUEST_TIMEOUT_HEADER,
 )
 
 if TYPE_CHECKING:
@@ -49,7 +59,6 @@ if TYPE_CHECKING:
     from PIL import Image
 
 AnyJSON = Dict[str, Any]
-Priority = Literal["normal", "low"]
 
 RUN_URL_FORMAT = f"https://{FAL_RUN_HOST}/"
 QUEUE_URL_FORMAT = f"https://{FAL_QUEUE_RUN_HOST}/"
@@ -57,6 +66,8 @@ REALTIME_URL_FORMAT = f"wss://{FAL_RUN_HOST}/"
 REST_URL = "https://rest.alpha.fal.ai"
 CDN_URL = "https://v3.fal.media"
 USER_AGENT = "fal-client/0.2.2 (python)"
+
+MIN_REQUEST_TIMEOUT_SECONDS = 1
 
 
 @dataclass
@@ -879,6 +890,12 @@ def _should_retry_response(
     response: httpx.Response,
     extra_retry_codes: list[int] = [],
 ) -> bool:
+    # Honor user defined timeouts, do not retry
+    if response.status_code == 504 and response.headers.get(
+        REQUEST_TIMEOUT_TYPE_HEADER
+    ):
+        return False
+
     if _is_ingress_error(response):
         return True
 
@@ -889,6 +906,18 @@ def _should_retry_response(
 
 
 def _should_retry(exc: Exception, extra_retry_codes: list[int] = []) -> bool:
+    # Check TimeoutException FIRST, before TransportError
+    if isinstance(exc, httpx.TimeoutException):
+        try:
+            request = exc.request
+            # User set a timeout - honor it, don't retry
+            if isinstance(request, httpx.Request):
+                if REQUEST_TIMEOUT_HEADER in request.headers:
+                    return False
+        except RuntimeError:
+            pass  # .request property not set
+        return True  # No user timeout specified, safe to retry
+
     if isinstance(exc, httpx.TransportError):
         return True
 
@@ -1187,12 +1216,19 @@ class AsyncClient:
         arguments: AnyJSON,
         *,
         path: str = "",
-        timeout: float | None = None,
+        timeout: Optional[Union[int, float]] = None,
+        start_timeout: Optional[Union[int, float]] = None,
         hint: str | None = None,
         headers: dict[str, str] = {},
     ) -> AnyJSON:
         """Run an application with the given arguments (which will be JSON serialized). The path parameter can be used to
         specify a subpath when applicable. This method will return the result of the inference call directly.
+
+        Args:
+            timeout: Client-side HTTP timeout in seconds. Controls how long the HTTP
+                client waits for a response. Defaults to the client's default_timeout.
+            start_timeout: Server-side request timeout in seconds. Limits total time spent
+                waiting before processing starts. Does not apply once the application begins processing.
         """
 
         url = RUN_URL_FORMAT + application
@@ -1200,8 +1236,13 @@ class AsyncClient:
             url += "/" + path.lstrip("/")
 
         _headers: dict[str, str] = {**headers}
+
+        # Set the headers
         if hint is not None:
-            _headers["X-Fal-Runner-Hint"] = hint
+            add_hint_header(hint, _headers)
+
+        if start_timeout is not None:
+            add_timeout_header(start_timeout, _headers)
 
         response = await _async_maybe_retry_request(
             self._client,
@@ -1211,6 +1252,7 @@ class AsyncClient:
             timeout=timeout,
             headers=_headers,
         )
+
         _raise_for_status(response)
         return response.json()
 
@@ -1224,10 +1266,17 @@ class AsyncClient:
         webhook_url: str | None = None,
         priority: Optional[Priority] = None,
         headers: dict[str, str] = {},
+        start_timeout: Optional[Union[int, float]] = None,
     ) -> AsyncRequestHandle:
         """Submit an application with the given arguments (which will be JSON serialized). The path parameter can be used to
         specify a subpath when applicable. This method will return a handle to the request that can be used to check the status
-        and retrieve the result of the inference call when it is done."""
+        and retrieve the result of the inference call when it is done.
+
+        Args:
+            start_timeout: Server-side request timeout in seconds. Limits total time spent
+                waiting before processing starts (includes queue wait, retries, and
+                routing). Does not apply once the application begins processing.
+        """
 
         url = QUEUE_URL_FORMAT + application
         if path:
@@ -1237,11 +1286,16 @@ class AsyncClient:
             url += "?" + urlencode({"fal_webhook": webhook_url})
 
         _headers: dict[str, str] = {**headers}
+
+        # Set the headers
         if hint is not None:
-            _headers["X-Fal-Runner-Hint"] = hint
+            add_hint_header(hint, _headers)
 
         if priority is not None:
-            _headers["X-Fal-Queue-Priority"] = priority
+            add_priority_header(priority, _headers)
+
+        if start_timeout is not None:
+            add_timeout_header(start_timeout, _headers)
 
         response = await _async_maybe_retry_request(
             self._client,
@@ -1274,7 +1328,16 @@ class AsyncClient:
         on_queue_update: Optional[Callable[[Status], None]] = None,
         priority: Optional[Priority] = None,
         headers: dict[str, str] = {},
+        start_timeout: Optional[Union[int, float]] = None,
     ) -> AnyJSON:
+        """Subscribe to an application and wait for the result.
+
+        Args:
+            start_timeout: Server-side request timeout in seconds. Limits total time spent
+                waiting before processing starts (includes queue wait, retries, and
+                routing). Does not apply once the application begins processing.
+        """
+
         handle = await self.submit(
             application,
             arguments,
@@ -1282,6 +1345,7 @@ class AsyncClient:
             hint=hint,
             priority=priority,
             headers=headers,
+            start_timeout=start_timeout,
         )
 
         if on_enqueue is not None:
@@ -1511,12 +1575,18 @@ class SyncClient:
         arguments: AnyJSON,
         *,
         path: str = "",
-        timeout: float | None = None,
+        timeout: Optional[Union[int, float]] = None,
+        start_timeout: Optional[Union[int, float]] = None,
         hint: str | None = None,
         headers: dict[str, str] = {},
     ) -> AnyJSON:
-        """Run an application with the given arguments (which will be JSON serialized). The path parameter can be used to
-        specify a subpath when applicable. This method will return the result of the inference call directly.
+        """Run an application with the given arguments (which will be JSON serialized).
+
+        Args:
+            timeout: Client-side HTTP timeout in seconds. Controls how long the HTTP
+                client waits for a response. Defaults to the client's default_timeout.
+            start_timeout: Server-side request timeout in seconds. Limits total time spent
+                waiting before processing starts. Does not apply once the application begins processing.
         """
 
         url = RUN_URL_FORMAT + application
@@ -1525,7 +1595,10 @@ class SyncClient:
 
         _headers: dict[str, str] = {**headers}
         if hint is not None:
-            _headers["X-Fal-Runner-Hint"] = hint
+            add_hint_header(hint, _headers)
+
+        if start_timeout is not None:
+            add_timeout_header(start_timeout, _headers)
 
         response = _maybe_retry_request(
             self._client,
@@ -1548,10 +1621,15 @@ class SyncClient:
         webhook_url: str | None = None,
         priority: Optional[Priority] = None,
         headers: dict[str, str] = {},
+        start_timeout: Optional[Union[int, float]] = None,
     ) -> SyncRequestHandle:
-        """Submit an application with the given arguments (which will be JSON serialized). The path parameter can be used to
-        specify a subpath when applicable. This method will return a handle to the request that can be used to check the status
-        and retrieve the result of the inference call when it is done."""
+        """Submit an application with the given arguments (which will be JSON serialized).
+
+        Args:
+            start_timeout: Server-side request timeout in seconds. Limits total time spent
+                waiting before processing starts (includes queue wait, retries, and
+                routing). Does not apply once the application begins processing.
+        """
 
         url = QUEUE_URL_FORMAT + application
         if path:
@@ -1561,11 +1639,15 @@ class SyncClient:
             url += "?" + urlencode({"fal_webhook": webhook_url})
 
         _headers: dict[str, str] = {**headers}
+
         if hint is not None:
-            _headers["X-Fal-Runner-Hint"] = hint
+            add_hint_header(hint, _headers)
 
         if priority is not None:
-            _headers["X-Fal-Queue-Priority"] = priority
+            add_priority_header(priority, _headers)
+
+        if start_timeout is not None:
+            add_timeout_header(start_timeout, _headers)
 
         response = _maybe_retry_request(
             self._client,
@@ -1598,7 +1680,16 @@ class SyncClient:
         on_queue_update: Optional[Callable[[Status], None]] = None,
         priority: Optional[Priority] = None,
         headers: dict[str, str] = {},
+        start_timeout: Optional[Union[int, float]] = None,
     ) -> AnyJSON:
+        """Subscribe to an application and wait for the result.
+
+        Args:
+            start_timeout: Server-side request timeout in seconds. Limits total time spent
+                waiting before processing starts (includes queue wait, retries, and
+                routing). Does not apply once the application begins processing.
+        """
+
         handle = self.submit(
             application,
             arguments,
@@ -1606,6 +1697,7 @@ class SyncClient:
             hint=hint,
             priority=priority,
             headers=headers,
+            start_timeout=start_timeout,
         )
 
         if on_enqueue is not None:

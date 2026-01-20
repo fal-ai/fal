@@ -45,6 +45,7 @@ jobs:
         run: |
           pip install --upgrade pip wheel
           pip install -e 'projects/fal[test]' graphlib ${{ matrix.deps }}
+          pip install -e 'projects/fal_client[test]'
 
       - name: Run e2e tests
         env:
