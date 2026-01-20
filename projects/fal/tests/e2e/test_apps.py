@@ -717,9 +717,11 @@ def test_start_timeout_queue_blocking(test_queue_blocking_app: str):
     4. First request should complete successfully
     """
     import fal_client
+    from fal_client.client import FalClientHTTPError
 
     # Send a long-running request that will occupy the only slot
     # (max_concurrency=1, max_multiplexing=1)
+    # Use 10 seconds to ensure it blocks long enough for the second request to timeout
     first_handle = apps.submit(test_queue_blocking_app, arguments={"wait_time": 10})
 
     # Wait for the first request to start processing
@@ -734,7 +736,7 @@ def test_start_timeout_queue_blocking(test_queue_blocking_app: str):
 
     # Now send a second request with a short start_timeout
     # This should fail because it will timeout waiting in the queue
-    with pytest.raises(HTTPStatusError) as exc_info:
+    with pytest.raises(FalClientHTTPError) as exc_info:
         fal_client.subscribe(
             test_queue_blocking_app,
             arguments={"wait_time": 1},
@@ -743,11 +745,11 @@ def test_start_timeout_queue_blocking(test_queue_blocking_app: str):
 
     # Should get a 504 timeout error
     assert (
-        exc_info.value.response.status_code == 504
-    ), f"Expected 504 timeout, got {exc_info.value.response.status_code}"
+        exc_info.value.status_code == 504
+    ), f"Expected 504 timeout, got {exc_info.value.status_code}"
 
     # Verify the timeout type header indicates it was a user timeout
-    timeout_type = exc_info.value.response.headers.get("x-fal-request-timeout-type")
+    timeout_type = exc_info.value.response_headers.get("x-fal-request-timeout-type")
     assert timeout_type == "user", f"Expected 'user' timeout type, got {timeout_type}"
 
     # First request should complete successfully
