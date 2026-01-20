@@ -255,6 +255,24 @@ class SleepApp(fal.App, keep_alive=300, max_concurrency=1):
         return SleepOutput(slept=True)
 
 
+class QueueBlockingApp(fal.App, keep_alive=300, max_concurrency=1, max_multiplexing=1):
+    """
+    App for testing start_timeout with queue blocking.
+
+    With max_concurrency=1 and max_multiplexing=1, only ONE request can be
+    processed at a time. Additional requests must wait in the queue.
+    """
+
+    machine_type = "XS"
+
+    @fal.endpoint("/")
+    async def sleep(self, input: SleepInput) -> SleepOutput:
+        for i in range(input.wait_time):
+            print(f"sleeping {i + 1}/{input.wait_time}...", flush=True)
+            await asyncio.sleep(1)
+        return SleepOutput(slept=True)
+
+
 class ExceptionApp(fal.App, keep_alive=300, max_concurrency=1):
     machine_type = "XS"
 
@@ -528,6 +546,13 @@ def test_sleep_app(host: api.FalServerlessHost, user: User):
 
 
 @pytest.fixture(scope="module")
+def test_queue_blocking_app(host: api.FalServerlessHost, user: User):
+    queue_blocking_app = wrap_app(QueueBlockingApp)
+    with register_app(host, queue_blocking_app, "queue-blocking") as (app_alias, _):
+        yield f"{user.username}/{app_alias}"
+
+
+@pytest.fixture(scope="module")
 def test_realtime_app(host: api.FalServerlessHost, user: User):
     realtime_app = wrap_app(RealtimeApp)
     with register_app(host, realtime_app, "realtime") as (app_alias, _):
@@ -677,6 +702,57 @@ def test_app_disconnect_behavior(test_app: str, test_cancellable_app: str):
     assert (
         e.value.response.status_code == 504
     ), "Expected Gateway Timeout even though the app handled it"
+
+
+@pytest.mark.flaky(max_runs=3)
+def test_start_timeout_queue_blocking(test_queue_blocking_app: str):
+    """
+    Test that start_timeout correctly times out a request waiting in queue.
+
+    Scenario:
+    1. Send a 10-second sleep request (occupies the only slot)
+    2. While it's processing, send a second request with start_timeout=5
+    3. The second request should return 504 because it times out waiting in queue
+       (before processing starts)
+    4. First request should complete successfully
+    """
+    import fal_client
+
+    # Send a long-running request that will occupy the only slot
+    # (max_concurrency=1, max_multiplexing=1)
+    first_handle = apps.submit(test_queue_blocking_app, arguments={"wait_time": 10})
+
+    # Wait for the first request to start processing
+    while True:
+        status = first_handle.status()
+        if isinstance(status, apps.InProgress):
+            break
+        elif isinstance(status, apps.Queued):
+            time.sleep(0.1)
+        else:
+            raise Exception(f"Unexpected status for first request: {status}")
+
+    # Now send a second request with a short start_timeout
+    # This should fail because it will timeout waiting in the queue
+    with pytest.raises(HTTPStatusError) as exc_info:
+        fal_client.subscribe(
+            test_queue_blocking_app,
+            arguments={"wait_time": 1},
+            start_timeout=5,
+        )
+
+    # Should get a 504 timeout error
+    assert (
+        exc_info.value.response.status_code == 504
+    ), f"Expected 504 timeout, got {exc_info.value.response.status_code}"
+
+    # Verify the timeout type header indicates it was a user timeout
+    timeout_type = exc_info.value.response.headers.get("x-fal-request-timeout-type")
+    assert timeout_type == "user", f"Expected 'user' timeout type, got {timeout_type}"
+
+    # First request should complete successfully
+    result = first_handle.get()
+    assert result == {"slept": True}, f"First request should succeed, got {result}"
 
 
 @pytest.mark.xfail(
