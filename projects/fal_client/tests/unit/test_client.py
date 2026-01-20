@@ -855,3 +855,184 @@ async def test_async_client_ws_connect_custom_path(mocker):
         assert ws is fake_ws
 
     assert mock_request.await_args.kwargs["json"]["allowed_apps"] == ["test"]
+
+
+# Tests for start_timeout parameter
+
+
+def test_sync_client_run_with_start_timeout():
+    """Test that start_timeout adds X-Fal-Request-Timeout header in run()."""
+    with patch("fal_client.client._maybe_retry_request") as mock_request:
+        mock_response = Mock()
+        mock_response.json.return_value = {"result": "success"}
+        mock_request.return_value = mock_response
+
+        client = SyncClient(key="test-key")
+        client.run("test-app", {"input": "data"}, start_timeout=30)
+
+        call_kwargs = mock_request.call_args[1]
+        assert "headers" in call_kwargs
+        assert call_kwargs["headers"]["X-Fal-Request-Timeout"] == "30.0"
+
+
+def test_sync_client_run_with_start_timeout_float():
+    """Test that start_timeout handles float values correctly."""
+    with patch("fal_client.client._maybe_retry_request") as mock_request:
+        mock_response = Mock()
+        mock_response.json.return_value = {"result": "success"}
+        mock_request.return_value = mock_response
+
+        client = SyncClient(key="test-key")
+        client.run("test-app", {"input": "data"}, start_timeout=45.5)
+
+        call_kwargs = mock_request.call_args[1]
+        assert call_kwargs["headers"]["X-Fal-Request-Timeout"] == "45.5"
+
+
+def test_sync_client_submit_with_start_timeout():
+    """Test that start_timeout adds X-Fal-Request-Timeout header in submit()."""
+    with patch("fal_client.client._maybe_retry_request") as mock_request:
+        mock_response = Mock()
+        mock_response.json.return_value = {
+            "request_id": "req-123",
+            "response_url": "http://response",
+            "status_url": "http://status",
+            "cancel_url": "http://cancel",
+        }
+        mock_request.return_value = mock_response
+
+        client = SyncClient(key="test-key")
+        client.submit("test-app", {"input": "data"}, start_timeout=60)
+
+        call_kwargs = mock_request.call_args[1]
+        assert "headers" in call_kwargs
+        assert call_kwargs["headers"]["X-Fal-Request-Timeout"] == "60.0"
+
+
+def test_sync_client_subscribe_with_start_timeout():
+    """Test that start_timeout is passed through to submit() in subscribe()."""
+    with patch("fal_client.client._maybe_retry_request") as mock_request:
+        submit_response = Mock()
+        submit_response.json.return_value = {
+            "request_id": "req-123",
+            "response_url": "http://response",
+            "status_url": "http://status",
+            "cancel_url": "http://cancel",
+        }
+
+        status_response = Mock()
+        status_response.json.return_value = {"status": "COMPLETED", "logs": []}
+
+        result_response = Mock()
+        result_response.json.return_value = {"result": "done"}
+
+        mock_request.side_effect = [submit_response, status_response, result_response]
+
+        client = SyncClient(key="test-key")
+        client.subscribe("test-app", {"input": "data"}, start_timeout=90)
+
+        # Check the first call (submit) has the header
+        first_call_kwargs = mock_request.call_args_list[0][1]
+        assert "headers" in first_call_kwargs
+        assert first_call_kwargs["headers"]["X-Fal-Request-Timeout"] == "90.0"
+
+
+@pytest.mark.asyncio
+async def test_async_client_run_with_start_timeout():
+    """Test that start_timeout adds X-Fal-Request-Timeout header in async run()."""
+    with patch(
+        "fal_client.client._async_maybe_retry_request", new_callable=AsyncMock
+    ) as mock_request:
+        mock_response = Mock()
+        mock_response.json.return_value = {"result": "success"}
+        mock_request.return_value = mock_response
+
+        client = AsyncClient(key="test-key")
+        await client.run("test-app", {"input": "data"}, start_timeout=30)
+
+        call_kwargs = mock_request.call_args[1]
+        assert "headers" in call_kwargs
+        assert call_kwargs["headers"]["X-Fal-Request-Timeout"] == "30.0"
+
+
+@pytest.mark.asyncio
+async def test_async_client_submit_with_start_timeout():
+    """Test that start_timeout adds X-Fal-Request-Timeout header in async submit()."""
+    with patch(
+        "fal_client.client._async_maybe_retry_request", new_callable=AsyncMock
+    ) as mock_request:
+        mock_response = Mock()
+        mock_response.json.return_value = {
+            "request_id": "req-456",
+            "response_url": "http://response",
+            "status_url": "http://status",
+            "cancel_url": "http://cancel",
+        }
+        mock_request.return_value = mock_response
+
+        client = AsyncClient(key="test-key")
+        await client.submit("test-app", {"input": "data"}, start_timeout=60)
+
+        call_kwargs = mock_request.call_args[1]
+        assert "headers" in call_kwargs
+        assert call_kwargs["headers"]["X-Fal-Request-Timeout"] == "60.0"
+
+
+@pytest.mark.asyncio
+async def test_async_client_subscribe_with_start_timeout():
+    """Test that start_timeout is passed through to submit() in async subscribe()."""
+    with patch(
+        "fal_client.client._async_maybe_retry_request", new_callable=AsyncMock
+    ) as mock_request:
+        submit_response = Mock()
+        submit_response.json.return_value = {
+            "request_id": "req-789",
+            "response_url": "http://response",
+            "status_url": "http://status",
+            "cancel_url": "http://cancel",
+        }
+
+        status_response = Mock()
+        status_response.json.return_value = {"status": "COMPLETED", "logs": []}
+
+        result_response = Mock()
+        result_response.json.return_value = {"result": "async_done"}
+
+        mock_request.side_effect = [submit_response, status_response, result_response]
+
+        client = AsyncClient(key="test-key")
+        await client.subscribe("test-app", {"input": "data"}, start_timeout=90)
+
+        # Check the first call (submit) has the header
+        first_call_kwargs = mock_request.call_args_list[0][1]
+        assert "headers" in first_call_kwargs
+        assert first_call_kwargs["headers"]["X-Fal-Request-Timeout"] == "90.0"
+
+
+def test_sync_client_run_without_start_timeout_no_header():
+    """Test that no timeout header is added when start_timeout is not specified."""
+    with patch("fal_client.client._maybe_retry_request") as mock_request:
+        mock_response = Mock()
+        mock_response.json.return_value = {"result": "success"}
+        mock_request.return_value = mock_response
+
+        client = SyncClient(key="test-key")
+        client.run("test-app", {"input": "data"})
+
+        call_kwargs = mock_request.call_args[1]
+        assert "X-Fal-Request-Timeout" not in call_kwargs.get("headers", {})
+
+
+def test_sync_client_run_with_start_timeout_and_hint():
+    """Test that start_timeout works alongside other headers like hint."""
+    with patch("fal_client.client._maybe_retry_request") as mock_request:
+        mock_response = Mock()
+        mock_response.json.return_value = {"result": "success"}
+        mock_request.return_value = mock_response
+
+        client = SyncClient(key="test-key")
+        client.run("test-app", {"input": "data"}, start_timeout=30, hint="lora:a")
+
+        call_kwargs = mock_request.call_args[1]
+        assert call_kwargs["headers"]["X-Fal-Request-Timeout"] == "30.0"
+        assert call_kwargs["headers"]["X-Fal-Runner-Hint"] == "lora:a"
