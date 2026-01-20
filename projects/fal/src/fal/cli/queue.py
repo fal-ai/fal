@@ -37,12 +37,12 @@ def _queue_size(args):
     if args.output == "json":
         output = {"size": size}
 
-        if "by_user" in data:
+        if data.get("by_user") is not None:
             output["by_user"] = data["by_user"]
 
         args.console.print(json.dumps(output))
     else:
-        if "by_user" in data and size > 0:
+        if data.get("by_user") is not None and size > 0:
             from rich.table import Table
 
             table = Table()
