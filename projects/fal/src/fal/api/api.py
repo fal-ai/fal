@@ -53,7 +53,7 @@ from fal.exceptions import (
     FieldException,
 )
 from fal.exceptions._cuda import _is_cuda_oom_exception
-from fal.file_sync import FileSync
+from fal.file_sync import FileSync, FileSyncOptions
 from fal.logging.isolate import IsolateLogPrinter
 from fal.sdk import (
     FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER,
@@ -458,6 +458,7 @@ class FalServerlessHost(Host):
     url: str = FAL_SERVERLESS_DEFAULT_URL
     local_file_path: str = ""
     credentials: Credentials = field(default_factory=get_default_credentials)
+    environment_name: Optional[str] = None
 
     _lock: threading.Lock = field(default_factory=threading.Lock, init=False)
 
@@ -485,20 +486,26 @@ class FalServerlessHost(Host):
             client = FalServerlessClient(self.url, self.credentials)
             return client.connect()
 
-    def _app_files_sync(self, options: Options) -> list[File]:
-        import re  # noqa: PLC0415
+    def files_sync(self, options: FileSyncOptions) -> list[File]:
+        """Sync files to the server."""
+        # Auto-exclude the app file, it gets serialized separately
+        if self.local_file_path and options.files_list:
+            import re
+            from pathlib import Path
 
-        app_files: list[str] = options.host.get("app_files", [])
-        app_files_ignore_str = options.host.get("app_files_ignore", [])
-        app_files_ignore = [re.compile(pattern) for pattern in app_files_ignore_str]
-        app_files_context_dir = options.host.get("app_files_context_dir", None)
+            context = Path(options.files_context_dir or ".").resolve()
+            app_file = Path(self.local_file_path).resolve()
+            if app_file.is_relative_to(context):
+                rel_path = str(app_file.relative_to(context))
+                options.files_ignore.append(re.compile(f"^{re.escape(rel_path)}$"))
+
         res = []
-        if app_files:
+        if options.files_list:
             sync = FileSync(self.local_file_path)
             files, errors = sync.sync_files(
-                app_files,
-                files_ignore=app_files_ignore,
-                files_context_dir=app_files_context_dir,
+                options.files_list,
+                files_ignore=options.files_ignore,
+                files_context_dir=options.files_context_dir,
             )
             if errors:
                 for error in errors:
@@ -526,6 +533,7 @@ class FalServerlessHost(Host):
         metadata: Optional[dict[str, Any]] = None,
         deployment_strategy: DeploymentStrategyLiteral,
         scale: bool = True,
+        environment_name: Optional[str] = None,
     ) -> Optional[RegisterApplicationResult]:
         from isolate.backends.common import active_python
 
@@ -571,7 +579,9 @@ class FalServerlessHost(Host):
             valid_regions=regions,
         )
 
-        app_files = self._app_files_sync(options)
+        health_check_config = options.host.get("health_check_config")
+
+        files = self.files_sync(FileSyncOptions.from_options(options))
 
         partial_func = _prepare_partial_func(func)
 
@@ -597,8 +607,9 @@ class FalServerlessHost(Host):
             health_check_config=health_check_config,
             # By default, logs are public
             private_logs=options.host.get("private_logs", False),
-            files=app_files,
+            files=files,
             skip_retry_conditions=skip_retry_conditions,
+            environment_name=environment_name,
         ):
             for log in partial_result.logs:
                 self._log_printer.print(log)
@@ -658,7 +669,7 @@ class FalServerlessHost(Host):
             startup_timeout=startup_timeout,
         )
 
-        app_files = self._app_files_sync(options)
+        files = self.files_sync(FileSyncOptions.from_options(options))
 
         return_value = _UNSET
         # Allow isolate provided arguments (such as setup function) to take
@@ -669,7 +680,8 @@ class FalServerlessHost(Host):
             environments,
             machine_requirements=machine_requirements,
             setup_function=setup_function,
-            files=app_files,
+            files=files,
+            environment_name=self.environment_name,
         ):
             result_handler(partial_result)
 
@@ -1112,7 +1124,13 @@ def function(  # type: ignore
 
     if config.get("force_env_build") is not None:
         force_env_build = config.pop("force_env_build")
-        config["force"] = force_env_build
+        if kind == "container":
+            config["force"] = force_env_build
+        elif force_env_build:
+            console.print(
+                "[bold yellow]Note:[/bold yellow] [dim]--force--env-build[/dim]"
+                " is only supported for container apps as of now. Ignoring."
+            )
 
     options = host.parse_options(kind=kind, **config)
 
@@ -1198,6 +1216,20 @@ class RouteSignature(NamedTuple):
     emit_timings: bool = False
 
 
+class FalServer(uvicorn.Server):
+    def set_handle_exit(self, handle_exit):
+        self._handle_exit = handle_exit
+
+    def handle_exit(self, sig, frame):
+        super().handle_exit(sig, frame)
+        try:
+            self._handle_exit()
+        except BaseException as e:
+            from fastapi.logger import logger
+
+            logger.exception(f"Error in handle_exit: {e}")
+
+
 class BaseServable:
     version: ClassVar[str] = "unknown"
 
@@ -1217,7 +1249,7 @@ class BaseServable:
     async def lifespan(self, app: FastAPI):
         yield
 
-    def _build_app(self) -> FastAPI:
+    def _build_app(self) -> FalFastAPI:
         import json
         import traceback
 
@@ -1368,6 +1400,9 @@ class BaseServable:
                 "Failed to generate OpenAPI metadata for function"
             ) from e
 
+    def handle_exit(self):
+        pass
+
     async def serve(self) -> None:
         from prometheus_client import Gauge
         from starlette_exporter import handle_metrics
@@ -1380,11 +1415,13 @@ class BaseServable:
 
         # We use the default workers=1 config because setup function can be heavy
         # and it runs once per worker.
-        server = uvicorn.Server(
+        server = FalServer(
             config=uvicorn.Config(
                 app, host="0.0.0.0", port=8080, timeout_keep_alive=300, lifespan="on"
             )
         )
+        server.set_handle_exit(self.handle_exit)
+
         metrics_app = FastAPI()
         metrics_app.add_route("/metrics", handle_metrics)
         metrics_server = uvicorn.Server(

@@ -139,6 +139,7 @@ message ServiceURLs {
     string run = 2;
     string queue = 3;
     string ws = 4;
+    string log = 5;
 }
 
 message HostedRunResult {
@@ -248,6 +249,7 @@ enum RetryCondition {
     TIMEOUT = 0;
     CLIENT_ERROR = 1;
     SERVER_ERROR = 2;
+    CONNECTION_ERROR = 3;
 }
 
 message RegisterApplicationRequest {

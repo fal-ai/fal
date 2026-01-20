@@ -179,6 +179,25 @@ class BaseMultipartUpload:
         on_part_complete: Optional[Callable[[int], None]] = None,
     ) -> str:
         size = os.path.getsize(file_path)
+
+        # Handle empty files specially - upload single empty part
+        if size == 0:
+            try:
+                self.initiate()
+            except FileExistsError:
+                return ""
+
+            try:
+                self._upload_part(1, b"")
+                if on_part_complete:
+                    on_part_complete(1)
+                return self.complete()
+            except FileExistsError:
+                return ""
+            except Exception:
+                self.cancel()
+                raise
+
         num_parts = max(1, math.ceil(size / self.chunk_size))
 
         try:

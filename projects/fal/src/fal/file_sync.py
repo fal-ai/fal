@@ -5,7 +5,7 @@ import re
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path, PurePosixPath
-from typing import Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Pattern, Tuple
 
 import httpx
 from rich.tree import Tree
@@ -24,9 +24,41 @@ from fal.upload import (
     AppFileMultipartUpload,
 )
 
+if TYPE_CHECKING:
+    from fal.api.api import Options
+
 USER_AGENT = f"fal-sdk/{'.'.join(map(str, version_tuple))} (python)"
 FILE_SIZE_LIMIT = 1024 * 1024 * 1024  # 1GB
 DEFAULT_CONCURRENCY_UPLOADS = 10
+
+
+@dataclass
+class FileSyncOptions:
+    files_list: List[str]
+    files_ignore: List[Pattern]
+    files_context_dir: Optional[str]
+
+    @classmethod
+    def from_options(cls, options: "Options") -> "FileSyncOptions":
+        # Container files
+        if options.environment.get("kind") == "container":
+            image_dict: Dict[str, Any] = options.environment.get("image", {})
+            files_list = image_dict.get("docker_files_list", [])
+            files_ignore = image_dict.get("docker_ignore", [])
+            files_context_dir = image_dict.get("docker_context_dir")
+
+        else:  # App files
+            files_list = options.host.get("app_files", [])
+            files_ignore = options.host.get("app_files_ignore", [])
+            files_context_dir = options.host.get("app_files_context_dir")
+
+        # Compile regex patterns (both containers and app_files use regex now)
+        files_ignore = [re.compile(pattern) for pattern in files_ignore]
+        return cls(
+            files_list=files_list,
+            files_ignore=files_ignore,
+            files_context_dir=files_context_dir,
+        )
 
 
 def print_path_tree(file_paths):
@@ -49,7 +81,7 @@ def print_path_tree(file_paths):
     console.print(tree)
 
 
-def sanitize_relative_path(rel_path: str) -> str:
+def sanitize_relative_path(rel_path: str, original_path: Path) -> str:
     pure_path = PurePosixPath(rel_path)
 
     # Block files that are absolute or contain parent directory references
@@ -57,7 +89,10 @@ def sanitize_relative_path(rel_path: str) -> str:
         raise FalServerlessException(f"Absolute Path is not allowed: {rel_path}")
     if ".." in pure_path.parts or "." in pure_path.parts:
         raise FalServerlessException(
-            f"Parent directory reference is not allowed: {rel_path}"
+            "Parent directory reference is not allowed: "
+            + f"{rel_path} for {original_path}\n"
+            + "If you didn't mean to sync this file, please ignore it using "
+            + "`app_files_ignore`."
         )
 
     return pure_path.as_posix()
@@ -102,7 +137,7 @@ def normalize_path(
 
     try:
         relative_path = os.path.relpath(absolute_path, script_dir)
-        relative_path = sanitize_relative_path(relative_path)
+        relative_path = sanitize_relative_path(relative_path, path)
     except ValueError:
         raise ValueError(f"Invalid relative path: {absolute_path}")
 

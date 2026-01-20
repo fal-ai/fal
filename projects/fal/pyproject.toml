@@ -23,7 +23,7 @@ readme = "README.md"
 requires-python = ">=3.8"
 dependencies = [
     "isolate[build]>=0.22.0,<0.23.0",
-    "isolate-proto>=0.29.4",
+    "isolate-proto>=0.29.6",
     "grpcio>=1.64.0,<2",
     "dill==0.3.7",
     "cloudpickle==3.0.0",
@@ -80,6 +80,7 @@ test = [
     "flaky",
     "boto3",
     "numpy",
+    "pyzmq"
 ]
 dev = [
     "fal[docs,test]",
