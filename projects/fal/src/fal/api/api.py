@@ -728,6 +728,8 @@ class FalServerlessHost(Host):
                     console.print("Asynchronous Endpoints (Recommended):")
                     for endpoint in endpoints:
                         console.print(f"\t{service_urls.queue}{endpoint}")
+                    console.print("Service Logs:")
+                    console.print(f"\t{service_urls.log}")
 
             for log in partial_result.logs:
                 if (
