@@ -8,6 +8,7 @@ import queue
 import threading
 import time
 import traceback
+import uuid
 import warnings
 from collections.abc import AsyncIterator, Callable, Coroutine
 from concurrent.futures import Future
@@ -252,6 +253,7 @@ class DistributedRunner:
         self.keepalive_payload = keepalive_payload
         self.keepalive_interval = keepalive_interval
         self.keepalive_timer = None
+        self.lock = asyncio.Lock()
 
         if set_device is not None:
             warnings.warn("set_device is deprecated and will be removed in the future.")
@@ -370,19 +372,20 @@ class DistributedRunner:
             worker.rank_print(
                 f"Error during initialization: {e}\n{traceback.format_exc()}"
             )
-            socket.send(b"EXIT")
+            socket.send_multipart([b"EXIT"])
             socket.close()
             return
 
         # Wait until all workers are ready
-        socket.send(b"READY")
+        socket.send_multipart([b"READY"])
         dist.barrier()
 
         # Define execution methods to invoke from workers
-        def execute(payload: bytes) -> Any:
+        def execute(payload: bytes, request_id: bytes) -> Any:
             """
             Execute the worker function with the given payload synchronously.
             :param payload: The payload to send to the worker.
+            :param request_id: The request ID to echo back in responses.
             :return: The result from the worker.
             """
             payload_dict = distributed_deserialize(payload)
@@ -403,12 +406,16 @@ class DistributedRunner:
             if worker.rank != 0:
                 return
 
-            socket.send(distributed_serialize(result, is_final=True))
+            socket.send_multipart(
+                [request_id, distributed_serialize(result, is_final=True)]
+            )
 
-        def stream(payload: bytes, as_text_events: bool) -> None:
+        def stream(payload: bytes, as_text_events: bool, request_id: bytes) -> None:
             """
             Stream the result from the worker function with the given payload.
             :param payload: The payload to send to the worker.
+            :param as_text_events: Whether to encode responses as text events.
+            :param request_id: The request ID to echo back in responses.
             :return: An async iterator that yields the result from the worker.
             """
             payload_dict = distributed_deserialize(payload)
@@ -423,7 +430,9 @@ class DistributedRunner:
                     try:
                         intermediate = worker.queue.get(timeout=0.1)
                         if intermediate is not None and worker.rank == 0:
-                            socket.send(intermediate)  # already serialized
+                            socket.send_multipart(
+                                [request_id, intermediate]
+                            )  # already serialized
                     except queue.Empty:
                         pass
                 result = future.result()
@@ -453,43 +462,57 @@ class DistributedRunner:
                 return
 
             if encoded_response is not None:
-                socket.send(encoded_response)
-            socket.send(b"DONE")
+                socket.send_multipart([request_id, encoded_response])
+            socket.send_multipart([request_id, b"DONE"])
 
         # Runtime code
         if rank == 0:
             worker.rank_print("Master worker is ready to receive tasks.")
             while True:
-                serialized_data = socket.recv()
-                streaming = serialized_data[0] == ord("1")
-                as_text_events = serialized_data[1] == ord("1")
-                serialized_data = serialized_data[2:]
-                params = [serialized_data, streaming, as_text_events]
-                dist.broadcast_object_list(params, src=0)
+                parts = socket.recv_multipart()
+                command = parts[0]
 
-                if serialized_data == b"EXIT":
+                # Check for EXIT command
+                if command == b"EXIT":
+                    params = [b"EXIT", False, False, b""]
+                    dist.broadcast_object_list(params, src=0)
                     worker.rank_print("Received exit payload, exiting.")
                     break
 
-                if streaming:
-                    stream(serialized_data, as_text_events)
+                if command == b"invoke":
+                    request_id, payload = parts[1], parts[2]
+                    streaming = False
+                    as_text_events = False
+                elif command == b"stream":
+                    text_flag, request_id, payload = parts[1], parts[2], parts[3]
+                    streaming = True
+                    as_text_events = text_flag == b"1"
                 else:
-                    execute(serialized_data)
+                    worker.rank_print(f"Unknown command: {command}")
+                    continue
+
+                params = [payload, streaming, as_text_events, request_id]
+                dist.broadcast_object_list(params, src=0)
+
+                if streaming:
+                    stream(payload, as_text_events, request_id)
+                else:
+                    execute(payload, request_id)
         else:
             worker.rank_print("Worker waiting for tasks.")
             while True:
                 try:
-                    params = [None, None, None]
+                    params = [None, None, None, None]
                     dist.broadcast_object_list(params, src=0)
-                    payload, streaming, as_text_events = params  # type: ignore[assignment]
+                    payload, streaming, as_text_events, request_id = params  # type: ignore[assignment]
                     if payload == b"EXIT":
                         worker.rank_print("Received exit payload, exiting.")
                         break
 
                     if streaming:
-                        stream(payload, as_text_events)  # type: ignore[arg-type]
+                        stream(payload, as_text_events, request_id)  # type: ignore[arg-type]
                     else:
-                        execute(payload)  # type: ignore[arg-type]
+                        execute(payload, request_id)  # type: ignore[arg-type]
                 except Exception as e:
                     worker.rank_print(f"Error in worker: {e}\n{traceback.format_exc()}")
 
@@ -501,7 +524,7 @@ class DistributedRunner:
         except Exception as e:
             worker.rank_print(f"Error during teardown: {e}\n{traceback.format_exc()}")
 
-        socket.send(b"EXIT")
+        socket.send_multipart([b"EXIT"])
         socket.close()
 
     async def start(self, timeout: int = 1800, **kwargs: Any) -> None:
@@ -628,7 +651,7 @@ class DistributedRunner:
         self.maybe_cancel_keepalive()
         worker_exits: set[int] = set()
         socket = self.get_zmq_socket()
-        await socket.send_multipart([b"0", b"00EXIT"])
+        await socket.send_multipart([b"0", b"EXIT"])
 
         wait_start = time.perf_counter()
         while len(worker_exits) < self.world_size:
@@ -669,6 +692,19 @@ class DistributedRunner:
         streaming_timeout: Optional[int] = None,
         as_text_events: bool = False,
     ) -> AsyncIterator[Any]:
+        async with self.lock:
+            async for result in self._stream(
+                payload, timeout, streaming_timeout, as_text_events
+            ):
+                yield result
+
+    async def _stream(
+        self,
+        payload: dict[str, Any] = {},
+        timeout: Optional[int] = None,
+        streaming_timeout: Optional[int] = None,
+        as_text_events: bool = False,
+    ) -> AsyncIterator[Any]:
         """
         Streams the result from the distributed worker.
         :param payload: The payload to send to the worker.
@@ -683,8 +719,10 @@ class DistributedRunner:
         self.maybe_cancel_keepalive()  # Cancel until the streaming is done
         socket = self.get_zmq_socket()
         payload_serialized = distributed_serialize(payload, is_final=True)
+        request_id = uuid.uuid4().bytes
+        text_flag = b"1" if as_text_events else b"0"
         await socket.send_multipart(
-            [b"0", b"1" + (b"1" if as_text_events else b"0") + payload_serialized]
+            [b"0", b"stream", text_flag, request_id, payload_serialized]
         )
 
         start_time = time.perf_counter()
@@ -694,7 +732,9 @@ class DistributedRunner:
         while True:
             iter_start_time = time.perf_counter()
             try:
-                rank, response = await socket.recv_multipart(flags=zmq.NOBLOCK)  # type: ignore[misc]
+                rank, response_request_id, response_data = await socket.recv_multipart(
+                    flags=zmq.NOBLOCK
+                )  # type: ignore[misc]
             except zmq.Again:
                 if timeout is not None and iter_start_time - start_time > timeout:
                     raise TimeoutError(f"Streaming timed out after {timeout} seconds.")
@@ -712,15 +752,20 @@ class DistributedRunner:
 
             assert rank == b"0", "Expected response from worker with rank 0"
 
-            if response == b"DONE":
+            if response_request_id != request_id:
+                print("[debug] Discarding stale response")
+                # Stale response from other request, discard and continue
+                continue
+
+            if response_data == b"DONE":
                 if not yielded_once:
                     raise RuntimeError("No data was yielded from the worker.")
                 break
 
             if as_text_events:
-                yield response
+                yield response_data
             else:
-                yield distributed_deserialize(response)
+                yield distributed_deserialize(response_data)
 
             yielded_once = True
             last_yield_time = iter_start_time
@@ -731,6 +776,15 @@ class DistributedRunner:
         self,
         payload: dict[str, Any] = {},
         timeout: Optional[int] = None,
+    ) -> Any:
+        # Lock the invocation to prevent concurrent invocations
+        async with self.lock:
+            return await self._invoke(payload, timeout)
+
+    async def _invoke(
+        self,
+        payload: dict[str, Any],
+        timeout: Optional[int],
     ) -> Any:
         """
         Invokes the distributed worker with the given payload.
@@ -745,14 +799,24 @@ class DistributedRunner:
         socket = self.get_zmq_socket()
         payload_serialized = distributed_serialize(payload, is_final=True)
 
-        await socket.send_multipart([b"0", b"00" + payload_serialized])
+        request_id = uuid.uuid4().bytes
+        await socket.send_multipart([b"0", b"invoke", request_id, payload_serialized])
 
         # Wait for the response from the worker
         start_time = time.perf_counter()
         while True:
             try:
-                rank, response = await socket.recv_multipart(flags=zmq.NOBLOCK)  # type: ignore[misc]
-                break  # Exit the loop if we received a response
+                rank, response_request_id, response_data = await socket.recv_multipart(
+                    flags=zmq.NOBLOCK
+                )  # type: ignore[misc]
+                if response_request_id != request_id:
+                    print("[debug] Discarding stale response")
+                    # Stale response from other request, discard and continue
+                    continue
+
+                # Exit the loop if we received our response
+                break
+
             except zmq.Again:
                 elapsed = time.perf_counter() - start_time
                 if timeout is not None and elapsed > timeout:
@@ -760,10 +824,13 @@ class DistributedRunner:
 
                 await asyncio.sleep(0.1)
                 self.ensure_alive()
+            except BaseException as e:
+                print(f"Error in invoke: {e}\n{traceback.format_exc()}")
+                raise e
 
         self.maybe_start_keepalive()  # Restart the keepalive timer
         assert rank == b"0", "Expected response from worker with rank 0"
-        return distributed_deserialize(response)
+        return distributed_deserialize(response_data)
 
     async def __aenter__(self) -> DistributedRunner:
         """

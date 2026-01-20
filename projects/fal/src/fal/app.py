@@ -503,6 +503,11 @@ class App(BaseServable):
         parent_settings = getattr(cls, "host_kwargs", {})
         cls.host_kwargs = {**parent_settings, **kwargs}
 
+        for key in parent_settings.keys():
+            val = getattr(cls, key, None)
+            if val is not None:
+                cls.host_kwargs[key] = val
+
         if cls.request_timeout is not None:
             cls.host_kwargs["request_timeout"] = cls.request_timeout
 
@@ -545,6 +550,10 @@ class App(BaseServable):
 
         if cls.image is not None:
             cls.host_kwargs["image"] = cls.image
+            cls.host_kwargs["kind"] = "container"
+            # For consistency, check also here (same check with function decorator)
+            if cls.app_files:
+                raise ValueError("app_files is not supported for container apps.")
 
         if cls.skip_retry_conditions is not None:
             cls.host_kwargs["skip_retry_conditions"] = cls.skip_retry_conditions
@@ -557,6 +566,15 @@ class App(BaseServable):
             raise ValueError(
                 "App classes should not override __init__ directly. "
                 "Use setup() instead."
+            )
+
+        if cls.requirements and cls.host_kwargs.get("kind") == "container":
+            from fal.console import console
+
+            console.print(
+                "\n[yellow]WARNING:[/yellow] Using [bold]requirements[/bold] with "
+                "container apps is not recommended. For better performance, "
+                "install dependencies in the Dockerfile instead.\n"
             )
 
     def __init__(self, *, _allow_init: bool = False):
@@ -621,6 +639,9 @@ class App(BaseServable):
     async def lifespan(self, app: fastapi.FastAPI):
         os.environ["FAL_RUNNER_STATE"] = "SETUP"
 
+        # Configure sys.path based on deployment type:
+        # - app_files: files synced to /app
+        # - container: files baked into image
         self._current_request_context = ContextVar(
             "_current_request_context", default=RequestContext(headers={})
         )
@@ -630,7 +651,13 @@ class App(BaseServable):
         # We check for app_files here and check kind and app_files earlier
         # to ensure that container apps don't have app_files
         if self.app_files:
+            # For app_files deployments (always use /app)
             _include_app_files_path(self.local_file_path, self.app_files_context_dir)
+        elif self.image is not None:
+            # For containers, add the working directory to sys.path
+            # isolate's runpy.run_path() overrides sys.path[0],
+            # so the working directory is never added to sys.path
+            sys.path.insert(0, "")
         _print_python_packages()
         await _call_any_fn(self.setup)
 
@@ -653,6 +680,9 @@ class App(BaseServable):
 
     def setup(self):
         """Setup the application before serving."""
+
+    def handle_exit(self, sig, frame):
+        """Handle exit signal."""
 
     def teardown(self):
         """Teardown the application after serving."""

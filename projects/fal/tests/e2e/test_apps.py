@@ -1599,10 +1599,17 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 """
     ),
+    skip_retry_conditions=["server_error", "connection_error", "timeout"],
 ):
     machine_type = "XS"
     teardown_file = "/data/teardown.txt"
     latest_request_id = None
+
+    def setup(self):
+        self.stop = False
+
+    def handle_exit(self):
+        self.stop = True
 
     @fal.endpoint("/")
     async def sleep(self, input: SleepInput, request: Request) -> SleepOutput:
@@ -1615,6 +1622,22 @@ RUN apt-get update \
         for i in range(input.wait_time):
             print(f"sleeping {i + 1} of {input.wait_time}...", flush=True)
             await asyncio.sleep(1)
+        return SleepOutput(slept=True)
+
+    @fal.endpoint("/with-stop")
+    async def sleep_with_stop(self, input: SleepInput, request: Request) -> SleepOutput:
+        request_id = request.headers.get(REQUEST_ID_KEY)
+        if request_id is None:
+            raise Exception("No request id found")
+
+        self.latest_request_id = request_id
+
+        for i in range(input.wait_time):
+            if self.stop:
+                break
+            print(f"sleeping {i + 1} of {input.wait_time}...", flush=True)
+            await asyncio.sleep(1)
+
         return SleepOutput(slept=True)
 
     @fal.endpoint("/latest-request-id")
@@ -1647,24 +1670,39 @@ def test_graceful_shutdown_app_client(
 ):
     time.sleep(3)  # Wait for the app to be deployed properly
 
-    handle = submit_and_wait_for_runner(
-        test_graceful_shutdown_app, arguments={"wait_time": 5}
-    )
+    def graceful_shutdown(wait_time: int, path: str):
+        handle = submit_and_wait_for_runner(
+            test_graceful_shutdown_app, arguments={"wait_time": wait_time}, path=path
+        )
+        saved_request_id = handle.request_id
 
-    time.sleep(3)
+        time.sleep(2)
+        with host._connection as client:
+            _, _, app_alias = test_graceful_shutdown_app.partition("/")
 
-    saved_request_id = handle.request_id
-    with host._connection as client:
-        _, _, app_alias = test_graceful_shutdown_app.partition("/")
+            runners = client.list_runners(
+                start_time=datetime.now() - timedelta(seconds=10)
+            )
+            runner = next((r for r in runners if r.alias == app_alias), None)
 
-        runners = client.list_runners(start_time=datetime.now() - timedelta(seconds=10))
-        runner = next((r for r in runners if r.alias == app_alias), None)
+            assert runner is not None, "Runner not found"
 
-        assert runner is not None, "Runner not found"
+            client.kill_runner(runner.runner_id)
+        time.sleep(2)
 
-        client.kill_runner(runner.runner_id)
+        res = apps.run(test_graceful_shutdown_app, {}, path="/latest-request-id")
+        teardown_called = res == saved_request_id
+        try:
+            request_processed = handle.fetch_result()["slept"]
+        except Exception:
+            request_processed = False
 
-    time.sleep(3)
+        return teardown_called and request_processed
 
-    res = apps.run(test_graceful_shutdown_app, {}, path="/latest-request-id")
-    assert res == saved_request_id
+    assert graceful_shutdown(wait_time=5, path="/"), "app should be gracefully shutdown"
+    assert not graceful_shutdown(
+        wait_time=60, path="/"
+    ), "app should be forcefully killed if it takes too long to clean up"
+    assert graceful_shutdown(
+        wait_time=60, path="/with-stop"
+    ), "app should be called handle_exit on SIGTERM"
