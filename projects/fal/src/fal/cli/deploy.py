@@ -28,7 +28,7 @@ def _deploy(args):
         auth=args.auth,
         strategy=args.strategy,
         reset_scale=args.app_scale_settings,
-        force_env_build=args.force_env_build,
+        force_env_build=args.no_cache,
         environment_name=args.env,
     )
     app_id = res.revision
@@ -141,9 +141,9 @@ def add_parser(main_subparsers, parents):
         help="Use the application code for scale settings.",
     )
     parser.add_argument(
-        "--force-env-build",
+        "--no-cache",
         action="store_true",
-        help="Ignore the environment build cache and force rebuild.",
+        help="Do not use the cache for the environment build.",
     )
     parser.add_argument(
         "--env",
