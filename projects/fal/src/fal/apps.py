@@ -136,9 +136,7 @@ class RequestHandle:
             yield status
             time.sleep(__poll_delay)
 
-    def fetch_result(self) -> dict[str, Any]:
-        """Retrieve the result of an async inference request, raises an exception
-        if the request is not completed yet."""
+    def fetch_raw_response(self) -> httpx.Response:
         url = (
             _QUEUE_URL_FORMAT.format(app_id=self.app_id)
             + f"/requests/{self.request_id}/"
@@ -154,15 +152,19 @@ class RequestHandle:
                 request=e.request,
                 response=e.response,
             ) from e
+        return response
 
-        data = response.json()
-        return data
+    def fetch_result(self) -> dict[str, Any]:
+        """Retrieve the result of an async inference request, raises an exception
+        if the request is not completed yet."""
+        response = self.fetch_raw_response()
+        return response.json()
 
     def get(self) -> dict[str, Any]:
         """Retrieve the result of an async inference request, polling the status
         of the request until it is completed."""
 
-        for event in self.iter_events(logs=False):
+        for _event in self.iter_events(logs=False):
             continue
 
         return self.fetch_result()
