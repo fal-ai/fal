@@ -80,7 +80,8 @@ test = [
     "flaky",
     "boto3",
     "numpy",
-    "pyzmq"
+    "pyzmq",
+    "fal_client",
 ]
 dev = [
     "fal[docs,test]",
