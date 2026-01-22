@@ -88,6 +88,15 @@ def _object_lifecycle_headers(
         )
 
 
+def _caller_cdn_token_header(
+    headers: dict[str, str],
+):
+    current_app = get_current_app()
+    if current_app and current_app.current_request:
+        if cdn_token := current_app.current_request.headers.get("x-fal-cdn-token"):
+            headers["X-Fal-CDN-Token"] = cdn_token
+
+
 @dataclass
 class FalV2Token:
     token: str
@@ -510,10 +519,13 @@ class FalFileRepository(FalFileRepositoryBase):
     @property
     def auth_headers(self) -> dict[str, str]:
         token = fal_v3_token_manager.get_token()
-        return {
+        headers = {
             "Authorization": f"{token.token_type} {token.token}",
             "User-Agent": "fal/0.1.0",
         }
+        _caller_cdn_token_header(headers)
+
+        return headers
 
     def save_file(
         self,
@@ -761,9 +773,13 @@ class MultipartUploadV3:
             raise FileUploadException("FAL_KEY must be set")
 
         key_id, key_secret = fal_key
-        return {
+        headers = {
             "Authorization": f"Key {key_id}:{key_secret}",
+            "User-Agent": "fal/0.1.0",
         }
+        _caller_cdn_token_header(headers)
+
+        return headers
 
     def create(self):
         grpc_host = os.environ.get("FAL_HOST", "api.alpha.fal.ai")
@@ -962,10 +978,13 @@ class InternalMultipartUploadV3:
     @property
     def auth_headers(self) -> dict[str, str]:
         token = fal_v3_token_manager.get_token()
-        return {
+        headers = {
             "Authorization": f"{token.token_type} {token.token}",
             "User-Agent": "fal/0.1.0",
         }
+        _caller_cdn_token_header(headers)
+
+        return headers
 
     def create(self):
         token = fal_v3_token_manager.get_token()
@@ -1276,12 +1295,7 @@ class FalFileRepositoryV3(FileRepository):
             "Authorization": f"Key {key_id}:{key_secret}",
             "User-Agent": "fal/0.1.0",
         }
-
-        # Inject the CDN token if it is available
-        current_app = get_current_app()
-        if current_app and current_app.current_request:
-            if cdn_token := current_app.current_request.headers.get("x-fal-cdn-token"):
-                headers["X-Fal-CDN-Token"] = cdn_token
+        _caller_cdn_token_header(headers)
 
         return headers
 
@@ -1446,10 +1460,13 @@ class InternalFalFileRepositoryV3(FileRepository):
     @property
     def auth_headers(self) -> dict[str, str]:
         token = fal_v3_token_manager.get_token()
-        return {
+        headers = {
             "Authorization": f"{token.token_type} {token.token}",
             "User-Agent": "fal/0.1.0",
         }
+        _caller_cdn_token_header(headers)
+
+        return headers
 
     def save_file(
         self,
