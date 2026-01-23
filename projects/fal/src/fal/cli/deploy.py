@@ -57,7 +57,7 @@ def _deploy(args):
             for url in res.urls.get("async", {}).values():
                 args.console.print(f"\t{url}")
             args.console.print("Service Logs:")
-            args.console.print("\t{res.log_url}")
+            args.console.print(f"\t{res.log_url}")
     else:
         raise AssertionError(f"Invalid output format: {args.output}")
 
