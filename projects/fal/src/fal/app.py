@@ -585,6 +585,17 @@ class App(BaseServable):
                 f"Please use `fal run path/to/app.py::{cls_name}` to run your app."
             )
 
+    def __getstate__(self) -> dict[str, Any]:
+        # we might need to pickle the app sometimes,
+        # e.g. in fal distributed workers from our toolkit
+        state = self.__dict__.copy()
+        state.pop("_current_request_context", None)
+        return state
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        self.__dict__.update(state)
+        self._current_request_context = None
+
     @classmethod
     def get_endpoints(cls) -> list[str]:
         return [
