@@ -76,7 +76,7 @@ def key_credentials() -> tuple[str, str] | None:
             key_id, key_secret = key.split(":", 1)
             return (key_id, key_secret)
         except ValueError:
-            print(f"Invalid key format: {key}")
+            print("Invalid key format for FAL key. Expected '<id>:<secret>'.")
             return None
 
     elif "FAL_KEY_ID" in os.environ and "FAL_KEY_SECRET" in os.environ:
