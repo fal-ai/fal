@@ -814,6 +814,7 @@ def function(
     *,
     python_version: str | None = None,
     requirements: list[str] | None = None,
+    install_requirements: list[str] | None = None,
     # Common options
     host: LocalHost,
     serve: Literal[False] = False,
@@ -832,6 +833,7 @@ def function(
     *,
     python_version: str | None = None,
     requirements: list[str] | None = None,
+    install_requirements: list[str] | None = None,
     # Common options
     host: LocalHost,
     serve: Literal[True],
@@ -851,6 +853,7 @@ def function(
     *,
     python_version: str | None = None,
     requirements: list[str] | None = None,
+    install_requirements: list[str] | None = None,
     # Common options
     host: FalServerlessHost | None = None,
     serve: Literal[False] = False,
@@ -885,6 +888,7 @@ def function(
     *,
     python_version: str | None = None,
     requirements: list[str] | None = None,
+    install_requirements: list[str] | None = None,
     # Common options
     host: FalServerlessHost | None = None,
     serve: Literal[True],
