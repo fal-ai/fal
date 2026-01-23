@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 import os
+import pickle
+from contextvars import ContextVar
 
 import pytest
 
 import fal
 from fal import App, endpoint
 from fal.container import ContainerImage
+
+
+class PickleApp(App):
+    pass
 
 
 def test_app_regions_propagate_to_function_options():
@@ -181,3 +187,15 @@ def test_app_classvars_propagate_to_host_kwargs_when_overriding_hidden_defaults(
     assert hk["keep_alive"] == 30
     assert hk["resolver"] == "pip"
     assert "_app_var" not in hk
+
+
+def test_app_is_picklable_with_request_context():
+    app = PickleApp(_allow_init=True)
+    app._current_request_context = ContextVar(  # type: ignore[assignment]
+        "_current_request_context"
+    )
+
+    payload = pickle.dumps(app)
+    loaded = pickle.loads(payload)
+
+    assert loaded._current_request_context is None
