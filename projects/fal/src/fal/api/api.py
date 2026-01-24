@@ -716,18 +716,26 @@ class FalServerlessHost(Host):
             if service_urls := partial_result.service_urls:
                 from fal.flags import URL_OUTPUT
 
+                # Add helpful context about the ephemeral app
+                console.print("")
+                console.print(
+                    "Ephemeral app deployed (public, no auth required)",
+                    style="bold green",
+                )
+                console.print("")
+
                 endpoints = getattr(func, "_routes", ["/"])  # type: ignore[attr-defined]
                 if URL_OUTPUT != "none":
-                    console.print("Playground:")
+                    console.print("Playground (open in browser):")
                     for endpoint in endpoints:
                         console.print(f"\t{service_urls.playground}{endpoint}")
                 if URL_OUTPUT == "all":
-                    console.print("Synchronous Endpoints:")
+                    console.print("")
+                    console.print("API Endpoints (use in code):")
                     for endpoint in endpoints:
-                        console.print(f"\t{service_urls.run}{endpoint}")
-                    console.print("Asynchronous Endpoints (Recommended):")
-                    for endpoint in endpoints:
-                        console.print(f"\t{service_urls.queue}{endpoint}")
+                        console.print(f"\tSync:  {service_urls.run}{endpoint}")
+                        console.print(f"\tAsync: {service_urls.queue}{endpoint}")
+                    console.print("")
                     console.print("Service Logs:")
                     console.print(f"\t{service_urls.log}")
 

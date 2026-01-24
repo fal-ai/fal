@@ -44,6 +44,10 @@ class IsolateLogPrinter:
     def print(self, log: Log):
         from isolate.logs import LogLevel, LogSource
 
+        # Skip depot build summary links (users can't access them)
+        if "https://depot.dev" in log.message:
+            return
+
         if log.level < LogLevel.INFO and not self.debug:
             return
 
@@ -77,3 +81,15 @@ class IsolateLogPrinter:
         # Use structlog processors to get consistent output with local logs
         message = _renderer.__call__(logger={}, name=level, event_dict=event)
         print(message)
+
+    def print_phase(self, phase: str, status: str = "start"):
+        """Print a deployment phase marker."""
+        from fal.console import console
+        from fal.console.icons import CHECK_ICON, CROSS_ICON
+
+        if status == "start":
+            console.print(f"==> {phase}...", style="bold blue")
+        elif status == "success":
+            console.print(f"{CHECK_ICON} {phase}", style="bold green")
+        elif status == "error":
+            console.print(f"{CROSS_ICON} {phase}", style="bold red")
