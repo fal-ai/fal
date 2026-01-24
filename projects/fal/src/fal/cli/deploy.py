@@ -53,7 +53,7 @@ def _deploy(args):
                 args.console.print(f"\t{url}")
         if URL_OUTPUT == "all":
             args.console.print("")
-            args.console.print("API Endpoints (use in code, not browser):")
+            args.console.print("API Endpoints (use in code):")
             sync_urls = list(res.urls.get("sync", {}).values())
             async_urls = list(res.urls.get("async", {}).values())
             for sync_url, async_url in zip(sync_urls, async_urls):
