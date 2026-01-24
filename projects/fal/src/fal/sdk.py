@@ -346,6 +346,7 @@ class ServiceURLs:
     run: str
     queue: str
     ws: str
+    log: str
 
 
 @dataclass
@@ -537,7 +538,9 @@ def _from_grpc_hosted_run_status(
 def _from_grpc_service_urls(
     message: isolate_proto.ServiceURLs,
 ) -> ServiceURLs:
-    return ServiceURLs(message.playground, message.run, message.queue, message.ws)
+    return ServiceURLs(
+        message.playground, message.run, message.queue, message.ws, message.log
+    )
 
 
 @from_grpc.register(isolate_proto.HostedRunResult)

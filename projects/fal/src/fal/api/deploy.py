@@ -25,6 +25,7 @@ class DeploymentResult:
     revision: str
     app_name: str
     urls: dict[str, dict[str, str]]
+    log_url: str
 
 
 def _remove_http_and_port_from_url(url):
@@ -151,6 +152,7 @@ def _deploy_from_reference(
         revision=result.result.application_id,
         app_name=app_name,
         urls=urls,
+        log_url=result.service_urls.log,
     )
 
 
