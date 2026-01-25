@@ -94,6 +94,13 @@ def _deploy(args):
             padding=(1, 2),
         )
         args.console.print(panel)
+
+        # Reminder about scaling parameter inheritance
+        args.console.print("")
+        args.console.print(
+            "[dim]Note: Scaling parameters (keep_alive, min_concurrency, etc.) are inherited "
+            "from the previous deployment. Use --reset-scale to apply code changes.[/dim]"
+        )
     else:
         raise AssertionError(f"Invalid output format: {args.output}")
 
