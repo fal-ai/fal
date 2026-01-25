@@ -734,7 +734,9 @@ class FalServerlessHost(Host):
                     lines.append("▸ Playground ", style="bold")
                     lines.append("(open in browser)\n", style="dim")
                     for endpoint in endpoints:
-                        lines.append(f"  {service_urls.playground}{endpoint}\n", style="cyan")
+                        lines.append(
+                            f"  {service_urls.playground}{endpoint}\n", style="cyan"
+                        )
 
                 # API Endpoints section
                 if URL_OUTPUT == "all":
@@ -742,8 +744,12 @@ class FalServerlessHost(Host):
                     lines.append("▸ API Endpoints ", style="bold")
                     lines.append("(use in code)\n", style="dim")
                     for endpoint in endpoints:
-                        lines.append(f"  Sync   {service_urls.run}{endpoint}\n", style="cyan")
-                        lines.append(f"  Async  {service_urls.queue}{endpoint}\n", style="cyan")
+                        lines.append(
+                            f"  Sync   {service_urls.run}{endpoint}\n", style="cyan"
+                        )
+                        lines.append(
+                            f"  Async  {service_urls.queue}{endpoint}\n", style="cyan"
+                        )
 
                     # Logs section
                     lines.append("\n")
