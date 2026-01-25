@@ -39,29 +39,61 @@ def _deploy(args):
             json.dumps({"revision": app_id, "app_name": resolved_app_name})
         )
     elif args.output == "pretty":
+        from rich.panel import Panel
+        from rich.text import Text
+
         from fal.console.icons import CHECK_ICON
         from fal.flags import URL_OUTPUT
 
         args.console.print(
-            f"{CHECK_ICON} Deployed '{resolved_app_name}' (revision='{app_id}')",
+            f"{CHECK_ICON} Deployed successfully",
             style="bold green",
         )
+        args.console.print("")
+
+        # Build panel content with grouped sections
+        lines = Text()
+
+        # Auth mode section
+        AUTH_EXPLANATIONS = {
+            "public": "no authentication required",
+            "private": "only you/team can access",
+            "shared": "any authenticated user can access",
+        }
+        auth_desc = AUTH_EXPLANATIONS.get(res.auth_mode, res.auth_mode)
+        lines.append(f"▸ Auth: {res.auth_mode} ", style="bold")
+        lines.append(f"({auth_desc})\n\n", style="dim")
+
+        # Playground section
         if URL_OUTPUT != "none":
-            args.console.print("")
-            args.console.print("Playground (open in browser):")
+            lines.append("▸ Playground ", style="bold")
+            lines.append("(open in browser)\n", style="dim")
             for url in res.urls.get("playground", {}).values():
-                args.console.print(f"\t{url}")
+                lines.append(f"  {url}\n", style="cyan")
+
+        # API Endpoints section
         if URL_OUTPUT == "all":
-            args.console.print("")
-            args.console.print("API Endpoints (use in code):")
+            lines.append("\n")
+            lines.append("▸ API Endpoints ", style="bold")
+            lines.append("(use in code)\n", style="dim")
             sync_urls = list(res.urls.get("sync", {}).values())
             async_urls = list(res.urls.get("async", {}).values())
             for sync_url, async_url in zip(sync_urls, async_urls):
-                args.console.print(f"\tSync:  {sync_url}")
-                args.console.print(f"\tAsync: {async_url}")
-            args.console.print("")
-            args.console.print("Service Logs:")
-            args.console.print(f"\t{res.log_url}")
+                lines.append(f"  Sync   {sync_url}\n", style="cyan")
+                lines.append(f"  Async  {async_url}\n", style="cyan")
+
+            # Logs section
+            lines.append("\n")
+            lines.append("▸ Logs\n", style="bold")
+            lines.append(f"  {res.log_url}", style="cyan")
+
+        panel = Panel(
+            lines,
+            title=resolved_app_name,
+            border_style="green",
+            padding=(1, 2),
+        )
+        args.console.print(panel)
     else:
         raise AssertionError(f"Invalid output format: {args.output}")
 
