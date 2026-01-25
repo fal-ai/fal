@@ -148,7 +148,7 @@ def _deploy_from_reference(
         raise FalServerlessError(
             "Deployment failed: The server did not confirm the deployment. "
             "This may indicate a network issue or server error. "
-            "Please try again, or check 'fal doctor' for connection issues."
+            "Please try again."
         )
     if not result.service_urls:
         raise FalServerlessError(
