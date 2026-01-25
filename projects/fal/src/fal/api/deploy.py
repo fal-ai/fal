@@ -129,7 +129,7 @@ def _deploy_from_reference(
     # Show what app name will be used
     from fal.console import console
 
-    console.print(f"Deploying class '{display_name}' as app '{app_name}'", style="bold")
+    console.print(f"Deploying '{display_name}' as app '{app_name}'", style="bold")
     console.print("")
 
     result = host.register(
