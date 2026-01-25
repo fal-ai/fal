@@ -759,7 +759,7 @@ class FalServerlessHost(Host):
                 panel = Panel(
                     lines,
                     title="Ephemeral App (public)",
-                    subtitle="[dim]This app will be deleted when the process exits[/dim]",
+                    subtitle="[dim]Deleted when process exits[/dim]",
                     border_style="green",
                     padding=(1, 2),
                 )

@@ -97,10 +97,12 @@ def _deploy(args):
 
         # Reminder about scaling parameter inheritance
         args.console.print("")
-        args.console.print(
-            "[dim]Note: Scaling parameters (keep_alive, min_concurrency, etc.) are inherited "
-            "from the previous deployment. Use --reset-scale to apply code changes.[/dim]"
+        note = (
+            "[dim]Note: Scaling parameters (keep_alive, min_concurrency, etc.) "
+            "are inherited from the previous deployment. "
+            "Use --reset-scale to apply code changes.[/dim]"
         )
+        args.console.print(note)
     else:
         raise AssertionError(f"Invalid output format: {args.output}")
 
