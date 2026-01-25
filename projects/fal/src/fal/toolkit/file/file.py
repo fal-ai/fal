@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import shutil
 import traceback
-from functools import wraps
 from pathlib import Path
 from tempfile import NamedTemporaryFile, mkdtemp
+from functools import wraps
 from typing import Any, Callable, Optional
 from urllib.parse import urlparse
 from zipfile import ZipFile
@@ -66,9 +66,26 @@ OBJECT_LIFECYCLE_PREFERENCE_KEY = "x-fal-object-lifecycle-preference"
 
 @wraps(Field)
 def FileField(*args, **kwargs):
-    ui = kwargs.get("ui", {})
-    ui.setdefault("field", "file")
-    kwargs["ui"] = ui
+    if IS_PYDANTIC_V2:
+        # Pydantic v2: use json_schema_extra
+        json_schema_extra = kwargs.pop("json_schema_extra", None) or {}
+        if callable(json_schema_extra):
+            # If it's a callable, wrap it to also add ui.field
+            original_func = json_schema_extra
+
+            def merged_schema_extra(schema):
+                original_func(schema)
+                schema.setdefault("ui", {}).setdefault("field", "file")
+
+            kwargs["json_schema_extra"] = merged_schema_extra
+        else:
+            json_schema_extra.setdefault("ui", {}).setdefault("field", "file")
+            kwargs["json_schema_extra"] = json_schema_extra
+    else:
+        # Pydantic v1: use ui kwarg (stored in extra)
+        ui = kwargs.get("ui", {})
+        ui.setdefault("field", "file")
+        kwargs["ui"] = ui
     return Field(*args, **kwargs)
 
 
