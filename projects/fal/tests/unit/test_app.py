@@ -40,6 +40,7 @@ def test_app_default_app_name_is_generated_from_class_name():
 # Tests for _to_fal_app_name - the function that converts class names to app names
 # ============================================================================
 
+
 class TestToFalAppName:
     """Comprehensive tests for _to_fal_app_name conversion logic."""
 
@@ -61,7 +62,10 @@ class TestToFalAppName:
     def test_long_pascal_case(self):
         from fal.app import _to_fal_app_name
 
-        assert _to_fal_app_name("MyVeryLongApplicationName") == "my-very-long-application-name"
+        assert (
+            _to_fal_app_name("MyVeryLongApplicationName")
+            == "my-very-long-application-name"
+        )
 
     # --- Acronym handling (known quirky behavior) ---
 
