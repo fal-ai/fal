@@ -5,8 +5,12 @@ from pydantic import Field
 
 from fal.toolkit.pydantic import (
     IS_PYDANTIC_V2,
+    AudioField,
     FalBaseModel,
+    FileField,
     Hidden,
+    ImageField,
+    VideoField,
     _is_hidden_field,
 )
 
@@ -244,3 +248,43 @@ def test_context_binding_list_fields():
 
     assert instance.urls[0].bound_loc == ("urls", 0)
     assert instance.urls[1].bound_loc == ("urls", 1)
+
+
+class TestFieldHelpers:
+    """Tests for domain-specific Field helpers (FileField, ImageField, etc.)."""
+
+    def test_file_field_init(self):
+        """FileField should initialize and set ui.field = 'file' in schema."""
+
+        class Model(FalBaseModel):
+            file_input: str = FileField(default="", description="A file input")
+
+        schema = Model.model_json_schema() if IS_PYDANTIC_V2 else Model.schema()
+        assert schema["properties"]["file_input"]["ui"]["field"] == "file"
+
+    def test_image_field_init(self):
+        """ImageField should initialize and set ui.field = 'image' in schema."""
+
+        class Model(FalBaseModel):
+            image_input: str = ImageField(default="", description="An image input")
+
+        schema = Model.model_json_schema() if IS_PYDANTIC_V2 else Model.schema()
+        assert schema["properties"]["image_input"]["ui"]["field"] == "image"
+
+    def test_video_field_init(self):
+        """VideoField should initialize and set ui.field = 'video' in schema."""
+
+        class Model(FalBaseModel):
+            video_input: str = VideoField(default="", description="A video input")
+
+        schema = Model.model_json_schema() if IS_PYDANTIC_V2 else Model.schema()
+        assert schema["properties"]["video_input"]["ui"]["field"] == "video"
+
+    def test_audio_field_init(self):
+        """AudioField should initialize and set ui.field = 'audio' in schema."""
+
+        class Model(FalBaseModel):
+            audio_input: str = AudioField(default="", description="An audio input")
+
+        schema = Model.model_json_schema() if IS_PYDANTIC_V2 else Model.schema()
+        assert schema["properties"]["audio_input"]["ui"]["field"] == "audio"
