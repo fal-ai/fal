@@ -29,22 +29,24 @@ def test_find_target_by_name_app_returns_class_and_metadata():
         app_auth = "public"
 
     module = {"MyApp": MyApp}
-    target, app_name, app_auth = _find_target(module, "MyApp")
+    target, app_name, app_auth, class_name = _find_target(module, "MyApp")
 
     assert target is MyApp
     assert app_name == MyApp.app_name
     assert app_auth == MyApp.app_auth
+    assert class_name == "MyApp"
 
 
 def test_find_target_by_name_isolated_function_returns_function_and_name():
     name, iso = make_isolated_function("the_func")
     module = {name: iso}
 
-    target, returned_name, auth = _find_target(module, name)
+    target, returned_name, auth, class_name = _find_target(module, name)
 
     assert target is iso
     assert returned_name == name
     assert auth is None
+    assert class_name == name
 
 
 def test_find_target_by_name_invalid_type_raises():
@@ -60,11 +62,12 @@ def test_find_target_single_app_without_name():
         app_auth = "private"
 
     module = {"OnlyApp": OnlyApp}
-    target, app_name, app_auth = _find_target(module)
+    target, app_name, app_auth, class_name = _find_target(module)
 
     assert target is OnlyApp
     assert app_name == OnlyApp.app_name
     assert app_auth == OnlyApp.app_auth
+    assert class_name == "OnlyApp"
 
 
 def test_find_target_multiple_apps_without_name_raises():
@@ -101,8 +104,9 @@ def test_find_target_single_function_without_name():
     name, iso = make_isolated_function("single")
     module = {name: iso}
 
-    target, function_name, auth = _find_target(module)
+    target, function_name, auth, class_name = _find_target(module)
 
     assert target is iso
     assert function_name == name
     assert auth is None
+    assert class_name == name

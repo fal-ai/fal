@@ -327,8 +327,27 @@ PART_FINDER_RE = re.compile(r"[A-Z][a-z]*")
 
 
 def _to_fal_app_name(name: str) -> str:
-    # Convert MyGoodApp into my-good-app
-    return "-".join(part.lower() for part in PART_FINDER_RE.findall(name))
+    # Existing behavior (unchanged) - Convert PascalCase to kebab-case
+    # e.g., MyGoodApp -> my-good-app, ONNXModel -> o-n-n-x-model
+    result = "-".join(part.lower() for part in PART_FINDER_RE.findall(name))
+
+    # If existing behavior worked, return it (backwards compatible)
+    if result:
+        return result
+
+    # Fallback for snake_case (mock_model -> mock-model)
+    if "_" in name:
+        return "-".join(part.lower() for part in name.split("_") if part)
+
+    # Ultimate fallback: just lowercase the name
+    if name:
+        return name.lower()
+
+    # This should never happen, but provide a clear error if it does
+    raise ValueError(
+        f"Cannot derive app name from '{name}'. "
+        f"Please use --app-name to specify a name explicitly."
+    )
 
 
 def _print_python_packages() -> None:
@@ -584,6 +603,17 @@ class App(BaseServable):
                 "Running apps through SDK is not implemented yet. "
                 f"Please use `fal run path/to/app.py::{cls_name}` to run your app."
             )
+
+    def __getstate__(self) -> dict[str, Any]:
+        # we might need to pickle the app sometimes,
+        # e.g. in fal distributed workers from our toolkit
+        state = self.__dict__.copy()
+        state.pop("_current_request_context", None)
+        return state
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        self.__dict__.update(state)
+        self._current_request_context = None
 
     @classmethod
     def get_endpoints(cls) -> list[str]:

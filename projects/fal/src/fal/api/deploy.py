@@ -25,6 +25,8 @@ class DeploymentResult:
     revision: str
     app_name: str
     urls: dict[str, dict[str, str]]
+    log_url: str
+    auth_mode: str
 
 
 def _remove_http_and_port_from_url(url):
@@ -121,6 +123,15 @@ def _deploy_from_reference(
     app_auth = auth or loaded.app_auth
     strategy = strategy or "rolling"
 
+    # Get the actual function/class name that was loaded
+    display_name = func_name or loaded.class_name
+
+    # Show what app name will be used
+    from fal.console import console
+
+    console.print(f"Deploying '{display_name}' as app '{app_name}'", style="bold")
+    console.print("")
+
     result = host.register(
         func=isolated_function.func,
         options=isolated_function.options,
@@ -133,9 +144,18 @@ def _deploy_from_reference(
         environment_name=environment_name,
     )
 
-    assert result
-    assert result.result
-    assert result.service_urls
+    if not result or not result.result:
+        raise FalServerlessError(
+            "Deployment failed: The server did not confirm the deployment. "
+            "This may indicate a network issue or server error. "
+            "Please try again."
+        )
+    if not result.service_urls:
+        raise FalServerlessError(
+            "Deployment failed: Could not generate app endpoints. "
+            "The app name may be invalid - try using --app-name with a simple "
+            "kebab-case name (e.g., --app-name my-app)."
+        )
 
     urls: dict[str, dict[str, str]] = {
         "playground": {},
@@ -151,6 +171,8 @@ def _deploy_from_reference(
         revision=result.result.application_id,
         app_name=app_name,
         urls=urls,
+        log_url=result.service_urls.log,
+        auth_mode=app_auth or "private",
     )
 
 

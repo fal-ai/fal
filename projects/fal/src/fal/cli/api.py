@@ -2,6 +2,8 @@ import re
 
 import rich
 
+from fal import flags
+
 # = or := only
 KV_SPLIT_RE = re.compile(r"(=|:=)")
 
@@ -64,9 +66,20 @@ def queue_run(model_id: str, params: dict):
             live.update(Group(status_panel, logs_panel))
             live.refresh()
 
-        # Show final result
-        result = handle.get()
-        live.update(rich.pretty.Pretty(result))
+        if flags.DEBUG:
+            response = handle.fetch_raw_response()
+            # Print headers and body
+            headers = "\n".join(
+                f"{header}: {value}" for header, value in response.headers.multi_items()
+            )
+            headers_panel = Panel(headers, title="Headers")
+
+            body = rich.pretty.Pretty(response.json())
+            live.update(Group(headers_panel, body))
+            live.refresh()
+        else:
+            result = handle.fetch_result()
+            live.update(rich.pretty.Pretty(result))
 
 
 def add_parser(main_subparsers, parents):

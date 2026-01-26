@@ -14,11 +14,21 @@ class LoadedFunction:
     app_name: str | None
     app_auth: str | None
     source_code: str | None
+    class_name: str | None = None
 
 
 def _find_target(
     module: dict[str, object], function_name: str | None = None
-) -> tuple[object, str | None, str | None]:
+) -> tuple[object, str | None, str | None, str | None]:
+    """Find the target function/class in the module.
+
+    Returns:
+        A tuple of (target, app_name, app_auth, class_name) where:
+        - target: The fal.App class or IsolatedFunction
+        - app_name: The deployment name (e.g., "mock-model")
+        - app_auth: The auth mode
+        - class_name: The actual class/function name (e.g., "MockModel")
+    """
     import fal
     from fal.api import FalServerlessError, IsolatedFunction
 
@@ -29,10 +39,10 @@ def _find_target(
         target = module[function_name]
 
         if isinstance(target, type) and issubclass(target, fal.App):
-            return target, target.app_name, target.app_auth
+            return target, target.app_name, target.app_auth, function_name
 
         if isinstance(target, IsolatedFunction):
-            return target, function_name, None
+            return target, function_name, None, function_name
 
         raise FalServerlessError(
             f"Function '{function_name}' is not a fal.App or a fal.function"
@@ -45,8 +55,8 @@ def _find_target(
     }
 
     if len(fal_apps) == 1:
-        [(function_name, target)] = fal_apps.items()
-        return target, target.app_name, target.app_auth
+        [(class_name, target)] = fal_apps.items()
+        return target, target.app_name, target.app_auth, class_name
     elif len(fal_apps) > 1:
         raise FalServerlessError(
             f"Multiple fal.Apps found in the module: {list(fal_apps.keys())}. "
@@ -69,7 +79,7 @@ def _find_target(
         )
 
     [(function_name, target)] = fal_functions.items()
-    return target, function_name, None
+    return target, function_name, None, function_name
 
 
 def load_function_from(
@@ -90,7 +100,7 @@ def load_function_from(
 
     sys.path.append(os.getcwd())
     module = runpy.run_path(file_path)
-    target, app_name, app_auth = _find_target(module, function_name)
+    target, app_name, app_auth, class_name = _find_target(module, function_name)
 
     # The module for the function is set to <run_path> when runpy is used, in which
     # case we want to manually include the package it is defined in.
@@ -109,5 +119,10 @@ def load_function_from(
             f"Function '{function_name}' is not a fal.function or a fal.App"
         )
     return LoadedFunction(
-        target, endpoints, app_name=app_name, app_auth=app_auth, source_code=source_code
+        target,
+        endpoints,
+        app_name=app_name,
+        app_auth=app_auth,
+        source_code=source_code,
+        class_name=class_name,
     )

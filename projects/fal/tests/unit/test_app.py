@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 import os
+import pickle
+from contextvars import ContextVar
 
 import pytest
 
 import fal
 from fal import App, endpoint
 from fal.container import ContainerImage
+
+
+class PickleApp(App):
+    pass
 
 
 def test_app_regions_propagate_to_function_options():
@@ -28,6 +34,141 @@ def test_app_default_app_name_is_generated_from_class_name():
         pass
 
     assert MyCustomApp.app_name == "my-custom-app"
+
+
+# ============================================================================
+# Tests for _to_fal_app_name - the function that converts class names to app names
+# ============================================================================
+
+
+class TestToFalAppName:
+    """Comprehensive tests for _to_fal_app_name conversion logic."""
+
+    # --- Standard PascalCase conversions ---
+
+    def test_simple_pascal_case(self):
+        from fal.app import _to_fal_app_name
+
+        assert _to_fal_app_name("MyApp") == "my-app"
+        assert _to_fal_app_name("SimpleApp") == "simple-app"
+        assert _to_fal_app_name("MyGoodApp") == "my-good-app"
+
+    def test_single_word_pascal_case(self):
+        from fal.app import _to_fal_app_name
+
+        assert _to_fal_app_name("App") == "app"
+        assert _to_fal_app_name("Model") == "model"
+
+    def test_long_pascal_case(self):
+        from fal.app import _to_fal_app_name
+
+        assert (
+            _to_fal_app_name("MyVeryLongApplicationName")
+            == "my-very-long-application-name"
+        )
+
+    # --- Acronym handling (known quirky behavior) ---
+
+    def test_all_caps_acronym_splits_each_letter(self):
+        """Acronyms like SDXL get split into individual letters - known behavior."""
+        from fal.app import _to_fal_app_name
+
+        # Each uppercase letter becomes its own segment
+        assert _to_fal_app_name("SDXLModel") == "s-d-x-l-model"
+        assert _to_fal_app_name("ONNXRuntime") == "o-n-n-x-runtime"
+        assert _to_fal_app_name("GPT4App") == "g-p-t-app"  # 4 is not captured by regex
+
+    def test_mixed_acronym_and_words(self):
+        from fal.app import _to_fal_app_name
+
+        assert _to_fal_app_name("MySDXLApp") == "my-s-d-x-l-app"
+
+    # --- snake_case fallback ---
+
+    def test_snake_case_conversion(self):
+        from fal.app import _to_fal_app_name
+
+        assert _to_fal_app_name("mock_model") == "mock-model"
+        assert _to_fal_app_name("my_cool_app") == "my-cool-app"
+        assert _to_fal_app_name("image_generator") == "image-generator"
+
+    def test_snake_case_with_numbers(self):
+        from fal.app import _to_fal_app_name
+
+        assert _to_fal_app_name("sdxl_v2") == "sdxl-v2"
+        assert _to_fal_app_name("gpt_4_turbo") == "gpt-4-turbo"
+
+    def test_snake_case_with_leading_trailing_underscores(self):
+        from fal.app import _to_fal_app_name
+
+        assert _to_fal_app_name("_private_app") == "private-app"
+        assert _to_fal_app_name("app_") == "app"
+        assert _to_fal_app_name("__dunder__") == "dunder"
+
+    def test_snake_case_with_multiple_underscores(self):
+        from fal.app import _to_fal_app_name
+
+        assert _to_fal_app_name("my__app") == "my-app"
+
+    # --- Lowercase fallback ---
+
+    def test_simple_lowercase(self):
+        from fal.app import _to_fal_app_name
+
+        assert _to_fal_app_name("myapp") == "myapp"
+        assert _to_fal_app_name("simple") == "simple"
+
+    def test_lowercase_with_numbers(self):
+        from fal.app import _to_fal_app_name
+
+        assert _to_fal_app_name("app123") == "app123"
+        assert _to_fal_app_name("v2model") == "v2model"
+
+    # --- Edge cases ---
+
+    def test_single_character(self):
+        from fal.app import _to_fal_app_name
+
+        assert _to_fal_app_name("A") == "a"
+        assert _to_fal_app_name("x") == "x"
+
+    def test_numbers_only_falls_through_to_lowercase(self):
+        from fal.app import _to_fal_app_name
+
+        # No uppercase letters, no underscores, so falls through to lowercase
+        assert _to_fal_app_name("123") == "123"
+
+    def test_mixed_case_not_pascal(self):
+        """Names that start lowercase but have uppercase later."""
+        from fal.app import _to_fal_app_name
+
+        # Only captures uppercase-starting segments
+        assert _to_fal_app_name("myApp") == "app"  # 'my' is ignored, only 'App' matches
+
+    # --- Error cases ---
+
+    def test_empty_string_raises_value_error(self):
+        from fal.app import _to_fal_app_name
+
+        with pytest.raises(ValueError, match="Cannot derive app name"):
+            _to_fal_app_name("")
+
+    # --- Real-world examples ---
+
+    def test_realistic_model_names(self):
+        from fal.app import _to_fal_app_name
+
+        assert _to_fal_app_name("StableDiffusion") == "stable-diffusion"
+        assert _to_fal_app_name("TextToImage") == "text-to-image"
+        assert _to_fal_app_name("ImageUpscaler") == "image-upscaler"
+        assert _to_fal_app_name("VideoGenerator") == "video-generator"
+
+    def test_realistic_snake_case_names(self):
+        from fal.app import _to_fal_app_name
+
+        assert _to_fal_app_name("stable_diffusion") == "stable-diffusion"
+        assert _to_fal_app_name("text_to_image") == "text-to-image"
+        assert _to_fal_app_name("flux_schnell") == "flux-schnell"
 
 
 def test_app_classvars_propagate_to_host_kwargs():
@@ -181,3 +322,15 @@ def test_app_classvars_propagate_to_host_kwargs_when_overriding_hidden_defaults(
     assert hk["keep_alive"] == 30
     assert hk["resolver"] == "pip"
     assert "_app_var" not in hk
+
+
+def test_app_is_picklable_with_request_context():
+    app = PickleApp(_allow_init=True)
+    app._current_request_context = ContextVar(  # type: ignore[assignment]
+        "_current_request_context"
+    )
+
+    payload = pickle.dumps(app)
+    loaded = pickle.loads(payload)
+
+    assert loaded._current_request_context is None

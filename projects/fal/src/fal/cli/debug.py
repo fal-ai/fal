@@ -45,6 +45,14 @@ def debugtools(args):
             raise
 
 
+class DebugAction(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        import fal.flags as flags  # noqa: PLC0415
+
+        flags.DEBUG = True
+        setattr(namespace, self.dest, True)
+
+
 def get_debug_parser():
     from fal.flags import DEBUG
 
@@ -52,7 +60,8 @@ def get_debug_parser():
     group = parser.add_argument_group(title="Debug")
     group.add_argument(
         "--debug",
-        action="store_true",
+        action=DebugAction,
+        nargs=0,
         help="Show verbose errors." if DEBUG else argparse.SUPPRESS,
     )
     group.add_argument(

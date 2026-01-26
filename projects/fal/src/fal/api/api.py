@@ -714,20 +714,56 @@ class FalServerlessHost(Host):
             from fal.console import console
 
             if service_urls := partial_result.service_urls:
+                from rich.panel import Panel
+                from rich.text import Text
+
                 from fal.flags import URL_OUTPUT
 
+                console.print("")
+
+                # Build panel content with grouped sections
+                lines = Text()
                 endpoints = getattr(func, "_routes", ["/"])  # type: ignore[attr-defined]
+
+                # Auth mode section (ephemeral apps are always public)
+                lines.append("▸ Auth: public ", style="bold")
+                lines.append("(no authentication required)\n\n", style="dim")
+
+                # Playground section
                 if URL_OUTPUT != "none":
-                    console.print("Playground:")
+                    lines.append("▸ Playground ", style="bold")
+                    lines.append("(open in browser)\n", style="dim")
                     for endpoint in endpoints:
-                        console.print(f"\t{service_urls.playground}{endpoint}")
+                        lines.append(
+                            f"  {service_urls.playground}{endpoint}\n", style="cyan"
+                        )
+
+                # API Endpoints section
                 if URL_OUTPUT == "all":
-                    console.print("Synchronous Endpoints:")
+                    lines.append("\n")
+                    lines.append("▸ API Endpoints ", style="bold")
+                    lines.append("(use in code)\n", style="dim")
                     for endpoint in endpoints:
-                        console.print(f"\t{service_urls.run}{endpoint}")
-                    console.print("Asynchronous Endpoints (Recommended):")
-                    for endpoint in endpoints:
-                        console.print(f"\t{service_urls.queue}{endpoint}")
+                        lines.append(
+                            f"  Sync   {service_urls.run}{endpoint}\n", style="cyan"
+                        )
+                        lines.append(
+                            f"  Async  {service_urls.queue}{endpoint}\n", style="cyan"
+                        )
+
+                    # Logs section
+                    lines.append("\n")
+                    lines.append("▸ Logs\n", style="bold")
+                    lines.append(f"  {service_urls.log}", style="cyan")
+
+                panel = Panel(
+                    lines,
+                    title="Ephemeral App (public)",
+                    subtitle="[dim]Deleted when process exits[/dim]",
+                    border_style="green",
+                    padding=(1, 2),
+                )
+                console.print(panel)
 
             for log in partial_result.logs:
                 if (
