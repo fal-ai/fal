@@ -327,8 +327,27 @@ PART_FINDER_RE = re.compile(r"[A-Z][a-z]*")
 
 
 def _to_fal_app_name(name: str) -> str:
-    # Convert MyGoodApp into my-good-app
-    return "-".join(part.lower() for part in PART_FINDER_RE.findall(name))
+    # Existing behavior (unchanged) - Convert PascalCase to kebab-case
+    # e.g., MyGoodApp -> my-good-app, ONNXModel -> o-n-n-x-model
+    result = "-".join(part.lower() for part in PART_FINDER_RE.findall(name))
+
+    # If existing behavior worked, return it (backwards compatible)
+    if result:
+        return result
+
+    # Fallback for snake_case (mock_model -> mock-model)
+    if "_" in name:
+        return "-".join(part.lower() for part in name.split("_") if part)
+
+    # Ultimate fallback: just lowercase the name
+    if name:
+        return name.lower()
+
+    # This should never happen, but provide a clear error if it does
+    raise ValueError(
+        f"Cannot derive app name from '{name}'. "
+        f"Please use --app-name to specify a name explicitly."
+    )
 
 
 def _print_python_packages() -> None:
