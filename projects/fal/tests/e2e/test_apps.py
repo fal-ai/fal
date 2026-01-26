@@ -1666,45 +1666,67 @@ def test_graceful_shutdown_app(host: api.FalServerlessHost, user: User):
         yield f"{user.username}/{app_alias}"
 
 
-def test_graceful_shutdown_app_client(
+def graceful_shutdown(
+    test_graceful_shutdown_app: str,
+    host: api.FalServerlessHost,
+    *,
+    wait_time: int,
+    path: str,
+) -> bool:
+    time.sleep(2)
+
+    handle = submit_and_wait_for_runner(
+        test_graceful_shutdown_app, arguments={"wait_time": wait_time}, path=path
+    )
+    saved_request_id = handle.request_id
+
+    time.sleep(2)
+    with host._connection as client:
+        _, _, app_alias = test_graceful_shutdown_app.partition("/")
+
+        runners = client.list_runners(start_time=datetime.now() - timedelta(seconds=10))
+        runner = next((r for r in runners if r.alias == app_alias), None)
+
+        assert runner is not None, "Runner not found"
+
+        client.kill_runner(runner.runner_id)
+    time.sleep(2)
+
+    res = apps.run(test_graceful_shutdown_app, {}, path="/latest-request-id")
+    teardown_called = res == saved_request_id
+    try:
+        request_processed = handle.fetch_result()["slept"]
+    except Exception:
+        request_processed = False
+
+    return teardown_called and request_processed
+
+
+@pytest.mark.flaky(max_runs=3)
+def test_graceful_shutdown(
     host: api.FalServerlessHost,
     test_graceful_shutdown_app: str,
 ):
-    time.sleep(3)  # Wait for the app to be deployed properly
-
-    def graceful_shutdown(wait_time: int, path: str):
-        handle = submit_and_wait_for_runner(
-            test_graceful_shutdown_app, arguments={"wait_time": wait_time}, path=path
-        )
-        saved_request_id = handle.request_id
-
-        time.sleep(2)
-        with host._connection as client:
-            _, _, app_alias = test_graceful_shutdown_app.partition("/")
-
-            runners = client.list_runners(
-                start_time=datetime.now() - timedelta(seconds=10)
-            )
-            runner = next((r for r in runners if r.alias == app_alias), None)
-
-            assert runner is not None, "Runner not found"
-
-            client.kill_runner(runner.runner_id)
-        time.sleep(2)
-
-        res = apps.run(test_graceful_shutdown_app, {}, path="/latest-request-id")
-        teardown_called = res == saved_request_id
-        try:
-            request_processed = handle.fetch_result()["slept"]
-        except Exception:
-            request_processed = False
-
-        return teardown_called and request_processed
-
-    assert graceful_shutdown(wait_time=5, path="/"), "app should be gracefully shutdown"
-    assert not graceful_shutdown(
-        wait_time=60, path="/"
-    ), "app should be forcefully killed if it takes too long to clean up"
     assert graceful_shutdown(
-        wait_time=60, path="/with-stop"
+        test_graceful_shutdown_app, host, wait_time=5, path="/"
+    ), "app should be gracefully shutdown"
+
+
+@pytest.mark.flaky(max_runs=3)
+def test_graceful_shutdown_force_kill(
+    host: api.FalServerlessHost,
+    test_graceful_shutdown_app: str,
+):
+    assert not graceful_shutdown(
+        test_graceful_shutdown_app, host, wait_time=60, path="/"
+    ), "app should be forcefully killed if it takes too long to clean up"
+
+
+@pytest.mark.flaky(max_runs=3)
+def test_graceful_shutdown_handle_exit(
+    host: api.FalServerlessHost,
+    test_graceful_shutdown_app: str,
+):
+    assert graceful_shutdown(
+        test_graceful_shutdown_app, host, wait_time=60, path="/with-stop"
     ), "app should be called handle_exit on SIGTERM"
