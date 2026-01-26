@@ -1293,7 +1293,10 @@ class BaseServable:
                 headers = dict(exc.headers) if exc.headers else {}
                 headers["x-fal-billable-units"] = "0"
                 return JSONResponse(
-                    {"detail": f"Path {request.url.path} not found"},
+                    {
+                        "detail": f"Path {request.url.path} not found",
+                        "error_code": "path_does_not_exist",
+                    },
                     404,
                     headers=headers,
                 )
