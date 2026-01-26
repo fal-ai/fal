@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import warnings
-from typing import Any, ClassVar, TypeVar
+from typing import Any, ClassVar, List, Set, TypeVar
 
 import pydantic
 from pydantic import BaseModel, Field
@@ -174,8 +174,8 @@ class FalBaseModel(BaseModel):
     ```
     """
 
-    SCHEMA_IGNORES: ClassVar[set[str]] = set()
-    FIELD_ORDERS: ClassVar[list[str]] = []
+    SCHEMA_IGNORES: ClassVar[Set[str]] = set()
+    FIELD_ORDERS: ClassVar[List[str]] = []
 
     if IS_PYDANTIC_V2:
         # Pydantic v2: Use model_config and model_validator
