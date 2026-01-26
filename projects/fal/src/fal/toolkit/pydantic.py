@@ -125,7 +125,7 @@ def _apply_schema_modifications(schema: dict[str, Any], model: type) -> None:
     properties = schema.get("properties", {})
 
     # Apply SCHEMA_IGNORES: set ui.hidden = True
-    schema_ignores = getattr(model, "SCHEMA_IGNORES", set())
+    schema_ignores: Set[str] = getattr(model, "SCHEMA_IGNORES", set())
 
     # Set ui.hidden = True for hidden fields and fields in SCHEMA_IGNORES
     if IS_PYDANTIC_V2:
@@ -158,8 +158,10 @@ class FalBaseModel(BaseModel):
     and context binding for error reporting.
 
     Features:
-    - FIELD_ORDERS: Control field order in JSON schema, useful for nested models.
-    - Hidden(Field(...)): Mark fields as hidden from OpenAPI schema, useful for hidden params.
+    - FIELD_ORDERS: Control field order in JSON schema, useful for nested
+      models.
+    - Hidden(Field(...)): Mark fields as hidden from OpenAPI schema, useful
+      for hidden params.
 
     Example:
     ```python

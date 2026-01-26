@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import shutil
 import traceback
+from functools import wraps
 from pathlib import Path
 from tempfile import NamedTemporaryFile, mkdtemp
-from functools import wraps
 from typing import Any, Callable, Optional
 from urllib.parse import urlparse
 from zipfile import ZipFile
