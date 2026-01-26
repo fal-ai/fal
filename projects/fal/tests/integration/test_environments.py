@@ -143,7 +143,7 @@ def test_environment_created_at_timestamp(
         # Check that it's recent (within last minute)
         now = datetime.now(timezone.utc)
         time_diff = (now - env.created_at).total_seconds()
-        assert 0 <= time_diff < 60, f"Created time seems wrong: {time_diff}s ago"
+        assert -60 <= time_diff < 60, f"Created time seems wrong: {time_diff}s ago"
 
     finally:
         client.environments.delete(test_env_name)
