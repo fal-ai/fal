@@ -115,7 +115,7 @@ def test_deploy_with_toml_success(
         "shared",
         strategy="rolling",
         scale=False,
-        no_cache=False,
+        force_env_build=False,
         environment_name=None,
     )
 
@@ -143,7 +143,7 @@ def test_deploy_with_toml_no_auth(
         None,
         strategy=None,
         scale=False,
-        no_cache=False,
+        force_env_build=False,
         environment_name=None,
     )
 
@@ -256,7 +256,7 @@ def test_deploy_with_toml_deployment_strategy(
         "shared",
         strategy="rolling",
         scale=False,
-        no_cache=False,
+        force_env_build=False,
         environment_name=None,
     )
 
@@ -282,7 +282,7 @@ def test_deploy_with_toml_default_deployment_strategy(
         None,
         strategy=None,
         scale=False,
-        no_cache=False,
+        force_env_build=False,
         environment_name=None,
     )
 
@@ -308,7 +308,7 @@ def test_deploy_with_cli_auth(
         "shared",
         strategy=None,
         scale=False,
-        no_cache=False,
+        force_env_build=False,
         environment_name=None,
     )
 
@@ -334,7 +334,7 @@ def test_deploy_with_cli_deployment_strategy(
         None,
         strategy="rolling",
         scale=False,
-        no_cache=False,
+        force_env_build=False,
         environment_name=None,
     )
 
@@ -386,7 +386,7 @@ def test_deploy_with_cli_scale(
         None,
         strategy=None,
         scale=False,
-        no_cache=False,
+        force_env_build=False,
         environment_name=None,
     )
 
@@ -412,7 +412,7 @@ def test_deploy_with_cli_no_cache(
         None,
         strategy=None,
         scale=False,
-        no_cache=True,
+        force_env_build=True,
         environment_name=None,
     )
 
