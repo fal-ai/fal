@@ -12,6 +12,13 @@ def _deploy(args):
     team = args.team
     app_ref = args.app_ref
 
+    # Handle deprecated --force-env-build flag
+    if args.force_env_build:
+        args.console.print(
+            "[bold yellow]Warning:[/bold yellow] --force-env-build is deprecated, "
+            "use --no-cache instead"
+        )
+
     # If the app_ref is an app name, get team from pyproject.toml
     if app_ref and is_app_name(app_ref):
         try:
@@ -21,6 +28,7 @@ def _deploy(args):
             # If we can't find the app in pyproject.toml, team remains None
             pass
 
+    no_cache = args.no_cache or args.force_env_build
     client = SyncServerlessClient(host=args.host, team=team)
     res = client.deploy(
         app_ref,
@@ -28,7 +36,7 @@ def _deploy(args):
         auth=args.auth,
         strategy=args.strategy,
         reset_scale=args.app_scale_settings,
-        force_env_build=args.force_env_build,
+        force_env_build=no_cache,
         environment_name=args.env,
     )
     app_id = res.revision
@@ -188,9 +196,17 @@ def add_parser(main_subparsers, parents):
         help="Use the application code for scale settings.",
     )
     parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Do not use the cache for the environment build.",
+    )
+    parser.add_argument(
         "--force-env-build",
         action="store_true",
-        help="Ignore the environment build cache and force rebuild.",
+        help=(
+            "[DEPRECATED: Use --no-cache instead] "
+            "Ignore the environment build cache and force rebuild."
+        ),
     )
     parser.add_argument(
         "--env",

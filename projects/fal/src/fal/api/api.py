@@ -1164,7 +1164,7 @@ def function(  # type: ignore
             config["force"] = force_env_build
         elif force_env_build:
             console.print(
-                "[bold yellow]Note:[/bold yellow] [dim]--force--env-build[/dim]"
+                "[bold yellow]Note:[/bold yellow] [dim]--no-cache[/dim]"
                 " is only supported for container apps as of now. Ignoring."
             )
 
