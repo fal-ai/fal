@@ -8,6 +8,13 @@ def _run(args):
     from fal.api.client import SyncServerlessClient
     from fal.utils import load_function_from
 
+    # Handle deprecated --force-env-build flag
+    if args.force_env_build:
+        args.console.print(
+            "[bold yellow]Warning:[/bold yellow] --force-env-build is deprecated, "
+            "use --no-cache instead"
+        )
+
     team = args.team
     func_ref = args.func_ref
 
@@ -21,12 +28,11 @@ def _run(args):
         # Turn relative path into absolute path for files
         file_path = str(Path(file_path).absolute())
 
+    no_cache = args.no_cache or args.force_env_build
     client = SyncServerlessClient(host=args.host, team=team)
     host = client._create_host(local_file_path=file_path, environment_name=args.env)
 
-    loaded = load_function_from(
-        host, file_path, func_name, force_env_build=args.no_cache
-    )
+    loaded = load_function_from(host, file_path, func_name, force_env_build=no_cache)
 
     isolated_function = loaded.function
     # let our exc handlers handle UserFunctionException
@@ -53,6 +59,14 @@ def add_parser(main_subparsers, parents):
         "--no-cache",
         action="store_true",
         help="Do not use the cache for the environment build.",
+    )
+    parser.add_argument(
+        "--force-env-build",
+        action="store_true",
+        help=(
+            "[DEPRECATED: Use --no-cache instead] "
+            "Ignore the environment build cache and force rebuild."
+        ),
     )
     parser.add_argument(
         "--env",
