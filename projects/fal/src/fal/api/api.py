@@ -714,7 +714,7 @@ class FalServerlessHost(Host):
             from fal.console import console
 
             if service_urls := partial_result.service_urls:
-                from rich.panel import Panel
+                from rich.rule import Rule
                 from rich.text import Text
 
                 from fal.flags import URL_OUTPUT
@@ -756,14 +756,11 @@ class FalServerlessHost(Host):
                     lines.append("▸ Logs\n", style="bold")
                     lines.append(f"  {service_urls.log}", style="cyan")
 
-                panel = Panel(
-                    lines,
-                    title="Ephemeral App (public)",
-                    subtitle="[dim]Deleted when process exits[/dim]",
-                    border_style="green",
-                    padding=(1, 2),
-                )
-                console.print(panel)
+                title = Text("Ephemeral App (public)", style="bold")
+                subtitle = Text("Deleted when process exits", style="dim")
+                console.print(Rule(title, style="green"))
+                console.print(lines)
+                console.print(Rule(subtitle, style="green"))
 
             for log in partial_result.logs:
                 if (
