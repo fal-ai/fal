@@ -103,9 +103,9 @@ def _deploy(args):
         # Reminder about scaling parameter inheritance
         args.console.print("")
         note = (
-            "[dim]Note: Scaling parameters (keep_alive, min_concurrency, etc.) "
+            "[yellow]Note: Scaling parameters (keep_alive, min_concurrency, etc.) "
             "are inherited from the previous deployment. "
-            "Use --reset-scale to apply code changes.[/dim]"
+            "Use --reset-scale to apply code changes.[/yellow]"
         )
         args.console.print(note)
     else:
