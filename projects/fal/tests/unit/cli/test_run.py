@@ -52,13 +52,14 @@ def mock_args(
     host,
     func_ref: Tuple[str, Optional[str]],
     team: Optional[str] = None,
-    force_env_build: bool = False,
+    no_cache: bool = False,
 ):
     args = MagicMock()
     args.host = host
     args.func_ref = func_ref
     args.team = team
-    args.force_env_build = force_env_build
+    args.no_cache = no_cache
+    args.force_env_build = False
     return args
 
 
