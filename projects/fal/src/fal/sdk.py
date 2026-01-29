@@ -328,6 +328,12 @@ class RunnerState(Enum):
     IDLE = "IDLE"
 
 
+class ReplaceState(Enum):
+    NO_REPLACE = "NO_REPLACE"
+    WILL_REPLACE = "WILL_REPLACE"
+    DID_REPLACE = "DID_REPLACE"
+
+
 @dataclass
 class RunnerInfo:
     runner_id: str
@@ -338,6 +344,7 @@ class RunnerInfo:
     revision: str
     alias: str
     state: RunnerState
+    replacement: ReplaceState = ReplaceState.NO_REPLACE
 
 
 @dataclass
@@ -494,6 +501,7 @@ def _from_grpc_runner_info(message: isolate_proto.RunnerInfo) -> RunnerInfo:
     from isolate.server import definitions as worker_definitions
 
     external_metadata = worker_definitions.struct_to_dict(message.external_metadata)
+    replacement_name = isolate_proto.RunnerInfo.ReplaceState.Name(message.replacement)
     return RunnerInfo(
         runner_id=message.runner_id,
         in_flight_requests=message.in_flight_requests,
@@ -507,6 +515,7 @@ def _from_grpc_runner_info(message: isolate_proto.RunnerInfo) -> RunnerInfo:
         revision=message.revision,
         alias=message.alias,
         state=RunnerState(isolate_proto.RunnerInfo.State.Name(message.state)),
+        replacement=ReplaceState(replacement_name),
     )
 
 
