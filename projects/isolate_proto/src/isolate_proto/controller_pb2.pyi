@@ -1417,6 +1417,7 @@ class RunnerInfo(google.protobuf.message.Message):
         TERMINATING: RunnerInfo._State.ValueType  # 6
         TERMINATED: RunnerInfo._State.ValueType  # 7
         IDLE: RunnerInfo._State.ValueType  # 8
+        REPLACING: RunnerInfo._State.ValueType  # 9
 
     class State(_State, metaclass=_StateEnumTypeWrapper): ...
     RUNNING: RunnerInfo.State.ValueType  # 0
@@ -1429,6 +1430,22 @@ class RunnerInfo(google.protobuf.message.Message):
     TERMINATING: RunnerInfo.State.ValueType  # 6
     TERMINATED: RunnerInfo.State.ValueType  # 7
     IDLE: RunnerInfo.State.ValueType  # 8
+    REPLACING: RunnerInfo.State.ValueType  # 9
+
+    class _ReplaceState:
+        ValueType = typing.NewType("ValueType", builtins.int)
+        V: typing_extensions.TypeAlias = ValueType
+
+    class _ReplaceStateEnumTypeWrapper(google.protobuf.internal.enum_type_wrapper._EnumTypeWrapper[RunnerInfo._ReplaceState.ValueType], builtins.type):
+        DESCRIPTOR: google.protobuf.descriptor.EnumDescriptor
+        NO_REPLACE: RunnerInfo._ReplaceState.ValueType  # 0
+        WILL_REPLACE: RunnerInfo._ReplaceState.ValueType  # 1
+        DID_REPLACE: RunnerInfo._ReplaceState.ValueType  # 2
+
+    class ReplaceState(_ReplaceState, metaclass=_ReplaceStateEnumTypeWrapper): ...
+    NO_REPLACE: RunnerInfo.ReplaceState.ValueType  # 0
+    WILL_REPLACE: RunnerInfo.ReplaceState.ValueType  # 1
+    DID_REPLACE: RunnerInfo.ReplaceState.ValueType  # 2
 
     RUNNER_ID_FIELD_NUMBER: builtins.int
     IN_FLIGHT_REQUESTS_FIELD_NUMBER: builtins.int
@@ -1438,6 +1455,7 @@ class RunnerInfo(google.protobuf.message.Message):
     ALIAS_FIELD_NUMBER: builtins.int
     EXTERNAL_METADATA_FIELD_NUMBER: builtins.int
     STATE_FIELD_NUMBER: builtins.int
+    REPLACEMENT_FIELD_NUMBER: builtins.int
     runner_id: builtins.str
     in_flight_requests: builtins.int
     expiration_countdown: builtins.int
@@ -1447,6 +1465,7 @@ class RunnerInfo(google.protobuf.message.Message):
     @property
     def external_metadata(self) -> google.protobuf.struct_pb2.Struct: ...
     state: global___RunnerInfo.State.ValueType
+    replacement: global___RunnerInfo.ReplaceState.ValueType
     def __init__(
         self,
         *,
@@ -1458,9 +1477,10 @@ class RunnerInfo(google.protobuf.message.Message):
         alias: builtins.str = ...,
         external_metadata: google.protobuf.struct_pb2.Struct | None = ...,
         state: global___RunnerInfo.State.ValueType | None = ...,
+        replacement: global___RunnerInfo.ReplaceState.ValueType = ...,
     ) -> None: ...
     def HasField(self, field_name: typing_extensions.Literal["_expiration_countdown", b"_expiration_countdown", "_external_metadata", b"_external_metadata", "_state", b"_state", "expiration_countdown", b"expiration_countdown", "external_metadata", b"external_metadata", "state", b"state"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing_extensions.Literal["_expiration_countdown", b"_expiration_countdown", "_external_metadata", b"_external_metadata", "_state", b"_state", "alias", b"alias", "expiration_countdown", b"expiration_countdown", "external_metadata", b"external_metadata", "in_flight_requests", b"in_flight_requests", "revision", b"revision", "runner_id", b"runner_id", "state", b"state", "uptime", b"uptime"]) -> None: ...
+    def ClearField(self, field_name: typing_extensions.Literal["_expiration_countdown", b"_expiration_countdown", "_external_metadata", b"_external_metadata", "_state", b"_state", "alias", b"alias", "expiration_countdown", b"expiration_countdown", "external_metadata", b"external_metadata", "in_flight_requests", b"in_flight_requests", "replacement", b"replacement", "revision", b"revision", "runner_id", b"runner_id", "state", b"state", "uptime", b"uptime"]) -> None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_expiration_countdown", b"_expiration_countdown"]) -> typing_extensions.Literal["expiration_countdown"] | None: ...
     @typing.overload
