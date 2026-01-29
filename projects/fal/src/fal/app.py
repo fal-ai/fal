@@ -30,7 +30,6 @@ from fal.api import (
 from fal.api import (
     function as fal_function,
 )
-from fal.auth import key_credentials
 from fal.container import ContainerImage
 from fal.exceptions import FalServerlessException, RequestCancelledException
 from fal.logging import get_logger
@@ -182,28 +181,12 @@ class AppClientError(FalServerlessException):
     headers: dict[str, str] = field(default_factory=dict)
 
 
-def _default_auth_headers() -> dict[str, str]:
-    key_creds = key_credentials()
-    if not key_creds:
-        return {}
-    key_id, key_secret = key_creds
-    return {"Authorization": f"Key {key_id}:{key_secret}"}
-
-
 class EndpointClient:
-    def __init__(
-        self,
-        url,
-        endpoint,
-        signature,
-        timeout: int | None = None,
-        headers: dict[str, str] | None = None,
-    ):
+    def __init__(self, url, endpoint, signature, timeout: int | None = None):
         self.url = url
         self.endpoint = endpoint
         self.signature = signature
         self.timeout = timeout
-        self.headers = headers or {}
 
         annotations = endpoint.__annotations__ or {}
         self.return_type = annotations.get("return") or None
@@ -215,7 +198,6 @@ class EndpointClient:
                 self.url + self.signature.path,
                 json=data.dict() if hasattr(data, "dict") else dict(data),
                 timeout=self.timeout,
-                headers=self.headers,
             )
             if not resp.is_success:
                 # allow logs to be printed before raising the exception
@@ -242,7 +224,6 @@ class AppClient:
     ):
         self.url = url
         self.cls = cls
-        self._headers = _default_auth_headers()
 
         for name, endpoint in inspect.getmembers(cls, inspect.isfunction):
             signature = getattr(endpoint, "route_signature", None)
@@ -253,7 +234,6 @@ class AppClient:
                 endpoint,
                 signature,
                 timeout=timeout,
-                headers=self._headers,
             )
             setattr(self, name, endpoint_client)
 
@@ -294,15 +274,12 @@ class AppClient:
             last_error = None
             attempt = 0
 
-            headers = _default_auth_headers()
             with httpx.Client() as client:
                 while time.perf_counter() - start_time < startup_timeout:
                     attempt += 1
 
                     try:
-                        resp = client.get(
-                            url, timeout=health_request_timeout, headers=headers
-                        )
+                        resp = client.get(url, timeout=health_request_timeout)
                     except httpx.TimeoutException:
                         last_error = (
                             f"Request timed out after {health_request_timeout} seconds"
@@ -341,7 +318,7 @@ class AppClient:
 
     def health(self):
         with httpx.Client() as client:
-            resp = client.get(self.url + "/health", headers=self._headers)
+            resp = client.get(self.url + "/health")
             resp.raise_for_status()
             return resp.json()
 
