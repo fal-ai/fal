@@ -71,10 +71,11 @@ def _assert_multipart_preference_call(mock, preference: dict[str, str]) -> None:
 def test_multipart_create_includes_lifecycle_headers(
     multipart_cls, token_manager, token, json_payload
 ):
-    captured: dict[str, dict[str, str]] = {}
+    captured_headers: dict[str, str] = {}
 
     def _fake_request(_url, headers=None, method=None, data=None):
-        captured["headers"] = headers or {}
+        nonlocal captured_headers
+        captured_headers = headers or {}
         return MagicMock()
 
     patches = [
@@ -95,7 +96,7 @@ def test_multipart_create_includes_lifecycle_headers(
         multipart = multipart_cls("file.txt")
         multipart.create(object_lifecycle_preference={"ttl": "1d"})
 
-    _assert_lifecycle_headers(captured["headers"], {"ttl": "1d"})
+    _assert_lifecycle_headers(captured_headers, {"ttl": "1d"})
 
 
 @pytest.mark.parametrize(
