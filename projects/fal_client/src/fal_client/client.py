@@ -64,7 +64,6 @@ if TYPE_CHECKING:
     from PIL import Image
 
 AnyJSON = Dict[str, Any]
-_T = TypeVar("_T")
 
 RUN_URL_FORMAT = f"https://{FAL_RUN_HOST}/"
 QUEUE_URL_FORMAT = f"https://{FAL_QUEUE_RUN_HOST}/"
@@ -79,7 +78,6 @@ MIN_REQUEST_TIMEOUT_SECONDS = 1
 EXECUTOR = concurrent.futures.ThreadPoolExecutor(
     thread_name_prefix="FAL_CLIENT_EXECUTOR"
 )
-BG_TASKS: Set[asyncio.Task] = set()
 
 
 @dataclass
@@ -740,13 +738,6 @@ def _parse_token_response(data: Any) -> str:
         if isinstance(data.get("detail"), str):
             return data["detail"]
     raise RuntimeError("Unexpected realtime token response format")
-
-
-def _create_bg_task(coro: Coroutine[Any, Any, _T]) -> asyncio.Task[_T]:
-    task = asyncio.create_task(coro)
-    BG_TASKS.add(task)
-    task.add_done_callback(BG_TASKS.discard)
-    return task
 
 
 class RealtimeError(RuntimeError):
@@ -1430,7 +1421,7 @@ class AsyncClient:
             handle = handle_ref[0]
             if handle is not None:
                 request_id = handle.request_id
-                _create_bg_task(_async_maybe_cancel_request(handle))
+                await _async_maybe_cancel_request(handle)
 
             raise FalClientTimeoutError(
                 timeout=client_timeout,
@@ -1822,8 +1813,7 @@ class SyncClient:
             handle = handle_ref[0]
             if handle is not None:
                 request_id = handle.request_id
-
-                self._executor.submit(_maybe_cancel_request, handle)
+                _maybe_cancel_request(handle)
 
             raise FalClientTimeoutError(
                 timeout=client_timeout,
