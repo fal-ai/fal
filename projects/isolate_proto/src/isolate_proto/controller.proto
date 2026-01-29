@@ -476,7 +476,6 @@ message RunnerInfo {
         TERMINATING = 6;
         TERMINATED = 7;
         IDLE = 8;
-        REPLACING = 9;
     }
 
     optional State state = 8;

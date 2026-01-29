@@ -1417,7 +1417,6 @@ class RunnerInfo(google.protobuf.message.Message):
         TERMINATING: RunnerInfo._State.ValueType  # 6
         TERMINATED: RunnerInfo._State.ValueType  # 7
         IDLE: RunnerInfo._State.ValueType  # 8
-        REPLACING: RunnerInfo._State.ValueType  # 9
 
     class State(_State, metaclass=_StateEnumTypeWrapper): ...
     RUNNING: RunnerInfo.State.ValueType  # 0
@@ -1430,7 +1429,6 @@ class RunnerInfo(google.protobuf.message.Message):
     TERMINATING: RunnerInfo.State.ValueType  # 6
     TERMINATED: RunnerInfo.State.ValueType  # 7
     IDLE: RunnerInfo.State.ValueType  # 8
-    REPLACING: RunnerInfo.State.ValueType  # 9
 
     class _ReplaceState:
         ValueType = typing.NewType("ValueType", builtins.int)
