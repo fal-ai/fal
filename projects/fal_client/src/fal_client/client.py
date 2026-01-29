@@ -20,16 +20,13 @@ from functools import cached_property
 from typing import (
     Any,
     AsyncIterator,
-    Coroutine,
     Dict,
     Iterator,
     TYPE_CHECKING,
     Optional,
     Literal,
     Callable,
-    Set,
     Union,
-    TypeVar,
 )
 from urllib.parse import urlencode
 import warnings
