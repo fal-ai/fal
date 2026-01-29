@@ -476,9 +476,18 @@ message RunnerInfo {
         TERMINATING = 6;
         TERMINATED = 7;
         IDLE = 8;
+        REPLACING = 9;
     }
 
     optional State state = 8;
+
+    enum ReplaceState {
+        NO_REPLACE = 0;
+        WILL_REPLACE = 1;
+        DID_REPLACE = 2;
+    }
+
+    ReplaceState replacement = 9;
 }
 
 message StopRunnerRequest {
