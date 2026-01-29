@@ -1397,30 +1397,37 @@ class AsyncClient:
                     stacklevel=2,
                 )
 
-        handle = None
+        handle_ref: list[Optional[AsyncRequestHandle]] = [None]
+
+        async def _do_subscribe() -> AnyJSON:
+            handle = await self.submit(
+                application,
+                arguments,
+                path=path,
+                hint=hint,
+                priority=priority,
+                headers=headers,
+                start_timeout=start_timeout,
+            )
+            handle_ref[0] = handle
+
+            if on_enqueue is not None:
+                on_enqueue(handle.request_id)
+
+            if on_queue_update is not None:
+                async for event in handle.iter_events(with_logs=with_logs):
+                    on_queue_update(event)
+
+            return await handle.get()
+
+        if client_timeout is None:
+            return await _do_subscribe()
 
         try:
-            async with asyncio.timeout(client_timeout):
-                handle = await self.submit(
-                    application,
-                    arguments,
-                    path=path,
-                    hint=hint,
-                    priority=priority,
-                    headers=headers,
-                    start_timeout=start_timeout,
-                )
-
-                if on_enqueue is not None:
-                    on_enqueue(handle.request_id)
-
-                if on_queue_update is not None:
-                    async for event in handle.iter_events(with_logs=with_logs):
-                        on_queue_update(event)
-
-                return await handle.get()
+            return await asyncio.wait_for(_do_subscribe(), timeout=client_timeout)
         except asyncio.TimeoutError as e:
             request_id = None
+            handle = handle_ref[0]
             if handle is not None:
                 request_id = handle.request_id
                 _create_bg_task(_async_maybe_cancel_request(handle))

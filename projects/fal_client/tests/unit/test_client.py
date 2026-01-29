@@ -1073,19 +1073,17 @@ def test_sync_subscribe_timeout_while_waiting_handle(monkeypatch):
             resp.json.return_value = {"status": "IN_QUEUE", "queue_position": 1}
         return resp
 
-    with (
-        patch("fal_client.client._maybe_retry_request", side_effect=mock_request),
-        patch("fal_client.client._maybe_cancel_request") as mock_cancel,
-    ):
-        client = SyncClient(key="test-key")
-        with pytest.raises(FalClientTimeoutError) as exc:
-            client.subscribe("app", {}, client_timeout=1.5)
-        assert exc.value.request_id == "req-123"
-        # Wait for background cancel to be executed
-        time.sleep(0.2)
-        mock_cancel.assert_called_once()
-        handle = mock_cancel.call_args.args[0]
-        assert handle.request_id == "req-123"
+    with patch("fal_client.client._maybe_retry_request", side_effect=mock_request):
+        with patch("fal_client.client._maybe_cancel_request") as mock_cancel:
+            client = SyncClient(key="test-key")
+            with pytest.raises(FalClientTimeoutError) as exc:
+                client.subscribe("app", {}, client_timeout=1.5)
+            assert exc.value.request_id == "req-123"
+            # Wait for background cancel to be executed
+            time.sleep(0.2)
+            mock_cancel.assert_called_once()
+            handle = mock_cancel.call_args.args[0]
+            assert handle.request_id == "req-123"
 
 
 @pytest.mark.asyncio
@@ -1127,23 +1125,21 @@ async def test_async_subscribe_timeout_while_waiting_handle():
             resp.json.return_value = {"status": "IN_QUEUE", "queue_position": 1}
         return resp
 
-    with (
-        patch(
-            "fal_client.client._async_maybe_retry_request",
-            new_callable=AsyncMock,
-            side_effect=mock_request,
-        ),
-        patch(
+    with patch(
+        "fal_client.client._async_maybe_retry_request",
+        new_callable=AsyncMock,
+        side_effect=mock_request,
+    ):
+        with patch(
             "fal_client.client._async_maybe_cancel_request",
             new_callable=AsyncMock,
-        ) as mock_cancel,
-    ):
-        client = AsyncClient(key="test-key")
-        with pytest.raises(FalClientTimeoutError) as exc:
-            await client.subscribe("app", {}, client_timeout=1.5)
-        assert exc.value.request_id == "req-456"
-        # Wait for background cancel task
-        await asyncio.sleep(0.2)
-        mock_cancel.assert_called_once()
-        handle = mock_cancel.call_args.args[0]
-        assert handle.request_id == "req-456"
+        ) as mock_cancel:
+            client = AsyncClient(key="test-key")
+            with pytest.raises(FalClientTimeoutError) as exc:
+                await client.subscribe("app", {}, client_timeout=1.5)
+            assert exc.value.request_id == "req-456"
+            # Wait for background cancel task
+            await asyncio.sleep(0.2)
+            mock_cancel.assert_called_once()
+            handle = mock_cancel.call_args.args[0]
+            assert handle.request_id == "req-456"
