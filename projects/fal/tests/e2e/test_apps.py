@@ -406,6 +406,14 @@ class RTOutputs(BaseModel):
     texts: List[str]
 
 
+def json_encode_message(message):
+    return json.dumps(message, separators=(",", ":")).encode("utf-8")
+
+
+def json_decode_message(message: bytes):
+    return json.loads(message.decode("utf-8"))
+
+
 class RealtimeApp(fal.App, keep_alive=300, max_concurrency=1):
     machine_type = "S"
 
@@ -422,6 +430,14 @@ class RealtimeApp(fal.App, keep_alive=300, max_concurrency=1):
 
     @fal.realtime("/realtime")
     def generate_rt(self, input: RTInput) -> RTOutput:
+        return RTOutput(text=input.prompt)
+
+    @fal.realtime(
+        "/realtime/json",
+        encode_message=json_encode_message,
+        decode_message=json_decode_message,
+    )
+    def generate_rt_json(self, input: RTInput) -> RTOutput:
         return RTOutput(text=input.prompt)
 
     @fal.realtime("/realtime/batched", buffering=10, max_batch_size=4)
@@ -1100,6 +1116,17 @@ def test_realtime_connection(test_realtime_app):
 
         assert len(received_prompts) == 10
         assert batch_sizes == [4, 4, 2]
+
+
+def test_realtime_connection_custom_codec(test_realtime_app):
+    with apps._connect(
+        test_realtime_app,
+        path="/realtime/json",
+        encode_message=json_encode_message,
+        decode_message=json_decode_message,
+    ) as connection:
+        response = connection.run({"prompt": "json cat"})
+        assert response["text"] == "json cat"
 
 
 @contextmanager
