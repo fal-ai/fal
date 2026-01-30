@@ -32,7 +32,6 @@ from urllib.parse import urlencode
 import warnings
 
 import httpx
-import msgpack
 from httpx_sse import aconnect_sse, connect_sse
 
 from fal_client.auth import (
@@ -753,12 +752,27 @@ class RealtimeError(RuntimeError):
         super().__init__(message)
 
 
-def _decode_realtime_message(message: Any) -> dict[str, Any] | None:
+def msgpack_decode_message(message: bytes) -> Any:
+    import msgpack
+
+    return msgpack.unpackb(message, raw=False)
+
+
+def msgpack_encode_message(message: Any) -> bytes:
+    import msgpack
+
+    return msgpack.packb(message, use_bin_type=True)
+
+
+def _decode_realtime_message(
+    message: Any, decode_message: Callable[[bytes], Any] | None
+) -> dict[str, Any] | None:
     if isinstance(message, memoryview):
         message = message.tobytes()
 
     if isinstance(message, (bytes, bytearray)):
-        return msgpack.unpackb(message, raw=False)
+        decode = decode_message or msgpack_decode_message
+        return decode(message)
 
     if isinstance(message, str):
         try:
@@ -781,20 +795,30 @@ def _decode_realtime_message(message: Any) -> dict[str, Any] | None:
     return {"payload": message}
 
 
+def _encode_realtime_message(
+    message: dict[str, Any],
+    encode_message: Callable[[Any], bytes] | None,
+) -> bytes:
+    encode = encode_message or msgpack_encode_message
+    return encode(message)
+
+
 @dataclass
 class RealtimeConnection:
     """Synchronous realtime connection wrapper."""
 
     _ws: "Connection"
+    _encode_message: Callable[[Any], bytes] | None = None
+    _decode_message: Callable[[bytes], Any] | None = None
 
     def send(self, arguments: dict[str, Any]) -> None:
-        payload = msgpack.packb(arguments, use_bin_type=True)
+        payload = _encode_realtime_message(arguments, self._encode_message)
         self._ws.send(payload)
 
     def recv(self) -> dict[str, Any]:
         while True:
             response = self._ws.recv()
-            decoded = _decode_realtime_message(response)
+            decoded = _decode_realtime_message(response, self._decode_message)
             if decoded is None:
                 continue
             return decoded
@@ -816,15 +840,17 @@ class AsyncRealtimeConnection:
     """Asynchronous realtime connection wrapper."""
 
     _ws: "WebSocketClientProtocol"
+    _encode_message: Callable[[Any], bytes] | None = None
+    _decode_message: Callable[[bytes], Any] | None = None
 
     async def send(self, arguments: dict[str, Any]) -> None:
-        payload = msgpack.packb(arguments, use_bin_type=True)
+        payload = _encode_realtime_message(arguments, self._encode_message)
         await self._ws.send(payload)
 
     async def recv(self) -> dict[str, Any]:
         while True:
             response = await self._ws.recv()
-            decoded = _decode_realtime_message(response)
+            decoded = _decode_realtime_message(response, self._decode_message)
             if decoded is None:
                 continue
             return decoded
@@ -1541,13 +1567,17 @@ class AsyncClient:
         *,
         max_buffering: int | None = None,
         token_expiration: int = REALTIME_TOKEN_EXPIRATION_SECONDS,
+        encode_message: Callable[[Any], bytes] | None = None,
+        decode_message: Callable[[bytes], Any] | None = None,
     ) -> AsyncIterator[AsyncRealtimeConnection]:
         token = await self._get_realtime_token(
             application, token_expiration=token_expiration
         )
         url = _build_realtime_url(application, token, max_buffering)
         async with _connect_async_ws(url) as ws:
-            yield AsyncRealtimeConnection(ws)
+            yield AsyncRealtimeConnection(
+                ws, _encode_message=encode_message, _decode_message=decode_message
+            )
 
     @asynccontextmanager
     async def ws_connect(
@@ -1927,11 +1957,15 @@ class SyncClient:
         *,
         max_buffering: int | None = None,
         token_expiration: int = REALTIME_TOKEN_EXPIRATION_SECONDS,
+        encode_message: Callable[[Any], bytes] | None = None,
+        decode_message: Callable[[bytes], Any] | None = None,
     ) -> Iterator[RealtimeConnection]:
         token = self._get_realtime_token(application, token_expiration=token_expiration)
         url = _build_realtime_url(application, token, max_buffering)
         with _connect_sync_ws(url) as ws:
-            yield RealtimeConnection(ws)
+            yield RealtimeConnection(
+                ws, _encode_message=encode_message, _decode_message=decode_message
+            )
 
     @contextmanager
     def ws_connect(
