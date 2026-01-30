@@ -1,4 +1,5 @@
 import asyncio
+import time
 import json
 from contextlib import asynccontextmanager, contextmanager
 from unittest.mock import AsyncMock, Mock, patch
@@ -12,6 +13,7 @@ from fal_client.client import (
     AsyncRequestHandle,
     Completed,
     FalClientHTTPError,
+    FalClientTimeoutError,
     InProgress,
     Queued,
     RealtimeConnection,
@@ -1036,3 +1038,108 @@ def test_sync_client_run_with_start_timeout_and_hint():
         call_kwargs = mock_request.call_args[1]
         assert call_kwargs["headers"]["X-Fal-Request-Timeout"] == "30.0"
         assert call_kwargs["headers"]["X-Fal-Runner-Hint"] == "lora:a"
+
+
+def test_sync_subscribe_timeout_while_waiting_submit(monkeypatch):
+    """Timeout during submit should raise FalClientTimeoutError with request_id=None."""
+
+    def slow_submit(*args, **kwargs):
+        time.sleep(3)
+
+    with patch("fal_client.client._maybe_retry_request", side_effect=slow_submit):
+        client = SyncClient(key="test-key")
+        with pytest.raises(FalClientTimeoutError) as exc:
+            client.subscribe("app", {}, client_timeout=1.5)
+        assert exc.value.request_id is None
+
+
+def test_sync_subscribe_timeout_while_waiting_handle(monkeypatch):
+    """Timeout during handle.get() should cancel and raise with request_id."""
+    call_count = 0
+
+    def mock_request(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        resp = Mock()
+        if call_count == 1:
+            resp.json.return_value = {
+                "request_id": "req-123",
+                "response_url": "http://response",
+                "status_url": "http://status",
+                "cancel_url": "http://cancel",
+            }
+        else:
+            time.sleep(3)
+            resp.json.return_value = {"status": "IN_QUEUE", "queue_position": 1}
+        return resp
+
+    with patch("fal_client.client._maybe_retry_request", side_effect=mock_request):
+        with patch("fal_client.client._maybe_cancel_request") as mock_cancel:
+            client = SyncClient(key="test-key")
+            with pytest.raises(FalClientTimeoutError) as exc:
+                client.subscribe("app", {}, client_timeout=1.5)
+            assert exc.value.request_id == "req-123"
+            # Wait for background cancel to be executed
+            time.sleep(0.2)
+            mock_cancel.assert_called_once()
+            handle = mock_cancel.call_args.args[0]
+            assert handle.request_id == "req-123"
+
+
+@pytest.mark.asyncio
+async def test_async_subscribe_timeout_while_waiting_submit():
+    """Timeout during submit should raise FalClientTimeoutError with request_id=None."""
+
+    async def slow_submit(*args, **kwargs):
+        await asyncio.sleep(3)
+
+    with patch(
+        "fal_client.client._async_maybe_retry_request",
+        new_callable=AsyncMock,
+        side_effect=slow_submit,
+    ):
+        client = AsyncClient(key="test-key")
+        with pytest.raises(FalClientTimeoutError) as exc:
+            await client.subscribe("app", {}, client_timeout=1.5)
+        assert exc.value.request_id is None
+
+
+@pytest.mark.asyncio
+async def test_async_subscribe_timeout_while_waiting_handle():
+    """Timeout during handle.get() should cancel and raise with request_id."""
+    call_count = 0
+
+    async def mock_request(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        resp = Mock()
+        if call_count == 1:
+            resp.json.return_value = {
+                "request_id": "req-456",
+                "response_url": "http://r",
+                "status_url": "http://s",
+                "cancel_url": "http://c",
+            }
+        else:
+            await asyncio.sleep(5)
+            resp.json.return_value = {"status": "IN_QUEUE", "queue_position": 1}
+        return resp
+
+    with patch(
+        "fal_client.client._async_maybe_retry_request",
+        new_callable=AsyncMock,
+        side_effect=mock_request,
+    ):
+        with patch(
+            "fal_client.client._async_maybe_cancel_request",
+            new_callable=AsyncMock,
+        ) as mock_cancel:
+            client = AsyncClient(key="test-key")
+            with pytest.raises(FalClientTimeoutError) as exc:
+                await client.subscribe("app", {}, client_timeout=1.5)
+            assert exc.value.request_id == "req-456"
+            # Wait for background cancel task
+            await asyncio.sleep(0.2)
+            mock_cancel.assert_called_once()
+            handle = mock_cancel.call_args.args[0]
+            assert handle.request_id == "req-456"

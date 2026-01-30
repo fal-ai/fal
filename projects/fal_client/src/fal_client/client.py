@@ -12,6 +12,7 @@ import time
 import base64
 import threading
 import logging
+import concurrent.futures
 from contextlib import asynccontextmanager, contextmanager
 from datetime import datetime, timezone
 from dataclasses import dataclass, field
@@ -28,6 +29,7 @@ from typing import (
     Union,
 )
 from urllib.parse import urlencode
+import warnings
 
 import httpx
 import msgpack
@@ -68,6 +70,11 @@ CDN_URL = "https://v3.fal.media"
 USER_AGENT = "fal-client/0.2.2 (python)"
 
 MIN_REQUEST_TIMEOUT_SECONDS = 1
+
+# Global executor for sync client timeout operations
+EXECUTOR = concurrent.futures.ThreadPoolExecutor(
+    thread_name_prefix="FAL_CLIENT_EXECUTOR"
+)
 
 
 @dataclass
@@ -538,6 +545,18 @@ class FalClientHTTPError(FalClientError):
         return f"{self.message}"
 
 
+@dataclass
+class FalClientTimeoutError(FalClientError, TimeoutError):
+    timeout: float
+    request_id: Optional[str] = None
+
+    def __str__(self) -> str:
+        if self.request_id is None:
+            return f"Request timed out after {self.timeout} seconds"
+        else:
+            return f"Request {self.request_id} timed out after {self.timeout} seconds"
+
+
 def _raise_for_status(response: httpx.Response) -> None:
     try:
         response.raise_for_status()
@@ -995,6 +1014,20 @@ async def _async_maybe_retry_request(
     raise RuntimeError("Failed to perform request")
 
 
+def _maybe_cancel_request(handle: SyncRequestHandle) -> None:
+    try:
+        handle.cancel()
+    except Exception:
+        pass
+
+
+async def _async_maybe_cancel_request(handle: AsyncRequestHandle) -> None:
+    try:
+        await handle.cancel()
+    except Exception:
+        pass
+
+
 @dataclass(frozen=True)
 class SyncRequestHandle(_BaseRequestHandle):
     client: httpx.Client = field(repr=False)
@@ -1329,6 +1362,7 @@ class AsyncClient:
         priority: Optional[Priority] = None,
         headers: dict[str, str] = {},
         start_timeout: Optional[Union[int, float]] = None,
+        client_timeout: Optional[Union[int, float]] = None,
     ) -> AnyJSON:
         """Subscribe to an application and wait for the result.
 
@@ -1336,26 +1370,60 @@ class AsyncClient:
             start_timeout: Server-side request timeout in seconds. Limits total time spent
                 waiting before processing starts (includes queue wait, retries, and
                 routing). Does not apply once the application begins processing.
+            client_timeout: Client-side total timeout in seconds. Limits the total time
+                spent waiting for the entire request to complete (including queue wait
+                and processing). If not set, waits indefinitely.
         """
+        if client_timeout is not None:
+            if start_timeout is None:
+                start_timeout = client_timeout
+            elif start_timeout > client_timeout:
+                warnings.warn(
+                    f"start_timeout ({start_timeout}s) is larger than client_timeout ({client_timeout}s). "
+                    "The request may timeout on the client before the server-side timeout is reached.",
+                    UserWarning,
+                    stacklevel=2,
+                )
 
-        handle = await self.submit(
-            application,
-            arguments,
-            path=path,
-            hint=hint,
-            priority=priority,
-            headers=headers,
-            start_timeout=start_timeout,
-        )
+        handle_ref: list[Optional[AsyncRequestHandle]] = [None]
 
-        if on_enqueue is not None:
-            on_enqueue(handle.request_id)
+        async def _do_subscribe() -> AnyJSON:
+            handle = await self.submit(
+                application,
+                arguments,
+                path=path,
+                hint=hint,
+                priority=priority,
+                headers=headers,
+                start_timeout=start_timeout,
+            )
+            handle_ref[0] = handle
 
-        if on_queue_update is not None:
-            async for event in handle.iter_events(with_logs=with_logs):
-                on_queue_update(event)
+            if on_enqueue is not None:
+                on_enqueue(handle.request_id)
 
-        return await handle.get()
+            if on_queue_update is not None:
+                async for event in handle.iter_events(with_logs=with_logs):
+                    on_queue_update(event)
+
+            return await handle.get()
+
+        if client_timeout is None:
+            return await _do_subscribe()
+
+        try:
+            return await asyncio.wait_for(_do_subscribe(), timeout=client_timeout)
+        except asyncio.TimeoutError as e:
+            request_id = None
+            handle = handle_ref[0]
+            if handle is not None:
+                request_id = handle.request_id
+                await _async_maybe_cancel_request(handle)
+
+            raise FalClientTimeoutError(
+                timeout=client_timeout,
+                request_id=request_id,
+            ) from e
 
     def get_handle(self, application: str, request_id: str) -> AsyncRequestHandle:
         return AsyncRequestHandle.from_request_id(self._client, application, request_id)
@@ -1541,6 +1609,10 @@ class SyncClient:
     def _token_manager(self) -> CDNTokenManager:
         return CDNTokenManager(self._get_auth())
 
+    @property
+    def _executor(self) -> concurrent.futures.ThreadPoolExecutor:
+        return EXECUTOR
+
     def _get_cdn_client(self) -> httpx.Client:
         token = self._token_manager.get_token()
         return httpx.Client(
@@ -1681,6 +1753,7 @@ class SyncClient:
         priority: Optional[Priority] = None,
         headers: dict[str, str] = {},
         start_timeout: Optional[Union[int, float]] = None,
+        client_timeout: Optional[Union[int, float]] = None,
     ) -> AnyJSON:
         """Subscribe to an application and wait for the result.
 
@@ -1688,26 +1761,61 @@ class SyncClient:
             start_timeout: Server-side request timeout in seconds. Limits total time spent
                 waiting before processing starts (includes queue wait, retries, and
                 routing). Does not apply once the application begins processing.
+            client_timeout: Client-side total timeout in seconds. Limits the total time
+                spent waiting for the entire request to complete (including queue wait
+                and processing). If not set, waits indefinitely.
         """
+        if client_timeout is not None:
+            if start_timeout is None:
+                start_timeout = client_timeout
+            elif start_timeout > client_timeout:
+                warnings.warn(
+                    f"start_timeout ({start_timeout}s) is larger than client_timeout ({client_timeout}s). "
+                    "The request may timeout on the client before the server-side timeout is reached.",
+                    UserWarning,
+                    stacklevel=2,
+                )
 
-        handle = self.submit(
-            application,
-            arguments,
-            path=path,
-            hint=hint,
-            priority=priority,
-            headers=headers,
-            start_timeout=start_timeout,
-        )
+        handle_ref: list[Optional[SyncRequestHandle]] = [None]
 
-        if on_enqueue is not None:
-            on_enqueue(handle.request_id)
+        def _do_subscribe() -> AnyJSON:
+            handle = self.submit(
+                application,
+                arguments,
+                path=path,
+                hint=hint,
+                priority=priority,
+                headers=headers,
+                start_timeout=start_timeout,
+            )
+            handle_ref[0] = handle
 
-        if on_queue_update is not None:
-            for event in handle.iter_events(with_logs=with_logs):
-                on_queue_update(event)
+            if on_enqueue is not None:
+                on_enqueue(handle.request_id)
 
-        return handle.get()
+            if on_queue_update is not None:
+                for event in handle.iter_events(with_logs=with_logs):
+                    on_queue_update(event)
+
+            return handle.get()
+
+        if client_timeout is None:
+            return _do_subscribe()
+
+        future = self._executor.submit(_do_subscribe)
+        try:
+            return future.result(timeout=client_timeout)
+        except concurrent.futures.TimeoutError as e:
+            request_id = None
+            handle = handle_ref[0]
+            if handle is not None:
+                request_id = handle.request_id
+                _maybe_cancel_request(handle)
+
+            raise FalClientTimeoutError(
+                timeout=client_timeout,
+                request_id=request_id,
+            ) from e
 
     def get_handle(self, application: str, request_id: str) -> SyncRequestHandle:
         return SyncRequestHandle.from_request_id(self._client, application, request_id)
