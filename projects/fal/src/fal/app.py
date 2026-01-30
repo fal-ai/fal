@@ -920,6 +920,18 @@ def endpoint(
     return marker_fn
 
 
+def msgpack_decode_message(message: bytes) -> Any:
+    import msgpack
+
+    return msgpack.unpackb(message, raw=False)
+
+
+def msgpack_encode_message(message: Any) -> bytes:
+    import msgpack
+
+    return msgpack.packb(message, use_bin_type=True)
+
+
 def _fal_websocket_template(
     func: EndpointT,
     route_signature: RouteSignature,
@@ -932,8 +944,10 @@ def _fal_websocket_template(
     from collections import deque
     from contextlib import suppress
 
-    import msgpack
     from fastapi import WebSocket, WebSocketDisconnect
+
+    decode_message = route_signature.decode_message or msgpack_decode_message
+    encode_message = route_signature.encode_message or msgpack_encode_message
 
     async def mirror_input(queue: deque[Any], websocket: WebSocket) -> None:
         while True:
@@ -945,7 +959,7 @@ def _fal_websocket_template(
             except asyncio.TimeoutError:
                 return
 
-            input = msgpack.unpackb(raw_input, raw=False)
+            input = decode_message(raw_input)
             if route_signature.input_modal:
                 input = route_signature.input_modal(**input)
 
@@ -958,7 +972,7 @@ def _fal_websocket_template(
     ) -> None:
         loop = asyncio.get_event_loop()
         max_allowed_buffering = route_signature.buffering or 1
-        outgoing_messages: asyncio.Queue[bytes] = asyncio.Queue(
+        outgoing_messages: asyncio.Queue[bytes | str] = asyncio.Queue(
             maxsize=max_allowed_buffering * 2  # x2 for outgoing timings
         )
 
@@ -1019,9 +1033,7 @@ def _fal_websocket_template(
                         f"{type(output)}"
                     )
 
-            messages = [
-                msgpack.packb(output, use_bin_type=True),
-            ]
+            messages: list[bytes | str] = [encode_message(output)]
             if route_signature.emit_timings:
                 # We emit x-fal messages in JSON, no matter what the
                 # input/output format is.
@@ -1126,6 +1138,8 @@ def realtime(
     session_timeout: float | None = None,
     input_modal: Any | None = _SENTINEL,
     max_batch_size: int = 1,
+    encode_message: Callable[[Any], bytes] | None = None,
+    decode_message: Callable[[bytes], Any] | None = None,
 ) -> Callable[[EndpointT], EndpointT]:
     """Designate the decorated function as a realtime application endpoint."""
 
@@ -1152,6 +1166,8 @@ def realtime(
             buffering=buffering,
             session_timeout=session_timeout,
             max_batch_size=max_batch_size,
+            encode_message=encode_message,
+            decode_message=decode_message,
         )
         return _fal_websocket_template(
             original_func,

@@ -1247,6 +1247,8 @@ class RouteSignature(NamedTuple):
     session_timeout: float | None = None
     max_batch_size: int = 1
     emit_timings: bool = False
+    encode_message: Callable[[Any], bytes] | None = None
+    decode_message: Callable[[bytes], Any] | None = None
 
 
 class FalServer(uvicorn.Server):
