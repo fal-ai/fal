@@ -12,6 +12,13 @@ def _deploy(args):
     team = args.team
     app_ref = args.app_ref
 
+    # Handle deprecated --force-env-build flag
+    if args.force_env_build:
+        args.console.print(
+            "[bold yellow]Warning:[/bold yellow] --force-env-build is deprecated, "
+            "use --no-cache instead"
+        )
+
     # If the app_ref is an app name, get team from pyproject.toml
     if app_ref and is_app_name(app_ref):
         try:
@@ -21,6 +28,7 @@ def _deploy(args):
             # If we can't find the app in pyproject.toml, team remains None
             pass
 
+    no_cache = args.no_cache or args.force_env_build
     client = SyncServerlessClient(host=args.host, team=team)
     res = client.deploy(
         app_ref,
@@ -28,7 +36,7 @@ def _deploy(args):
         auth=args.auth,
         strategy=args.strategy,
         reset_scale=args.app_scale_settings,
-        force_env_build=args.force_env_build,
+        force_env_build=no_cache,
         environment_name=args.env,
     )
     app_id = res.revision
@@ -39,23 +47,67 @@ def _deploy(args):
             json.dumps({"revision": app_id, "app_name": resolved_app_name})
         )
     elif args.output == "pretty":
+        from rich.rule import Rule
+        from rich.text import Text
+
+        from fal.console.icons import CHECK_ICON
         from fal.flags import URL_OUTPUT
 
         args.console.print(
-            "Registered a new revision for function "
-            f"'{resolved_app_name}' (revision='{app_id}')."
+            f"{CHECK_ICON} Deployed successfully",
+            style="bold green",
         )
+        args.console.print("")
+
+        # Build panel content with grouped sections
+        lines = Text()
+
+        # Auth mode section
+        AUTH_EXPLANATIONS = {
+            "public": "no authentication required",
+            "private": "only you/team can access",
+            "shared": "any authenticated user can access",
+        }
+        auth_desc = AUTH_EXPLANATIONS.get(res.auth_mode, res.auth_mode)
+        lines.append(f"▸ Auth: {res.auth_mode} ", style="bold")
+        lines.append(f"({auth_desc})\n\n", style="dim")
+
+        # Playground section
         if URL_OUTPUT != "none":
-            args.console.print("Playground:")
+            lines.append("▸ Playground ", style="bold")
+            lines.append("(open in browser)\n", style="dim")
             for url in res.urls.get("playground", {}).values():
-                args.console.print(f"\t{url}")
+                lines.append(f"  {url}\n", style="cyan")
+
+        # API Endpoints section
         if URL_OUTPUT == "all":
-            args.console.print("Synchronous Endpoints:")
-            for url in res.urls.get("sync", {}).values():
-                args.console.print(f"\t{url}")
-            args.console.print("Asynchronous Endpoints (Recommended):")
-            for url in res.urls.get("async", {}).values():
-                args.console.print(f"\t{url}")
+            lines.append("\n")
+            lines.append("▸ API Endpoints ", style="bold")
+            lines.append("(use in code)\n", style="dim")
+            sync_urls = list(res.urls.get("sync", {}).values())
+            async_urls = list(res.urls.get("async", {}).values())
+            for sync_url, async_url in zip(sync_urls, async_urls):
+                lines.append(f"  Sync   {sync_url}\n", style="cyan")
+                lines.append(f"  Async  {async_url}\n", style="cyan")
+
+            # Logs section
+            lines.append("\n")
+            lines.append("▸ Logs\n", style="bold")
+            lines.append(f"  {res.log_url}", style="cyan")
+
+        title = Text(resolved_app_name, style="bold")
+        args.console.print(Rule(title, style="green"))
+        args.console.print(lines)
+        args.console.print(Rule("", style="green"))
+
+        # Reminder about scaling parameter inheritance
+        args.console.print("")
+        note = (
+            "[yellow]Note: Scaling parameters (keep_alive, min_concurrency, etc.) "
+            "are inherited from the previous deployment. "
+            "Use --reset-scale to apply code changes.[/yellow]"
+        )
+        args.console.print(note)
     else:
         raise AssertionError(f"Invalid output format: {args.output}")
 
@@ -141,9 +193,17 @@ def add_parser(main_subparsers, parents):
         help="Use the application code for scale settings.",
     )
     parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Do not use the cache for the environment build.",
+    )
+    parser.add_argument(
         "--force-env-build",
         action="store_true",
-        help="Ignore the environment build cache and force rebuild.",
+        help=(
+            "[DEPRECATED: Use --no-cache instead] "
+            "Ignore the environment build cache and force rebuild."
+        ),
     )
     parser.add_argument(
         "--env",

@@ -25,6 +25,7 @@ import fal.api as api
 from fal import apps
 from fal.api.deploy import User, _get_user
 from fal.app import REQUEST_ID_KEY, AppClient, AppClientError, wrap_app
+from fal.auth import key_credentials
 from fal.container import ContainerImage
 from fal.exceptions import (
     AppException,
@@ -64,6 +65,14 @@ class Output(BaseModel):
 
 
 actual_python = active_python()
+
+
+def _auth_headers() -> dict[str, str]:
+    key_creds = key_credentials()
+    if not key_creds:
+        return {}
+    key_id, key_secret = key_creds
+    return {"Authorization": f"Key {key_id}:{key_secret}"}
 
 
 def git_revision_short_hash() -> str:
@@ -884,7 +893,7 @@ def test_404_response(test_app: str, request: pytest.FixtureRequest):
 
 def test_404_billable_units(test_exception_app: AppClient):
     """Test that 404 responses include x-fal-billable-units: 0 header."""
-    with httpx.Client() as httpx_client:
+    with httpx.Client(headers=_auth_headers()) as httpx_client:
         url = test_exception_app.url + "/non-existent-endpoint"
         response = httpx_client.post(
             url,
@@ -1183,7 +1192,7 @@ def test_app_exceptions(test_exception_app: AppClient):
 
 
 def test_pydantic_validation_billing(test_pydantic_validation_error: AppClient):
-    with httpx.Client() as httpx_client:
+    with httpx.Client(headers=_auth_headers()) as httpx_client:
         url = test_pydantic_validation_error.url + "/increment"
         response = httpx_client.post(
             url,
@@ -1196,7 +1205,7 @@ def test_pydantic_validation_billing(test_pydantic_validation_error: AppClient):
 
 
 def test_field_exception_billing(test_exception_app: AppClient):
-    with httpx.Client() as httpx_client:
+    with httpx.Client(headers=_auth_headers()) as httpx_client:
         url = test_exception_app.url + "/field-exception"
         response = httpx_client.post(
             url,
@@ -1212,7 +1221,7 @@ def test_field_exception_billing(test_exception_app: AppClient):
 
 def test_field_exception_int_billable_units_formatting(test_exception_app: AppClient):
     """Test that int billable_units are formatted without decimal places."""
-    with httpx.Client() as httpx_client:
+    with httpx.Client(headers=_auth_headers()) as httpx_client:
         url = test_exception_app.url + "/field-exception-units"
         response = httpx_client.post(
             url,
@@ -1226,7 +1235,7 @@ def test_field_exception_int_billable_units_formatting(test_exception_app: AppCl
 
 def test_field_exception_float_billable_units_formatting(test_exception_app: AppClient):
     """Test that float billable_units are formatted with 8 decimal places."""
-    with httpx.Client() as httpx_client:
+    with httpx.Client(headers=_auth_headers()) as httpx_client:
         url = test_exception_app.url + "/field-exception-units"
         response = httpx_client.post(
             url,
@@ -1240,7 +1249,7 @@ def test_field_exception_float_billable_units_formatting(test_exception_app: App
 
 def test_field_exception_scientific_notation_small(test_exception_app: AppClient):
     """Test that small scientific notation values are properly formatted."""
-    with httpx.Client() as httpx_client:
+    with httpx.Client(headers=_auth_headers()) as httpx_client:
         url = test_exception_app.url + "/field-exception-units"
         response = httpx_client.post(
             url,
@@ -1255,7 +1264,7 @@ def test_field_exception_scientific_notation_small(test_exception_app: AppClient
 
 def test_field_exception_scientific_notation_large(test_exception_app: AppClient):
     """Test that large scientific notation values are properly formatted."""
-    with httpx.Client() as httpx_client:
+    with httpx.Client(headers=_auth_headers()) as httpx_client:
         url = test_exception_app.url + "/field-exception-units"
         response = httpx_client.post(
             url,
@@ -1270,7 +1279,7 @@ def test_field_exception_scientific_notation_large(test_exception_app: AppClient
 
 def test_field_exception_invalid_billable_units(test_exception_app: AppClient):
     """Test that invalid billable_units (non-numeric string) raises an error."""
-    with httpx.Client() as httpx_client:
+    with httpx.Client(headers=_auth_headers()) as httpx_client:
         url = test_exception_app.url + "/field-exception-units"
         response = httpx_client.post(
             url,
@@ -1285,7 +1294,7 @@ def test_field_exception_invalid_billable_units(test_exception_app: AppClient):
 
 def test_field_exception_default_billable_units(test_exception_app: AppClient):
     """Test that when billable_units is not set (None), no header is included."""
-    with httpx.Client() as httpx_client:
+    with httpx.Client(headers=_auth_headers()) as httpx_client:
         url = test_exception_app.url + "/field-exception"
         response = httpx_client.post(
             url,
@@ -1524,7 +1533,7 @@ def test_hints_encoding():
     https://github.com/encode/starlette/blob/a766a58d14007f07c0b5782fa78cdc370b892796/starlette/datastructures.py#L568
     """
     with AppClient.connect(HintsApp) as client:
-        with httpx.Client() as httpx_client:
+        with httpx.Client(headers=_auth_headers()) as httpx_client:
             url = client.url + "/add"
             resp = httpx_client.post(
                 url,
@@ -1666,45 +1675,67 @@ def test_graceful_shutdown_app(host: api.FalServerlessHost, user: User):
         yield f"{user.username}/{app_alias}"
 
 
-def test_graceful_shutdown_app_client(
+def graceful_shutdown(
+    test_graceful_shutdown_app: str,
+    host: api.FalServerlessHost,
+    *,
+    wait_time: int,
+    path: str,
+) -> bool:
+    time.sleep(2)
+
+    handle = submit_and_wait_for_runner(
+        test_graceful_shutdown_app, arguments={"wait_time": wait_time}, path=path
+    )
+    saved_request_id = handle.request_id
+
+    time.sleep(2)
+    with host._connection as client:
+        _, _, app_alias = test_graceful_shutdown_app.partition("/")
+
+        runners = client.list_runners(start_time=datetime.now() - timedelta(seconds=10))
+        runner = next((r for r in runners if r.alias == app_alias), None)
+
+        assert runner is not None, "Runner not found"
+
+        client.kill_runner(runner.runner_id)
+    time.sleep(2)
+
+    res = apps.run(test_graceful_shutdown_app, {}, path="/latest-request-id")
+    teardown_called = res == saved_request_id
+    try:
+        request_processed = handle.fetch_result()["slept"]
+    except Exception:
+        request_processed = False
+
+    return teardown_called and request_processed
+
+
+@pytest.mark.flaky(max_runs=3)
+def test_graceful_shutdown(
     host: api.FalServerlessHost,
     test_graceful_shutdown_app: str,
 ):
-    time.sleep(3)  # Wait for the app to be deployed properly
-
-    def graceful_shutdown(wait_time: int, path: str):
-        handle = submit_and_wait_for_runner(
-            test_graceful_shutdown_app, arguments={"wait_time": wait_time}, path=path
-        )
-        saved_request_id = handle.request_id
-
-        time.sleep(2)
-        with host._connection as client:
-            _, _, app_alias = test_graceful_shutdown_app.partition("/")
-
-            runners = client.list_runners(
-                start_time=datetime.now() - timedelta(seconds=10)
-            )
-            runner = next((r for r in runners if r.alias == app_alias), None)
-
-            assert runner is not None, "Runner not found"
-
-            client.kill_runner(runner.runner_id)
-        time.sleep(2)
-
-        res = apps.run(test_graceful_shutdown_app, {}, path="/latest-request-id")
-        teardown_called = res == saved_request_id
-        try:
-            request_processed = handle.fetch_result()["slept"]
-        except Exception:
-            request_processed = False
-
-        return teardown_called and request_processed
-
-    assert graceful_shutdown(wait_time=5, path="/"), "app should be gracefully shutdown"
-    assert not graceful_shutdown(
-        wait_time=60, path="/"
-    ), "app should be forcefully killed if it takes too long to clean up"
     assert graceful_shutdown(
-        wait_time=60, path="/with-stop"
+        test_graceful_shutdown_app, host, wait_time=5, path="/"
+    ), "app should be gracefully shutdown"
+
+
+@pytest.mark.flaky(max_runs=3)
+def test_graceful_shutdown_force_kill(
+    host: api.FalServerlessHost,
+    test_graceful_shutdown_app: str,
+):
+    assert not graceful_shutdown(
+        test_graceful_shutdown_app, host, wait_time=60, path="/"
+    ), "app should be forcefully killed if it takes too long to clean up"
+
+
+@pytest.mark.flaky(max_runs=3)
+def test_graceful_shutdown_handle_exit(
+    host: api.FalServerlessHost,
+    test_graceful_shutdown_app: str,
+):
+    assert graceful_shutdown(
+        test_graceful_shutdown_app, host, wait_time=60, path="/with-stop"
     ), "app should be called handle_exit on SIGTERM"

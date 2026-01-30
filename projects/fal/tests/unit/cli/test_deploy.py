@@ -73,7 +73,7 @@ def mock_args(
     strategy: Optional[str] = None,
     reset_scale: bool = False,
     team: Optional[str] = None,
-    force_env_build: bool = False,
+    no_cache: bool = False,
     env: Optional[str] = None,
 ):
     args = MagicMock()
@@ -85,7 +85,8 @@ def mock_args(
     args.app_scale_settings = reset_scale
     args.output = "pretty"
     args.team = team
-    args.force_env_build = force_env_build
+    args.no_cache = no_cache
+    args.force_env_build = False
     args.env = env
 
     return args
@@ -393,12 +394,12 @@ def test_deploy_with_cli_scale(
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
 @patch("fal.cli._utils.parse_pyproject_toml")
 @patch("fal.api.deploy._deploy_from_reference")
-def test_deploy_with_cli_force_env_build(
+def test_deploy_with_cli_no_cache(
     mock_deploy_ref, mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml
 ):
     mock_parse_toml.return_value = mock_parse_pyproject_toml
 
-    args = mock_args(app_ref=("src/my_app/inference.py", "MyApp"), force_env_build=True)
+    args = mock_args(app_ref=("src/my_app/inference.py", "MyApp"), no_cache=True)
 
     _deploy(args)
 

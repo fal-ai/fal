@@ -70,19 +70,30 @@ def key_credentials() -> tuple[str, str] | None:
 
     config = Config()
 
-    key = os.environ.get("FAL_KEY") or config.get("key") or get_colab_token()
-    if key:
+    def _check_key(key: str, key_name: str) -> tuple[str, str] | None:
         try:
             key_id, key_secret = key.split(":", 1)
             return (key_id, key_secret)
         except ValueError:
-            print(f"Invalid key format: {key}")
+            print(f"Invalid key format for {key_name}. Expected '<id>:<secret>'.")
             return None
 
-    elif "FAL_KEY_ID" in os.environ and "FAL_KEY_SECRET" in os.environ:
+    env_key = os.environ.get("FAL_KEY")
+    if env_key:
+        return _check_key(env_key, "FAL_KEY environment variable")
+
+    config_key = config.get("key")
+    if config_key:
+        return _check_key(config_key, f"key in fal config {config.config_path}")
+
+    colab_key = get_colab_token()
+    if colab_key:
+        return _check_key(colab_key, "FAL_KEY in google colab")
+
+    if "FAL_KEY_ID" in os.environ and "FAL_KEY_SECRET" in os.environ:
         return (os.environ["FAL_KEY_ID"], os.environ["FAL_KEY_SECRET"])
-    else:
-        return None
+
+    return None
 
 
 def _fetch_access_token() -> str:

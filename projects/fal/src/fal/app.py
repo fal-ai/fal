@@ -30,6 +30,7 @@ from fal.api import (
 from fal.api import (
     function as fal_function,
 )
+from fal.auth import key_credentials
 from fal.container import ContainerImage
 from fal.exceptions import FalServerlessException, RequestCancelledException
 from fal.logging import get_logger
@@ -181,12 +182,28 @@ class AppClientError(FalServerlessException):
     headers: dict[str, str] = field(default_factory=dict)
 
 
+def _default_auth_headers() -> dict[str, str]:
+    key_creds = key_credentials()
+    if not key_creds:
+        return {}
+    key_id, key_secret = key_creds
+    return {"Authorization": f"Key {key_id}:{key_secret}"}
+
+
 class EndpointClient:
-    def __init__(self, url, endpoint, signature, timeout: int | None = None):
+    def __init__(
+        self,
+        url,
+        endpoint,
+        signature,
+        timeout: int | None = None,
+        headers: dict[str, str] | None = None,
+    ):
         self.url = url
         self.endpoint = endpoint
         self.signature = signature
         self.timeout = timeout
+        self.headers = headers or {}
 
         annotations = endpoint.__annotations__ or {}
         self.return_type = annotations.get("return") or None
@@ -198,6 +215,7 @@ class EndpointClient:
                 self.url + self.signature.path,
                 json=data.dict() if hasattr(data, "dict") else dict(data),
                 timeout=self.timeout,
+                headers=self.headers,
             )
             if not resp.is_success:
                 # allow logs to be printed before raising the exception
@@ -224,6 +242,7 @@ class AppClient:
     ):
         self.url = url
         self.cls = cls
+        self._headers = _default_auth_headers()
 
         for name, endpoint in inspect.getmembers(cls, inspect.isfunction):
             signature = getattr(endpoint, "route_signature", None)
@@ -234,6 +253,7 @@ class AppClient:
                 endpoint,
                 signature,
                 timeout=timeout,
+                headers=self._headers,
             )
             setattr(self, name, endpoint_client)
 
@@ -274,12 +294,15 @@ class AppClient:
             last_error = None
             attempt = 0
 
+            headers = _default_auth_headers()
             with httpx.Client() as client:
                 while time.perf_counter() - start_time < startup_timeout:
                     attempt += 1
 
                     try:
-                        resp = client.get(url, timeout=health_request_timeout)
+                        resp = client.get(
+                            url, timeout=health_request_timeout, headers=headers
+                        )
                     except httpx.TimeoutException:
                         last_error = (
                             f"Request timed out after {health_request_timeout} seconds"
@@ -318,7 +341,7 @@ class AppClient:
 
     def health(self):
         with httpx.Client() as client:
-            resp = client.get(self.url + "/health")
+            resp = client.get(self.url + "/health", headers=self._headers)
             resp.raise_for_status()
             return resp.json()
 
@@ -327,8 +350,27 @@ PART_FINDER_RE = re.compile(r"[A-Z][a-z]*")
 
 
 def _to_fal_app_name(name: str) -> str:
-    # Convert MyGoodApp into my-good-app
-    return "-".join(part.lower() for part in PART_FINDER_RE.findall(name))
+    # Existing behavior (unchanged) - Convert PascalCase to kebab-case
+    # e.g., MyGoodApp -> my-good-app, ONNXModel -> o-n-n-x-model
+    result = "-".join(part.lower() for part in PART_FINDER_RE.findall(name))
+
+    # If existing behavior worked, return it (backwards compatible)
+    if result:
+        return result
+
+    # Fallback for snake_case (mock_model -> mock-model)
+    if "_" in name:
+        return "-".join(part.lower() for part in name.split("_") if part)
+
+    # Ultimate fallback: just lowercase the name
+    if name:
+        return name.lower()
+
+    # This should never happen, but provide a clear error if it does
+    raise ValueError(
+        f"Cannot derive app name from '{name}'. "
+        f"Please use --app-name to specify a name explicitly."
+    )
 
 
 def _print_python_packages() -> None:
@@ -584,6 +626,17 @@ class App(BaseServable):
                 "Running apps through SDK is not implemented yet. "
                 f"Please use `fal run path/to/app.py::{cls_name}` to run your app."
             )
+
+    def __getstate__(self) -> dict[str, Any]:
+        # we might need to pickle the app sometimes,
+        # e.g. in fal distributed workers from our toolkit
+        state = self.__dict__.copy()
+        state.pop("_current_request_context", None)
+        return state
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        self.__dict__.update(state)
+        self._current_request_context = None
 
     @classmethod
     def get_endpoints(cls) -> list[str]:

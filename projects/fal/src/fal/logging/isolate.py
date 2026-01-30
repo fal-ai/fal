@@ -24,25 +24,37 @@ class IsolateLogPrinter:
 
     def _maybe_print_header(self, source: LogSource):
         from isolate.logs import LogSource
+        from rich.rule import Rule
 
         from fal.console import console
+        from fal.console.icons import CHECK_ICON
 
         if source == self._current_source:
             return
 
-        msg = {
-            LogSource.BUILDER: "Preparing the environment",
-            LogSource.BRIDGE: "Setting up runtime",
-            LogSource.USER: "Running",
-        }.get(source)
+        # Print build completion when transitioning out of BUILDER phase
+        if self._current_source == LogSource.BUILDER:
+            console.print(Rule(style="dim"))
+            console.print(f"{CHECK_ICON} Build complete", style="bold green")
+            console.print("")
 
-        if msg:
-            console.print(f"==> {msg}", style="bold green")
+        # Print phase header when entering a new phase
+        if source == LogSource.BUILDER:
+            console.print("Building environment...", style="bold")
+            console.print(Rule(style="dim"))
+        elif source == LogSource.BRIDGE:
+            console.print("Setting up runtime...", style="bold")
+        elif source == LogSource.USER:
+            console.print("Running...", style="bold")
 
         self._current_source = source
 
     def print(self, log: Log):
         from isolate.logs import LogLevel, LogSource
+
+        # Skip depot build summary links (users can't access them)
+        if "https://depot.dev" in log.message:
+            return
 
         if log.level < LogLevel.INFO and not self.debug:
             return
