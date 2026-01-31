@@ -252,7 +252,7 @@ class _RealtimeConnection:
     def send(self, arguments: dict[str, Any]) -> None:
         """Send an inference task to the app."""
 
-        from fal.app import msgpack_encode_message
+        from fal.realtime import msgpack_encode_message
 
         encode = self._encode_message or msgpack_encode_message
         payload = encode(arguments)
@@ -261,7 +261,7 @@ class _RealtimeConnection:
     def recv(self) -> dict[str, Any]:
         """Receive the result of an inference task."""
 
-        from fal.app import msgpack_decode_message
+        from fal.realtime import msgpack_decode_message
 
         decode = self._decode_message or msgpack_decode_message
 
