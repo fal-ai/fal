@@ -1251,42 +1251,11 @@ to specify a Dockerfile.</p>
 </dd></dl>
 
 <dl class="py function">
-<dt class="sig sig-object py" id="fal.app.msgpack_decode_message">
-<span class="sig-prename descclassname"><span class="pre">fal.app.</span></span><span class="sig-name descname"><span class="pre">msgpack_decode_message</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">message</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.app.msgpack_decode_message" title="Link to this definition">¶</a></dt>
-<dd><dl class="field-list simple">
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code></span></p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="fal.app.msgpack_encode_message">
-<span class="sig-prename descclassname"><span class="pre">fal.app.</span></span><span class="sig-name descname"><span class="pre">msgpack_encode_message</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">message</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.app.msgpack_encode_message" title="Link to this definition">¶</a></dt>
-<dd><dl class="field-list simple">
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bytes</span></code></span></p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
 <dt class="sig sig-object py" id="fal.app.open_isolate_channel">
 <em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.app.</span></span><span class="sig-name descname"><span class="pre">open_isolate_channel</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">address</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.app.open_isolate_channel" title="Link to this definition">¶</a></dt>
 <dd><dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Channel</span></code> | <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="fal.app.realtime">
-<span class="sig-prename descclassname"><span class="pre">fal.app.</span></span><span class="sig-name descname"><span class="pre">realtime</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">buffering=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">session_timeout=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">input_modal=&lt;object</span> <span class="pre">object&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_batch_size=1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">encode_message=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">decode_message=None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.app.realtime" title="Link to this definition">¶</a></dt>
-<dd><p>Designate the decorated function as a realtime application endpoint.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Callable</span></code>[[<code class="xref py py-class docutils literal notranslate"><span class="pre">TypeVar</span></code>(<code class="docutils literal notranslate"><span class="pre">EndpointT</span></code>, bound= <code class="xref py py-data docutils literal notranslate"><span class="pre">Callable</span></code>[<code class="xref py py-data docutils literal notranslate"><span class="pre">...</span></code>, <code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code>])], <code class="xref py py-class docutils literal notranslate"><span class="pre">TypeVar</span></code>(<code class="docutils literal notranslate"><span class="pre">EndpointT</span></code>, bound= <code class="xref py py-data docutils literal notranslate"><span class="pre">Callable</span></code>[<code class="xref py py-data docutils literal notranslate"><span class="pre">...</span></code>, <code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code>])]</span></p>
 </dd>
 </dl>
 </dd></dl>
@@ -2150,6 +2119,40 @@ project root was discovered.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code>]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+<section id="module-fal.realtime">
+<span id="fal-realtime-module"></span><h2>fal.realtime module<a class="headerlink" href="#module-fal.realtime" title="Link to this heading">¶</a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.realtime.msgpack_decode_message">
+<span class="sig-prename descclassname"><span class="pre">fal.realtime.</span></span><span class="sig-name descname"><span class="pre">msgpack_decode_message</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">message</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.realtime.msgpack_decode_message" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.realtime.msgpack_encode_message">
+<span class="sig-prename descclassname"><span class="pre">fal.realtime.</span></span><span class="sig-name descname"><span class="pre">msgpack_encode_message</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">message</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.realtime.msgpack_encode_message" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bytes</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.realtime.realtime">
+<span class="sig-prename descclassname"><span class="pre">fal.realtime.</span></span><span class="sig-name descname"><span class="pre">realtime</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">buffering=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">session_timeout=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">input_modal=&lt;object</span> <span class="pre">object&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_batch_size=1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">encode_message=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">decode_message=None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.realtime.realtime" title="Link to this definition">¶</a></dt>
+<dd><p>Designate the decorated function as a realtime application endpoint.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Callable</span></code>[[<code class="xref py py-class docutils literal notranslate"><span class="pre">TypeVar</span></code>(<code class="docutils literal notranslate"><span class="pre">EndpointT</span></code>, bound= <code class="xref py py-data docutils literal notranslate"><span class="pre">Callable</span></code>[<code class="xref py py-data docutils literal notranslate"><span class="pre">...</span></code>, <code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code>])], <code class="xref py py-class docutils literal notranslate"><span class="pre">TypeVar</span></code>(<code class="docutils literal notranslate"><span class="pre">EndpointT</span></code>, bound= <code class="xref py py-data docutils literal notranslate"><span class="pre">Callable</span></code>[<code class="xref py py-data docutils literal notranslate"><span class="pre">...</span></code>, <code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code>])]</span></p>
 </dd>
 </dl>
 </dd></dl>

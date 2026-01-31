@@ -83,6 +83,14 @@ fal.project module
    :undoc-members:
    :show-inheritance:
 
+fal.realtime module
+-------------------
+
+.. automodule:: fal.realtime
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 fal.ref module
 --------------
 
