@@ -8,7 +8,7 @@ import uuid
 from contextlib import contextmanager, redirect_stdout, suppress
 from datetime import datetime, timedelta, timezone
 from io import StringIO
-from typing import Generator, List, Tuple, Union
+from typing import AsyncIterator, Generator, Iterator, List, Tuple, Union
 
 import httpx
 import pytest
@@ -431,6 +431,34 @@ class RealtimeApp(fal.App, keep_alive=300, max_concurrency=1):
     @fal.realtime("/realtime")
     def generate_rt(self, input: RTInput) -> RTOutput:
         return RTOutput(text=input.prompt)
+
+    @fal.realtime("/realtime/server-streaming", buffering=10)
+    async def generate_rt_server_streaming(
+        self, input: RTInput
+    ) -> AsyncIterator[RTOutput]:
+        for idx in range(3):
+            yield RTOutput(text=f"{input.prompt}:{idx}")
+
+    @fal.realtime("/realtime/server-streaming-sync", buffering=10)
+    def generate_rt_server_streaming_sync(self, input: RTInput) -> Iterator[RTOutput]:
+        for idx in range(3):
+            yield RTOutput(text=f"{input.prompt}:{idx}")
+
+    @fal.realtime("/realtime/client-streaming", session_timeout=0.2)
+    async def generate_rt_client_streaming(
+        self, inputs: AsyncIterator[RTInput]
+    ) -> RTOutputs:
+        prompts: List[str] = []
+        async for item in inputs:
+            prompts.append(item.prompt)
+        return RTOutputs(texts=prompts)
+
+    @fal.realtime("/realtime/bidi")
+    async def generate_rt_bidi(
+        self, inputs: AsyncIterator[RTInput]
+    ) -> AsyncIterator[RTOutput]:
+        async for item in inputs:
+            yield RTOutput(text=f"echo:{item.prompt}")
 
     @fal.realtime(
         "/realtime/json",
@@ -1127,6 +1155,51 @@ def test_realtime_connection_custom_codec(test_realtime_app):
     ) as connection:
         response = connection.run({"prompt": "json cat"})
         assert response["text"] == "json cat"
+
+
+def test_realtime_server_streaming_mode(test_realtime_app):
+    with apps._connect(
+        test_realtime_app, path="/realtime/server-streaming"
+    ) as connection:
+        connection.send({"prompt": "stream"})
+        responses = [connection.recv() for _ in range(3)]
+        assert [response["text"] for response in responses] == [
+            "stream:0",
+            "stream:1",
+            "stream:2",
+        ]
+
+
+def test_realtime_server_streaming_sync_mode(test_realtime_app):
+    with apps._connect(
+        test_realtime_app, path="/realtime/server-streaming-sync"
+    ) as connection:
+        connection.send({"prompt": "stream"})
+        responses = [connection.recv() for _ in range(3)]
+        assert [response["text"] for response in responses] == [
+            "stream:0",
+            "stream:1",
+            "stream:2",
+        ]
+
+
+def test_realtime_client_streaming_mode(test_realtime_app):
+    with apps._connect(
+        test_realtime_app, path="/realtime/client-streaming"
+    ) as connection:
+        connection.send({"prompt": "first"})
+        connection.send({"prompt": "second"})
+        connection.send({"prompt": "third"})
+        response = connection.recv()
+        assert response["texts"] == ["first", "second", "third"]
+
+
+def test_realtime_bidi_mode(test_realtime_app):
+    with apps._connect(test_realtime_app, path="/realtime/bidi") as connection:
+        connection.send({"prompt": "one"})
+        connection.send({"prompt": "two"})
+        assert connection.recv()["text"] == "echo:one"
+        assert connection.recv()["text"] == "echo:two"
 
 
 @contextmanager
