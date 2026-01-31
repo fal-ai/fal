@@ -193,6 +193,8 @@ class Host(Generic[ArgsT, ReturnT]):
         options: Options,
         args: tuple[Any, ...],
         kwargs: dict[str, Any],
+        application_name: str | None = None,
+        application_auth_mode: AuthModeLiteral | None = None,
     ) -> ReturnT:
         """Run the given function in the isolated environment."""
         raise NotImplementedError
@@ -203,6 +205,8 @@ class Host(Generic[ArgsT, ReturnT]):
         options: Options,
         args: tuple[Any, ...],
         kwargs: dict[str, Any],
+        application_name: str | None = None,
+        application_auth_mode: AuthModeLiteral | None = None,
     ) -> SpawnInfo:
         raise NotImplementedError
 
@@ -301,6 +305,8 @@ class LocalHost(Host):
         options: Options,
         args: tuple[Any, ...],
         kwargs: dict[str, Any],
+        application_name: str | None = None,
+        application_auth_mode: AuthModeLiteral | None = None,
     ) -> ReturnT:
         import isolate
         from isolate.backends.settings import DEFAULT_SETTINGS
@@ -627,6 +633,8 @@ class FalServerlessHost(Host):
         args: tuple[Any, ...],
         kwargs: dict[str, Any],
         result_handler: Callable[..., None],
+        application_name: str | None = None,
+        application_auth_mode: AuthModeLiteral | None = None,
     ) -> ReturnT:
         from isolate.backends.common import active_python
 
@@ -675,12 +683,17 @@ class FalServerlessHost(Host):
         # Allow isolate provided arguments (such as setup function) to take
         # precedence over the ones provided by the user.
         partial_func = _prepare_partial_func(func, *args, **kwargs)
+        effective_app_name = application_name or getattr(func, "__name__", None)
+        effective_auth_mode = application_auth_mode or "public"
+
         for partial_result in self._connection.run(
             partial_func,
             environments,
             machine_requirements=machine_requirements,
             setup_function=setup_function,
             files=files,
+            application_name=effective_app_name,
+            auth_mode=effective_auth_mode,
             environment_name=self.environment_name,
         ):
             result_handler(partial_result)
@@ -709,7 +722,11 @@ class FalServerlessHost(Host):
         options: Options,
         args: tuple[Any, ...],
         kwargs: dict[str, Any],
+        application_name: str | None = None,
+        application_auth_mode: AuthModeLiteral | None = None,
     ) -> ReturnT:
+        effective_auth_mode = application_auth_mode or "public"
+
         def result_handler(partial_result):
             from fal.console import console
 
@@ -725,9 +742,16 @@ class FalServerlessHost(Host):
                 lines = Text()
                 endpoints = getattr(func, "_routes", ["/"])  # type: ignore[attr-defined]
 
-                # Auth mode section (ephemeral apps are always public)
-                lines.append("▸ Auth: public ", style="bold")
-                lines.append("(no authentication required)\n\n", style="dim")
+                AUTH_EXPLANATIONS = {
+                    "public": "no authentication required",
+                    "private": "only you/team can access",
+                    "shared": "any authenticated user can access",
+                }
+                auth_desc = AUTH_EXPLANATIONS.get(
+                    effective_auth_mode, effective_auth_mode
+                )
+                lines.append(f"▸ Auth: {effective_auth_mode} ", style="bold")
+                lines.append(f"({auth_desc})\n\n", style="dim")
 
                 # Playground section
                 if URL_OUTPUT != "none":
@@ -756,7 +780,7 @@ class FalServerlessHost(Host):
                     lines.append("▸ Logs\n", style="bold")
                     lines.append(f"  {service_urls.log}", style="cyan")
 
-                title = Text("Ephemeral App (public)", style="bold")
+                title = Text(f"Ephemeral App ({effective_auth_mode})", style="bold")
                 subtitle = Text("Deleted when process exits", style="dim")
                 console.print(Rule(title, style="green"))
                 console.print(lines)
@@ -771,7 +795,15 @@ class FalServerlessHost(Host):
                     continue
                 self._log_printer.print(log)
 
-        return self._run(func, options, args, kwargs, result_handler=result_handler)
+        return self._run(
+            func,
+            options,
+            args,
+            kwargs,
+            result_handler=result_handler,
+            application_name=application_name,
+            application_auth_mode=application_auth_mode,
+        )
 
     def spawn(
         self,
@@ -779,6 +811,8 @@ class FalServerlessHost(Host):
         options: Options,
         args: tuple[Any, ...],
         kwargs: dict[str, Any],
+        application_name: str | None = None,
+        application_auth_mode: AuthModeLiteral | None = None,
     ) -> SpawnInfo:
         ret = SpawnInfo()
 
@@ -796,6 +830,8 @@ class FalServerlessHost(Host):
             args,
             kwargs,
             result_handler=result_handler,
+            application_name=application_name,
+            application_auth_mode=application_auth_mode,
         )
 
         return ret
@@ -1188,6 +1224,7 @@ def function(  # type: ignore
             host=host,  # type: ignore
             raw_func=func,  # type: ignore
             options=options,
+            app_name=getattr(func, "__name__", None),
         )
         return wraps(func)(proxy)  # type: ignore
 
@@ -1507,6 +1544,8 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
     options: Options
     executor: ThreadPoolExecutor = field(default_factory=ThreadPoolExecutor)
     reraise: bool = True
+    app_name: str | None = None
+    app_auth: AuthModeLiteral | None = None
 
     def __getstate__(self) -> dict[str, Any]:
         # Ensure that the executor is not pickled.
@@ -1530,6 +1569,8 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
             options=self.options,
             args=args,
             kwargs=kwargs,
+            application_name=self.app_name,
+            application_auth_mode=self.app_auth,
         )
         return future
 
@@ -1539,6 +1580,8 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
             self.options,
             args,
             kwargs,
+            application_name=self.app_name,
+            application_auth_mode=self.app_auth,
         )
 
     def __call__(self, *args: ArgsT.args, **kwargs: ArgsT.kwargs) -> ReturnT:
@@ -1548,6 +1591,8 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
                 self.options,
                 args=args,
                 kwargs=kwargs,
+                application_name=self.app_name,
+                application_auth_mode=self.app_auth,
             )
         except FalMissingDependencyError as e:
             pairs = list(find_missing_dependencies(self.func, self.options.environment))

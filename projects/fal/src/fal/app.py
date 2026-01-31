@@ -172,6 +172,9 @@ def wrap_app(cls: type[App], **kwargs) -> IsolatedFunction:
     if realtime_app:
         fn.options.add_requirements(REALTIME_APP_REQUIREMENTS)
 
+    fn.app_name = cls.app_name
+    fn.app_auth = cls.app_auth
+
     return fn
 
 
