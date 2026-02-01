@@ -95,6 +95,8 @@ def _caller_cdn_token_header(
     if current_app and current_app.current_request:
         if cdn_token := current_app.current_request.headers.get("x-fal-cdn-token"):
             headers["X-Fal-CDN-Token"] = cdn_token
+        if request_id := current_app.current_request.request_id:
+            headers["X-Fal-Request-ID"] = request_id
 
 
 @dataclass
