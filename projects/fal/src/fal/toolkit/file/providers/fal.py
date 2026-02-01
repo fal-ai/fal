@@ -206,9 +206,6 @@ class VariableReference(Generic[VariableType]):
         self.value = value
 
 
-LIFECYCLE_PREFERENCE: VariableReference[dict[str, str] | None] = VariableReference(None)
-
-
 @dataclass
 class FalFileRepositoryBase(FileRepository):
     def _save(

@@ -1858,3 +1858,98 @@ def test_graceful_shutdown_handle_exit(
     assert graceful_shutdown(
         test_graceful_shutdown_app, host, wait_time=60, path="/with-stop"
     ), "app should be called handle_exit on SIGTERM"
+
+
+class RequestContextOutput(BaseModel):
+    request_id_from_context: str | None
+    endpoint_from_context: str | None
+    lifecycle_preference_from_context: dict | None
+    request_id_from_header: str | None
+
+
+def _external_get_request_context() -> dict:
+    """External function that accesses request context without request parameter."""
+    current_app = get_current_app()
+    if current_app is None or current_app.current_request is None:
+        return {
+            "request_id": None,
+            "endpoint": None,
+            "lifecycle_preference": None,
+        }
+    return {
+        "request_id": current_app.current_request.request_id,
+        "endpoint": current_app.current_request.endpoint,
+        "lifecycle_preference": current_app.current_request.lifecycle_preference,
+    }
+
+
+class RequestContextApp(fal.App, keep_alive=300, max_concurrency=1, max_multiplexing=3):
+    """App to test request context fields are properly populated."""
+
+    machine_type = "XS"
+
+    @fal.endpoint("/")
+    def get_context(self, request: Request) -> RequestContextOutput:
+        # Sleep to intentionally cause potential race conditions with multiplexing
+        time.sleep(2)
+
+        # Get context from external function (simulates File.from_bytes usage)
+        context_data = _external_get_request_context()
+
+        return RequestContextOutput(
+            request_id_from_context=context_data["request_id"],
+            endpoint_from_context=context_data["endpoint"],
+            lifecycle_preference_from_context=context_data["lifecycle_preference"],
+            request_id_from_header=request.headers.get("x-fal-request-id"),
+        )
+
+
+@pytest.fixture(scope="module")
+def test_request_context_app(host: api.FalServerlessHost, user: User):
+    request_context_app = wrap_app(RequestContextApp)
+    with register_app(host, request_context_app, "request-context") as (app_alias, _):
+        yield f"{user.username}/{app_alias}"
+
+
+def test_request_context_fields_populated(test_request_context_app: str):
+    """Test that request context fields are properly populated."""
+
+    result = apps.run(test_request_context_app, arguments={})
+
+    assert result["request_id_from_context"] is not None
+    assert result["endpoint_from_context"] is not None
+    assert result["lifecycle_preference_from_context"] is not None
+
+    assert result["request_id_from_context"] == result["request_id_from_header"]
+
+
+def test_request_context_isolation_with_multiplexing(test_request_context_app: str):
+    """Test that request context is properly isolated between concurrent requests.
+
+    With multiplexing enabled (max_multiplexing=3), each request should have
+    its own isolated context via ContextVar, ensuring request_id from context
+    matches the request_id from headers for each individual request.
+    """
+
+    # Submit multiple concurrent requests
+    handle_1 = apps.submit(test_request_context_app, arguments={})
+    handle_2 = apps.submit(test_request_context_app, arguments={})
+    handle_3 = apps.submit(test_request_context_app, arguments={})
+
+    # Get results
+    result_1 = handle_1.get()
+    result_2 = handle_2.get()
+    result_3 = handle_3.get()
+
+    # Each request's context should match its own header, proving isolation
+    assert result_1["request_id_from_context"] == result_1["request_id_from_header"]
+    assert result_2["request_id_from_context"] == result_2["request_id_from_header"]
+    assert result_3["request_id_from_context"] == result_3["request_id_from_header"]
+
+    # All request IDs should be different (unique requests)
+    request_ids = {
+        result_1["request_id_from_context"],
+        result_2["request_id_from_context"],
+        result_3["request_id_from_context"],
+    }
+    assert len(request_ids) == 3, "Each request should have a unique request_id"

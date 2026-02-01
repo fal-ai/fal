@@ -42,7 +42,6 @@ from fal.sdk import (
     RetryConditionLiteral,
 )
 from fal.toolkit.file import request_lifecycle_preference
-from fal.toolkit.file.providers.fal import LIFECYCLE_PREFERENCE
 
 REALTIME_APP_REQUIREMENTS = ["websockets", "msgpack"]
 REQUEST_ID_KEY = "x-fal-request-id"
@@ -445,6 +444,9 @@ def _include_app_files_path(
 
 @dataclass
 class RequestContext:
+    request_id: str | None
+    endpoint: str | None
+    lifecycle_preference: dict[str, str] | None
     headers: fastapi.Header
 
 
@@ -543,7 +545,7 @@ class App(BaseServable):
 
     isolate_channel: async_grpc.Channel | None = None
 
-    _current_request_context: ContextVar[RequestContext | None] | None = None
+    _current_request_context: ContextVar[RequestContext] | None = None
 
     def __init_subclass__(cls, **kwargs):
         app_name = kwargs.pop("name", None) or _to_fal_app_name(cls.__name__)
@@ -701,7 +703,10 @@ class App(BaseServable):
         # - app_files: files synced to /app
         # - container: files baked into image
         self._current_request_context = ContextVar(
-            "_current_request_context", default=RequestContext(headers={})
+            "_current_request_context",
+            default=RequestContext(
+                request_id=None, endpoint=None, lifecycle_preference=None, headers={}
+            ),
         )
 
         # We want to not do any directory changes for container apps,
@@ -782,31 +787,29 @@ class App(BaseServable):
                 )
             return response
 
-        multiplexing = self.host_kwargs.get("max_multiplexing") or 1
-        if multiplexing == 1:
-            # just register the middleware if we are not multiplexing
-            @app.middleware("http")
-            async def set_global_object_preference(request, call_next):
-                try:
-                    preference_dict = request_lifecycle_preference(request)
-                    if preference_dict is not None:
-                        # This will not work properly for apps with multiplexing enabled
-                        # we may mix up the preferences between requests
-                        LIFECYCLE_PREFERENCE.set(preference_dict)
-                except Exception:
-                    from fastapi.logger import logger
+        @app.middleware("http")
+        async def set_current_request_context(request, call_next):
+            if self._current_request_context is None:
+                from fastapi.logger import logger
 
-                    logger.exception(
-                        "Failed set a global lifecycle preference %s",
-                        self.__class__.__name__,
-                    )
+                logger.warning(
+                    "request context is not set. "
+                    "lifespan may not have worked as expected."
+                )
+                return await call_next(request)
 
-                try:
-                    return await call_next(request)
-                finally:
-                    # We may miss the global preference if there are operations
-                    # being done in the background that go beyond the request
-                    LIFECYCLE_PREFERENCE.set(None)
+            context = RequestContext(
+                request_id=request.headers.get(REQUEST_ID_KEY),
+                endpoint=request.headers.get(REQUEST_ENDPOINT_KEY),
+                lifecycle_preference=request_lifecycle_preference(request),
+                headers=request.headers,
+            )
+
+            token = self._current_request_context.set(context)
+            try:
+                return await call_next(request)
+            finally:
+                self._current_request_context.reset(token)
 
         @app.middleware("http")
         async def set_request_id(request, call_next):
@@ -870,25 +873,6 @@ class App(BaseServable):
             # but it is sometimes used by servers to indicate that a client has closed
             # the connection without receiving a response
             return JSONResponse({"detail": str(exc)}, 499)
-
-        @app.middleware("http")
-        async def set_current_request_context(request, call_next):
-            if self._current_request_context is None:
-                from fastapi.logger import logger
-
-                logger.warning(
-                    "request context is not set. "
-                    "lifespan may not have worked as expected."
-                )
-                return await call_next(request)
-
-            context = RequestContext(headers=request.headers)
-
-            token = self._current_request_context.set(context)
-            try:
-                return await call_next(request)
-            finally:
-                self._current_request_context.reset(token)
 
     def _add_extra_routes(self, app: fastapi.FastAPI):
         # TODO remove this once we have a proper health check endpoint
