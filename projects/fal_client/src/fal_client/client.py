@@ -59,6 +59,14 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from PIL import Image
 
+try:
+    from fal.ref import get_current_app
+except ImportError:
+
+    def get_current_app() -> Optional[Any]:
+        return None
+
+
 AnyJSON = Dict[str, Any]
 
 RUN_URL_FORMAT = f"https://{FAL_RUN_HOST}/"
@@ -1319,6 +1327,13 @@ class AsyncClient:
         if start_timeout is not None:
             add_timeout_header(start_timeout, _headers)
 
+        if (
+            (app := get_current_app()) is not None
+            and app.current_request is not None
+            and "x-fal-cdn-token" in app.current_request.headers
+        ):
+            _headers["x-fal-cdn-token"] = app.current_request.headers["x-fal-cdn-token"]
+
         response = await _async_maybe_retry_request(
             self._client,
             "POST",
@@ -1371,6 +1386,13 @@ class AsyncClient:
 
         if start_timeout is not None:
             add_timeout_header(start_timeout, _headers)
+
+        if (
+            (app := get_current_app()) is not None
+            and app.current_request is not None
+            and "x-fal-cdn-token" in app.current_request.headers
+        ):
+            _headers["x-fal-cdn-token"] = app.current_request.headers["x-fal-cdn-token"]
 
         response = await _async_maybe_retry_request(
             self._client,
@@ -1735,6 +1757,13 @@ class SyncClient:
         if start_timeout is not None:
             add_timeout_header(start_timeout, _headers)
 
+        if (
+            (app := get_current_app()) is not None
+            and app.current_request is not None
+            and "x-fal-cdn-token" in app.current_request.headers
+        ):
+            _headers["x-fal-cdn-token"] = app.current_request.headers["x-fal-cdn-token"]
+
         response = _maybe_retry_request(
             self._client,
             "POST",
@@ -1783,6 +1812,13 @@ class SyncClient:
 
         if start_timeout is not None:
             add_timeout_header(start_timeout, _headers)
+
+        if (
+            (app := get_current_app()) is not None
+            and app.current_request is not None
+            and "x-fal-cdn-token" in app.current_request.headers
+        ):
+            _headers["x-fal-cdn-token"] = app.current_request.headers["x-fal-cdn-token"]
 
         response = _maybe_retry_request(
             self._client,
