@@ -2,6 +2,7 @@ import asyncio
 import time
 import json
 from contextlib import asynccontextmanager, contextmanager
+from typing import Dict, Optional
 from unittest.mock import AsyncMock, Mock, patch
 
 import httpx
@@ -20,6 +21,7 @@ from fal_client.client import (
     RealtimeError,
     SyncClient,
     SyncRequestHandle,
+    USER_AGENT,
     _BaseRequestHandle,
 )
 
@@ -759,10 +761,11 @@ def test_sync_client_realtime_builds_url(mocker):
     fake_ws.recv.side_effect = [msgpack.packb({"ok": True}, use_bin_type=True)]
 
     @contextmanager
-    def fake_connect(url: str):
+    def fake_connect(url: str, headers: Optional[Dict[str, str]] = None):
         assert url.startswith("wss://")
         assert "fal_jwt_token=jwt-token" in url
         assert "max_buffering=10" in url
+        assert headers is None
         yield fake_ws
 
     mocker.patch("fal_client.client._connect_sync_ws", fake_connect)
@@ -791,10 +794,11 @@ async def test_async_client_realtime_builds_url(mocker):
     )
 
     @asynccontextmanager
-    async def fake_connect(url: str):
+    async def fake_connect(url: str, headers: Optional[Dict[str, str]] = None):
         assert url.startswith("wss://")
         assert "fal_jwt_token=jwt-token" in url
         assert "max_buffering=5" in url
+        assert headers is None
         yield fake_ws
 
     mocker.patch("fal_client.client._connect_async_ws", fake_connect)
@@ -817,10 +821,11 @@ def test_sync_client_ws_connect_custom_path(mocker):
     fake_ws = Mock()
 
     @contextmanager
-    def fake_connect(url: str):
+    def fake_connect(url: str, headers: Optional[Dict[str, str]] = None):
         assert url.startswith("wss://")
         assert "/custom" in url
         assert "fal_jwt_token=jwt-token" in url
+        assert headers is None
         yield fake_ws
 
     mocker.patch("fal_client.client._connect_sync_ws", fake_connect)
@@ -845,10 +850,11 @@ async def test_async_client_ws_connect_custom_path(mocker):
     fake_ws = AsyncMock()
 
     @asynccontextmanager
-    async def fake_connect(url: str):
+    async def fake_connect(url: str, headers: Optional[Dict[str, str]] = None):
         assert url.startswith("wss://")
         assert "/chat" in url
         assert "fal_jwt_token=jwt-token" in url
+        assert headers is None
         yield fake_ws
 
     mocker.patch("fal_client.client._connect_async_ws", fake_connect)
@@ -857,6 +863,116 @@ async def test_async_client_ws_connect_custom_path(mocker):
         assert ws is fake_ws
 
     assert mock_request.await_args.kwargs["json"]["allowed_apps"] == ["test"]
+
+
+def test_sync_client_realtime_uses_headers_without_jwt(mocker):
+    client = SyncClient(key="test-key")
+    mock_request = mocker.patch("fal_client.client._maybe_retry_request")
+
+    fake_ws = Mock()
+    fake_ws.recv.side_effect = [msgpack.packb({"ok": True}, use_bin_type=True)]
+
+    @contextmanager
+    def fake_connect(url: str, headers: Optional[Dict[str, str]] = None):
+        assert url.startswith("wss://")
+        assert "fal_jwt_token=" not in url
+        assert headers == {
+            "Authorization": "Key test-key",
+            "User-Agent": USER_AGENT,
+        }
+        yield fake_ws
+
+    mocker.patch("fal_client.client._connect_sync_ws", fake_connect)
+
+    with client.realtime("1234-test", use_jwt=False) as connection:
+        result = connection.recv()
+
+    assert result == {"ok": True}
+    mock_request.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_async_client_realtime_uses_headers_without_jwt(mocker):
+    client = AsyncClient(key="test-key")
+    mock_request = mocker.patch(
+        "fal_client.client._async_maybe_retry_request", new_callable=AsyncMock
+    )
+
+    fake_ws = AsyncMock()
+    fake_ws.recv = AsyncMock(
+        side_effect=[msgpack.packb({"ok": True}, use_bin_type=True)]
+    )
+
+    @asynccontextmanager
+    async def fake_connect(url: str, headers: Optional[Dict[str, str]] = None):
+        assert url.startswith("wss://")
+        assert "fal_jwt_token=" not in url
+        assert headers == {
+            "Authorization": "Key test-key",
+            "User-Agent": USER_AGENT,
+        }
+        yield fake_ws
+
+    mocker.patch("fal_client.client._connect_async_ws", fake_connect)
+
+    async with client.realtime("1234-test", use_jwt=False) as connection:
+        result = await connection.recv()
+
+    assert result == {"ok": True}
+    mock_request.assert_not_called()
+
+
+def test_sync_client_ws_connect_uses_headers_without_jwt(mocker):
+    client = SyncClient(key="test-key")
+    mock_request = mocker.patch("fal_client.client._maybe_retry_request")
+
+    fake_ws = Mock()
+
+    @contextmanager
+    def fake_connect(url: str, headers: Optional[Dict[str, str]] = None):
+        assert url.startswith("wss://")
+        assert "/custom" in url
+        assert "fal_jwt_token=" not in url
+        assert headers == {
+            "Authorization": "Key test-key",
+            "User-Agent": USER_AGENT,
+        }
+        yield fake_ws
+
+    mocker.patch("fal_client.client._connect_sync_ws", fake_connect)
+
+    with client.ws_connect("1234-test", path="custom", use_jwt=False) as ws:
+        assert ws is fake_ws
+
+    mock_request.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_async_client_ws_connect_uses_headers_without_jwt(mocker):
+    client = AsyncClient(key="test-key")
+    mock_request = mocker.patch(
+        "fal_client.client._async_maybe_retry_request", new_callable=AsyncMock
+    )
+
+    fake_ws = AsyncMock()
+
+    @asynccontextmanager
+    async def fake_connect(url: str, headers: Optional[Dict[str, str]] = None):
+        assert url.startswith("wss://")
+        assert "/chat" in url
+        assert "fal_jwt_token=" not in url
+        assert headers == {
+            "Authorization": "Key test-key",
+            "User-Agent": USER_AGENT,
+        }
+        yield fake_ws
+
+    mocker.patch("fal_client.client._connect_async_ws", fake_connect)
+
+    async with client.ws_connect("1234-test", path="chat", use_jwt=False) as ws:
+        assert ws is fake_ws
+
+    mock_request.assert_not_called()
 
 
 # Tests for start_timeout parameter
