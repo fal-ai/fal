@@ -246,6 +246,9 @@ class AppClient:
         self.cls = cls
         self._headers = _default_auth_headers()
 
+        user_name, app_name = url.rstrip("/").rsplit("/", 2)[-2:]
+        self.application = f"{user_name}/{app_name}"
+
         for name, endpoint in inspect.getmembers(cls, inspect.isfunction):
             signature = getattr(endpoint, "route_signature", None)
             if signature is None:
