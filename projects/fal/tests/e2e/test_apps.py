@@ -19,6 +19,7 @@ from openapi_fal_rest.api.applications import app_metadata
 from openapi_fal_rest.client import Client
 from pydantic import BaseModel
 from pydantic import __version__ as pydantic_version
+from websockets.sync import client as ws_client
 
 import fal
 import fal.api as api
@@ -35,7 +36,7 @@ from fal.exceptions import (
 )
 from fal.exceptions._cuda import _CUDA_OOM_MESSAGE, _CUDA_OOM_STATUS_CODE
 from fal.ref import get_current_app
-from fal.sdk import RunnerState
+from fal.sdk import RunnerState, get_default_credentials
 from fal.toolkit.utils.endpoint import cancel_on_disconnect
 from fal.workflows import Workflow
 
@@ -1144,6 +1145,24 @@ def test_realtime_connection(test_realtime_app):
 
         assert len(received_prompts) == 10
         assert batch_sizes == [4, 4, 2]
+
+
+def test_realtime_ws_endpoint(test_realtime_app):
+    app_id = apps._backwards_compatible_app_id(test_realtime_app)
+    url = apps._REALTIME_URL_FORMAT.format(app_id=app_id) + "/ws"
+    creds = get_default_credentials()
+
+    with ws_client.connect(
+        url, additional_headers=creds.to_headers(), open_timeout=90
+    ) as ws:
+        messages = []
+        for _ in range(3):
+            payload = ws.recv()
+            if isinstance(payload, bytes):
+                payload = payload.decode("utf-8")
+            messages.append(json.loads(payload))
+
+    assert messages == [{"message": "Hello world!"}] * 3
 
 
 def test_realtime_connection_custom_codec(test_realtime_app):
