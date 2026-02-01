@@ -11,8 +11,11 @@ from fal.toolkit.file.providers import fal as providers
 class FakeRequest:
     """Fake request object with headers."""
 
-    def __init__(self, headers: dict[str, str] | None = None):
+    def __init__(
+        self, headers: dict[str, str] | None = None, request_id: str | None = None
+    ):
         self.headers = headers or {}
+        self.request_id = request_id
 
 
 class FakeApp:
@@ -31,40 +34,55 @@ def _create_fake_app_with_cdn_token(cdn_token: str | None = None) -> FakeApp:
     return FakeApp(current_request=fake_request)
 
 
-def test_caller_cdn_token_header_no_current_app():
+def _create_fake_app_with_request_id(request_id: str | None = None) -> FakeApp:
+    """Helper to create a fake app with optional request ID."""
+    fake_request = FakeRequest(headers={}, request_id=request_id)
+    return FakeApp(current_request=fake_request)
+
+
+def _create_fake_app(
+    cdn_token: str | None = None, request_id: str | None = None
+) -> FakeApp:
+    """Helper to create a fake app with optional CDN token and request ID."""
+    headers = {"x-fal-cdn-token": cdn_token} if cdn_token else {}
+    fake_request = FakeRequest(headers=headers, request_id=request_id)
+    return FakeApp(current_request=fake_request)
+
+
+def test_caller_cdn_header_no_current_app():
     """When there is no current app, headers should not be modified."""
     headers: dict[str, str] = {}
 
     with patch.object(providers, "get_current_app", return_value=None):
-        providers._caller_cdn_token_header(headers)
+        providers._caller_cdn_header(headers)
 
     assert "X-Fal-CDN-Token" not in headers
 
 
-def test_caller_cdn_token_header_no_request():
+def test_caller_cdn_header_no_request():
     """When current app has no request, headers should not be modified."""
     headers: dict[str, str] = {}
     fake_app = FakeApp(current_request=None)
 
     with patch.object(providers, "get_current_app", return_value=fake_app):
-        providers._caller_cdn_token_header(headers)
+        providers._caller_cdn_header(headers)
 
     assert "X-Fal-CDN-Token" not in headers
 
 
-def test_caller_cdn_token_header_no_cdn_token():
+def test_caller_cdn_header_no_cdn_token():
     """When request has no cdn token header, headers should not be modified."""
     headers: dict[str, str] = {}
     fake_request = FakeRequest(headers={"other-header": "value"})
     fake_app = FakeApp(current_request=fake_request)
 
     with patch.object(providers, "get_current_app", return_value=fake_app):
-        providers._caller_cdn_token_header(headers)
+        providers._caller_cdn_header(headers)
 
     assert "X-Fal-CDN-Token" not in headers
 
 
-def test_caller_cdn_token_header_adds_token():
+def test_caller_cdn_header_adds_token():
     """When request has cdn token header, it should be added to headers."""
     headers: dict[str, str] = {}
     cdn_token = "test-cdn-token-12345"
@@ -72,12 +90,12 @@ def test_caller_cdn_token_header_adds_token():
     fake_app = FakeApp(current_request=fake_request)
 
     with patch.object(providers, "get_current_app", return_value=fake_app):
-        providers._caller_cdn_token_header(headers)
+        providers._caller_cdn_header(headers)
 
     assert headers["X-Fal-CDN-Token"] == cdn_token
 
 
-def test_caller_cdn_token_header_preserves_existing():
+def test_caller_cdn_header_preserves_existing():
     """Existing headers should be preserved when adding cdn token."""
     headers = {"Authorization": "Bearer token", "User-Agent": "test"}
     cdn_token = "test-cdn-token"
@@ -85,11 +103,48 @@ def test_caller_cdn_token_header_preserves_existing():
     fake_app = FakeApp(current_request=fake_request)
 
     with patch.object(providers, "get_current_app", return_value=fake_app):
-        providers._caller_cdn_token_header(headers)
+        providers._caller_cdn_header(headers)
 
     assert headers["Authorization"] == "Bearer token"
     assert headers["User-Agent"] == "test"
     assert headers["X-Fal-CDN-Token"] == cdn_token
+
+
+def test_caller_cdn_header_adds_request_id():
+    """When request has request_id, it should be added to headers."""
+    headers: dict[str, str] = {}
+    request_id = "test-request-id-12345"
+    fake_app = _create_fake_app_with_request_id(request_id)
+
+    with patch.object(providers, "get_current_app", return_value=fake_app):
+        providers._caller_cdn_header(headers)
+
+    assert headers["X-Fal-Request-ID"] == request_id
+
+
+def test_caller_cdn_header_no_request_id_when_not_present():
+    """When request has no request_id, it should not be added to headers."""
+    headers: dict[str, str] = {}
+    fake_app = _create_fake_app_with_request_id(None)
+
+    with patch.object(providers, "get_current_app", return_value=fake_app):
+        providers._caller_cdn_header(headers)
+
+    assert "X-Fal-Request-ID" not in headers
+
+
+def test_caller_cdn_header_adds_both_cdn_token_and_request_id():
+    """When request has both cdn token and request_id, both should be added."""
+    headers: dict[str, str] = {}
+    cdn_token = "test-cdn-token"
+    request_id = "test-request-id-67890"
+    fake_app = _create_fake_app(cdn_token=cdn_token, request_id=request_id)
+
+    with patch.object(providers, "get_current_app", return_value=fake_app):
+        providers._caller_cdn_header(headers)
+
+    assert headers["X-Fal-CDN-Token"] == cdn_token
+    assert headers["X-Fal-Request-ID"] == request_id
 
 
 @pytest.mark.parametrize(
