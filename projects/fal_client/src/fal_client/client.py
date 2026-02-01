@@ -716,11 +716,17 @@ def _build_runner_ws_url(
     return f"{url}?{urlencode(query)}"
 
 
-def _build_realtime_url(application: str, token: str, max_buffering: int | None) -> str:
+def _build_realtime_url(
+    application: str,
+    token: str,
+    max_buffering: int | None,
+    *,
+    path: str = "realtime",
+) -> str:
     return _build_runner_ws_url(
         application,
         token,
-        path="realtime",
+        path=path,
         max_buffering=max_buffering,
     )
 
@@ -1565,6 +1571,7 @@ class AsyncClient:
         self,
         application: str,
         *,
+        path: str = "/realtime",
         max_buffering: int | None = None,
         token_expiration: int = REALTIME_TOKEN_EXPIRATION_SECONDS,
         encode_message: Callable[[Any], bytes] | None = None,
@@ -1573,7 +1580,7 @@ class AsyncClient:
         token = await self._get_realtime_token(
             application, token_expiration=token_expiration
         )
-        url = _build_realtime_url(application, token, max_buffering)
+        url = _build_realtime_url(application, token, max_buffering, path=path)
         async with _connect_async_ws(url) as ws:
             yield AsyncRealtimeConnection(
                 ws, _encode_message=encode_message, _decode_message=decode_message
@@ -1955,13 +1962,14 @@ class SyncClient:
         self,
         application: str,
         *,
+        path: str = "/realtime",
         max_buffering: int | None = None,
         token_expiration: int = REALTIME_TOKEN_EXPIRATION_SECONDS,
         encode_message: Callable[[Any], bytes] | None = None,
         decode_message: Callable[[bytes], Any] | None = None,
     ) -> Iterator[RealtimeConnection]:
         token = self._get_realtime_token(application, token_expiration=token_expiration)
-        url = _build_realtime_url(application, token, max_buffering)
+        url = _build_realtime_url(application, token, max_buffering, path=path)
         with _connect_sync_ws(url) as ws:
             yield RealtimeConnection(
                 ws, _encode_message=encode_message, _decode_message=decode_message
