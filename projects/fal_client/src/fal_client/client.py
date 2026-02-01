@@ -16,7 +16,7 @@ import concurrent.futures
 from contextlib import asynccontextmanager, contextmanager
 from datetime import datetime, timezone
 from dataclasses import dataclass, field
-from functools import cached_property
+from functools import cached_property, partial
 from typing import (
     Any,
     AsyncIterator,
@@ -60,12 +60,16 @@ if TYPE_CHECKING:
     from PIL import Image
 
 AnyJSON = Dict[str, Any]
+UploadRepositoryId = Literal["fal_v3", "cdn", "fal"]
 
 RUN_URL_FORMAT = f"https://{FAL_RUN_HOST}/"
 QUEUE_URL_FORMAT = f"https://{FAL_QUEUE_RUN_HOST}/"
 REALTIME_URL_FORMAT = f"wss://{FAL_RUN_HOST}/"
 REST_URL = "https://rest.alpha.fal.ai"
 CDN_URL = "https://v3.fal.media"
+FAL_CDN_FALLBACK_URL = os.environ.get("FAL_CDN_HOST", "https://fal.media")
+DEFAULT_UPLOAD_REPOSITORY: UploadRepositoryId = "fal_v3"
+DEFAULT_UPLOAD_FALLBACK_REPOSITORY: list[UploadRepositoryId] = ["cdn", "fal"]
 USER_AGENT = "fal-client/0.2.2 (python)"
 
 MIN_REQUEST_TIMEOUT_SECONDS = 1
@@ -1056,6 +1060,224 @@ async def _async_maybe_retry_request(
     raise RuntimeError("Failed to perform request")
 
 
+def _cdn_auth_header(auth: AuthCredentials) -> str:
+    if auth.scheme.lower() == "key":
+        return f"Bearer {auth.token}"
+    return auth.header_value
+
+
+def _cdn_upload_headers(
+    auth: AuthCredentials, content_type: str, file_name: str | None
+) -> dict[str, str]:
+    headers = {"Content-Type": content_type, "Authorization": _cdn_auth_header(auth)}
+    if file_name is not None:
+        headers["X-Fal-File-Name"] = file_name
+    return headers
+
+
+def _storage_upload_headers(auth: AuthCredentials) -> dict[str, str]:
+    return {
+        "Authorization": auth.header_value,
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+    }
+
+
+def _normalize_upload_repositories(
+    repository: UploadRepositoryId | None,
+    fallback_repository: UploadRepositoryId | list[UploadRepositoryId] | None,
+) -> list[UploadRepositoryId]:
+    allowed = {"fal_v3", "cdn", "fal"}
+    if repository is None:
+        repository = DEFAULT_UPLOAD_REPOSITORY
+
+    if fallback_repository is None:
+        fallback_repository = DEFAULT_UPLOAD_FALLBACK_REPOSITORY
+    elif not isinstance(fallback_repository, list):
+        fallback_repository = [fallback_repository]
+
+    ordered = [repository, *fallback_repository]
+    deduped: list[UploadRepositoryId] = []
+    for entry in ordered:
+        if entry not in allowed:
+            raise ValueError(f"Unsupported upload repository '{entry}'")
+        if entry not in deduped:
+            deduped.append(entry)
+    return deduped
+
+
+def _storage_upload_payload(file_name: str | None, content_type: str) -> dict[str, str]:
+    return {
+        "file_name": file_name or "upload.bin",
+        "content_type": content_type,
+    }
+
+
+def _upload_via_storage(
+    client: httpx.Client,
+    auth: AuthCredentials,
+    *,
+    data: bytes,
+    content_type: str,
+    file_name: str | None,
+) -> str:
+    init_response = _maybe_retry_request(
+        client,
+        "POST",
+        f"{REST_URL}/storage/upload/initiate?storage_type=gcs",
+        json=_storage_upload_payload(file_name, content_type),
+        headers=_storage_upload_headers(auth),
+    )
+    init_result = init_response.json()
+    upload_url = init_result["upload_url"]
+    file_url = init_result["file_url"]
+    _maybe_retry_request(
+        client,
+        "PUT",
+        upload_url,
+        content=data,
+        headers={"Content-Type": content_type},
+        timeout=None,
+    )
+    return file_url
+
+
+async def _async_upload_via_storage(
+    client: httpx.AsyncClient,
+    auth: AuthCredentials,
+    *,
+    data: bytes,
+    content_type: str,
+    file_name: str | None,
+) -> str:
+    init_response = await _async_maybe_retry_request(
+        client,
+        "POST",
+        f"{REST_URL}/storage/upload/initiate?storage_type=gcs",
+        json=_storage_upload_payload(file_name, content_type),
+        headers=_storage_upload_headers(auth),
+    )
+    init_result = init_response.json()
+    upload_url = init_result["upload_url"]
+    file_url = init_result["file_url"]
+    await _async_maybe_retry_request(
+        client,
+        "PUT",
+        upload_url,
+        content=data,
+        headers={"Content-Type": content_type},
+        timeout=None,
+    )
+    return file_url
+
+
+def _upload_v3(
+    client: httpx.Client,
+    *,
+    data: bytes,
+    headers: dict[str, str],
+) -> str:
+    response = _maybe_retry_request(
+        client,
+        "POST",
+        CDN_URL + "/files/upload",
+        content=data,
+        headers=headers,
+    )
+    return response.json()["access_url"]
+
+
+def _upload_cdn(
+    client: httpx.Client,
+    auth: AuthCredentials,
+    *,
+    data: bytes,
+    content_type: str,
+    file_name: str | None,
+) -> str:
+    response = _maybe_retry_request(
+        client,
+        "POST",
+        FAL_CDN_FALLBACK_URL + "/files/upload",
+        content=data,
+        headers=_cdn_upload_headers(auth, content_type, file_name),
+    )
+    return response.json()["access_url"]
+
+
+async def _async_upload_v3(
+    client: httpx.AsyncClient,
+    *,
+    data: bytes,
+    headers: dict[str, str],
+) -> str:
+    response = await _async_maybe_retry_request(
+        client,
+        "POST",
+        CDN_URL + "/files/upload",
+        content=data,
+        headers=headers,
+    )
+    return response.json()["access_url"]
+
+
+async def _async_upload_cdn(
+    client: httpx.AsyncClient,
+    auth: AuthCredentials,
+    *,
+    data: bytes,
+    content_type: str,
+    file_name: str | None,
+) -> str:
+    response = await _async_maybe_retry_request(
+        client,
+        "POST",
+        FAL_CDN_FALLBACK_URL + "/files/upload",
+        content=data,
+        headers=_cdn_upload_headers(auth, content_type, file_name),
+    )
+    return response.json()["access_url"]
+
+
+def _try_upload_with_fallback(
+    attempts: list[tuple[str, Callable[[], str]]],
+) -> str:
+    for idx, (label, attempt) in enumerate(attempts):
+        try:
+            return attempt()
+        except Exception as exc:
+            if idx >= len(attempts) - 1:
+                raise
+            logger.warning(
+                "Upload failed to %s, falling back to %s: %s",
+                label,
+                attempts[idx + 1][0],
+                exc,
+            )
+    raise RuntimeError("Upload attempts were exhausted")
+
+
+async def _async_try_upload_with_fallback(
+    attempts: list[tuple[str, Callable[[], Any]]],
+) -> str:
+    for idx, (label, attempt) in enumerate(attempts):
+        try:
+            result = attempt()
+            if asyncio.iscoroutine(result):
+                return await result
+            return result
+        except Exception as exc:
+            if idx >= len(attempts) - 1:
+                raise
+            logger.warning(
+                "Upload failed to %s, falling back to %s: %s",
+                label,
+                attempts[idx + 1][0],
+                exc,
+            )
+    raise RuntimeError("Upload attempts were exhausted")
+
+
 def _maybe_cancel_request(handle: SyncRequestHandle) -> None:
     try:
         handle.cancel()
@@ -1514,19 +1736,31 @@ class AsyncClient:
                 yield event.json()
 
     async def upload(
-        self, data: str | bytes, content_type: str, file_name: str | None = None
+        self,
+        data: str | bytes,
+        content_type: str,
+        file_name: str | None = None,
+        *,
+        repository: UploadRepositoryId | None = None,
+        fallback_repository: UploadRepositoryId
+        | list[UploadRepositoryId]
+        | None = None,
     ) -> str:
         """Upload the given data blob to the CDN and return the access URL. The content type should be specified
         as the second argument. Use upload_file or upload_image for convenience."""
 
-        client = await self._get_cdn_client()
+        auth = self._get_auth()
 
         if isinstance(data, str):
             data = data.encode("utf-8")
 
-        if len(data) > MULTIPART_THRESHOLD:
+        repository_chain = _normalize_upload_repositories(
+            repository, fallback_repository
+        )
+        if len(data) > MULTIPART_THRESHOLD and repository_chain[0] == "fal_v3":
             if file_name is None:
                 file_name = "upload.bin"
+            client = await self._get_cdn_client()
             return await AsyncMultipartUpload.save(
                 client=client,
                 token_manager=self._token_manager,
@@ -1539,23 +1773,69 @@ class AsyncClient:
         if file_name is not None:
             headers["X-Fal-File-Name"] = file_name
 
-        response = await client.post(
-            CDN_URL + "/files/upload",
-            content=data,
-            headers=headers,
-        )
-        _raise_for_status(response)
+        attempts: list[tuple[str, Callable[[], Any]]] = []
+        for repo in repository_chain:
+            if repo == "fal_v3":
+                client = await self._get_cdn_client()
+                attempts.append(
+                    (
+                        "fal_v3",
+                        partial(_async_upload_v3, client, data=data, headers=headers),
+                    )
+                )
+            elif repo == "cdn":
+                attempts.append(
+                    (
+                        "cdn",
+                        partial(
+                            _async_upload_cdn,
+                            self._client,
+                            auth,
+                            data=data,
+                            content_type=content_type,
+                            file_name=file_name,
+                        ),
+                    )
+                )
+            elif repo == "fal":
+                attempts.append(
+                    (
+                        "fal",
+                        partial(
+                            _async_upload_via_storage,
+                            self._client,
+                            auth,
+                            data=data,
+                            content_type=content_type,
+                            file_name=file_name,
+                        ),
+                    )
+                )
 
-        return response.json()["access_url"]
+        return await _async_try_upload_with_fallback(attempts)
 
-    async def upload_file(self, path: os.PathLike) -> str:
+    async def upload_file(
+        self,
+        path: os.PathLike,
+        *,
+        repository: UploadRepositoryId | None = None,
+        fallback_repository: UploadRepositoryId
+        | list[UploadRepositoryId]
+        | None = None,
+    ) -> str:
         """Upload a file from the local filesystem to the CDN and return the access URL."""
 
         mime_type, _ = mimetypes.guess_type(path)
         if mime_type is None:
             mime_type = "application/octet-stream"
 
-        if os.path.getsize(path) > MULTIPART_THRESHOLD:
+        repository_chain = _normalize_upload_repositories(
+            repository, fallback_repository
+        )
+        if (
+            os.path.getsize(path) > MULTIPART_THRESHOLD
+            and repository_chain[0] == "fal_v3"
+        ):
             client = await self._get_cdn_client()
             return await AsyncMultipartUpload.save_file(
                 file_path=str(path),
@@ -1566,15 +1846,33 @@ class AsyncClient:
 
         with open(path, "rb") as file:
             return await self.upload(
-                file.read(), mime_type, file_name=os.path.basename(path)
+                file.read(),
+                mime_type,
+                file_name=os.path.basename(path),
+                repository=repository,
+                fallback_repository=fallback_repository,
             )
 
-    async def upload_image(self, image: Image.Image, format: str = "jpeg") -> str:
+    async def upload_image(
+        self,
+        image: Image.Image,
+        format: str = "jpeg",
+        *,
+        repository: UploadRepositoryId | None = None,
+        fallback_repository: UploadRepositoryId
+        | list[UploadRepositoryId]
+        | None = None,
+    ) -> str:
         """Upload a pillow image object to the CDN and return the access URL."""
 
         with io.BytesIO() as buffer:
             image.save(buffer, format=format)
-            return await self.upload(buffer.getvalue(), f"image/{format}")
+            return await self.upload(
+                buffer.getvalue(),
+                f"image/{format}",
+                repository=repository,
+                fallback_repository=fallback_repository,
+            )
 
     @asynccontextmanager
     async def realtime(
@@ -1923,19 +2221,31 @@ class SyncClient:
                 yield event.json()
 
     def upload(
-        self, data: str | bytes, content_type: str, file_name: str | None = None
+        self,
+        data: str | bytes,
+        content_type: str,
+        file_name: str | None = None,
+        *,
+        repository: UploadRepositoryId | None = None,
+        fallback_repository: UploadRepositoryId
+        | list[UploadRepositoryId]
+        | None = None,
     ) -> str:
         """Upload the given data blob to the CDN and return the access URL. The content type should be specified
         as the second argument. Use upload_file or upload_image for convenience."""
 
-        client = self._get_cdn_client()
+        auth = self._get_auth()
 
         if isinstance(data, str):
             data = data.encode("utf-8")
 
-        if len(data) > MULTIPART_THRESHOLD:
+        repository_chain = _normalize_upload_repositories(
+            repository, fallback_repository
+        )
+        if len(data) > MULTIPART_THRESHOLD and repository_chain[0] == "fal_v3":
             if file_name is None:
                 file_name = "upload.bin"
+            client = self._get_cdn_client()
             return MultipartUpload.save(
                 client=client,
                 token_manager=self._token_manager,
@@ -1948,23 +2258,69 @@ class SyncClient:
         if file_name is not None:
             headers["X-Fal-File-Name"] = file_name
 
-        response = client.post(
-            CDN_URL + "/files/upload",
-            content=data,
-            headers=headers,
-        )
-        _raise_for_status(response)
+        attempts: list[tuple[str, Callable[[], str]]] = []
+        for repo in repository_chain:
+            if repo == "fal_v3":
+                client = self._get_cdn_client()
+                attempts.append(
+                    (
+                        "fal_v3",
+                        partial(_upload_v3, client, data=data, headers=headers),
+                    )
+                )
+            elif repo == "cdn":
+                attempts.append(
+                    (
+                        "cdn",
+                        partial(
+                            _upload_cdn,
+                            self._client,
+                            auth,
+                            data=data,
+                            content_type=content_type,
+                            file_name=file_name,
+                        ),
+                    )
+                )
+            elif repo == "fal":
+                attempts.append(
+                    (
+                        "fal",
+                        partial(
+                            _upload_via_storage,
+                            self._client,
+                            auth,
+                            data=data,
+                            content_type=content_type,
+                            file_name=file_name,
+                        ),
+                    )
+                )
 
-        return response.json()["access_url"]
+        return _try_upload_with_fallback(attempts)
 
-    def upload_file(self, path: os.PathLike) -> str:
+    def upload_file(
+        self,
+        path: os.PathLike,
+        *,
+        repository: UploadRepositoryId | None = None,
+        fallback_repository: UploadRepositoryId
+        | list[UploadRepositoryId]
+        | None = None,
+    ) -> str:
         """Upload a file from the local filesystem to the CDN and return the access URL."""
 
         mime_type, _ = mimetypes.guess_type(path)
         if mime_type is None:
             mime_type = "application/octet-stream"
 
-        if os.path.getsize(path) > MULTIPART_THRESHOLD:
+        repository_chain = _normalize_upload_repositories(
+            repository, fallback_repository
+        )
+        if (
+            os.path.getsize(path) > MULTIPART_THRESHOLD
+            and repository_chain[0] == "fal_v3"
+        ):
             client = self._get_cdn_client()
             return MultipartUpload.save_file(
                 file_path=str(path),
@@ -1974,14 +2330,34 @@ class SyncClient:
             )
 
         with open(path, "rb") as file:
-            return self.upload(file.read(), mime_type, file_name=os.path.basename(path))
+            return self.upload(
+                file.read(),
+                mime_type,
+                file_name=os.path.basename(path),
+                repository=repository,
+                fallback_repository=fallback_repository,
+            )
 
-    def upload_image(self, image: Image.Image, format: str = "jpeg") -> str:
+    def upload_image(
+        self,
+        image: Image.Image,
+        format: str = "jpeg",
+        *,
+        repository: UploadRepositoryId | None = None,
+        fallback_repository: UploadRepositoryId
+        | list[UploadRepositoryId]
+        | None = None,
+    ) -> str:
         """Upload a pillow image object to the CDN and return the access URL."""
 
         with io.BytesIO() as buffer:
             image.save(buffer, format=format)
-            return self.upload(buffer.getvalue(), f"image/{format}")
+            return self.upload(
+                buffer.getvalue(),
+                f"image/{format}",
+                repository=repository,
+                fallback_repository=fallback_repository,
+            )
 
     @contextmanager
     def realtime(
