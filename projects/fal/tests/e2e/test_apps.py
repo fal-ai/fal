@@ -1794,7 +1794,6 @@ def test_request_context_app(host: api.FalServerlessHost, user: User):
 
 def test_request_context_fields_populated(test_request_context_app: str):
     """Test that request context fields are properly populated."""
-    time.sleep(3)
 
     result = apps.run(test_request_context_app, arguments={})
 
@@ -1812,7 +1811,6 @@ def test_request_context_isolation_with_multiplexing(test_request_context_app: s
     its own isolated context via ContextVar, ensuring request_id from context
     matches the request_id from headers for each individual request.
     """
-    time.sleep(3)
 
     # Submit multiple concurrent requests
     handle_1 = apps.submit(test_request_context_app, arguments={})

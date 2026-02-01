@@ -212,7 +212,6 @@ class File(BaseModel):
         if request:
             object_lifecycle_preference = request_lifecycle_preference(request)
         else:
-            print("[WARNING] No request provided, using global lifecycle preference")
             object_lifecycle_preference = (
                 _get_object_lifecycle_preference_from_context()
             )
@@ -267,7 +266,6 @@ class File(BaseModel):
         if request:
             object_lifecycle_preference = request_lifecycle_preference(request)
         else:
-            print("[WARNING] No request provided, using global lifecycle preference")
             object_lifecycle_preference = (
                 _get_object_lifecycle_preference_from_context()
             )
