@@ -714,7 +714,7 @@ class FalServerlessConnection:
 
         request = isolate_proto.CreateUserKeyRequest(scope=scope_proto, alias=alias)
         response = self.stub.CreateUserKey(request)
-        return response.key_secret, response.key_id
+        return response.key_id, response.key_secret
 
     def list_user_keys(self) -> list[UserKeyInfo]:
         request = isolate_proto.ListUserKeysRequest()
