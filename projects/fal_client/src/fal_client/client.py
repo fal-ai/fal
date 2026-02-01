@@ -699,7 +699,7 @@ def _serialize_max_buffering(value: int | None) -> str | None:
 
 def _build_runner_ws_url(
     application: str,
-    token: str,
+    token: str | None,
     *,
     path: str = "",
     max_buffering: int | None = None,
@@ -709,16 +709,20 @@ def _build_runner_ws_url(
     url = f"{REALTIME_URL_FORMAT}{app_path}"
     if path:
         url += "/" + path.lstrip("/")
-    query: dict[str, str] = {"fal_jwt_token": token}
+    query: dict[str, str] = {}
+    if token:
+        query["fal_jwt_token"] = token
     serialized_buffering = _serialize_max_buffering(max_buffering)
     if serialized_buffering is not None:
         query["max_buffering"] = serialized_buffering
-    return f"{url}?{urlencode(query)}"
+    if query:
+        return f"{url}?{urlencode(query)}"
+    return url
 
 
 def _build_realtime_url(
     application: str,
-    token: str,
+    token: str | None,
     max_buffering: int | None,
     *,
     path: str = "realtime",
@@ -874,11 +878,14 @@ class AsyncRealtimeConnection:
 
 
 @contextmanager
-def _connect_sync_ws(url: str) -> Iterator["Connection"]:
+def _connect_sync_ws(
+    url: str, headers: dict[str, str] | None = None
+) -> Iterator["Connection"]:
     from websockets.sync import client
 
     with client.connect(
         url,
+        additional_headers=headers,
         open_timeout=REALTIME_OPEN_TIMEOUT,
         max_size=None,
     ) as ws:
@@ -886,11 +893,14 @@ def _connect_sync_ws(url: str) -> Iterator["Connection"]:
 
 
 @asynccontextmanager
-async def _connect_async_ws(url: str) -> AsyncIterator["WebSocketClientProtocol"]:
+async def _connect_async_ws(
+    url: str, headers: dict[str, str] | None = None
+) -> AsyncIterator["WebSocketClientProtocol"]:
     import websockets
 
     async with websockets.connect(
         url,
+        extra_headers=headers,
         open_timeout=REALTIME_OPEN_TIMEOUT,
         max_size=None,
     ) as ws:
@@ -1571,17 +1581,25 @@ class AsyncClient:
         self,
         application: str,
         *,
+        use_jwt: bool = True,
         path: str = "/realtime",
         max_buffering: int | None = None,
         token_expiration: int = REALTIME_TOKEN_EXPIRATION_SECONDS,
         encode_message: Callable[[Any], bytes] | None = None,
         decode_message: Callable[[bytes], Any] | None = None,
     ) -> AsyncIterator[AsyncRealtimeConnection]:
-        token = await self._get_realtime_token(
-            application, token_expiration=token_expiration
-        )
+        headers: dict[str, str] | None = None
+        token: str | None = None
+        if use_jwt:
+            token = await self._get_realtime_token(
+                application, token_expiration=token_expiration
+            )
+        else:
+            auth = self._get_auth()
+            headers = {"Authorization": auth.header_value, "User-Agent": USER_AGENT}
+
         url = _build_realtime_url(application, token, max_buffering, path=path)
-        async with _connect_async_ws(url) as ws:
+        async with _connect_async_ws(url, headers=headers) as ws:
             yield AsyncRealtimeConnection(
                 ws, _encode_message=encode_message, _decode_message=decode_message
             )
@@ -1591,20 +1609,28 @@ class AsyncClient:
         self,
         application: str,
         *,
+        use_jwt: bool = True,
         path: str = "",
         max_buffering: int | None = None,
         token_expiration: int = REALTIME_TOKEN_EXPIRATION_SECONDS,
     ) -> AsyncIterator["WebSocketClientProtocol"]:
-        token = await self._get_realtime_token(
-            application, token_expiration=token_expiration
-        )
+        headers: dict[str, str] | None = None
+        token: str | None = None
+        if use_jwt:
+            token = await self._get_realtime_token(
+                application, token_expiration=token_expiration
+            )
+        else:
+            auth = self._get_auth()
+            headers = {"Authorization": auth.header_value, "User-Agent": USER_AGENT}
+
         url = _build_runner_ws_url(
             application,
             token,
             path=path,
             max_buffering=max_buffering,
         )
-        async with _connect_async_ws(url) as ws:
+        async with _connect_async_ws(url, headers=headers) as ws:
             yield ws
 
 
@@ -1962,15 +1988,25 @@ class SyncClient:
         self,
         application: str,
         *,
+        use_jwt: bool = True,
         path: str = "/realtime",
         max_buffering: int | None = None,
         token_expiration: int = REALTIME_TOKEN_EXPIRATION_SECONDS,
         encode_message: Callable[[Any], bytes] | None = None,
         decode_message: Callable[[bytes], Any] | None = None,
     ) -> Iterator[RealtimeConnection]:
-        token = self._get_realtime_token(application, token_expiration=token_expiration)
+        headers: dict[str, str] | None = None
+        token: str | None = None
+        if use_jwt:
+            token = self._get_realtime_token(
+                application, token_expiration=token_expiration
+            )
+        else:
+            auth = self._get_auth()
+            headers = {"Authorization": auth.header_value, "User-Agent": USER_AGENT}
+
         url = _build_realtime_url(application, token, max_buffering, path=path)
-        with _connect_sync_ws(url) as ws:
+        with _connect_sync_ws(url, headers=headers) as ws:
             yield RealtimeConnection(
                 ws, _encode_message=encode_message, _decode_message=decode_message
             )
@@ -1980,18 +2016,28 @@ class SyncClient:
         self,
         application: str,
         *,
+        use_jwt: bool = True,
         path: str = "",
         max_buffering: int | None = None,
         token_expiration: int = REALTIME_TOKEN_EXPIRATION_SECONDS,
     ) -> Iterator["Connection"]:
-        token = self._get_realtime_token(application, token_expiration=token_expiration)
+        headers: dict[str, str] | None = None
+        token: str | None = None
+        if use_jwt:
+            token = self._get_realtime_token(
+                application, token_expiration=token_expiration
+            )
+        else:
+            auth = self._get_auth()
+            headers = {"Authorization": auth.header_value, "User-Agent": USER_AGENT}
+
         url = _build_runner_ws_url(
             application,
             token,
             path=path,
             max_buffering=max_buffering,
         )
-        with _connect_sync_ws(url) as ws:
+        with _connect_sync_ws(url, headers=headers) as ws:
             yield ws
 
 
