@@ -142,6 +142,12 @@ class SpawnInfo:
         self._url_ready.set()
         self._url = value
 
+    @property
+    def application(self):
+        from urllib.parse import urlparse
+
+        return urlparse(self.url).path.strip("/")
+
 
 @dataclass
 class Host(Generic[ArgsT, ReturnT]):
@@ -818,8 +824,10 @@ class FalServerlessHost(Host):
 
         def result_handler(partial_result):
             ret.stream = partial_result.stream
+            if service_urls := partial_result.service_urls:
+                ret.url = service_urls.run
             for log in partial_result.logs:
-                if "And API access through" in log.message:
+                if ret._url is None and "And API access through" in log.message:
                     ret.url = log.message.rsplit()[-1].replace("queue.", "")
                 ret.logs.put(log)
 
