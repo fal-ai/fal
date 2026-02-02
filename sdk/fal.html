@@ -139,6 +139,7 @@
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="fal.api.html#fal.api.api.SpawnInfo"><code class="docutils literal notranslate"><span class="pre">SpawnInfo</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.api.html#fal.api.api.SpawnInfo.application"><code class="docutils literal notranslate"><span class="pre">SpawnInfo.application</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.api.html#fal.api.api.SpawnInfo.future"><code class="docutils literal notranslate"><span class="pre">SpawnInfo.future</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.api.html#fal.api.api.SpawnInfo.logs"><code class="docutils literal notranslate"><span class="pre">SpawnInfo.logs</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.api.html#fal.api.api.SpawnInfo.return_value"><code class="docutils literal notranslate"><span class="pre">SpawnInfo.return_value</span></code></a></li>
@@ -1177,7 +1178,7 @@ to specify a Dockerfile.</p>
 <em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">spawn</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#fal.app.App.spawn" title="Link to this definition">¶</a></dt>
 <dd><dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference internal" href="fal.api.html#fal.api.api.SpawnInfo" title="fal.api.api.SpawnInfo"><code class="xref py py-class docutils literal notranslate"><span class="pre">SpawnInfo</span></code></a></span></p>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference internal" href="#fal.app.AppSpawnInfo" title="fal.app.AppSpawnInfo"><code class="xref py py-class docutils literal notranslate"><span class="pre">AppSpawnInfo</span></code></a></span></p>
 </dd>
 </dl>
 </dd></dl>
@@ -1229,6 +1230,47 @@ to specify a Dockerfile.</p>
 <dt class="sig sig-object py" id="fal.app.AppClientError.status_code">
 <span class="sig-name descname"><span class="pre">status_code</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></em><a class="headerlink" href="#fal.app.AppClientError.status_code" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.app.AppSpawnInfo">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.app.</span></span><span class="sig-name descname"><span class="pre">AppSpawnInfo</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">info</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.app.AppSpawnInfo" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dl class="py property">
+<dt class="sig sig-object py" id="fal.app.AppSpawnInfo.application">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">application</span></span><a class="headerlink" href="#fal.app.AppSpawnInfo.application" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="fal.app.AppSpawnInfo.future">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">future</span></span><a class="headerlink" href="#fal.app.AppSpawnInfo.future" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="fal.app.AppSpawnInfo.logs">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">logs</span></span><a class="headerlink" href="#fal.app.AppSpawnInfo.logs" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="fal.app.AppSpawnInfo.stream">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">stream</span></span><a class="headerlink" href="#fal.app.AppSpawnInfo.stream" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="fal.app.AppSpawnInfo.url">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">url</span></span><a class="headerlink" href="#fal.app.AppSpawnInfo.url" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.app.AppSpawnInfo.wait">
+<span class="sig-name descname"><span class="pre">wait</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">health_request_timeout</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">30</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">startup_timeout</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">60</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">health_check_interval</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">headers</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.app.AppSpawnInfo.wait" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
 
 </dd></dl>
 
@@ -4484,7 +4526,7 @@ to specify a Dockerfile.</p>
 <em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">spawn</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#fal.App.spawn" title="Link to this definition">¶</a></dt>
 <dd><dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference internal" href="fal.api.html#fal.api.api.SpawnInfo" title="fal.api.api.SpawnInfo"><code class="xref py py-class docutils literal notranslate"><span class="pre">SpawnInfo</span></code></a></span></p>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference internal" href="#fal.app.AppSpawnInfo" title="fal.app.AppSpawnInfo"><code class="xref py py-class docutils literal notranslate"><span class="pre">AppSpawnInfo</span></code></a></span></p>
 </dd>
 </dl>
 </dd></dl>
