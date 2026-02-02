@@ -1,6 +1,8 @@
 import asyncio
+import time
 import json
 from contextlib import asynccontextmanager, contextmanager
+from typing import Dict, Optional
 from unittest.mock import AsyncMock, Mock, patch
 
 import httpx
@@ -10,14 +12,19 @@ import pytest
 from fal_client.client import (
     AsyncClient,
     AsyncRequestHandle,
+    CDN_URL,
     Completed,
+    FAL_CDN_FALLBACK_URL,
     FalClientHTTPError,
+    FalClientTimeoutError,
     InProgress,
     Queued,
     RealtimeConnection,
     RealtimeError,
+    REST_URL,
     SyncClient,
     SyncRequestHandle,
+    USER_AGENT,
     _BaseRequestHandle,
 )
 
@@ -214,6 +221,77 @@ def test_sync_client_subscribe_with_headers():
         assert first_call_kwargs["headers"]["X-Trace-Id"] == "trace-123"
 
 
+def test_sync_upload_falls_back_to_cdn():
+    with patch("fal_client.client._maybe_retry_request") as mock_request, patch(
+        "fal_client.client.SyncClient._get_cdn_client"
+    ) as mock_cdn_client:
+        fallback_response = Mock()
+        fallback_response.json.return_value = {"access_url": "https://fallback/file"}
+        mock_request.side_effect = [Exception("boom"), fallback_response]
+        mock_cdn_client.return_value = Mock()
+
+        client = SyncClient(key="test-key")
+        url = client.upload(b"hello", content_type="text/plain")
+
+    assert url == "https://fallback/file"
+    assert mock_request.call_args_list[0][0][2] == f"{CDN_URL}/files/upload"
+    assert (
+        mock_request.call_args_list[1][0][2] == f"{FAL_CDN_FALLBACK_URL}/files/upload"
+    )
+
+
+def test_sync_upload_falls_back_to_storage():
+    with patch("fal_client.client._maybe_retry_request") as mock_request, patch(
+        "fal_client.client.SyncClient._get_cdn_client"
+    ) as mock_cdn_client:
+        init_response = Mock()
+        init_response.json.return_value = {
+            "upload_url": "https://upload.example.com/put",
+            "file_url": "https://file.example.com/file",
+        }
+        mock_request.side_effect = [
+            Exception("boom"),
+            Exception("boom"),
+            init_response,
+            Mock(),
+        ]
+        mock_cdn_client.return_value = Mock()
+
+        client = SyncClient(key="test-key")
+        url = client.upload(b"hello", content_type="text/plain")
+
+    assert url == "https://file.example.com/file"
+    assert mock_request.call_args_list[0][0][2] == f"{CDN_URL}/files/upload"
+    assert (
+        mock_request.call_args_list[1][0][2] == f"{FAL_CDN_FALLBACK_URL}/files/upload"
+    )
+    assert (
+        mock_request.call_args_list[2][0][2]
+        == f"{REST_URL}/storage/upload/initiate?storage_type=gcs"
+    )
+    assert mock_request.call_args_list[3][0][2] == "https://upload.example.com/put"
+
+
+def test_sync_upload_respects_repository_order():
+    with patch("fal_client.client._maybe_retry_request") as mock_request:
+        cdn_response = Mock()
+        cdn_response.json.return_value = {"access_url": "https://cdn-only/file"}
+        mock_request.return_value = cdn_response
+
+        client = SyncClient(key="test-key")
+        url = client.upload(
+            b"hello",
+            content_type="text/plain",
+            repository="cdn",
+            fallback_repository=[],
+        )
+
+    assert url == "https://cdn-only/file"
+    assert (
+        mock_request.call_args_list[0][0][2] == f"{FAL_CDN_FALLBACK_URL}/files/upload"
+    )
+
+
 @pytest.mark.asyncio
 async def test_async_client_run_with_headers():
     """Test that custom headers are passed through in async run()"""
@@ -239,6 +317,90 @@ async def test_async_client_run_with_headers():
         assert "headers" in call_kwargs
         assert call_kwargs["headers"]["X-Custom-Header"] == "test-value"
         assert call_kwargs["headers"]["X-Trace-Id"] == "123"
+
+
+@pytest.mark.asyncio
+async def test_async_upload_falls_back_to_cdn():
+    with patch(
+        "fal_client.client._async_maybe_retry_request", new_callable=AsyncMock
+    ) as mock_request, patch(
+        "fal_client.client.AsyncClient._get_cdn_client", new_callable=AsyncMock
+    ) as mock_cdn_client:
+        fallback_response = httpx.Response(
+            status_code=200, json={"access_url": "https://fallback/file"}
+        )
+        mock_request.side_effect = [Exception("boom"), fallback_response]
+        mock_cdn_client.return_value = Mock()
+
+        client = AsyncClient(key="test-key")
+        url = await client.upload(b"hello", content_type="text/plain")
+
+    assert url == "https://fallback/file"
+    assert mock_request.call_args_list[0][0][2] == f"{CDN_URL}/files/upload"
+    assert (
+        mock_request.call_args_list[1][0][2] == f"{FAL_CDN_FALLBACK_URL}/files/upload"
+    )
+
+
+@pytest.mark.asyncio
+async def test_async_upload_falls_back_to_storage():
+    with patch(
+        "fal_client.client._async_maybe_retry_request", new_callable=AsyncMock
+    ) as mock_request, patch(
+        "fal_client.client.AsyncClient._get_cdn_client", new_callable=AsyncMock
+    ) as mock_cdn_client:
+        init_response = httpx.Response(
+            status_code=200,
+            json={
+                "upload_url": "https://upload.example.com/put",
+                "file_url": "https://file.example.com/file",
+            },
+        )
+        mock_request.side_effect = [
+            Exception("boom"),
+            Exception("boom"),
+            init_response,
+            Mock(),
+        ]
+        mock_cdn_client.return_value = Mock()
+
+        client = AsyncClient(key="test-key")
+        url = await client.upload(b"hello", content_type="text/plain")
+
+    assert url == "https://file.example.com/file"
+    assert mock_request.call_args_list[0][0][2] == f"{CDN_URL}/files/upload"
+    assert (
+        mock_request.call_args_list[1][0][2] == f"{FAL_CDN_FALLBACK_URL}/files/upload"
+    )
+    assert (
+        mock_request.call_args_list[2][0][2]
+        == f"{REST_URL}/storage/upload/initiate?storage_type=gcs"
+    )
+    assert mock_request.call_args_list[3][0][2] == "https://upload.example.com/put"
+
+
+@pytest.mark.asyncio
+async def test_async_upload_respects_repository_order():
+    with patch(
+        "fal_client.client._async_maybe_retry_request", new_callable=AsyncMock
+    ) as mock_request:
+        cdn_response = httpx.Response(
+            status_code=200, json={"access_url": "https://cdn-only/file"}
+        )
+        mock_request.return_value = cdn_response
+
+        client = AsyncClient(key="test-key")
+        url = await client.upload(
+            b"hello",
+            content_type="text/plain",
+            repository="cdn",
+            fallback_repository=[],
+        )
+
+    assert url == "https://cdn-only/file"
+    assert (
+        mock_request.call_args_list[0][0][2] == f"{FAL_CDN_FALLBACK_URL}/files/upload"
+    )
 
 
 @pytest.mark.asyncio
@@ -757,10 +919,11 @@ def test_sync_client_realtime_builds_url(mocker):
     fake_ws.recv.side_effect = [msgpack.packb({"ok": True}, use_bin_type=True)]
 
     @contextmanager
-    def fake_connect(url: str):
+    def fake_connect(url: str, headers: Optional[Dict[str, str]] = None):
         assert url.startswith("wss://")
         assert "fal_jwt_token=jwt-token" in url
         assert "max_buffering=10" in url
+        assert headers is None
         yield fake_ws
 
     mocker.patch("fal_client.client._connect_sync_ws", fake_connect)
@@ -789,10 +952,11 @@ async def test_async_client_realtime_builds_url(mocker):
     )
 
     @asynccontextmanager
-    async def fake_connect(url: str):
+    async def fake_connect(url: str, headers: Optional[Dict[str, str]] = None):
         assert url.startswith("wss://")
         assert "fal_jwt_token=jwt-token" in url
         assert "max_buffering=5" in url
+        assert headers is None
         yield fake_ws
 
     mocker.patch("fal_client.client._connect_async_ws", fake_connect)
@@ -815,10 +979,11 @@ def test_sync_client_ws_connect_custom_path(mocker):
     fake_ws = Mock()
 
     @contextmanager
-    def fake_connect(url: str):
+    def fake_connect(url: str, headers: Optional[Dict[str, str]] = None):
         assert url.startswith("wss://")
         assert "/custom" in url
         assert "fal_jwt_token=jwt-token" in url
+        assert headers is None
         yield fake_ws
 
     mocker.patch("fal_client.client._connect_sync_ws", fake_connect)
@@ -843,10 +1008,11 @@ async def test_async_client_ws_connect_custom_path(mocker):
     fake_ws = AsyncMock()
 
     @asynccontextmanager
-    async def fake_connect(url: str):
+    async def fake_connect(url: str, headers: Optional[Dict[str, str]] = None):
         assert url.startswith("wss://")
         assert "/chat" in url
         assert "fal_jwt_token=jwt-token" in url
+        assert headers is None
         yield fake_ws
 
     mocker.patch("fal_client.client._connect_async_ws", fake_connect)
@@ -855,6 +1021,116 @@ async def test_async_client_ws_connect_custom_path(mocker):
         assert ws is fake_ws
 
     assert mock_request.await_args.kwargs["json"]["allowed_apps"] == ["test"]
+
+
+def test_sync_client_realtime_uses_headers_without_jwt(mocker):
+    client = SyncClient(key="test-key")
+    mock_request = mocker.patch("fal_client.client._maybe_retry_request")
+
+    fake_ws = Mock()
+    fake_ws.recv.side_effect = [msgpack.packb({"ok": True}, use_bin_type=True)]
+
+    @contextmanager
+    def fake_connect(url: str, headers: Optional[Dict[str, str]] = None):
+        assert url.startswith("wss://")
+        assert "fal_jwt_token=" not in url
+        assert headers == {
+            "Authorization": "Key test-key",
+            "User-Agent": USER_AGENT,
+        }
+        yield fake_ws
+
+    mocker.patch("fal_client.client._connect_sync_ws", fake_connect)
+
+    with client.realtime("1234-test", use_jwt=False) as connection:
+        result = connection.recv()
+
+    assert result == {"ok": True}
+    mock_request.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_async_client_realtime_uses_headers_without_jwt(mocker):
+    client = AsyncClient(key="test-key")
+    mock_request = mocker.patch(
+        "fal_client.client._async_maybe_retry_request", new_callable=AsyncMock
+    )
+
+    fake_ws = AsyncMock()
+    fake_ws.recv = AsyncMock(
+        side_effect=[msgpack.packb({"ok": True}, use_bin_type=True)]
+    )
+
+    @asynccontextmanager
+    async def fake_connect(url: str, headers: Optional[Dict[str, str]] = None):
+        assert url.startswith("wss://")
+        assert "fal_jwt_token=" not in url
+        assert headers == {
+            "Authorization": "Key test-key",
+            "User-Agent": USER_AGENT,
+        }
+        yield fake_ws
+
+    mocker.patch("fal_client.client._connect_async_ws", fake_connect)
+
+    async with client.realtime("1234-test", use_jwt=False) as connection:
+        result = await connection.recv()
+
+    assert result == {"ok": True}
+    mock_request.assert_not_called()
+
+
+def test_sync_client_ws_connect_uses_headers_without_jwt(mocker):
+    client = SyncClient(key="test-key")
+    mock_request = mocker.patch("fal_client.client._maybe_retry_request")
+
+    fake_ws = Mock()
+
+    @contextmanager
+    def fake_connect(url: str, headers: Optional[Dict[str, str]] = None):
+        assert url.startswith("wss://")
+        assert "/custom" in url
+        assert "fal_jwt_token=" not in url
+        assert headers == {
+            "Authorization": "Key test-key",
+            "User-Agent": USER_AGENT,
+        }
+        yield fake_ws
+
+    mocker.patch("fal_client.client._connect_sync_ws", fake_connect)
+
+    with client.ws_connect("1234-test", path="custom", use_jwt=False) as ws:
+        assert ws is fake_ws
+
+    mock_request.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_async_client_ws_connect_uses_headers_without_jwt(mocker):
+    client = AsyncClient(key="test-key")
+    mock_request = mocker.patch(
+        "fal_client.client._async_maybe_retry_request", new_callable=AsyncMock
+    )
+
+    fake_ws = AsyncMock()
+
+    @asynccontextmanager
+    async def fake_connect(url: str, headers: Optional[Dict[str, str]] = None):
+        assert url.startswith("wss://")
+        assert "/chat" in url
+        assert "fal_jwt_token=" not in url
+        assert headers == {
+            "Authorization": "Key test-key",
+            "User-Agent": USER_AGENT,
+        }
+        yield fake_ws
+
+    mocker.patch("fal_client.client._connect_async_ws", fake_connect)
+
+    async with client.ws_connect("1234-test", path="chat", use_jwt=False) as ws:
+        assert ws is fake_ws
+
+    mock_request.assert_not_called()
 
 
 # Tests for start_timeout parameter
@@ -1036,3 +1312,108 @@ def test_sync_client_run_with_start_timeout_and_hint():
         call_kwargs = mock_request.call_args[1]
         assert call_kwargs["headers"]["X-Fal-Request-Timeout"] == "30.0"
         assert call_kwargs["headers"]["X-Fal-Runner-Hint"] == "lora:a"
+
+
+def test_sync_subscribe_timeout_while_waiting_submit(monkeypatch):
+    """Timeout during submit should raise FalClientTimeoutError with request_id=None."""
+
+    def slow_submit(*args, **kwargs):
+        time.sleep(3)
+
+    with patch("fal_client.client._maybe_retry_request", side_effect=slow_submit):
+        client = SyncClient(key="test-key")
+        with pytest.raises(FalClientTimeoutError) as exc:
+            client.subscribe("app", {}, client_timeout=1.5)
+        assert exc.value.request_id is None
+
+
+def test_sync_subscribe_timeout_while_waiting_handle(monkeypatch):
+    """Timeout during handle.get() should cancel and raise with request_id."""
+    call_count = 0
+
+    def mock_request(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        resp = Mock()
+        if call_count == 1:
+            resp.json.return_value = {
+                "request_id": "req-123",
+                "response_url": "http://response",
+                "status_url": "http://status",
+                "cancel_url": "http://cancel",
+            }
+        else:
+            time.sleep(3)
+            resp.json.return_value = {"status": "IN_QUEUE", "queue_position": 1}
+        return resp
+
+    with patch("fal_client.client._maybe_retry_request", side_effect=mock_request):
+        with patch("fal_client.client._maybe_cancel_request") as mock_cancel:
+            client = SyncClient(key="test-key")
+            with pytest.raises(FalClientTimeoutError) as exc:
+                client.subscribe("app", {}, client_timeout=1.5)
+            assert exc.value.request_id == "req-123"
+            # Wait for background cancel to be executed
+            time.sleep(0.2)
+            mock_cancel.assert_called_once()
+            handle = mock_cancel.call_args.args[0]
+            assert handle.request_id == "req-123"
+
+
+@pytest.mark.asyncio
+async def test_async_subscribe_timeout_while_waiting_submit():
+    """Timeout during submit should raise FalClientTimeoutError with request_id=None."""
+
+    async def slow_submit(*args, **kwargs):
+        await asyncio.sleep(3)
+
+    with patch(
+        "fal_client.client._async_maybe_retry_request",
+        new_callable=AsyncMock,
+        side_effect=slow_submit,
+    ):
+        client = AsyncClient(key="test-key")
+        with pytest.raises(FalClientTimeoutError) as exc:
+            await client.subscribe("app", {}, client_timeout=1.5)
+        assert exc.value.request_id is None
+
+
+@pytest.mark.asyncio
+async def test_async_subscribe_timeout_while_waiting_handle():
+    """Timeout during handle.get() should cancel and raise with request_id."""
+    call_count = 0
+
+    async def mock_request(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        resp = Mock()
+        if call_count == 1:
+            resp.json.return_value = {
+                "request_id": "req-456",
+                "response_url": "http://r",
+                "status_url": "http://s",
+                "cancel_url": "http://c",
+            }
+        else:
+            await asyncio.sleep(5)
+            resp.json.return_value = {"status": "IN_QUEUE", "queue_position": 1}
+        return resp
+
+    with patch(
+        "fal_client.client._async_maybe_retry_request",
+        new_callable=AsyncMock,
+        side_effect=mock_request,
+    ):
+        with patch(
+            "fal_client.client._async_maybe_cancel_request",
+            new_callable=AsyncMock,
+        ) as mock_cancel:
+            client = AsyncClient(key="test-key")
+            with pytest.raises(FalClientTimeoutError) as exc:
+                await client.subscribe("app", {}, client_timeout=1.5)
+            assert exc.value.request_id == "req-456"
+            # Wait for background cancel task
+            await asyncio.sleep(0.2)
+            mock_cancel.assert_called_once()
+            handle = mock_cancel.call_args.args[0]
+            assert handle.request_id == "req-456"

@@ -91,6 +91,10 @@ message HostedRun {
     repeated File files = 5;
     // Environment for ephemeral run (defaults to "main")
     optional string environment_name = 6;
+    // Name of the application
+    optional string application_name = 7;
+    // Auth mode to use for the ephemeral app
+    optional ApplicationAuthMode auth_mode = 8;
 }
 
 message CreateUserKeyRequest {
@@ -475,6 +479,14 @@ message RunnerInfo {
     }
 
     optional State state = 8;
+
+    enum ReplaceState {
+        NO_REPLACE = 0;
+        WILL_REPLACE = 1;
+        DID_REPLACE = 2;
+    }
+
+    ReplaceState replacement = 9;
 }
 
 message StopRunnerRequest {

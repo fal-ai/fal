@@ -136,6 +136,8 @@ class HostedRun(google.protobuf.message.Message):
     SETUP_FUNC_FIELD_NUMBER: builtins.int
     FILES_FIELD_NUMBER: builtins.int
     ENVIRONMENT_NAME_FIELD_NUMBER: builtins.int
+    APPLICATION_NAME_FIELD_NUMBER: builtins.int
+    AUTH_MODE_FIELD_NUMBER: builtins.int
     @property
     def environments(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[server_pb2.EnvironmentDefinition]:
         """Environment definitions."""
@@ -153,6 +155,10 @@ class HostedRun(google.protobuf.message.Message):
         """Optional files to be included"""
     environment_name: builtins.str
     """Environment for ephemeral run (defaults to "main")"""
+    application_name: builtins.str
+    """Name of the application"""
+    auth_mode: global___ApplicationAuthMode.ValueType
+    """Auth mode to use for the ephemeral app"""
     def __init__(
         self,
         *,
@@ -162,9 +168,15 @@ class HostedRun(google.protobuf.message.Message):
         setup_func: common_pb2.SerializedObject | None = ...,
         files: collections.abc.Iterable[global___File] | None = ...,
         environment_name: builtins.str | None = ...,
+        application_name: builtins.str | None = ...,
+        auth_mode: global___ApplicationAuthMode.ValueType | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing_extensions.Literal["_environment_name", b"_environment_name", "_machine_requirements", b"_machine_requirements", "_setup_func", b"_setup_func", "environment_name", b"environment_name", "function", b"function", "machine_requirements", b"machine_requirements", "setup_func", b"setup_func"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing_extensions.Literal["_environment_name", b"_environment_name", "_machine_requirements", b"_machine_requirements", "_setup_func", b"_setup_func", "environment_name", b"environment_name", "environments", b"environments", "files", b"files", "function", b"function", "machine_requirements", b"machine_requirements", "setup_func", b"setup_func"]) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["_application_name", b"_application_name", "_auth_mode", b"_auth_mode", "_environment_name", b"_environment_name", "_machine_requirements", b"_machine_requirements", "_setup_func", b"_setup_func", "application_name", b"application_name", "auth_mode", b"auth_mode", "environment_name", b"environment_name", "function", b"function", "machine_requirements", b"machine_requirements", "setup_func", b"setup_func"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["_application_name", b"_application_name", "_auth_mode", b"_auth_mode", "_environment_name", b"_environment_name", "_machine_requirements", b"_machine_requirements", "_setup_func", b"_setup_func", "application_name", b"application_name", "auth_mode", b"auth_mode", "environment_name", b"environment_name", "environments", b"environments", "files", b"files", "function", b"function", "machine_requirements", b"machine_requirements", "setup_func", b"setup_func"]) -> None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_application_name", b"_application_name"]) -> typing_extensions.Literal["application_name"] | None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_auth_mode", b"_auth_mode"]) -> typing_extensions.Literal["auth_mode"] | None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_environment_name", b"_environment_name"]) -> typing_extensions.Literal["environment_name"] | None: ...
     @typing.overload
@@ -1418,6 +1430,21 @@ class RunnerInfo(google.protobuf.message.Message):
     TERMINATED: RunnerInfo.State.ValueType  # 7
     IDLE: RunnerInfo.State.ValueType  # 8
 
+    class _ReplaceState:
+        ValueType = typing.NewType("ValueType", builtins.int)
+        V: typing_extensions.TypeAlias = ValueType
+
+    class _ReplaceStateEnumTypeWrapper(google.protobuf.internal.enum_type_wrapper._EnumTypeWrapper[RunnerInfo._ReplaceState.ValueType], builtins.type):
+        DESCRIPTOR: google.protobuf.descriptor.EnumDescriptor
+        NO_REPLACE: RunnerInfo._ReplaceState.ValueType  # 0
+        WILL_REPLACE: RunnerInfo._ReplaceState.ValueType  # 1
+        DID_REPLACE: RunnerInfo._ReplaceState.ValueType  # 2
+
+    class ReplaceState(_ReplaceState, metaclass=_ReplaceStateEnumTypeWrapper): ...
+    NO_REPLACE: RunnerInfo.ReplaceState.ValueType  # 0
+    WILL_REPLACE: RunnerInfo.ReplaceState.ValueType  # 1
+    DID_REPLACE: RunnerInfo.ReplaceState.ValueType  # 2
+
     RUNNER_ID_FIELD_NUMBER: builtins.int
     IN_FLIGHT_REQUESTS_FIELD_NUMBER: builtins.int
     EXPIRATION_COUNTDOWN_FIELD_NUMBER: builtins.int
@@ -1426,6 +1453,7 @@ class RunnerInfo(google.protobuf.message.Message):
     ALIAS_FIELD_NUMBER: builtins.int
     EXTERNAL_METADATA_FIELD_NUMBER: builtins.int
     STATE_FIELD_NUMBER: builtins.int
+    REPLACEMENT_FIELD_NUMBER: builtins.int
     runner_id: builtins.str
     in_flight_requests: builtins.int
     expiration_countdown: builtins.int
@@ -1435,6 +1463,7 @@ class RunnerInfo(google.protobuf.message.Message):
     @property
     def external_metadata(self) -> google.protobuf.struct_pb2.Struct: ...
     state: global___RunnerInfo.State.ValueType
+    replacement: global___RunnerInfo.ReplaceState.ValueType
     def __init__(
         self,
         *,
@@ -1446,9 +1475,10 @@ class RunnerInfo(google.protobuf.message.Message):
         alias: builtins.str = ...,
         external_metadata: google.protobuf.struct_pb2.Struct | None = ...,
         state: global___RunnerInfo.State.ValueType | None = ...,
+        replacement: global___RunnerInfo.ReplaceState.ValueType = ...,
     ) -> None: ...
     def HasField(self, field_name: typing_extensions.Literal["_expiration_countdown", b"_expiration_countdown", "_external_metadata", b"_external_metadata", "_state", b"_state", "expiration_countdown", b"expiration_countdown", "external_metadata", b"external_metadata", "state", b"state"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing_extensions.Literal["_expiration_countdown", b"_expiration_countdown", "_external_metadata", b"_external_metadata", "_state", b"_state", "alias", b"alias", "expiration_countdown", b"expiration_countdown", "external_metadata", b"external_metadata", "in_flight_requests", b"in_flight_requests", "revision", b"revision", "runner_id", b"runner_id", "state", b"state", "uptime", b"uptime"]) -> None: ...
+    def ClearField(self, field_name: typing_extensions.Literal["_expiration_countdown", b"_expiration_countdown", "_external_metadata", b"_external_metadata", "_state", b"_state", "alias", b"alias", "expiration_countdown", b"expiration_countdown", "external_metadata", b"external_metadata", "in_flight_requests", b"in_flight_requests", "replacement", b"replacement", "revision", b"revision", "runner_id", b"runner_id", "state", b"state", "uptime", b"uptime"]) -> None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_expiration_countdown", b"_expiration_countdown"]) -> typing_extensions.Literal["expiration_countdown"] | None: ...
     @typing.overload

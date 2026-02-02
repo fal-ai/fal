@@ -9,7 +9,12 @@ from unittest.mock import patch
 import pytest
 from pydantic import BaseModel
 
-from fal.toolkit.file.file import File, GoogleStorageRepository, _try_with_fallback
+from fal.toolkit.file.file import (
+    File,
+    GoogleStorageRepository,
+    _get_object_lifecycle_preference_from_context,
+    _try_with_fallback,
+)
 from fal.toolkit.file.types import FileData, FileRepository
 
 
@@ -350,3 +355,113 @@ class TestTryWithFallback:
         print_call_args = mock_print.call_args[0][0]
         assert "Failed to save to repository repo1" in print_call_args
         assert "falling back to repo2" in print_call_args
+
+
+# ============================================================================
+# Tests for _get_object_lifecycle_preference_from_context
+# ============================================================================
+
+
+class TestGetObjectLifecyclePreferenceFromContext:
+    """Tests for context-based lifecycle preference retrieval."""
+
+    def test_returns_none_when_no_current_app(self):
+        """Test that None is returned when there is no current app."""
+        with patch("fal.toolkit.file.file.get_current_app", return_value=None):
+            result = _get_object_lifecycle_preference_from_context()
+            assert result is None
+
+    def test_returns_none_when_current_request_is_none(self):
+        """Test that None is returned when current_request is None."""
+        mock_app = type("MockApp", (), {"current_request": None})()
+        with patch("fal.toolkit.file.file.get_current_app", return_value=mock_app):
+            result = _get_object_lifecycle_preference_from_context()
+            assert result is None
+
+    def test_returns_lifecycle_preference_from_context(self):
+        """Test that lifecycle_preference is returned from current request context."""
+        expected_preference = {"owner": "test-owner", "lifecycle": "request"}
+        mock_request_context = type(
+            "MockRequestContext",
+            (),
+            {"lifecycle_preference": expected_preference},
+        )()
+        mock_app = type("MockApp", (), {"current_request": mock_request_context})()
+
+        with patch("fal.toolkit.file.file.get_current_app", return_value=mock_app):
+            result = _get_object_lifecycle_preference_from_context()
+            assert result == expected_preference
+
+    def test_returns_none_lifecycle_preference_when_not_set(self):
+        """Test that None is returned when lifecycle_preference is None in context."""
+        mock_request_context = type(
+            "MockRequestContext",
+            (),
+            {"lifecycle_preference": None},
+        )()
+        mock_app = type("MockApp", (), {"current_request": mock_request_context})()
+
+        with patch("fal.toolkit.file.file.get_current_app", return_value=mock_app):
+            result = _get_object_lifecycle_preference_from_context()
+            assert result is None
+
+
+class TestContextBasedLifecyclePreference:
+    """Tests for File.from_bytes using context-based lifecycle preference."""
+
+    def test_from_bytes_uses_context_lifecycle_when_no_request(self):
+        """Test that from_bytes uses context-based lifecycle when request is None."""
+        expected_preference = {"expiration_duration_seconds": 3600}
+        mock_request_context = type(
+            "MockRequestContext",
+            (),
+            {"lifecycle_preference": expected_preference},
+        )()
+        mock_app = type("MockApp", (), {"current_request": mock_request_context})()
+
+        with patch(
+            "fal.toolkit.file.file.get_current_app", return_value=mock_app
+        ), patch("fal.toolkit.file.file._try_with_fallback") as mock_try:
+            mock_try.return_value = "https://example.com/file.bin"
+
+            File.from_bytes(b"test data", repository="in_memory")
+
+            call_args = mock_try.call_args
+            save_kwargs = call_args.kwargs.get("save_kwargs") or call_args[1].get(
+                "save_kwargs", {}
+            )
+            assert save_kwargs.get("object_lifecycle_preference") == expected_preference
+
+    def test_from_bytes_explicit_request_takes_precedence(self):
+        """Test that explicit request parameter takes precedence over context."""
+        from unittest.mock import MagicMock
+
+        context_preference = {"expiration_seconds": 100}
+        request_preference = {"expiration_seconds": 200}
+
+        mock_request = MagicMock()
+        mock_request.headers.get.return_value = '{"expiration_seconds": 200}'
+
+        mock_request_context = type(
+            "MockRequestContext",
+            (),
+            {"lifecycle_preference": context_preference},
+        )()
+        mock_app = type("MockApp", (), {"current_request": mock_request_context})()
+
+        with patch(
+            "fal.toolkit.file.file.get_current_app", return_value=mock_app
+        ), patch(
+            "fal.toolkit.file.file.request_lifecycle_preference",
+            return_value=request_preference,
+        ), patch("fal.toolkit.file.file._try_with_fallback") as mock_try:
+            mock_try.return_value = "https://example.com/file.bin"
+
+            File.from_bytes(b"test data", repository="in_memory", request=mock_request)
+
+            call_args = mock_try.call_args
+            save_kwargs = call_args.kwargs.get("save_kwargs") or call_args[1].get(
+                "save_kwargs", {}
+            )
+            # Should use request preference, not context preference
+            assert save_kwargs.get("object_lifecycle_preference") == request_preference

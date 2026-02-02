@@ -1,3 +1,4 @@
+from fal_client._version import __version__, version_tuple
 from fal_client.client import (
     AsyncClient,
     AsyncRealtimeConnection,
@@ -15,6 +16,8 @@ from fal_client.client import (
 )
 
 __all__ = [
+    "__version__",
+    "version_tuple",
     "SyncClient",
     "AsyncClient",
     "RealtimeConnection",

@@ -435,6 +435,18 @@ class DeploymentStrategy(enum.Enum):
             raise ValueError(f"Unknown DeploymentStrategy: {self}")
 
 
+def _to_auth_mode_proto(
+    auth_mode: Optional[AuthModeLiteral],
+) -> isolate_proto.ApplicationAuthMode.ValueType | None:
+    if auth_mode == "public":
+        return isolate_proto.ApplicationAuthMode.PUBLIC
+    if auth_mode == "shared":
+        return isolate_proto.ApplicationAuthMode.SHARED
+    if auth_mode == "private":
+        return isolate_proto.ApplicationAuthMode.PRIVATE
+    return None
+
+
 @from_grpc.register(isolate_proto.ApplicationInfo)
 def _from_grpc_application_info(
     message: isolate_proto.ApplicationInfo,
@@ -702,7 +714,7 @@ class FalServerlessConnection:
 
         request = isolate_proto.CreateUserKeyRequest(scope=scope_proto, alias=alias)
         response = self.stub.CreateUserKey(request)
-        return response.key_secret, response.key_id
+        return response.key_id, response.key_secret
 
     def list_user_keys(self) -> list[UserKeyInfo]:
         request = isolate_proto.ListUserKeysRequest()
@@ -785,14 +797,7 @@ class FalServerlessConnection:
                 for file in files
             ]
 
-        if auth_mode == "public":
-            auth = isolate_proto.ApplicationAuthMode.PUBLIC
-        elif auth_mode == "shared":
-            auth = isolate_proto.ApplicationAuthMode.SHARED
-        elif auth_mode == "private":
-            auth = isolate_proto.ApplicationAuthMode.PRIVATE
-        else:
-            auth = None
+        auth = _to_auth_mode_proto(auth_mode)
 
         struct_metadata = None
         if metadata:
@@ -940,6 +945,8 @@ class FalServerlessConnection:
         machine_requirements: MachineRequirements | None = None,
         setup_function: Callable[[], InputT] | None = None,
         files: list[File] | None = None,
+        application_name: str | None = None,
+        auth_mode: Optional[AuthModeLiteral] = None,
         environment_name: str | None = None,
     ) -> Iterator[HostedRunResult[ResultT]]:
         wrapped_function = to_serialized_object(function, serialization_method)
@@ -973,11 +980,20 @@ class FalServerlessConnection:
                 isolate_proto.File(hash=file.hash, relative_path=file.relative_path)
                 for file in files
             ]
+        auth = _to_auth_mode_proto(auth_mode)
+
+        full_application_name = (
+            construct_alias(application_name, environment_name)
+            if application_name
+            else None
+        )
         request = isolate_proto.HostedRun(
             function=wrapped_function,
             environments=environments,
             machine_requirements=wrapped_requirements,
             files=files,
+            application_name=full_application_name,
+            auth_mode=auth,
             environment_name=environment_name,
         )
         if setup_function:

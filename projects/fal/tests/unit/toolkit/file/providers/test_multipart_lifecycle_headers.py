@@ -17,11 +17,16 @@ def _fake_retry_request(_request, **_kwargs):
 
 
 def _assert_lifecycle_headers(
-    headers: dict[str, str], preference: dict[str, str]
+    headers_list: list[dict[str, str]], preference: dict[str, str]
 ) -> None:
     expected = json.dumps(preference)
-    assert headers["X-Fal-Object-Lifecycle"] == expected
-    assert headers["X-Fal-Object-Lifecycle-Preference"] == expected
+    for headers in headers_list:
+        if (
+            headers.get("X-Fal-Object-Lifecycle") == expected
+            and headers.get("X-Fal-Object-Lifecycle-Preference") == expected
+        ):
+            return
+    raise AssertionError("Expected lifecycle headers not found in request headers")
 
 
 def _assert_multipart_preference_call(mock, preference: dict[str, str]) -> None:
@@ -71,10 +76,12 @@ def _assert_multipart_preference_call(mock, preference: dict[str, str]) -> None:
 def test_multipart_create_includes_lifecycle_headers(
     multipart_cls, token_manager, token, json_payload
 ):
-    captured: dict[str, dict[str, str]] = {}
+    captured_headers: list[dict[str, str]] = []
 
     def _fake_request(_url, headers=None, method=None, data=None):
-        captured["headers"] = headers or {}
+        nonlocal captured_headers
+        if headers is not None:
+            captured_headers.append(headers)
         return MagicMock()
 
     patches = [
@@ -95,7 +102,7 @@ def test_multipart_create_includes_lifecycle_headers(
         multipart = multipart_cls("file.txt")
         multipart.create(object_lifecycle_preference={"ttl": "1d"})
 
-    _assert_lifecycle_headers(captured["headers"], {"ttl": "1d"})
+    _assert_lifecycle_headers(captured_headers, {"ttl": "1d"})
 
 
 @pytest.mark.parametrize(

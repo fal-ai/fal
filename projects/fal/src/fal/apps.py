@@ -5,7 +5,7 @@ import time
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from functools import lru_cache
-from typing import TYPE_CHECKING, Any, Iterator
+from typing import TYPE_CHECKING, Any, Callable, Iterator
 
 import httpx
 
@@ -241,6 +241,8 @@ class _RealtimeConnection:
     """A realtime connection to a Fal app."""
 
     _ws: Any
+    _encode_message: Callable[[Any], bytes] | None = None
+    _decode_message: Callable[[bytes], Any] | None = None
 
     def run(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Run an inference task on the app and return the result."""
@@ -248,16 +250,21 @@ class _RealtimeConnection:
         return self.recv()
 
     def send(self, arguments: dict[str, Any]) -> None:
-        import msgpack
-
         """Send an inference task to the app."""
-        payload = msgpack.packb(arguments)
+
+        from fal.realtime import msgpack_encode_message
+
+        encode = self._encode_message or msgpack_encode_message
+        payload = encode(arguments)
         self._ws.send(payload)
 
     def recv(self) -> dict[str, Any]:
-        import msgpack
-
         """Receive the result of an inference task."""
+
+        from fal.realtime import msgpack_decode_message
+
+        decode = self._decode_message or msgpack_decode_message
+
         while True:
             response = self._ws.recv()
             if isinstance(response, str):
@@ -266,11 +273,17 @@ class _RealtimeConnection:
                 if json_payload.get("type") == "x-fal-error":
                     raise ValueError(json_payload["reason"])
                 continue
-            return msgpack.unpackb(response)
+            return decode(response)
 
 
 @contextmanager
-def _connect(app_id: str, *, path: str = "/realtime") -> Iterator[_RealtimeConnection]:
+def _connect(
+    app_id: str,
+    *,
+    path: str = "/realtime",
+    encode_message: Callable[[Any], bytes] | None = None,
+    decode_message: Callable[[bytes], Any] | None = None,
+) -> Iterator[_RealtimeConnection]:
     """Connect to a realtime endpoint. This is an internal and experimental API, use it
     at your own risk."""
 
@@ -287,7 +300,9 @@ def _connect(app_id: str, *, path: str = "/realtime") -> Iterator[_RealtimeConne
     with client.connect(
         url, additional_headers=creds.to_headers(), open_timeout=90
     ) as ws:
-        yield _RealtimeConnection(ws)
+        yield _RealtimeConnection(
+            ws, _encode_message=encode_message, _decode_message=decode_message
+        )
 
 
 class _MetaMessageFound(Exception): ...

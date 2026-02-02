@@ -1,3 +1,4 @@
+import argparse
 from pathlib import Path
 
 from ._utils import get_app_data_from_toml, is_app_name
@@ -8,33 +9,61 @@ def _run(args):
     from fal.api.client import SyncServerlessClient
     from fal.utils import load_function_from
 
+    # Handle deprecated --force-env-build flag
+    if args.force_env_build:
+        args.console.print(
+            "[bold yellow]Warning:[/bold yellow] --force-env-build is deprecated, "
+            "use --no-cache instead"
+        )
+
     team = args.team
     func_ref = args.func_ref
 
+    app_auth = None
     if is_app_name(func_ref):
         app_name = func_ref[0]
-        app_ref, *_, toml_team = get_app_data_from_toml(app_name)
+        app_ref, app_auth, *_rest, toml_team = get_app_data_from_toml(app_name)
         team = team or toml_team
         file_path, func_name = RefAction.split_ref(app_ref)
     else:
         file_path, func_name = func_ref
         # Turn relative path into absolute path for files
         file_path = str(Path(file_path).absolute())
+        app_name = args.app_name
+        app_auth = args.auth
 
+    no_cache = args.no_cache or args.force_env_build
     client = SyncServerlessClient(host=args.host, team=team)
     host = client._create_host(local_file_path=file_path, environment_name=args.env)
 
-    loaded = load_function_from(
-        host, file_path, func_name, force_env_build=args.force_env_build
-    )
+    loaded = load_function_from(host, file_path, func_name, force_env_build=no_cache)
 
     isolated_function = loaded.function
+    app_name = app_name or loaded.app_name
+    app_auth = app_auth or loaded.app_auth
+    if app_auth is None:
+        args.console.print(
+            "[bold yellow]Warning:[/bold yellow] "
+            "`fal run` defaults to public app auth when not set. "
+            "In the next major release, the default will be private. "
+            "Set app_auth in your app or auth in pyproject.toml to keep this behavior."
+        )
+        app_auth = "public"
+    isolated_function.app_name = app_name
+    isolated_function.app_auth = app_auth
     # let our exc handlers handle UserFunctionException
     isolated_function.reraise = False
     isolated_function()
 
 
 def add_parser(main_subparsers, parents):
+    from fal.sdk import ALIAS_AUTH_MODES
+
+    def valid_auth_option(option):
+        if option not in ALIAS_AUTH_MODES:
+            raise argparse.ArgumentTypeError(f"{option} is not a auth option")
+        return option
+
     run_help = "Run fal function."
     epilog = "Examples:\n  fal run path/to/myfile.py::myfunc\n  fal run my-app\n"
     parser = main_subparsers.add_parser(
@@ -50,9 +79,26 @@ def add_parser(main_subparsers, parents):
         help="Function reference. Configure team in pyproject.toml for app names.",
     )
     parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Do not use the cache for the environment build.",
+    )
+    parser.add_argument(
+        "--app-name",
+        help="Application name to run with.",
+    )
+    parser.add_argument(
+        "--auth",
+        type=valid_auth_option,
+        help="Application authentication mode (private, public).",
+    )
+    parser.add_argument(
         "--force-env-build",
         action="store_true",
-        help="Ignore the environment build cache and force rebuild.",
+        help=(
+            "[DEPRECATED: Use --no-cache instead] "
+            "Ignore the environment build cache and force rebuild."
+        ),
     )
     parser.add_argument(
         "--env",

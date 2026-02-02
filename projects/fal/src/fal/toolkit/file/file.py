@@ -22,8 +22,8 @@ else:
 
 from pydantic import BaseModel, Field
 
+from fal.ref import get_current_app
 from fal.toolkit.file.providers.fal import (
-    LIFECYCLE_PREFERENCE,
     FalCDNFileRepository,
     FalFileRepository,
     FalFileRepositoryV2,
@@ -125,6 +125,13 @@ def _try_with_fallback(
             )
 
 
+def _get_object_lifecycle_preference_from_context() -> dict[str, str] | None:
+    current_app = get_current_app()
+    if current_app is None or current_app.current_request is None:
+        return None
+    return current_app.current_request.lifecycle_preference
+
+
 class File(BaseModel):
     # public properties
     url: str = Field(
@@ -222,8 +229,9 @@ class File(BaseModel):
         if request:
             object_lifecycle_preference = request_lifecycle_preference(request)
         else:
-            print("[WARNING] No request provided, using global lifecycle preference")
-            object_lifecycle_preference = LIFECYCLE_PREFERENCE.get()
+            object_lifecycle_preference = (
+                _get_object_lifecycle_preference_from_context()
+            )
 
         save_kwargs.setdefault(
             "object_lifecycle_preference", object_lifecycle_preference
@@ -275,8 +283,9 @@ class File(BaseModel):
         if request:
             object_lifecycle_preference = request_lifecycle_preference(request)
         else:
-            print("[WARNING] No request provided, using global lifecycle preference")
-            object_lifecycle_preference = LIFECYCLE_PREFERENCE.get()
+            object_lifecycle_preference = (
+                _get_object_lifecycle_preference_from_context()
+            )
 
         save_kwargs.setdefault(
             "object_lifecycle_preference", object_lifecycle_preference
