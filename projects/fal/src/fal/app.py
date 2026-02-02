@@ -25,6 +25,7 @@ from fal.api import (
     BaseServable,
     IsolatedFunction,
     RouteSignature,
+    SpawnInfo,
 )
 from fal.api import (
     function as fal_function,
@@ -271,8 +272,7 @@ class AppClient:
         startup_timeout: int = 60,
         health_check_interval: float = 0.5,
     ):
-        app = wrap_app(app_cls)
-        info = app.spawn()
+        info = app_cls.spawn()
         _shutdown_event = threading.Event()
 
         def _print_logs():
@@ -652,6 +652,14 @@ class App(BaseServable):
             for _, endpoint in inspect.getmembers(cls, inspect.isfunction)
             if (signature := getattr(endpoint, "route_signature", None))
         ]
+
+    @classmethod
+    def spawn(cls) -> SpawnInfo:
+        # import wrap_app explicitly to avoid reference to wrap_app during pickling
+        from fal.app import wrap_app
+
+        app = wrap_app(cls)
+        return app.spawn()
 
     @classmethod
     def get_health_check_config(cls) -> Optional[ApplicationHealthCheckConfig]:
