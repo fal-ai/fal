@@ -16,7 +16,6 @@ from typing import Any, Callable, ClassVar, Optional
 
 import fastapi
 import grpc.aio as async_grpc
-import httpx
 
 from fal._serialization import include_modules_from
 from fal._typing import EndpointT
@@ -184,6 +183,94 @@ class AppClientError(FalServerlessException):
     headers: dict[str, str] = field(default_factory=dict)
 
 
+class AppSpawnInfo:
+    def __init__(self, info: SpawnInfo):
+        self.info = info
+
+    @property
+    def url(self):
+        return self.info.url
+
+    @property
+    def application(self):
+        return self.info.application
+
+    @property
+    def logs(self):
+        return self.info.logs
+
+    @property
+    def stream(self):
+        return self.info.stream
+
+    @property
+    def future(self):
+        return self.info.future
+
+    def wait(
+        self,
+        *,
+        health_request_timeout: int = 30,
+        startup_timeout: int = 60,
+        health_check_interval: float = 0.5,
+        headers: dict[str, str] | None = None,
+    ) -> None:
+        import httpx
+
+        url = self.url
+        if url is None:
+            raise AppClientError(
+                "App spawn failed: no URL returned",
+                500,
+                {},
+            )
+
+        start_time = time.perf_counter()
+        health_url = url + "/health"
+        last_error = None
+        attempt = 0
+        request_headers = _default_auth_headers() if headers is None else headers
+
+        with httpx.Client() as client:
+            while time.perf_counter() - start_time < startup_timeout:
+                attempt += 1
+
+                try:
+                    resp = client.get(
+                        health_url,
+                        timeout=health_request_timeout,
+                        headers=request_headers,
+                    )
+                except httpx.TimeoutException:
+                    last_error = (
+                        f"Request timed out after {health_request_timeout} seconds"
+                    )
+                except httpx.TransportError as e:
+                    last_error = f"Network error: {e}"
+                else:
+                    if resp.is_success:
+                        return
+
+                    if resp.status_code in (500, 404):
+                        last_error = f"Server not ready (HTTP {resp.status_code})"
+                    else:
+                        raise AppClientError(
+                            "Health check failed with non-retryable error: "
+                            f"{resp.status_code} {resp.text}",
+                            resp.status_code,
+                            dict(resp.headers),
+                        )
+
+                time.sleep(health_check_interval)
+
+        raise AppClientError(
+            f"Health check failed after {startup_timeout}s "
+            f"({attempt} attempts). Last error: {last_error}",
+            500,
+            {},
+        )
+
+
 def _default_auth_headers() -> dict[str, str]:
     key_creds = key_credentials()
     if not key_creds:
@@ -211,6 +298,8 @@ class EndpointClient:
         self.return_type = annotations.get("return") or None
 
     def __call__(self, data):
+        import httpx
+
         with httpx.Client() as client:
             url = self.url + self.signature.path
             resp = client.post(
@@ -287,54 +376,11 @@ class AppClient:
         _log_printer.start()
 
         try:
-            if info.url is None:
-                raise AppClientError(
-                    "App spawn failed: no URL returned",
-                    status_code=500,
-                )
-
-            start_time = time.perf_counter()
-            url = info.url + "/health"
-            last_error = None
-            attempt = 0
-
-            headers = _default_auth_headers()
-            with httpx.Client() as client:
-                while time.perf_counter() - start_time < startup_timeout:
-                    attempt += 1
-
-                    try:
-                        resp = client.get(
-                            url, timeout=health_request_timeout, headers=headers
-                        )
-                    except httpx.TimeoutException:
-                        last_error = (
-                            f"Request timed out after {health_request_timeout} seconds"
-                        )
-                    except httpx.TransportError as e:
-                        last_error = f"Network error: {e}"
-                    else:
-                        if resp.is_success:
-                            break
-
-                        if resp.status_code in (500, 404):
-                            last_error = f"Server not ready (HTTP {resp.status_code})"
-                        else:
-                            raise AppClientError(
-                                "Health check failed with non-retryable error: "
-                                f"{resp.status_code} {resp.text}",
-                                status_code=resp.status_code,
-                                headers=resp.headers,
-                            )
-
-                    time.sleep(health_check_interval)
-                else:
-                    # retry loop completed without success
-                    raise AppClientError(
-                        f"Health check failed after {startup_timeout}s "
-                        f"({attempt} attempts). Last error: {last_error}",
-                        status_code=500,
-                    )
+            info.wait(
+                health_request_timeout=health_request_timeout,
+                startup_timeout=startup_timeout,
+                health_check_interval=health_check_interval,
+            )
 
             client = cls(app_cls, info.url)
             yield client
@@ -344,6 +390,8 @@ class AppClient:
             _log_printer.join()
 
     def health(self):
+        import httpx
+
         with httpx.Client() as client:
             resp = client.get(self.url + "/health", headers=self._headers)
             resp.raise_for_status()
@@ -654,12 +702,12 @@ class App(BaseServable):
         ]
 
     @classmethod
-    def spawn(cls) -> SpawnInfo:
+    def spawn(cls) -> AppSpawnInfo:
         # import wrap_app explicitly to avoid reference to wrap_app during pickling
         from fal.app import wrap_app
 
         app = wrap_app(cls)
-        return app.spawn()
+        return AppSpawnInfo(app.spawn())
 
     @classmethod
     def get_health_check_config(cls) -> Optional[ApplicationHealthCheckConfig]:
