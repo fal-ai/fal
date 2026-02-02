@@ -873,9 +873,12 @@ and lifecycle management.</p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="fal.app.App.requirements">
 <span class="sig-name descname"><span class="pre">requirements</span></span><a class="headerlink" href="#fal.app.App.requirements" title="Link to this definition">¶</a></dt>
-<dd><p>List of pip packages to install in the environment.
+<dd><p>Pip packages to install in the environment.
 Supports standard pip syntax including version specifiers.
-Example: <cite>[“numpy==1.24.0”, “torch&gt;=2.0.0”]</cite></p>
+Use a list of strings for a single install step, or a list of lists
+to install in multiple steps.
+Example: <cite>[“numpy==1.24.0”, “torch&gt;=2.0.0”]</cite> or
+<cite>[[“setuptools”, “wheel”], [“numpy==1.24.0”]]</cite></p>
 </dd></dl>
 
 <dl class="py attribute">
@@ -1177,7 +1180,7 @@ to specify a Dockerfile.</p>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="id18">
-<span class="sig-name descname"><span class="pre">requirements</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">]]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">[]</span></em><a class="headerlink" href="#id18" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">requirements</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">]</span> <span class="pre">|</span> <code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">]]]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">[]</span></em><a class="headerlink" href="#id18" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
@@ -4221,9 +4224,12 @@ and lifecycle management.</p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="fal.App.requirements">
 <span class="sig-name descname"><span class="pre">requirements</span></span><a class="headerlink" href="#fal.App.requirements" title="Link to this definition">¶</a></dt>
-<dd><p>List of pip packages to install in the environment.
+<dd><p>Pip packages to install in the environment.
 Supports standard pip syntax including version specifiers.
-Example: <cite>[“numpy==1.24.0”, “torch&gt;=2.0.0”]</cite></p>
+Use a list of strings for a single install step, or a list of lists
+to install in multiple steps.
+Example: <cite>[“numpy==1.24.0”, “torch&gt;=2.0.0”]</cite> or
+<cite>[[“setuptools”, “wheel”], [“numpy==1.24.0”]]</cite></p>
 </dd></dl>
 
 <dl class="py attribute">
@@ -4525,7 +4531,7 @@ to specify a Dockerfile.</p>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="id41">
-<span class="sig-name descname"><span class="pre">requirements</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">]]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">[]</span></em><a class="headerlink" href="#id41" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">requirements</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">ClassVar</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">]</span> <span class="pre">|</span> <code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">]]]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">[]</span></em><a class="headerlink" href="#id41" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
