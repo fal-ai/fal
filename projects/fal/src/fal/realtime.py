@@ -50,11 +50,19 @@ def _unwrap_async_iterator(annotation: Any | None) -> Any | None:
     if annotation is None:
         return None
 
+    import collections.abc
+
+    if annotation in (
+        typing.AsyncIterator,
+        typing.AsyncGenerator,
+        collections.abc.AsyncIterator,
+        collections.abc.AsyncGenerator,
+    ):
+        return Any
+
     origin = typing.get_origin(annotation)
     if origin is None:
         return None
-
-    import collections.abc
 
     if origin in (
         typing.AsyncIterator,
@@ -72,11 +80,21 @@ def _unwrap_sync_iterator(annotation: Any | None) -> Any | None:
     if annotation is None:
         return None
 
+    import collections.abc
+
+    if annotation in (
+        typing.Iterator,
+        typing.Iterable,
+        typing.Generator,
+        collections.abc.Iterator,
+        collections.abc.Iterable,
+        collections.abc.Generator,
+    ):
+        return Any
+
     origin = typing.get_origin(annotation)
     if origin is None:
         return None
-
-    import collections.abc
 
     if origin in (
         typing.Iterator,
@@ -504,34 +522,37 @@ async def _run_websocket_session(
     except WebSocketDisconnect:
         if input_task is not None:
             input_task.cancel()
-            with suppress(asyncio.CancelledError):
+            with suppress(asyncio.CancelledError, WebSocketDisconnect):
                 await input_task
         output_task.cancel()
 
-        with suppress(asyncio.CancelledError):
+        with suppress(asyncio.CancelledError, WebSocketDisconnect):
             await output_task
     except Exception as exc:
         import traceback
 
         traceback.print_exc()
 
-        await websocket.send_json(
-            {
-                "type": "x-fal-error",
-                "error": "INTERNAL_ERROR",
-                "reason": str(exc),
-            }
-        )
+        with suppress(WebSocketDisconnect, RuntimeError):
+            await websocket.send_json(
+                {
+                    "type": "x-fal-error",
+                    "error": "INTERNAL_ERROR",
+                    "reason": str(exc),
+                }
+            )
     else:
-        await websocket.send_json(
-            {
-                "type": "x-fal-error",
-                "error": "TIMEOUT",
-                "reason": "no inputs, reconnect when needed!",
-            }
-        )
+        with suppress(WebSocketDisconnect, RuntimeError):
+            await websocket.send_json(
+                {
+                    "type": "x-fal-error",
+                    "error": "TIMEOUT",
+                    "reason": "no inputs, reconnect when needed!",
+                }
+            )
 
-    await websocket.close()
+    with suppress(WebSocketDisconnect, RuntimeError):
+        await websocket.close()
 
 
 def _fal_websocket_template(

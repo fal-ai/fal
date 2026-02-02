@@ -830,9 +830,21 @@ class RealtimeConnection:
         payload = _encode_realtime_message(arguments, self._encode_message)
         self._ws.send(payload)
 
-    def recv(self) -> dict[str, Any]:
+    def recv(self) -> dict[str, Any] | None:
         while True:
-            response = self._ws.recv()
+            try:
+                response = self._ws.recv()
+            except Exception as exc:
+                from websockets.exceptions import (
+                    ConnectionClosed,
+                    ConnectionClosedOK,
+                )
+
+                if isinstance(exc, ConnectionClosedOK):
+                    return None
+                if isinstance(exc, ConnectionClosed):
+                    raise RealtimeError("CONNECTION_CLOSED", str(exc)) from exc
+                raise
             decoded = _decode_realtime_message(response, self._decode_message)
             if decoded is None:
                 continue
@@ -862,9 +874,21 @@ class AsyncRealtimeConnection:
         payload = _encode_realtime_message(arguments, self._encode_message)
         await self._ws.send(payload)
 
-    async def recv(self) -> dict[str, Any]:
+    async def recv(self) -> dict[str, Any] | None:
         while True:
-            response = await self._ws.recv()
+            try:
+                response = await self._ws.recv()
+            except Exception as exc:
+                from websockets.exceptions import (
+                    ConnectionClosed,
+                    ConnectionClosedOK,
+                )
+
+                if isinstance(exc, ConnectionClosedOK):
+                    return None
+                if isinstance(exc, ConnectionClosed):
+                    raise RealtimeError("CONNECTION_CLOSED", str(exc)) from exc
+                raise
             decoded = _decode_realtime_message(response, self._decode_message)
             if decoded is None:
                 continue
@@ -905,7 +929,7 @@ async def _connect_async_ws(
 
     async with websockets.connect(
         url,
-        extra_headers=headers,
+        additional_headers=headers,
         open_timeout=REALTIME_OPEN_TIMEOUT,
         max_size=None,
     ) as ws:
