@@ -19,6 +19,29 @@ def test_run_with_env():
     assert args.func == _run
     assert args.func_ref == ("/my/path.py", "myfunc")
     assert args.env == "dev"
+    assert args.auth == "public"
+
+
+@patch("fal.api.client.SyncServerlessClient._create_host")
+@patch("fal.utils.load_function_from")
+def test_run_warns_and_uses_cli_auth(mock_load_function_from, mock_create_host):
+    host = mocked_fal_serverless_host("my-host")
+    mock_create_host.return_value = host
+
+    isolated_function = MagicMock()
+    loaded = MagicMock()
+    loaded.function = isolated_function
+    loaded.app_name = None
+    loaded.app_auth = "private"
+    mock_load_function_from.return_value = loaded
+
+    args = mock_args(func_ref=("/my/path.py", "myfunc"), host="my-host")
+
+    _run(args)
+
+    warning_message = args.console.print.call_args[0][0]
+    assert "ignores fal.App auth and pyproject.toml auth" in warning_message
+    assert isolated_function.app_auth == "public"
 
 
 @pytest.fixture
@@ -53,6 +76,7 @@ def mock_args(
     func_ref: Tuple[str, Optional[str]],
     team: Optional[str] = None,
     no_cache: bool = False,
+    auth: str = "public",
 ):
     args = MagicMock()
     args.host = host
@@ -60,6 +84,10 @@ def mock_args(
     args.team = team
     args.no_cache = no_cache
     args.force_env_build = False
+    args.auth = auth
+    args.console = MagicMock()
+    args.app_name = None
+    args.env = None
     return args
 
 

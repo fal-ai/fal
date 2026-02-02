@@ -19,10 +19,18 @@ def _run(args):
     team = args.team
     func_ref = args.func_ref
 
-    app_auth = None
+    app_auth = args.auth
+    args.console.print(
+        "[bold yellow]Warning:[/bold yellow] "
+        "`fal run` ignores fal.App auth and pyproject.toml auth and "
+        "defaults to public. "
+        "In the next major release, the default will be private and "
+        "fal.App auth and pyproject.toml auth will be respected. "
+        "Use --auth to set the authentication mode."
+    )
     if is_app_name(func_ref):
         app_name = func_ref[0]
-        app_ref, app_auth, *_rest, toml_team = get_app_data_from_toml(app_name)
+        app_ref, _ignored_auth, *_rest, toml_team = get_app_data_from_toml(app_name)
         team = team or toml_team
         file_path, func_name = RefAction.split_ref(app_ref)
     else:
@@ -30,7 +38,6 @@ def _run(args):
         # Turn relative path into absolute path for files
         file_path = str(Path(file_path).absolute())
         app_name = args.app_name
-        app_auth = args.auth
 
     no_cache = args.no_cache or args.force_env_build
     client = SyncServerlessClient(host=args.host, team=team)
@@ -40,15 +47,6 @@ def _run(args):
 
     isolated_function = loaded.function
     app_name = app_name or loaded.app_name
-    app_auth = app_auth or loaded.app_auth
-    if app_auth is None:
-        args.console.print(
-            "[bold yellow]Warning:[/bold yellow] "
-            "`fal run` defaults to public app auth when not set. "
-            "In the next major release, the default will be private. "
-            "Set app_auth in your app or auth in pyproject.toml to keep this behavior."
-        )
-        app_auth = "public"
     isolated_function.app_name = app_name
     isolated_function.app_auth = app_auth
     # let our exc handlers handle UserFunctionException
@@ -90,7 +88,11 @@ def add_parser(main_subparsers, parents):
     parser.add_argument(
         "--auth",
         type=valid_auth_option,
-        help="Application authentication mode (private, public).",
+        default="public",
+        help=(
+            "Application authentication mode (private, public, shared), "
+            "defaults to public. "
+        ),
     )
     parser.add_argument(
         "--force-env-build",
