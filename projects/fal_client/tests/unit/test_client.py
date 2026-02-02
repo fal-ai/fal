@@ -12,13 +12,16 @@ import pytest
 from fal_client.client import (
     AsyncClient,
     AsyncRequestHandle,
+    CDN_URL,
     Completed,
+    FAL_CDN_FALLBACK_URL,
     FalClientHTTPError,
     FalClientTimeoutError,
     InProgress,
     Queued,
     RealtimeConnection,
     RealtimeError,
+    REST_URL,
     SyncClient,
     SyncRequestHandle,
     USER_AGENT,
@@ -218,6 +221,77 @@ def test_sync_client_subscribe_with_headers():
         assert first_call_kwargs["headers"]["X-Trace-Id"] == "trace-123"
 
 
+def test_sync_upload_falls_back_to_cdn():
+    with patch("fal_client.client._maybe_retry_request") as mock_request, patch(
+        "fal_client.client.SyncClient._get_cdn_client"
+    ) as mock_cdn_client:
+        fallback_response = Mock()
+        fallback_response.json.return_value = {"access_url": "https://fallback/file"}
+        mock_request.side_effect = [Exception("boom"), fallback_response]
+        mock_cdn_client.return_value = Mock()
+
+        client = SyncClient(key="test-key")
+        url = client.upload(b"hello", content_type="text/plain")
+
+    assert url == "https://fallback/file"
+    assert mock_request.call_args_list[0][0][2] == f"{CDN_URL}/files/upload"
+    assert (
+        mock_request.call_args_list[1][0][2] == f"{FAL_CDN_FALLBACK_URL}/files/upload"
+    )
+
+
+def test_sync_upload_falls_back_to_storage():
+    with patch("fal_client.client._maybe_retry_request") as mock_request, patch(
+        "fal_client.client.SyncClient._get_cdn_client"
+    ) as mock_cdn_client:
+        init_response = Mock()
+        init_response.json.return_value = {
+            "upload_url": "https://upload.example.com/put",
+            "file_url": "https://file.example.com/file",
+        }
+        mock_request.side_effect = [
+            Exception("boom"),
+            Exception("boom"),
+            init_response,
+            Mock(),
+        ]
+        mock_cdn_client.return_value = Mock()
+
+        client = SyncClient(key="test-key")
+        url = client.upload(b"hello", content_type="text/plain")
+
+    assert url == "https://file.example.com/file"
+    assert mock_request.call_args_list[0][0][2] == f"{CDN_URL}/files/upload"
+    assert (
+        mock_request.call_args_list[1][0][2] == f"{FAL_CDN_FALLBACK_URL}/files/upload"
+    )
+    assert (
+        mock_request.call_args_list[2][0][2]
+        == f"{REST_URL}/storage/upload/initiate?storage_type=gcs"
+    )
+    assert mock_request.call_args_list[3][0][2] == "https://upload.example.com/put"
+
+
+def test_sync_upload_respects_repository_order():
+    with patch("fal_client.client._maybe_retry_request") as mock_request:
+        cdn_response = Mock()
+        cdn_response.json.return_value = {"access_url": "https://cdn-only/file"}
+        mock_request.return_value = cdn_response
+
+        client = SyncClient(key="test-key")
+        url = client.upload(
+            b"hello",
+            content_type="text/plain",
+            repository="cdn",
+            fallback_repository=[],
+        )
+
+    assert url == "https://cdn-only/file"
+    assert (
+        mock_request.call_args_list[0][0][2] == f"{FAL_CDN_FALLBACK_URL}/files/upload"
+    )
+
+
 @pytest.mark.asyncio
 async def test_async_client_run_with_headers():
     """Test that custom headers are passed through in async run()"""
@@ -243,6 +317,90 @@ async def test_async_client_run_with_headers():
         assert "headers" in call_kwargs
         assert call_kwargs["headers"]["X-Custom-Header"] == "test-value"
         assert call_kwargs["headers"]["X-Trace-Id"] == "123"
+
+
+@pytest.mark.asyncio
+async def test_async_upload_falls_back_to_cdn():
+    with patch(
+        "fal_client.client._async_maybe_retry_request", new_callable=AsyncMock
+    ) as mock_request, patch(
+        "fal_client.client.AsyncClient._get_cdn_client", new_callable=AsyncMock
+    ) as mock_cdn_client:
+        fallback_response = httpx.Response(
+            status_code=200, json={"access_url": "https://fallback/file"}
+        )
+        mock_request.side_effect = [Exception("boom"), fallback_response]
+        mock_cdn_client.return_value = Mock()
+
+        client = AsyncClient(key="test-key")
+        url = await client.upload(b"hello", content_type="text/plain")
+
+    assert url == "https://fallback/file"
+    assert mock_request.call_args_list[0][0][2] == f"{CDN_URL}/files/upload"
+    assert (
+        mock_request.call_args_list[1][0][2] == f"{FAL_CDN_FALLBACK_URL}/files/upload"
+    )
+
+
+@pytest.mark.asyncio
+async def test_async_upload_falls_back_to_storage():
+    with patch(
+        "fal_client.client._async_maybe_retry_request", new_callable=AsyncMock
+    ) as mock_request, patch(
+        "fal_client.client.AsyncClient._get_cdn_client", new_callable=AsyncMock
+    ) as mock_cdn_client:
+        init_response = httpx.Response(
+            status_code=200,
+            json={
+                "upload_url": "https://upload.example.com/put",
+                "file_url": "https://file.example.com/file",
+            },
+        )
+        mock_request.side_effect = [
+            Exception("boom"),
+            Exception("boom"),
+            init_response,
+            Mock(),
+        ]
+        mock_cdn_client.return_value = Mock()
+
+        client = AsyncClient(key="test-key")
+        url = await client.upload(b"hello", content_type="text/plain")
+
+    assert url == "https://file.example.com/file"
+    assert mock_request.call_args_list[0][0][2] == f"{CDN_URL}/files/upload"
+    assert (
+        mock_request.call_args_list[1][0][2] == f"{FAL_CDN_FALLBACK_URL}/files/upload"
+    )
+    assert (
+        mock_request.call_args_list[2][0][2]
+        == f"{REST_URL}/storage/upload/initiate?storage_type=gcs"
+    )
+    assert mock_request.call_args_list[3][0][2] == "https://upload.example.com/put"
+
+
+@pytest.mark.asyncio
+async def test_async_upload_respects_repository_order():
+    with patch(
+        "fal_client.client._async_maybe_retry_request", new_callable=AsyncMock
+    ) as mock_request:
+        cdn_response = httpx.Response(
+            status_code=200, json={"access_url": "https://cdn-only/file"}
+        )
+        mock_request.return_value = cdn_response
+
+        client = AsyncClient(key="test-key")
+        url = await client.upload(
+            b"hello",
+            content_type="text/plain",
+            repository="cdn",
+            fallback_repository=[],
+        )
+
+    assert url == "https://cdn-only/file"
+    assert (
+        mock_request.call_args_list[0][0][2] == f"{FAL_CDN_FALLBACK_URL}/files/upload"
+    )
 
 
 @pytest.mark.asyncio
