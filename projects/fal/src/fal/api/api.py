@@ -37,6 +37,7 @@ from fastapi import FastAPI
 from fastapi import __version__ as fastapi_version
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
+from isolate.backends.common import Requirements
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 from pydantic import __version__ as pydantic_version
@@ -419,15 +420,17 @@ def find_missing_dependencies(
         used_modules[canonicalize_name(pkg_name)].append(name)  # type: ignore
 
     raw_requirements = env.get("requirements", [])
+    requirements = Requirements.from_raw(raw_requirements)
     specified_requirements = set()
-    for raw_requirement in raw_requirements:
-        try:
-            requirement = Requirement(raw_requirement)
-        except ValueError:
-            # For git+ dependencies, we can't parse the canonical name
-            # so we'll just skip them.
-            continue
-        specified_requirements.add(canonicalize_name(requirement.name))
+    for layer in requirements.layers:
+        for raw_requirement in layer:
+            try:
+                requirement = Requirement(raw_requirement)
+            except ValueError:
+                # For git+ dependencies, we can't parse the canonical name
+                # so we'll just skip them.
+                continue
+            specified_requirements.add(canonicalize_name(requirement.name))
 
     for module_name, used_names in used_modules.items():
         if module_name in specified_requirements:
@@ -863,11 +866,22 @@ class Options:
                 "are supported as environment options."
             )
 
+        parsed = Requirements.from_raw(pip_requirements)
+        existing = {req for layer in parsed.layers for req in layer}
+
         # Already has these.
-        if set(pip_requirements).issuperset(set(requirements)):
+        if existing.issuperset(set(requirements)):
             return None
 
-        pip_requirements.extend(requirements)
+        layered = (
+            pip_requirements
+            and isinstance(pip_requirements, list)
+            and all(isinstance(item, list) for item in pip_requirements)
+        )
+        if layered:
+            pip_requirements.append([*requirements])
+        else:
+            pip_requirements.extend(requirements)
 
     def get_exposed_port(self) -> int | None:
         if self.gateway.get("serve"):
@@ -890,7 +904,7 @@ def function(
     kind: Literal["virtualenv"] = "virtualenv",
     *,
     python_version: str | None = None,
-    requirements: list[str] | None = None,
+    requirements: list[str] | list[list[str]] | None = None,
     # Common options
     host: LocalHost,
     serve: Literal[False] = False,
@@ -908,7 +922,7 @@ def function(
     kind: Literal["virtualenv"] = "virtualenv",
     *,
     python_version: str | None = None,
-    requirements: list[str] | None = None,
+    requirements: list[str] | list[list[str]] | None = None,
     # Common options
     host: LocalHost,
     serve: Literal[True],
@@ -927,7 +941,7 @@ def function(
     kind: Literal["virtualenv"] = "virtualenv",
     *,
     python_version: str | None = None,
-    requirements: list[str] | None = None,
+    requirements: list[str] | list[list[str]] | None = None,
     # Common options
     host: FalServerlessHost | None = None,
     serve: Literal[False] = False,
@@ -961,7 +975,7 @@ def function(
     kind: Literal["virtualenv"] = "virtualenv",
     *,
     python_version: str | None = None,
-    requirements: list[str] | None = None,
+    requirements: list[str] | list[list[str]] | None = None,
     # Common options
     host: FalServerlessHost | None = None,
     serve: Literal[True],
@@ -1191,6 +1205,20 @@ def function(  # type: ignore
 ):
     if host is None:
         host = FalServerlessHost()
+
+    if "requirements" in config and config["requirements"] is not None:
+        requirements = config["requirements"]
+        is_str_list = isinstance(requirements, list) and all(
+            isinstance(item, str) for item in requirements
+        )
+        is_str_list_list = isinstance(requirements, list) and all(
+            isinstance(item, list) and all(isinstance(req, str) for req in item)
+            for item in requirements
+        )
+        if not is_str_list and not is_str_list_list:
+            raise ValueError(
+                "requirements must be a list of strings or a list of lists of strings."
+            )
 
     # NOTE: assuming kind="container" if image is provided
     if config.get("image"):
