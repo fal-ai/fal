@@ -41,6 +41,7 @@ from fal_client.auth import (
     MissingCredentialsError,
     fetch_auth_credentials,
 )
+from fal_client._version import __version__
 from fal_client._headers import (
     Priority,
     add_priority_header,
@@ -70,7 +71,7 @@ CDN_URL = "https://v3.fal.media"
 FAL_CDN_FALLBACK_URL = os.environ.get("FAL_CDN_HOST", "https://fal.media")
 DEFAULT_UPLOAD_REPOSITORY: UploadRepositoryId = "fal_v3"
 DEFAULT_UPLOAD_FALLBACK_REPOSITORY: list[UploadRepositoryId] = ["cdn", "fal"]
-USER_AGENT = "fal-client/0.2.2 (python)"
+USER_AGENT = f"fal-client/{__version__} (python)"
 
 MIN_REQUEST_TIMEOUT_SECONDS = 1
 
