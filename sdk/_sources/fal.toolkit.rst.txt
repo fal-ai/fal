@@ -48,6 +48,14 @@ fal.toolkit.optimize module
    :undoc-members:
    :show-inheritance:
 
+fal.toolkit.pydantic module
+---------------------------
+
+.. automodule:: fal.toolkit.pydantic
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 fal.toolkit.types module
 ------------------------
 
