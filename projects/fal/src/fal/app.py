@@ -92,6 +92,14 @@ async def _set_logger_labels(
     logger_labels: dict[str, str], channel: async_grpc.Channel
 ):
     try:
+        from isolate.connections.grpc.agent import log_context
+    except ImportError:
+        log_context = None
+
+    if log_context is not None:
+        log_context.set(logger_labels)
+
+    try:
         import sys
 
         from isolate.server import definitions
@@ -868,7 +876,7 @@ class App(BaseServable):
                 self._current_request_context.reset(token)
 
         @app.middleware("http")
-        async def set_request_id(request, call_next):
+        async def set_log_context(request, call_next):
             # NOTE: Setting request_id is not supported for websocket/realtime endpoints
             if not os.getenv("IS_ISOLATE_AGENT") or not os.environ.get(
                 "NOMAD_ALLOC_PORT_grpc"
