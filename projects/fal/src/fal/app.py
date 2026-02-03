@@ -96,7 +96,7 @@ async def _set_logger_labels(
         # isolate.connections.grpc.agent, so the ContextVar lives there.
         from __main__ import isolate_log_context
 
-        isolate_log_context(logger_labels)
+        isolate_log_context.set(logger_labels)
     except ImportError:
         pass
 
