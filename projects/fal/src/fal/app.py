@@ -92,16 +92,15 @@ async def _set_logger_labels(
     logger_labels: dict[str, str], channel: async_grpc.Channel
 ):
     try:
-        from isolate.connections.grpc.agent import log_context
-    except ImportError:
-        log_context = None
+        # Import from __main__ because the agent runs as __main__, not as
+        # isolate.connections.grpc.agent, so the ContextVar lives there.
+        from __main__ import isolate_log_context
 
-    if log_context is not None:
-        log_context.set(logger_labels)
+        isolate_log_context(logger_labels)
+    except ImportError:
+        pass
 
     try:
-        import sys
-
         from isolate.server import definitions
 
         # Flush any prints that were buffered before setting the logger labels
