@@ -2,30 +2,29 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-import json
 import os
 import queue
 import re
 import sys
 import threading
 import time
-import typing
 from contextlib import asynccontextmanager, contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, ClassVar, Optional, TypeVar
+from typing import Any, Callable, ClassVar, Optional
 
 import fastapi
 import grpc.aio as async_grpc
-import httpx
 
 from fal._serialization import include_modules_from
+from fal._typing import EndpointT
 from fal.api import (
     SERVE_REQUIREMENTS,
     BaseServable,
     IsolatedFunction,
     RouteSignature,
+    SpawnInfo,
 )
 from fal.api import (
     function as fal_function,
@@ -34,6 +33,7 @@ from fal.auth import key_credentials
 from fal.container import ContainerImage
 from fal.exceptions import FalServerlessException, RequestCancelledException
 from fal.logging import get_logger
+from fal.realtime import realtime  # noqa: F401
 from fal.ref import set_current_app
 from fal.sdk import (
     ApplicationHealthCheckConfig,
@@ -42,7 +42,6 @@ from fal.sdk import (
     RetryConditionLiteral,
 )
 from fal.toolkit.file import request_lifecycle_preference
-from fal.toolkit.file.providers.fal import LIFECYCLE_PREFERENCE
 
 REALTIME_APP_REQUIREMENTS = ["websockets", "msgpack"]
 REQUEST_ID_KEY = "x-fal-request-id"
@@ -55,7 +54,6 @@ DEFAULT_APP_FILES_IGNORE = [
 ]
 
 
-EndpointT = TypeVar("EndpointT", bound=Callable[..., Any])
 logger = get_logger(__name__)
 
 
@@ -172,6 +170,9 @@ def wrap_app(cls: type[App], **kwargs) -> IsolatedFunction:
     if realtime_app:
         fn.options.add_requirements(REALTIME_APP_REQUIREMENTS)
 
+    fn.app_name = cls.app_name
+    fn.app_auth = cls.app_auth
+
     return fn
 
 
@@ -180,6 +181,94 @@ class AppClientError(FalServerlessException):
     message: str
     status_code: int
     headers: dict[str, str] = field(default_factory=dict)
+
+
+class AppSpawnInfo:
+    def __init__(self, info: SpawnInfo):
+        self.info = info
+
+    @property
+    def url(self):
+        return self.info.url
+
+    @property
+    def application(self):
+        return self.info.application
+
+    @property
+    def logs(self):
+        return self.info.logs
+
+    @property
+    def stream(self):
+        return self.info.stream
+
+    @property
+    def future(self):
+        return self.info.future
+
+    def wait(
+        self,
+        *,
+        health_request_timeout: int = 30,
+        startup_timeout: int = 60,
+        health_check_interval: float = 0.5,
+        headers: dict[str, str] | None = None,
+    ) -> None:
+        import httpx
+
+        url = self.url
+        if url is None:
+            raise AppClientError(
+                "App spawn failed: no URL returned",
+                500,
+                {},
+            )
+
+        start_time = time.perf_counter()
+        health_url = url + "/health"
+        last_error = None
+        attempt = 0
+        request_headers = _default_auth_headers() if headers is None else headers
+
+        with httpx.Client() as client:
+            while time.perf_counter() - start_time < startup_timeout:
+                attempt += 1
+
+                try:
+                    resp = client.get(
+                        health_url,
+                        timeout=health_request_timeout,
+                        headers=request_headers,
+                    )
+                except httpx.TimeoutException:
+                    last_error = (
+                        f"Request timed out after {health_request_timeout} seconds"
+                    )
+                except httpx.TransportError as e:
+                    last_error = f"Network error: {e}"
+                else:
+                    if resp.is_success:
+                        return
+
+                    if resp.status_code in (500, 404):
+                        last_error = f"Server not ready (HTTP {resp.status_code})"
+                    else:
+                        raise AppClientError(
+                            "Health check failed with non-retryable error: "
+                            f"{resp.status_code} {resp.text}",
+                            resp.status_code,
+                            dict(resp.headers),
+                        )
+
+                time.sleep(health_check_interval)
+
+        raise AppClientError(
+            f"Health check failed after {startup_timeout}s "
+            f"({attempt} attempts). Last error: {last_error}",
+            500,
+            {},
+        )
 
 
 def _default_auth_headers() -> dict[str, str]:
@@ -209,6 +298,8 @@ class EndpointClient:
         self.return_type = annotations.get("return") or None
 
     def __call__(self, data):
+        import httpx
+
         with httpx.Client() as client:
             url = self.url + self.signature.path
             resp = client.post(
@@ -244,6 +335,9 @@ class AppClient:
         self.cls = cls
         self._headers = _default_auth_headers()
 
+        user_name, app_name = url.rstrip("/").rsplit("/", 2)[-2:]
+        self.application = f"{user_name}/{app_name}"
+
         for name, endpoint in inspect.getmembers(cls, inspect.isfunction):
             signature = getattr(endpoint, "route_signature", None)
             if signature is None:
@@ -267,8 +361,7 @@ class AppClient:
         startup_timeout: int = 60,
         health_check_interval: float = 0.5,
     ):
-        app = wrap_app(app_cls)
-        info = app.spawn()
+        info = app_cls.spawn()
         _shutdown_event = threading.Event()
 
         def _print_logs():
@@ -283,54 +376,11 @@ class AppClient:
         _log_printer.start()
 
         try:
-            if info.url is None:
-                raise AppClientError(
-                    "App spawn failed: no URL returned",
-                    status_code=500,
-                )
-
-            start_time = time.perf_counter()
-            url = info.url + "/health"
-            last_error = None
-            attempt = 0
-
-            headers = _default_auth_headers()
-            with httpx.Client() as client:
-                while time.perf_counter() - start_time < startup_timeout:
-                    attempt += 1
-
-                    try:
-                        resp = client.get(
-                            url, timeout=health_request_timeout, headers=headers
-                        )
-                    except httpx.TimeoutException:
-                        last_error = (
-                            f"Request timed out after {health_request_timeout} seconds"
-                        )
-                    except httpx.TransportError as e:
-                        last_error = f"Network error: {e}"
-                    else:
-                        if resp.is_success:
-                            break
-
-                        if resp.status_code in (500, 404):
-                            last_error = f"Server not ready (HTTP {resp.status_code})"
-                        else:
-                            raise AppClientError(
-                                "Health check failed with non-retryable error: "
-                                f"{resp.status_code} {resp.text}",
-                                status_code=resp.status_code,
-                                headers=resp.headers,
-                            )
-
-                    time.sleep(health_check_interval)
-                else:
-                    # retry loop completed without success
-                    raise AppClientError(
-                        f"Health check failed after {startup_timeout}s "
-                        f"({attempt} attempts). Last error: {last_error}",
-                        status_code=500,
-                    )
+            info.wait(
+                health_request_timeout=health_request_timeout,
+                startup_timeout=startup_timeout,
+                health_check_interval=health_check_interval,
+            )
 
             client = cls(app_cls, info.url)
             yield client
@@ -340,6 +390,8 @@ class AppClient:
             _log_printer.join()
 
     def health(self):
+        import httpx
+
         with httpx.Client() as client:
             resp = client.get(self.url + "/health", headers=self._headers)
             resp.raise_for_status()
@@ -440,6 +492,9 @@ def _include_app_files_path(
 
 @dataclass
 class RequestContext:
+    request_id: str | None
+    endpoint: str | None
+    lifecycle_preference: dict[str, str] | None
     headers: fastapi.Header
 
 
@@ -465,9 +520,12 @@ class App(BaseServable):
         ...         return {"url": fal.toolkit.upload_image(image)}
 
     Attributes:
-        requirements: List of pip packages to install in the environment.
+        requirements: Pip packages to install in the environment.
             Supports standard pip syntax including version specifiers.
-            Example: `["numpy==1.24.0", "torch>=2.0.0"]`
+            Use a list of strings for a single install step, or a list of lists
+            to install in multiple steps.
+            Example: `["numpy==1.24.0", "torch>=2.0.0"]` or
+            `[["setuptools", "wheel"], ["numpy==1.24.0"]]`
         local_python_modules: List of local Python module names to include
             in the deployment. Use for custom code not available on PyPI.
             Example: `["my_utils", "models"]`
@@ -505,7 +563,7 @@ class App(BaseServable):
             to specify a Dockerfile.
     """
 
-    requirements: ClassVar[list[str]] = []
+    requirements: ClassVar[list[str] | list[list[str]]] = []  # type: ignore[assignment]
     local_python_modules: ClassVar[list[str]] = []
     machine_type: ClassVar[str | list[str]] = "S"
     num_gpus: ClassVar[int | None] = None
@@ -538,7 +596,7 @@ class App(BaseServable):
 
     isolate_channel: async_grpc.Channel | None = None
 
-    _current_request_context: ContextVar[RequestContext | None] | None = None
+    _current_request_context: ContextVar[RequestContext] | None = None
 
     def __init_subclass__(cls, **kwargs):
         app_name = kwargs.pop("name", None) or _to_fal_app_name(cls.__name__)
@@ -610,15 +668,6 @@ class App(BaseServable):
                 "Use setup() instead."
             )
 
-        if cls.requirements and cls.host_kwargs.get("kind") == "container":
-            from fal.console import console
-
-            console.print(
-                "\n[yellow]WARNING:[/yellow] Using [bold]requirements[/bold] with "
-                "container apps is not recommended. For better performance, "
-                "install dependencies in the Dockerfile instead.\n"
-            )
-
     def __init__(self, *, _allow_init: bool = False):
         if not _allow_init and not os.getenv("IS_ISOLATE_AGENT"):
             cls_name = self.__class__.__name__
@@ -645,6 +694,14 @@ class App(BaseServable):
             for _, endpoint in inspect.getmembers(cls, inspect.isfunction)
             if (signature := getattr(endpoint, "route_signature", None))
         ]
+
+    @classmethod
+    def spawn(cls) -> AppSpawnInfo:
+        # import wrap_app explicitly to avoid reference to wrap_app during pickling
+        from fal.app import wrap_app
+
+        app = wrap_app(cls)
+        return AppSpawnInfo(app.spawn())
 
     @classmethod
     def get_health_check_config(cls) -> Optional[ApplicationHealthCheckConfig]:
@@ -696,7 +753,10 @@ class App(BaseServable):
         # - app_files: files synced to /app
         # - container: files baked into image
         self._current_request_context = ContextVar(
-            "_current_request_context", default=RequestContext(headers={})
+            "_current_request_context",
+            default=RequestContext(
+                request_id=None, endpoint=None, lifecycle_preference=None, headers={}
+            ),
         )
 
         # We want to not do any directory changes for container apps,
@@ -777,31 +837,29 @@ class App(BaseServable):
                 )
             return response
 
-        multiplexing = self.host_kwargs.get("max_multiplexing") or 1
-        if multiplexing == 1:
-            # just register the middleware if we are not multiplexing
-            @app.middleware("http")
-            async def set_global_object_preference(request, call_next):
-                try:
-                    preference_dict = request_lifecycle_preference(request)
-                    if preference_dict is not None:
-                        # This will not work properly for apps with multiplexing enabled
-                        # we may mix up the preferences between requests
-                        LIFECYCLE_PREFERENCE.set(preference_dict)
-                except Exception:
-                    from fastapi.logger import logger
+        @app.middleware("http")
+        async def set_current_request_context(request, call_next):
+            if self._current_request_context is None:
+                from fastapi.logger import logger
 
-                    logger.exception(
-                        "Failed set a global lifecycle preference %s",
-                        self.__class__.__name__,
-                    )
+                logger.warning(
+                    "request context is not set. "
+                    "lifespan may not have worked as expected."
+                )
+                return await call_next(request)
 
-                try:
-                    return await call_next(request)
-                finally:
-                    # We may miss the global preference if there are operations
-                    # being done in the background that go beyond the request
-                    LIFECYCLE_PREFERENCE.set(None)
+            context = RequestContext(
+                request_id=request.headers.get(REQUEST_ID_KEY),
+                endpoint=request.headers.get(REQUEST_ENDPOINT_KEY),
+                lifecycle_preference=request_lifecycle_preference(request),
+                headers=request.headers,
+            )
+
+            token = self._current_request_context.set(context)
+            try:
+                return await call_next(request)
+            finally:
+                self._current_request_context.reset(token)
 
         @app.middleware("http")
         async def set_request_id(request, call_next):
@@ -866,25 +924,6 @@ class App(BaseServable):
             # the connection without receiving a response
             return JSONResponse({"detail": str(exc)}, 499)
 
-        @app.middleware("http")
-        async def set_current_request_context(request, call_next):
-            if self._current_request_context is None:
-                from fastapi.logger import logger
-
-                logger.warning(
-                    "request context is not set. "
-                    "lifespan may not have worked as expected."
-                )
-                return await call_next(request)
-
-            context = RequestContext(headers=request.headers)
-
-            token = self._current_request_context.set(context)
-            try:
-                return await call_next(request)
-            finally:
-                self._current_request_context.reset(token)
-
     def _add_extra_routes(self, app: fastapi.FastAPI):
         # TODO remove this once we have a proper health check endpoint
         @app.get("/health")
@@ -916,262 +955,5 @@ def endpoint(
             health_check=health_check,
         )
         return callable
-
-    return marker_fn
-
-
-def msgpack_decode_message(message: bytes) -> Any:
-    import msgpack
-
-    return msgpack.unpackb(message, raw=False)
-
-
-def msgpack_encode_message(message: Any) -> bytes:
-    import msgpack
-
-    return msgpack.packb(message, use_bin_type=True)
-
-
-def _fal_websocket_template(
-    func: EndpointT,
-    route_signature: RouteSignature,
-) -> EndpointT:
-    # A template for fal's realtime websocket endpoints to basically
-    # be a boilerplate for the user to fill in their inference function
-    # and start using it.
-
-    import asyncio
-    from collections import deque
-    from contextlib import suppress
-
-    from fastapi import WebSocket, WebSocketDisconnect
-
-    decode_message = route_signature.decode_message or msgpack_decode_message
-    encode_message = route_signature.encode_message or msgpack_encode_message
-
-    async def mirror_input(queue: deque[Any], websocket: WebSocket) -> None:
-        while True:
-            try:
-                raw_input = await asyncio.wait_for(
-                    websocket.receive_bytes(),
-                    timeout=route_signature.session_timeout,
-                )
-            except asyncio.TimeoutError:
-                return
-
-            input = decode_message(raw_input)
-            if route_signature.input_modal:
-                input = route_signature.input_modal(**input)
-
-            queue.append(input)
-
-    async def mirror_output(
-        self,
-        queue: deque[Any],
-        websocket: WebSocket,
-    ) -> None:
-        loop = asyncio.get_event_loop()
-        max_allowed_buffering = route_signature.buffering or 1
-        outgoing_messages: asyncio.Queue[bytes | str] = asyncio.Queue(
-            maxsize=max_allowed_buffering * 2  # x2 for outgoing timings
-        )
-
-        async def emit(message):
-            if isinstance(message, bytes):
-                await websocket.send_bytes(message)
-            elif isinstance(message, str):
-                await websocket.send_text(message)
-            else:
-                raise TypeError(f"Can't send message of type {type(message)}")
-
-        async def background_emitter():
-            while True:
-                output = await outgoing_messages.get()
-                await emit(output)
-                outgoing_messages.task_done()
-
-        emitter = asyncio.create_task(background_emitter())
-
-        while True:
-            if not queue:
-                await asyncio.sleep(0.05)
-                continue
-
-            input = queue.popleft()
-            if input is None or emitter.done():
-                if not emitter.done():
-                    await outgoing_messages.join()
-                    emitter.cancel()
-
-                with suppress(asyncio.CancelledError):
-                    await emitter
-                return None  # End of input
-
-            batch = [input]
-            while queue and len(batch) < route_signature.max_batch_size:
-                next_input = queue.popleft()
-                if hasattr(input, "can_batch") and not input.can_batch(
-                    next_input, len(batch)
-                ):
-                    queue.appendleft(next_input)
-                    break
-                batch.append(next_input)
-
-            t0 = loop.time()
-            if inspect.iscoroutinefunction(func):
-                output = await func(self, *batch)
-            else:
-                output = await loop.run_in_executor(None, func, self, *batch)  # type: ignore
-            total_time = loop.time() - t0
-            if not isinstance(output, dict):
-                # Handle pydantic output modal
-                if hasattr(output, "dict"):
-                    output = output.dict()
-                else:
-                    raise TypeError(
-                        "Expected a dict or pydantic model as output, got "
-                        f"{type(output)}"
-                    )
-
-            messages: list[bytes | str] = [encode_message(output)]
-            if route_signature.emit_timings:
-                # We emit x-fal messages in JSON, no matter what the
-                # input/output format is.
-                timings = {
-                    "type": "x-fal-message",
-                    "action": "timings",
-                    "timing": total_time,
-                }
-                messages.append(json.dumps(timings, separators=(",", ":")))
-
-            for message in messages:
-                try:
-                    outgoing_messages.put_nowait(message)
-                except asyncio.QueueFull:
-                    await emit(message)
-
-    async def websocket_template(self, websocket: WebSocket) -> None:
-        import asyncio
-
-        await websocket.accept()
-
-        queue: deque[Any] = deque(maxlen=route_signature.buffering)
-        input_task = asyncio.create_task(mirror_input(queue, websocket))
-        input_task.add_done_callback(lambda _: queue.append(None))
-        output_task = asyncio.create_task(mirror_output(self, queue, websocket))
-
-        try:
-            await asyncio.wait(
-                {
-                    input_task,
-                    output_task,
-                },
-                return_when=asyncio.FIRST_COMPLETED,
-            )
-            if input_task.done():
-                # User didn't send any input within the timeout
-                # so we can just close the connection after the
-                # processing of the last input is done.
-                input_task.result()
-                await asyncio.wait_for(
-                    output_task, timeout=route_signature.session_timeout
-                )
-            else:
-                assert output_task.done()
-
-                # The execution of the inference function failed or exitted,
-                # so just propagate the result.
-                input_task.cancel()
-                with suppress(asyncio.CancelledError):
-                    await input_task
-
-                output_task.result()
-        except WebSocketDisconnect:
-            input_task.cancel()
-            output_task.cancel()
-            with suppress(asyncio.CancelledError):
-                await input_task
-
-            with suppress(asyncio.CancelledError):
-                await output_task
-        except Exception as exc:
-            import traceback
-
-            traceback.print_exc()
-
-            await websocket.send_json(
-                {
-                    "type": "x-fal-error",
-                    "error": "INTERNAL_ERROR",
-                    "reason": str(exc),
-                }
-            )
-        else:
-            await websocket.send_json(
-                {
-                    "type": "x-fal-error",
-                    "error": "TIMEOUT",
-                    "reason": "no inputs, reconnect when needed!",
-                }
-            )
-
-        await websocket.close()
-
-    # Seems like templating + stringified annotations don't play well,
-    # so we have to set them manually.
-    websocket_template.__annotations__ = {
-        "websocket": WebSocket,
-        "return": None,
-    }
-    websocket_template.route_signature = route_signature  # type: ignore
-    websocket_template.original_func = func  # type: ignore
-    return typing.cast(EndpointT, websocket_template)
-
-
-_SENTINEL = object()
-
-
-def realtime(
-    path: str,
-    *,
-    buffering: int | None = None,
-    session_timeout: float | None = None,
-    input_modal: Any | None = _SENTINEL,
-    max_batch_size: int = 1,
-    encode_message: Callable[[Any], bytes] | None = None,
-    decode_message: Callable[[bytes], Any] | None = None,
-) -> Callable[[EndpointT], EndpointT]:
-    """Designate the decorated function as a realtime application endpoint."""
-
-    def marker_fn(original_func: EndpointT) -> EndpointT:
-        nonlocal input_modal
-
-        if hasattr(original_func, "route_signature"):
-            raise ValueError(
-                "Can't set multiple routes for the same function: "
-                f"{original_func.__name__}"
-            )
-
-        if input_modal is _SENTINEL:
-            type_hints = typing.get_type_hints(original_func)
-            if len(type_hints) >= 1:
-                input_modal = type_hints[list(type_hints.keys())[0]]
-            else:
-                input_modal = None
-
-        route_signature = RouteSignature(
-            path=path,
-            is_websocket=True,
-            input_modal=input_modal,
-            buffering=buffering,
-            session_timeout=session_timeout,
-            max_batch_size=max_batch_size,
-            encode_message=encode_message,
-            decode_message=decode_message,
-        )
-        return _fal_websocket_template(
-            original_func,
-            route_signature,
-        )
 
     return marker_fn

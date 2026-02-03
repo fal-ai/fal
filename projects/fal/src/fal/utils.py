@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from fal.sdk import AuthModeLiteral
+
 if TYPE_CHECKING:
     from .api import FalServerlessHost, IsolatedFunction
 
@@ -12,14 +14,14 @@ class LoadedFunction:
     function: IsolatedFunction
     endpoints: list[str]
     app_name: str | None
-    app_auth: str | None
+    app_auth: AuthModeLiteral | None
     source_code: str | None
     class_name: str | None = None
 
 
 def _find_target(
     module: dict[str, object], function_name: str | None = None
-) -> tuple[object, str | None, str | None, str | None]:
+) -> tuple[object, str | None, AuthModeLiteral | None, str | None]:
     """Find the target function/class in the module.
 
     Returns:
@@ -118,6 +120,8 @@ def load_function_from(
         raise FalServerlessError(
             f"Function '{function_name}' is not a fal.function or a fal.App"
         )
+    target.app_name = app_name
+    target.app_auth = app_auth
     return LoadedFunction(
         target,
         endpoints,

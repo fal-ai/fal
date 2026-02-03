@@ -291,7 +291,9 @@ message RegisterApplicationRequest {
     // Optional health check config for runners
     optional ApplicationHealthCheckConfig health_check_config = 16;
     // Skip retry on certain conditions
-    repeated RetryCondition skip_retry_conditions = 17; 
+    repeated RetryCondition skip_retry_conditions = 17;
+    // Grace period in seconds before forced termination of runners after a shutdown request.
+    optional int32 termination_grace_period_seconds = 18;
 }
 
 message RegisterApplicationResultType {

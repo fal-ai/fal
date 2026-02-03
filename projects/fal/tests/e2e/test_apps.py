@@ -8,7 +8,7 @@ import uuid
 from contextlib import contextmanager, redirect_stdout, suppress
 from datetime import datetime, timedelta, timezone
 from io import StringIO
-from typing import Generator, List, Tuple, Union
+from typing import AsyncIterator, Generator, Iterator, List, Tuple, Union
 
 import httpx
 import pytest
@@ -19,6 +19,7 @@ from openapi_fal_rest.api.applications import app_metadata
 from openapi_fal_rest.client import Client
 from pydantic import BaseModel
 from pydantic import __version__ as pydantic_version
+from websockets.sync import client as ws_client
 
 import fal
 import fal.api as api
@@ -35,7 +36,7 @@ from fal.exceptions import (
 )
 from fal.exceptions._cuda import _CUDA_OOM_MESSAGE, _CUDA_OOM_STATUS_CODE
 from fal.ref import get_current_app
-from fal.sdk import RunnerState
+from fal.sdk import RunnerState, get_default_credentials
 from fal.toolkit.utils.endpoint import cancel_on_disconnect
 from fal.workflows import Workflow
 
@@ -431,6 +432,34 @@ class RealtimeApp(fal.App, keep_alive=300, max_concurrency=1):
     @fal.realtime("/realtime")
     def generate_rt(self, input: RTInput) -> RTOutput:
         return RTOutput(text=input.prompt)
+
+    @fal.realtime("/realtime/server-streaming", buffering=10)
+    async def generate_rt_server_streaming(
+        self, input: RTInput
+    ) -> AsyncIterator[RTOutput]:
+        for idx in range(3):
+            yield RTOutput(text=f"{input.prompt}:{idx}")
+
+    @fal.realtime("/realtime/server-streaming-sync", buffering=10)
+    def generate_rt_server_streaming_sync(self, input: RTInput) -> Iterator[RTOutput]:
+        for idx in range(3):
+            yield RTOutput(text=f"{input.prompt}:{idx}")
+
+    @fal.realtime("/realtime/client-streaming", session_timeout=0.2)
+    async def generate_rt_client_streaming(
+        self, inputs: AsyncIterator[RTInput]
+    ) -> RTOutputs:
+        prompts: List[str] = []
+        async for item in inputs:
+            prompts.append(item.prompt)
+        return RTOutputs(texts=prompts)
+
+    @fal.realtime("/realtime/bidi")
+    async def generate_rt_bidi(
+        self, inputs: AsyncIterator[RTInput]
+    ) -> AsyncIterator[RTOutput]:
+        async for item in inputs:
+            yield RTOutput(text=f"echo:{item.prompt}")
 
     @fal.realtime(
         "/realtime/json",
@@ -1118,6 +1147,24 @@ def test_realtime_connection(test_realtime_app):
         assert batch_sizes == [4, 4, 2]
 
 
+def test_realtime_ws_endpoint(test_realtime_app):
+    app_id = apps._backwards_compatible_app_id(test_realtime_app)
+    url = apps._REALTIME_URL_FORMAT.format(app_id=app_id) + "/ws"
+    creds = get_default_credentials()
+
+    with ws_client.connect(
+        url, additional_headers=creds.to_headers(), open_timeout=90
+    ) as ws:
+        messages = []
+        for _ in range(3):
+            payload = ws.recv()
+            if isinstance(payload, bytes):
+                payload = payload.decode("utf-8")
+            messages.append(json.loads(payload))
+
+    assert messages == [{"message": "Hello world!"}] * 3
+
+
 def test_realtime_connection_custom_codec(test_realtime_app):
     with apps._connect(
         test_realtime_app,
@@ -1127,6 +1174,51 @@ def test_realtime_connection_custom_codec(test_realtime_app):
     ) as connection:
         response = connection.run({"prompt": "json cat"})
         assert response["text"] == "json cat"
+
+
+def test_realtime_server_streaming_mode(test_realtime_app):
+    with apps._connect(
+        test_realtime_app, path="/realtime/server-streaming"
+    ) as connection:
+        connection.send({"prompt": "stream"})
+        responses = [connection.recv() for _ in range(3)]
+        assert [response["text"] for response in responses] == [
+            "stream:0",
+            "stream:1",
+            "stream:2",
+        ]
+
+
+def test_realtime_server_streaming_sync_mode(test_realtime_app):
+    with apps._connect(
+        test_realtime_app, path="/realtime/server-streaming-sync"
+    ) as connection:
+        connection.send({"prompt": "stream"})
+        responses = [connection.recv() for _ in range(3)]
+        assert [response["text"] for response in responses] == [
+            "stream:0",
+            "stream:1",
+            "stream:2",
+        ]
+
+
+def test_realtime_client_streaming_mode(test_realtime_app):
+    with apps._connect(
+        test_realtime_app, path="/realtime/client-streaming"
+    ) as connection:
+        connection.send({"prompt": "first"})
+        connection.send({"prompt": "second"})
+        connection.send({"prompt": "third"})
+        response = connection.recv()
+        assert response["texts"] == ["first", "second", "third"]
+
+
+def test_realtime_bidi_mode(test_realtime_app):
+    with apps._connect(test_realtime_app, path="/realtime/bidi") as connection:
+        connection.send({"prompt": "one"})
+        connection.send({"prompt": "two"})
+        assert connection.recv()["text"] == "echo:one"
+        assert connection.recv()["text"] == "echo:two"
 
 
 @contextmanager
@@ -1766,3 +1858,98 @@ def test_graceful_shutdown_handle_exit(
     assert graceful_shutdown(
         test_graceful_shutdown_app, host, wait_time=60, path="/with-stop"
     ), "app should be called handle_exit on SIGTERM"
+
+
+class RequestContextOutput(BaseModel):
+    request_id_from_context: str | None
+    endpoint_from_context: str | None
+    lifecycle_preference_from_context: dict | None
+    request_id_from_header: str | None
+
+
+def _external_get_request_context() -> dict:
+    """External function that accesses request context without request parameter."""
+    current_app = get_current_app()
+    if current_app is None or current_app.current_request is None:
+        return {
+            "request_id": None,
+            "endpoint": None,
+            "lifecycle_preference": None,
+        }
+    return {
+        "request_id": current_app.current_request.request_id,
+        "endpoint": current_app.current_request.endpoint,
+        "lifecycle_preference": current_app.current_request.lifecycle_preference,
+    }
+
+
+class RequestContextApp(fal.App, keep_alive=300, max_concurrency=1, max_multiplexing=3):
+    """App to test request context fields are properly populated."""
+
+    machine_type = "XS"
+
+    @fal.endpoint("/")
+    def get_context(self, request: Request) -> RequestContextOutput:
+        # Sleep to intentionally cause potential race conditions with multiplexing
+        time.sleep(2)
+
+        # Get context from external function (simulates File.from_bytes usage)
+        context_data = _external_get_request_context()
+
+        return RequestContextOutput(
+            request_id_from_context=context_data["request_id"],
+            endpoint_from_context=context_data["endpoint"],
+            lifecycle_preference_from_context=context_data["lifecycle_preference"],
+            request_id_from_header=request.headers.get("x-fal-request-id"),
+        )
+
+
+@pytest.fixture(scope="module")
+def test_request_context_app(host: api.FalServerlessHost, user: User):
+    request_context_app = wrap_app(RequestContextApp)
+    with register_app(host, request_context_app, "request-context") as (app_alias, _):
+        yield f"{user.username}/{app_alias}"
+
+
+def test_request_context_fields_populated(test_request_context_app: str):
+    """Test that request context fields are properly populated."""
+
+    result = apps.run(test_request_context_app, arguments={})
+
+    assert result["request_id_from_context"] is not None
+    assert result["endpoint_from_context"] is not None
+    assert result["lifecycle_preference_from_context"] is not None
+
+    assert result["request_id_from_context"] == result["request_id_from_header"]
+
+
+def test_request_context_isolation_with_multiplexing(test_request_context_app: str):
+    """Test that request context is properly isolated between concurrent requests.
+
+    With multiplexing enabled (max_multiplexing=3), each request should have
+    its own isolated context via ContextVar, ensuring request_id from context
+    matches the request_id from headers for each individual request.
+    """
+
+    # Submit multiple concurrent requests
+    handle_1 = apps.submit(test_request_context_app, arguments={})
+    handle_2 = apps.submit(test_request_context_app, arguments={})
+    handle_3 = apps.submit(test_request_context_app, arguments={})
+
+    # Get results
+    result_1 = handle_1.get()
+    result_2 = handle_2.get()
+    result_3 = handle_3.get()
+
+    # Each request's context should match its own header, proving isolation
+    assert result_1["request_id_from_context"] == result_1["request_id_from_header"]
+    assert result_2["request_id_from_context"] == result_2["request_id_from_header"]
+    assert result_3["request_id_from_context"] == result_3["request_id_from_header"]
+
+    # All request IDs should be different (unique requests)
+    request_ids = {
+        result_1["request_id_from_context"],
+        result_2["request_id_from_context"],
+        result_3["request_id_from_context"],
+    }
+    assert len(request_ids) == 3, "Each request should have a unique request_id"

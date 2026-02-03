@@ -37,6 +37,7 @@ from fastapi import FastAPI
 from fastapi import __version__ as fastapi_version
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
+from isolate.backends.common import Requirements
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 from pydantic import __version__ as pydantic_version
@@ -142,6 +143,12 @@ class SpawnInfo:
         self._url_ready.set()
         self._url = value
 
+    @property
+    def application(self):
+        from urllib.parse import urlparse
+
+        return urlparse(self.url).path.strip("/")
+
 
 @dataclass
 class Host(Generic[ArgsT, ReturnT]):
@@ -193,6 +200,8 @@ class Host(Generic[ArgsT, ReturnT]):
         options: Options,
         args: tuple[Any, ...],
         kwargs: dict[str, Any],
+        application_name: str | None = None,
+        application_auth_mode: AuthModeLiteral | None = None,
     ) -> ReturnT:
         """Run the given function in the isolated environment."""
         raise NotImplementedError
@@ -203,6 +212,8 @@ class Host(Generic[ArgsT, ReturnT]):
         options: Options,
         args: tuple[Any, ...],
         kwargs: dict[str, Any],
+        application_name: str | None = None,
+        application_auth_mode: AuthModeLiteral | None = None,
     ) -> SpawnInfo:
         raise NotImplementedError
 
@@ -301,6 +312,8 @@ class LocalHost(Host):
         options: Options,
         args: tuple[Any, ...],
         kwargs: dict[str, Any],
+        application_name: str | None = None,
+        application_auth_mode: AuthModeLiteral | None = None,
     ) -> ReturnT:
         import isolate
         from isolate.backends.settings import DEFAULT_SETTINGS
@@ -407,15 +420,17 @@ def find_missing_dependencies(
         used_modules[canonicalize_name(pkg_name)].append(name)  # type: ignore
 
     raw_requirements = env.get("requirements", [])
+    requirements = Requirements.from_raw(raw_requirements)
     specified_requirements = set()
-    for raw_requirement in raw_requirements:
-        try:
-            requirement = Requirement(raw_requirement)
-        except ValueError:
-            # For git+ dependencies, we can't parse the canonical name
-            # so we'll just skip them.
-            continue
-        specified_requirements.add(canonicalize_name(requirement.name))
+    for layer in requirements.layers:
+        for raw_requirement in layer:
+            try:
+                requirement = Requirement(raw_requirement)
+            except ValueError:
+                # For git+ dependencies, we can't parse the canonical name
+                # so we'll just skip them.
+                continue
+            specified_requirements.add(canonicalize_name(requirement.name))
 
     for module_name, used_names in used_modules.items():
         if module_name in specified_requirements:
@@ -627,6 +642,8 @@ class FalServerlessHost(Host):
         args: tuple[Any, ...],
         kwargs: dict[str, Any],
         result_handler: Callable[..., None],
+        application_name: str | None = None,
+        application_auth_mode: AuthModeLiteral | None = None,
     ) -> ReturnT:
         from isolate.backends.common import active_python
 
@@ -675,12 +692,17 @@ class FalServerlessHost(Host):
         # Allow isolate provided arguments (such as setup function) to take
         # precedence over the ones provided by the user.
         partial_func = _prepare_partial_func(func, *args, **kwargs)
+        effective_app_name = application_name or getattr(func, "__name__", None)
+        effective_auth_mode = application_auth_mode or "public"
+
         for partial_result in self._connection.run(
             partial_func,
             environments,
             machine_requirements=machine_requirements,
             setup_function=setup_function,
             files=files,
+            application_name=effective_app_name,
+            auth_mode=effective_auth_mode,
             environment_name=self.environment_name,
         ):
             result_handler(partial_result)
@@ -709,7 +731,11 @@ class FalServerlessHost(Host):
         options: Options,
         args: tuple[Any, ...],
         kwargs: dict[str, Any],
+        application_name: str | None = None,
+        application_auth_mode: AuthModeLiteral | None = None,
     ) -> ReturnT:
+        effective_auth_mode = application_auth_mode or "public"
+
         def result_handler(partial_result):
             from fal.console import console
 
@@ -725,9 +751,16 @@ class FalServerlessHost(Host):
                 lines = Text()
                 endpoints = getattr(func, "_routes", ["/"])  # type: ignore[attr-defined]
 
-                # Auth mode section (ephemeral apps are always public)
-                lines.append("▸ Auth: public ", style="bold")
-                lines.append("(no authentication required)\n\n", style="dim")
+                AUTH_EXPLANATIONS = {
+                    "public": "no authentication required",
+                    "private": "only you/team can access",
+                    "shared": "any authenticated user can access",
+                }
+                auth_desc = AUTH_EXPLANATIONS.get(
+                    effective_auth_mode, effective_auth_mode
+                )
+                lines.append(f"▸ Auth: {effective_auth_mode} ", style="bold")
+                lines.append(f"({auth_desc})\n\n", style="dim")
 
                 # Playground section
                 if URL_OUTPUT != "none":
@@ -756,7 +789,7 @@ class FalServerlessHost(Host):
                     lines.append("▸ Logs\n", style="bold")
                     lines.append(f"  {service_urls.log}", style="cyan")
 
-                title = Text("Ephemeral App (public)", style="bold")
+                title = Text(f"Ephemeral App ({effective_auth_mode})", style="bold")
                 subtitle = Text("Deleted when process exits", style="dim")
                 console.print(Rule(title, style="green"))
                 console.print(lines)
@@ -771,7 +804,15 @@ class FalServerlessHost(Host):
                     continue
                 self._log_printer.print(log)
 
-        return self._run(func, options, args, kwargs, result_handler=result_handler)
+        return self._run(
+            func,
+            options,
+            args,
+            kwargs,
+            result_handler=result_handler,
+            application_name=application_name,
+            application_auth_mode=application_auth_mode,
+        )
 
     def spawn(
         self,
@@ -779,13 +820,17 @@ class FalServerlessHost(Host):
         options: Options,
         args: tuple[Any, ...],
         kwargs: dict[str, Any],
+        application_name: str | None = None,
+        application_auth_mode: AuthModeLiteral | None = None,
     ) -> SpawnInfo:
         ret = SpawnInfo()
 
         def result_handler(partial_result):
             ret.stream = partial_result.stream
+            if service_urls := partial_result.service_urls:
+                ret.url = service_urls.run
             for log in partial_result.logs:
-                if "And API access through" in log.message:
+                if ret._url is None and "And API access through" in log.message:
                     ret.url = log.message.rsplit()[-1].replace("queue.", "")
                 ret.logs.put(log)
 
@@ -796,6 +841,8 @@ class FalServerlessHost(Host):
             args,
             kwargs,
             result_handler=result_handler,
+            application_name=application_name,
+            application_auth_mode=application_auth_mode,
         )
 
         return ret
@@ -819,11 +866,22 @@ class Options:
                 "are supported as environment options."
             )
 
+        parsed = Requirements.from_raw(pip_requirements)
+        existing = {req for layer in parsed.layers for req in layer}
+
         # Already has these.
-        if set(pip_requirements).issuperset(set(requirements)):
+        if existing.issuperset(set(requirements)):
             return None
 
-        pip_requirements.extend(requirements)
+        layered = (
+            pip_requirements
+            and isinstance(pip_requirements, list)
+            and all(isinstance(item, list) for item in pip_requirements)
+        )
+        if layered:
+            pip_requirements.append([*requirements])
+        else:
+            pip_requirements.extend(requirements)
 
     def get_exposed_port(self) -> int | None:
         if self.gateway.get("serve"):
@@ -846,7 +904,7 @@ def function(
     kind: Literal["virtualenv"] = "virtualenv",
     *,
     python_version: str | None = None,
-    requirements: list[str] | None = None,
+    requirements: list[str] | list[list[str]] | None = None,
     # Common options
     host: LocalHost,
     serve: Literal[False] = False,
@@ -864,7 +922,7 @@ def function(
     kind: Literal["virtualenv"] = "virtualenv",
     *,
     python_version: str | None = None,
-    requirements: list[str] | None = None,
+    requirements: list[str] | list[list[str]] | None = None,
     # Common options
     host: LocalHost,
     serve: Literal[True],
@@ -883,7 +941,7 @@ def function(
     kind: Literal["virtualenv"] = "virtualenv",
     *,
     python_version: str | None = None,
-    requirements: list[str] | None = None,
+    requirements: list[str] | list[list[str]] | None = None,
     # Common options
     host: FalServerlessHost | None = None,
     serve: Literal[False] = False,
@@ -917,7 +975,7 @@ def function(
     kind: Literal["virtualenv"] = "virtualenv",
     *,
     python_version: str | None = None,
-    requirements: list[str] | None = None,
+    requirements: list[str] | list[list[str]] | None = None,
     # Common options
     host: FalServerlessHost | None = None,
     serve: Literal[True],
@@ -1148,6 +1206,20 @@ def function(  # type: ignore
     if host is None:
         host = FalServerlessHost()
 
+    if "requirements" in config and config["requirements"] is not None:
+        requirements = config["requirements"]
+        is_str_list = isinstance(requirements, list) and all(
+            isinstance(item, str) for item in requirements
+        )
+        is_str_list_list = isinstance(requirements, list) and all(
+            isinstance(item, list) and all(isinstance(req, str) for req in item)
+            for item in requirements
+        )
+        if not is_str_list and not is_str_list_list:
+            raise ValueError(
+                "requirements must be a list of strings or a list of lists of strings."
+            )
+
     # NOTE: assuming kind="container" if image is provided
     if config.get("image"):
         kind = "container"
@@ -1188,6 +1260,7 @@ def function(  # type: ignore
             host=host,  # type: ignore
             raw_func=func,  # type: ignore
             options=options,
+            app_name=getattr(func, "__name__", None),
         )
         return wraps(func)(proxy)  # type: ignore
 
@@ -1507,6 +1580,8 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
     options: Options
     executor: ThreadPoolExecutor = field(default_factory=ThreadPoolExecutor)
     reraise: bool = True
+    app_name: str | None = None
+    app_auth: AuthModeLiteral | None = None
 
     def __getstate__(self) -> dict[str, Any]:
         # Ensure that the executor is not pickled.
@@ -1530,6 +1605,8 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
             options=self.options,
             args=args,
             kwargs=kwargs,
+            application_name=self.app_name,
+            application_auth_mode=self.app_auth,
         )
         return future
 
@@ -1539,6 +1616,8 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
             self.options,
             args,
             kwargs,
+            application_name=self.app_name,
+            application_auth_mode=self.app_auth,
         )
 
     def __call__(self, *args: ArgsT.args, **kwargs: ArgsT.kwargs) -> ReturnT:
@@ -1548,6 +1627,8 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
                 self.options,
                 args=args,
                 kwargs=kwargs,
+                application_name=self.app_name,
+                application_auth_mode=self.app_auth,
             )
         except FalMissingDependencyError as e:
             pairs = list(find_missing_dependencies(self.func, self.options.environment))

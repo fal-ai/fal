@@ -22,8 +22,8 @@ else:
 
 from pydantic import BaseModel, Field
 
+from fal.ref import get_current_app
 from fal.toolkit.file.providers.fal import (
-    LIFECYCLE_PREFERENCE,
     FalCDNFileRepository,
     FalFileRepository,
     FalFileRepositoryV2,
@@ -66,9 +66,26 @@ OBJECT_LIFECYCLE_PREFERENCE_KEY = "x-fal-object-lifecycle-preference"
 
 @wraps(Field)
 def FileField(*args, **kwargs):
-    ui = kwargs.get("ui", {})
-    ui.setdefault("field", "file")
-    kwargs["ui"] = ui
+    if IS_PYDANTIC_V2:
+        # Pydantic v2: use json_schema_extra
+        json_schema_extra = kwargs.pop("json_schema_extra", None) or {}
+        if callable(json_schema_extra):
+            # If it's a callable, wrap it to also add ui.field
+            original_func = json_schema_extra
+
+            def merged_schema_extra(schema):
+                original_func(schema)
+                schema.setdefault("ui", {}).setdefault("field", "file")
+
+            kwargs["json_schema_extra"] = merged_schema_extra
+        else:
+            json_schema_extra.setdefault("ui", {}).setdefault("field", "file")
+            kwargs["json_schema_extra"] = json_schema_extra
+    else:
+        # Pydantic v1: use ui kwarg (stored in extra)
+        ui = kwargs.get("ui", {})
+        ui.setdefault("field", "file")
+        kwargs["ui"] = ui
     return Field(*args, **kwargs)
 
 
@@ -106,6 +123,13 @@ def _try_with_fallback(
                 f"Failed to {func} to repository {repo}: {exc}, "
                 f"falling back to {attempts[idx + 1][0]}"
             )
+
+
+def _get_object_lifecycle_preference_from_context() -> dict[str, str] | None:
+    current_app = get_current_app()
+    if current_app is None or current_app.current_request is None:
+        return None
+    return current_app.current_request.lifecycle_preference
 
 
 class File(BaseModel):
@@ -205,8 +229,9 @@ class File(BaseModel):
         if request:
             object_lifecycle_preference = request_lifecycle_preference(request)
         else:
-            print("[WARNING] No request provided, using global lifecycle preference")
-            object_lifecycle_preference = LIFECYCLE_PREFERENCE.get()
+            object_lifecycle_preference = (
+                _get_object_lifecycle_preference_from_context()
+            )
 
         save_kwargs.setdefault(
             "object_lifecycle_preference", object_lifecycle_preference
@@ -258,8 +283,9 @@ class File(BaseModel):
         if request:
             object_lifecycle_preference = request_lifecycle_preference(request)
         else:
-            print("[WARNING] No request provided, using global lifecycle preference")
-            object_lifecycle_preference = LIFECYCLE_PREFERENCE.get()
+            object_lifecycle_preference = (
+                _get_object_lifecycle_preference_from_context()
+            )
 
         save_kwargs.setdefault(
             "object_lifecycle_preference", object_lifecycle_preference

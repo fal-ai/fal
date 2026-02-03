@@ -16,7 +16,7 @@ import concurrent.futures
 from contextlib import asynccontextmanager, contextmanager
 from datetime import datetime, timezone
 from dataclasses import dataclass, field
-from functools import cached_property
+from functools import cached_property, partial
 from typing import (
     Any,
     AsyncIterator,
@@ -41,6 +41,7 @@ from fal_client.auth import (
     MissingCredentialsError,
     fetch_auth_credentials,
 )
+from fal_client._version import __version__
 from fal_client._headers import (
     Priority,
     add_priority_header,
@@ -60,13 +61,17 @@ if TYPE_CHECKING:
     from PIL import Image
 
 AnyJSON = Dict[str, Any]
+UploadRepositoryId = Literal["fal_v3", "cdn", "fal"]
 
 RUN_URL_FORMAT = f"https://{FAL_RUN_HOST}/"
 QUEUE_URL_FORMAT = f"https://{FAL_QUEUE_RUN_HOST}/"
 REALTIME_URL_FORMAT = f"wss://{FAL_RUN_HOST}/"
 REST_URL = "https://rest.alpha.fal.ai"
 CDN_URL = "https://v3.fal.media"
-USER_AGENT = "fal-client/0.2.2 (python)"
+FAL_CDN_FALLBACK_URL = os.environ.get("FAL_CDN_HOST", "https://fal.media")
+DEFAULT_UPLOAD_REPOSITORY: UploadRepositoryId = "fal_v3"
+DEFAULT_UPLOAD_FALLBACK_REPOSITORY: list[UploadRepositoryId] = ["cdn", "fal"]
+USER_AGENT = f"fal-client/{__version__} (python)"
 
 MIN_REQUEST_TIMEOUT_SECONDS = 1
 
@@ -699,7 +704,7 @@ def _serialize_max_buffering(value: int | None) -> str | None:
 
 def _build_runner_ws_url(
     application: str,
-    token: str,
+    token: str | None,
     *,
     path: str = "",
     max_buffering: int | None = None,
@@ -709,18 +714,28 @@ def _build_runner_ws_url(
     url = f"{REALTIME_URL_FORMAT}{app_path}"
     if path:
         url += "/" + path.lstrip("/")
-    query: dict[str, str] = {"fal_jwt_token": token}
+    query: dict[str, str] = {}
+    if token:
+        query["fal_jwt_token"] = token
     serialized_buffering = _serialize_max_buffering(max_buffering)
     if serialized_buffering is not None:
         query["max_buffering"] = serialized_buffering
-    return f"{url}?{urlencode(query)}"
+    if query:
+        return f"{url}?{urlencode(query)}"
+    return url
 
 
-def _build_realtime_url(application: str, token: str, max_buffering: int | None) -> str:
+def _build_realtime_url(
+    application: str,
+    token: str | None,
+    max_buffering: int | None,
+    *,
+    path: str = "realtime",
+) -> str:
     return _build_runner_ws_url(
         application,
         token,
-        path="realtime",
+        path=path,
         max_buffering=max_buffering,
     )
 
@@ -815,9 +830,21 @@ class RealtimeConnection:
         payload = _encode_realtime_message(arguments, self._encode_message)
         self._ws.send(payload)
 
-    def recv(self) -> dict[str, Any]:
+    def recv(self) -> dict[str, Any] | None:
         while True:
-            response = self._ws.recv()
+            try:
+                response = self._ws.recv()
+            except Exception as exc:
+                from websockets.exceptions import (
+                    ConnectionClosed,
+                    ConnectionClosedOK,
+                )
+
+                if isinstance(exc, ConnectionClosedOK):
+                    return None
+                if isinstance(exc, ConnectionClosed):
+                    raise RealtimeError("CONNECTION_CLOSED", str(exc)) from exc
+                raise
             decoded = _decode_realtime_message(response, self._decode_message)
             if decoded is None:
                 continue
@@ -847,9 +874,21 @@ class AsyncRealtimeConnection:
         payload = _encode_realtime_message(arguments, self._encode_message)
         await self._ws.send(payload)
 
-    async def recv(self) -> dict[str, Any]:
+    async def recv(self) -> dict[str, Any] | None:
         while True:
-            response = await self._ws.recv()
+            try:
+                response = await self._ws.recv()
+            except Exception as exc:
+                from websockets.exceptions import (
+                    ConnectionClosed,
+                    ConnectionClosedOK,
+                )
+
+                if isinstance(exc, ConnectionClosedOK):
+                    return None
+                if isinstance(exc, ConnectionClosed):
+                    raise RealtimeError("CONNECTION_CLOSED", str(exc)) from exc
+                raise
             decoded = _decode_realtime_message(response, self._decode_message)
             if decoded is None:
                 continue
@@ -868,11 +907,14 @@ class AsyncRealtimeConnection:
 
 
 @contextmanager
-def _connect_sync_ws(url: str) -> Iterator["Connection"]:
+def _connect_sync_ws(
+    url: str, headers: dict[str, str] | None = None
+) -> Iterator["Connection"]:
     from websockets.sync import client
 
     with client.connect(
         url,
+        additional_headers=headers,
         open_timeout=REALTIME_OPEN_TIMEOUT,
         max_size=None,
     ) as ws:
@@ -880,11 +922,14 @@ def _connect_sync_ws(url: str) -> Iterator["Connection"]:
 
 
 @asynccontextmanager
-async def _connect_async_ws(url: str) -> AsyncIterator["WebSocketClientProtocol"]:
+async def _connect_async_ws(
+    url: str, headers: dict[str, str] | None = None
+) -> AsyncIterator["WebSocketClientProtocol"]:
     import websockets
 
     async with websockets.connect(
         url,
+        additional_headers=headers,
         open_timeout=REALTIME_OPEN_TIMEOUT,
         max_size=None,
     ) as ws:
@@ -1038,6 +1083,224 @@ async def _async_maybe_retry_request(
             raise
     # Should be unreachable, added for type checkers
     raise RuntimeError("Failed to perform request")
+
+
+def _cdn_auth_header(auth: AuthCredentials) -> str:
+    if auth.scheme.lower() == "key":
+        return f"Bearer {auth.token}"
+    return auth.header_value
+
+
+def _cdn_upload_headers(
+    auth: AuthCredentials, content_type: str, file_name: str | None
+) -> dict[str, str]:
+    headers = {"Content-Type": content_type, "Authorization": _cdn_auth_header(auth)}
+    if file_name is not None:
+        headers["X-Fal-File-Name"] = file_name
+    return headers
+
+
+def _storage_upload_headers(auth: AuthCredentials) -> dict[str, str]:
+    return {
+        "Authorization": auth.header_value,
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+    }
+
+
+def _normalize_upload_repositories(
+    repository: UploadRepositoryId | None,
+    fallback_repository: UploadRepositoryId | list[UploadRepositoryId] | None,
+) -> list[UploadRepositoryId]:
+    allowed = {"fal_v3", "cdn", "fal"}
+    if repository is None:
+        repository = DEFAULT_UPLOAD_REPOSITORY
+
+    if fallback_repository is None:
+        fallback_repository = DEFAULT_UPLOAD_FALLBACK_REPOSITORY
+    elif not isinstance(fallback_repository, list):
+        fallback_repository = [fallback_repository]
+
+    ordered = [repository, *fallback_repository]
+    deduped: list[UploadRepositoryId] = []
+    for entry in ordered:
+        if entry not in allowed:
+            raise ValueError(f"Unsupported upload repository '{entry}'")
+        if entry not in deduped:
+            deduped.append(entry)
+    return deduped
+
+
+def _storage_upload_payload(file_name: str | None, content_type: str) -> dict[str, str]:
+    return {
+        "file_name": file_name or "upload.bin",
+        "content_type": content_type,
+    }
+
+
+def _upload_via_storage(
+    client: httpx.Client,
+    auth: AuthCredentials,
+    *,
+    data: bytes,
+    content_type: str,
+    file_name: str | None,
+) -> str:
+    init_response = _maybe_retry_request(
+        client,
+        "POST",
+        f"{REST_URL}/storage/upload/initiate?storage_type=gcs",
+        json=_storage_upload_payload(file_name, content_type),
+        headers=_storage_upload_headers(auth),
+    )
+    init_result = init_response.json()
+    upload_url = init_result["upload_url"]
+    file_url = init_result["file_url"]
+    _maybe_retry_request(
+        client,
+        "PUT",
+        upload_url,
+        content=data,
+        headers={"Content-Type": content_type},
+        timeout=None,
+    )
+    return file_url
+
+
+async def _async_upload_via_storage(
+    client: httpx.AsyncClient,
+    auth: AuthCredentials,
+    *,
+    data: bytes,
+    content_type: str,
+    file_name: str | None,
+) -> str:
+    init_response = await _async_maybe_retry_request(
+        client,
+        "POST",
+        f"{REST_URL}/storage/upload/initiate?storage_type=gcs",
+        json=_storage_upload_payload(file_name, content_type),
+        headers=_storage_upload_headers(auth),
+    )
+    init_result = init_response.json()
+    upload_url = init_result["upload_url"]
+    file_url = init_result["file_url"]
+    await _async_maybe_retry_request(
+        client,
+        "PUT",
+        upload_url,
+        content=data,
+        headers={"Content-Type": content_type},
+        timeout=None,
+    )
+    return file_url
+
+
+def _upload_v3(
+    client: httpx.Client,
+    *,
+    data: bytes,
+    headers: dict[str, str],
+) -> str:
+    response = _maybe_retry_request(
+        client,
+        "POST",
+        CDN_URL + "/files/upload",
+        content=data,
+        headers=headers,
+    )
+    return response.json()["access_url"]
+
+
+def _upload_cdn(
+    client: httpx.Client,
+    auth: AuthCredentials,
+    *,
+    data: bytes,
+    content_type: str,
+    file_name: str | None,
+) -> str:
+    response = _maybe_retry_request(
+        client,
+        "POST",
+        FAL_CDN_FALLBACK_URL + "/files/upload",
+        content=data,
+        headers=_cdn_upload_headers(auth, content_type, file_name),
+    )
+    return response.json()["access_url"]
+
+
+async def _async_upload_v3(
+    client: httpx.AsyncClient,
+    *,
+    data: bytes,
+    headers: dict[str, str],
+) -> str:
+    response = await _async_maybe_retry_request(
+        client,
+        "POST",
+        CDN_URL + "/files/upload",
+        content=data,
+        headers=headers,
+    )
+    return response.json()["access_url"]
+
+
+async def _async_upload_cdn(
+    client: httpx.AsyncClient,
+    auth: AuthCredentials,
+    *,
+    data: bytes,
+    content_type: str,
+    file_name: str | None,
+) -> str:
+    response = await _async_maybe_retry_request(
+        client,
+        "POST",
+        FAL_CDN_FALLBACK_URL + "/files/upload",
+        content=data,
+        headers=_cdn_upload_headers(auth, content_type, file_name),
+    )
+    return response.json()["access_url"]
+
+
+def _try_upload_with_fallback(
+    attempts: list[tuple[str, Callable[[], str]]],
+) -> str:
+    for idx, (label, attempt) in enumerate(attempts):
+        try:
+            return attempt()
+        except Exception as exc:
+            if idx >= len(attempts) - 1:
+                raise
+            logger.warning(
+                "Upload failed to %s, falling back to %s: %s",
+                label,
+                attempts[idx + 1][0],
+                exc,
+            )
+    raise RuntimeError("Upload attempts were exhausted")
+
+
+async def _async_try_upload_with_fallback(
+    attempts: list[tuple[str, Callable[[], Any]]],
+) -> str:
+    for idx, (label, attempt) in enumerate(attempts):
+        try:
+            result = attempt()
+            if asyncio.iscoroutine(result):
+                return await result
+            return result
+        except Exception as exc:
+            if idx >= len(attempts) - 1:
+                raise
+            logger.warning(
+                "Upload failed to %s, falling back to %s: %s",
+                label,
+                attempts[idx + 1][0],
+                exc,
+            )
+    raise RuntimeError("Upload attempts were exhausted")
 
 
 def _maybe_cancel_request(handle: SyncRequestHandle) -> None:
@@ -1498,19 +1761,31 @@ class AsyncClient:
                 yield event.json()
 
     async def upload(
-        self, data: str | bytes, content_type: str, file_name: str | None = None
+        self,
+        data: str | bytes,
+        content_type: str,
+        file_name: str | None = None,
+        *,
+        repository: UploadRepositoryId | None = None,
+        fallback_repository: UploadRepositoryId
+        | list[UploadRepositoryId]
+        | None = None,
     ) -> str:
         """Upload the given data blob to the CDN and return the access URL. The content type should be specified
         as the second argument. Use upload_file or upload_image for convenience."""
 
-        client = await self._get_cdn_client()
+        auth = self._get_auth()
 
         if isinstance(data, str):
             data = data.encode("utf-8")
 
-        if len(data) > MULTIPART_THRESHOLD:
+        repository_chain = _normalize_upload_repositories(
+            repository, fallback_repository
+        )
+        if len(data) > MULTIPART_THRESHOLD and repository_chain[0] == "fal_v3":
             if file_name is None:
                 file_name = "upload.bin"
+            client = await self._get_cdn_client()
             return await AsyncMultipartUpload.save(
                 client=client,
                 token_manager=self._token_manager,
@@ -1523,23 +1798,69 @@ class AsyncClient:
         if file_name is not None:
             headers["X-Fal-File-Name"] = file_name
 
-        response = await client.post(
-            CDN_URL + "/files/upload",
-            content=data,
-            headers=headers,
-        )
-        _raise_for_status(response)
+        attempts: list[tuple[str, Callable[[], Any]]] = []
+        for repo in repository_chain:
+            if repo == "fal_v3":
+                client = await self._get_cdn_client()
+                attempts.append(
+                    (
+                        "fal_v3",
+                        partial(_async_upload_v3, client, data=data, headers=headers),
+                    )
+                )
+            elif repo == "cdn":
+                attempts.append(
+                    (
+                        "cdn",
+                        partial(
+                            _async_upload_cdn,
+                            self._client,
+                            auth,
+                            data=data,
+                            content_type=content_type,
+                            file_name=file_name,
+                        ),
+                    )
+                )
+            elif repo == "fal":
+                attempts.append(
+                    (
+                        "fal",
+                        partial(
+                            _async_upload_via_storage,
+                            self._client,
+                            auth,
+                            data=data,
+                            content_type=content_type,
+                            file_name=file_name,
+                        ),
+                    )
+                )
 
-        return response.json()["access_url"]
+        return await _async_try_upload_with_fallback(attempts)
 
-    async def upload_file(self, path: os.PathLike) -> str:
+    async def upload_file(
+        self,
+        path: os.PathLike,
+        *,
+        repository: UploadRepositoryId | None = None,
+        fallback_repository: UploadRepositoryId
+        | list[UploadRepositoryId]
+        | None = None,
+    ) -> str:
         """Upload a file from the local filesystem to the CDN and return the access URL."""
 
         mime_type, _ = mimetypes.guess_type(path)
         if mime_type is None:
             mime_type = "application/octet-stream"
 
-        if os.path.getsize(path) > MULTIPART_THRESHOLD:
+        repository_chain = _normalize_upload_repositories(
+            repository, fallback_repository
+        )
+        if (
+            os.path.getsize(path) > MULTIPART_THRESHOLD
+            and repository_chain[0] == "fal_v3"
+        ):
             client = await self._get_cdn_client()
             return await AsyncMultipartUpload.save_file(
                 file_path=str(path),
@@ -1550,31 +1871,58 @@ class AsyncClient:
 
         with open(path, "rb") as file:
             return await self.upload(
-                file.read(), mime_type, file_name=os.path.basename(path)
+                file.read(),
+                mime_type,
+                file_name=os.path.basename(path),
+                repository=repository,
+                fallback_repository=fallback_repository,
             )
 
-    async def upload_image(self, image: Image.Image, format: str = "jpeg") -> str:
+    async def upload_image(
+        self,
+        image: Image.Image,
+        format: str = "jpeg",
+        *,
+        repository: UploadRepositoryId | None = None,
+        fallback_repository: UploadRepositoryId
+        | list[UploadRepositoryId]
+        | None = None,
+    ) -> str:
         """Upload a pillow image object to the CDN and return the access URL."""
 
         with io.BytesIO() as buffer:
             image.save(buffer, format=format)
-            return await self.upload(buffer.getvalue(), f"image/{format}")
+            return await self.upload(
+                buffer.getvalue(),
+                f"image/{format}",
+                repository=repository,
+                fallback_repository=fallback_repository,
+            )
 
     @asynccontextmanager
     async def realtime(
         self,
         application: str,
         *,
+        use_jwt: bool = True,
+        path: str = "/realtime",
         max_buffering: int | None = None,
         token_expiration: int = REALTIME_TOKEN_EXPIRATION_SECONDS,
         encode_message: Callable[[Any], bytes] | None = None,
         decode_message: Callable[[bytes], Any] | None = None,
     ) -> AsyncIterator[AsyncRealtimeConnection]:
-        token = await self._get_realtime_token(
-            application, token_expiration=token_expiration
-        )
-        url = _build_realtime_url(application, token, max_buffering)
-        async with _connect_async_ws(url) as ws:
+        headers: dict[str, str] | None = None
+        token: str | None = None
+        if use_jwt:
+            token = await self._get_realtime_token(
+                application, token_expiration=token_expiration
+            )
+        else:
+            auth = self._get_auth()
+            headers = {"Authorization": auth.header_value, "User-Agent": USER_AGENT}
+
+        url = _build_realtime_url(application, token, max_buffering, path=path)
+        async with _connect_async_ws(url, headers=headers) as ws:
             yield AsyncRealtimeConnection(
                 ws, _encode_message=encode_message, _decode_message=decode_message
             )
@@ -1584,20 +1932,28 @@ class AsyncClient:
         self,
         application: str,
         *,
+        use_jwt: bool = True,
         path: str = "",
         max_buffering: int | None = None,
         token_expiration: int = REALTIME_TOKEN_EXPIRATION_SECONDS,
     ) -> AsyncIterator["WebSocketClientProtocol"]:
-        token = await self._get_realtime_token(
-            application, token_expiration=token_expiration
-        )
+        headers: dict[str, str] | None = None
+        token: str | None = None
+        if use_jwt:
+            token = await self._get_realtime_token(
+                application, token_expiration=token_expiration
+            )
+        else:
+            auth = self._get_auth()
+            headers = {"Authorization": auth.header_value, "User-Agent": USER_AGENT}
+
         url = _build_runner_ws_url(
             application,
             token,
             path=path,
             max_buffering=max_buffering,
         )
-        async with _connect_async_ws(url) as ws:
+        async with _connect_async_ws(url, headers=headers) as ws:
             yield ws
 
 
@@ -1890,19 +2246,31 @@ class SyncClient:
                 yield event.json()
 
     def upload(
-        self, data: str | bytes, content_type: str, file_name: str | None = None
+        self,
+        data: str | bytes,
+        content_type: str,
+        file_name: str | None = None,
+        *,
+        repository: UploadRepositoryId | None = None,
+        fallback_repository: UploadRepositoryId
+        | list[UploadRepositoryId]
+        | None = None,
     ) -> str:
         """Upload the given data blob to the CDN and return the access URL. The content type should be specified
         as the second argument. Use upload_file or upload_image for convenience."""
 
-        client = self._get_cdn_client()
+        auth = self._get_auth()
 
         if isinstance(data, str):
             data = data.encode("utf-8")
 
-        if len(data) > MULTIPART_THRESHOLD:
+        repository_chain = _normalize_upload_repositories(
+            repository, fallback_repository
+        )
+        if len(data) > MULTIPART_THRESHOLD and repository_chain[0] == "fal_v3":
             if file_name is None:
                 file_name = "upload.bin"
+            client = self._get_cdn_client()
             return MultipartUpload.save(
                 client=client,
                 token_manager=self._token_manager,
@@ -1915,23 +2283,69 @@ class SyncClient:
         if file_name is not None:
             headers["X-Fal-File-Name"] = file_name
 
-        response = client.post(
-            CDN_URL + "/files/upload",
-            content=data,
-            headers=headers,
-        )
-        _raise_for_status(response)
+        attempts: list[tuple[str, Callable[[], str]]] = []
+        for repo in repository_chain:
+            if repo == "fal_v3":
+                client = self._get_cdn_client()
+                attempts.append(
+                    (
+                        "fal_v3",
+                        partial(_upload_v3, client, data=data, headers=headers),
+                    )
+                )
+            elif repo == "cdn":
+                attempts.append(
+                    (
+                        "cdn",
+                        partial(
+                            _upload_cdn,
+                            self._client,
+                            auth,
+                            data=data,
+                            content_type=content_type,
+                            file_name=file_name,
+                        ),
+                    )
+                )
+            elif repo == "fal":
+                attempts.append(
+                    (
+                        "fal",
+                        partial(
+                            _upload_via_storage,
+                            self._client,
+                            auth,
+                            data=data,
+                            content_type=content_type,
+                            file_name=file_name,
+                        ),
+                    )
+                )
 
-        return response.json()["access_url"]
+        return _try_upload_with_fallback(attempts)
 
-    def upload_file(self, path: os.PathLike) -> str:
+    def upload_file(
+        self,
+        path: os.PathLike,
+        *,
+        repository: UploadRepositoryId | None = None,
+        fallback_repository: UploadRepositoryId
+        | list[UploadRepositoryId]
+        | None = None,
+    ) -> str:
         """Upload a file from the local filesystem to the CDN and return the access URL."""
 
         mime_type, _ = mimetypes.guess_type(path)
         if mime_type is None:
             mime_type = "application/octet-stream"
 
-        if os.path.getsize(path) > MULTIPART_THRESHOLD:
+        repository_chain = _normalize_upload_repositories(
+            repository, fallback_repository
+        )
+        if (
+            os.path.getsize(path) > MULTIPART_THRESHOLD
+            and repository_chain[0] == "fal_v3"
+        ):
             client = self._get_cdn_client()
             return MultipartUpload.save_file(
                 file_path=str(path),
@@ -1941,28 +2355,59 @@ class SyncClient:
             )
 
         with open(path, "rb") as file:
-            return self.upload(file.read(), mime_type, file_name=os.path.basename(path))
+            return self.upload(
+                file.read(),
+                mime_type,
+                file_name=os.path.basename(path),
+                repository=repository,
+                fallback_repository=fallback_repository,
+            )
 
-    def upload_image(self, image: Image.Image, format: str = "jpeg") -> str:
+    def upload_image(
+        self,
+        image: Image.Image,
+        format: str = "jpeg",
+        *,
+        repository: UploadRepositoryId | None = None,
+        fallback_repository: UploadRepositoryId
+        | list[UploadRepositoryId]
+        | None = None,
+    ) -> str:
         """Upload a pillow image object to the CDN and return the access URL."""
 
         with io.BytesIO() as buffer:
             image.save(buffer, format=format)
-            return self.upload(buffer.getvalue(), f"image/{format}")
+            return self.upload(
+                buffer.getvalue(),
+                f"image/{format}",
+                repository=repository,
+                fallback_repository=fallback_repository,
+            )
 
     @contextmanager
     def realtime(
         self,
         application: str,
         *,
+        use_jwt: bool = True,
+        path: str = "/realtime",
         max_buffering: int | None = None,
         token_expiration: int = REALTIME_TOKEN_EXPIRATION_SECONDS,
         encode_message: Callable[[Any], bytes] | None = None,
         decode_message: Callable[[bytes], Any] | None = None,
     ) -> Iterator[RealtimeConnection]:
-        token = self._get_realtime_token(application, token_expiration=token_expiration)
-        url = _build_realtime_url(application, token, max_buffering)
-        with _connect_sync_ws(url) as ws:
+        headers: dict[str, str] | None = None
+        token: str | None = None
+        if use_jwt:
+            token = self._get_realtime_token(
+                application, token_expiration=token_expiration
+            )
+        else:
+            auth = self._get_auth()
+            headers = {"Authorization": auth.header_value, "User-Agent": USER_AGENT}
+
+        url = _build_realtime_url(application, token, max_buffering, path=path)
+        with _connect_sync_ws(url, headers=headers) as ws:
             yield RealtimeConnection(
                 ws, _encode_message=encode_message, _decode_message=decode_message
             )
@@ -1972,18 +2417,28 @@ class SyncClient:
         self,
         application: str,
         *,
+        use_jwt: bool = True,
         path: str = "",
         max_buffering: int | None = None,
         token_expiration: int = REALTIME_TOKEN_EXPIRATION_SECONDS,
     ) -> Iterator["Connection"]:
-        token = self._get_realtime_token(application, token_expiration=token_expiration)
+        headers: dict[str, str] | None = None
+        token: str | None = None
+        if use_jwt:
+            token = self._get_realtime_token(
+                application, token_expiration=token_expiration
+            )
+        else:
+            auth = self._get_auth()
+            headers = {"Authorization": auth.header_value, "User-Agent": USER_AGENT}
+
         url = _build_runner_ws_url(
             application,
             token,
             path=path,
             max_buffering=max_buffering,
         )
-        with _connect_sync_ws(url) as ws:
+        with _connect_sync_ws(url, headers=headers) as ws:
             yield ws
 
 

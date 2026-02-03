@@ -16,6 +16,7 @@ from fal.toolkit.file import CompressedFile, File, FileField
 from fal.toolkit.image.image import Image, ImageField, ImageSizeInput, get_image_size
 from fal.toolkit.kv import KVStore
 from fal.toolkit.optimize import optimize
+from fal.toolkit.pydantic import FalBaseModel, Field, Hidden
 from fal.toolkit.utils import (
     FAL_MODEL_WEIGHTS_DIR,
     FAL_PERSISTENT_DIR,
@@ -32,6 +33,7 @@ __all__ = [
     "Audio",
     "AudioField",
     "CompressedFile",
+    "FalBaseModel",
     "File",
     "FileField",
     "Image",
@@ -40,6 +42,9 @@ __all__ = [
     "KVStore",
     "Video",
     "VideoField",
+    # Pydantic utilities
+    "Field",
+    "Hidden",
     # Functions
     "get_image_size",
     "optimize",
