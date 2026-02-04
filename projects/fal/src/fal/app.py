@@ -927,8 +927,8 @@ class App(BaseServable):
     def _add_extra_routes(self, app: fastapi.FastAPI):
         # TODO remove this once we have a proper health check endpoint
         @app.get("/health")
-        def health():
-            return self.health()
+        async def health():
+            return await _call_any_fn(self.health)
 
     def provide_hints(self) -> list[str]:
         """Provide hints for routing the application."""
