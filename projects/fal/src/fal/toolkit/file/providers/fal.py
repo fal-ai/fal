@@ -206,6 +206,14 @@ class VariableReference(Generic[VariableType]):
         self.value = value
 
 
+# Backwards compatibility: LIFECYCLE_PREFERENCE was removed in favor of
+# contextvar-based request context in fal.app.App. This global variable
+# is preserved for external packages that still import it (e.g., serverless-comfy).
+# New code should use the request context pattern instead.
+# See: fal.app.App.current_request.lifecycle_preference
+LIFECYCLE_PREFERENCE: VariableReference[dict[str, str] | None] = VariableReference(None)
+
+
 @dataclass
 class FalFileRepositoryBase(FileRepository):
     def _save(
