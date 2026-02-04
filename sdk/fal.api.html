@@ -95,9 +95,15 @@ Attach needed metadata for a better integration to fal.</p>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="fal.api.api.FalFastAPI">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.api.api.</span></span><span class="sig-name descname"><span class="pre">FalFastAPI</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">debug=False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">routes=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">title='FastAPI'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">summary=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">description=''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">version='0.1.0'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">openapi_url='/openapi.json'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">openapi_tags=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">servers=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dependencies=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">default_response_class=&lt;fastapi.datastructures.DefaultPlaceholder</span> <span class="pre">object&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">redirect_slashes=True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">docs_url='/docs'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">redoc_url='/redoc'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">swagger_ui_oauth2_redirect_url='/docs/oauth2-redirect'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">swagger_ui_init_oauth=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">middleware=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exception_handlers=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">on_startup=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">on_shutdown=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lifespan=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">terms_of_service=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">contact=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">license_info=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">openapi_prefix=''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">root_path=''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">root_path_in_servers=True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">responses=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">callbacks=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">webhooks=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">deprecated=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">include_in_schema=True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">swagger_ui_parameters=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">generate_unique_id_function=&lt;fastapi.datastructures.DefaultPlaceholder</span> <span class="pre">object&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">separate_input_output_schemas=True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">openapi_external_docs=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">**extra</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.api.FalFastAPI" title="Link to this definition">¶</a></dt>
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.api.api.</span></span><span class="sig-name descname"><span class="pre">FalFastAPI</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.api.FalFastAPI" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">FastAPI</span></code></p>
 <p>A subclass of FastAPI that adds some fal-specific functionality.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.api.FalFastAPI.add_websocket_route_with_metadata">
+<span class="sig-name descname"><span class="pre">add_websocket_route_with_metadata</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">signature</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">endpoint</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.api.FalFastAPI.add_websocket_route_with_metadata" title="Link to this definition">¶</a></dt>
+<dd><p>Add websocket route and store metadata for OpenAPI injection.</p>
+</dd></dl>
+
 <dl class="py method">
 <dt class="sig sig-object py" id="fal.api.api.FalFastAPI.openapi">
 <span class="sig-name descname"><span class="pre">openapi</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.api.FalFastAPI.openapi" title="Link to this definition">¶</a></dt>
@@ -402,30 +408,36 @@ environment options.</p>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="fal.api.api.RouteSignature">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.api.api.</span></span><span class="sig-name descname"><span class="pre">RouteSignature</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">is_websocket</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">health_check</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">input_modal</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">buffering</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">session_timeout</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_batch_size</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">emit_timings</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">encode_message</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">decode_message</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.api.RouteSignature" title="Link to this definition">¶</a></dt>
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.api.api.</span></span><span class="sig-name descname"><span class="pre">RouteSignature</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">is_websocket</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">health_check</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">input_modal</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_modal</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">realtime_mode</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">content_type</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">buffering</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">session_timeout</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_batch_size</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">emit_timings</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">encode_message</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">decode_message</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.api.RouteSignature" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">NamedTuple</span></code></p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="fal.api.api.RouteSignature.buffering">
 <span class="sig-name descname"><span class="pre">buffering</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code> <span class="pre">|</span> <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></em><a class="headerlink" href="#fal.api.api.RouteSignature.buffering" title="Link to this definition">¶</a></dt>
-<dd><p>Alias for field number 4</p>
+<dd><p>Alias for field number 7</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.api.api.RouteSignature.content_type">
+<span class="sig-name descname"><span class="pre">content_type</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code> <span class="pre">|</span> <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></em><a class="headerlink" href="#fal.api.api.RouteSignature.content_type" title="Link to this definition">¶</a></dt>
+<dd><p>Alias for field number 6</p>
 </dd></dl>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="fal.api.api.RouteSignature.decode_message">
 <span class="sig-name descname"><span class="pre">decode_message</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-data docutils literal notranslate"><span class="pre">Callable</span></code><span class="pre">[[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">bytes</span></code><span class="pre">],</span> <code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code><span class="pre">]]</span></em><a class="headerlink" href="#fal.api.api.RouteSignature.decode_message" title="Link to this definition">¶</a></dt>
-<dd><p>Alias for field number 9</p>
+<dd><p>Alias for field number 12</p>
 </dd></dl>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="fal.api.api.RouteSignature.emit_timings">
 <span class="sig-name descname"><span class="pre">emit_timings</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></em><a class="headerlink" href="#fal.api.api.RouteSignature.emit_timings" title="Link to this definition">¶</a></dt>
-<dd><p>Alias for field number 7</p>
+<dd><p>Alias for field number 10</p>
 </dd></dl>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="fal.api.api.RouteSignature.encode_message">
 <span class="sig-name descname"><span class="pre">encode_message</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-data docutils literal notranslate"><span class="pre">Callable</span></code><span class="pre">[[</span><code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code><span class="pre">],</span> <code class="xref py py-class docutils literal notranslate"><span class="pre">bytes</span></code><span class="pre">]]</span></em><a class="headerlink" href="#fal.api.api.RouteSignature.encode_message" title="Link to this definition">¶</a></dt>
-<dd><p>Alias for field number 8</p>
+<dd><p>Alias for field number 11</p>
 </dd></dl>
 
 <dl class="py attribute">
@@ -449,7 +461,13 @@ environment options.</p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="fal.api.api.RouteSignature.max_batch_size">
 <span class="sig-name descname"><span class="pre">max_batch_size</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></em><a class="headerlink" href="#fal.api.api.RouteSignature.max_batch_size" title="Link to this definition">¶</a></dt>
-<dd><p>Alias for field number 6</p>
+<dd><p>Alias for field number 9</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.api.api.RouteSignature.output_modal">
+<span class="sig-name descname"><span class="pre">output_modal</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">type</span></code> <span class="pre">|</span> <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></em><a class="headerlink" href="#fal.api.api.RouteSignature.output_modal" title="Link to this definition">¶</a></dt>
+<dd><p>Alias for field number 4</p>
 </dd></dl>
 
 <dl class="py attribute">
@@ -459,9 +477,15 @@ environment options.</p>
 </dd></dl>
 
 <dl class="py attribute">
+<dt class="sig sig-object py" id="fal.api.api.RouteSignature.realtime_mode">
+<span class="sig-name descname"><span class="pre">realtime_mode</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code> <span class="pre">|</span> <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></em><a class="headerlink" href="#fal.api.api.RouteSignature.realtime_mode" title="Link to this definition">¶</a></dt>
+<dd><p>Alias for field number 5</p>
+</dd></dl>
+
+<dl class="py attribute">
 <dt class="sig sig-object py" id="fal.api.api.RouteSignature.session_timeout">
 <span class="sig-name descname"><span class="pre">session_timeout</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code> <span class="pre">|</span> <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></em><a class="headerlink" href="#fal.api.api.RouteSignature.session_timeout" title="Link to this definition">¶</a></dt>
-<dd><p>Alias for field number 5</p>
+<dd><p>Alias for field number 8</p>
 </dd></dl>
 
 </dd></dl>
