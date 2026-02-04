@@ -334,3 +334,22 @@ def test_app_is_picklable_with_request_context():
     loaded = pickle.loads(payload)
 
     assert loaded._current_request_context is None
+
+
+def test_health_route_supports_async_health():
+    import fastapi
+    from fastapi.testclient import TestClient
+
+    class AsyncHealthApp(App):
+        async def health(self):
+            return {"status": "ok"}
+
+    app = AsyncHealthApp(_allow_init=True)
+    fastapi_app = fastapi.FastAPI()
+    app._add_extra_routes(fastapi_app)
+
+    client = TestClient(fastapi_app)
+    response = client.get("/health")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
