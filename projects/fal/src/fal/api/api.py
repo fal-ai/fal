@@ -1300,104 +1300,166 @@ class FalFastAPI(FastAPI):
         self._inject_websocket_endpoints(spec)
         return spec
 
-    def _inject_websocket_endpoints(self, spec: dict[str, Any]):
-        """Inject WebSocket endpoint metadata using x-fal-websocket extension."""
-        from pydantic import TypeAdapter
+    def _ensure_components_schemas(self, spec: dict[str, Any]) -> dict[str, Any]:
+        if "components" not in spec:
+            spec["components"] = {}
+        if "schemas" not in spec["components"]:
+            spec["components"]["schemas"] = {}
+        return spec["components"]["schemas"]
 
+    def _ensure_path_item(self, spec: dict[str, Any], path: str) -> dict[str, Any]:
+        if "paths" not in spec:
+            spec["paths"] = {}
+        if path not in spec["paths"]:
+            spec["paths"][path] = {}
+        return spec["paths"][path]
+
+    def _register_model_schema(
+        self, schemas: dict[str, Any], model: type | None
+    ) -> str | None:
+        if model is None:
+            return None
+        from fal.toolkit.pydantic import IS_PYDANTIC_V2
+
+        schema_name = model.__name__
+        if IS_PYDANTIC_V2:
+            from pydantic import TypeAdapter  # type: ignore
+
+            adapter = TypeAdapter(model)
+            schema = adapter.json_schema(ref_template="#/components/schemas/{model}")
+        else:
+            from pydantic.schema import schema as pydantic_schema
+
+            schema = pydantic_schema([model], ref_prefix="#/components/schemas/")
+            schema = schema.get("definitions", {}).get(schema_name, schema)
+
+        if "$defs" in schema:
+            for def_name, def_schema in schema["$defs"].items():
+                schemas[def_name] = def_schema
+            del schema["$defs"]
+
+        schemas[schema_name] = schema
+        return schema_name
+
+    def _is_realtime_signature(self, signature: RouteSignature) -> bool:
+        return any(
+            [
+                signature.input_modal is not None,
+                signature.output_modal is not None,
+                signature.realtime_mode is not None,
+                signature.buffering is not None,
+                signature.session_timeout is not None,
+                signature.max_batch_size != 1,
+                signature.encode_message is not None,
+                signature.decode_message is not None,
+            ]
+        )
+
+    def _build_protocol_operation(
+        self,
+        signature: RouteSignature,
+        display_endpoint: Callable[..., Any],
+        input_schema_name: str | None,
+        output_schema_name: str | None,
+    ) -> dict[str, Any]:
+        operation: dict[str, Any] = {
+            "type": "realtime"
+            if self._is_realtime_signature(signature)
+            else "websocket",
+            "operationId": display_endpoint.__name__,
+            "config": {
+                "buffering": signature.buffering,
+                "sessionTimeout": signature.session_timeout,
+                "maxBatchSize": signature.max_batch_size,
+            },
+        }
+        if signature.content_type is not None:
+            operation["contentType"] = signature.content_type
+        if signature.realtime_mode is not None:
+            operation["realtimeMode"] = signature.realtime_mode
+        return operation
+
+    def _build_protocol_mirror_post(
+        self,
+        signature: RouteSignature,
+        display_endpoint: Callable[..., Any],
+        input_schema_name: str | None,
+        output_schema_name: str | None,
+    ) -> dict[str, Any]:
+        endpoint_label = (
+            "Realtime endpoint"
+            if self._is_realtime_signature(signature)
+            else "WebSocket endpoint"
+        )
+        operation: dict[str, Any] = {
+            "operationId": f"{display_endpoint.__name__}_post",
+            "summary": f"{endpoint_label}: {display_endpoint.__name__}",
+            "description": display_endpoint.__doc__ or "",
+        }
+        if input_schema_name:
+            operation["requestBody"] = {
+                "content": {
+                    "application/json": {
+                        "schema": {"$ref": f"#/components/schemas/{input_schema_name}"}
+                    }
+                }
+            }
+        if output_schema_name:
+            operation["responses"] = {
+                "200": {
+                    "description": "WebSocket message response",
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": f"#/components/schemas/{output_schema_name}"
+                            }
+                        }
+                    },
+                }
+            }
+        else:
+            operation["responses"] = {
+                "204": {"description": "WebSocket message response"}
+            }
+        return operation
+
+    def _inject_websocket_endpoints(self, spec: dict[str, Any]):
+        """Inject WebSocket endpoint metadata using x-fal-protocol extension."""
         for signature, endpoint in self._websocket_routes:
             path = signature.path
 
-            # Ensure components/schemas exists
-            if "components" not in spec:
-                spec["components"] = {}
-            if "schemas" not in spec["components"]:
-                spec["components"]["schemas"] = {}
+            schemas = self._ensure_components_schemas(spec)
+            input_schema_name = self._register_model_schema(
+                schemas, signature.input_modal
+            )
+            output_schema_name = self._register_model_schema(
+                schemas, signature.output_modal
+            )
+            path_item = self._ensure_path_item(spec, path)
+            display_endpoint = getattr(endpoint, "original_func", endpoint)
+            path_item["x-fal-protocol"] = self._build_protocol_operation(
+                signature,
+                display_endpoint,
+                input_schema_name,
+                output_schema_name,
+            )
 
-            input_schema_name = None
-            output_schema_name = None
-
-            # Generate JSON schema for input type
-            if signature.input_modal:
-                input_schema_name = signature.input_modal.__name__
-                adapter = TypeAdapter(signature.input_modal)
-                input_schema = adapter.json_schema(
-                    ref_template="#/components/schemas/{model}"
+            if "post" not in path_item and (input_schema_name or output_schema_name):
+                path_item["post"] = self._build_protocol_mirror_post(
+                    signature,
+                    display_endpoint,
+                    input_schema_name,
+                    output_schema_name,
                 )
-
-                # Handle $defs - move nested schemas to components/schemas
-                if "$defs" in input_schema:
-                    for def_name, def_schema in input_schema["$defs"].items():
-                        spec["components"]["schemas"][def_name] = def_schema
-                    del input_schema["$defs"]
-
-                spec["components"]["schemas"][input_schema_name] = input_schema
-
-            # Generate JSON schema for output type
-            if signature.output_modal:
-                output_schema_name = signature.output_modal.__name__
-                adapter = TypeAdapter(signature.output_modal)
-                output_schema = adapter.json_schema(
-                    ref_template="#/components/schemas/{model}"
-                )
-
-                # Handle $defs - move nested schemas to components/schemas
-                if "$defs" in output_schema:
-                    for def_name, def_schema in output_schema["$defs"].items():
-                        spec["components"]["schemas"][def_name] = def_schema
-                    del output_schema["$defs"]
-
-                spec["components"]["schemas"][output_schema_name] = output_schema
-
-            # Ensure paths exists
-            if "paths" not in spec:
-                spec["paths"] = {}
-            if path not in spec["paths"]:
-                spec["paths"][path] = {}
-
-            # Build the x-fal-websocket operation
-            ws_operation: dict[str, Any] = {
-                "operationId": endpoint.__name__,
-                "summary": f"WebSocket endpoint: {endpoint.__name__}",
-                "description": endpoint.__doc__ or "",
-                "x-fal-websocket-config": {
-                    "buffering": signature.buffering,
-                    "sessionTimeout": signature.session_timeout,
-                    "maxBatchSize": signature.max_batch_size,
-                },
-            }
-
-            if input_schema_name:
-                ws_operation["requestBody"] = {
-                    "content": {
-                        "application/msgpack": {
-                            "schema": {
-                                "$ref": f"#/components/schemas/{input_schema_name}"
-                            }
-                        }
-                    }
-                }
-
-            if output_schema_name:
-                ws_operation["responses"] = {
-                    "200": {
-                        "description": "WebSocket message response",
-                        "content": {
-                            "application/msgpack": {
-                                "schema": {
-                                    "$ref": f"#/components/schemas/{output_schema_name}"
-                                }
-                            }
-                        },
-                    }
-                }
-
-            spec["paths"][path]["x-fal-websocket"] = ws_operation
 
         # Update x-fal-order-paths to include websocket paths
         if self._websocket_routes:
             ws_paths = [sig.path for sig, _ in self._websocket_routes]
-            existing_order = spec.get("x-fal-order-paths", [])
-            spec["x-fal-order-paths"] = existing_order + ws_paths
+            existing_order = list(spec.get("x-fal-order-paths", []))
+            for path in ws_paths:
+                if path not in existing_order:
+                    existing_order.append(path)
+            spec["x-fal-order-paths"] = existing_order
 
     def _mark_order_openapi(self, spec: dict[str, Any]):
         """
@@ -1435,6 +1497,8 @@ class RouteSignature(NamedTuple):
     health_check: HealthCheck | None = None
     input_modal: type | None = None
     output_modal: type | None = None
+    realtime_mode: str | None = None
+    content_type: str | None = None
     buffering: int | None = None
     session_timeout: float | None = None
     max_batch_size: int = 1

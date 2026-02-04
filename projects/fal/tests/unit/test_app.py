@@ -3,8 +3,11 @@ from __future__ import annotations
 import os
 import pickle
 from contextvars import ContextVar
+from typing import AsyncIterator, Iterator
 
 import pytest
+from fastapi import WebSocket
+from pydantic import BaseModel
 
 import fal
 from fal import App, endpoint
@@ -13,6 +16,53 @@ from fal.container import ContainerImage
 
 class PickleApp(App):
     pass
+
+
+class InputModel(BaseModel):
+    prompt: str
+
+
+class OutputModel(BaseModel):
+    result: str
+
+
+class RealtimeApp(fal.App):
+    @fal.realtime("/realtime", buffering=2, session_timeout=1.5, max_batch_size=3)
+    def generate(self, input: InputModel) -> OutputModel:
+        return OutputModel(result=input.prompt)
+
+    @fal.realtime("/realtime/server-streaming")
+    async def generate_rt_server_streaming(
+        self, input: InputModel
+    ) -> AsyncIterator[OutputModel]:
+        yield OutputModel(result=input.prompt)
+
+    @fal.realtime("/realtime/server-streaming-sync")
+    def generate_rt_server_streaming_sync(
+        self, input: InputModel
+    ) -> Iterator[OutputModel]:
+        yield OutputModel(result=input.prompt)
+
+    @fal.realtime("/realtime/client-streaming")
+    async def generate_rt_client_streaming(
+        self, inputs: AsyncIterator[InputModel]
+    ) -> OutputModel:
+        return OutputModel(result="ok")
+
+    @fal.realtime("/realtime/bidi")
+    async def generate_rt_bidi(
+        self, inputs: AsyncIterator[InputModel]
+    ) -> AsyncIterator[OutputModel]:
+        async for item in inputs:
+            yield OutputModel(result=item.prompt)
+
+    @fal.realtime("/realtime/json", content_type="application/json")
+    def generate_rt_json(self, input: InputModel) -> OutputModel:
+        return OutputModel(result=input.prompt)
+
+    @fal.endpoint("/ws", is_websocket=True)
+    async def generate_ws(self, websocket: WebSocket) -> None:
+        await websocket.close()
 
 
 def test_app_regions_propagate_to_function_options():
@@ -353,3 +403,114 @@ def test_health_route_supports_async_health():
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+def test_openapi_websocket_realtime_metadata_and_schemas():
+    app = RealtimeApp(_allow_init=True)
+    spec = app.openapi()
+    ws_spec = spec["paths"]["/realtime"]["x-fal-protocol"]
+
+    assert ws_spec["type"] == "realtime"
+    assert ws_spec["realtimeMode"] == "unary"
+    assert ws_spec["contentType"] == "application/msgpack"
+    assert ws_spec["config"] == {
+        "buffering": 2,
+        "sessionTimeout": 1.5,
+        "maxBatchSize": 3,
+    }
+    assert "requestBody" not in ws_spec
+    assert "responses" not in ws_spec
+    assert "InputModel" in spec["components"]["schemas"]
+    assert "OutputModel" in spec["components"]["schemas"]
+    assert (
+        spec["paths"]["/realtime"]["post"]["requestBody"]["content"][
+            "application/json"
+        ]["schema"]["$ref"]
+        == "#/components/schemas/InputModel"
+    )
+    assert (
+        spec["paths"]["/realtime"]["post"]["responses"]["200"]["content"][
+            "application/json"
+        ]["schema"]["$ref"]
+        == "#/components/schemas/OutputModel"
+    )
+
+
+def test_openapi_websocket_barebones_has_no_realtime_marker():
+    app = RealtimeApp(_allow_init=True)
+    spec = app.openapi()
+    ws_spec = spec["paths"]["/ws"]["x-fal-protocol"]
+
+    assert ws_spec["type"] == "websocket"
+    assert "realtimeMode" not in ws_spec
+    assert "contentType" not in ws_spec
+    assert "requestBody" not in ws_spec
+    assert "responses" not in ws_spec
+    assert "post" not in spec["paths"]["/ws"]
+
+
+def test_openapi_websocket_realtime_streaming_modes_marked():
+    app = RealtimeApp(_allow_init=True)
+    spec = app.openapi()
+
+    assert spec["paths"]["/realtime/json"]["x-fal-protocol"]["contentType"] == (
+        "application/json"
+    )
+    assert (
+        spec["paths"]["/realtime/server-streaming"]["x-fal-protocol"]["realtimeMode"]
+        == "server_streaming"
+    )
+    assert (
+        spec["paths"]["/realtime/server-streaming-sync"]["x-fal-protocol"][
+            "realtimeMode"
+        ]
+        == "server_streaming"
+    )
+    assert (
+        spec["paths"]["/realtime/client-streaming"]["x-fal-protocol"]["realtimeMode"]
+        == "client_streaming"
+    )
+    assert spec["paths"]["/realtime/bidi"]["x-fal-protocol"]["realtimeMode"] == "bidi"
+
+    for path in [
+        "/realtime/server-streaming",
+        "/realtime/server-streaming-sync",
+        "/realtime/client-streaming",
+        "/realtime/bidi",
+    ]:
+        ws_spec = spec["paths"][path]["x-fal-protocol"]
+        assert ws_spec["type"] == "realtime"
+        assert ws_spec["contentType"] == "application/msgpack"
+        assert "requestBody" not in ws_spec
+        assert "responses" not in ws_spec
+        assert (
+            spec["paths"][path]["post"]["requestBody"]["content"]["application/json"][
+                "schema"
+            ]["$ref"]
+            == "#/components/schemas/InputModel"
+        )
+        assert (
+            spec["paths"][path]["post"]["responses"]["200"]["content"][
+                "application/json"
+            ]["schema"]["$ref"]
+            == "#/components/schemas/OutputModel"
+        )
+
+
+def test_openapi_does_not_duplicate_ws_paths_on_multiple_calls():
+    app = RealtimeApp(_allow_init=True)
+    fal_app = app._build_app()
+    first = fal_app.openapi()
+    second = fal_app.openapi()
+
+    expected_order = [
+        "/realtime",
+        "/realtime/bidi",
+        "/realtime/client-streaming",
+        "/realtime/json",
+        "/realtime/server-streaming",
+        "/realtime/server-streaming-sync",
+        "/ws",
+    ]
+    assert [p for p in first["x-fal-order-paths"] if p != "/health"] == expected_order
+    assert [p for p in second["x-fal-order-paths"] if p != "/health"] == expected_order
