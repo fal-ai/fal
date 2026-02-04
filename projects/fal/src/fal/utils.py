@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
+from fal.api.api import merge_basic_config
 from fal.sdk import AuthModeLiteral
 
 if TYPE_CHECKING:
-    from .api import FalServerlessHost, IsolatedFunction
+    from .api import FalServerlessHost, IsolatedFunction, Options
 
 
 @dataclass
@@ -90,6 +91,9 @@ def load_function_from(
     function_name: str | None = None,
     *,
     force_env_build: bool = False,
+    options: Optional[Options] = None,
+    app_name: str | None = None,
+    app_auth: AuthModeLiteral | None = None,
 ) -> LoadedFunction:
     import os
     import runpy
@@ -102,7 +106,11 @@ def load_function_from(
 
     sys.path.append(os.getcwd())
     module = runpy.run_path(file_path)
-    target, app_name, app_auth, class_name = _find_target(module, function_name)
+    target, found_app_name, found_app_auth, class_name = _find_target(
+        module, function_name
+    )
+    app_name = app_name or found_app_name
+    app_auth = app_auth or found_app_auth
 
     # The module for the function is set to <run_path> when runpy is used, in which
     # case we want to manually include the package it is defined in.
@@ -120,6 +128,8 @@ def load_function_from(
         raise FalServerlessError(
             f"Function '{function_name}' is not a fal.function or a fal.App"
         )
+    if options is not None:
+        _merge_options(target.options, options)
     target.app_name = app_name
     target.app_auth = app_auth
     return LoadedFunction(
@@ -130,3 +140,9 @@ def load_function_from(
         source_code=source_code,
         class_name=class_name,
     )
+
+
+def _merge_options(target: Options, incoming: Options) -> None:
+    merge_basic_config(target.host, incoming.host)
+    merge_basic_config(target.environment, incoming.environment)
+    merge_basic_config(target.gateway, incoming.gateway)

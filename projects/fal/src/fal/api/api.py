@@ -83,6 +83,15 @@ ArgsT = ParamSpec("ArgsT")
 ReturnT = TypeVar("ReturnT", covariant=True)  # noqa: PLC0105
 
 BasicConfig = Dict[str, Any]
+
+
+def merge_basic_config(target: BasicConfig, incoming: BasicConfig) -> None:
+    for key, value in incoming.items():
+        if key in target:
+            continue
+        target[key] = value
+
+
 _UNSET = object()
 
 SERVE_REQUIREMENTS = [

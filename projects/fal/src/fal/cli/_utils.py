@@ -1,10 +1,23 @@
 from __future__ import annotations
 
 import copy
+from dataclasses import dataclass, field
 from typing import Any, Optional
 
+from fal.api import Options
 from fal.project import find_project_root, find_pyproject_toml, parse_pyproject_toml
 from fal.sdk import AuthModeLiteral, DeploymentStrategyLiteral
+
+
+@dataclass(frozen=True)
+class AppData:
+    ref: Optional[str] = None
+    auth: Optional[AuthModeLiteral] = None
+    deployment_strategy: Optional[DeploymentStrategyLiteral] = None
+    reset_scale: bool = False
+    team: Optional[str] = None
+    name: Optional[str] = None
+    options: Options = field(default_factory=Options)
 
 
 def get_client(host: str, team: str | None = None):
@@ -21,15 +34,7 @@ def is_app_name(app_ref: tuple[str, str | None]) -> bool:
     return is_single_file and not is_python_file
 
 
-def get_app_data_from_toml(
-    app_name,
-) -> tuple[
-    str,
-    Optional[AuthModeLiteral],
-    Optional[DeploymentStrategyLiteral],
-    bool,
-    Optional[str],
-]:
+def get_app_data_from_toml(app_name: str) -> AppData:
     toml_path = find_pyproject_toml()
 
     if toml_path is None:
@@ -57,6 +62,47 @@ def get_app_data_from_toml(
         "deployment_strategy", None
     )
     app_team: Optional[str] = app_data.pop("team", None)
+    app_name_value: Optional[str] = app_data.pop("name", None)
+    if app_name_value is None:
+        app_name_value = app_name
+
+    requirements = app_data.pop("requirements", None)
+    if requirements is not None:
+        _validate_requirements(requirements)
+    options = Options()
+    min_concurrency = app_data.pop("min_concurrency", None)
+    max_concurrency = app_data.pop("max_concurrency", None)
+    max_multiplexing = app_data.pop("max_multiplexing", None)
+    concurrency_buffer = app_data.pop("concurrency_buffer", None)
+    concurrency_buffer_perc = app_data.pop("concurrency_buffer_perc", None)
+    scaling_delay = app_data.pop("scaling_delay", None)
+    request_timeout = app_data.pop("request_timeout", None)
+    startup_timeout = app_data.pop("startup_timeout", None)
+    regions = app_data.pop("regions", None)
+    if regions is not None and not (
+        isinstance(regions, list) and all(isinstance(item, str) for item in regions)
+    ):
+        raise ValueError("regions must be a list of strings.")
+    if min_concurrency is not None:
+        options.host["min_concurrency"] = min_concurrency
+    if max_concurrency is not None:
+        options.host["max_concurrency"] = max_concurrency
+    if max_multiplexing is not None:
+        options.host["max_multiplexing"] = max_multiplexing
+    if concurrency_buffer is not None:
+        options.host["concurrency_buffer"] = concurrency_buffer
+    if concurrency_buffer_perc is not None:
+        options.host["concurrency_buffer_perc"] = concurrency_buffer_perc
+    if scaling_delay is not None:
+        options.host["scaling_delay"] = scaling_delay
+    if request_timeout is not None:
+        options.host["request_timeout"] = request_timeout
+    if startup_timeout is not None:
+        options.host["startup_timeout"] = startup_timeout
+    if regions is not None:
+        options.host["regions"] = regions
+    if requirements is not None:
+        options.environment["requirements"] = requirements
 
     app_reset_scale: bool
     if "no_scale" in app_data:
@@ -70,4 +116,26 @@ def get_app_data_from_toml(
     if len(app_data) > 0:
         raise ValueError(f"Found unexpected keys in pyproject.toml: {app_data}")
 
-    return app_ref, app_auth, app_deployment_strategy, app_reset_scale, app_team
+    return AppData(
+        ref=app_ref,
+        auth=app_auth,
+        deployment_strategy=app_deployment_strategy,
+        reset_scale=app_reset_scale,
+        team=app_team,
+        name=app_name_value,
+        options=options,
+    )
+
+
+def _validate_requirements(requirements: Any) -> None:
+    is_str_list = isinstance(requirements, list) and all(
+        isinstance(item, str) for item in requirements
+    )
+    is_str_list_list = isinstance(requirements, list) and all(
+        isinstance(item, list) and all(isinstance(req, str) for req in item)
+        for item in requirements
+    )
+    if not is_str_list and not is_str_list_list:
+        raise ValueError(
+            "requirements must be a list of strings or a list of lists of strings."
+        )
