@@ -1275,11 +1275,11 @@ class FalFastAPI(FastAPI):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # Store websocket routes for OpenAPI injection
-        self._websocket_routes: list[tuple["RouteSignature", Callable[..., Any]]] = []
+        self._websocket_routes: list[tuple[RouteSignature, Callable[..., Any]]] = []
 
     def add_websocket_route_with_metadata(
         self,
-        signature: "RouteSignature",
+        signature: RouteSignature,
         endpoint: Callable[..., Any],
     ):
         """Add websocket route and store metadata for OpenAPI injection."""

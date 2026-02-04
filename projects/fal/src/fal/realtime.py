@@ -642,7 +642,9 @@ def realtime(
             if output_stream_item is not None:
                 output_modal = None if output_stream_item is Any else output_stream_item
             elif output_sync_stream_item is not None:
-                output_modal = None if output_sync_stream_item is Any else output_sync_stream_item
+                output_modal = (
+                    None if output_sync_stream_item is Any else output_sync_stream_item
+                )
             else:
                 output_modal = None if output_type is Any else output_type
 
