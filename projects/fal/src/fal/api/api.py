@@ -1272,6 +1272,24 @@ class FalFastAPI(FastAPI):
     A subclass of FastAPI that adds some fal-specific functionality.
     """
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Store websocket routes for OpenAPI injection
+        self._websocket_routes: list[tuple["RouteSignature", Callable[..., Any]]] = []
+
+    def add_websocket_route_with_metadata(
+        self,
+        signature: "RouteSignature",
+        endpoint: Callable[..., Any],
+    ):
+        """Add websocket route and store metadata for OpenAPI injection."""
+        self.add_api_websocket_route(
+            signature.path,
+            endpoint,
+            name=endpoint.__name__,
+        )
+        self._websocket_routes.append((signature, endpoint))
+
     def openapi(self) -> dict[str, Any]:
         """
         Build the OpenAPI specification for the served function.
@@ -1279,7 +1297,107 @@ class FalFastAPI(FastAPI):
         """
         spec = super().openapi()
         self._mark_order_openapi(spec)
+        self._inject_websocket_endpoints(spec)
         return spec
+
+    def _inject_websocket_endpoints(self, spec: dict[str, Any]):
+        """Inject WebSocket endpoint metadata using x-fal-websocket extension."""
+        from pydantic import TypeAdapter
+
+        for signature, endpoint in self._websocket_routes:
+            path = signature.path
+
+            # Ensure components/schemas exists
+            if "components" not in spec:
+                spec["components"] = {}
+            if "schemas" not in spec["components"]:
+                spec["components"]["schemas"] = {}
+
+            input_schema_name = None
+            output_schema_name = None
+
+            # Generate JSON schema for input type
+            if signature.input_modal:
+                input_schema_name = signature.input_modal.__name__
+                adapter = TypeAdapter(signature.input_modal)
+                input_schema = adapter.json_schema(
+                    ref_template="#/components/schemas/{model}"
+                )
+
+                # Handle $defs - move nested schemas to components/schemas
+                if "$defs" in input_schema:
+                    for def_name, def_schema in input_schema["$defs"].items():
+                        spec["components"]["schemas"][def_name] = def_schema
+                    del input_schema["$defs"]
+
+                spec["components"]["schemas"][input_schema_name] = input_schema
+
+            # Generate JSON schema for output type
+            if signature.output_modal:
+                output_schema_name = signature.output_modal.__name__
+                adapter = TypeAdapter(signature.output_modal)
+                output_schema = adapter.json_schema(
+                    ref_template="#/components/schemas/{model}"
+                )
+
+                # Handle $defs - move nested schemas to components/schemas
+                if "$defs" in output_schema:
+                    for def_name, def_schema in output_schema["$defs"].items():
+                        spec["components"]["schemas"][def_name] = def_schema
+                    del output_schema["$defs"]
+
+                spec["components"]["schemas"][output_schema_name] = output_schema
+
+            # Ensure paths exists
+            if "paths" not in spec:
+                spec["paths"] = {}
+            if path not in spec["paths"]:
+                spec["paths"][path] = {}
+
+            # Build the x-fal-websocket operation
+            ws_operation: dict[str, Any] = {
+                "operationId": endpoint.__name__,
+                "summary": f"WebSocket endpoint: {endpoint.__name__}",
+                "description": endpoint.__doc__ or "",
+                "x-fal-websocket-config": {
+                    "buffering": signature.buffering,
+                    "sessionTimeout": signature.session_timeout,
+                    "maxBatchSize": signature.max_batch_size,
+                },
+            }
+
+            if input_schema_name:
+                ws_operation["requestBody"] = {
+                    "content": {
+                        "application/msgpack": {
+                            "schema": {
+                                "$ref": f"#/components/schemas/{input_schema_name}"
+                            }
+                        }
+                    }
+                }
+
+            if output_schema_name:
+                ws_operation["responses"] = {
+                    "200": {
+                        "description": "WebSocket message response",
+                        "content": {
+                            "application/msgpack": {
+                                "schema": {
+                                    "$ref": f"#/components/schemas/{output_schema_name}"
+                                }
+                            }
+                        },
+                    }
+                }
+
+            spec["paths"][path]["x-fal-websocket"] = ws_operation
+
+        # Update x-fal-order-paths to include websocket paths
+        if self._websocket_routes:
+            ws_paths = [sig.path for sig, _ in self._websocket_routes]
+            existing_order = spec.get("x-fal-order-paths", [])
+            spec["x-fal-order-paths"] = existing_order + ws_paths
 
     def _mark_order_openapi(self, spec: dict[str, Any]):
         """
@@ -1316,6 +1434,7 @@ class RouteSignature(NamedTuple):
     is_websocket: bool = False
     health_check: HealthCheck | None = None
     input_modal: type | None = None
+    output_modal: type | None = None
     buffering: int | None = None
     session_timeout: float | None = None
     max_batch_size: int = 1
@@ -1479,11 +1598,7 @@ class BaseServable:
 
         for signature, endpoint in routes.items():
             if signature.is_websocket:
-                _app.add_api_websocket_route(
-                    signature.path,
-                    endpoint,
-                    name=endpoint.__name__,
-                )
+                _app.add_websocket_route_with_metadata(signature, endpoint)
             else:
                 _app.add_api_route(
                     signature.path,
