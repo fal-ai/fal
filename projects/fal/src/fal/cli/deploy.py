@@ -22,8 +22,8 @@ def _deploy(args):
     # If the app_ref is an app name, get team from pyproject.toml
     if app_ref and is_app_name(app_ref):
         try:
-            *_, toml_team = get_app_data_from_toml(app_ref[0])
-            team = team or toml_team
+            toml_data = get_app_data_from_toml(app_ref[0])
+            team = team or toml_data.team
         except (ValueError, FileNotFoundError):
             # If we can't find the app in pyproject.toml, team remains None
             pass

@@ -611,14 +611,16 @@ def realtime(
     buffering: int | None = None,
     session_timeout: float | None = None,
     input_modal: Any | None = _SENTINEL,
+    output_modal: Any | None = _SENTINEL,
     max_batch_size: int = 1,
+    content_type: str = "application/msgpack",
     encode_message: Callable[[Any], bytes] | None = None,
     decode_message: Callable[[bytes], Any] | None = None,
 ) -> Callable[[EndpointT], EndpointT]:
     """Designate the decorated function as a realtime application endpoint."""
 
     def marker_fn(original_func: EndpointT) -> EndpointT:
-        nonlocal input_modal
+        nonlocal input_modal, output_modal
 
         if hasattr(original_func, "route_signature"):
             raise ValueError(
@@ -626,18 +628,44 @@ def realtime(
                 f"{original_func.__name__}"
             )
 
+        input_type, output_type = _get_realtime_types(original_func)
+
+        input_stream_item = _unwrap_async_iterator(input_type)
+        output_stream_item = _unwrap_async_iterator(output_type)
+        output_sync_stream_item = _unwrap_sync_iterator(output_type)
+
         if input_modal is _SENTINEL:
-            input_type, _ = _get_realtime_types(original_func)
-            input_stream_item = _unwrap_async_iterator(input_type)
             if input_stream_item is not None:
                 input_modal = None if input_stream_item is Any else input_stream_item
             else:
                 input_modal = None if input_type is Any else input_type
 
+        if output_modal is _SENTINEL:
+            if output_stream_item is not None:
+                output_modal = None if output_stream_item is Any else output_stream_item
+            elif output_sync_stream_item is not None:
+                output_modal = (
+                    None if output_sync_stream_item is Any else output_sync_stream_item
+                )
+            else:
+                output_modal = None if output_type is Any else output_type
+
+        if input_stream_item is not None and output_stream_item is not None:
+            realtime_mode = "bidi"
+        elif input_stream_item is not None:
+            realtime_mode = "client_streaming"
+        elif output_stream_item is not None or output_sync_stream_item is not None:
+            realtime_mode = "server_streaming"
+        else:
+            realtime_mode = "unary"
+
         route_signature = RouteSignature(
             path=path,
             is_websocket=True,
             input_modal=input_modal,
+            output_modal=output_modal,
+            realtime_mode=realtime_mode,
+            content_type=content_type,
             buffering=buffering,
             session_timeout=session_timeout,
             max_batch_size=max_batch_size,

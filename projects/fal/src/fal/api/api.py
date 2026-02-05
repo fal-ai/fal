@@ -83,6 +83,15 @@ ArgsT = ParamSpec("ArgsT")
 ReturnT = TypeVar("ReturnT", covariant=True)  # noqa: PLC0105
 
 BasicConfig = Dict[str, Any]
+
+
+def merge_basic_config(target: BasicConfig, incoming: BasicConfig) -> None:
+    for key, value in incoming.items():
+        if key in target:
+            continue
+        target[key] = value
+
+
 _UNSET = object()
 
 SERVE_REQUIREMENTS = [
@@ -1277,6 +1286,24 @@ class FalFastAPI(FastAPI):
     A subclass of FastAPI that adds some fal-specific functionality.
     """
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Store websocket routes for OpenAPI injection
+        self._websocket_routes: list[tuple[RouteSignature, Callable[..., Any]]] = []
+
+    def add_websocket_route_with_metadata(
+        self,
+        signature: RouteSignature,
+        endpoint: Callable[..., Any],
+    ):
+        """Add websocket route and store metadata for OpenAPI injection."""
+        self.add_api_websocket_route(
+            signature.path,
+            endpoint,
+            name=endpoint.__name__,
+        )
+        self._websocket_routes.append((signature, endpoint))
+
     def openapi(self) -> dict[str, Any]:
         """
         Build the OpenAPI specification for the served function.
@@ -1284,7 +1311,149 @@ class FalFastAPI(FastAPI):
         """
         spec = super().openapi()
         self._mark_order_openapi(spec)
+        self._inject_websocket_endpoints(spec)
         return spec
+
+    def _ensure_components_schemas(self, spec: dict[str, Any]) -> dict[str, Any]:
+        if "components" not in spec:
+            spec["components"] = {}
+        if "schemas" not in spec["components"]:
+            spec["components"]["schemas"] = {}
+        return spec["components"]["schemas"]
+
+    def _ensure_path_item(self, spec: dict[str, Any], path: str) -> dict[str, Any]:
+        if "paths" not in spec:
+            spec["paths"] = {}
+        if path not in spec["paths"]:
+            spec["paths"][path] = {}
+        return spec["paths"][path]
+
+    def _register_model_schema(
+        self, schemas: dict[str, Any], model: type | None
+    ) -> str | None:
+        if model is None:
+            return None
+        from fal.toolkit.pydantic import IS_PYDANTIC_V2
+
+        schema_name = model.__name__
+        if IS_PYDANTIC_V2:
+            from pydantic import TypeAdapter  # type: ignore
+
+            adapter = TypeAdapter(model)
+            schema = adapter.json_schema(ref_template="#/components/schemas/{model}")
+        else:
+            from pydantic.schema import schema as pydantic_schema
+
+            schema = pydantic_schema([model], ref_prefix="#/components/schemas/")
+            schema = schema.get("definitions", {}).get(schema_name, schema)
+
+        if "$defs" in schema:
+            for def_name, def_schema in schema["$defs"].items():
+                schemas[def_name] = def_schema
+            del schema["$defs"]
+
+        schemas[schema_name] = schema
+        return schema_name
+
+    def _build_protocol_operation(
+        self,
+        signature: RouteSignature,
+        display_endpoint: Callable[..., Any],
+        input_schema_name: str | None,
+        output_schema_name: str | None,
+    ) -> dict[str, Any]:
+        operation: dict[str, Any] = {
+            "type": "realtime" if signature.realtime_mode else "websocket",
+            "operationId": display_endpoint.__name__,
+            "config": {
+                "buffering": signature.buffering,
+                "sessionTimeout": signature.session_timeout,
+                "maxBatchSize": signature.max_batch_size,
+            },
+        }
+        if signature.content_type is not None:
+            operation["contentType"] = signature.content_type
+        if signature.realtime_mode is not None:
+            operation["realtimeMode"] = signature.realtime_mode
+        return operation
+
+    def _build_protocol_mirror_post(
+        self,
+        signature: RouteSignature,
+        display_endpoint: Callable[..., Any],
+        input_schema_name: str | None,
+        output_schema_name: str | None,
+    ) -> dict[str, Any]:
+        endpoint_type = "Realtime" if signature.realtime_mode else "WebSocket"
+        operation: dict[str, Any] = {
+            "operationId": f"{display_endpoint.__name__}_post",
+            "summary": f"{endpoint_type} endpoint: {display_endpoint.__name__}",
+            "description": display_endpoint.__doc__ or "",
+        }
+        if input_schema_name:
+            operation["requestBody"] = {
+                "content": {
+                    "application/json": {
+                        "schema": {"$ref": f"#/components/schemas/{input_schema_name}"}
+                    }
+                }
+            }
+        if output_schema_name:
+            operation["responses"] = {
+                "200": {
+                    "description": "WebSocket message response",
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": f"#/components/schemas/{output_schema_name}"
+                            }
+                        }
+                    },
+                }
+            }
+        else:
+            operation["responses"] = {
+                "204": {"description": "WebSocket message response"}
+            }
+        return operation
+
+    def _inject_websocket_endpoints(self, spec: dict[str, Any]):
+        """Inject WebSocket endpoint metadata using x-fal-protocol extension."""
+        for signature, endpoint in self._websocket_routes:
+            path = signature.path
+
+            schemas = self._ensure_components_schemas(spec)
+            input_schema_name = self._register_model_schema(
+                schemas, signature.input_modal
+            )
+            output_schema_name = self._register_model_schema(
+                schemas, signature.output_modal
+            )
+            path_item = self._ensure_path_item(spec, path)
+            display_endpoint = getattr(endpoint, "original_func", endpoint)
+            path_item["x-fal-protocol"] = self._build_protocol_operation(
+                signature,
+                display_endpoint,
+                input_schema_name,
+                output_schema_name,
+            )
+
+            if "post" not in path_item and (input_schema_name or output_schema_name):
+                path_item["post"] = self._build_protocol_mirror_post(
+                    signature,
+                    display_endpoint,
+                    input_schema_name,
+                    output_schema_name,
+                )
+
+        # Update x-fal-order-paths to include websocket paths
+        if self._websocket_routes:
+            ws_paths = [sig.path for sig, _ in self._websocket_routes]
+            existing_order = list(spec.get("x-fal-order-paths", []))
+            for path in ws_paths:
+                if path not in existing_order:
+                    existing_order.append(path)
+            spec["x-fal-order-paths"] = existing_order
 
     def _mark_order_openapi(self, spec: dict[str, Any]):
         """
@@ -1321,6 +1490,9 @@ class RouteSignature(NamedTuple):
     is_websocket: bool = False
     health_check: HealthCheck | None = None
     input_modal: type | None = None
+    output_modal: type | None = None
+    realtime_mode: str | None = None
+    content_type: str | None = None
     buffering: int | None = None
     session_timeout: float | None = None
     max_batch_size: int = 1
@@ -1484,11 +1656,7 @@ class BaseServable:
 
         for signature, endpoint in routes.items():
             if signature.is_websocket:
-                _app.add_api_websocket_route(
-                    signature.path,
-                    endpoint,
-                    name=endpoint.__name__,
-                )
+                _app.add_websocket_route_with_metadata(signature, endpoint)
             else:
                 _app.add_api_route(
                     signature.path,
@@ -1542,17 +1710,35 @@ class BaseServable:
         )
 
         async def _serve() -> None:
-            tasks = {
-                asyncio.create_task(server.serve()),
-                asyncio.create_task(metrics_server.serve()),
-            }
+            app_task = asyncio.create_task(server.serve())
+            metrics_task = asyncio.create_task(metrics_server.serve())
+            tasks = {app_task, metrics_task}
 
-            await asyncio.wait(
+            done, pending = await asyncio.wait(
                 tasks,
-                return_when=asyncio.ALL_COMPLETED,
+                return_when=asyncio.FIRST_COMPLETED,
             )
-            # we do not take care of pending tasks here.
-            # each task should be responsible for its own cleanup.
+
+            from fastapi.logger import logger
+
+            if app_task in done and metrics_task in pending:
+                metrics_task.cancel()
+
+            app_exc, metrics_exc = await asyncio.gather(
+                app_task,
+                metrics_task,
+                return_exceptions=True,
+            )
+
+            if app_exc:
+                logger.error("App server exited with error", exc_info=app_exc)
+
+            if metrics_exc and not isinstance(metrics_exc, asyncio.CancelledError):
+                logger.error("Metrics server exited with error", exc_info=metrics_exc)
+
+            if app_exc:
+                raise app_exc
+
             # graceful termination and timeout should be handled by external scheduler.
 
         await _serve()
@@ -1660,6 +1846,31 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
                 # re-raise original exception without our wrappers
                 raise cause
             raise
+
+    def run_local(self, *args: ArgsT.args, **kwargs: ArgsT.kwargs) -> ReturnT:
+        import asyncio
+        import inspect
+        import os
+        from typing import Awaitable, cast
+
+        func = self.func
+        previous_isolate_env = os.environ.get("IS_ISOLATE_AGENT")
+        os.environ["IS_ISOLATE_AGENT"] = "1"
+        try:
+            result = func(*args, **kwargs)
+            if inspect.isawaitable(result):
+                awaited = cast(Awaitable[ReturnT], result)
+
+                async def _await_result():
+                    return await awaited
+
+                return asyncio.run(_await_result())  # type: ignore[return-value]
+            return result
+        finally:
+            if previous_isolate_env is None:
+                del os.environ["IS_ISOLATE_AGENT"]
+            else:
+                os.environ["IS_ISOLATE_AGENT"] = previous_isolate_env
 
     @overload
     def on(

@@ -1,7 +1,8 @@
 import argparse
+from dataclasses import replace
 from pathlib import Path
 
-from ._utils import get_app_data_from_toml, is_app_name
+from ._utils import AppData, get_app_data_from_toml, is_app_name
 from .parser import FalClientParser, RefAction
 
 
@@ -19,7 +20,7 @@ def _run(args):
     team = args.team
     func_ref = args.func_ref
 
-    app_auth = args.auth
+    app_data = AppData(auth=args.auth, name=args.app_name)
     args.console.print(
         "[bold yellow]Warning:[/bold yellow] "
         "`fal run` ignores fal.App auth and pyproject.toml auth and "
@@ -30,28 +31,42 @@ def _run(args):
     )
     if is_app_name(func_ref):
         app_name = func_ref[0]
-        app_ref, _ignored_auth, *_rest, toml_team = get_app_data_from_toml(app_name)
-        team = team or toml_team
-        file_path, func_name = RefAction.split_ref(app_ref)
+        toml_data = get_app_data_from_toml(app_name)
+        app_data = replace(
+            toml_data,
+            auth=app_data.auth,
+            name=app_data.name,
+        )
+        team = team or app_data.team
+        file_path, func_name = RefAction.split_ref(app_data.ref)
     else:
         file_path, func_name = func_ref
         # Turn relative path into absolute path for files
         file_path = str(Path(file_path).absolute())
-        app_name = args.app_name
+        ref = f"{file_path}::{func_name}" if func_name else file_path
+        app_data = replace(app_data, ref=ref)
 
     no_cache = args.no_cache or args.force_env_build
     client = SyncServerlessClient(host=args.host, team=team)
     host = client._create_host(local_file_path=file_path, environment_name=args.env)
 
-    loaded = load_function_from(host, file_path, func_name, force_env_build=no_cache)
+    loaded = load_function_from(
+        host,
+        file_path,
+        func_name,
+        force_env_build=no_cache,
+        options=app_data.options,
+        app_name=app_data.name,
+        app_auth=app_data.auth,
+    )
 
     isolated_function = loaded.function
-    app_name = app_name or loaded.app_name
-    isolated_function.app_name = app_name
-    isolated_function.app_auth = app_auth
     # let our exc handlers handle UserFunctionException
     isolated_function.reraise = False
-    isolated_function()
+    if args.local:
+        isolated_function.run_local()
+    else:
+        isolated_function()
 
 
 def add_parser(main_subparsers, parents):
@@ -106,5 +121,10 @@ def add_parser(main_subparsers, parents):
         "--env",
         dest="env",
         help="Target environment (defaults to main).",
+    )
+    parser.add_argument(
+        "--local",
+        action="store_true",
+        help="Run locally without serverless.",
     )
     parser.set_defaults(func=_run)
