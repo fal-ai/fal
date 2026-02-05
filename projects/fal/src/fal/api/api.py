@@ -1842,6 +1842,31 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
                 raise cause
             raise
 
+    def run_local(self, *args: ArgsT.args, **kwargs: ArgsT.kwargs) -> ReturnT:
+        import asyncio
+        import inspect
+        import os
+        from typing import Awaitable, cast
+
+        func = self.func
+        previous_isolate_env = os.environ.get("IS_ISOLATE_AGENT")
+        os.environ["IS_ISOLATE_AGENT"] = "1"
+        try:
+            result = func(*args, **kwargs)
+            if inspect.isawaitable(result):
+                awaited = cast(Awaitable[ReturnT], result)
+
+                async def _await_result():
+                    return await awaited
+
+                return asyncio.run(_await_result())  # type: ignore[return-value]
+            return result
+        finally:
+            if previous_isolate_env is None:
+                del os.environ["IS_ISOLATE_AGENT"]
+            else:
+                os.environ["IS_ISOLATE_AGENT"] = previous_isolate_env
+
     @overload
     def on(
         self, host: Host | None = None, *, serve: Literal[False] = False, **config: Any

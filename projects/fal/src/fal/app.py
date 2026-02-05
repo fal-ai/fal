@@ -696,6 +696,13 @@ class App(BaseServable):
         ]
 
     @classmethod
+    def run_local(cls, *args, **kwargs):
+        # import wrap_app explicitly to avoid reference to wrap_app during pickling
+        from fal.app import wrap_app
+
+        return wrap_app(cls).run_local(*args, **kwargs)
+
+    @classmethod
     def spawn(cls) -> AppSpawnInfo:
         # import wrap_app explicitly to avoid reference to wrap_app during pickling
         from fal.app import wrap_app
