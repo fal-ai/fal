@@ -1341,20 +1341,6 @@ class FalFastAPI(FastAPI):
         schemas[schema_name] = schema
         return schema_name
 
-    def _is_realtime_signature(self, signature: RouteSignature) -> bool:
-        return any(
-            [
-                signature.input_modal is not None,
-                signature.output_modal is not None,
-                signature.realtime_mode is not None,
-                signature.buffering is not None,
-                signature.session_timeout is not None,
-                signature.max_batch_size != 1,
-                signature.encode_message is not None,
-                signature.decode_message is not None,
-            ]
-        )
-
     def _build_protocol_operation(
         self,
         signature: RouteSignature,
@@ -1363,9 +1349,7 @@ class FalFastAPI(FastAPI):
         output_schema_name: str | None,
     ) -> dict[str, Any]:
         operation: dict[str, Any] = {
-            "type": "realtime"
-            if self._is_realtime_signature(signature)
-            else "websocket",
+            "type": "realtime" if signature.realtime_mode else "websocket",
             "operationId": display_endpoint.__name__,
             "config": {
                 "buffering": signature.buffering,
@@ -1386,14 +1370,10 @@ class FalFastAPI(FastAPI):
         input_schema_name: str | None,
         output_schema_name: str | None,
     ) -> dict[str, Any]:
-        endpoint_label = (
-            "Realtime endpoint"
-            if self._is_realtime_signature(signature)
-            else "WebSocket endpoint"
-        )
+        endpoint_type = "Realtime" if signature.realtime_mode else "WebSocket"
         operation: dict[str, Any] = {
             "operationId": f"{display_endpoint.__name__}_post",
-            "summary": f"{endpoint_label}: {display_endpoint.__name__}",
+            "summary": f"{endpoint_type} endpoint: {display_endpoint.__name__}",
             "description": display_endpoint.__doc__ or "",
         }
         if input_schema_name:
