@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 from fal.sdk import AuthModeLiteral, DeploymentStrategyLiteral
 
 if TYPE_CHECKING:
+    from fal.cli._utils import AppData
+
     from .client import SyncServerlessClient
 
 
@@ -83,10 +85,7 @@ def _get_user(client: Client) -> User:
 def _deploy_from_reference(
     client: SyncServerlessClient,
     app_ref: Tuple[Optional[Union[Path, str]], ...],
-    app_name: str,
-    auth: Optional[AuthModeLiteral],
-    strategy: Optional[DeploymentStrategyLiteral],
-    scale: bool,
+    app_data: AppData,
     force_env_build: bool,
     environment_name: Optional[str] = None,
 ) -> DeploymentResult:
@@ -117,11 +116,12 @@ def _deploy_from_reference(
         file_path,  # type: ignore
         func_name,  # type: ignore
         force_env_build=force_env_build,
+        options=app_data.options,
+        app_name=app_data.name,
+        app_auth=app_data.auth,
     )
     isolated_function = loaded.function
-    app_name = app_name or loaded.app_name  # type: ignore
-    app_auth = auth or loaded.app_auth
-    strategy = strategy or "rolling"
+    strategy = app_data.deployment_strategy or "rolling"
 
     # Get the actual function/class name that was loaded
     display_name = func_name or loaded.class_name
@@ -129,18 +129,20 @@ def _deploy_from_reference(
     # Show what app name will be used
     from fal.console import console
 
-    console.print(f"Deploying '{display_name}' as app '{app_name}'", style="bold")
+    console.print(
+        f"Deploying '{display_name}' as app '{loaded.app_name}'", style="bold"
+    )
     console.print("")
 
     result = host.register(
         func=isolated_function.func,
         options=isolated_function.options,
-        application_name=app_name,
-        application_auth_mode=app_auth,  # type: ignore
+        application_name=loaded.app_name,
+        application_auth_mode=loaded.app_auth,  # type: ignore
         source_code=loaded.source_code,
         metadata=isolated_function.options.host.get("metadata", {}),
         deployment_strategy=strategy,
-        scale=scale,
+        scale=app_data.reset_scale,
         environment_name=environment_name,
     )
 
@@ -167,12 +169,13 @@ def _deploy_from_reference(
         urls["sync"][endpoint] = f"{result.service_urls.run}{endpoint}"
         urls["async"][endpoint] = f"{result.service_urls.queue}{endpoint}"
 
+    assert loaded.app_name
     return DeploymentResult(
         revision=result.result.application_id,
-        app_name=app_name,
+        app_name=loaded.app_name,
         urls=urls,
         log_url=result.service_urls.log,
-        auth_mode=app_auth or "private",
+        auth_mode=loaded.app_auth or "private",
     )
 
 
@@ -187,7 +190,7 @@ def deploy(
     force_env_build: bool = False,
     environment_name: str | None = None,
 ) -> DeploymentResult:
-    from fal.cli._utils import get_app_data_from_toml, is_app_name
+    from fal.cli._utils import AppData, get_app_data_from_toml, is_app_name
     from fal.cli.parser import RefAction
 
     if isinstance(app_ref, tuple):
@@ -197,6 +200,13 @@ def deploy(
     else:
         raise ValueError("Invalid app reference")
 
+    app_data = AppData(
+        auth=auth,
+        deployment_strategy=cast(DeploymentStrategyLiteral, strategy),
+        reset_scale=cast(bool, reset_scale),
+        name=app_name,
+    )
+
     # my-app
     if is_app_name(app_ref_tuple):
         # we do not allow --app-name and --auth to be used with app name
@@ -204,30 +214,22 @@ def deploy(
             raise ValueError("Cannot use --app-name or --auth with app name reference.")
 
         app_name = app_ref_tuple[0]
-        app_ref, app_auth, app_strategy, app_scale_settings, _ = get_app_data_from_toml(
-            app_name
-        )
+        app_data = get_app_data_from_toml(app_name)
+        app_ref = app_data.ref
 
         file_path, func_name = RefAction.split_ref(app_ref)
 
     # path/to/myfile.py::MyApp
     else:
         file_path, func_name = app_ref_tuple
-        app_name = cast(str, app_name)
-        # default to be set in the backend
-        app_auth = cast(Optional[AuthModeLiteral], auth)
-        # default comes from the CLI
-        app_strategy = cast(DeploymentStrategyLiteral, strategy)
-        app_scale_settings = cast(bool, reset_scale)
         file_path = str(Path(file_path).absolute())
+        ref = f"{file_path}::{func_name}" if func_name else file_path
+        app_data = replace(app_data, ref=ref)
 
     return _deploy_from_reference(
         client,
         (file_path, func_name),
-        app_name,  # type: ignore
-        app_auth,
-        strategy=app_strategy,
-        scale=app_scale_settings,
+        app_data,
         force_env_build=force_env_build,
         environment_name=environment_name,
     )
