@@ -65,6 +65,11 @@ class RealtimeApp(fal.App):
         await websocket.close()
 
 
+@pytest.fixture
+def isolate_agent_env(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("IS_ISOLATE_AGENT", "1")
+
+
 def test_app_regions_propagate_to_function_options():
     from fal.app import wrap_app
 
@@ -308,7 +313,7 @@ def test_non_host_classvars_do_not_leak_into_host_kwargs():
 
 
 @pytest.mark.asyncio
-async def test_runner_state_lifecycle_complete():
+async def test_runner_state_lifecycle_complete(isolate_agent_env):
     """Test that FAL_RUNNER_STATE transitions through all phases correctly"""
     states = []
 
@@ -319,7 +324,7 @@ async def test_runner_state_lifecycle_complete():
         def teardown(self):
             states.append(("teardown", os.getenv("FAL_RUNNER_STATE")))
 
-    app = StateCheckApp(_allow_init=True)
+    app = StateCheckApp()
 
     # Create a mock FastAPI app
     import fastapi
@@ -374,8 +379,8 @@ def test_app_classvars_propagate_to_host_kwargs_when_overriding_hidden_defaults(
     assert "_app_var" not in hk
 
 
-def test_app_is_picklable_with_request_context():
-    app = PickleApp(_allow_init=True)
+def test_app_is_picklable_with_request_context(isolate_agent_env):
+    app = PickleApp()
     app._current_request_context = ContextVar(  # type: ignore[assignment]
         "_current_request_context"
     )
@@ -386,7 +391,7 @@ def test_app_is_picklable_with_request_context():
     assert loaded._current_request_context is None
 
 
-def test_health_route_supports_async_health():
+def test_health_route_supports_async_health(isolate_agent_env):
     import fastapi
     from fastapi.testclient import TestClient
 
@@ -394,7 +399,7 @@ def test_health_route_supports_async_health():
         async def health(self):
             return {"status": "ok"}
 
-    app = AsyncHealthApp(_allow_init=True)
+    app = AsyncHealthApp()
     fastapi_app = fastapi.FastAPI()
     app._add_extra_routes(fastapi_app)
 
@@ -405,8 +410,8 @@ def test_health_route_supports_async_health():
     assert response.json() == {"status": "ok"}
 
 
-def test_openapi_websocket_realtime_metadata_and_schemas():
-    app = RealtimeApp(_allow_init=True)
+def test_openapi_websocket_realtime_metadata_and_schemas(isolate_agent_env):
+    app = RealtimeApp()
     spec = app.openapi()
     ws_spec = spec["paths"]["/realtime"]["x-fal-protocol"]
 
@@ -436,8 +441,8 @@ def test_openapi_websocket_realtime_metadata_and_schemas():
     )
 
 
-def test_openapi_websocket_barebones_has_no_realtime_marker():
-    app = RealtimeApp(_allow_init=True)
+def test_openapi_websocket_barebones_has_no_realtime_marker(isolate_agent_env):
+    app = RealtimeApp()
     spec = app.openapi()
     ws_spec = spec["paths"]["/ws"]["x-fal-protocol"]
 
@@ -449,8 +454,8 @@ def test_openapi_websocket_barebones_has_no_realtime_marker():
     assert "post" not in spec["paths"]["/ws"]
 
 
-def test_openapi_websocket_realtime_streaming_modes_marked():
-    app = RealtimeApp(_allow_init=True)
+def test_openapi_websocket_realtime_streaming_modes_marked(isolate_agent_env):
+    app = RealtimeApp()
     spec = app.openapi()
 
     assert spec["paths"]["/realtime/json"]["x-fal-protocol"]["contentType"] == (
@@ -497,8 +502,8 @@ def test_openapi_websocket_realtime_streaming_modes_marked():
         )
 
 
-def test_openapi_does_not_duplicate_ws_paths_on_multiple_calls():
-    app = RealtimeApp(_allow_init=True)
+def test_openapi_does_not_duplicate_ws_paths_on_multiple_calls(isolate_agent_env):
+    app = RealtimeApp()
     fal_app = app._build_app()
     first = fal_app.openapi()
     second = fal_app.openapi()
@@ -514,3 +519,48 @@ def test_openapi_does_not_duplicate_ws_paths_on_multiple_calls():
     ]
     assert [p for p in first["x-fal-order-paths"] if p != "/health"] == expected_order
     assert [p for p in second["x-fal-order-paths"] if p != "/health"] == expected_order
+
+
+@pytest.mark.asyncio
+async def test_serve_exits_with_exception_on_setup_failure(
+    isolate_agent_env, monkeypatch: pytest.MonkeyPatch
+):
+    import asyncio
+
+    from fal.api import api
+
+    class FakeServer:
+        def __init__(self, config):
+            self.config = config
+            self.started = False
+
+        def set_handle_exit(self, handle_exit):
+            self._handle_exit = handle_exit
+
+        async def serve(self) -> None:
+            app = self.config.app
+            async with app.router.lifespan_context(app):
+                self.started = True
+
+    class FakeMetricsServer:
+        def __init__(self, config):
+            pass
+
+        async def serve(self) -> None:
+            await asyncio.Event().wait()
+
+    monkeypatch.setattr(api, "FalServer", FakeServer)
+    monkeypatch.setattr(api.uvicorn, "Server", FakeMetricsServer)
+
+    class FailingSetupApp(App):
+        def setup(self):
+            raise Exception("TEST EXCEPTION")
+
+        @endpoint("/")
+        def run(self):
+            return {"status": "ok"}
+
+    app = FailingSetupApp()
+
+    with pytest.raises(Exception, match="TEST EXCEPTION"):
+        await app.serve()

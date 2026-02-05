@@ -1705,17 +1705,35 @@ class BaseServable:
         )
 
         async def _serve() -> None:
-            tasks = {
-                asyncio.create_task(server.serve()),
-                asyncio.create_task(metrics_server.serve()),
-            }
+            app_task = asyncio.create_task(server.serve())
+            metrics_task = asyncio.create_task(metrics_server.serve())
+            tasks = {app_task, metrics_task}
 
-            await asyncio.wait(
+            done, pending = await asyncio.wait(
                 tasks,
-                return_when=asyncio.ALL_COMPLETED,
+                return_when=asyncio.FIRST_COMPLETED,
             )
-            # we do not take care of pending tasks here.
-            # each task should be responsible for its own cleanup.
+
+            from fastapi.logger import logger
+
+            if app_task in done and metrics_task in pending:
+                metrics_task.cancel()
+
+            app_exc, metrics_exc = await asyncio.gather(
+                app_task,
+                metrics_task,
+                return_exceptions=True,
+            )
+
+            if app_exc:
+                logger.error("App server exited with error", exc_info=app_exc)
+
+            if metrics_exc and not isinstance(metrics_exc, asyncio.CancelledError):
+                logger.error("Metrics server exited with error", exc_info=metrics_exc)
+
+            if app_exc:
+                raise app_exc
+
             # graceful termination and timeout should be handled by external scheduler.
 
         await _serve()
