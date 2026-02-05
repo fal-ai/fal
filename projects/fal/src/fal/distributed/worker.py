@@ -692,6 +692,14 @@ class DistributedRunner:
         streaming_timeout: Optional[int] = None,
         as_text_events: bool = False,
     ) -> AsyncIterator[Any]:
+        """
+        Streams the result from the distributed worker.
+        :param payload: The payload to send to the worker.
+        :param timeout: The timeout for the overall operation.
+        :param streaming_timeout: The timeout in-between streamed results.
+        :param as_text_events: Whether to yield results as text events.
+        :return: An async iterator that yields the result from the worker.
+        """
         async with self.lock:
             async for result in self._stream(
                 payload, timeout, streaming_timeout, as_text_events
@@ -705,14 +713,6 @@ class DistributedRunner:
         streaming_timeout: Optional[int] = None,
         as_text_events: bool = False,
     ) -> AsyncIterator[Any]:
-        """
-        Streams the result from the distributed worker.
-        :param payload: The payload to send to the worker.
-        :param timeout: The timeout for the overall operation.
-        :param streaming_timeout: The timeout in-between streamed results.
-        :param as_text_events: Whether to yield results as text events.
-        :return: An async iterator that yields the result from the worker.
-        """
         import zmq
 
         self.ensure_alive()
@@ -777,6 +777,12 @@ class DistributedRunner:
         payload: dict[str, Any] = {},
         timeout: Optional[int] = None,
     ) -> Any:
+        """
+        Invokes the distributed worker with the given payload.
+        :param payload: The payload to send to the worker.
+        :param timeout: The timeout for the overall operation.
+        :return: The result from the worker.
+        """
         # Lock the invocation to prevent concurrent invocations
         async with self.lock:
             return await self._invoke(payload, timeout)
@@ -786,12 +792,6 @@ class DistributedRunner:
         payload: dict[str, Any],
         timeout: Optional[int],
     ) -> Any:
-        """
-        Invokes the distributed worker with the given payload.
-        :param payload: The payload to send to the worker.
-        :param timeout: The timeout for the overall operation.
-        :return: The result from the worker.
-        """
         import zmq
 
         self.ensure_alive()
