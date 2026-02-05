@@ -527,6 +527,7 @@ message ShellRunnerInput {
     bytes data = 2;
     bool close = 3;
     optional TerminalSize tty_size = 4;
+    repeated string command = 5;
 }
 
 message ShellRunnerOutput {
