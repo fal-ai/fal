@@ -857,8 +857,6 @@ class App(BaseServable):
             )
 
             token = self._current_request_context.set(context)
-            # Backwards compatibility: also set the global LIFECYCLE_PREFERENCE
-            # for external packages that still rely on it
             LIFECYCLE_PREFERENCE.set(context.lifecycle_preference)
             try:
                 return await call_next(request)
