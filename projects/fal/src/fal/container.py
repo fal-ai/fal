@@ -306,10 +306,8 @@ class DockerfileParser:
             return [src_path.lstrip("/") for src_path in src_paths]
 
         except (AttributeError, json.JSONDecodeError, TypeError, ValueError):
-            from fal.console import console
-
-            console.print(
-                f"[yellow][WARNING][/yellow] Failed to parse instruction arguments: "
+            print(
+                f"[WARNING] Failed to parse instruction arguments: "
                 f"{args_str}. Skipping this instruction. Please check the Dockerfile "
                 "syntax and try again."
             )
