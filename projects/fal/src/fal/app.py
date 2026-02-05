@@ -42,6 +42,7 @@ from fal.sdk import (
     RetryConditionLiteral,
 )
 from fal.toolkit.file import request_lifecycle_preference
+from fal.toolkit.file.providers.fal import LIFECYCLE_PREFERENCE
 
 REALTIME_APP_REQUIREMENTS = ["websockets", "msgpack"]
 REQUEST_ID_KEY = "x-fal-request-id"
@@ -870,10 +871,12 @@ class App(BaseServable):
             )
 
             token = self._current_request_context.set(context)
+            LIFECYCLE_PREFERENCE.set(context.lifecycle_preference)
             try:
                 return await call_next(request)
             finally:
                 self._current_request_context.reset(token)
+                LIFECYCLE_PREFERENCE.set(None)
 
         @app.middleware("http")
         async def set_log_context(request, call_next):
