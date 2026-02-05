@@ -63,7 +63,10 @@ def _run(args):
     isolated_function = loaded.function
     # let our exc handlers handle UserFunctionException
     isolated_function.reraise = False
-    isolated_function()
+    if args.local:
+        isolated_function.run_local()
+    else:
+        isolated_function()
 
 
 def add_parser(main_subparsers, parents):
@@ -118,5 +121,10 @@ def add_parser(main_subparsers, parents):
         "--env",
         dest="env",
         help="Target environment (defaults to main).",
+    )
+    parser.add_argument(
+        "--local",
+        action="store_true",
+        help="Run locally without serverless.",
     )
     parser.set_defaults(func=_run)
