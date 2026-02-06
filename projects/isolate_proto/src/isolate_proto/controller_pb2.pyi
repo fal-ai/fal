@@ -1614,11 +1614,14 @@ class ShellRunnerInput(google.protobuf.message.Message):
     DATA_FIELD_NUMBER: builtins.int
     CLOSE_FIELD_NUMBER: builtins.int
     TTY_SIZE_FIELD_NUMBER: builtins.int
+    COMMAND_FIELD_NUMBER: builtins.int
     runner_id: builtins.str
     data: builtins.bytes
     close: builtins.bool
     @property
     def tty_size(self) -> global___TerminalSize: ...
+    @property
+    def command(self) -> google.protobuf.internal.containers.RepeatedScalarFieldContainer[builtins.str]: ...
     def __init__(
         self,
         *,
@@ -1626,9 +1629,10 @@ class ShellRunnerInput(google.protobuf.message.Message):
         data: builtins.bytes = ...,
         close: builtins.bool = ...,
         tty_size: global___TerminalSize | None = ...,
+        command: collections.abc.Iterable[builtins.str] | None = ...,
     ) -> None: ...
     def HasField(self, field_name: typing_extensions.Literal["_tty_size", b"_tty_size", "tty_size", b"tty_size"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing_extensions.Literal["_tty_size", b"_tty_size", "close", b"close", "data", b"data", "runner_id", b"runner_id", "tty_size", b"tty_size"]) -> None: ...
+    def ClearField(self, field_name: typing_extensions.Literal["_tty_size", b"_tty_size", "close", b"close", "command", b"command", "data", b"data", "runner_id", b"runner_id", "tty_size", b"tty_size"]) -> None: ...
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_tty_size", b"_tty_size"]) -> typing_extensions.Literal["tty_size"] | None: ...
 
 global___ShellRunnerInput = ShellRunnerInput
