@@ -83,6 +83,15 @@ ArgsT = ParamSpec("ArgsT")
 ReturnT = TypeVar("ReturnT", covariant=True)  # noqa: PLC0105
 
 BasicConfig = Dict[str, Any]
+
+
+def merge_basic_config(target: BasicConfig, incoming: BasicConfig) -> None:
+    for key, value in incoming.items():
+        if key in target:
+            continue
+        target[key] = value
+
+
 _UNSET = object()
 
 SERVE_REQUIREMENTS = [
@@ -1696,17 +1705,35 @@ class BaseServable:
         )
 
         async def _serve() -> None:
-            tasks = {
-                asyncio.create_task(server.serve()),
-                asyncio.create_task(metrics_server.serve()),
-            }
+            app_task = asyncio.create_task(server.serve())
+            metrics_task = asyncio.create_task(metrics_server.serve())
+            tasks = {app_task, metrics_task}
 
-            await asyncio.wait(
+            done, pending = await asyncio.wait(
                 tasks,
-                return_when=asyncio.ALL_COMPLETED,
+                return_when=asyncio.FIRST_COMPLETED,
             )
-            # we do not take care of pending tasks here.
-            # each task should be responsible for its own cleanup.
+
+            from fastapi.logger import logger
+
+            if app_task in done and metrics_task in pending:
+                metrics_task.cancel()
+
+            app_exc, metrics_exc = await asyncio.gather(
+                app_task,
+                metrics_task,
+                return_exceptions=True,
+            )
+
+            if app_exc:
+                logger.error("App server exited with error", exc_info=app_exc)
+
+            if metrics_exc and not isinstance(metrics_exc, asyncio.CancelledError):
+                logger.error("Metrics server exited with error", exc_info=metrics_exc)
+
+            if app_exc:
+                raise app_exc
+
             # graceful termination and timeout should be handled by external scheduler.
 
         await _serve()
@@ -1814,6 +1841,31 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
                 # re-raise original exception without our wrappers
                 raise cause
             raise
+
+    def run_local(self, *args: ArgsT.args, **kwargs: ArgsT.kwargs) -> ReturnT:
+        import asyncio
+        import inspect
+        import os
+        from typing import Awaitable, cast
+
+        func = self.func
+        previous_isolate_env = os.environ.get("IS_ISOLATE_AGENT")
+        os.environ["IS_ISOLATE_AGENT"] = "1"
+        try:
+            result = func(*args, **kwargs)
+            if inspect.isawaitable(result):
+                awaited = cast(Awaitable[ReturnT], result)
+
+                async def _await_result():
+                    return await awaited
+
+                return asyncio.run(_await_result())  # type: ignore[return-value]
+            return result
+        finally:
+            if previous_isolate_env is None:
+                del os.environ["IS_ISOLATE_AGENT"]
+            else:
+                os.environ["IS_ISOLATE_AGENT"] = previous_isolate_env
 
     @overload
     def on(

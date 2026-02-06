@@ -164,7 +164,6 @@ class FalBaseModel(BaseModel):
       for hidden params.
 
     Example:
-    ```python
         from fal.toolkit.pydantic import FalBaseModel, Field, Hidden
 
         class Input(FalBaseModel):
@@ -173,7 +172,6 @@ class FalBaseModel(BaseModel):
             prompt: str = Field(description="Text prompt")
             image_url: str = Field(description="Image URL")
             debug_mode: bool = Hidden(Field(default=False))
-    ```
     """
 
     SCHEMA_IGNORES: ClassVar[Set[str]] = set()

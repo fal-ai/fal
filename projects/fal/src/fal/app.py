@@ -42,6 +42,7 @@ from fal.sdk import (
     RetryConditionLiteral,
 )
 from fal.toolkit.file import request_lifecycle_preference
+from fal.toolkit.file.providers.fal import LIFECYCLE_PREFERENCE
 
 REALTIME_APP_REQUIREMENTS = ["websockets", "msgpack"]
 REQUEST_ID_KEY = "x-fal-request-id"
@@ -92,8 +93,15 @@ async def _set_logger_labels(
     logger_labels: dict[str, str], channel: async_grpc.Channel
 ):
     try:
-        import sys
+        # Import from __main__ because the agent runs as __main__, not as
+        # isolate.connections.grpc.agent, so the ContextVar lives there.
+        from __main__ import isolate_log_context
 
+        isolate_log_context.set(logger_labels)
+    except ImportError:
+        pass
+
+    try:
         from isolate.server import definitions
 
         # Flush any prints that were buffered before setting the logger labels
@@ -696,6 +704,13 @@ class App(BaseServable):
         ]
 
     @classmethod
+    def run_local(cls, *args, **kwargs):
+        # import wrap_app explicitly to avoid reference to wrap_app during pickling
+        from fal.app import wrap_app
+
+        return wrap_app(cls).run_local(*args, **kwargs)
+
+    @classmethod
     def spawn(cls) -> AppSpawnInfo:
         # import wrap_app explicitly to avoid reference to wrap_app during pickling
         from fal.app import wrap_app
@@ -856,13 +871,15 @@ class App(BaseServable):
             )
 
             token = self._current_request_context.set(context)
+            LIFECYCLE_PREFERENCE.set(context.lifecycle_preference)
             try:
                 return await call_next(request)
             finally:
                 self._current_request_context.reset(token)
+                LIFECYCLE_PREFERENCE.set(None)
 
         @app.middleware("http")
-        async def set_request_id(request, call_next):
+        async def set_log_context(request, call_next):
             # NOTE: Setting request_id is not supported for websocket/realtime endpoints
             if not os.getenv("IS_ISOLATE_AGENT") or not os.environ.get(
                 "NOMAD_ALLOC_PORT_grpc"

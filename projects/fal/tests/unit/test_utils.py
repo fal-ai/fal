@@ -2,6 +2,7 @@ import pytest
 
 import fal
 from fal.api import IsolatedFunction, Options
+from fal.api.api import merge_basic_config
 from fal.utils import _find_target
 
 
@@ -110,3 +111,14 @@ def test_find_target_single_function_without_name():
     assert function_name == name
     assert auth is None
     assert class_name == name
+
+
+def test_merge_basic_config_preserves_existing_values():
+    target = {"min_concurrency": 2, "regions": ["us-east"]}
+    incoming = {"min_concurrency": 10, "max_concurrency": 20}
+
+    merge_basic_config(target, incoming)
+
+    assert target["min_concurrency"] == 2
+    assert target["regions"] == ["us-east"]
+    assert target["max_concurrency"] == 20
