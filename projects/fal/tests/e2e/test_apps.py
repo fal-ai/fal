@@ -1598,6 +1598,7 @@ def test_shell_runner(host: api.FalServerlessHost, test_sleep_app: str):
                 proc.kill()
                 proc.wait()
 
+
 @pytest.mark.flaky(max_runs=3)
 def test_exec_runner(host: api.FalServerlessHost, test_sleep_app: str):
     handle = apps.submit(test_sleep_app, arguments={"wait_time": 30})
@@ -1618,7 +1619,17 @@ def test_exec_runner(host: api.FalServerlessHost, test_sleep_app: str):
         runner_id = runners[0].runner_id
 
         proc = subprocess.Popen(
-            ["python", "-m", "fal", "runners", "exec", runner_id, "--", "echo", "hello"],
+            [
+                "python",
+                "-m",
+                "fal",
+                "runners",
+                "exec",
+                runner_id,
+                "--",
+                "echo",
+                "hello",
+            ],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -1626,7 +1637,9 @@ def test_exec_runner(host: api.FalServerlessHost, test_sleep_app: str):
 
         try:
             stdout, stderr = proc.communicate(timeout=10)
-            assert b"hello" in stdout, f"Expected 'hello' in output, got: {stdout.decode()}"
+            assert (
+                b"hello" in stdout
+            ), f"Expected 'hello' in output, got: {stdout.decode()}"
         finally:
             if proc.poll() is None:
                 proc.kill()
