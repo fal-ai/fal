@@ -154,7 +154,7 @@ def _shell(args):
         interactive = True
 
     is_tty = interactive and sys.stdin.isatty()
-    fd = sys.stdin.fileno() if interactive else None
+    fd = sys.stdin.fileno() if interactive else -1
 
     # Message queue for stdin data and resize events
     messages = Queue()  # type: ignore
