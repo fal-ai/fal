@@ -218,6 +218,8 @@ def _shell(args):
                 msg.tty_size.height = h
                 msg.tty_size.width = w
                 yield msg
+            elif msg_type == "eof":
+                return
 
     exit_code = 1
     try:
