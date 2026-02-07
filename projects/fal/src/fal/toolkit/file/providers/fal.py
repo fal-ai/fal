@@ -211,7 +211,23 @@ class VariableReference(Generic[VariableType]):
 # is preserved for external packages that still import it.
 # New code should use the request context pattern instead.
 # fal.ref.get_current_app().current_request.lifecycle_preference
-LIFECYCLE_PREFERENCE: VariableReference[dict[str, str] | None] = VariableReference(None)
+_LIFECYCLE_PREFERENCE: VariableReference[dict[str, str] | None] = VariableReference(
+    None
+)
+
+
+def __getattr__(name: str):
+    if name == "LIFECYCLE_PREFERENCE":
+        import warnings
+
+        warnings.warn(
+            "LIFECYCLE_PREFERENCE is deprecated. Use "
+            "fal.ref.get_current_app().current_request.lifecycle_preference instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return _LIFECYCLE_PREFERENCE
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 @dataclass
