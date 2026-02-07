@@ -9,7 +9,8 @@ import sys
 import threading
 import time
 from contextlib import asynccontextmanager, contextmanager
-from contextvars import ContextVar
+
+# from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, ClassVar, Optional
@@ -605,7 +606,7 @@ class App(BaseServable):
 
     isolate_channel: async_grpc.Channel | None = None
 
-    _current_request_context: ContextVar[RequestContext] | None = None
+    _current_request_context = None
 
     def __init_subclass__(cls, **kwargs):
         app_name = kwargs.pop("name", None) or _to_fal_app_name(cls.__name__)
@@ -773,12 +774,12 @@ class App(BaseServable):
         # Configure sys.path based on deployment type:
         # - app_files: files synced to /app
         # - container: files baked into image
-        self._current_request_context = ContextVar(
-            "_current_request_context",
-            default=RequestContext(
-                request_id=None, endpoint=None, lifecycle_preference=None, headers={}
-            ),
-        )
+        # self._current_request_context = ContextVar(
+        #     "_current_request_context",
+        #     default=RequestContext(
+        #         request_id=None, endpoint=None, lifecycle_preference=None, headers={}
+        #     ),
+        # )
 
         # We want to not do any directory changes for container apps,
         # since we don't have explicit checks to see the kind of app
