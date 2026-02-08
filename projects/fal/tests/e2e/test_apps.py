@@ -8,7 +8,7 @@ import uuid
 from contextlib import contextmanager, redirect_stdout, suppress
 from datetime import datetime, timedelta, timezone
 from io import StringIO
-from typing import AsyncIterator, Generator, Iterator, List, Tuple, Union
+from typing import AsyncIterator, Generator, Iterator, List, Optional, Tuple, Union
 
 import httpx
 import pytest
@@ -58,7 +58,7 @@ class StatefulInput(BaseModel):
 
 
 class FieldInput(BaseModel):
-    value: int | str | float
+    value: Union[int, str, float]
 
 
 class Output(BaseModel):
@@ -1861,10 +1861,10 @@ def test_graceful_shutdown_handle_exit(
 
 
 class RequestContextOutput(BaseModel):
-    request_id_from_context: str | None
-    endpoint_from_context: str | None
-    lifecycle_preference_from_context: dict | None
-    request_id_from_header: str | None
+    request_id_from_context: Optional[str]
+    endpoint_from_context: Optional[str]
+    lifecycle_preference_from_context: Optional[dict]
+    request_id_from_header: Optional[str]
 
 
 def _external_get_request_context() -> dict:
