@@ -10,7 +10,7 @@ on:
       - "README.md"
 
   schedule:
-    - cron: '30 5 * * *' # every day at 5:30 UTC
+    - cron: "30 5 * * *" # every day at 5:30 UTC
 
   workflow_dispatch:
 
@@ -30,7 +30,7 @@ jobs:
       fail-fast: false
       matrix:
         deps: ["pydantic==2.11.7"]
-        python: ["3.12"]
+        python: ["3.8", "3.9", "3.10", "3.11", "3.12"]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -54,5 +54,3 @@ jobs:
           FAL_RUN_HOST: run.fal.dev
         run: |
           pytest -n auto -v projects/fal/tests/e2e
-
-
