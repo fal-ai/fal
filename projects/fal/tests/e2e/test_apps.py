@@ -70,6 +70,9 @@ class StatefulInput(BaseModel):
 class FieldInput(BaseModel):
     value: Union[int, str, float]
 
+    class Config:
+        smart_union = True
+
 
 class Output(BaseModel):
     result: int
