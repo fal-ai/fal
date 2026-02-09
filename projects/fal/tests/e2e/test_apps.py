@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import json
 import os
@@ -394,7 +396,7 @@ class RTInput(BaseModel):
 
     def can_batch(
         self,
-        other: "RTInput",
+        other: RTInput,
         current_batch_size: int = 1,
     ) -> bool:
         return "don't batch" not in other.prompt
