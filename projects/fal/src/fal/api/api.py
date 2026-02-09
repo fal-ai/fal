@@ -798,11 +798,6 @@ class FalServerlessHost(Host):
                             f"  Async  {service_urls.queue}{endpoint}\n", style="cyan"
                         )
 
-                    # Logs section
-                    lines.append("\n")
-                    lines.append("▸ Logs\n", style="bold")
-                    lines.append(f"  {service_urls.log}", style="cyan")
-
                 title = Text(f"Ephemeral App ({effective_auth_mode})", style="bold")
                 subtitle = Text("Deleted when process exits", style="dim")
                 console.print(Rule(title, style="green"))
