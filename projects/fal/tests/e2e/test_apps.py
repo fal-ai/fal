@@ -1130,7 +1130,7 @@ def test_realtime_connection(test_realtime_app):
 
     with apps._connect(test_realtime_app, path="/realtime/batched") as connection:
         connection.send({"prompt": "keep busy"})
-        time.sleep(0.1)
+        time.sleep(1)
 
         for prompt in range(10):
             connection.send({"prompt": str(prompt)})
