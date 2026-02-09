@@ -4,7 +4,7 @@
 repos:
   # Global hooks (these can be configured with global pyproject.toml)
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: 'v0.3.4'
+    rev: 'v0.15.0'
     hooks:
       - id: ruff-format
         files: |
