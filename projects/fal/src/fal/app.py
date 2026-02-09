@@ -9,7 +9,6 @@ import sys
 import threading
 import time
 from contextlib import asynccontextmanager, contextmanager
-from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, ClassVar, Optional
@@ -605,7 +604,8 @@ class App(BaseServable):
 
     isolate_channel: async_grpc.Channel | None = None
 
-    _current_request_context: ContextVar[RequestContext] | None = None
+    # HACK: Removed type annotation to avoid weird error during deserialization
+    _current_request_context: Any | None = None
 
     def __init_subclass__(cls, **kwargs):
         app_name = kwargs.pop("name", None) or _to_fal_app_name(cls.__name__)
@@ -773,7 +773,10 @@ class App(BaseServable):
         # Configure sys.path based on deployment type:
         # - app_files: files synced to /app
         # - container: files baked into image
-        self._current_request_context = ContextVar(
+        # HACK: Import at runtime to avoid weird error during deserialization
+        import contextvars
+
+        self._current_request_context = contextvars.ContextVar(
             "_current_request_context",
             default=RequestContext(
                 request_id=None, endpoint=None, lifecycle_preference=None, headers={}
