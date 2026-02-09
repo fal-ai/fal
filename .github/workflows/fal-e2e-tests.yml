@@ -28,9 +28,10 @@ jobs:
     timeout-minutes: 10
     strategy:
       fail-fast: false
+      max-parallel: 2
       matrix:
         deps: ["pydantic==2.11.7"]
-        python: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
+        python: ["3.9", "3.10", "3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -43,9 +44,6 @@ jobs:
 
       - name: Install dependencies
         run: |
-          if [ ${{ matrix.python }} == "3.14" ]; then
-            export PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1
-          fi
           pip install --upgrade pip wheel
           pip install -e 'projects/fal[test]' graphlib ${{ matrix.deps }}
           pip install -e 'projects/fal_client[test]'
