@@ -30,7 +30,7 @@ jobs:
       fail-fast: false
       matrix:
         deps: ["pydantic==2.11.7"]
-        python: ["3.9", "3.10", "3.11", "3.12"]
+        python: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v4
         with:
