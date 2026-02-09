@@ -28,7 +28,7 @@ jobs:
     timeout-minutes: 10
     strategy:
       fail-fast: false
-      max-parallel: 3
+      max-parallel: 2
       matrix:
         deps: ["pydantic==1.10.18", "pydantic==2.11.7"]
         python: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
