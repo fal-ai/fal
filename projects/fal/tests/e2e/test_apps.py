@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import asyncio
 import json
 import os
@@ -11,7 +9,16 @@ import uuid
 from contextlib import contextmanager, redirect_stdout, suppress
 from datetime import datetime, timedelta, timezone
 from io import StringIO
-from typing import AsyncIterator, Generator, Iterator, List, Optional, Tuple, Union
+from typing import (
+    AsyncIterator,
+    Dict,
+    Generator,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    Union,
+)
 
 import httpx
 import pytest
@@ -71,7 +78,7 @@ class Output(BaseModel):
 actual_python = active_python()
 
 
-def _auth_headers() -> dict[str, str]:
+def _auth_headers() -> Dict[str, str]:
     key_creds = key_credentials()
     if not key_creds:
         return {}
@@ -396,7 +403,7 @@ class RTInput(BaseModel):
 
     def can_batch(
         self,
-        other: RTInput,
+        other: "RTInput",
         current_batch_size: int = 1,
     ) -> bool:
         return "don't batch" not in other.prompt
