@@ -30,8 +30,21 @@ jobs:
       fail-fast: false
       max-parallel: 3
       matrix:
-        deps: ["pydantic==2.11.7"]
-        python: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+        deps: ["pydantic==1.10.18", "pydantic==2.11.7"]
+        python: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
+        exclude:
+          - deps: "pydantic==2.11.7"
+            python: "3.8"
+          - deps: "pydantic==1.10.18"
+            python: "3.9"
+          - deps: "pydantic==1.10.18"
+            python: "3.10"
+          - deps: "pydantic==1.10.18"
+            python: "3.11"
+          - deps: "pydantic==1.10.18"
+            python: "3.12"
+          - deps: "pydantic==1.10.18"
+            python: "3.13"
     steps:
       - uses: actions/checkout@v4
         with:
