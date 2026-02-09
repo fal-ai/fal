@@ -367,7 +367,7 @@ class CompressedFile(File):
 
 
 def request_lifecycle_preference(request: Request) -> dict[str, str] | None:
-    import json
+    import json  # noqa: PLC0415
 
     preference_str = request.headers.get(OBJECT_LIFECYCLE_PREFERENCE_KEY)
     if preference_str is None:

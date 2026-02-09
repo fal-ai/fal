@@ -32,7 +32,7 @@ _colab_state = GoogleColabState()
 
 def is_google_colab() -> bool:
     try:
-        from IPython import get_ipython
+        from IPython import get_ipython  # noqa: PLC0415
 
         return "google.colab" in str(get_ipython())
     except ModuleNotFoundError:
@@ -49,7 +49,7 @@ def get_colab_token() -> Optional[str]:
             return _colab_state.secret
 
         try:
-            from google.colab import userdata  # noqa: I001
+            from google.colab import userdata  # noqa: I001, PLC0415
         except ImportError:
             return None
 
@@ -131,12 +131,12 @@ def _fetch_access_token() -> str:
 
 
 def _fetch_teams(bearer_token: str) -> list[dict]:
-    import json
-    from urllib.error import HTTPError
-    from urllib.request import Request, urlopen
+    import json  # noqa: PLC0415
+    from urllib.error import HTTPError  # noqa: PLC0415
+    from urllib.request import Request, urlopen  # noqa: PLC0415
 
-    from fal.exceptions import FalServerlessException
-    from fal.flags import REST_URL
+    from fal.exceptions import FalServerlessException  # noqa: PLC0415
+    from fal.flags import REST_URL  # noqa: PLC0415
 
     request = Request(
         method="GET",
@@ -151,12 +151,12 @@ def _fetch_teams(bearer_token: str) -> list[dict]:
 
 
 def current_user_info(headers: dict[str, str]) -> dict:
-    import json
-    from urllib.error import HTTPError
-    from urllib.request import Request, urlopen
+    import json  # noqa: PLC0415
+    from urllib.error import HTTPError  # noqa: PLC0415
+    from urllib.request import Request, urlopen  # noqa: PLC0415
 
-    from fal.exceptions import FalServerlessException
-    from fal.flags import REST_URL
+    from fal.exceptions import FalServerlessException  # noqa: PLC0415
+    from fal.flags import REST_URL  # noqa: PLC0415
 
     request = Request(
         method="GET",

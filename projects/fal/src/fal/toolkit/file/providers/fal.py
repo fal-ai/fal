@@ -218,7 +218,7 @@ _LIFECYCLE_PREFERENCE: VariableReference[dict[str, str] | None] = VariableRefere
 
 def __getattr__(name: str):
     if name == "LIFECYCLE_PREFERENCE":
-        import warnings
+        import warnings  # noqa: PLC0415
 
         warnings.warn(
             "LIFECYCLE_PREFERENCE is deprecated. Use "
@@ -443,7 +443,7 @@ class MultipartUploadGCS:
         max_concurrency: int | None = None,
         object_lifecycle_preference: dict[str, str] | None = None,
     ):
-        import concurrent.futures
+        import concurrent.futures  # noqa: PLC0415
 
         multipart = cls(
             file.file_name,
@@ -479,7 +479,7 @@ class MultipartUploadGCS:
         max_concurrency: int | None = None,
         object_lifecycle_preference: dict[str, str] | None = None,
     ) -> str:
-        import concurrent.futures
+        import concurrent.futures  # noqa: PLC0415
 
         file_name = os.path.basename(file_path)
         size = os.path.getsize(file_path)
@@ -692,7 +692,7 @@ class MultipartUpload:
         max_concurrency: int | None = None,
         object_lifecycle_preference: dict[str, str] | None = None,
     ):
-        import concurrent.futures
+        import concurrent.futures  # noqa: PLC0415
 
         multipart = cls(
             file.file_name,
@@ -728,7 +728,7 @@ class MultipartUpload:
         max_concurrency: int | None = None,
         object_lifecycle_preference: dict[str, str] | None = None,
     ) -> str:
-        import concurrent.futures
+        import concurrent.futures  # noqa: PLC0415
 
         file_name = os.path.basename(file_path)
         size = os.path.getsize(file_path)
@@ -906,7 +906,7 @@ class MultipartUploadV3:
         max_concurrency: int | None = None,
         object_lifecycle_preference: dict[str, str] | None = None,
     ):
-        import concurrent.futures
+        import concurrent.futures  # noqa: PLC0415
 
         multipart = cls(
             file.file_name,
@@ -942,7 +942,7 @@ class MultipartUploadV3:
         max_concurrency: int | None = None,
         object_lifecycle_preference: dict[str, str] | None = None,
     ) -> str:
-        import concurrent.futures
+        import concurrent.futures  # noqa: PLC0415
 
         file_name = os.path.basename(file_path)
         size = os.path.getsize(file_path)
@@ -1103,7 +1103,7 @@ class InternalMultipartUploadV3:
         max_concurrency: int | None = None,
         object_lifecycle_preference: dict[str, str] | None = None,
     ):
-        import concurrent.futures
+        import concurrent.futures  # noqa: PLC0415
 
         multipart = cls(
             file.file_name,
@@ -1139,7 +1139,7 @@ class InternalMultipartUploadV3:
         max_concurrency: int | None = None,
         object_lifecycle_preference: dict[str, str] | None = None,
     ) -> str:
-        import concurrent.futures
+        import concurrent.futures  # noqa: PLC0415
 
         file_name = os.path.basename(file_path)
         size = os.path.getsize(file_path)

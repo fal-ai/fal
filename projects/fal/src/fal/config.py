@@ -19,7 +19,7 @@ class Config:
     DEFAULT_CONFIG_PATH = "~/.fal/config.toml"
 
     def __init__(self, *, validate_profile: bool = False):
-        import tomli
+        import tomli  # noqa: PLC0415
 
         self.config_path = os.path.expanduser(
             os.getenv("FAL_CONFIG_PATH", self.DEFAULT_CONFIG_PATH)
@@ -68,7 +68,7 @@ class Config:
         return keys
 
     def save(self) -> None:
-        import tomli_w
+        import tomli_w  # noqa: PLC0415
 
         with open(self.config_path, "wb") as file:
             tomli_w.dump(self._config, file)
