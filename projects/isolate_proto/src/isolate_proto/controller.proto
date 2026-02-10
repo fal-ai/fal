@@ -489,6 +489,7 @@ message RunnerInfo {
     }
 
     ReplaceState replacement = 9;
+    string machine_type = 10;
 }
 
 message StopRunnerRequest {
