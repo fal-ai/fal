@@ -751,15 +751,13 @@ class FalServerlessHost(Host):
         effective_auth_mode = application_auth_mode or "public"
 
         def result_handler(partial_result):
-            from fal.console import console  # noqa: PLC0415
-
             if service_urls := partial_result.service_urls:
                 from rich.rule import Rule  # noqa: PLC0415
                 from rich.text import Text  # noqa: PLC0415
 
                 from fal.flags import URL_OUTPUT  # noqa: PLC0415
 
-                console.print("")
+                print("")
 
                 # Build panel content with grouped sections
                 lines = Text()
