@@ -34,7 +34,9 @@ def is_app_name(app_ref: tuple[str, str | None]) -> bool:
     return is_single_file and not is_python_file
 
 
-def get_app_data_from_toml(app_name: str) -> AppData:
+def get_app_data_from_toml(
+    app_name: str, *, emit_deprecation_warnings: bool = True
+) -> AppData:
     toml_path = find_pyproject_toml()
 
     if toml_path is None:
@@ -108,7 +110,8 @@ def get_app_data_from_toml(app_name: str) -> AppData:
     if "no_scale" in app_data:
         # Deprecated
         app_no_scale: bool = app_data.pop("no_scale")
-        print("[WARNING] no_scale is deprecated, use app_scale_settings instead")
+        if emit_deprecation_warnings:
+            print("[WARNING] no_scale is deprecated, use app_scale_settings instead")
         app_reset_scale = not app_no_scale
     else:
         app_reset_scale = app_data.pop("app_scale_settings", False)
