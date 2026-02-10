@@ -1326,10 +1326,9 @@ class FalFastAPI(FastAPI):
     ) -> str | None:
         if model is None:
             return None
-        from fal.toolkit.pydantic import IS_PYDANTIC_V2  # noqa: PLC0415
 
         schema_name = model.__name__
-        if IS_PYDANTIC_V2:
+        if pydantic_version.startswith("2."):
             from pydantic import TypeAdapter  # type: ignore  # noqa: PLC0415
 
             adapter = TypeAdapter(model)
