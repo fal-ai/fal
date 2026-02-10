@@ -88,9 +88,9 @@ class ServerCredentials:
 
     @property
     def base_options(self) -> dict[str, str | int]:
-        import json
+        import json  # noqa: PLC0415
 
-        from isolate_proto.configuration import GRPC_OPTIONS
+        from isolate_proto.configuration import GRPC_OPTIONS  # noqa: PLC0415
 
         grpc_ops: dict[str, str | int] = dict(GRPC_OPTIONS)
         grpc_ops["grpc.enable_retries"] = 1
@@ -224,7 +224,7 @@ def get_agent_credentials(original_credentials: Credentials) -> Credentials:
     """If running inside a fal Serverless box, use the preconfigured credentials
     instead of the user provided ones."""
 
-    from isolate.connections.common import is_agent
+    from isolate.connections.common import is_agent  # noqa: PLC0415
 
     key_creds = key_credentials()
     if is_agent() and key_creds:
@@ -234,7 +234,7 @@ def get_agent_credentials(original_credentials: Credentials) -> Credentials:
 
 
 def get_default_credentials(team: str | None = None) -> Credentials:
-    from fal.config import Config
+    from fal.config import Config  # noqa: PLC0415
 
     if flags.AUTH_DISABLED:
         return Credentials()
@@ -503,7 +503,7 @@ def _from_grpc_alias_info(message: isolate_proto.AliasInfo) -> AliasInfo:
 
 @from_grpc.register(isolate_proto.RunnerInfo)
 def _from_grpc_runner_info(message: isolate_proto.RunnerInfo) -> RunnerInfo:
-    from isolate.server import definitions as worker_definitions
+    from isolate.server import definitions as worker_definitions  # noqa: PLC0415
 
     external_metadata = worker_definitions.struct_to_dict(message.external_metadata)
     return RunnerInfo(

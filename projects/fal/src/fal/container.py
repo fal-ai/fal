@@ -204,7 +204,7 @@ class DockerignoreHandler:
         return DEFAULT_DOCKERIGNORE_PATTERNS
 
     def get_regex_patterns(self) -> List[str]:
-        from pathspec.patterns.gitwildmatch import GitWildMatchPattern
+        from pathspec.patterns.gitwildmatch import GitWildMatchPattern  # noqa: PLC0415
 
         patterns = self.get_patterns()
         regex_patterns = []

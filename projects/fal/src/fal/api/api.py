@@ -154,7 +154,7 @@ class SpawnInfo:
 
     @property
     def application(self):
-        from urllib.parse import urlparse
+        from urllib.parse import urlparse  # noqa: PLC0415
 
         return urlparse(self.url).path.strip("/")
 
@@ -229,7 +229,7 @@ class Host(Generic[ArgsT, ReturnT]):
 
 def cached(func: Callable[ArgsT, ReturnT]) -> Callable[ArgsT, ReturnT]:
     """Cache the result of the given function in-memory."""
-    import hashlib
+    import hashlib  # noqa: PLC0415
 
     try:
         source_code = inspect.getsource(func).encode("utf-8")
@@ -246,9 +246,9 @@ def cached(func: Callable[ArgsT, ReturnT]) -> Callable[ArgsT, ReturnT]:
         *args: ArgsT.args,
         **kwargs: ArgsT.kwargs,
     ) -> ReturnT:
-        from functools import lru_cache
+        from functools import lru_cache  # noqa: PLC0415
 
-        import isolate
+        import isolate  # noqa: PLC0415
 
         # HACK: Using the isolate module as a global cache.
 
@@ -297,7 +297,7 @@ def _prepare_partial_func(
 
 
 def _prepare_environment() -> BaseEnvironment:
-    import isolate
+    import isolate  # noqa: PLC0415
 
     return isolate.prepare_environment(
         "virtualenv",
@@ -324,9 +324,9 @@ class LocalHost(Host):
         application_name: str | None = None,
         application_auth_mode: AuthModeLiteral | None = None,
     ) -> ReturnT:
-        import isolate
-        from isolate.backends.settings import DEFAULT_SETTINGS
-        from isolate.connections import PythonIPC
+        import isolate  # noqa: PLC0415
+        from isolate.backends.settings import DEFAULT_SETTINGS  # noqa: PLC0415
+        from isolate.connections import PythonIPC  # noqa: PLC0415
 
         settings = replace(
             DEFAULT_SETTINGS,
@@ -357,7 +357,7 @@ def _handle_grpc_error():
             """
             Wraps grpc errors as fal Serverless Errors.
             """
-            from isolate.connections.common import SerializationError
+            from isolate.connections.common import SerializationError  # noqa: PLC0415
 
             try:
                 return fn(*args, **kwargs)
@@ -403,7 +403,7 @@ def _handle_grpc_error():
 def find_missing_dependencies(
     func: Callable, env: dict
 ) -> Iterator[tuple[str, list[str]]]:
-    import dill
+    import dill  # noqa: PLC0415
 
     if env["kind"] != "virtualenv":
         return
@@ -515,8 +515,8 @@ class FalServerlessHost(Host):
         """Sync files to the server."""
         # Auto-exclude the app file, it gets serialized separately
         if self.local_file_path and options.files_list:
-            import re
-            from pathlib import Path
+            import re  # noqa: PLC0415
+            from pathlib import Path  # noqa: PLC0415
 
             context = Path(options.files_context_dir or ".").resolve()
             app_file = Path(self.local_file_path).resolve()
@@ -560,7 +560,7 @@ class FalServerlessHost(Host):
         scale: bool = True,
         environment_name: Optional[str] = None,
     ) -> Optional[RegisterApplicationResult]:
-        from isolate.backends.common import active_python
+        from isolate.backends.common import active_python  # noqa: PLC0415
 
         environment_options = options.environment.copy()
         environment_options.setdefault("python_version", active_python())
@@ -659,7 +659,7 @@ class FalServerlessHost(Host):
         application_name: str | None = None,
         application_auth_mode: AuthModeLiteral | None = None,
     ) -> ReturnT:
-        from isolate.backends.common import active_python
+        from isolate.backends.common import active_python  # noqa: PLC0415
 
         environment_options = options.environment.copy()
         environment_options.setdefault("python_version", active_python())
@@ -751,15 +751,13 @@ class FalServerlessHost(Host):
         effective_auth_mode = application_auth_mode or "public"
 
         def result_handler(partial_result):
-            from fal.console import console
-
             if service_urls := partial_result.service_urls:
-                from rich.rule import Rule
-                from rich.text import Text
+                from rich.rule import Rule  # noqa: PLC0415
+                from rich.text import Text  # noqa: PLC0415
 
-                from fal.flags import URL_OUTPUT
+                from fal.flags import URL_OUTPUT  # noqa: PLC0415
 
-                console.print("")
+                print("")
 
                 # Build panel content with grouped sections
                 lines = Text()
@@ -797,11 +795,6 @@ class FalServerlessHost(Host):
                         lines.append(
                             f"  Async  {service_urls.queue}{endpoint}\n", style="cyan"
                         )
-
-                    # Logs section
-                    lines.append("\n")
-                    lines.append("▸ Logs\n", style="bold")
-                    lines.append(f"  {service_urls.log}", style="cyan")
 
                 title = Text(f"Ephemeral App ({effective_auth_mode})", style="bold")
                 subtitle = Text("Deleted when process exits", style="dim")
@@ -1333,16 +1326,15 @@ class FalFastAPI(FastAPI):
     ) -> str | None:
         if model is None:
             return None
-        from fal.toolkit.pydantic import IS_PYDANTIC_V2
 
         schema_name = model.__name__
-        if IS_PYDANTIC_V2:
-            from pydantic import TypeAdapter  # type: ignore
+        if pydantic_version.startswith("2."):
+            from pydantic import TypeAdapter  # type: ignore  # noqa: PLC0415
 
             adapter = TypeAdapter(model)
             schema = adapter.json_schema(ref_template="#/components/schemas/{model}")
         else:
-            from pydantic.schema import schema as pydantic_schema
+            from pydantic.schema import schema as pydantic_schema  # noqa: PLC0415
 
             schema = pydantic_schema([model], ref_prefix="#/components/schemas/")
             schema = schema.get("definitions", {}).get(schema_name, schema)
@@ -1510,7 +1502,7 @@ class FalServer(uvicorn.Server):
         try:
             self._handle_exit()
         except BaseException as e:
-            from fastapi.logger import logger
+            from fastapi.logger import logger  # noqa: PLC0415
 
             logger.exception(f"Error in handle_exit: {e}")
 
@@ -1535,13 +1527,13 @@ class BaseServable:
         yield
 
     def _build_app(self) -> FalFastAPI:
-        import json
-        import traceback
+        import json  # noqa: PLC0415
+        import traceback  # noqa: PLC0415
 
-        from fastapi import HTTPException, Request
-        from fastapi.middleware.cors import CORSMiddleware
-        from fastapi.responses import JSONResponse
-        from starlette_exporter import PrometheusMiddleware
+        from fastapi import HTTPException, Request  # noqa: PLC0415
+        from fastapi.middleware.cors import CORSMiddleware  # noqa: PLC0415
+        from fastapi.responses import JSONResponse  # noqa: PLC0415
+        from starlette_exporter import PrometheusMiddleware  # noqa: PLC0415
 
         _app = FalFastAPI(
             lifespan=self.lifespan,
@@ -1685,8 +1677,8 @@ class BaseServable:
         pass
 
     async def serve(self) -> None:
-        from prometheus_client import Gauge
-        from starlette_exporter import handle_metrics
+        from prometheus_client import Gauge  # noqa: PLC0415
+        from starlette_exporter import handle_metrics  # noqa: PLC0415
 
         # NOTE: this uses the global prometheus registry
         app_info = Gauge("fal_app_info", "Fal application information", ["version"])
@@ -1719,7 +1711,7 @@ class BaseServable:
                 return_when=asyncio.FIRST_COMPLETED,
             )
 
-            from fastapi.logger import logger
+            from fastapi.logger import logger  # noqa: PLC0415
 
             if app_task in done and metrics_task in pending:
                 metrics_task.cancel()
@@ -1848,10 +1840,10 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
             raise
 
     def run_local(self, *args: ArgsT.args, **kwargs: ArgsT.kwargs) -> ReturnT:
-        import asyncio
-        import inspect
-        import os
-        from typing import Awaitable, cast
+        import asyncio  # noqa: PLC0415
+        import inspect  # noqa: PLC0415
+        import os  # noqa: PLC0415
+        from typing import Awaitable, cast  # noqa: PLC0415
 
         func = self.func
         previous_isolate_env = os.environ.get("IS_ISOLATE_AGENT")
