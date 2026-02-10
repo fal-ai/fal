@@ -1499,13 +1499,16 @@ class StopRunnerRequest(google.protobuf.message.Message):
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
     RUNNER_ID_FIELD_NUMBER: builtins.int
+    REPLACE_FIRST_FIELD_NUMBER: builtins.int
     runner_id: builtins.str
+    replace_first: builtins.bool
     def __init__(
         self,
         *,
         runner_id: builtins.str = ...,
+        replace_first: builtins.bool = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing_extensions.Literal["runner_id", b"runner_id"]) -> None: ...
+    def ClearField(self, field_name: typing_extensions.Literal["replace_first", b"replace_first", "runner_id", b"runner_id"]) -> None: ...
 
 global___StopRunnerRequest = StopRunnerRequest
 
