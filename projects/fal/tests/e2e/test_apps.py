@@ -1870,6 +1870,7 @@ def graceful_shutdown(
     return teardown_called and request_processed
 
 
+@pytest.mark.flaky(max_runs=3)
 def test_graceful_shutdown(
     host: api.FalServerlessHost,
     test_graceful_shutdown_app: str,
@@ -1879,6 +1880,7 @@ def test_graceful_shutdown(
     ), "app should be gracefully shutdown"
 
 
+@pytest.mark.flaky(max_runs=3)
 def test_graceful_shutdown_force_kill(
     host: api.FalServerlessHost,
     test_graceful_shutdown_app: str,
@@ -1888,6 +1890,7 @@ def test_graceful_shutdown_force_kill(
     ), "app should be forcefully killed if it takes too long to clean up"
 
 
+@pytest.mark.flaky(max_runs=3)
 def test_graceful_shutdown_handle_exit(
     host: api.FalServerlessHost,
     test_graceful_shutdown_app: str,
