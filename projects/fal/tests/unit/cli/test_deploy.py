@@ -72,6 +72,11 @@ def mock_parse_pyproject_toml():
                 "team": "my-team",
                 "auth": "shared",
             },
+            "no-scale-app": {
+                "ref": "src/no_scale_app/inference.py::NoScaleApp",
+                "team": "my-team",
+                "no_scale": True,
+            },
         }
     }
 
@@ -663,3 +668,47 @@ def test_get_app_data_from_toml_without_team(
     assert toml_data.name == "my-app"
     assert toml_data.options.host == {}
     assert toml_data.options.environment == {}
+
+
+@patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+def test_get_app_data_from_toml_no_scale_warning_can_be_suppressed(
+    mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml, capsys
+):
+    from fal.cli._utils import get_app_data_from_toml
+
+    mock_parse_toml.return_value = mock_parse_pyproject_toml
+
+    get_app_data_from_toml("no-scale-app", emit_deprecation_warnings=False)
+    captured = capsys.readouterr()
+
+    assert (
+        "[WARNING] no_scale is deprecated, use app_scale_settings instead"
+        not in captured.out
+    )
+
+
+@patch("fal.cli._utils.get_app_data_from_toml")
+@patch("fal.cli.deploy.SyncServerlessClient")
+def test_deploy_team_lookup_uses_silent_toml_read(mock_client, mock_get_app_data):
+    mock_get_app_data.return_value = AppData(team="my-team")
+
+    # Mock the client instance
+    mock_client_instance = MagicMock()
+    mock_client.return_value = mock_client_instance
+    mock_client_instance.deploy.return_value = MagicMock(
+        revision="rev-123",
+        app_name="no-scale-app",
+        auth_mode="private",
+        urls={"playground": {}, "sync": {}, "async": {}},
+        log_url="https://fal.ai/logs/123",
+    )
+
+    args = mock_args(app_ref=("no-scale-app", None))
+    args.host = "my-host"
+
+    _deploy(args)
+
+    mock_get_app_data.assert_called_once_with(
+        "no-scale-app", emit_deprecation_warnings=False
+    )
