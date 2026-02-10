@@ -493,6 +493,8 @@ message RunnerInfo {
 
 message StopRunnerRequest {
     string runner_id = 1;
+
+    bool replace_first = 2;
 }
 
 message StopRunnerResponse {
