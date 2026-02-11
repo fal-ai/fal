@@ -128,7 +128,7 @@ async def _mirror_input(
     decode_message: Callable[[bytes], Any],
     input_modal: type | None,
     session_timeout: float | None,
-    input_ready: asyncio.Event | None = None,
+    input_ready: asyncio.Event,
 ) -> None:
     while True:
         try:
@@ -144,8 +144,7 @@ async def _mirror_input(
             input = input_modal(**input)
 
         queue.append(input)
-        if input_ready is not None:
-            input_ready.set()
+        input_ready.set()
 
 
 async def _receive_input(
@@ -233,7 +232,7 @@ async def _mirror_output(
     func: EndpointT,
     route_signature: RouteSignature,
     encode_message: Callable[[Any], bytes],
-    input_ready: asyncio.Event | None = None,
+    input_ready: asyncio.Event,
 ) -> None:
     loop = asyncio.get_event_loop()
     max_allowed_buffering = route_signature.buffering or 1
@@ -245,11 +244,8 @@ async def _mirror_output(
 
     while True:
         if not queue:
-            if input_ready is not None:
-                await input_ready.wait()
-                input_ready.clear()
-            else:
-                await asyncio.sleep(0.05)
+            await input_ready.wait()
+            input_ready.clear()
             continue
 
         input = queue.popleft()
