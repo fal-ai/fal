@@ -56,6 +56,7 @@ from fal.exceptions import (
 from fal.exceptions._cuda import _is_cuda_oom_exception
 from fal.file_sync import FileSync, FileSyncOptions
 from fal.logging.isolate import IsolateLogPrinter
+from fal.toolkit.pydantic import IS_PYDANTIC_V2
 from fal.sdk import (
     FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER,
     FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER_PERC,
@@ -1333,7 +1334,6 @@ class FalFastAPI(FastAPI):
     ) -> str | None:
         if model is None:
             return None
-        from fal.toolkit.pydantic import IS_PYDANTIC_V2
 
         schema_name = model.__name__
         if IS_PYDANTIC_V2:
