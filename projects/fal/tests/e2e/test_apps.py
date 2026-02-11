@@ -1918,7 +1918,9 @@ def test_runner_machine_type(host: api.FalServerlessHost, test_sleep_app: str):
             start_time=datetime.now() - timedelta(seconds=60)
         )
         assert len(all_runners) >= 1
-        assert all_runners[0].machine_type == "XS"
+        target_runner = next((r for r in all_runners if r.alias == app_alias), None)
+        assert target_runner is not None, "Runner for test app alias not found"
+        assert target_runner.machine_type == "XS"
 
 
 class RequestContextOutput(BaseModel):
