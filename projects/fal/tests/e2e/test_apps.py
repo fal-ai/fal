@@ -1902,7 +1902,7 @@ def test_graceful_shutdown_handle_exit(
 
 @pytest.mark.flaky(max_runs=3)
 def test_runner_machine_type(host: api.FalServerlessHost, test_sleep_app: str):
-    """Test that machine_type is populated in runner info from both listing endpoints."""
+    """Test that machine_type is populated in runner info."""
     submit_and_wait_for_runner(test_sleep_app, arguments={"wait_time": 1})
 
     with host._connection as client:
