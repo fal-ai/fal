@@ -37,6 +37,7 @@ def runners_table(runners: List[RunnerInfo]):
 
     table = Table()
     table.add_column("Alias")
+    table.add_column("Machine Type")
     table.add_column("Runner ID")
     table.add_column("In Flight\nRequests")
     table.add_column("Expires In")
@@ -70,6 +71,7 @@ def runners_table(runners: List[RunnerInfo]):
         )
         table.add_row(
             runner.alias,
+            runner.machine_type,
             # Mark lost runners in red
             runner.runner_id if present else f"[red]{runner.runner_id}[/]",
             in_flight,
@@ -231,6 +233,7 @@ def _list_json(args, runners: list[RunnerInfo]):
     json_runners = [
         {
             "alias": r.alias,
+            "machine_type": r.machine_type,
             "runner_id": r.runner_id,
             "in_flight_requests": r.in_flight_requests,
             "expiration_countdown": r.expiration_countdown,

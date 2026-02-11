@@ -338,6 +338,7 @@ class RunnerInfo:
     revision: str
     alias: str
     state: RunnerState
+    machine_type: str
 
 
 @dataclass
@@ -519,6 +520,7 @@ def _from_grpc_runner_info(message: isolate_proto.RunnerInfo) -> RunnerInfo:
         revision=message.revision,
         alias=message.alias,
         state=RunnerState(isolate_proto.RunnerInfo.State.Name(message.state)),
+        machine_type=message.machine_type,
     )
 
 

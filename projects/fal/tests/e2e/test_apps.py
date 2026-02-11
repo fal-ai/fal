@@ -1900,6 +1900,27 @@ def test_graceful_shutdown_handle_exit(
     ), "app should be called handle_exit on SIGTERM"
 
 
+@pytest.mark.flaky(max_runs=3)
+def test_runner_machine_type(host: api.FalServerlessHost, test_sleep_app: str):
+    """Test that machine_type is populated in runner info from both listing endpoints."""
+    submit_and_wait_for_runner(test_sleep_app, arguments={"wait_time": 1})
+
+    with host._connection as client:
+        _, _, app_alias = test_sleep_app.partition("/")
+
+        # list_alias_runners
+        runners = client.list_alias_runners(app_alias)
+        assert len(runners) >= 1
+        assert runners[0].machine_type == "XS"
+
+        # list_runners
+        all_runners = client.list_runners(
+            start_time=datetime.now() - timedelta(seconds=60)
+        )
+        assert len(all_runners) >= 1
+        assert all_runners[0].machine_type == "XS"
+
+
 class RequestContextOutput(BaseModel):
     request_id_from_context: Optional[str]
     endpoint_from_context: Optional[str]
