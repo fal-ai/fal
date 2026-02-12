@@ -21,6 +21,25 @@ repos:
             ^projects/fal/tests/|
             ^projects/fal_client/
           )
+      # Ban new lazy imports in files that get serialized by cloudpickle
+      - id: ruff
+        name: ban-lazy-imports-serialized
+        args: [--select, PLC0415, --preview]
+        files: |
+          (?x)^projects/fal/src/fal/(
+            _serialization\.py|
+            api/api\.py|
+            app\.py|
+            auth/__init__\.py|
+            config\.py|
+            container\.py|
+            exceptions/_base\.py|
+            exceptions/_cuda\.py|
+            ref\.py|
+            sdk\.py|
+            toolkit/file/file\.py|
+            toolkit/file/providers/fal\.py
+          )$
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.3.0
     hooks:

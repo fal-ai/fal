@@ -88,9 +88,9 @@ class ServerCredentials:
 
     @property
     def base_options(self) -> dict[str, str | int]:
-        import json
+        import json  # noqa: PLC0415
 
-        from isolate_proto.configuration import GRPC_OPTIONS
+        from isolate_proto.configuration import GRPC_OPTIONS  # noqa: PLC0415
 
         grpc_ops: dict[str, str | int] = dict(GRPC_OPTIONS)
         grpc_ops["grpc.enable_retries"] = 1
@@ -224,7 +224,7 @@ def get_agent_credentials(original_credentials: Credentials) -> Credentials:
     """If running inside a fal Serverless box, use the preconfigured credentials
     instead of the user provided ones."""
 
-    from isolate.connections.common import is_agent
+    from isolate.connections.common import is_agent  # noqa: PLC0415
 
     key_creds = key_credentials()
     if is_agent() and key_creds:
@@ -234,7 +234,7 @@ def get_agent_credentials(original_credentials: Credentials) -> Credentials:
 
 
 def get_default_credentials(team: str | None = None) -> Credentials:
-    from fal.config import Config
+    from fal.config import Config  # noqa: PLC0415
 
     if flags.AUTH_DISABLED:
         return Credentials()
@@ -326,6 +326,7 @@ class RunnerState(Enum):
     TERMINATING = "TERMINATING"
     TERMINATED = "TERMINATED"
     IDLE = "IDLE"
+    FAILURE_DELAY = "FAILURE_DELAY"
 
 
 @dataclass
@@ -338,6 +339,7 @@ class RunnerInfo:
     revision: str
     alias: str
     state: RunnerState
+    machine_type: str
 
 
 @dataclass
@@ -503,7 +505,7 @@ def _from_grpc_alias_info(message: isolate_proto.AliasInfo) -> AliasInfo:
 
 @from_grpc.register(isolate_proto.RunnerInfo)
 def _from_grpc_runner_info(message: isolate_proto.RunnerInfo) -> RunnerInfo:
-    from isolate.server import definitions as worker_definitions
+    from isolate.server import definitions as worker_definitions  # noqa: PLC0415
 
     external_metadata = worker_definitions.struct_to_dict(message.external_metadata)
     return RunnerInfo(
@@ -519,6 +521,7 @@ def _from_grpc_runner_info(message: isolate_proto.RunnerInfo) -> RunnerInfo:
         revision=message.revision,
         alias=message.alias,
         state=RunnerState(isolate_proto.RunnerInfo.State.Name(message.state)),
+        machine_type=message.machine_type,
     )
 
 
@@ -763,6 +766,7 @@ class FalServerlessConnection:
         files: list[File] | None = None,
         skip_retry_conditions: list[RetryConditionLiteral] | None = None,
         environment_name: str | None = None,
+        termination_grace_period_seconds: int | None = None,
     ) -> Iterator[RegisterApplicationResult]:
         wrapped_function = to_serialized_object(function, serialization_method)
         if machine_requirements:
@@ -848,6 +852,7 @@ class FalServerlessConnection:
             health_check_config=wrapped_health_check_config,
             skip_retry_conditions=wrapped_skip_retry_conditions,
             environment_name=environment_name,
+            termination_grace_period_seconds=termination_grace_period_seconds,
         )
         for partial_result in self.stub.RegisterApplication(request):
             yield from_grpc(partial_result)

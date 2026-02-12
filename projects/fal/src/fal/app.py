@@ -9,7 +9,6 @@ import sys
 import threading
 import time
 from contextlib import asynccontextmanager, contextmanager
-from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, ClassVar, Optional
@@ -42,7 +41,7 @@ from fal.sdk import (
     RetryConditionLiteral,
 )
 from fal.toolkit.file import request_lifecycle_preference
-from fal.toolkit.file.providers.fal import LIFECYCLE_PREFERENCE
+from fal.toolkit.file.providers.fal import _LIFECYCLE_PREFERENCE
 
 REALTIME_APP_REQUIREMENTS = ["websockets", "msgpack"]
 REQUEST_ID_KEY = "x-fal-request-id"
@@ -95,14 +94,14 @@ async def _set_logger_labels(
     try:
         # Import from __main__ because the agent runs as __main__, not as
         # isolate.connections.grpc.agent, so the ContextVar lives there.
-        from __main__ import isolate_log_context
+        from __main__ import isolate_log_context  # noqa: PLC0415
 
         isolate_log_context.set(logger_labels)
     except ImportError:
         pass
 
     try:
-        from isolate.server import definitions
+        from isolate.server import definitions  # noqa: PLC0415
 
         # Flush any prints that were buffered before setting the logger labels
         sys.stderr.flush()
@@ -133,7 +132,7 @@ def wrap_app(cls: type[App], **kwargs) -> IsolatedFunction:
         cls.local_file_path = host.local_file_path
 
     def initialize_and_serve():
-        import threading
+        import threading  # noqa: PLC0415
 
         app = cls()
         set_current_app(app)
@@ -223,7 +222,7 @@ class AppSpawnInfo:
         health_check_interval: float = 0.5,
         headers: dict[str, str] | None = None,
     ) -> None:
-        import httpx
+        import httpx  # noqa: PLC0415
 
         url = self.url
         if url is None:
@@ -306,7 +305,7 @@ class EndpointClient:
         self.return_type = annotations.get("return") or None
 
     def __call__(self, data):
-        import httpx
+        import httpx  # noqa: PLC0415
 
         with httpx.Client() as client:
             url = self.url + self.signature.path
@@ -398,7 +397,7 @@ class AppClient:
             _log_printer.join()
 
     def health(self):
-        import httpx
+        import httpx  # noqa: PLC0415
 
         with httpx.Client() as client:
             resp = client.get(self.url + "/health", headers=self._headers)
@@ -434,7 +433,7 @@ def _to_fal_app_name(name: str) -> str:
 
 
 def _print_python_packages() -> None:
-    from importlib.metadata import distributions
+    from importlib.metadata import distributions  # noqa: PLC0415
 
     packages = [f"{dist.metadata['Name']}=={dist.version}" for dist in distributions()]
 
@@ -601,10 +600,12 @@ class App(BaseServable):
     image: ClassVar[Optional[ContainerImage]] = None
     local_file_path: ClassVar[Optional[str]] = None
     skip_retry_conditions: ClassVar[Optional[list[RetryConditionLiteral]]] = None
+    termination_grace_period_seconds: ClassVar[Optional[int]] = None
 
     isolate_channel: async_grpc.Channel | None = None
 
-    _current_request_context: ContextVar[RequestContext] | None = None
+    # HACK: Removed type annotation to avoid weird error during deserialization
+    _current_request_context: Any | None = None
 
     def __init_subclass__(cls, **kwargs):
         app_name = kwargs.pop("name", None) or _to_fal_app_name(cls.__name__)
@@ -666,6 +667,11 @@ class App(BaseServable):
         if cls.skip_retry_conditions is not None:
             cls.host_kwargs["skip_retry_conditions"] = cls.skip_retry_conditions
 
+        if cls.termination_grace_period_seconds is not None:
+            cls.host_kwargs["termination_grace_period_seconds"] = (
+                cls.termination_grace_period_seconds
+            )
+
         cls.host_kwargs["health_check_config"] = cls.get_health_check_config()
 
         cls.app_name = getattr(cls, "app_name") or app_name
@@ -706,14 +712,14 @@ class App(BaseServable):
     @classmethod
     def run_local(cls, *args, **kwargs):
         # import wrap_app explicitly to avoid reference to wrap_app during pickling
-        from fal.app import wrap_app
+        from fal.app import wrap_app  # noqa: PLC0415
 
         return wrap_app(cls).run_local(*args, **kwargs)
 
     @classmethod
     def spawn(cls) -> AppSpawnInfo:
         # import wrap_app explicitly to avoid reference to wrap_app during pickling
-        from fal.app import wrap_app
+        from fal.app import wrap_app  # noqa: PLC0415
 
         app = wrap_app(cls)
         return AppSpawnInfo(app.spawn())
@@ -767,7 +773,10 @@ class App(BaseServable):
         # Configure sys.path based on deployment type:
         # - app_files: files synced to /app
         # - container: files baked into image
-        self._current_request_context = ContextVar(
+        # HACK: Import at runtime to avoid weird error during deserialization
+        import contextvars  # noqa: PLC0415
+
+        self._current_request_context = contextvars.ContextVar(
             "_current_request_context",
             default=RequestContext(
                 request_id=None, endpoint=None, lifecycle_preference=None, headers={}
@@ -829,7 +838,7 @@ class App(BaseServable):
                         _ = hint.encode("latin-1")
                         hints.append(hint)
                     except UnicodeEncodeError:
-                        from fastapi.logger import logger
+                        from fastapi.logger import logger  # noqa: PLC0415
 
                         logger.warning(
                             "Ignoring hint %s for %s because it can't be encoded in "
@@ -844,7 +853,7 @@ class App(BaseServable):
                 # and apps that provide empty hints.
                 pass
             except Exception:
-                from fastapi.logger import logger
+                from fastapi.logger import logger  # noqa: PLC0415
 
                 logger.exception(
                     "Failed to provide hints for %s",
@@ -855,7 +864,7 @@ class App(BaseServable):
         @app.middleware("http")
         async def set_current_request_context(request, call_next):
             if self._current_request_context is None:
-                from fastapi.logger import logger
+                from fastapi.logger import logger  # noqa: PLC0415
 
                 logger.warning(
                     "request context is not set. "
@@ -871,12 +880,12 @@ class App(BaseServable):
             )
 
             token = self._current_request_context.set(context)
-            LIFECYCLE_PREFERENCE.set(context.lifecycle_preference)
+            _LIFECYCLE_PREFERENCE.set(context.lifecycle_preference)
             try:
                 return await call_next(request)
             finally:
                 self._current_request_context.reset(token)
-                LIFECYCLE_PREFERENCE.set(None)
+                _LIFECYCLE_PREFERENCE.set(None)
 
         @app.middleware("http")
         async def set_log_context(request, call_next):
@@ -934,7 +943,7 @@ class App(BaseServable):
         async def value_error_exception_handler(
             request, exc: RequestCancelledException
         ):
-            from fastapi.responses import JSONResponse
+            from fastapi.responses import JSONResponse  # noqa: PLC0415
 
             # A 499 status code is not an officially recognized HTTP status code,
             # but it is sometimes used by servers to indicate that a client has closed

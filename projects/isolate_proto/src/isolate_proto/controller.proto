@@ -478,6 +478,7 @@ message RunnerInfo {
         TERMINATING = 6;
         TERMINATED = 7;
         IDLE = 8;
+        FAILURE_DELAY = 9;
     }
 
     optional State state = 8;
@@ -489,10 +490,13 @@ message RunnerInfo {
     }
 
     ReplaceState replacement = 9;
+    string machine_type = 10;
 }
 
 message StopRunnerRequest {
     string runner_id = 1;
+
+    bool replace_first = 2;
 }
 
 message StopRunnerResponse {

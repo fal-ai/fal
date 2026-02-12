@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 import re
 import secrets
 import subprocess
@@ -8,7 +9,16 @@ import uuid
 from contextlib import contextmanager, redirect_stdout, suppress
 from datetime import datetime, timedelta, timezone
 from io import StringIO
-from typing import AsyncIterator, Generator, Iterator, List, Tuple, Union
+from typing import (
+    AsyncIterator,
+    Dict,
+    Generator,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    Union,
+)
 
 import httpx
 import pytest
@@ -58,7 +68,10 @@ class StatefulInput(BaseModel):
 
 
 class FieldInput(BaseModel):
-    value: int | str | float
+    value: Union[int, str, float]
+
+    class Config:
+        smart_union = True
 
 
 class Output(BaseModel):
@@ -68,7 +81,7 @@ class Output(BaseModel):
 actual_python = active_python()
 
 
-def _auth_headers() -> dict[str, str]:
+def _auth_headers() -> Dict[str, str]:
     key_creds = key_credentials()
     if not key_creds:
         return {}
@@ -1129,7 +1142,7 @@ def test_realtime_connection(test_realtime_app):
 
     with apps._connect(test_realtime_app, path="/realtime/batched") as connection:
         connection.send({"prompt": "keep busy"})
-        time.sleep(0.1)
+        time.sleep(1)
 
         for prompt in range(10):
             connection.send({"prompt": str(prompt)})
@@ -1762,6 +1775,10 @@ def test_app_ref_app_client(test_app_ref_app: str):
     assert result_3["from_app"] == result_3["from_external_method"]
 
 
+class SetUUIDInput(BaseModel):
+    uuid: str
+
+
 # for now it only works in newly built containers
 class GracefulShutdownApp(
     fal.App,
@@ -1779,14 +1796,19 @@ RUN apt-get update \
     skip_retry_conditions=["server_error", "connection_error", "timeout"],
 ):
     machine_type = "XS"
-    teardown_file = "/data/teardown.txt"
     latest_request_id = None
+    uuid = None
 
     def setup(self):
         self.stop = False
 
     def handle_exit(self):
         self.stop = True
+
+    @fal.endpoint("/set-uuid")
+    async def set_uuid(self, input: SetUUIDInput) -> str:
+        self.uuid = input.uuid
+        return "ok"
 
     @fal.endpoint("/")
     async def sleep(self, input: SleepInput, request: Request) -> SleepOutput:
@@ -1819,15 +1841,24 @@ RUN apt-get update \
 
     @fal.endpoint("/latest-request-id")
     async def fetch_latest_request_id(self) -> str:
-        with open(self.teardown_file) as f:
-            return f.read()
+        if self.uuid is None:
+            return ""
+
+        try:
+            with open(f"/data/teardown/{self.uuid}.txt") as f:
+                latest_request_id = f.read()
+
+            os.unlink(f"/data/teardown/{self.uuid}.txt")
+            return latest_request_id
+        except Exception as e:
+            return str(e)
 
     def teardown(self):
-        if self.latest_request_id is None:
+        if self.latest_request_id is None or self.uuid is None:
             return
 
-        with open(self.teardown_file, "w") as f:
-            print("teardown called, latest request id: ", self.latest_request_id)
+        os.makedirs("/data/teardown", exist_ok=True)
+        with open(f"/data/teardown/{self.uuid}.txt", "w") as f:
             f.write(self.latest_request_id)
 
 
@@ -1850,6 +1881,11 @@ def graceful_shutdown(
 ) -> bool:
     time.sleep(2)
 
+    token = str(uuid.uuid4())
+    assert (
+        apps.run(test_graceful_shutdown_app, {"uuid": token}, path="/set-uuid") == "ok"
+    ), "UUID not set"
+
     handle = submit_and_wait_for_runner(
         test_graceful_shutdown_app, arguments={"wait_time": wait_time}, path=path
     )
@@ -1867,7 +1903,11 @@ def graceful_shutdown(
         client.kill_runner(runner.runner_id)
     time.sleep(2)
 
+    assert (
+        apps.run(test_graceful_shutdown_app, {"uuid": token}, path="/set-uuid") == "ok"
+    ), "UUID not set"
     res = apps.run(test_graceful_shutdown_app, {}, path="/latest-request-id")
+
     teardown_called = res == saved_request_id
     try:
         request_processed = handle.fetch_result()["slept"]
@@ -1907,11 +1947,34 @@ def test_graceful_shutdown_handle_exit(
     ), "app should be called handle_exit on SIGTERM"
 
 
+@pytest.mark.flaky(max_runs=3)
+def test_runner_machine_type(host: api.FalServerlessHost, test_sleep_app: str):
+    """Test that machine_type is populated in runner info."""
+    submit_and_wait_for_runner(test_sleep_app, arguments={"wait_time": 1})
+
+    with host._connection as client:
+        _, _, app_alias = test_sleep_app.partition("/")
+
+        # list_alias_runners
+        runners = client.list_alias_runners(app_alias)
+        assert len(runners) >= 1
+        assert runners[0].machine_type == "XS"
+
+        # list_runners
+        all_runners = client.list_runners(
+            start_time=datetime.now() - timedelta(seconds=60)
+        )
+        assert len(all_runners) >= 1
+        target_runner = next((r for r in all_runners if r.alias == app_alias), None)
+        assert target_runner is not None, "Runner for test app alias not found"
+        assert target_runner.machine_type == "XS"
+
+
 class RequestContextOutput(BaseModel):
-    request_id_from_context: str | None
-    endpoint_from_context: str | None
-    lifecycle_preference_from_context: dict | None
-    request_id_from_header: str | None
+    request_id_from_context: Optional[str]
+    endpoint_from_context: Optional[str]
+    lifecycle_preference_from_context: Optional[dict]
+    request_id_from_header: Optional[str]
 
 
 def _external_get_request_context() -> dict:
