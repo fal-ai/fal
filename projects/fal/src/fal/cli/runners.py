@@ -296,7 +296,7 @@ def _list(args):
                 f"[red]Runners being delayed after startup failure:[/] {len(failing_runners)}"  # noqa: E501
             )
             args.console.print(
-                "[dim]Check setup() and logs for errors during startup.[/]"
+                "[dim]  Check setup() and logs for errors during startup.[/]"
             )
         args.console.print(runners_table(runners))
 
