@@ -9,9 +9,18 @@ from io import BytesIO
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, TypedDict, cast, overload
 
+import pydantic
 from pydantic import BaseModel
-from pydantic.class_validators import root_validator
 from typing_extensions import Unpack
+
+if not hasattr(pydantic, "__version__") or pydantic.__version__.startswith("1."):
+    _IS_PYDANTIC_V2 = False
+else:
+    from pydantic import GetCoreSchemaHandler, GetJsonSchemaHandler, model_validator
+    from pydantic.json_schema import JsonSchemaValue
+    from pydantic_core import CoreSchema, core_schema as pydantic_core_schema
+
+    _IS_PYDANTIC_V2 = True
 
 from fal.toolkit.exceptions import (
     FileDownloadException,
@@ -614,9 +623,12 @@ def _bind_context_recursively(data_node: Any, path_prefix: tuple[str | int, ...]
     if isinstance(data_node, HttpsOrDataUrl):
         data_node._bind_context(loc=path_prefix)
     elif isinstance(data_node, BaseModel):
-        for field_name in data_node.__fields__:
-            field_value = getattr(data_node, field_name)
-            _bind_context_recursively(field_value, path_prefix + (field_name,))
+        model_cls = type(data_node)
+        fields = model_cls.model_fields if _IS_PYDANTIC_V2 else model_cls.__fields__
+        for field_name in fields:
+            field_value = getattr(data_node, field_name, None)
+            if field_value is not None:
+                _bind_context_recursively(field_value, path_prefix + (field_name,))
     elif isinstance(data_node, list):
         for i, item in enumerate(data_node):
             _bind_context_recursively(item, path_prefix + (i,))
@@ -707,10 +719,6 @@ class HttpsOrDataUrl(str):
         return self
 
     @classmethod
-    def __get_validators__(cls):
-        yield cls.validate
-
-    @classmethod
     def validate(cls, v: Any) -> "HttpsOrDataUrl":
         if not isinstance(v, str):
             raise TypeError("string required")
@@ -745,10 +753,38 @@ class HttpsOrDataUrl(str):
         """Toolkit method to add validation configuration."""
         pass
 
-    @classmethod
-    def __modify_schema__(cls, field_schema: dict, field):
-        cls._modify_fal_ui_schema(field_schema, field)
-        cls._inject_validation_config(field_schema)
+    if _IS_PYDANTIC_V2:
+
+        @classmethod
+        def __get_pydantic_core_schema__(
+            cls, source_type: Any, handler: GetCoreSchemaHandler
+        ) -> "CoreSchema":
+            return pydantic_core_schema.no_info_after_validator_function(
+                cls.validate,
+                handler(str),
+            )
+
+        @classmethod
+        def __get_pydantic_json_schema__(
+            cls, _core_schema: "CoreSchema", handler: GetJsonSchemaHandler
+        ) -> "JsonSchemaValue":
+            json_schema = handler(_core_schema)
+            json_schema.update({"type": "string"})
+            ui_bucket: dict[str, Any] = json_schema.setdefault("ui", {})
+            ui_bucket.setdefault("field", cls._fal_ui_field_name)
+            cls._inject_validation_config(json_schema)
+            return json_schema
+
+    else:
+
+        @classmethod
+        def __get_validators__(cls):
+            yield cls.validate
+
+        @classmethod
+        def __modify_schema__(cls, field_schema: dict, field):
+            cls._modify_fal_ui_schema(field_schema, field)
+            cls._inject_validation_config(field_schema)
 
     def _handle_generic_download_Exception(
         self, exc: Exception, max_size: int | None
@@ -1153,11 +1189,27 @@ class FieldContextProviderModel(BaseModel):
                 if limit_description or description:
                     field_schema["description"] = description
 
-    @root_validator(pre=False)
-    def _inject_full_context_path(cls, values: dict) -> dict:
-        for field_name, field_value in values.items():
-            _bind_context_recursively(field_value, path_prefix=(field_name,))
-        return values
+    if _IS_PYDANTIC_V2:
+
+        @model_validator(mode="after")
+        def _inject_full_context_path(self):
+            for field_name in self.__class__.model_fields:
+                field_value = getattr(self, field_name, None)
+                if field_value is not None:
+                    _bind_context_recursively(
+                        field_value, path_prefix=(field_name,)
+                    )
+            return self
+
+    else:
+
+        @pydantic.root_validator(pre=False)
+        def _inject_full_context_path(cls, values: dict) -> dict:
+            for field_name, field_value in values.items():
+                _bind_context_recursively(
+                    field_value, path_prefix=(field_name,)
+                )
+            return values
 
 
 class OrderedBaseModel(BaseModel):
