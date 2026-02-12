@@ -326,6 +326,7 @@ class RunnerState(Enum):
     TERMINATING = "TERMINATING"
     TERMINATED = "TERMINATED"
     IDLE = "IDLE"
+    FAILURE_DELAY = "FAILURE_DELAY"
 
 
 @dataclass

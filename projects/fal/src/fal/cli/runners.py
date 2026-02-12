@@ -271,6 +271,9 @@ def _list(args):
         runner for runner in runners if runner.state == RunnerState.PENDING
     ]
     setup_runners = [runner for runner in runners if runner.state == RunnerState.SETUP]
+    failing_runners = [
+        runner for runner in runners if runner.state == RunnerState.FAILURE_DELAY
+    ]
     terminated_runners = [
         runner
         for runner in runners
@@ -288,6 +291,10 @@ def _list(args):
         )
         args.console.print(f"Runners Pending: {len(pending_runners)}")
         args.console.print(f"Runners Setting Up: {len(setup_runners)}")
+        if len(failing_runners) > 0:
+            args.console.print(
+                f"[red]Runners Failing to start:[/] {len(failing_runners)}"
+            )
         args.console.print(runners_table(runners))
 
         requests_table = runners_requests_table(runners)
@@ -350,7 +357,15 @@ def _add_list_parser(subparsers, parents):
     )
     parser.add_argument(
         "--state",
-        choices=["all", "running", "pending", "setup", "terminated"],
+        choices=[
+            "all",
+            "idle",
+            "running",
+            "pending",
+            "setup",
+            "failure_delay",
+            "terminated",
+        ],
         nargs="+",
         default=None,
         help=("Filter by runner state(s). Choose one or more, or 'all'(default)."),
