@@ -412,7 +412,10 @@ def _runners(args):
         args.console.print(f"Runners Setting Up: {len(setup_runners)}")
         if len(failing_runners) > 0:
             args.console.print(
-                f"[red]Runners Failing to start:[/] {len(failing_runners)}"
+                f"[red]Runners being delayed after startup failure:[/] {len(failing_runners)}"  # noqa: E501
+            )
+            args.console.print(
+                "[dim]  Check setup() and logs for errors during startup.[/]"
             )
         # Drop the alias column, which is the first column
         runners_table.columns.pop(0)
