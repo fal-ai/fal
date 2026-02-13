@@ -1742,6 +1742,7 @@ class BaseServable:
         app_info.labels(version=self.version).set(1)
 
         app = self._build_app()
+        openapi_spec = app.openapi()
 
         # We use the default workers=1 config because setup function can be heavy
         # and it runs once per worker.
@@ -1758,10 +1759,21 @@ class BaseServable:
             config=uvicorn.Config(metrics_app, host="0.0.0.0", port=9090)
         )
 
+        metadata_app = FastAPI(openapi_url=None, docs_url=None, redoc_url=None)
+
+        @metadata_app.get("/openapi.json")
+        async def metadata_openapi():
+            return openapi_spec
+
+        metadata_server = uvicorn.Server(
+            config=uvicorn.Config(metadata_app, host="0.0.0.0", port=9091)
+        )
+
         async def _serve() -> None:
             app_task = asyncio.create_task(server.serve())
             metrics_task = asyncio.create_task(metrics_server.serve())
-            tasks = {app_task, metrics_task}
+            metadata_task = asyncio.create_task(metadata_server.serve())
+            tasks = {app_task, metrics_task, metadata_task}
 
             done, pending = await asyncio.wait(
                 tasks,
@@ -1772,10 +1784,13 @@ class BaseServable:
 
             if app_task in done and metrics_task in pending:
                 metrics_task.cancel()
+            if app_task in done and metadata_task in pending:
+                metadata_task.cancel()
 
-            app_exc, metrics_exc = await asyncio.gather(
+            app_exc, metrics_exc, metadata_exc = await asyncio.gather(
                 app_task,
                 metrics_task,
+                metadata_task,
                 return_exceptions=True,
             )
 
@@ -1784,6 +1799,9 @@ class BaseServable:
 
             if metrics_exc and not isinstance(metrics_exc, asyncio.CancelledError):
                 logger.error("Metrics server exited with error", exc_info=metrics_exc)
+
+            if metadata_exc and not isinstance(metadata_exc, asyncio.CancelledError):
+                logger.error("Metadata server exited with error", exc_info=metadata_exc)
 
             if app_exc:
                 raise app_exc
