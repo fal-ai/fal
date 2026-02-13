@@ -54,7 +54,7 @@ from fal.exceptions import (
     FalServerlessException,
     FieldException,
 )
-from fal.exceptions._cuda import _is_cuda_oom_exception
+from fal.exceptions._cuda import _is_cuda_oom_exception, _is_gpu_error
 from fal.file_sync import FileSync, FileSyncOptions
 from fal.logging.isolate import IsolateLogPrinter
 from fal.sdk import (
@@ -1694,7 +1694,7 @@ class BaseServable:
 
             # last line of defense against misc GPU errors that could indicate a bad
             # worker
-            if any(marker in str(exc).lower() for marker in ["cuda", "cudnn", "nvml"]):
+            if _is_gpu_error(exc):
                 return JSONResponse({"detail": "GPU error"}, 503)
 
             return JSONResponse({"detail": "Internal Server Error"}, 500)

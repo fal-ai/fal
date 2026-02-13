@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass
 
 from ._base import AppException
@@ -9,6 +10,9 @@ _CUDA_OOM_MESSAGE = "CUDA error: out of memory"
 
 # Special status code for CUDA out of memory errors
 _CUDA_OOM_STATUS_CODE = 503
+
+# GPU error markers
+_GPU_ERROR_MARKERS = ("cuda", "cudnn", "nvml")
 
 
 @dataclass
@@ -52,3 +56,44 @@ def _is_cudnn_snafu(exception: BaseException) -> bool:
         and len(exception.args) == 1
         and "cuDNN error: CUDNN_STATUS_NOT_SUPPORTED." in exception.args[0]
     )
+
+
+def _is_gpu_error(exception: BaseException) -> bool:
+    """Broad marker-based check for GPU-related errors."""
+    text = str(exception).lower()
+    return any(marker in text for marker in _GPU_ERROR_MARKERS)
+
+
+class catch_gpu_exceptions(contextlib.ContextDecorator):
+    """Catch GPU/CUDA exceptions and re-raise as CUDAOutOfMemoryException.
+
+    Works as both a context manager and a decorator::
+
+        with fal.catch_gpu_exceptions():
+            run_inference()
+
+        @fal.catch_gpu_exceptions()
+        def run_inference():
+            ...
+
+    Any caught GPU exception is converted to a CUDAOutOfMemoryException (HTTP 503),
+    signaling the platform to restart the machine.
+    """
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_val is None:
+            return False
+
+        if isinstance(exc_val, CUDAOutOfMemoryException):
+            return False
+
+        if _is_cuda_oom_exception(exc_val):
+            raise CUDAOutOfMemoryException() from exc_val
+
+        if _is_gpu_error(exc_val):
+            raise CUDAOutOfMemoryException(message="GPU error") from exc_val
+
+        return False
