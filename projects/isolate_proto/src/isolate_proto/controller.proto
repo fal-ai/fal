@@ -294,6 +294,8 @@ message RegisterApplicationRequest {
     repeated RetryCondition skip_retry_conditions = 17;
     // Grace period in seconds before forced termination of runners after a shutdown request.
     optional int32 termination_grace_period_seconds = 18;
+    // Which secrets to mount. ["*"] means all, [] means none.
+    repeated string mounted_secrets = 19;
 }
 
 message RegisterApplicationResultType {
@@ -320,6 +322,8 @@ message UpdateApplicationRequest {
     optional int32 concurrency_buffer_perc = 11;
     optional int32 scaling_delay_seconds = 12;
     optional string environment_name = 13;
+    // Which secrets to mount. ["*"] means all, [] means none.
+    repeated string mounted_secrets = 14;
 }
 
 message UpdateApplicationResult {

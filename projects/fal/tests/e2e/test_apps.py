@@ -1970,6 +1970,109 @@ def test_runner_machine_type(host: api.FalServerlessHost, test_sleep_app: str):
         assert target_runner.machine_type == "XS"
 
 
+class SecretsOutput(BaseModel):
+    has_mounted: bool
+    has_not_mounted: bool
+
+
+class MountedSecretsApp(fal.App, keep_alive=300, max_concurrency=1):
+    machine_type = "XS"
+    mounted_secrets = ["MOUNTED_TEST_SECRET"]
+
+    @fal.endpoint("/")
+    def check_secrets(self) -> SecretsOutput:
+        return SecretsOutput(
+            has_mounted="MOUNTED_TEST_SECRET" in os.environ,
+            has_not_mounted="NOT_MOUNTED_SECRET" in os.environ,
+        )
+
+
+class MountAllSecretsApp(fal.App, keep_alive=300, max_concurrency=1):
+    machine_type = "XS"
+
+    @fal.endpoint("/")
+    def check_secrets(self) -> SecretsOutput:
+        return SecretsOutput(
+            has_mounted="MOUNTED_TEST_SECRET" in os.environ,
+            has_not_mounted="NOT_MOUNTED_SECRET" in os.environ,
+        )
+
+
+class MountNoSecretsApp(fal.App, keep_alive=300, max_concurrency=1):
+    machine_type = "XS"
+    mounted_secrets = []
+
+    @fal.endpoint("/")
+    def check_secrets(self) -> SecretsOutput:
+        return SecretsOutput(
+            has_mounted="MOUNTED_TEST_SECRET" in os.environ,
+            has_not_mounted="NOT_MOUNTED_SECRET" in os.environ,
+        )
+
+
+@pytest.fixture(scope="module")
+def _ensure_test_secrets(host: api.FalServerlessHost):
+    """Create two secrets so we can test selective mounting."""
+    with host._connection as client:
+        client.set_secret("MOUNTED_TEST_SECRET", "secret-value-1")
+        client.set_secret("NOT_MOUNTED_SECRET", "secret-value-2")
+    yield
+    with host._connection as client:
+        client.delete_secret("MOUNTED_TEST_SECRET")
+        client.delete_secret("NOT_MOUNTED_SECRET")
+
+
+@pytest.fixture(scope="module")
+def test_mounted_secrets_app(
+    host: api.FalServerlessHost, user: User, _ensure_test_secrets
+):
+    app = wrap_app(MountedSecretsApp)
+    with register_app(host, app, "mounted-secrets") as (app_alias, _):
+        yield f"{user.username}/{app_alias}"
+
+
+@pytest.fixture(scope="module")
+def test_mount_all_secrets_app(
+    host: api.FalServerlessHost, user: User, _ensure_test_secrets
+):
+    app = wrap_app(MountAllSecretsApp)
+    with register_app(host, app, "mount-all-secrets") as (app_alias, _):
+        yield f"{user.username}/{app_alias}"
+
+
+@pytest.fixture(scope="module")
+def test_mount_no_secrets_app(
+    host: api.FalServerlessHost, user: User, _ensure_test_secrets
+):
+    app = wrap_app(MountNoSecretsApp)
+    with register_app(host, app, "mount-no-secrets") as (app_alias, _):
+        yield f"{user.username}/{app_alias}"
+
+
+@pytest.mark.flaky(max_runs=3)
+def test_mounted_secrets_only_specified(test_mounted_secrets_app: str):
+    """Only the secret listed in mounted_secrets should be available."""
+    result = apps.run(test_mounted_secrets_app, arguments={})
+    assert result["has_mounted"] is True
+    assert result["has_not_mounted"] is False
+
+
+@pytest.mark.flaky(max_runs=3)
+def test_mount_all_secrets_default(test_mount_all_secrets_app: str):
+    """Without mounted_secrets set, all secrets should be available (default ["*"])."""
+    result = apps.run(test_mount_all_secrets_app, arguments={})
+    assert result["has_mounted"] is True
+    assert result["has_not_mounted"] is True
+
+
+@pytest.mark.flaky(max_runs=3)
+def test_mount_no_secrets(test_mount_no_secrets_app: str):
+    """With mounted_secrets=[], no secrets should be available."""
+    result = apps.run(test_mount_no_secrets_app, arguments={})
+    assert result["has_mounted"] is False
+    assert result["has_not_mounted"] is False
+
+
 class RequestContextOutput(BaseModel):
     request_id_from_context: Optional[str]
     endpoint_from_context: Optional[str]
