@@ -767,6 +767,7 @@ class FalServerlessConnection:
         skip_retry_conditions: list[RetryConditionLiteral] | None = None,
         environment_name: str | None = None,
         termination_grace_period_seconds: int | None = None,
+        mounted_secrets: list[str] | None = None,
     ) -> Iterator[RegisterApplicationResult]:
         wrapped_function = to_serialized_object(function, serialization_method)
         if machine_requirements:
@@ -853,6 +854,7 @@ class FalServerlessConnection:
             skip_retry_conditions=wrapped_skip_retry_conditions,
             environment_name=environment_name,
             termination_grace_period_seconds=termination_grace_period_seconds,
+            mounted_secrets=mounted_secrets or ["*"],
         )
         for partial_result in self.stub.RegisterApplication(request):
             yield from_grpc(partial_result)
@@ -874,6 +876,7 @@ class FalServerlessConnection:
         startup_timeout: int | None = None,
         valid_regions: list[str] | None = None,
         machine_types: list[str] | None = None,
+        mounted_secrets: list[str] | None = None,
         *,
         environment_name: str | None = None,
     ) -> AliasInfo:
@@ -892,6 +895,7 @@ class FalServerlessConnection:
             startup_timeout=startup_timeout,
             valid_regions=valid_regions,
             machine_types=machine_types,
+            mounted_secrets=mounted_secrets,
             environment_name=environment_name,
         )
         res: isolate_proto.UpdateApplicationResult = self.stub.UpdateApplication(
