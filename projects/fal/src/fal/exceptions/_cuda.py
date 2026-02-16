@@ -12,7 +12,17 @@ _CUDA_OOM_MESSAGE = "CUDA error: out of memory"
 _CUDA_OOM_STATUS_CODE = 503
 
 # GPU error markers
-_GPU_ERROR_MARKERS = ("cuda", "cudnn", "nvml")
+_GPU_ERROR_MARKERS = (
+    "cuda",
+    "cudnn",
+    "nvml",
+    "nccl",
+    "cublas",
+    "cufft",
+    "cusolver",
+    "cusparse",
+    "triton",
+)
 
 
 @dataclass
