@@ -77,8 +77,14 @@ def _is_gpu_error(exception: BaseException) -> bool:
 class catch_gpu_exceptions(contextlib.ContextDecorator):
     """Catch GPU/CUDA exceptions and convert them to HTTP 503 responses.
 
-    Works as both a context manager and a decorator::
+    Works as both a context manager and a decorator. Any caught GPU
+    exception (CUDA OOM, cuDNN errors, NVML failures, etc.) is
+    re-raised as a `CUDAOutOfMemoryException` with HTTP status 503.
 
+    Raises:
+        CUDAOutOfMemoryException: When a GPU-related error is caught.
+
+    Example:
         from fal.exceptions import catch_gpu_exceptions
 
         with catch_gpu_exceptions():
@@ -88,8 +94,8 @@ class catch_gpu_exceptions(contextlib.ContextDecorator):
         def run_inference():
             ...
 
-    Any caught GPU exception (CUDA OOM, cuDNN errors, NVML failures, etc.)
-    is converted to an HTTP 503, signaling the platform to restart the runner.
+    Note:
+        The 503 status code signals the platform to restart the runner.
     """
 
     def __enter__(self):
