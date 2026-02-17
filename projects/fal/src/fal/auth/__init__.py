@@ -170,8 +170,8 @@ def current_user_info(headers: dict[str, str]) -> dict:
         raise FalServerlessException("Failed to fetch user info") from exc
 
 
-def login(console):
-    token_data = auth0.login(console)
+def login(console, connection: str | None = None):
+    token_data = auth0.login(console, connection=connection)
     with local.lock_token():
         local.save_token(token_data["refresh_token"])
 
