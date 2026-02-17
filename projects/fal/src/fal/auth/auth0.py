@@ -47,10 +47,7 @@ def _build_device_login_url(
     verification_uri_complete: str,
     connection: str,
 ) -> str:
-    """Build the device login URL: Auth0 logout → fal.ai /login/cli.
-
-    Starts with Auth0 logout to clear any existing session, ensuring the
-    connection parameter takes effect for the new login."""
+    """Build the device login URL for /api/auth/cli/session-seed."""
     from urllib.parse import urlencode
 
     params = urlencode(
@@ -60,8 +57,7 @@ def _build_device_login_url(
             "connection": connection,
         }
     )
-    login_url = f"{WEBSITE_URL}/login/cli?{params}"
-    return logout_url(login_url)
+    return f"{WEBSITE_URL}/api/auth/cli/session-seed?{params}"
 
 
 def login(console, connection: str | None = None) -> dict:

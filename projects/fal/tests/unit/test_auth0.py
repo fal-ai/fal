@@ -10,9 +10,8 @@ def test_build_device_login_url():
         connection="github",
     )
 
-    # Should route through Auth0 logout → fal.ai/login/cli
-    assert "auth.fal.ai/v2/logout" in url
+    assert url.startswith("https://fal.ai/api/auth/cli/session-seed?")
     decoded = unquote(url)
-    assert "fal.ai/login/cli" in decoded
+    assert "/api/auth/cli/session-seed" in decoded
     assert "connection=github" in decoded
     assert "user_code=ABCD-EFGH" in decoded
