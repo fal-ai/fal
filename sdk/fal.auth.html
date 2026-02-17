@@ -57,11 +57,19 @@
 
 <dl class="py function">
 <dt class="sig sig-object py" id="fal.auth.auth0.login">
-<span class="sig-prename descclassname"><span class="pre">fal.auth.auth0.</span></span><span class="sig-name descname"><span class="pre">login</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">console</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.auth.auth0.login" title="Link to this definition">¶</a></dt>
-<dd><p>Runs the device authorization flow and stores the user object in memory</p>
+<span class="sig-prename descclassname"><span class="pre">fal.auth.auth0.</span></span><span class="sig-name descname"><span class="pre">login</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">console</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">connection</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.auth.auth0.login" title="Link to this definition">¶</a></dt>
+<dd><p>Runs the device authorization flow and stores the user object in memory.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></span></p>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Flow:</dt><dd><ol class="arabic simple">
+<li><p>Request device code from Auth0</p></li>
+<li><p>Open browser to fal.ai/login/cli (handles verification + auth with connection)</p></li>
+<li><p>Poll for token</p></li>
+</ol>
 </dd>
 </dl>
 </dd></dl>
@@ -112,6 +120,16 @@ Never send one to another service.</p>
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="fal.auth.local.load_preference">
+<span class="sig-prename descclassname"><span class="pre">fal.auth.local.</span></span><span class="sig-name descname"><span class="pre">load_preference</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">key</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.auth.local.load_preference" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code> | <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="fal.auth.local.load_token">
 <span class="sig-prename descclassname"><span class="pre">fal.auth.local.</span></span><span class="sig-name descname"><span class="pre">load_token</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#fal.auth.local.load_token" title="Link to this definition">¶</a></dt>
 <dd><dl class="field-list simple">
@@ -126,6 +144,16 @@ Never send one to another service.</p>
 <span class="sig-prename descclassname"><span class="pre">fal.auth.local.</span></span><span class="sig-name descname"><span class="pre">lock_token</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#fal.auth.local.lock_token" title="Link to this definition">¶</a></dt>
 <dd><p>Lock the access to the token file to avoid race conditions when running multiple
 scripts at the same time.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.auth.local.save_preference">
+<span class="sig-prename descclassname"><span class="pre">fal.auth.local.</span></span><span class="sig-name descname"><span class="pre">save_preference</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">key</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">value</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.auth.local.save_preference" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py function">
@@ -225,7 +253,7 @@ scripts at the same time.</p>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="fal.auth.login">
-<span class="sig-prename descclassname"><span class="pre">fal.auth.</span></span><span class="sig-name descname"><span class="pre">login</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">console</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.auth.login" title="Link to this definition">¶</a></dt>
+<span class="sig-prename descclassname"><span class="pre">fal.auth.</span></span><span class="sig-name descname"><span class="pre">login</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">console</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">connection</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.auth.login" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py function">
