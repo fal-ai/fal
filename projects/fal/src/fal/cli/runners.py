@@ -27,7 +27,7 @@ from rich.console import Console
 from structlog.typing import EventDict
 
 from fal.api.client import SyncServerlessClient
-from fal.sdk import RunnerInfo, RunnerState
+from fal.sdk import ReplaceState, RunnerInfo, RunnerState
 
 from .parser import FalClientParser, SinceAction, get_output_parser
 
@@ -44,6 +44,7 @@ def runners_table(runners: List[RunnerInfo]):
     table.add_column("Uptime")
     table.add_column("Revision")
     table.add_column("State")
+    table.add_column("Note")
 
     for runner in runners:
         external_metadata = runner.external_metadata
@@ -69,6 +70,11 @@ def runners_table(runners: List[RunnerInfo]):
         uptime = timedelta(
             seconds=int(runner.uptime.total_seconds()),
         )
+        note = (
+            ""
+            if runner.replacement == ReplaceState.NO_REPLACE
+            else runner.replacement.value
+        )
         table.add_row(
             runner.alias,
             runner.machine_type,
@@ -83,6 +89,7 @@ def runners_table(runners: List[RunnerInfo]):
             f"{uptime} ({uptime.total_seconds():.0f}s)",
             runner.revision,
             runner.state.value,
+            note,
         )
 
     return table
@@ -268,6 +275,7 @@ def _list_json(args, runners: list[RunnerInfo]):
             "uptime_seconds": int(r.uptime.total_seconds()),
             "revision": r.revision,
             "state": r.state.value,
+            "replacement": r.replacement.value,
         }
         for r in runners
     ]
