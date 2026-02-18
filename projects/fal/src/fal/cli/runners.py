@@ -252,7 +252,7 @@ def _shell(args):
 
 def _stop(args):
     client = SyncServerlessClient(host=args.host, team=args.team)
-    client.runners.stop(args.id)
+    client.runners.stop(args.id, replace_first=not args.no_replace)
 
 
 def _kill(args):
@@ -355,6 +355,13 @@ def _add_stop_parser(subparsers, parents):
     parser.add_argument(
         "id",
         help="Runner ID.",
+    )
+    parser.add_argument(
+        "-r",
+        "--no-replace",
+        action="store_true",
+        default=False,
+        help="Stop the runner without replacing it first.",
     )
     parser.set_defaults(func=_stop)
 

@@ -16,9 +16,11 @@ def list_runners(
         return conn.list_runners(start_time=since)
 
 
-def stop_runner(client: SyncServerlessClient, runner_id: str) -> None:
+def stop_runner(
+    client: SyncServerlessClient, runner_id: str, replace_first: bool = True
+) -> None:
     with FalServerlessClient(client._grpc_host, client._credentials).connect() as conn:
-        conn.stop_runner(runner_id)
+        conn.stop_runner(runner_id, replace_first=replace_first)
 
 
 def kill_runner(client: SyncServerlessClient, runner_id: str) -> None:
