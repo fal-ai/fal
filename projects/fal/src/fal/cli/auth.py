@@ -1,6 +1,93 @@
+from __future__ import annotations
+
 from fal.auth import current_user_info
+from fal.auth.local import load_preference, save_preference
 from fal.cli import profile
 from fal.sdk import get_default_credentials
+
+AUTH_CONNECTIONS = [
+    {"name": "github", "label": "Continue with GitHub"},
+    {"name": "google", "label": "Continue with Google"},
+    {"name": "sso", "label": "Continue with SSO"},
+]
+
+_LAST_CONNECTION_KEY = "last_auth_connection"
+
+
+def _load_last_connection() -> str | None:
+    return load_preference(_LAST_CONNECTION_KEY)
+
+
+def _save_last_connection(connection: str) -> None:
+    save_preference(_LAST_CONNECTION_KEY, connection)
+
+
+def _prompt_connection(args) -> str:
+    """Prompt the user to select an auth connection. Returns the connection name."""
+    from rich.prompt import Prompt
+    from rich.style import Style
+    from rich.table import Table
+
+    last_connection = _load_last_connection()
+
+    args.console.print("Login or sign up\n")
+
+    table = Table(border_style=Style(frame=False), show_header=False)
+    table.add_column("#")
+    table.add_column("Connection")
+
+    connection_names = [c["name"] for c in AUTH_CONNECTIONS]
+    # SSO saves the actual domain, not "sso"
+    is_last_sso = last_connection and last_connection not in connection_names
+
+    for idx, conn in enumerate(AUTH_CONNECTIONS, 1):
+        if conn["name"] == last_connection:
+            suffix = " [dim](Last used)[/]"
+        elif conn["name"] == "sso" and is_last_sso:
+            suffix = f" [dim](Last used: {last_connection})[/]"
+        else:
+            suffix = ""
+        table.add_row(f"  {idx}", f"{conn['label']}{suffix}")
+
+    args.console.print(table)
+
+    default = None
+    if last_connection:
+        for idx, conn in enumerate(AUTH_CONNECTIONS, 1):
+            if conn["name"] == last_connection:
+                default = str(idx)
+                break
+        if default is None and is_last_sso:
+            default = str(connection_names.index("sso") + 1)
+
+    indices = [str(i) for i in range(1, len(AUTH_CONNECTIONS) + 1)]
+    choice = Prompt.ask(
+        "Select a connection",
+        choices=indices + connection_names,
+        default=default,
+        show_choices=False,
+        show_default=bool(default),
+    )
+
+    if choice in connection_names:
+        connection = choice
+    else:
+        connection = AUTH_CONNECTIONS[int(choice) - 1]["name"]
+
+    if connection == "sso":
+        sso_default = last_connection if is_last_sso else None
+        while True:
+            connection = Prompt.ask(
+                "Enter your enterprise single sign-on domain",
+                default=sso_default,
+                show_default=bool(sso_default),
+            ).strip()
+            if connection:
+                break
+            args.console.print("[red]Domain cannot be empty.[/]")
+
+    _save_last_connection(connection)
+    return connection
 
 
 def _login(args):
@@ -8,8 +95,14 @@ def _login(args):
     from fal.console.icons import CHECK_ICON, CROSS_ICON
     from fal.exceptions import FalServerlessException
 
+    if args.connection:
+        connection = args.connection.strip()
+        _save_last_connection(connection)
+    else:
+        connection = _prompt_connection(args)
+
     try:
-        login(args.console)
+        login(args.console, connection=connection)
         args.console.print(f"{CHECK_ICON} Authenticated successfully, welcome!")
     except FalServerlessException as e:
         args.console.print(f"{CROSS_ICON} {e}")
@@ -175,6 +268,12 @@ def add_parser(main_subparsers, parents):
         description=login_help,
         help=login_help,
         parents=parents,
+    )
+    login_parser.add_argument(
+        "--connection",
+        help="Auth connection (e.g. github, google, or an SSO domain)."
+        " Skips the interactive prompt.",
+        default=None,
     )
     login_parser.set_defaults(func=_login)
 

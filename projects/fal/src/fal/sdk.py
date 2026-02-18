@@ -23,7 +23,6 @@ from isolate.server.interface import from_grpc, to_serialized_object, to_struct
 from fal import flags
 from fal._serialization import patch_pickle
 from fal.auth import UserAccess, key_credentials
-from fal.console import console
 from fal.logging import get_logger
 from fal.logging.trace import TraceContextInterceptor
 
@@ -655,10 +654,10 @@ class HealthCheck:
 
         if call_regularly is False:
             if failure_threshold is not None or start_period_seconds is not None:
-                console.print(
-                    "[bold yellow]Note:[/bold yellow] [dim]failure_threshold[/dim] "
-                    "and [dim]start_period_seconds[/dim] are ignored when "
-                    "[dim]call_regularly[/dim] is set to False. "
+                print(
+                    "Note: HealthCheck's failure_threshold "
+                    "and start_period_seconds are ignored when "
+                    "call_regularly is set to False. "
                     "See https://docs.fal.ai/serverless/development/add-health-check-endpoint#manual-health-checks for details."  # noqa: E501
                 )
 
