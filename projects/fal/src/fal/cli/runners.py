@@ -44,7 +44,6 @@ def runners_table(runners: List[RunnerInfo]):
     table.add_column("Uptime")
     table.add_column("Revision")
     table.add_column("State")
-    table.add_column("Note")
 
     for runner in runners:
         external_metadata = runner.external_metadata
@@ -70,11 +69,9 @@ def runners_table(runners: List[RunnerInfo]):
         uptime = timedelta(
             seconds=int(runner.uptime.total_seconds()),
         )
-        note = (
-            ""
-            if runner.replacement == ReplaceState.NO_REPLACE
-            else runner.replacement.value
-        )
+        state = runner.state.value
+        if runner.replacement == ReplaceState.WILL_REPLACE:
+            state = f"{state}*"
         table.add_row(
             runner.alias,
             runner.machine_type,
@@ -88,8 +85,7 @@ def runners_table(runners: List[RunnerInfo]):
             ),
             f"{uptime} ({uptime.total_seconds():.0f}s)",
             runner.revision,
-            runner.state.value,
-            note,
+            state,
         )
 
     return table
@@ -331,10 +327,13 @@ def _list(args):
             args.console.print(
                 f"[red]Runners being delayed after startup failure:[/] {len(failing_runners)}"  # noqa: E501
             )
-            args.console.print(
-                "[dim]  Check setup() and logs for errors during startup.[/]"
-            )
+        args.console.print(
+            "[dim]  Check setup() and logs for errors during startup.[/]"
+        )
         args.console.print(runners_table(runners))
+
+        if any(runner.replacement == ReplaceState.WILL_REPLACE for runner in runners):
+            args.console.print("[dim](*) Runner has been scheduled for replacement[/]")
 
         requests_table = runners_requests_table(runners)
         args.console.print(f"Requests: {len(requests_table.rows)}")
