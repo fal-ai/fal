@@ -328,6 +328,12 @@ class RunnerState(Enum):
     FAILURE_DELAY = "FAILURE_DELAY"
 
 
+class ReplaceState(Enum):
+    NO_REPLACE = "NO_REPLACE"
+    WILL_REPLACE = "WILL_REPLACE"
+    DID_REPLACE = "DID_REPLACE"
+
+
 @dataclass
 class RunnerInfo:
     runner_id: str
@@ -339,6 +345,7 @@ class RunnerInfo:
     alias: str
     state: RunnerState
     machine_type: str
+    replacement: ReplaceState = ReplaceState.NO_REPLACE
 
 
 @dataclass
@@ -507,6 +514,12 @@ def _from_grpc_runner_info(message: isolate_proto.RunnerInfo) -> RunnerInfo:
     from isolate.server import definitions as worker_definitions  # noqa: PLC0415
 
     external_metadata = worker_definitions.struct_to_dict(message.external_metadata)
+
+    try:
+        replace_value = isolate_proto.RunnerInfo.ReplaceState.Name(message.replacement)
+    except ValueError:
+        replace_value = ReplaceState.NO_REPLACE
+
     return RunnerInfo(
         runner_id=message.runner_id,
         in_flight_requests=message.in_flight_requests,
@@ -521,6 +534,7 @@ def _from_grpc_runner_info(message: isolate_proto.RunnerInfo) -> RunnerInfo:
         alias=message.alias,
         state=RunnerState(isolate_proto.RunnerInfo.State.Name(message.state)),
         machine_type=message.machine_type,
+        replacement=ReplaceState(replace_value),
     )
 
 
