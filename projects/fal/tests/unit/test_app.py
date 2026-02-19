@@ -643,3 +643,69 @@ async def test_serve_exits_with_exception_on_setup_failure(
 
     with pytest.raises(Exception, match="TEST EXCEPTION"):
         await app.serve()
+
+
+@pytest.mark.asyncio
+async def test_serve_starts_metadata_server_with_main_openapi(
+    isolate_agent_env, monkeypatch: pytest.MonkeyPatch
+):
+    import prometheus_client
+
+    from fal.api import api
+
+    ports: list[int] = []
+    metadata_openapi: dict | None = None
+
+    class FakeGauge:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def labels(self, **kwargs):
+            return self
+
+        def set(self, value):
+            return None
+
+    class FakeServer:
+        def __init__(self, config):
+            self.config = config
+
+        def set_handle_exit(self, handle_exit):
+            self._handle_exit = handle_exit
+
+        async def serve(self) -> None:
+            return
+
+    class FakeAuxServer:
+        def __init__(self, config):
+            self.config = config
+
+        async def serve(self) -> None:
+            nonlocal metadata_openapi
+            ports.append(self.config.port)
+
+            if self.config.port == 9091:
+                route = next(
+                    r
+                    for r in self.config.app.routes
+                    if getattr(r, "path", None) == "/openapi.json"
+                )
+                metadata_openapi = await route.endpoint()
+            return
+
+    monkeypatch.setattr(prometheus_client, "Gauge", FakeGauge)
+    monkeypatch.setattr(api, "FalServer", FakeServer)
+    monkeypatch.setattr(api.uvicorn, "Server", FakeAuxServer)
+
+    class TestApp(App):
+        @endpoint("/")
+        def run(self):
+            return {"status": "ok"}
+
+    app = TestApp()
+    expected_openapi = app.openapi()
+
+    await app.serve()
+
+    assert set(ports) == {9090, 9091}
+    assert metadata_openapi == expected_openapi
