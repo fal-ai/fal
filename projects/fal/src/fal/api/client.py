@@ -192,13 +192,16 @@ class RunnersNamespace:
         """
         return runners_api.list_runners(self.client, since=since)
 
-    def stop(self, runner_id: str) -> None:
+    def stop(self, runner_id: str, replace_first: bool = True) -> None:
         """Gracefully stop a runner.
 
         Args:
             runner_id: The ID of the runner to stop.
+            replace_first: Whether to replace the runner before stopping it.
         """
-        return runners_api.stop_runner(self.client, runner_id)
+        return runners_api.stop_runner(
+            self.client, runner_id, replace_first=replace_first
+        )
 
     def kill(self, runner_id: str) -> None:
         """Forcefully kill a runner.
