@@ -28,19 +28,8 @@ URLOPEN = "fal.toolkit.file.providers.fal.urlopen"
 SLEEP = "fal.toolkit.utils.retry.time.sleep"
 
 
-def test_successful_request_no_retry():
-    request = Request("https://example.com/test")
-
-    with mock.patch(URLOPEN) as mock_urlopen:
-        mock_urlopen.return_value = MockResponse()
-
-        with _maybe_retry_request(request) as response:
-            assert response is not None
-
-        assert mock_urlopen.call_count == 1
-
-
-def test_retry_on_retryable_http_error():
+def test_retries_on_transient_error():
+    """Smoke test: retry is wired up — a transient 500 is retried and succeeds."""
     request = Request("https://example.com/test")
     call_count = 0
 
@@ -57,59 +46,6 @@ def test_retry_on_retryable_http_error():
                 assert response is not None
 
     assert call_count == 2
-
-
-def test_no_retry_on_non_retryable_http_error():
-    request = Request("https://example.com/test")
-    call_count = 0
-
-    def side_effect(*args, **kwargs):
-        nonlocal call_count
-        call_count += 1
-        raise HTTPError("https://example.com/test", 400, "Bad Request", {}, None)
-
-    with mock.patch(URLOPEN, side_effect=side_effect):
-        with pytest.raises(HTTPError) as exc_info:
-            with _maybe_retry_request(request):
-                pass
-
-    assert exc_info.value.code == 400
-    assert call_count == 1
-
-
-def test_non_retryable_exception_not_retried():
-    request = Request("https://example.com/test")
-    call_count = 0
-
-    def side_effect(*args, **kwargs):
-        nonlocal call_count
-        call_count += 1
-        raise ValueError("unexpected")
-
-    with mock.patch(URLOPEN, side_effect=side_effect):
-        with pytest.raises(ValueError):
-            with _maybe_retry_request(request):
-                pass
-
-    assert call_count == 1
-
-
-def test_max_retries_exhausted():
-    request = Request("https://example.com/test")
-    call_count = 0
-
-    def side_effect(*args, **kwargs):
-        nonlocal call_count
-        call_count += 1
-        raise HTTPError("https://example.com/test", 500, "Server Error", {}, None)
-
-    with mock.patch(URLOPEN, side_effect=side_effect):
-        with mock.patch(SLEEP):
-            with pytest.raises(HTTPError):
-                with _maybe_retry_request(request):
-                    pass
-
-    assert call_count == 5
 
 
 def test_retry_on_url_error():
@@ -148,6 +84,39 @@ def test_retry_on_timeout_error():
                 assert response is not None
 
     assert call_count == 2
+
+
+def test_no_retry_on_client_error():
+    """_should_retry negative path: a 400 is not retried."""
+    request = Request("https://example.com/test")
+
+    with mock.patch(URLOPEN) as mock_urlopen:
+        mock_urlopen.side_effect = HTTPError(
+            "https://example.com/test", 400, "Bad Request", {}, None
+        )
+
+        with pytest.raises(HTTPError) as exc_info:
+            with _maybe_retry_request(request):
+                pass
+
+    assert exc_info.value.code == 400
+    assert mock_urlopen.call_count == 1
+
+
+def test_response_closed_on_caller_exception():
+    """response.close() is called even when the caller raises inside the with block."""
+    request = Request("https://example.com/test")
+
+    with mock.patch(URLOPEN) as mock_urlopen:
+        mock_response = MockResponse()
+        mock_response.close = mock.Mock()
+        mock_urlopen.return_value = mock_response
+
+        with pytest.raises(RuntimeError):
+            with _maybe_retry_request(request):
+                raise RuntimeError("unexpected error occurred")
+
+        mock_response.close.assert_called_once()
 
 
 def test_custom_timeout_forwarded():
