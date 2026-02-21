@@ -91,7 +91,8 @@ def _prompt_connection(args) -> str:
 
 
 def _login(args):
-    from fal.auth import login
+    from fal.auth import UserAccess, login
+    from fal.config import Config
     from fal.console.icons import CHECK_ICON, CROSS_ICON
     from fal.exceptions import FalServerlessException
 
@@ -108,7 +109,12 @@ def _login(args):
         args.console.print(f"{CROSS_ICON} {e}")
         return
 
-    _unset_account(args)
+    current_team = Config().get_internal("team")
+    if current_team and not any(
+        a["nickname"] == current_team for a in UserAccess().accounts
+    ):
+        _unset_account(args)
+
     _set_account(args)
 
 
@@ -135,7 +141,8 @@ def _list_accounts(args):
 
     user_access = UserAccess()
     config = Config()
-    current_account_name = config.get_internal("team") or user_access.info["nickname"]
+    personal = next(a for a in user_access.accounts if a["is_personal"])
+    current_account_name = config.get_internal("team") or personal["nickname"]
 
     # NOTE: might be used by other commands that don't have the --output/--json flag
     output = getattr(args, "output", "pretty")
@@ -146,7 +153,12 @@ def _list_accounts(args):
             json_accounts.append(
                 {
                     "nickname": account["nickname"],
-                    "type": "personal" if account["is_personal"] else "team",
+                    "full_name": account["full_name"],
+                    "type": "personal"
+                    if account["is_personal"]
+                    else "org"
+                    if account["is_org"]
+                    else "team",
                     "is_selected": selected,
                 }
             )
@@ -157,17 +169,24 @@ def _list_accounts(args):
 
         table = Table(border_style=Style(frame=False), show_header=False)
         table.add_column("#")
-        table.add_column("Nickname")
+        table.add_column("Account")
         table.add_column("Type")
 
         for idx, account in enumerate(user_access.accounts):
             selected = account["nickname"] == current_account_name
             color = "bold yellow" if selected else None
+            account_type = (
+                "Personal"
+                if account["is_personal"]
+                else "Org"
+                if account["is_org"]
+                else "Team"
+            )
 
             table.add_row(
                 f"* {idx + 1}" if selected else f"  {idx + 1}",
-                account["nickname"],
-                "Personal" if account["is_personal"] else "Team",
+                f"{account['full_name']}\n[dim]{account['nickname']}[/]",
+                account_type,
                 style=color,
             )
 
@@ -176,11 +195,25 @@ def _list_accounts(args):
         raise AssertionError(f"Invalid output format: {output}")
 
 
-def _unset_account(args):
+def _unset_account(args, *, notify: bool = False) -> str | None:
     from fal.config import Config
 
     with Config().edit() as config:
+        previous = config.get_internal("team")
         config.unset_internal("team")
+
+    if notify:
+        from fal.auth import UserAccess
+
+        user_access = UserAccess()
+        personal = next(a for a in user_access.accounts if a["is_personal"])
+        args.console.print(
+            f"Using personal account [cyan]{personal['full_name']}[/] "
+            f"([cyan]{personal['nickname']}[/]). "
+            "You can change this with [bold]fal account set[/]"
+        )
+
+    return previous
 
 
 def _set_account(args):
@@ -198,13 +231,30 @@ def _set_account(args):
         else:
             account = user_access.get_account(args.account)
     else:
+        config = Config()
+        explicit_team = config.get_internal("team")
         _list_accounts(args)
+
         indices = list(map(str, range(1, len(user_access.accounts) + 1)))
         team_names = [account["nickname"] for account in user_access.accounts]
+
+        personal = next(a for a in user_access.accounts if a["is_personal"])
+        default_name = explicit_team or personal["nickname"]
+        default = next(
+            (
+                str(i + 1)
+                for i, a in enumerate(user_access.accounts)
+                if a["nickname"] == default_name
+            ),
+            None,
+        )
+
         acc_choice = Prompt.ask(
             "Select an account by number",
             choices=indices + team_names,
             show_choices=False,
+            default=default,
+            show_default=bool(default),
         )
         if acc_choice in indices:
             acc_index = int(acc_choice) - 1
@@ -212,16 +262,14 @@ def _set_account(args):
         else:
             account = user_access.get_account(acc_choice)
 
-    if account["is_personal"]:
-        args.console.print(
-            f"Using personal account [cyan]{account['nickname']}[/]. "
-            "You can change this later with [bold]fal team set[/]"
-        )
-    else:
-        args.console.print(
-            f"Using team account [cyan]{account['nickname']}[/]. "
-            "You can change this later with [bold]fal team set[/]"
-        )
+    account_type = (
+        "personal" if account["is_personal"] else "org" if account["is_org"] else "team"
+    )
+    args.console.print(
+        f"Using {account_type} account [cyan]{account['full_name']}[/] "
+        f"([cyan]{account['nickname']}[/]). "
+        "You can change this later with [bold]fal account set[/]"
+    )
 
     with Config().edit() as config:
         config.set_internal("team", account["nickname"])
