@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextvars
 import os
 import pickle
 from contextvars import ContextVar
@@ -11,6 +12,7 @@ from pydantic import BaseModel
 
 import fal
 from fal import App, endpoint
+from fal.app import LOG_CONTEXT_PREFIX, clear_contextvars, merge_contextvars
 from fal.container import ContainerImage
 
 
@@ -389,6 +391,39 @@ def test_non_host_classvars_do_not_leak_into_host_kwargs():
     assert "machine_type" not in hk
     assert "num_gpus" not in hk
     assert "app_auth" not in hk
+
+
+def test_merge_context_vars():
+    labels = {"fal_request_id": "123", "fal_endpoint": "/"}
+    request_id_var = f"{LOG_CONTEXT_PREFIX}fal_request_id"
+    endpoint_var = f"{LOG_CONTEXT_PREFIX}fal_endpoint"
+    unrelated_var = "unrelated_key"
+    contextvars.ContextVar(unrelated_var).set("value")
+
+    # We have to convert to dict and lookup by name because each ContextVar
+    # is a different object. Since merge_contextvars creates new ContextVars,
+    # we can't just do direct lookups.
+    vars = dict((k.name, v) for k, v in contextvars.copy_context().items())
+
+    assert vars.get(unrelated_var) == "value"
+
+    assert vars.get(request_id_var) is None
+    assert vars.get(endpoint_var) is None
+
+    merge_contextvars(labels)
+    vars = dict((k.name, v) for k, v in contextvars.copy_context().items())
+
+    assert vars.get(request_id_var) == "123"
+    assert vars.get(endpoint_var) == "/"
+
+    clear_contextvars()
+    vars = dict((k.name, v) for k, v in contextvars.copy_context().items())
+
+    # Cleared contextvars are set to Ellipsis
+    assert vars.get(request_id_var) is Ellipsis
+    assert vars.get(endpoint_var) is Ellipsis
+    # Does not clear unrelated contextvars
+    assert vars.get("unrelated_key") == "value"
 
 
 @pytest.mark.asyncio
