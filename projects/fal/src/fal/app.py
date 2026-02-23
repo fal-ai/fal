@@ -600,6 +600,7 @@ class App(BaseServable):
     image: ClassVar[Optional[ContainerImage]] = None
     local_file_path: ClassVar[Optional[str]] = None
     skip_retry_conditions: ClassVar[Optional[list[RetryConditionLiteral]]] = None
+    mounted_secrets: ClassVar[Optional[list[str]]] = None
     termination_grace_period_seconds: ClassVar[Optional[int]] = None
 
     isolate_channel: async_grpc.Channel | None = None
@@ -666,6 +667,9 @@ class App(BaseServable):
 
         if cls.skip_retry_conditions is not None:
             cls.host_kwargs["skip_retry_conditions"] = cls.skip_retry_conditions
+
+        if cls.mounted_secrets is not None:
+            cls.host_kwargs["mounted_secrets"] = cls.mounted_secrets
 
         if cls.termination_grace_period_seconds is not None:
             cls.host_kwargs["termination_grace_period_seconds"] = (
