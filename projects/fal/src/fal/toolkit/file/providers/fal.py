@@ -1,20 +1,23 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import math
 import os
 import threading
 from base64 import b64encode
-from contextlib import contextmanager
+from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from functools import partial
 from pathlib import Path
-from typing import Any, Dict, Generator, Generic, TypeVar
+from typing import Any, AsyncGenerator, Dict, Generator, Generic, TypeVar
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse, urlunparse
 from urllib.request import Request, urlopen
 from urllib.response import addinfourl
+
+import httpx
 
 from fal.auth import key_credentials
 from fal.ref import get_current_app
@@ -70,6 +73,48 @@ def _maybe_retry_request(
         yield response
     finally:
         response.close()
+
+
+def _should_retry_httpx(exc: Exception) -> bool:
+    if (
+        isinstance(exc, httpx.HTTPStatusError)
+        and exc.response.status_code in RETRY_CODES
+    ):
+        return True
+    if isinstance(exc, (httpx.ConnectError, httpx.ReadError, httpx.WriteError)):
+        return True
+    if isinstance(exc, httpx.TimeoutException):
+        return True
+    return False
+
+
+@asynccontextmanager
+async def _maybe_retry_request_async(
+    request: httpx.Request,
+    **kwargs: Any,
+) -> AsyncGenerator[Any, None]:
+    timeout = kwargs.pop("timeout", DEFAULT_REQUEST_TIMEOUT)
+    client = httpx.AsyncClient(timeout=timeout)
+
+    async def _do_request() -> Any:
+        response = await client.send(request, **kwargs)
+        response.raise_for_status()
+        return response
+
+    _request_with_retry = retry(
+        max_retries=MAX_ATTEMPTS,
+        base_delay=BASE_DELAY,
+        max_delay=MAX_DELAY,
+        backoff_type="exponential",
+        jitter=True,
+        should_retry=_should_retry_httpx,
+    )(_do_request)
+
+    response = await _request_with_retry()
+    try:
+        yield response
+    finally:
+        await response.aclose()
 
 
 def _object_lifecycle_headers(
@@ -1170,6 +1215,38 @@ class InternalMultipartUploadV3:
 
         return multipart.complete()
 
+    @classmethod
+    async def async_save(
+        cls,
+        file: FileData,
+        chunk_size: int | None = None,
+        max_concurrency: int | None = None,
+        object_lifecycle_preference: dict[str, str] | None = None,
+    ):
+        multipart = cls(
+            file.file_name,
+            chunk_size=chunk_size,
+            content_type=file.content_type,
+            max_concurrency=max_concurrency,
+        )
+        multipart.create(object_lifecycle_preference=object_lifecycle_preference)
+
+        parts = math.ceil(len(file.data) / multipart.chunk_size)
+        semaphore = asyncio.Semaphore(multipart.max_concurrency)
+
+        async def upload_part(part_number: int, data: bytes) -> None:
+            async with semaphore:
+                multipart.upload_part(part_number, data)
+
+        tasks = []
+        for part_number in range(1, parts + 1):
+            start = (part_number - 1) * multipart.chunk_size
+            data = file.data[start : start + multipart.chunk_size]
+            tasks.append(upload_part(part_number, data))
+
+        _ = await asyncio.gather(*tasks, return_exceptions=True)
+        return multipart.complete()
+
 
 @dataclass
 class FalFileRepositoryV2(FalFileRepositoryBase):
@@ -1547,3 +1624,50 @@ class InternalFalFileRepositoryV3(FileRepository):
             )
 
         return url, data
+
+    async def async_save(
+        self,
+        data: FileData,
+        multipart: bool | None = None,
+        multipart_threshold: int | None = None,
+        multipart_chunk_size: int | None = None,
+        multipart_max_concurrency: int | None = None,
+        object_lifecycle_preference: Dict[str, str] | None = None,
+    ) -> str:
+        if multipart is None:
+            threshold = (
+                multipart_threshold or InternalMultipartUploadV3.MULTIPART_THRESHOLD
+            )
+            multipart = len(data.data) > threshold
+
+        if multipart:
+            return InternalMultipartUploadV3.save(
+                data,
+                chunk_size=multipart_chunk_size,
+                max_concurrency=multipart_max_concurrency,
+                object_lifecycle_preference=object_lifecycle_preference,
+            )
+
+        headers = {
+            **self.auth_headers,
+            "Accept": "application/json",
+            "Content-Type": data.content_type,
+            "X-Fal-File-Name": data.file_name,
+        }
+
+        _object_lifecycle_headers(headers, object_lifecycle_preference)
+
+        url = os.getenv("FAL_CDN_V3_HOST", _FAL_CDN_V3) + "/files/upload"
+        request = httpx.Request(
+            method="POST", url=url, headers=headers, content=data.data
+        )
+        try:
+            async with _maybe_retry_request_async(request) as response:
+                result = json.load(response)
+        except HTTPError as e:
+            raise FileUploadException(
+                f"Error initiating upload. Status {e.status}: {e.reason}"
+            )
+
+        access_url = result["access_url"]
+        return access_url

@@ -125,6 +125,42 @@ def _try_with_fallback(
             )
 
 
+async def _async_try_with_fallback(
+    func: str,
+    args: list[Any],
+    repository: FileRepository | RepositoryId,
+    fallback_repository: Optional[
+        FileRepository | RepositoryId | list[FileRepository | RepositoryId]
+    ],
+    save_kwargs: dict,
+    fallback_save_kwargs: dict,
+) -> Any:
+    if fallback_repository is None:
+        fallback_repository = []
+    elif isinstance(fallback_repository, list):
+        pass
+    else:
+        fallback_repository = [fallback_repository]
+
+    attempts: list[tuple[FileRepository | RepositoryId, dict]] = [
+        (repository, save_kwargs),
+        *((fallback, fallback_save_kwargs) for fallback in fallback_repository),
+    ]
+    for idx, (repo, kwargs) in enumerate(attempts):
+        repo_obj = get_builtin_repository(repo)
+        try:
+            return await getattr(repo_obj, f"async_{func}")(*args, **kwargs)
+        except Exception as exc:
+            if idx >= len(attempts) - 1:
+                raise
+
+            traceback.print_exc()
+            print(
+                f"Failed to {func} to repository {repo}: {exc}, "
+                f"falling back to {attempts[idx + 1][0]}"
+            )
+
+
 def _get_object_lifecycle_preference_from_context() -> dict[str, str] | None:
     current_app = get_current_app()
     if current_app is None or current_app.current_request is None:
@@ -241,6 +277,56 @@ class File(BaseModel):
         )
 
         url = _try_with_fallback(
+            "save",
+            [fdata],
+            repository=repository,
+            fallback_repository=fallback_repository,
+            save_kwargs=save_kwargs,
+            fallback_save_kwargs=fallback_save_kwargs,
+        )
+
+        return cls(
+            url=url,
+            content_type=fdata.content_type,
+            file_name=fdata.file_name,
+            file_size=len(data),
+            file_data=data,
+        )
+
+    @classmethod
+    async def async_from_bytes(
+        cls,
+        data: bytes,
+        content_type: Optional[str] = None,
+        file_name: Optional[str] = None,
+        repository: FileRepository | RepositoryId = DEFAULT_REPOSITORY,
+        fallback_repository: Optional[
+            FileRepository | RepositoryId | list[FileRepository | RepositoryId]
+        ] = FALLBACK_REPOSITORY,
+        request: Optional[Request] = None,
+        save_kwargs: Optional[dict] = None,
+        fallback_save_kwargs: Optional[dict] = None,
+    ) -> File:
+        save_kwargs = save_kwargs or {}
+        fallback_save_kwargs = fallback_save_kwargs or {}
+
+        fdata = FileData(data, content_type, file_name)
+
+        if request:
+            object_lifecycle_preference = request_lifecycle_preference(request)
+        else:
+            object_lifecycle_preference = (
+                _get_object_lifecycle_preference_from_context()
+            )
+
+        save_kwargs.setdefault(
+            "object_lifecycle_preference", object_lifecycle_preference
+        )
+        fallback_save_kwargs.setdefault(
+            "object_lifecycle_preference", object_lifecycle_preference
+        )
+
+        url = await _async_try_with_fallback(
             "save",
             [fdata],
             repository=repository,

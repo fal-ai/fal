@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from mimetypes import guess_extension, guess_type
 from pathlib import Path
@@ -64,6 +65,43 @@ class FileRepository:
             data = FileData(fobj.read(), content_type, Path(file_path).name)
 
         return self.save(
+            data,
+            multipart=multipart,
+            multipart_threshold=multipart_threshold,
+            multipart_chunk_size=multipart_chunk_size,
+            multipart_max_concurrency=multipart_max_concurrency,
+            object_lifecycle_preference=object_lifecycle_preference,
+        ), data
+
+    async def async_save(
+        self,
+        data: FileData,
+        multipart: bool | None = None,
+        multipart_threshold: int | None = None,
+        multipart_chunk_size: int | None = None,
+        multipart_max_concurrency: int | None = None,
+        object_lifecycle_preference: Optional[dict[str, str]] = None,
+    ) -> str:
+        raise NotImplementedError()
+
+    async def async_save_file(
+        self,
+        file_path: str | Path,
+        content_type: str,
+        multipart: bool | None = None,
+        multipart_threshold: int | None = None,
+        multipart_chunk_size: int | None = None,
+        multipart_max_concurrency: int | None = None,
+        object_lifecycle_preference: Optional[dict[str, str]] = None,
+    ) -> tuple[str, FileData | None]:
+        if multipart:
+            raise NotImplementedError()
+
+        with open(file_path, "rb") as fobj:
+            data_bytes = await asyncio.to_thread(fobj.read)
+            data = FileData(data_bytes, content_type, Path(file_path).name)
+
+        return await self.async_save(
             data,
             multipart=multipart,
             multipart_threshold=multipart_threshold,
