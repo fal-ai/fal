@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from fal.exceptions._gpu import (
+from fal.exceptions.gpu import (
     CUDAOutOfMemoryException,
     GPUException,
     _is_generic_gpu_error,

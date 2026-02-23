@@ -44,7 +44,7 @@ from fal.exceptions import (
     FieldException,
     RequestCancelledException,
 )
-from fal.exceptions._gpu import _CUDA_OOM_MESSAGE, _GPU_ERROR_STATUS_CODE
+from fal.exceptions.gpu import _CUDA_OOM_MESSAGE, _GPU_ERROR_STATUS_CODE
 from fal.ref import get_current_app
 from fal.sdk import RunnerState, get_default_credentials
 from fal.toolkit.utils.endpoint import cancel_on_disconnect

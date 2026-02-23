@@ -8,13 +8,13 @@ from ._base import (
     FileTooLargeError,
     RequestCancelledException,
 )
-from ._gpu import (
+from .auth import UnauthenticatedException
+from .gpu import (
     CUDAOutOfMemoryException,
     GPUException,
     GPUOutOfMemoryException,
     catch_gpu_exceptions,
 )
-from .auth import UnauthenticatedException
 
 __all__ = [
     "FalServerlessException",

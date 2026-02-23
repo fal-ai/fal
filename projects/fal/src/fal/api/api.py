@@ -54,7 +54,7 @@ from fal.exceptions import (
     FieldException,
     GPUException,
 )
-from fal.exceptions._gpu import _is_cuda_oom_exception, _is_generic_gpu_error
+from fal.exceptions.gpu import _is_cuda_oom_exception, _is_generic_gpu_error
 from fal.file_sync import FileSync, FileSyncOptions
 from fal.logging.isolate import IsolateLogPrinter
 from fal.sdk import (
