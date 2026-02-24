@@ -84,6 +84,85 @@ def test_app_regions_propagate_to_function_options():
     assert fn.options.host.get("regions") == ["us-east", "eu-west"]
 
 
+def test_wrap_app_allows_resolver_with_container_kind():
+    from fal.app import wrap_app
+
+    class ContainerKindApp(App):
+        image = ContainerImage.from_dockerfile_str("FROM python:3.11-slim")
+
+        @endpoint("/")
+        def hello(self) -> str:
+            return "Hello, world!"
+
+    fn = wrap_app(ContainerKindApp)
+    assert fn.options.environment.get("resolver") == "uv"
+
+
+def test_wrap_app_raises_for_virtualenv_only_keys_with_conda_kind():
+    from fal.app import wrap_app
+
+    class CondaKindApp(App):
+        kind = "conda"
+
+        @endpoint("/")
+        def hello(self) -> str:
+            return "Hello, world!"
+
+    with pytest.raises(
+        ValueError,
+        match="Unsupported option 'requirements' for environment kind 'conda'",
+    ):
+        wrap_app(CondaKindApp)
+
+
+def test_wrap_app_raises_for_unrecognised_option():
+    from fal.app import wrap_app
+
+    class UnknownOptionApp(App, totally_unknown_option=1):
+        @endpoint("/")
+        def hello(self) -> str:
+            return "Hello, world!"
+
+    with pytest.raises(
+        ValueError,
+        match="Unrecognised option 'totally_unknown_option'.",
+    ):
+        wrap_app(UnknownOptionApp)
+
+
+def test_wrap_app_unrecognised_option_suggests_closest_match():
+    from fal.app import wrap_app
+
+    class TypoOptionApp(App, reqirements=["fastapi"]):
+        @endpoint("/")
+        def hello(self) -> str:
+            return "Hello, world!"
+
+    with pytest.raises(
+        ValueError,
+        match="Unrecognised option 'reqirements'. Did you mean 'requirements'\\?",
+    ):
+        wrap_app(TypoOptionApp)
+
+
+def test_wrap_app_raises_for_unknown_environment_kind():
+    from fal.app import wrap_app
+
+    class UnknownKindApp(App):
+        kind = "something-else"
+
+        @endpoint("/")
+        def hello(self) -> str:
+            return "Hello, world!"
+
+    with pytest.raises(
+        ValueError,
+        match="Unrecognised environment kind 'something-else'. "
+        "Only virtualenv, container, conda are supported.",
+    ):
+        wrap_app(UnknownKindApp)
+
+
 def test_app_default_app_name_is_generated_from_class_name():
     class MyCustomApp(App):
         pass

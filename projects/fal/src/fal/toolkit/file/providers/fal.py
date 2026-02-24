@@ -8,6 +8,7 @@ from base64 import b64encode
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from functools import partial
 from pathlib import Path
 from typing import Any, Dict, Generator, Generic, TypeVar
 from urllib.error import HTTPError, URLError
@@ -33,15 +34,6 @@ MAX_DELAY = 30
 RETRY_CODES = [408, 409, 429, 500, 502, 503, 504]
 
 
-@contextmanager
-def _urlopen(
-    request: Request,
-    timeout: int = DEFAULT_REQUEST_TIMEOUT,
-) -> Generator[addinfourl, None, None]:
-    with urlopen(request, timeout=timeout) as response:
-        yield response
-
-
 def _should_retry(exc: Exception) -> bool:
     if isinstance(exc, HTTPError) and exc.code in RETRY_CODES:
         return True
@@ -62,6 +54,8 @@ def _maybe_retry_request(
     request: Request,
     **kwargs: Any,
 ) -> Generator[addinfourl, None, None]:
+    timeout = kwargs.pop("timeout", DEFAULT_REQUEST_TIMEOUT)
+
     _urlopen_with_retry = retry(
         max_retries=MAX_ATTEMPTS,
         base_delay=BASE_DELAY,
@@ -69,10 +63,13 @@ def _maybe_retry_request(
         backoff_type="exponential",
         jitter=True,
         should_retry=_should_retry,
-    )(_urlopen)
+    )(partial(urlopen, request, timeout=timeout))
 
-    with _urlopen_with_retry(request, **kwargs) as response:
+    response = _urlopen_with_retry()
+    try:
         yield response
+    finally:
+        response.close()
 
 
 def _object_lifecycle_headers(

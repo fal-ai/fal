@@ -128,6 +128,7 @@ async def _mirror_input(
     decode_message: Callable[[bytes], Any],
     input_modal: type | None,
     session_timeout: float | None,
+    input_ready: asyncio.Event,
 ) -> None:
     while True:
         try:
@@ -143,6 +144,7 @@ async def _mirror_input(
             input = input_modal(**input)
 
         queue.append(input)
+        input_ready.set()
 
 
 async def _receive_input(
@@ -230,6 +232,7 @@ async def _mirror_output(
     func: EndpointT,
     route_signature: RouteSignature,
     encode_message: Callable[[Any], bytes],
+    input_ready: asyncio.Event,
 ) -> None:
     loop = asyncio.get_event_loop()
     max_allowed_buffering = route_signature.buffering or 1
@@ -241,7 +244,8 @@ async def _mirror_output(
 
     while True:
         if not queue:
-            await asyncio.sleep(0.05)
+            await input_ready.wait()
+            input_ready.clear()
             continue
 
         input = queue.popleft()
@@ -456,6 +460,7 @@ async def _run_websocket_session(
 
     if realtime_mode == "unary":
         queue: deque[Any] = deque(maxlen=route_signature.buffering)
+        input_ready = asyncio.Event()
         input_task = asyncio.create_task(
             _mirror_input(
                 queue,
@@ -463,9 +468,15 @@ async def _run_websocket_session(
                 decode_message=decode_message,
                 input_modal=route_signature.input_modal,
                 session_timeout=route_signature.session_timeout,
+                input_ready=input_ready,
             )
         )
-        input_task.add_done_callback(lambda _: queue.append(None))
+
+        def _on_input_done(_):
+            queue.append(None)
+            input_ready.set()
+
+        input_task.add_done_callback(_on_input_done)
         output_task = asyncio.create_task(
             _mirror_output(
                 self,
@@ -474,6 +485,7 @@ async def _run_websocket_session(
                 func=func,
                 route_signature=route_signature,
                 encode_message=encode_message,
+                input_ready=input_ready,
             )
         )
     else:

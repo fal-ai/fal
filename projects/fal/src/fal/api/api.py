@@ -9,6 +9,7 @@ from collections import defaultdict
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field, replace
+from difflib import get_close_matches
 from functools import wraps
 from os import PathLike
 from queue import Queue
@@ -167,6 +168,31 @@ class Host(Generic[ArgsT, ReturnT]):
 
     _SUPPORTED_KEYS: ClassVar[frozenset[str]] = frozenset()
     _GATEWAY_KEYS: ClassVar[frozenset[str]] = frozenset({"serve", "exposed_port"})
+    _VIRTUALENV_KEYS: ClassVar[frozenset[str]] = frozenset(
+        {
+            "python_version",
+            "requirements",
+            "resolver",
+        }
+    )
+    _CONTAINER_KEYS: ClassVar[frozenset[str]] = frozenset(
+        {"image", "python_version", "requirements", "resolver", "force"}
+    )
+    _CONDA_KEYS: ClassVar[frozenset[str]] = frozenset(
+        {
+            "python_version",
+            "env_dict",
+            "env_yml_str",
+            "packages",
+            "pip",
+            "channels",
+        }
+    )
+    _ENVIRONMENT_KEYS_BY_KIND: ClassVar[dict[str, frozenset[str]]] = {
+        "virtualenv": _VIRTUALENV_KEYS,
+        "container": _CONTAINER_KEYS,
+        "conda": _CONDA_KEYS,
+    }
 
     def __post_init__(self):
         assert not self._SUPPORTED_KEYS.intersection(
@@ -190,14 +216,45 @@ class Host(Generic[ArgsT, ReturnT]):
         environment options."""
 
         options = Options()
+        kind = config.get("kind", "virtualenv")
+        environment_keys = cls._ENVIRONMENT_KEYS_BY_KIND.get(kind)
+        if environment_keys is None:
+            supported_kinds = ", ".join(cls._ENVIRONMENT_KEYS_BY_KIND.keys())
+            raise ValueError(
+                f"Unrecognised environment kind {kind!r}. "
+                f"Only {supported_kinds} are supported."
+            )
+
+        valid_environment_keys = {"kind", *environment_keys}
+        all_supported_keys = {
+            "kind",
+            *cls._SUPPORTED_KEYS,
+            *cls._GATEWAY_KEYS,
+            *cls._VIRTUALENV_KEYS,
+            *cls._CONTAINER_KEYS,
+            *cls._CONDA_KEYS,
+        }
+
         for item in config.items():
             key, value = cls.parse_key(*item)
             if key in cls._SUPPORTED_KEYS:
                 options.host[key] = value
             elif key in cls._GATEWAY_KEYS:
                 options.gateway[key] = value
-            else:
+            elif key in valid_environment_keys:
                 options.environment[key] = value
+            elif key in all_supported_keys:
+                supported_keys = ", ".join(
+                    f"{supported_key!r}" for supported_key in sorted(environment_keys)
+                )
+                raise ValueError(
+                    f"Unsupported option {key!r} for environment kind {kind!r}. "
+                    f"Supported keys for this kind are: {supported_keys}."
+                )
+            else:
+                closest_match = get_close_matches(key, sorted(all_supported_keys), n=1)
+                hint = f" Did you mean {closest_match[0]!r}?" if closest_match else ""
+                raise ValueError(f"Unrecognised option {key!r}.{hint}")
 
         if options.gateway.get("serve"):
             options.add_requirements(SERVE_REQUIREMENTS)

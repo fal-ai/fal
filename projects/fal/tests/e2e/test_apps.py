@@ -1612,6 +1612,53 @@ def test_shell_runner(host: api.FalServerlessHost, test_sleep_app: str):
                 proc.wait()
 
 
+@pytest.mark.flaky(max_runs=3)
+def test_exec_runner(host: api.FalServerlessHost, test_sleep_app: str):
+    handle = apps.submit(test_sleep_app, arguments={"wait_time": 30})
+
+    while True:
+        status = handle.status()
+        if isinstance(status, apps.InProgress):
+            break
+        elif isinstance(status, apps.Queued):
+            time.sleep(1)
+        else:
+            raise Exception(f"Failed to start the app: {status}")
+
+    with host._connection as client:
+        _, _, app_alias = test_sleep_app.partition("/")
+        runners = client.list_alias_runners(app_alias)
+        assert len(runners) == 1
+        runner_id = runners[0].runner_id
+
+        proc = subprocess.Popen(
+            [
+                "python",
+                "-m",
+                "fal",
+                "runners",
+                "exec",
+                runner_id,
+                "--",
+                "echo",
+                "hello",
+            ],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+
+        try:
+            stdout, stderr = proc.communicate(timeout=10)
+            assert (
+                b"hello" in stdout
+            ), f"Expected 'hello' in output, got: {stdout.decode()}"
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait()
+
+
 def test_container_app_client(test_container_app: str):
     response = apps.run(test_container_app, arguments={"lhs": 1, "rhs": 2})
     assert response["result"] == 3
@@ -1898,6 +1945,29 @@ def test_graceful_shutdown_handle_exit(
     assert graceful_shutdown(
         test_graceful_shutdown_app, host, wait_time=60, path="/with-stop"
     ), "app should be called handle_exit on SIGTERM"
+
+
+@pytest.mark.flaky(max_runs=3)
+def test_runner_machine_type(host: api.FalServerlessHost, test_sleep_app: str):
+    """Test that machine_type is populated in runner info."""
+    submit_and_wait_for_runner(test_sleep_app, arguments={"wait_time": 1})
+
+    with host._connection as client:
+        _, _, app_alias = test_sleep_app.partition("/")
+
+        # list_alias_runners
+        runners = client.list_alias_runners(app_alias)
+        assert len(runners) >= 1
+        assert runners[0].machine_type == "XS"
+
+        # list_runners
+        all_runners = client.list_runners(
+            start_time=datetime.now() - timedelta(seconds=60)
+        )
+        assert len(all_runners) >= 1
+        target_runner = next((r for r in all_runners if r.alias == app_alias), None)
+        assert target_runner is not None, "Runner for test app alias not found"
+        assert target_runner.machine_type == "XS"
 
 
 class RequestContextOutput(BaseModel):

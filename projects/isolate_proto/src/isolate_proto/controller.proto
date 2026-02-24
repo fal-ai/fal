@@ -95,6 +95,8 @@ message HostedRun {
     optional string application_name = 7;
     // Auth mode to use for the ephemeral app
     optional ApplicationAuthMode auth_mode = 8;
+    // Fetch OpenAPI metadata from an app runner.
+    optional bool fetch_openapi = 9;
 }
 
 message CreateUserKeyRequest {
@@ -294,6 +296,8 @@ message RegisterApplicationRequest {
     repeated RetryCondition skip_retry_conditions = 17;
     // Grace period in seconds before forced termination of runners after a shutdown request.
     optional int32 termination_grace_period_seconds = 18;
+    // Fetch OpenAPI metadata from an app runner.
+    optional bool fetch_openapi = 19;
 }
 
 message RegisterApplicationResultType {
@@ -478,6 +482,7 @@ message RunnerInfo {
         TERMINATING = 6;
         TERMINATED = 7;
         IDLE = 8;
+        FAILURE_DELAY = 9;
     }
 
     optional State state = 8;

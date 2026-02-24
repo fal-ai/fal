@@ -400,11 +400,23 @@ def _runners(args):
         setup_runners = [
             runner for runner in alias_runners if runner.state == RunnerState.SETUP
         ]
+        failing_runners = [
+            runner
+            for runner in alias_runners
+            if runner.state == RunnerState.FAILURE_DELAY
+        ]
         args.console.print(
             f"Runners: {len(alias_runners) - len(pending_runners) - len(setup_runners)}"
         )
         args.console.print(f"Runners Pending: {len(pending_runners)}")
         args.console.print(f"Runners Setting Up: {len(setup_runners)}")
+        if len(failing_runners) > 0:
+            args.console.print(
+                f"[red]Runners being delayed after startup failure:[/] {len(failing_runners)}"  # noqa: E501
+            )
+            args.console.print(
+                "[dim]  Check setup() and logs for errors during startup.[/]"
+            )
         # Drop the alias column, which is the first column
         runners_table.columns.pop(0)
         args.console.print(runners_table)
@@ -443,7 +455,15 @@ def _add_runners_parser(subparsers, parents):
     )
     parser.add_argument(
         "--state",
-        choices=["all", "running", "pending", "setup", "terminated"],
+        choices=[
+            "all",
+            "idle",
+            "running",
+            "pending",
+            "setup",
+            "failure_delay",
+            "terminated",
+        ],
         nargs="+",
         default=None,
         help=("Filter by runner state(s). Choose one or more, or 'all'(default)."),

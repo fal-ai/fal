@@ -27,7 +27,7 @@ from rich.console import Console
 from structlog.typing import EventDict
 
 from fal.api.client import SyncServerlessClient
-from fal.sdk import RunnerInfo, RunnerState
+from fal.sdk import ReplaceState, RunnerInfo, RunnerState
 
 from .parser import FalClientParser, SinceAction, get_output_parser
 
@@ -37,6 +37,7 @@ def runners_table(runners: List[RunnerInfo]):
 
     table = Table()
     table.add_column("Alias")
+    table.add_column("Machine Type")
     table.add_column("Runner ID")
     table.add_column("In Flight\nRequests")
     table.add_column("Expires In")
@@ -68,8 +69,12 @@ def runners_table(runners: List[RunnerInfo]):
         uptime = timedelta(
             seconds=int(runner.uptime.total_seconds()),
         )
+        state = runner.state.value
+        if runner.replacement == ReplaceState.WILL_REPLACE:
+            state = f"{state} (*)"
         table.add_row(
             runner.alias,
+            runner.machine_type,
             # Mark lost runners in red
             runner.runner_id if present else f"[red]{runner.runner_id}[/]",
             in_flight,
@@ -80,7 +85,7 @@ def runners_table(runners: List[RunnerInfo]):
             ),
             f"{uptime} ({uptime.total_seconds():.0f}s)",
             runner.revision,
-            runner.state.value,
+            state,
         )
 
     return table
@@ -130,53 +135,78 @@ def _get_tty_size():
 
 
 def _shell(args):
-    """Execute interactive shell in runner."""
+    """Execute a command (or interactive shell) on a runner."""
     import isolate_proto
 
     client = SyncServerlessClient(host=args.host, team=args.team)
     stub = client._create_host()._connection.stub
     runner_id = args.id
 
-    # Setup terminal for raw mode
-    fd = sys.stdin.fileno()
-    old_settings = termios.tcgetattr(fd)
-    tty.setraw(fd)
+    is_exec = hasattr(args, "command")
+
+    if is_exec:
+        command = args.command
+        if command and command[0] == "--":
+            command = command[1:]
+
+        if not command:
+            args.console.print("[red]Error:[/] No command specified.")
+            return 1
+
+        interactive = args.interactive
+    else:
+        command = None
+        interactive = True
+
+    is_tty = interactive and sys.stdin.isatty()
+    fd = sys.stdin.fileno() if interactive else -1
 
     # Message queue for stdin data and resize events
     messages = Queue()  # type: ignore
     stop_flag = False
 
-    def handle_resize(*_):
-        messages.put(("resize", None))
+    if is_tty:
+        old_settings = termios.tcgetattr(fd)
+        tty.setraw(fd)
 
-    signal.signal(signal.SIGWINCH, handle_resize)
+        def handle_resize(*_):
+            messages.put(("resize", None))
 
-    def read_stdin():
-        """Read stdin in a background thread."""
-        nonlocal stop_flag
-        while not stop_flag:
-            try:
-                data = os.read(fd, 4096)
-                if not data:
+        signal.signal(signal.SIGWINCH, handle_resize)
+
+    if interactive:
+
+        def read_stdin():
+            """Read stdin in a background thread."""
+            nonlocal stop_flag
+            while not stop_flag:
+                try:
+                    data = os.read(fd, 4096)
+                    if not data:
+                        messages.put(("eof", None))
+                        break
+                    messages.put(("data", data))
+                except OSError:
                     break
-                messages.put(("data", data))
-            except OSError:
-                break
 
-    reader = Thread(target=read_stdin, daemon=True)
-    reader.start()
+        reader = Thread(target=read_stdin, daemon=True)
+        reader.start()
 
     def stream_inputs():
         """Generate input stream for gRPC."""
         # Send initial message with runner_id
-        yield isolate_proto.ShellRunnerInput(runner_id=runner_id)
+        yield isolate_proto.ShellRunnerInput(runner_id=runner_id, command=command)
+
+        if not interactive:
+            return
 
         # Send terminal size
-        msg = isolate_proto.ShellRunnerInput()
-        h, w = _get_tty_size()
-        msg.tty_size.height = h
-        msg.tty_size.width = w
-        yield msg
+        if is_tty:
+            msg = isolate_proto.ShellRunnerInput()
+            h, w = _get_tty_size()
+            msg.tty_size.height = h
+            msg.tty_size.width = w
+            yield msg
 
         # Stream stdin data and resize events
         while True:
@@ -193,6 +223,8 @@ def _shell(args):
                 msg.tty_size.height = h
                 msg.tty_size.width = w
                 yield msg
+            elif msg_type == "eof":
+                return
 
     exit_code = 1
     try:
@@ -212,7 +244,8 @@ def _shell(args):
         args.console.print(f"\n[red]Error:[/] {exc}")
     finally:
         stop_flag = True
-        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+        if is_tty:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
     return exit_code
 
@@ -231,12 +264,14 @@ def _list_json(args, runners: list[RunnerInfo]):
     json_runners = [
         {
             "alias": r.alias,
+            "machine_type": r.machine_type,
             "runner_id": r.runner_id,
             "in_flight_requests": r.in_flight_requests,
             "expiration_countdown": r.expiration_countdown,
             "uptime_seconds": int(r.uptime.total_seconds()),
             "revision": r.revision,
             "state": r.state.value,
+            "replacement": r.replacement.value,
         }
         for r in runners
     ]
@@ -268,6 +303,9 @@ def _list(args):
         runner for runner in runners if runner.state == RunnerState.PENDING
     ]
     setup_runners = [runner for runner in runners if runner.state == RunnerState.SETUP]
+    failing_runners = [
+        runner for runner in runners if runner.state == RunnerState.FAILURE_DELAY
+    ]
     terminated_runners = [
         runner
         for runner in runners
@@ -285,7 +323,17 @@ def _list(args):
         )
         args.console.print(f"Runners Pending: {len(pending_runners)}")
         args.console.print(f"Runners Setting Up: {len(setup_runners)}")
+        if len(failing_runners) > 0:
+            args.console.print(
+                f"[red]Runners being delayed after startup failure:[/] {len(failing_runners)}"  # noqa: E501
+            )
+            args.console.print(
+                "[dim]  Check setup() and logs for errors during startup.[/]"
+            )
         args.console.print(runners_table(runners))
+
+        if any(runner.replacement == ReplaceState.WILL_REPLACE for runner in runners):
+            args.console.print("[dim](*) Runner has been scheduled for replacement[/]")
 
         requests_table = runners_requests_table(runners)
         args.console.print(f"Requests: {len(requests_table.rows)}")
@@ -347,7 +395,15 @@ def _add_list_parser(subparsers, parents):
     )
     parser.add_argument(
         "--state",
-        choices=["all", "running", "pending", "setup", "terminated"],
+        choices=[
+            "all",
+            "idle",
+            "running",
+            "pending",
+            "setup",
+            "failure_delay",
+            "terminated",
+        ],
         nargs="+",
         default=None,
         help=("Filter by runner state(s). Choose one or more, or 'all'(default)."),
@@ -718,6 +774,28 @@ def _add_shell_parser(subparsers, parents):
     parser.set_defaults(func=_shell)
 
 
+def _add_exec_parser(subparsers, parents):
+    """Add hidden exec command parser."""
+    parser = subparsers.add_parser(
+        "exec",
+        help=argparse.SUPPRESS,
+        parents=parents,
+    )
+    parser.add_argument("id", help="Runner ID.")
+    parser.add_argument(
+        "-it",
+        "--interactive",
+        action="store_true",
+        help="Allocate a TTY and attach stdin (interactive mode).",
+    )
+    parser.add_argument(
+        "command",
+        nargs=argparse.REMAINDER,
+        help="Command to execute (after --).",
+    )
+    parser.set_defaults(func=_shell)
+
+
 def add_parser(main_subparsers, parents):
     runners_help = "Manage fal runners."
     parser = main_subparsers.add_parser(
@@ -740,3 +818,4 @@ def add_parser(main_subparsers, parents):
     _add_list_parser(subparsers, parents)
     _add_logs_parser(subparsers, parents)
     _add_shell_parser(subparsers, parents)
+    _add_exec_parser(subparsers, parents)
