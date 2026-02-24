@@ -86,7 +86,7 @@ async def test_fal_client_streaming(client: fal_client.AsyncClient):
     async for event in client.stream(
         "fal-ai/any-llm",
         arguments={
-            "model": "google/gemini-flash-1.5",
+            "model": "google/gemini-2.5-flash",
             "prompt": "Tell me a joke",
         },
     ):
