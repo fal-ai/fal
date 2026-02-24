@@ -81,10 +81,23 @@ def get_app_data_from_toml(
     request_timeout = app_data.pop("request_timeout", None)
     startup_timeout = app_data.pop("startup_timeout", None)
     regions = app_data.pop("regions", None)
-    if regions is not None and not (
-        isinstance(regions, list) and all(isinstance(item, str) for item in regions)
-    ):
-        raise ValueError("regions must be a list of strings.")
+    app_files = app_data.pop("app_files", None)
+    app_files_ignore = app_data.pop("app_files_ignore", None)
+    app_files_context_dir = app_data.pop("app_files_context_dir", None)
+
+    if regions is not None:
+        _validate_str_list("regions", regions)
+    if app_files is not None:
+        _validate_str_list("app_files", app_files)
+    if app_files_ignore is not None:
+        _validate_str_list("app_files_ignore", app_files_ignore)
+    if app_files_context_dir is not None and not isinstance(app_files_context_dir, str):
+        raise ValueError("app_files_context_dir must be a string.")
+    if app_files_context_dir is not None and app_files is None:
+        raise ValueError(
+            "app_files_context_dir is only supported when app_files is provided."
+        )
+
     if min_concurrency is not None:
         options.host["min_concurrency"] = min_concurrency
     if max_concurrency is not None:
@@ -103,6 +116,12 @@ def get_app_data_from_toml(
         options.host["startup_timeout"] = startup_timeout
     if regions is not None:
         options.host["regions"] = regions
+    if app_files is not None:
+        options.host["app_files"] = app_files
+    if app_files_ignore is not None:
+        options.host["app_files_ignore"] = app_files_ignore
+    if app_files_context_dir is not None:
+        options.host["app_files_context_dir"] = app_files_context_dir
     if requirements is not None:
         options.environment["requirements"] = requirements
 
@@ -142,3 +161,8 @@ def _validate_requirements(requirements: Any) -> None:
         raise ValueError(
             "requirements must be a list of strings or a list of lists of strings."
         )
+
+
+def _validate_str_list(field_name: str, value: Any) -> None:
+    if not (isinstance(value, list) and all(isinstance(item, str) for item in value)):
+        raise ValueError(f"{field_name} must be a list of strings.")

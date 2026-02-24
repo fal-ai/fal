@@ -7,6 +7,8 @@ from fal.api.api import merge_basic_config
 from fal.sdk import AuthModeLiteral
 
 if TYPE_CHECKING:
+    from fal import App
+
     from .api import FalServerlessHost, IsolatedFunction, Options
 
 
@@ -85,6 +87,33 @@ def _find_target(
     return target, function_name, None, function_name
 
 
+def _apply_toml_app_file_options(
+    app_cls: type[App], options: Optional[Options]
+) -> None:
+    if options is None:
+        return
+
+    host_options = options.host
+    app_files = host_options.get("app_files")
+
+    # Preserve App-defined app_files; TOML app_files are only a fallback.
+    if not app_files or app_cls.app_files:
+        return
+
+    app_cls.app_files = app_files
+    app_cls.host_kwargs["app_files"] = app_files
+
+    app_files_ignore = host_options.get("app_files_ignore")
+    if app_files_ignore is not None:
+        app_cls.app_files_ignore = app_files_ignore
+        app_cls.host_kwargs["app_files_ignore"] = app_files_ignore
+
+    app_files_context_dir = host_options.get("app_files_context_dir")
+    if app_files_context_dir is not None:
+        app_cls.app_files_context_dir = app_files_context_dir
+        app_cls.host_kwargs["app_files_context_dir"] = app_files_context_dir
+
+
 def load_function_from(
     host: FalServerlessHost,
     file_path: str,
@@ -121,6 +150,7 @@ def load_function_from(
 
     endpoints = ["/"]
     if isinstance(target, type) and issubclass(target, App):
+        _apply_toml_app_file_options(target, options)
         endpoints = target.get_endpoints() or ["/"]
         target = wrap_app(target, host=host, force_env_build=force_env_build)
 

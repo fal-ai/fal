@@ -63,6 +63,12 @@ def mock_parse_pyproject_toml():
             "another-app": {
                 "ref": "src/another_app/inference.py::AnotherApp",
             },
+            "app-with-files": {
+                "ref": "src/app_with_files/inference.py::AppWithFiles",
+                "app_files": ["assets", "config.yaml"],
+                "app_files_ignore": [r"\\.venv/"],
+                "app_files_context_dir": ".",
+            },
             "app-with-extras": {
                 "ref": "src/app_with_extras/inference.py::AppWithExtras",
                 "extra_key": "extra_value",
@@ -668,6 +674,52 @@ def test_get_app_data_from_toml_without_team(
     assert toml_data.name == "my-app"
     assert toml_data.options.host == {}
     assert toml_data.options.environment == {}
+
+
+@patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+def test_get_app_data_from_toml_with_app_files(
+    mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml
+):
+    from fal.cli._utils import get_app_data_from_toml
+
+    mock_parse_toml.return_value = mock_parse_pyproject_toml
+
+    toml_data = get_app_data_from_toml("app-with-files")
+
+    project_root, _ = find_project_root(None)
+    assert toml_data.ref == (
+        f"{project_root / 'src/app_with_files/inference.py'}::AppWithFiles"
+    )
+    assert toml_data.options.host == {
+        "app_files": ["assets", "config.yaml"],
+        "app_files_ignore": [r"\\.venv/"],
+        "app_files_context_dir": ".",
+    }
+    assert toml_data.options.environment == {}
+
+
+@patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+def test_get_app_data_from_toml_rejects_app_files_context_dir_without_app_files(
+    mock_parse_toml, mock_find_toml
+):
+    from fal.cli._utils import get_app_data_from_toml
+
+    mock_parse_toml.return_value = {
+        "apps": {
+            "my-app": {
+                "ref": "src/my_app/inference.py::MyApp",
+                "app_files_context_dir": ".",
+            }
+        }
+    }
+
+    with pytest.raises(
+        ValueError,
+        match="app_files_context_dir is only supported when app_files is provided.",
+    ):
+        get_app_data_from_toml("my-app")
 
 
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
