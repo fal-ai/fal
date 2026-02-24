@@ -1609,9 +1609,7 @@ class BaseServable:
             )
 
         @_app.exception_handler(GPUException)
-        async def gpu_exception_handler(
-            request: Request, exc: GPUException
-        ):
+        async def gpu_exception_handler(request: Request, exc: GPUException):
             return JSONResponse({"detail": exc.message}, exc.status_code)
 
         @_app.exception_handler(Exception)
@@ -1632,16 +1630,12 @@ class BaseServable:
             )
 
             if _is_cuda_oom_exception(exc):
-                return await gpu_exception_handler(
-                    request, CUDAOutOfMemoryException()
-                )
+                return await gpu_exception_handler(request, CUDAOutOfMemoryException())
 
             # last line of defense against misc GPU errors that could indicate a bad
             # worker
             if _is_generic_gpu_error(exc):
-                return await gpu_exception_handler(
-                    request, GPUException()
-                )
+                return await gpu_exception_handler(request, GPUException())
 
             return JSONResponse({"detail": "Internal Server Error"}, 500)
 
