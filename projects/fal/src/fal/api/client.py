@@ -192,7 +192,7 @@ class RunnersNamespace:
         """
         return runners_api.list_runners(self.client, since=since)
 
-    def stop(self, runner_id: str, replace_first: bool = True) -> None:
+    def stop(self, runner_id: str, replace_first: bool = False) -> None:
         """Gracefully stop a runner.
 
         Args:

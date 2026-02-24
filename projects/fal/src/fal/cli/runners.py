@@ -358,10 +358,10 @@ def _add_stop_parser(subparsers, parents):
     )
     parser.add_argument(
         "-r",
-        "--no-replace",
+        "--replace",
         action="store_true",
         default=False,
-        help="Stop the runner without replacing it first.",
+        help="Stop the runner after first spawning a replacement.",
     )
     parser.set_defaults(func=_stop)
 

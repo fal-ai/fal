@@ -1123,7 +1123,7 @@ class FalServerlessConnection:
             for secret in response.secrets
         ]
 
-    def stop_runner(self, runner_id: str, replace_first: bool = True) -> None:
+    def stop_runner(self, runner_id: str, replace_first: bool = False) -> None:
         request = isolate_proto.StopRunnerRequest(
             runner_id=runner_id, replace_first=replace_first
         )
