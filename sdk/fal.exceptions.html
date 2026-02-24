@@ -47,6 +47,78 @@
 </dd></dl>
 
 </section>
+<section id="module-fal.exceptions.gpu">
+<span id="fal-exceptions-gpu-module"></span><h2>fal.exceptions.gpu module<a class="headerlink" href="#module-fal.exceptions.gpu" title="Link to this heading">¶</a></h2>
+<dl class="py exception">
+<dt class="sig sig-object py" id="fal.exceptions.gpu.CUDAOutOfMemoryException">
+<em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.exceptions.gpu.</span></span><span class="sig-name descname"><span class="pre">CUDAOutOfMemoryException</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">message</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'CUDA</span> <span class="pre">error:</span> <span class="pre">out</span> <span class="pre">of</span> <span class="pre">memory'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">status_code</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">503</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.exceptions.gpu.CUDAOutOfMemoryException" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#fal.exceptions.gpu.GPUOutOfMemoryException" title="fal.exceptions.gpu.GPUOutOfMemoryException"><code class="xref py py-class docutils literal notranslate"><span class="pre">GPUOutOfMemoryException</span></code></a></p>
+<p>Exception raised when a CUDA operation runs out of memory.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.exceptions.gpu.CUDAOutOfMemoryException.message">
+<span class="sig-name descname"><span class="pre">message</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'CUDA</span> <span class="pre">error:</span> <span class="pre">out</span> <span class="pre">of</span> <span class="pre">memory'</span></em><a class="headerlink" href="#fal.exceptions.gpu.CUDAOutOfMemoryException.message" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="fal.exceptions.gpu.GPUException">
+<em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.exceptions.gpu.</span></span><span class="sig-name descname"><span class="pre">GPUException</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">message</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'GPU</span> <span class="pre">error'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">status_code</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">503</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.exceptions.gpu.GPUException" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#fal.exceptions.AppException" title="fal.exceptions._base.AppException"><code class="xref py py-class docutils literal notranslate"><span class="pre">AppException</span></code></a></p>
+<p>Base exception for GPU-related errors.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.exceptions.gpu.GPUException.message">
+<span class="sig-name descname"><span class="pre">message</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'GPU</span> <span class="pre">error'</span></em><a class="headerlink" href="#fal.exceptions.gpu.GPUException.message" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.exceptions.gpu.GPUException.status_code">
+<span class="sig-name descname"><span class="pre">status_code</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">503</span></em><a class="headerlink" href="#fal.exceptions.gpu.GPUException.status_code" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="fal.exceptions.gpu.GPUOutOfMemoryException">
+<em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.exceptions.gpu.</span></span><span class="sig-name descname"><span class="pre">GPUOutOfMemoryException</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">message</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'GPU</span> <span class="pre">error'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">status_code</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">503</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.exceptions.gpu.GPUOutOfMemoryException" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#fal.exceptions.gpu.GPUException" title="fal.exceptions.gpu.GPUException"><code class="xref py py-class docutils literal notranslate"><span class="pre">GPUException</span></code></a></p>
+<p>Exception raised when a GPU operation runs out of memory.</p>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.exceptions.gpu.catch_gpu_exceptions">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.exceptions.gpu.</span></span><span class="sig-name descname"><span class="pre">catch_gpu_exceptions</span></span><a class="headerlink" href="#fal.exceptions.gpu.catch_gpu_exceptions" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">ContextDecorator</span></code></p>
+<p>Catch GPU/CUDA exceptions and convert them to HTTP 503 responses.</p>
+<p>Works as both a context manager and a decorator. Any caught GPU
+exception (CUDA OOM, cuDNN errors, NVML failures, etc.) is
+re-raised as a GPU exception with HTTP status 503.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><a class="reference internal" href="#fal.exceptions.gpu.CUDAOutOfMemoryException" title="fal.exceptions.gpu.CUDAOutOfMemoryException"><strong>CUDAOutOfMemoryException</strong></a> – When a CUDA OOM error is caught.</p></li>
+<li><p><a class="reference internal" href="#fal.exceptions.gpu.GPUException" title="fal.exceptions.gpu.GPUException"><strong>GPUException</strong></a> – When a generic GPU-related error is caught.</p></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<p>from fal.exceptions import catch_gpu_exceptions</p>
+<dl class="simple">
+<dt>with catch_gpu_exceptions():</dt><dd><p>run_inference()</p>
+</dd>
+</dl>
+<p>&#64;catch_gpu_exceptions()
+def run_inference():</p>
+<blockquote>
+<div><p>…</p>
+</div></blockquote>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The 503 status code signals the platform to restart the runner.</p>
+</div>
+</dd></dl>
+
+</section>
 <section id="module-fal.exceptions">
 <span id="module-contents"></span><h2>Module contents<a class="headerlink" href="#module-fal.exceptions" title="Link to this heading">¶</a></h2>
 <dl class="py exception">
@@ -98,16 +170,11 @@
 <dl class="py exception">
 <dt class="sig sig-object py" id="fal.exceptions.CUDAOutOfMemoryException">
 <em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.exceptions.</span></span><span class="sig-name descname"><span class="pre">CUDAOutOfMemoryException</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">message</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'CUDA</span> <span class="pre">error:</span> <span class="pre">out</span> <span class="pre">of</span> <span class="pre">memory'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">status_code</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">503</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.exceptions.CUDAOutOfMemoryException" title="Link to this definition">¶</a></dt>
-<dd><p>Bases: <a class="reference internal" href="#fal.exceptions.AppException" title="fal.exceptions._base.AppException"><code class="xref py py-class docutils literal notranslate"><span class="pre">AppException</span></code></a></p>
+<dd><p>Bases: <a class="reference internal" href="#fal.exceptions.gpu.GPUOutOfMemoryException" title="fal.exceptions.gpu.GPUOutOfMemoryException"><code class="xref py py-class docutils literal notranslate"><span class="pre">GPUOutOfMemoryException</span></code></a></p>
 <p>Exception raised when a CUDA operation runs out of memory.</p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="fal.exceptions.CUDAOutOfMemoryException.message">
 <span class="sig-name descname"><span class="pre">message</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'CUDA</span> <span class="pre">error:</span> <span class="pre">out</span> <span class="pre">of</span> <span class="pre">memory'</span></em><a class="headerlink" href="#fal.exceptions.CUDAOutOfMemoryException.message" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="fal.exceptions.CUDAOutOfMemoryException.status_code">
-<span class="sig-name descname"><span class="pre">status_code</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">503</span></em><a class="headerlink" href="#fal.exceptions.CUDAOutOfMemoryException.status_code" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 </dd></dl>
@@ -198,6 +265,30 @@
 </dd></dl>
 
 <dl class="py exception">
+<dt class="sig sig-object py" id="fal.exceptions.GPUException">
+<em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.exceptions.</span></span><span class="sig-name descname"><span class="pre">GPUException</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">message</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'GPU</span> <span class="pre">error'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">status_code</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">503</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.exceptions.GPUException" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#fal.exceptions.AppException" title="fal.exceptions._base.AppException"><code class="xref py py-class docutils literal notranslate"><span class="pre">AppException</span></code></a></p>
+<p>Base exception for GPU-related errors.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.exceptions.GPUException.message">
+<span class="sig-name descname"><span class="pre">message</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'GPU</span> <span class="pre">error'</span></em><a class="headerlink" href="#fal.exceptions.GPUException.message" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.exceptions.GPUException.status_code">
+<span class="sig-name descname"><span class="pre">status_code</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">503</span></em><a class="headerlink" href="#fal.exceptions.GPUException.status_code" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="fal.exceptions.GPUOutOfMemoryException">
+<em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.exceptions.</span></span><span class="sig-name descname"><span class="pre">GPUOutOfMemoryException</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">message</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'GPU</span> <span class="pre">error'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">status_code</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">503</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.exceptions.GPUOutOfMemoryException" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#fal.exceptions.gpu.GPUException" title="fal.exceptions.gpu.GPUException"><code class="xref py py-class docutils literal notranslate"><span class="pre">GPUException</span></code></a></p>
+<p>Exception raised when a GPU operation runs out of memory.</p>
+</dd></dl>
+
+<dl class="py exception">
 <dt class="sig sig-object py" id="fal.exceptions.RequestCancelledException">
 <em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.exceptions.</span></span><span class="sig-name descname"><span class="pre">RequestCancelledException</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">message</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'Request</span> <span class="pre">cancelled</span> <span class="pre">by</span> <span class="pre">the</span> <span class="pre">client.'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.exceptions.RequestCancelledException" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <a class="reference internal" href="#fal.exceptions.FalServerlessException" title="fal.exceptions._base.FalServerlessException"><code class="xref py py-class docutils literal notranslate"><span class="pre">FalServerlessException</span></code></a></p>
@@ -213,6 +304,39 @@
 <dt class="sig sig-object py" id="fal.exceptions.UnauthenticatedException">
 <em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.exceptions.</span></span><span class="sig-name descname"><span class="pre">UnauthenticatedException</span></span><a class="headerlink" href="#fal.exceptions.UnauthenticatedException" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <a class="reference internal" href="#fal.exceptions.FalServerlessException" title="fal.exceptions._base.FalServerlessException"><code class="xref py py-class docutils literal notranslate"><span class="pre">FalServerlessException</span></code></a></p>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.exceptions.catch_gpu_exceptions">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.exceptions.</span></span><span class="sig-name descname"><span class="pre">catch_gpu_exceptions</span></span><a class="headerlink" href="#fal.exceptions.catch_gpu_exceptions" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">ContextDecorator</span></code></p>
+<p>Catch GPU/CUDA exceptions and convert them to HTTP 503 responses.</p>
+<p>Works as both a context manager and a decorator. Any caught GPU
+exception (CUDA OOM, cuDNN errors, NVML failures, etc.) is
+re-raised as a GPU exception with HTTP status 503.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><a class="reference internal" href="#fal.exceptions.CUDAOutOfMemoryException" title="fal.exceptions.CUDAOutOfMemoryException"><strong>CUDAOutOfMemoryException</strong></a> – When a CUDA OOM error is caught.</p></li>
+<li><p><a class="reference internal" href="#fal.exceptions.GPUException" title="fal.exceptions.GPUException"><strong>GPUException</strong></a> – When a generic GPU-related error is caught.</p></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<p>from fal.exceptions import catch_gpu_exceptions</p>
+<dl class="simple">
+<dt>with catch_gpu_exceptions():</dt><dd><p>run_inference()</p>
+</dd>
+</dl>
+<p>&#64;catch_gpu_exceptions()
+def run_inference():</p>
+<blockquote>
+<div><p>…</p>
+</div></blockquote>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The 503 status code signals the platform to restart the runner.</p>
+</div>
 </dd></dl>
 
 </section>

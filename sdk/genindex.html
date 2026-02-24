@@ -354,6 +354,12 @@
         <li><a href="fal.html#fal.upload.DataFileMultipartUpload.cancel_url">(fal.upload.DataFileMultipartUpload property)</a>
 </li>
       </ul></li>
+      <li><a href="fal.exceptions.html#fal.exceptions.catch_gpu_exceptions">catch_gpu_exceptions (class in fal.exceptions)</a>
+
+      <ul>
+        <li><a href="fal.exceptions.html#fal.exceptions.gpu.catch_gpu_exceptions">(class in fal.exceptions.gpu)</a>
+</li>
+      </ul></li>
       <li><a href="fal.cli.html#fal.cli.cli_nested_json.check_escaped_int">check_escaped_int() (in module fal.cli.cli_nested_json)</a>
 </li>
       <li><a href="fal.html#fal.file_sync.FileSync.check_hashes_on_server">check_hashes_on_server() (fal.file_sync.FileSync method)</a>
@@ -536,7 +542,7 @@
         <li><a href="fal.html#fal.sdk.FalServerlessConnection.credentials">(fal.sdk.FalServerlessConnection attribute)</a>
 </li>
       </ul></li>
-      <li><a href="fal.exceptions.html#fal.exceptions.CUDAOutOfMemoryException">CUDAOutOfMemoryException</a>
+      <li><a href="fal.exceptions.html#fal.exceptions.CUDAOutOfMemoryException">CUDAOutOfMemoryException</a>, <a href="fal.exceptions.html#fal.exceptions.gpu.CUDAOutOfMemoryException">[1]</a>
 </li>
       <li><a href="fal.html#fal.App.current_request">current_request (fal.App property)</a>
 
@@ -1118,6 +1124,13 @@
 </li>
       </ul></li>
       <li>
+    fal.exceptions.gpu
+
+      <ul>
+        <li><a href="fal.exceptions.html#module-fal.exceptions.gpu">module</a>
+</li>
+      </ul></li>
+      <li>
     fal.file_sync
 
       <ul>
@@ -1696,10 +1709,10 @@
       </ul></li>
       <li><a href="fal.api.html#fal.api.api.Options.get_exposed_port">get_exposed_port() (fal.api.api.Options method)</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="fal.html#fal.files.FalFileSystem.get_file">get_file() (fal.files.FalFileSystem method)</a>
 </li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="fal.toolkit.html#fal.toolkit.get_gpu_type">get_gpu_type() (in module fal.toolkit)</a>
 
       <ul>
@@ -1753,6 +1766,10 @@
 </li>
       </ul></li>
       <li><a href="fal.auth.html#fal.auth.GoogleColabState">GoogleColabState (class in fal.auth)</a>
+</li>
+      <li><a href="fal.exceptions.html#fal.exceptions.GPUException">GPUException</a>, <a href="fal.exceptions.html#fal.exceptions.gpu.GPUException">[1]</a>
+</li>
+      <li><a href="fal.exceptions.html#fal.exceptions.GPUOutOfMemoryException">GPUOutOfMemoryException</a>, <a href="fal.exceptions.html#fal.exceptions.gpu.GPUOutOfMemoryException">[1]</a>
 </li>
   </ul></td>
 </tr></table>
@@ -2327,6 +2344,12 @@
 </li>
         <li><a href="fal.exceptions.html#fal.exceptions.FileTooLargeError.message">(fal.exceptions.FileTooLargeError attribute)</a>
 </li>
+        <li><a href="fal.exceptions.html#fal.exceptions.gpu.CUDAOutOfMemoryException.message">(fal.exceptions.gpu.CUDAOutOfMemoryException attribute)</a>
+</li>
+        <li><a href="fal.exceptions.html#fal.exceptions.gpu.GPUException.message">(fal.exceptions.gpu.GPUException attribute)</a>
+</li>
+        <li><a href="fal.exceptions.html#fal.exceptions.GPUException.message">(fal.exceptions.GPUException attribute)</a>
+</li>
         <li><a href="fal.exceptions.html#fal.exceptions.RequestCancelledException.message">(fal.exceptions.RequestCancelledException attribute)</a>
 </li>
       </ul></li>
@@ -2475,6 +2498,8 @@
         <li><a href="fal.exceptions.html#module-fal.exceptions">fal.exceptions</a>
 </li>
         <li><a href="fal.exceptions.html#module-fal.exceptions.auth">fal.exceptions.auth</a>
+</li>
+        <li><a href="fal.exceptions.html#module-fal.exceptions.gpu">fal.exceptions.gpu</a>
 </li>
         <li><a href="fal.html#module-fal.file_sync">fal.file_sync</a>
 </li>
@@ -3244,9 +3269,11 @@
       <ul>
         <li><a href="fal.exceptions.html#fal.exceptions.AppException.status_code">(fal.exceptions.AppException attribute)</a>, <a href="fal.exceptions.html#id1">[1]</a>
 </li>
-        <li><a href="fal.exceptions.html#fal.exceptions.CUDAOutOfMemoryException.status_code">(fal.exceptions.CUDAOutOfMemoryException attribute)</a>
-</li>
         <li><a href="fal.exceptions.html#fal.exceptions.FieldException.status_code">(fal.exceptions.FieldException attribute)</a>, <a href="fal.exceptions.html#id4">[1]</a>
+</li>
+        <li><a href="fal.exceptions.html#fal.exceptions.gpu.GPUException.status_code">(fal.exceptions.gpu.GPUException attribute)</a>
+</li>
+        <li><a href="fal.exceptions.html#fal.exceptions.GPUException.status_code">(fal.exceptions.GPUException attribute)</a>
 </li>
       </ul></li>
       <li><a href="fal.api.html#fal.api.client.RunnersNamespace.stop">stop() (fal.api.client.RunnersNamespace method)</a>

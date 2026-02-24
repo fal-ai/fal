@@ -12,6 +12,14 @@ fal.exceptions.auth module
    :undoc-members:
    :show-inheritance:
 
+fal.exceptions.gpu module
+-------------------------
+
+.. automodule:: fal.exceptions.gpu
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 Module contents
 ---------------
 
