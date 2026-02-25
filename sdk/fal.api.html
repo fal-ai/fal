@@ -863,11 +863,14 @@ recent = client.runners.list(since=datetime.now() - timedelta(minutes=10))</p>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="fal.api.client.RunnersNamespace.stop">
-<span class="sig-name descname"><span class="pre">stop</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">runner_id</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.client.RunnersNamespace.stop" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">stop</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">runner_id</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">replace_first</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.client.RunnersNamespace.stop" title="Link to this definition">¶</a></dt>
 <dd><p>Gracefully stop a runner.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>runner_id</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – The ID of the runner to stop.</p>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>runner_id</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – The ID of the runner to stop.</p></li>
+<li><p><strong>replace_first</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span>) – Whether to replace the runner before stopping it.</p></li>
+</ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
@@ -1181,7 +1184,7 @@ strategy=”rolling”,</p>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="fal.api.runners.stop_runner">
-<span class="sig-prename descclassname"><span class="pre">fal.api.runners.</span></span><span class="sig-name descname"><span class="pre">stop_runner</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">client</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">runner_id</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.runners.stop_runner" title="Link to this definition">¶</a></dt>
+<span class="sig-prename descclassname"><span class="pre">fal.api.runners.</span></span><span class="sig-name descname"><span class="pre">stop_runner</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">client</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">runner_id</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">replace_first</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.runners.stop_runner" title="Link to this definition">¶</a></dt>
 <dd><dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
@@ -1436,11 +1439,14 @@ recent = client.runners.list(since=datetime.now() - timedelta(minutes=10))</p>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="fal.api.RunnersNamespace.stop">
-<span class="sig-name descname"><span class="pre">stop</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">runner_id</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.RunnersNamespace.stop" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">stop</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">runner_id</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">replace_first</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.RunnersNamespace.stop" title="Link to this definition">¶</a></dt>
 <dd><p>Gracefully stop a runner.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>runner_id</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – The ID of the runner to stop.</p>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>runner_id</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – The ID of the runner to stop.</p></li>
+<li><p><strong>replace_first</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span>) – Whether to replace the runner before stopping it.</p></li>
+</ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
