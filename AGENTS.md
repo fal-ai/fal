@@ -2,6 +2,23 @@
 
 Guidance for coding agents working in this repository.
 
+## AGENTS convention in this monorepo
+
+This repo uses a layered convention (typical for monorepos):
+
+1. Root `AGENTS.md` (this file) defines global defaults.
+2. Project-level `AGENTS.md` files under `projects/*` add local rules.
+3. If rules conflict, prefer the `AGENTS.md` closest to the files being changed.
+
+## Team preferences (non-negotiable)
+
+1. **Pre-commit is king.** Run `pre-commit` before opening/finishing work.
+2. **No secrets, no integration/e2e.** If credentials are unavailable, run unit/local tests only.
+3. **Generated code is generated-only.**
+   - Do not hand-edit protobuf outputs (`*_pb2.py`, `*_pb2.pyi`, `*_pb2_grpc.py`).
+   - Do not hand-edit `projects/fal/openapi-fal-rest/` generated client files.
+4. **Commit messages follow Conventional Commits** (`feat:`, `fix:`, `chore:`, etc.).
+
 ## Repository at a glance
 
 This repo is a Python monorepo with three main packages:
@@ -18,6 +35,7 @@ Other notable paths:
 - Shared hooks: `.pre-commit-config.yaml`
 - CI workflows: `.github/workflows`
 - gRPC regeneration tool: `tools/regen_grpc.py`
+- OpenAPI client config: `projects/fal/openapi_rest.config.yaml`
 
 ## Environment setup
 
@@ -31,6 +49,20 @@ pip install -e 'projects/isolate_proto[dev]'
 ```
 
 If changing only one package, install only that package (plus needed extras) to keep iteration fast.
+
+## Allowed vs discouraged tooling
+
+### Allowed / preferred
+
+- `pre-commit run --all-files`
+- `pytest ...` with smallest relevant scope first
+- `make docs` for docs verification
+
+### Discouraged
+
+- Running ad-hoc formatters/linters while skipping `pre-commit`
+- Manually editing generated code
+- Running broad, slow test suites when targeted tests are sufficient
 
 ## Linting, formatting, and type checking
 
@@ -69,8 +101,6 @@ FAL_KEY=... FAL_GRPC_HOST=api.fal.dev FAL_RUN_HOST=run.fal.dev \
   pytest -n auto -v projects/fal/tests/e2e
 ```
 
-CI runs `fal` tests across Python `3.8`-`3.13` and both `pydantic==1.10.18` / `pydantic==2.11.7` (with matrix exclusions).
-
 ### `fal_client` package
 
 ```bash
@@ -83,19 +113,13 @@ pytest projects/fal_client/tests
 pytest projects/isolate_proto/tests
 ```
 
-## Documentation build
+If secrets are unavailable, skip integration/e2e/cloud tests and run only unit/local tests.
 
-Build both SDK and client docs from root:
+## Generated code policy
 
-```bash
-make docs
-```
+### Protobuf / gRPC (`isolate_proto`)
 
-This delegates to project-level docs builds and assembles output under `docs/_build/html`.
-
-## Regenerating protobuf/gRPC bindings (`isolate_proto`)
-
-When `.proto` definitions change, regenerate bindings instead of editing generated `*_pb2*.py*` files by hand.
+When `.proto` definitions change, regenerate bindings instead of editing generated outputs by hand.
 
 From `projects/isolate_proto`:
 
@@ -107,20 +131,44 @@ pre-commit run --all-files
 
 `<isolate-version>` should match a tag from `fal-ai/isolate` without the leading `v`.
 
-## Agent workflow recommendations
+### OpenAPI REST client (`projects/fal/openapi-fal-rest`)
 
-1. Scope changes to the relevant package(s); avoid cross-package edits unless required.
-2. Prefer minimal, targeted tests for touched code paths before wider suites.
-3. Keep compatibility expectations in mind:
-   - Python `>=3.8`
-   - `fal` supports both Pydantic v1/v2 via CI matrix
-4. Do not hand-edit generated artifacts when a generation script exists (`isolate_proto` bindings).
-5. Follow Conventional Commits for commit messages (as requested in project README).
+This directory is generated client code. Regenerate it with `openapi-python-client` using
+`projects/fal/openapi_rest.config.yaml` instead of manual edits. Example pattern:
+
+```bash
+cd projects/fal
+openapi-python-client generate --config openapi_rest.config.yaml --path <openapi-spec>
+```
+
+## Documentation build
+
+Build both SDK and client docs from root:
+
+```bash
+make docs
+```
+
+This delegates to project-level docs builds and assembles output under `docs/_build/html`.
+
+## Commit message format
+
+Use Conventional Commits:
+
+- `feat: ...`
+- `fix: ...`
+- `chore: ...`
+- `docs: ...`
+- `refactor: ...`
+- `test: ...`
+- `ci: ...`
+
+Scoped form is encouraged when useful: `fix(cli): handle missing key`.
 
 ## Pre-merge checklist for agents
 
-- [ ] Code is formatted/linted (`pre-commit run --all-files`).
+- [ ] `pre-commit run --all-files` passes.
 - [ ] Relevant tests pass for touched areas.
-- [ ] Any required env vars/secrets were used for integration/e2e validation.
+- [ ] If secrets are unavailable, only unit/local tests were run and documented.
 - [ ] Generated files were regenerated via tooling, not manually edited.
 - [ ] Commit message follows Conventional Commits.
