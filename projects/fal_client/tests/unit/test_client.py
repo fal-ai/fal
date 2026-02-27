@@ -1417,3 +1417,122 @@ async def test_async_subscribe_timeout_while_waiting_handle():
             mock_cancel.assert_called_once()
             handle = mock_cancel.call_args.args[0]
             assert handle.request_id == "req-456"
+
+
+@pytest.mark.asyncio
+async def test_async_subscribe_with_async_callbacks():
+    """Test that async callbacks are awaited in AsyncClient.subscribe"""
+    with patch(
+        "fal_client.client._async_maybe_retry_request", new_callable=AsyncMock
+    ) as mock_request:
+        submit_response = Mock()
+        submit_response.json.return_value = {
+            "request_id": "req-abc",
+            "response_url": "http://response",
+            "status_url": "http://status",
+            "cancel_url": "http://cancel",
+        }
+
+        status_response = Mock()
+        status_response.json.return_value = {
+            "status": "COMPLETED",
+            "logs": [],
+        }
+
+        result_response = Mock()
+        result_response.json.return_value = {"result": "done"}
+
+        # status is checked twice: once in on_queue_update loop, once in handle.get()
+        status_response_2 = Mock()
+        status_response_2.json.return_value = {
+            "status": "COMPLETED",
+            "logs": [],
+        }
+
+        mock_request.side_effect = [
+            submit_response,
+            status_response,
+            status_response_2,
+            result_response,
+        ]
+
+        enqueue_called = False
+        queue_updates = []
+
+        async def async_on_enqueue(request_id: str):
+            nonlocal enqueue_called
+            enqueue_called = True
+
+        async def async_on_queue_update(status):
+            queue_updates.append(status)
+
+        client = AsyncClient(key="test-key")
+        result = await client.subscribe(
+            "test-app",
+            {"input": "data"},
+            on_enqueue=async_on_enqueue,
+            on_queue_update=async_on_queue_update,
+        )
+
+        assert result == {"result": "done"}
+        assert enqueue_called
+        assert len(queue_updates) == 1
+
+
+@pytest.mark.asyncio
+async def test_async_subscribe_with_sync_callbacks():
+    """Test that sync callbacks works correctly in AsyncClient.subscribe"""
+    with patch(
+        "fal_client.client._async_maybe_retry_request", new_callable=AsyncMock
+    ) as mock_request:
+        submit_response = Mock()
+        submit_response.json.return_value = {
+            "request_id": "req-def",
+            "response_url": "http://response",
+            "status_url": "http://status",
+            "cancel_url": "http://cancel",
+        }
+
+        status_response = Mock()
+        status_response.json.return_value = {
+            "status": "COMPLETED",
+            "logs": [],
+        }
+
+        status_response_2 = Mock()
+        status_response_2.json.return_value = {
+            "status": "COMPLETED",
+            "logs": [],
+        }
+
+        result_response = Mock()
+        result_response.json.return_value = {"result": "done"}
+
+        mock_request.side_effect = [
+            submit_response,
+            status_response,
+            status_response_2,
+            result_response,
+        ]
+
+        enqueue_called = False
+        queue_updates = []
+
+        def sync_on_enqueue(request_id: str):
+            nonlocal enqueue_called
+            enqueue_called = True
+
+        def sync_on_queue_update(status):
+            queue_updates.append(status)
+
+        client = AsyncClient(key="test-key")
+        result = await client.subscribe(
+            "test-app",
+            {"input": "data"},
+            on_enqueue=sync_on_enqueue,
+            on_queue_update=sync_on_queue_update,
+        )
+
+        assert result == {"result": "done"}
+        assert enqueue_called
+        assert len(queue_updates) == 1

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import io
 import json
 import math
@@ -20,6 +21,7 @@ from functools import cached_property, partial
 from typing import (
     Any,
     AsyncIterator,
+    Awaitable,
     Dict,
     Iterator,
     TYPE_CHECKING,
@@ -1646,8 +1648,8 @@ class AsyncClient:
         path: str = "",
         hint: str | None = None,
         with_logs: bool = False,
-        on_enqueue: Optional[Callable[[str], None]] = None,
-        on_queue_update: Optional[Callable[[Status], None]] = None,
+        on_enqueue: Optional[Callable[[str], None | Awaitable[None]]] = None,
+        on_queue_update: Optional[Callable[[Status], None | Awaitable[None]]] = None,
         priority: Optional[Priority] = None,
         headers: dict[str, str] = {},
         start_timeout: Optional[Union[int, float]] = None,
@@ -1689,11 +1691,15 @@ class AsyncClient:
             handle_ref[0] = handle
 
             if on_enqueue is not None:
-                on_enqueue(handle.request_id)
+                result = on_enqueue(handle.request_id)
+                if inspect.isawaitable(result):
+                    await result
 
             if on_queue_update is not None:
                 async for event in handle.iter_events(with_logs=with_logs):
-                    on_queue_update(event)
+                    result = on_queue_update(event)
+                    if inspect.isawaitable(result):
+                        await result
 
             return await handle.get()
 
