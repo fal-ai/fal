@@ -333,7 +333,8 @@ def _add_rollout_parser(subparsers, parents):
     parser.add_argument(
         "--force",
         action="store_true",
-        help="Force rollout.",
+        default=False,
+        help="Force rollout (kills runners immidietely)",
     )
     parser.add_argument(
         "--env",

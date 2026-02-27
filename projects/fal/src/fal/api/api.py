@@ -53,8 +53,9 @@ from fal.exceptions import (
     CUDAOutOfMemoryException,
     FalServerlessException,
     FieldException,
+    GPUException,
 )
-from fal.exceptions._cuda import _is_cuda_oom_exception
+from fal.exceptions.gpu import _is_cuda_oom_exception, _is_generic_gpu_error
 from fal.file_sync import FileSync, FileSyncOptions
 from fal.logging.isolate import IsolateLogPrinter
 from fal.sdk import (
@@ -1664,10 +1665,8 @@ class BaseServable:
                 headers={"x-fal-billable-units": "0"},
             )
 
-        @_app.exception_handler(CUDAOutOfMemoryException)
-        async def cuda_out_of_memory_exception_handler(
-            request: Request, exc: CUDAOutOfMemoryException
-        ):
+        @_app.exception_handler(GPUException)
+        async def gpu_exception_handler(request: Request, exc: GPUException):
             return JSONResponse({"detail": exc.message}, exc.status_code)
 
         @_app.exception_handler(Exception)
@@ -1688,14 +1687,12 @@ class BaseServable:
             )
 
             if _is_cuda_oom_exception(exc):
-                return await cuda_out_of_memory_exception_handler(
-                    request, CUDAOutOfMemoryException()
-                )
+                return await gpu_exception_handler(request, CUDAOutOfMemoryException())
 
             # last line of defense against misc GPU errors that could indicate a bad
             # worker
-            if any(marker in str(exc).lower() for marker in ["cuda", "cudnn", "nvml"]):
-                return JSONResponse({"detail": "GPU error"}, 503)
+            if _is_generic_gpu_error(exc):
+                return await gpu_exception_handler(request, GPUException())
 
             return JSONResponse({"detail": "Internal Server Error"}, 500)
 

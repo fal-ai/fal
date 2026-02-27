@@ -44,7 +44,7 @@ from fal.exceptions import (
     FieldException,
     RequestCancelledException,
 )
-from fal.exceptions._cuda import _CUDA_OOM_MESSAGE, _CUDA_OOM_STATUS_CODE
+from fal.exceptions.gpu import _CUDA_OOM_MESSAGE, _GPU_ERROR_STATUS_CODE
 from fal.ref import get_current_app
 from fal.sdk import RunnerState, get_default_credentials
 from fal.toolkit.utils.endpoint import cancel_on_disconnect
@@ -1307,19 +1307,19 @@ def test_app_exceptions(test_exception_app: AppClient):
     with pytest.raises(AppClientError) as cuda_exc:
         test_exception_app.cuda_exception({})
 
-    assert cuda_exc.value.status_code == _CUDA_OOM_STATUS_CODE
+    assert cuda_exc.value.status_code == _GPU_ERROR_STATUS_CODE
     assert _CUDA_OOM_MESSAGE in cuda_exc.value.message
 
     with pytest.raises(AppClientError) as cuda_exc:
         test_exception_app.cuda_exception_2({})
 
-    assert cuda_exc.value.status_code == _CUDA_OOM_STATUS_CODE
+    assert cuda_exc.value.status_code == _GPU_ERROR_STATUS_CODE
     assert _CUDA_OOM_MESSAGE in cuda_exc.value.message
 
     with pytest.raises(AppClientError) as cuda_exc:
         test_exception_app.cuda_exception_3({})
 
-    assert cuda_exc.value.status_code == _CUDA_OOM_STATUS_CODE
+    assert cuda_exc.value.status_code == _GPU_ERROR_STATUS_CODE
     assert _CUDA_OOM_MESSAGE in cuda_exc.value.message
 
 
