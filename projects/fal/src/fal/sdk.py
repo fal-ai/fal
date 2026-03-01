@@ -23,7 +23,6 @@ from isolate.server.interface import from_grpc, to_serialized_object, to_struct
 from fal import flags
 from fal._serialization import patch_pickle
 from fal.auth import UserAccess, key_credentials
-from fal.console import console
 from fal.logging import get_logger
 from fal.logging.trace import TraceContextInterceptor
 
@@ -88,9 +87,9 @@ class ServerCredentials:
 
     @property
     def base_options(self) -> dict[str, str | int]:
-        import json
+        import json  # noqa: PLC0415
 
-        from isolate_proto.configuration import GRPC_OPTIONS
+        from isolate_proto.configuration import GRPC_OPTIONS  # noqa: PLC0415
 
         grpc_ops: dict[str, str | int] = dict(GRPC_OPTIONS)
         grpc_ops["grpc.enable_retries"] = 1
@@ -224,7 +223,7 @@ def get_agent_credentials(original_credentials: Credentials) -> Credentials:
     """If running inside a fal Serverless box, use the preconfigured credentials
     instead of the user provided ones."""
 
-    from isolate.connections.common import is_agent
+    from isolate.connections.common import is_agent  # noqa: PLC0415
 
     key_creds = key_credentials()
     if is_agent() and key_creds:
@@ -234,7 +233,7 @@ def get_agent_credentials(original_credentials: Credentials) -> Credentials:
 
 
 def get_default_credentials(team: str | None = None) -> Credentials:
-    from fal.config import Config
+    from fal.config import Config  # noqa: PLC0415
 
     if flags.AUTH_DISABLED:
         return Credentials()
@@ -326,6 +325,13 @@ class RunnerState(Enum):
     TERMINATING = "TERMINATING"
     TERMINATED = "TERMINATED"
     IDLE = "IDLE"
+    FAILURE_DELAY = "FAILURE_DELAY"
+
+
+class ReplaceState(Enum):
+    NO_REPLACE = "NO_REPLACE"
+    WILL_REPLACE = "WILL_REPLACE"
+    DID_REPLACE = "DID_REPLACE"
 
 
 @dataclass
@@ -338,6 +344,8 @@ class RunnerInfo:
     revision: str
     alias: str
     state: RunnerState
+    machine_type: str
+    replacement: ReplaceState = ReplaceState.NO_REPLACE
 
 
 @dataclass
@@ -503,9 +511,15 @@ def _from_grpc_alias_info(message: isolate_proto.AliasInfo) -> AliasInfo:
 
 @from_grpc.register(isolate_proto.RunnerInfo)
 def _from_grpc_runner_info(message: isolate_proto.RunnerInfo) -> RunnerInfo:
-    from isolate.server import definitions as worker_definitions
+    from isolate.server import definitions as worker_definitions  # noqa: PLC0415
 
     external_metadata = worker_definitions.struct_to_dict(message.external_metadata)
+
+    try:
+        replace_value = isolate_proto.RunnerInfo.ReplaceState.Name(message.replacement)
+    except ValueError:
+        replace_value = ReplaceState.NO_REPLACE
+
     return RunnerInfo(
         runner_id=message.runner_id,
         in_flight_requests=message.in_flight_requests,
@@ -519,6 +533,8 @@ def _from_grpc_runner_info(message: isolate_proto.RunnerInfo) -> RunnerInfo:
         revision=message.revision,
         alias=message.alias,
         state=RunnerState(isolate_proto.RunnerInfo.State.Name(message.state)),
+        machine_type=message.machine_type,
+        replacement=ReplaceState(replace_value),
     )
 
 
@@ -638,10 +654,10 @@ class HealthCheck:
 
         if call_regularly is False:
             if failure_threshold is not None or start_period_seconds is not None:
-                console.print(
-                    "[bold yellow]Note:[/bold yellow] [dim]failure_threshold[/dim] "
-                    "and [dim]start_period_seconds[/dim] are ignored when "
-                    "[dim]call_regularly[/dim] is set to False. "
+                print(
+                    "Note: HealthCheck's failure_threshold "
+                    "and start_period_seconds are ignored when "
+                    "call_regularly is set to False. "
                     "See https://docs.fal.ai/serverless/development/add-health-check-endpoint#manual-health-checks for details."  # noqa: E501
                 )
 
@@ -714,7 +730,7 @@ class FalServerlessConnection:
 
         request = isolate_proto.CreateUserKeyRequest(scope=scope_proto, alias=alias)
         response = self.stub.CreateUserKey(request)
-        return response.key_secret, response.key_id
+        return response.key_id, response.key_secret
 
     def list_user_keys(self) -> list[UserKeyInfo]:
         request = isolate_proto.ListUserKeysRequest()
@@ -763,6 +779,7 @@ class FalServerlessConnection:
         files: list[File] | None = None,
         skip_retry_conditions: list[RetryConditionLiteral] | None = None,
         environment_name: str | None = None,
+        termination_grace_period_seconds: int | None = None,
     ) -> Iterator[RegisterApplicationResult]:
         wrapped_function = to_serialized_object(function, serialization_method)
         if machine_requirements:
@@ -848,6 +865,7 @@ class FalServerlessConnection:
             health_check_config=wrapped_health_check_config,
             skip_retry_conditions=wrapped_skip_retry_conditions,
             environment_name=environment_name,
+            termination_grace_period_seconds=termination_grace_period_seconds,
         )
         for partial_result in self.stub.RegisterApplication(request):
             yield from_grpc(partial_result)
@@ -1105,8 +1123,10 @@ class FalServerlessConnection:
             for secret in response.secrets
         ]
 
-    def stop_runner(self, runner_id: str) -> None:
-        request = isolate_proto.StopRunnerRequest(runner_id=runner_id)
+    def stop_runner(self, runner_id: str, replace_first: bool = False) -> None:
+        request = isolate_proto.StopRunnerRequest(
+            runner_id=runner_id, replace_first=replace_first
+        )
         self.stub.StopRunner(request)
 
     def kill_runner(self, runner_id: str) -> None:

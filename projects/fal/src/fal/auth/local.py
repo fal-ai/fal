@@ -59,6 +59,18 @@ def delete_token() -> None:
     path.unlink()
 
 
+def load_preference(key: str) -> str | None:
+    path = _check_dir_exist() / key
+    if path.exists():
+        return path.read_text().strip() or None
+    return None
+
+
+def save_preference(key: str, value: str) -> None:
+    path = _check_dir_exist() / key
+    path.write_text(value)
+
+
 @contextmanager
 def lock_token():
     """

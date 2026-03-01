@@ -9,14 +9,12 @@ import sys
 import threading
 import time
 from contextlib import asynccontextmanager, contextmanager
-from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, ClassVar, Optional
 
 import fastapi
 import grpc.aio as async_grpc
-import httpx
 
 from fal._serialization import include_modules_from
 from fal._typing import EndpointT
@@ -25,6 +23,7 @@ from fal.api import (
     BaseServable,
     IsolatedFunction,
     RouteSignature,
+    SpawnInfo,
 )
 from fal.api import (
     function as fal_function,
@@ -42,6 +41,7 @@ from fal.sdk import (
     RetryConditionLiteral,
 )
 from fal.toolkit.file import request_lifecycle_preference
+from fal.toolkit.file.providers.fal import _LIFECYCLE_PREFERENCE
 
 REALTIME_APP_REQUIREMENTS = ["websockets", "msgpack"]
 REQUEST_ID_KEY = "x-fal-request-id"
@@ -92,9 +92,16 @@ async def _set_logger_labels(
     logger_labels: dict[str, str], channel: async_grpc.Channel
 ):
     try:
-        import sys
+        # Import from __main__ because the agent runs as __main__, not as
+        # isolate.connections.grpc.agent, so the ContextVar lives there.
+        from __main__ import isolate_log_context  # noqa: PLC0415
 
-        from isolate.server import definitions
+        isolate_log_context.set(logger_labels)
+    except ImportError:
+        pass
+
+    try:
+        from isolate.server import definitions  # noqa: PLC0415
 
         # Flush any prints that were buffered before setting the logger labels
         sys.stderr.flush()
@@ -125,7 +132,7 @@ def wrap_app(cls: type[App], **kwargs) -> IsolatedFunction:
         cls.local_file_path = host.local_file_path
 
     def initialize_and_serve():
-        import threading
+        import threading  # noqa: PLC0415
 
         app = cls()
         set_current_app(app)
@@ -183,6 +190,94 @@ class AppClientError(FalServerlessException):
     headers: dict[str, str] = field(default_factory=dict)
 
 
+class AppSpawnInfo:
+    def __init__(self, info: SpawnInfo):
+        self.info = info
+
+    @property
+    def url(self):
+        return self.info.url
+
+    @property
+    def application(self):
+        return self.info.application
+
+    @property
+    def logs(self):
+        return self.info.logs
+
+    @property
+    def stream(self):
+        return self.info.stream
+
+    @property
+    def future(self):
+        return self.info.future
+
+    def wait(
+        self,
+        *,
+        health_request_timeout: int = 30,
+        startup_timeout: int = 60,
+        health_check_interval: float = 0.5,
+        headers: dict[str, str] | None = None,
+    ) -> None:
+        import httpx  # noqa: PLC0415
+
+        url = self.url
+        if url is None:
+            raise AppClientError(
+                "App spawn failed: no URL returned",
+                500,
+                {},
+            )
+
+        start_time = time.perf_counter()
+        health_url = url + "/health"
+        last_error = None
+        attempt = 0
+        request_headers = _default_auth_headers() if headers is None else headers
+
+        with httpx.Client() as client:
+            while time.perf_counter() - start_time < startup_timeout:
+                attempt += 1
+
+                try:
+                    resp = client.get(
+                        health_url,
+                        timeout=health_request_timeout,
+                        headers=request_headers,
+                    )
+                except httpx.TimeoutException:
+                    last_error = (
+                        f"Request timed out after {health_request_timeout} seconds"
+                    )
+                except httpx.TransportError as e:
+                    last_error = f"Network error: {e}"
+                else:
+                    if resp.is_success:
+                        return
+
+                    if resp.status_code in (500, 404):
+                        last_error = f"Server not ready (HTTP {resp.status_code})"
+                    else:
+                        raise AppClientError(
+                            "Health check failed with non-retryable error: "
+                            f"{resp.status_code} {resp.text}",
+                            resp.status_code,
+                            dict(resp.headers),
+                        )
+
+                time.sleep(health_check_interval)
+
+        raise AppClientError(
+            f"Health check failed after {startup_timeout}s "
+            f"({attempt} attempts). Last error: {last_error}",
+            500,
+            {},
+        )
+
+
 def _default_auth_headers() -> dict[str, str]:
     key_creds = key_credentials()
     if not key_creds:
@@ -210,6 +305,8 @@ class EndpointClient:
         self.return_type = annotations.get("return") or None
 
     def __call__(self, data):
+        import httpx  # noqa: PLC0415
+
         with httpx.Client() as client:
             url = self.url + self.signature.path
             resp = client.post(
@@ -271,8 +368,7 @@ class AppClient:
         startup_timeout: int = 60,
         health_check_interval: float = 0.5,
     ):
-        app = wrap_app(app_cls)
-        info = app.spawn()
+        info = app_cls.spawn()
         _shutdown_event = threading.Event()
 
         def _print_logs():
@@ -287,54 +383,11 @@ class AppClient:
         _log_printer.start()
 
         try:
-            if info.url is None:
-                raise AppClientError(
-                    "App spawn failed: no URL returned",
-                    status_code=500,
-                )
-
-            start_time = time.perf_counter()
-            url = info.url + "/health"
-            last_error = None
-            attempt = 0
-
-            headers = _default_auth_headers()
-            with httpx.Client() as client:
-                while time.perf_counter() - start_time < startup_timeout:
-                    attempt += 1
-
-                    try:
-                        resp = client.get(
-                            url, timeout=health_request_timeout, headers=headers
-                        )
-                    except httpx.TimeoutException:
-                        last_error = (
-                            f"Request timed out after {health_request_timeout} seconds"
-                        )
-                    except httpx.TransportError as e:
-                        last_error = f"Network error: {e}"
-                    else:
-                        if resp.is_success:
-                            break
-
-                        if resp.status_code in (500, 404):
-                            last_error = f"Server not ready (HTTP {resp.status_code})"
-                        else:
-                            raise AppClientError(
-                                "Health check failed with non-retryable error: "
-                                f"{resp.status_code} {resp.text}",
-                                status_code=resp.status_code,
-                                headers=resp.headers,
-                            )
-
-                    time.sleep(health_check_interval)
-                else:
-                    # retry loop completed without success
-                    raise AppClientError(
-                        f"Health check failed after {startup_timeout}s "
-                        f"({attempt} attempts). Last error: {last_error}",
-                        status_code=500,
-                    )
+            info.wait(
+                health_request_timeout=health_request_timeout,
+                startup_timeout=startup_timeout,
+                health_check_interval=health_check_interval,
+            )
 
             client = cls(app_cls, info.url)
             yield client
@@ -344,6 +397,8 @@ class AppClient:
             _log_printer.join()
 
     def health(self):
+        import httpx  # noqa: PLC0415
+
         with httpx.Client() as client:
             resp = client.get(self.url + "/health", headers=self._headers)
             resp.raise_for_status()
@@ -378,7 +433,7 @@ def _to_fal_app_name(name: str) -> str:
 
 
 def _print_python_packages() -> None:
-    from importlib.metadata import distributions
+    from importlib.metadata import distributions  # noqa: PLC0415
 
     packages = [f"{dist.metadata['Name']}=={dist.version}" for dist in distributions()]
 
@@ -472,9 +527,12 @@ class App(BaseServable):
         ...         return {"url": fal.toolkit.upload_image(image)}
 
     Attributes:
-        requirements: List of pip packages to install in the environment.
+        requirements: Pip packages to install in the environment.
             Supports standard pip syntax including version specifiers.
-            Example: `["numpy==1.24.0", "torch>=2.0.0"]`
+            Use a list of strings for a single install step, or a list of lists
+            to install in multiple steps.
+            Example: `["numpy==1.24.0", "torch>=2.0.0"]` or
+            `[["setuptools", "wheel"], ["numpy==1.24.0"]]`
         local_python_modules: List of local Python module names to include
             in the deployment. Use for custom code not available on PyPI.
             Example: `["my_utils", "models"]`
@@ -512,7 +570,7 @@ class App(BaseServable):
             to specify a Dockerfile.
     """
 
-    requirements: ClassVar[list[str]] = []
+    requirements: ClassVar[list[str] | list[list[str]]] = []  # type: ignore[assignment]
     local_python_modules: ClassVar[list[str]] = []
     machine_type: ClassVar[str | list[str]] = "S"
     num_gpus: ClassVar[int | None] = None
@@ -542,10 +600,12 @@ class App(BaseServable):
     image: ClassVar[Optional[ContainerImage]] = None
     local_file_path: ClassVar[Optional[str]] = None
     skip_retry_conditions: ClassVar[Optional[list[RetryConditionLiteral]]] = None
+    termination_grace_period_seconds: ClassVar[Optional[int]] = None
 
     isolate_channel: async_grpc.Channel | None = None
 
-    _current_request_context: ContextVar[RequestContext] | None = None
+    # HACK: Removed type annotation to avoid weird error during deserialization
+    _current_request_context: Any | None = None
 
     def __init_subclass__(cls, **kwargs):
         app_name = kwargs.pop("name", None) or _to_fal_app_name(cls.__name__)
@@ -607,6 +667,11 @@ class App(BaseServable):
         if cls.skip_retry_conditions is not None:
             cls.host_kwargs["skip_retry_conditions"] = cls.skip_retry_conditions
 
+        if cls.termination_grace_period_seconds is not None:
+            cls.host_kwargs["termination_grace_period_seconds"] = (
+                cls.termination_grace_period_seconds
+            )
+
         cls.host_kwargs["health_check_config"] = cls.get_health_check_config()
 
         cls.app_name = getattr(cls, "app_name") or app_name
@@ -615,15 +680,6 @@ class App(BaseServable):
             raise ValueError(
                 "App classes should not override __init__ directly. "
                 "Use setup() instead."
-            )
-
-        if cls.requirements and cls.host_kwargs.get("kind") == "container":
-            from fal.console import console
-
-            console.print(
-                "\n[yellow]WARNING:[/yellow] Using [bold]requirements[/bold] with "
-                "container apps is not recommended. For better performance, "
-                "install dependencies in the Dockerfile instead.\n"
             )
 
     def __init__(self, *, _allow_init: bool = False):
@@ -652,6 +708,21 @@ class App(BaseServable):
             for _, endpoint in inspect.getmembers(cls, inspect.isfunction)
             if (signature := getattr(endpoint, "route_signature", None))
         ]
+
+    @classmethod
+    def run_local(cls, *args, **kwargs):
+        # import wrap_app explicitly to avoid reference to wrap_app during pickling
+        from fal.app import wrap_app  # noqa: PLC0415
+
+        return wrap_app(cls).run_local(*args, **kwargs)
+
+    @classmethod
+    def spawn(cls) -> AppSpawnInfo:
+        # import wrap_app explicitly to avoid reference to wrap_app during pickling
+        from fal.app import wrap_app  # noqa: PLC0415
+
+        app = wrap_app(cls)
+        return AppSpawnInfo(app.spawn())
 
     @classmethod
     def get_health_check_config(cls) -> Optional[ApplicationHealthCheckConfig]:
@@ -702,7 +773,10 @@ class App(BaseServable):
         # Configure sys.path based on deployment type:
         # - app_files: files synced to /app
         # - container: files baked into image
-        self._current_request_context = ContextVar(
+        # HACK: Import at runtime to avoid weird error during deserialization
+        import contextvars  # noqa: PLC0415
+
+        self._current_request_context = contextvars.ContextVar(
             "_current_request_context",
             default=RequestContext(
                 request_id=None, endpoint=None, lifecycle_preference=None, headers={}
@@ -764,7 +838,7 @@ class App(BaseServable):
                         _ = hint.encode("latin-1")
                         hints.append(hint)
                     except UnicodeEncodeError:
-                        from fastapi.logger import logger
+                        from fastapi.logger import logger  # noqa: PLC0415
 
                         logger.warning(
                             "Ignoring hint %s for %s because it can't be encoded in "
@@ -779,7 +853,7 @@ class App(BaseServable):
                 # and apps that provide empty hints.
                 pass
             except Exception:
-                from fastapi.logger import logger
+                from fastapi.logger import logger  # noqa: PLC0415
 
                 logger.exception(
                     "Failed to provide hints for %s",
@@ -790,7 +864,7 @@ class App(BaseServable):
         @app.middleware("http")
         async def set_current_request_context(request, call_next):
             if self._current_request_context is None:
-                from fastapi.logger import logger
+                from fastapi.logger import logger  # noqa: PLC0415
 
                 logger.warning(
                     "request context is not set. "
@@ -806,13 +880,15 @@ class App(BaseServable):
             )
 
             token = self._current_request_context.set(context)
+            _LIFECYCLE_PREFERENCE.set(context.lifecycle_preference)
             try:
                 return await call_next(request)
             finally:
                 self._current_request_context.reset(token)
+                _LIFECYCLE_PREFERENCE.set(None)
 
         @app.middleware("http")
-        async def set_request_id(request, call_next):
+        async def set_log_context(request, call_next):
             # NOTE: Setting request_id is not supported for websocket/realtime endpoints
             if not os.getenv("IS_ISOLATE_AGENT") or not os.environ.get(
                 "NOMAD_ALLOC_PORT_grpc"
@@ -867,7 +943,7 @@ class App(BaseServable):
         async def value_error_exception_handler(
             request, exc: RequestCancelledException
         ):
-            from fastapi.responses import JSONResponse
+            from fastapi.responses import JSONResponse  # noqa: PLC0415
 
             # A 499 status code is not an officially recognized HTTP status code,
             # but it is sometimes used by servers to indicate that a client has closed
@@ -877,8 +953,8 @@ class App(BaseServable):
     def _add_extra_routes(self, app: fastapi.FastAPI):
         # TODO remove this once we have a proper health check endpoint
         @app.get("/health")
-        def health():
-            return self.health()
+        async def health():
+            return await _call_any_fn(self.health)
 
     def provide_hints(self) -> list[str]:
         """Provide hints for routing the application."""

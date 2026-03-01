@@ -8,6 +8,7 @@ from base64 import b64encode
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from functools import partial
 from pathlib import Path
 from typing import Any, Dict, Generator, Generic, TypeVar
 from urllib.error import HTTPError, URLError
@@ -33,15 +34,6 @@ MAX_DELAY = 30
 RETRY_CODES = [408, 409, 429, 500, 502, 503, 504]
 
 
-@contextmanager
-def _urlopen(
-    request: Request,
-    timeout: int = DEFAULT_REQUEST_TIMEOUT,
-) -> Generator[addinfourl, None, None]:
-    with urlopen(request, timeout=timeout) as response:
-        yield response
-
-
 def _should_retry(exc: Exception) -> bool:
     if isinstance(exc, HTTPError) and exc.code in RETRY_CODES:
         return True
@@ -62,6 +54,8 @@ def _maybe_retry_request(
     request: Request,
     **kwargs: Any,
 ) -> Generator[addinfourl, None, None]:
+    timeout = kwargs.pop("timeout", DEFAULT_REQUEST_TIMEOUT)
+
     _urlopen_with_retry = retry(
         max_retries=MAX_ATTEMPTS,
         base_delay=BASE_DELAY,
@@ -69,10 +63,13 @@ def _maybe_retry_request(
         backoff_type="exponential",
         jitter=True,
         should_retry=_should_retry,
-    )(_urlopen)
+    )(partial(urlopen, request, timeout=timeout))
 
-    with _urlopen_with_retry(request, **kwargs) as response:
+    response = _urlopen_with_retry()
+    try:
         yield response
+    finally:
+        response.close()
 
 
 def _object_lifecycle_headers(
@@ -88,13 +85,15 @@ def _object_lifecycle_headers(
         )
 
 
-def _caller_cdn_token_header(
+def _caller_cdn_header(
     headers: dict[str, str],
 ):
     current_app = get_current_app()
     if current_app and current_app.current_request:
         if cdn_token := current_app.current_request.headers.get("x-fal-cdn-token"):
             headers["X-Fal-CDN-Token"] = cdn_token
+        if request_id := current_app.current_request.request_id:
+            headers["X-Fal-Request-ID"] = request_id
 
 
 @dataclass
@@ -204,6 +203,30 @@ class VariableReference(Generic[VariableType]):
 
     def set(self, value: VariableType) -> None:
         self.value = value
+
+
+# @deprecated LIFECYCLE_PREFERENCE was removed in favor of
+# contextvar-based request context in fal.app.App. This global variable
+# is preserved for external packages that still import it.
+# New code should use the request context pattern instead.
+# fal.ref.get_current_app().current_request.lifecycle_preference
+_LIFECYCLE_PREFERENCE: VariableReference[dict[str, str] | None] = VariableReference(
+    None
+)
+
+
+def __getattr__(name: str):
+    if name == "LIFECYCLE_PREFERENCE":
+        import warnings  # noqa: PLC0415
+
+        warnings.warn(
+            "LIFECYCLE_PREFERENCE is deprecated. Use "
+            "fal.ref.get_current_app().current_request.lifecycle_preference instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return _LIFECYCLE_PREFERENCE
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 @dataclass
@@ -419,7 +442,7 @@ class MultipartUploadGCS:
         max_concurrency: int | None = None,
         object_lifecycle_preference: dict[str, str] | None = None,
     ):
-        import concurrent.futures
+        import concurrent.futures  # noqa: PLC0415
 
         multipart = cls(
             file.file_name,
@@ -455,7 +478,7 @@ class MultipartUploadGCS:
         max_concurrency: int | None = None,
         object_lifecycle_preference: dict[str, str] | None = None,
     ) -> str:
-        import concurrent.futures
+        import concurrent.futures  # noqa: PLC0415
 
         file_name = os.path.basename(file_path)
         size = os.path.getsize(file_path)
@@ -525,7 +548,7 @@ class FalFileRepository(FalFileRepositoryBase):
             "Authorization": f"{token.token_type} {token.token}",
             "User-Agent": "fal/0.1.0",
         }
-        _caller_cdn_token_header(headers)
+        _caller_cdn_header(headers)
 
         return headers
 
@@ -668,7 +691,7 @@ class MultipartUpload:
         max_concurrency: int | None = None,
         object_lifecycle_preference: dict[str, str] | None = None,
     ):
-        import concurrent.futures
+        import concurrent.futures  # noqa: PLC0415
 
         multipart = cls(
             file.file_name,
@@ -704,7 +727,7 @@ class MultipartUpload:
         max_concurrency: int | None = None,
         object_lifecycle_preference: dict[str, str] | None = None,
     ) -> str:
-        import concurrent.futures
+        import concurrent.futures  # noqa: PLC0415
 
         file_name = os.path.basename(file_path)
         size = os.path.getsize(file_path)
@@ -784,7 +807,7 @@ class MultipartUploadV3:
             "Authorization": f"Key {key_id}:{key_secret}",
             "User-Agent": "fal/0.1.0",
         }
-        _caller_cdn_token_header(headers)
+        _caller_cdn_header(headers)
 
         return headers
 
@@ -882,7 +905,7 @@ class MultipartUploadV3:
         max_concurrency: int | None = None,
         object_lifecycle_preference: dict[str, str] | None = None,
     ):
-        import concurrent.futures
+        import concurrent.futures  # noqa: PLC0415
 
         multipart = cls(
             file.file_name,
@@ -918,7 +941,7 @@ class MultipartUploadV3:
         max_concurrency: int | None = None,
         object_lifecycle_preference: dict[str, str] | None = None,
     ) -> str:
-        import concurrent.futures
+        import concurrent.futures  # noqa: PLC0415
 
         file_name = os.path.basename(file_path)
         size = os.path.getsize(file_path)
@@ -993,7 +1016,7 @@ class InternalMultipartUploadV3:
             "Authorization": f"{token.token_type} {token.token}",
             "User-Agent": "fal/0.1.0",
         }
-        _caller_cdn_token_header(headers)
+        _caller_cdn_header(headers)
 
         return headers
 
@@ -1079,7 +1102,7 @@ class InternalMultipartUploadV3:
         max_concurrency: int | None = None,
         object_lifecycle_preference: dict[str, str] | None = None,
     ):
-        import concurrent.futures
+        import concurrent.futures  # noqa: PLC0415
 
         multipart = cls(
             file.file_name,
@@ -1115,7 +1138,7 @@ class InternalMultipartUploadV3:
         max_concurrency: int | None = None,
         object_lifecycle_preference: dict[str, str] | None = None,
     ) -> str:
-        import concurrent.futures
+        import concurrent.futures  # noqa: PLC0415
 
         file_name = os.path.basename(file_path)
         size = os.path.getsize(file_path)
@@ -1312,7 +1335,7 @@ class FalFileRepositoryV3(FileRepository):
             "Authorization": f"Key {key_id}:{key_secret}",
             "User-Agent": "fal/0.1.0",
         }
-        _caller_cdn_token_header(headers)
+        _caller_cdn_header(headers)
 
         return headers
 
@@ -1484,7 +1507,7 @@ class InternalFalFileRepositoryV3(FileRepository):
             "Authorization": f"{token.token_type} {token.token}",
             "User-Agent": "fal/0.1.0",
         }
-        _caller_cdn_token_header(headers)
+        _caller_cdn_header(headers)
 
         return headers
 

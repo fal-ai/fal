@@ -14,7 +14,7 @@ def include_module(name) -> None:
 
 
 def include_package_from_path(raw_path: str) -> None:
-    from pathlib import Path
+    from pathlib import Path  # noqa: PLC0415
 
     path = Path(raw_path).resolve()
     parent = path
@@ -39,7 +39,7 @@ def include_modules_from(obj: Any) -> None:
     if module_name == "__main__":
         # When the module is __main__, we need to recursively go up the
         # tree to locate the actual package name.
-        import __main__
+        import __main__  # noqa: PLC0415
 
         include_package_from_path(__main__.__file__)
         return
@@ -57,7 +57,7 @@ def _patch_pydantic_field_serialization() -> None:
     # and then reloads it on the other side.
     # https://github.com/ray-project/ray/blob/842bbcf4236e41f58d25058b0482cd05bfe9e4da/python/ray/_private/pydantic_compat.py#L80
     try:
-        from pydantic.fields import ModelField, ModelPrivateAttr
+        from pydantic.fields import ModelField, ModelPrivateAttr  # noqa: PLC0415
     except ImportError:
         return
 
@@ -105,7 +105,7 @@ def _patch_pydantic_model_serialization() -> None:
     # in pickling errors. Unfortunately this also means that `model_rebuid()` might
     # not work.
     try:
-        import pydantic
+        import pydantic  # noqa: PLC0415
     except ImportError:
         return
 
@@ -175,8 +175,8 @@ def _patch_lru_cache() -> None:
     # https://github.com/cloudpipe/cloudpickle/issues/178
     # https://github.com/uqfoundation/dill/blob/70f569b0dd268d2b1e85c0f300951b11f53c5d53/dill/_dill.py#L1429
 
-    from functools import _lru_cache_wrapper as LRUCacheType
-    from functools import lru_cache
+    from functools import _lru_cache_wrapper as LRUCacheType  # noqa: PLC0415
+    from functools import lru_cache  # noqa: PLC0415
 
     def create_lru_cache(func: Callable, kwargs: dict) -> LRUCacheType:
         return lru_cache(**kwargs)(func)
@@ -198,8 +198,8 @@ def _patch_lru_cache() -> None:
 
 def _patch_lock() -> None:
     # https://github.com/uqfoundation/dill/blob/70f569b0dd268d2b1e85c0f300951b11f53c5d53/dill/_dill.py#L1310
-    from _thread import LockType
-    from threading import Lock
+    from _thread import LockType  # noqa: PLC0415
+    from threading import Lock  # noqa: PLC0415
 
     def create_lock(locked: bool) -> Lock:
         lock = Lock()
@@ -215,7 +215,7 @@ def _patch_lock() -> None:
 
 def _patch_rlock() -> None:
     # https://github.com/uqfoundation/dill/blob/70f569b0dd268d2b1e85c0f300951b11f53c5d53/dill/_dill.py#L1317
-    from _thread import RLock as RLockType  # type: ignore[attr-defined]
+    from _thread import RLock as RLockType  # type: ignore[attr-defined]  # noqa: PLC0415  # isort: skip
 
     def create_rlock(count: int, owner: int) -> RLockType:
         lock = RLockType()
@@ -237,7 +237,7 @@ def _patch_rlock() -> None:
 
 def _patch_console_thread_locals() -> None:
     try:
-        from rich.console import ConsoleThreadLocals
+        from rich.console import ConsoleThreadLocals  # noqa: PLC0415
     except ModuleNotFoundError:
         return
 
@@ -257,7 +257,7 @@ def _patch_console_thread_locals() -> None:
 
 def _patch_exceptions() -> None:
     # Support chained exceptions
-    from tblib.pickling_support import install
+    from tblib.pickling_support import install  # noqa: PLC0415
 
     install()
 
