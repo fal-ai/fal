@@ -51,6 +51,7 @@ from fal_client._headers import (
     add_hint_header,
     REQUEST_TIMEOUT_TYPE_HEADER,
     REQUEST_TIMEOUT_HEADER,
+    add_forwarded_headers,
 )
 
 if TYPE_CHECKING:
@@ -61,6 +62,14 @@ logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from PIL import Image
+
+try:
+    from fal.ref import get_current_app
+except ImportError:
+
+    def get_current_app() -> Optional[Any]:
+        return None
+
 
 AnyJSON = Dict[str, Any]
 UploadRepositoryId = Literal["fal_v3", "cdn", "fal"]
@@ -1568,6 +1577,9 @@ class AsyncClient:
         if start_timeout is not None:
             add_timeout_header(start_timeout, _headers)
 
+        if (app := get_current_app()) is not None and app.current_request is not None:
+            add_forwarded_headers(app.current_request.headers, _headers)
+
         response = await _async_maybe_retry_request(
             self._client,
             "POST",
@@ -1620,6 +1632,9 @@ class AsyncClient:
 
         if start_timeout is not None:
             add_timeout_header(start_timeout, _headers)
+
+        if (app := get_current_app()) is not None and app.current_request is not None:
+            add_forwarded_headers(app.current_request.headers, _headers)
 
         response = await _async_maybe_retry_request(
             self._client,
@@ -2064,6 +2079,9 @@ class SyncClient:
         if start_timeout is not None:
             add_timeout_header(start_timeout, _headers)
 
+        if (app := get_current_app()) is not None and app.current_request is not None:
+            add_forwarded_headers(app.current_request.headers, _headers)
+
         response = _maybe_retry_request(
             self._client,
             "POST",
@@ -2112,6 +2130,9 @@ class SyncClient:
 
         if start_timeout is not None:
             add_timeout_header(start_timeout, _headers)
+
+        if (app := get_current_app()) is not None and app.current_request is not None:
+            add_forwarded_headers(app.current_request.headers, _headers)
 
         response = _maybe_retry_request(
             self._client,
