@@ -51,6 +51,7 @@ from fal_client._headers import (
     add_hint_header,
     REQUEST_TIMEOUT_TYPE_HEADER,
     REQUEST_TIMEOUT_HEADER,
+    add_forwarded_headers,
 )
 
 if TYPE_CHECKING:
@@ -1577,19 +1578,7 @@ class AsyncClient:
             add_timeout_header(start_timeout, _headers)
 
         if (app := get_current_app()) is not None and app.current_request is not None:
-            if cdn_token := app.current_request.headers.get("x-fal-cdn-token"):
-                _headers["x-fal-forwarded-cdn-token"] = cdn_token
-
-            forwarded_request_ids = []
-            if request_ids := app.current_request.headers.get(
-                "x-fal-forwarded-request-id"
-            ):
-                forwarded_request_ids.extend(request_ids.split(","))
-            if request_id := app.current_request.headers.get("x-fal-request-id"):
-                forwarded_request_ids.append(request_id)
-
-            if forwarded_request_ids:
-                _headers["x-fal-forwarded-request-id"] = ",".join(forwarded_request_ids)
+            add_forwarded_headers(app.current_request.headers, _headers)
 
         response = await _async_maybe_retry_request(
             self._client,
@@ -1644,12 +1633,8 @@ class AsyncClient:
         if start_timeout is not None:
             add_timeout_header(start_timeout, _headers)
 
-        if (
-            (app := get_current_app()) is not None
-            and app.current_request is not None
-            and "x-fal-cdn-token" in app.current_request.headers
-        ):
-            _headers["x-fal-cdn-token"] = app.current_request.headers["x-fal-cdn-token"]
+        if (app := get_current_app()) is not None and app.current_request is not None:
+            add_forwarded_headers(app.current_request.headers, _headers)
 
         response = await _async_maybe_retry_request(
             self._client,
@@ -2094,12 +2079,8 @@ class SyncClient:
         if start_timeout is not None:
             add_timeout_header(start_timeout, _headers)
 
-        if (
-            (app := get_current_app()) is not None
-            and app.current_request is not None
-            and "x-fal-cdn-token" in app.current_request.headers
-        ):
-            _headers["x-fal-cdn-token"] = app.current_request.headers["x-fal-cdn-token"]
+        if (app := get_current_app()) is not None and app.current_request is not None:
+            add_forwarded_headers(app.current_request.headers, _headers)
 
         response = _maybe_retry_request(
             self._client,
@@ -2150,12 +2131,8 @@ class SyncClient:
         if start_timeout is not None:
             add_timeout_header(start_timeout, _headers)
 
-        if (
-            (app := get_current_app()) is not None
-            and app.current_request is not None
-            and "x-fal-cdn-token" in app.current_request.headers
-        ):
-            _headers["x-fal-cdn-token"] = app.current_request.headers["x-fal-cdn-token"]
+        if (app := get_current_app()) is not None and app.current_request is not None:
+            add_forwarded_headers(app.current_request.headers, _headers)
 
         response = _maybe_retry_request(
             self._client,
