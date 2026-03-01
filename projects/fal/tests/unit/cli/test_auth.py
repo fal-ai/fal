@@ -7,6 +7,17 @@ def test_login():
     assert args.func == _login
 
 
+def test_login_with_connection():
+    args = parse_args(["auth", "login", "--connection", "github"])
+    assert args.func == _login
+    assert args.connection == "github"
+
+
+def test_login_connection_default_is_none():
+    args = parse_args(["auth", "login"])
+    assert args.connection is None
+
+
 def test_logout():
     args = parse_args(["auth", "logout"])
     assert args.func == _logout

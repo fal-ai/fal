@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
+from fal.api.api import merge_basic_config
 from fal.sdk import AuthModeLiteral
 
 if TYPE_CHECKING:
-    from .api import FalServerlessHost, IsolatedFunction
+    from fal import App
+
+    from .api import FalServerlessHost, IsolatedFunction, Options
 
 
 @dataclass
@@ -84,12 +87,42 @@ def _find_target(
     return target, function_name, None, function_name
 
 
+def _apply_toml_app_file_options(
+    app_cls: type[App], options: Optional[Options]
+) -> None:
+    if options is None:
+        return
+
+    host_options = options.host
+    app_files = host_options.get("app_files")
+
+    # Preserve App-defined app_files; TOML app_files are only a fallback.
+    if not app_files or app_cls.app_files:
+        return
+
+    app_cls.app_files = app_files
+    app_cls.host_kwargs["app_files"] = app_files
+
+    app_files_ignore = host_options.get("app_files_ignore")
+    if app_files_ignore is not None:
+        app_cls.app_files_ignore = app_files_ignore
+        app_cls.host_kwargs["app_files_ignore"] = app_files_ignore
+
+    app_files_context_dir = host_options.get("app_files_context_dir")
+    if app_files_context_dir is not None:
+        app_cls.app_files_context_dir = app_files_context_dir
+        app_cls.host_kwargs["app_files_context_dir"] = app_files_context_dir
+
+
 def load_function_from(
     host: FalServerlessHost,
     file_path: str,
     function_name: str | None = None,
     *,
     force_env_build: bool = False,
+    options: Optional[Options] = None,
+    app_name: str | None = None,
+    app_auth: AuthModeLiteral | None = None,
 ) -> LoadedFunction:
     import os
     import runpy
@@ -102,7 +135,11 @@ def load_function_from(
 
     sys.path.append(os.getcwd())
     module = runpy.run_path(file_path)
-    target, app_name, app_auth, class_name = _find_target(module, function_name)
+    target, found_app_name, found_app_auth, class_name = _find_target(
+        module, function_name
+    )
+    app_name = app_name or found_app_name
+    app_auth = app_auth or found_app_auth
 
     # The module for the function is set to <run_path> when runpy is used, in which
     # case we want to manually include the package it is defined in.
@@ -113,6 +150,7 @@ def load_function_from(
 
     endpoints = ["/"]
     if isinstance(target, type) and issubclass(target, App):
+        _apply_toml_app_file_options(target, options)
         endpoints = target.get_endpoints() or ["/"]
         target = wrap_app(target, host=host, force_env_build=force_env_build)
 
@@ -120,6 +158,8 @@ def load_function_from(
         raise FalServerlessError(
             f"Function '{function_name}' is not a fal.function or a fal.App"
         )
+    if options is not None:
+        _merge_options(target.options, options)
     target.app_name = app_name
     target.app_auth = app_auth
     return LoadedFunction(
@@ -130,3 +170,9 @@ def load_function_from(
         source_code=source_code,
         class_name=class_name,
     )
+
+
+def _merge_options(target: Options, incoming: Options) -> None:
+    merge_basic_config(target.host, incoming.host)
+    merge_basic_config(target.environment, incoming.environment)
+    merge_basic_config(target.gateway, incoming.gateway)

@@ -21,7 +21,10 @@ AUTH0_SCOPE = "openid profile email offline_access"
 
 
 def logout_url(return_url: str):
-    return f"https://{AUTH0_DOMAIN}/v2/logout?client_id={AUTH0_CLIENT_ID}&returnTo={return_url}"
+    from urllib.parse import quote
+
+    encoded = quote(return_url, safe="")
+    return f"https://{AUTH0_DOMAIN}/v2/logout?client_id={AUTH0_CLIENT_ID}&returnTo={encoded}"
 
 
 def _open_browser(url: str, code: str | None, console) -> None:
@@ -39,9 +42,32 @@ def _open_browser(url: str, code: str | None, console) -> None:
         )
 
 
-def login(console) -> dict:
+def _build_device_login_url(
+    user_code: str,
+    verification_uri_complete: str,
+    connection: str,
+) -> str:
+    """Build the device login URL for /api/auth/cli/session-seed."""
+    from urllib.parse import urlencode
+
+    params = urlencode(
+        {
+            "user_code": user_code,
+            "verification_uri_complete": verification_uri_complete,
+            "connection": connection,
+        }
+    )
+    return f"{WEBSITE_URL}/api/auth/cli/session-seed?{params}"
+
+
+def login(console, connection: str | None = None) -> dict:
     """
-    Runs the device authorization flow and stores the user object in memory
+    Runs the device authorization flow and stores the user object in memory.
+
+    Flow:
+      1. Request device code from Auth0
+      2. Open browser to fal.ai/login/cli (handles verification + auth with connection)
+      3. Poll for token
     """
     device_code_payload = {
         "audience": AUTH0_FAL_API_AUDIENCE_ID,
@@ -59,7 +85,18 @@ def login(console) -> dict:
     device_user_code = device_code_data["user_code"]
     device_confirmation_url = device_code_data["verification_uri_complete"]
 
-    url = logout_url(device_confirmation_url)
+    if connection:
+        # Route through fal.ai/login/cli which handles:
+        #   1. Device code verification
+        #   2. Auth0 /authorize with connection (skips provider selection)
+        #   3. Redirect back to Auth0 device verification to complete the flow
+        url = _build_device_login_url(
+            user_code=device_user_code,
+            verification_uri_complete=device_confirmation_url,
+            connection=connection,
+        )
+    else:
+        url = logout_url(device_confirmation_url)
 
     _open_browser(url, device_user_code, console)
 

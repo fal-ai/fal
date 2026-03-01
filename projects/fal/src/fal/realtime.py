@@ -50,11 +50,19 @@ def _unwrap_async_iterator(annotation: Any | None) -> Any | None:
     if annotation is None:
         return None
 
+    import collections.abc
+
+    if annotation in (
+        typing.AsyncIterator,
+        typing.AsyncGenerator,
+        collections.abc.AsyncIterator,
+        collections.abc.AsyncGenerator,
+    ):
+        return Any
+
     origin = typing.get_origin(annotation)
     if origin is None:
         return None
-
-    import collections.abc
 
     if origin in (
         typing.AsyncIterator,
@@ -72,11 +80,21 @@ def _unwrap_sync_iterator(annotation: Any | None) -> Any | None:
     if annotation is None:
         return None
 
+    import collections.abc
+
+    if annotation in (
+        typing.Iterator,
+        typing.Iterable,
+        typing.Generator,
+        collections.abc.Iterator,
+        collections.abc.Iterable,
+        collections.abc.Generator,
+    ):
+        return Any
+
     origin = typing.get_origin(annotation)
     if origin is None:
         return None
-
-    import collections.abc
 
     if origin in (
         typing.Iterator,
@@ -110,6 +128,7 @@ async def _mirror_input(
     decode_message: Callable[[bytes], Any],
     input_modal: type | None,
     session_timeout: float | None,
+    input_ready: asyncio.Event,
 ) -> None:
     while True:
         try:
@@ -125,6 +144,7 @@ async def _mirror_input(
             input = input_modal(**input)
 
         queue.append(input)
+        input_ready.set()
 
 
 async def _receive_input(
@@ -212,6 +232,7 @@ async def _mirror_output(
     func: EndpointT,
     route_signature: RouteSignature,
     encode_message: Callable[[Any], bytes],
+    input_ready: asyncio.Event,
 ) -> None:
     loop = asyncio.get_event_loop()
     max_allowed_buffering = route_signature.buffering or 1
@@ -223,7 +244,8 @@ async def _mirror_output(
 
     while True:
         if not queue:
-            await asyncio.sleep(0.05)
+            await input_ready.wait()
+            input_ready.clear()
             continue
 
         input = queue.popleft()
@@ -438,6 +460,7 @@ async def _run_websocket_session(
 
     if realtime_mode == "unary":
         queue: deque[Any] = deque(maxlen=route_signature.buffering)
+        input_ready = asyncio.Event()
         input_task = asyncio.create_task(
             _mirror_input(
                 queue,
@@ -445,9 +468,15 @@ async def _run_websocket_session(
                 decode_message=decode_message,
                 input_modal=route_signature.input_modal,
                 session_timeout=route_signature.session_timeout,
+                input_ready=input_ready,
             )
         )
-        input_task.add_done_callback(lambda _: queue.append(None))
+
+        def _on_input_done(_):
+            queue.append(None)
+            input_ready.set()
+
+        input_task.add_done_callback(_on_input_done)
         output_task = asyncio.create_task(
             _mirror_output(
                 self,
@@ -456,6 +485,7 @@ async def _run_websocket_session(
                 func=func,
                 route_signature=route_signature,
                 encode_message=encode_message,
+                input_ready=input_ready,
             )
         )
     else:
@@ -504,34 +534,37 @@ async def _run_websocket_session(
     except WebSocketDisconnect:
         if input_task is not None:
             input_task.cancel()
-            with suppress(asyncio.CancelledError):
+            with suppress(asyncio.CancelledError, WebSocketDisconnect):
                 await input_task
         output_task.cancel()
 
-        with suppress(asyncio.CancelledError):
+        with suppress(asyncio.CancelledError, WebSocketDisconnect):
             await output_task
     except Exception as exc:
         import traceback
 
         traceback.print_exc()
 
-        await websocket.send_json(
-            {
-                "type": "x-fal-error",
-                "error": "INTERNAL_ERROR",
-                "reason": str(exc),
-            }
-        )
+        with suppress(WebSocketDisconnect, RuntimeError):
+            await websocket.send_json(
+                {
+                    "type": "x-fal-error",
+                    "error": "INTERNAL_ERROR",
+                    "reason": str(exc),
+                }
+            )
     else:
-        await websocket.send_json(
-            {
-                "type": "x-fal-error",
-                "error": "TIMEOUT",
-                "reason": "no inputs, reconnect when needed!",
-            }
-        )
+        with suppress(WebSocketDisconnect, RuntimeError):
+            await websocket.send_json(
+                {
+                    "type": "x-fal-error",
+                    "error": "TIMEOUT",
+                    "reason": "no inputs, reconnect when needed!",
+                }
+            )
 
-    await websocket.close()
+    with suppress(WebSocketDisconnect, RuntimeError):
+        await websocket.close()
 
 
 def _fal_websocket_template(
@@ -590,14 +623,16 @@ def realtime(
     buffering: int | None = None,
     session_timeout: float | None = None,
     input_modal: Any | None = _SENTINEL,
+    output_modal: Any | None = _SENTINEL,
     max_batch_size: int = 1,
+    content_type: str = "application/msgpack",
     encode_message: Callable[[Any], bytes] | None = None,
     decode_message: Callable[[bytes], Any] | None = None,
 ) -> Callable[[EndpointT], EndpointT]:
     """Designate the decorated function as a realtime application endpoint."""
 
     def marker_fn(original_func: EndpointT) -> EndpointT:
-        nonlocal input_modal
+        nonlocal input_modal, output_modal
 
         if hasattr(original_func, "route_signature"):
             raise ValueError(
@@ -605,18 +640,44 @@ def realtime(
                 f"{original_func.__name__}"
             )
 
+        input_type, output_type = _get_realtime_types(original_func)
+
+        input_stream_item = _unwrap_async_iterator(input_type)
+        output_stream_item = _unwrap_async_iterator(output_type)
+        output_sync_stream_item = _unwrap_sync_iterator(output_type)
+
         if input_modal is _SENTINEL:
-            input_type, _ = _get_realtime_types(original_func)
-            input_stream_item = _unwrap_async_iterator(input_type)
             if input_stream_item is not None:
                 input_modal = None if input_stream_item is Any else input_stream_item
             else:
                 input_modal = None if input_type is Any else input_type
 
+        if output_modal is _SENTINEL:
+            if output_stream_item is not None:
+                output_modal = None if output_stream_item is Any else output_stream_item
+            elif output_sync_stream_item is not None:
+                output_modal = (
+                    None if output_sync_stream_item is Any else output_sync_stream_item
+                )
+            else:
+                output_modal = None if output_type is Any else output_type
+
+        if input_stream_item is not None and output_stream_item is not None:
+            realtime_mode = "bidi"
+        elif input_stream_item is not None:
+            realtime_mode = "client_streaming"
+        elif output_stream_item is not None or output_sync_stream_item is not None:
+            realtime_mode = "server_streaming"
+        else:
+            realtime_mode = "unary"
+
         route_signature = RouteSignature(
             path=path,
             is_websocket=True,
             input_modal=input_modal,
+            output_modal=output_modal,
+            realtime_mode=realtime_mode,
+            content_type=content_type,
             buffering=buffering,
             session_timeout=session_timeout,
             max_batch_size=max_batch_size,

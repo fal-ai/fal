@@ -3,8 +3,11 @@ from __future__ import annotations
 import os
 import pickle
 from contextvars import ContextVar
+from typing import AsyncIterator, Iterator
 
 import pytest
+from fastapi import WebSocket
+from pydantic import BaseModel
 
 import fal
 from fal import App, endpoint
@@ -13,6 +16,58 @@ from fal.container import ContainerImage
 
 class PickleApp(App):
     pass
+
+
+class InputModel(BaseModel):
+    prompt: str
+
+
+class OutputModel(BaseModel):
+    result: str
+
+
+class RealtimeApp(fal.App):
+    @fal.realtime("/realtime", buffering=2, session_timeout=1.5, max_batch_size=3)
+    def generate(self, input: InputModel) -> OutputModel:
+        return OutputModel(result=input.prompt)
+
+    @fal.realtime("/realtime/server-streaming")
+    async def generate_rt_server_streaming(
+        self, input: InputModel
+    ) -> AsyncIterator[OutputModel]:
+        yield OutputModel(result=input.prompt)
+
+    @fal.realtime("/realtime/server-streaming-sync")
+    def generate_rt_server_streaming_sync(
+        self, input: InputModel
+    ) -> Iterator[OutputModel]:
+        yield OutputModel(result=input.prompt)
+
+    @fal.realtime("/realtime/client-streaming")
+    async def generate_rt_client_streaming(
+        self, inputs: AsyncIterator[InputModel]
+    ) -> OutputModel:
+        return OutputModel(result="ok")
+
+    @fal.realtime("/realtime/bidi")
+    async def generate_rt_bidi(
+        self, inputs: AsyncIterator[InputModel]
+    ) -> AsyncIterator[OutputModel]:
+        async for item in inputs:
+            yield OutputModel(result=item.prompt)
+
+    @fal.realtime("/realtime/json", content_type="application/json")
+    def generate_rt_json(self, input: InputModel) -> OutputModel:
+        return OutputModel(result=input.prompt)
+
+    @fal.endpoint("/ws", is_websocket=True)
+    async def generate_ws(self, websocket: WebSocket) -> None:
+        await websocket.close()
+
+
+@pytest.fixture
+def isolate_agent_env(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("IS_ISOLATE_AGENT", "1")
 
 
 def test_app_regions_propagate_to_function_options():
@@ -27,6 +82,85 @@ def test_app_regions_propagate_to_function_options():
 
     fn = wrap_app(RegionsApp)
     assert fn.options.host.get("regions") == ["us-east", "eu-west"]
+
+
+def test_wrap_app_allows_resolver_with_container_kind():
+    from fal.app import wrap_app
+
+    class ContainerKindApp(App):
+        image = ContainerImage.from_dockerfile_str("FROM python:3.11-slim")
+
+        @endpoint("/")
+        def hello(self) -> str:
+            return "Hello, world!"
+
+    fn = wrap_app(ContainerKindApp)
+    assert fn.options.environment.get("resolver") == "uv"
+
+
+def test_wrap_app_raises_for_virtualenv_only_keys_with_conda_kind():
+    from fal.app import wrap_app
+
+    class CondaKindApp(App):
+        kind = "conda"
+
+        @endpoint("/")
+        def hello(self) -> str:
+            return "Hello, world!"
+
+    with pytest.raises(
+        ValueError,
+        match="Unsupported option 'requirements' for environment kind 'conda'",
+    ):
+        wrap_app(CondaKindApp)
+
+
+def test_wrap_app_raises_for_unrecognised_option():
+    from fal.app import wrap_app
+
+    class UnknownOptionApp(App, totally_unknown_option=1):
+        @endpoint("/")
+        def hello(self) -> str:
+            return "Hello, world!"
+
+    with pytest.raises(
+        ValueError,
+        match="Unrecognised option 'totally_unknown_option'.",
+    ):
+        wrap_app(UnknownOptionApp)
+
+
+def test_wrap_app_unrecognised_option_suggests_closest_match():
+    from fal.app import wrap_app
+
+    class TypoOptionApp(App, reqirements=["fastapi"]):
+        @endpoint("/")
+        def hello(self) -> str:
+            return "Hello, world!"
+
+    with pytest.raises(
+        ValueError,
+        match="Unrecognised option 'reqirements'. Did you mean 'requirements'\\?",
+    ):
+        wrap_app(TypoOptionApp)
+
+
+def test_wrap_app_raises_for_unknown_environment_kind():
+    from fal.app import wrap_app
+
+    class UnknownKindApp(App):
+        kind = "something-else"
+
+        @endpoint("/")
+        def hello(self) -> str:
+            return "Hello, world!"
+
+    with pytest.raises(
+        ValueError,
+        match="Unrecognised environment kind 'something-else'. "
+        "Only virtualenv, container, conda are supported.",
+    ):
+        wrap_app(UnknownKindApp)
 
 
 def test_app_default_app_name_is_generated_from_class_name():
@@ -258,7 +392,7 @@ def test_non_host_classvars_do_not_leak_into_host_kwargs():
 
 
 @pytest.mark.asyncio
-async def test_runner_state_lifecycle_complete():
+async def test_runner_state_lifecycle_complete(isolate_agent_env):
     """Test that FAL_RUNNER_STATE transitions through all phases correctly"""
     states = []
 
@@ -269,7 +403,7 @@ async def test_runner_state_lifecycle_complete():
         def teardown(self):
             states.append(("teardown", os.getenv("FAL_RUNNER_STATE")))
 
-    app = StateCheckApp(_allow_init=True)
+    app = StateCheckApp()
 
     # Create a mock FastAPI app
     import fastapi
@@ -324,8 +458,8 @@ def test_app_classvars_propagate_to_host_kwargs_when_overriding_hidden_defaults(
     assert "_app_var" not in hk
 
 
-def test_app_is_picklable_with_request_context():
-    app = PickleApp(_allow_init=True)
+def test_app_is_picklable_with_request_context(isolate_agent_env):
+    app = PickleApp()
     app._current_request_context = ContextVar(  # type: ignore[assignment]
         "_current_request_context"
     )
@@ -334,3 +468,178 @@ def test_app_is_picklable_with_request_context():
     loaded = pickle.loads(payload)
 
     assert loaded._current_request_context is None
+
+
+def test_health_route_supports_async_health(isolate_agent_env):
+    import fastapi
+    from fastapi.testclient import TestClient
+
+    class AsyncHealthApp(App):
+        async def health(self):
+            return {"status": "ok"}
+
+    app = AsyncHealthApp()
+    fastapi_app = fastapi.FastAPI()
+    app._add_extra_routes(fastapi_app)
+
+    client = TestClient(fastapi_app)
+    response = client.get("/health")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+
+
+def test_openapi_websocket_realtime_metadata_and_schemas(isolate_agent_env):
+    app = RealtimeApp()
+    spec = app.openapi()
+    ws_spec = spec["paths"]["/realtime"]["x-fal-protocol"]
+
+    assert ws_spec["type"] == "realtime"
+    assert ws_spec["realtimeMode"] == "unary"
+    assert ws_spec["contentType"] == "application/msgpack"
+    assert ws_spec["config"] == {
+        "buffering": 2,
+        "sessionTimeout": 1.5,
+        "maxBatchSize": 3,
+    }
+    assert "requestBody" not in ws_spec
+    assert "responses" not in ws_spec
+    assert "InputModel" in spec["components"]["schemas"]
+    assert "OutputModel" in spec["components"]["schemas"]
+    assert (
+        spec["paths"]["/realtime"]["post"]["requestBody"]["content"][
+            "application/json"
+        ]["schema"]["$ref"]
+        == "#/components/schemas/InputModel"
+    )
+    assert (
+        spec["paths"]["/realtime"]["post"]["responses"]["200"]["content"][
+            "application/json"
+        ]["schema"]["$ref"]
+        == "#/components/schemas/OutputModel"
+    )
+
+
+def test_openapi_websocket_barebones_has_no_realtime_marker(isolate_agent_env):
+    app = RealtimeApp()
+    spec = app.openapi()
+    ws_spec = spec["paths"]["/ws"]["x-fal-protocol"]
+
+    assert ws_spec["type"] == "websocket"
+    assert "realtimeMode" not in ws_spec
+    assert "contentType" not in ws_spec
+    assert "requestBody" not in ws_spec
+    assert "responses" not in ws_spec
+    assert "post" not in spec["paths"]["/ws"]
+
+
+def test_openapi_websocket_realtime_streaming_modes_marked(isolate_agent_env):
+    app = RealtimeApp()
+    spec = app.openapi()
+
+    assert spec["paths"]["/realtime/json"]["x-fal-protocol"]["contentType"] == (
+        "application/json"
+    )
+    assert (
+        spec["paths"]["/realtime/server-streaming"]["x-fal-protocol"]["realtimeMode"]
+        == "server_streaming"
+    )
+    assert (
+        spec["paths"]["/realtime/server-streaming-sync"]["x-fal-protocol"][
+            "realtimeMode"
+        ]
+        == "server_streaming"
+    )
+    assert (
+        spec["paths"]["/realtime/client-streaming"]["x-fal-protocol"]["realtimeMode"]
+        == "client_streaming"
+    )
+    assert spec["paths"]["/realtime/bidi"]["x-fal-protocol"]["realtimeMode"] == "bidi"
+
+    for path in [
+        "/realtime/server-streaming",
+        "/realtime/server-streaming-sync",
+        "/realtime/client-streaming",
+        "/realtime/bidi",
+    ]:
+        ws_spec = spec["paths"][path]["x-fal-protocol"]
+        assert ws_spec["type"] == "realtime"
+        assert ws_spec["contentType"] == "application/msgpack"
+        assert "requestBody" not in ws_spec
+        assert "responses" not in ws_spec
+        assert (
+            spec["paths"][path]["post"]["requestBody"]["content"]["application/json"][
+                "schema"
+            ]["$ref"]
+            == "#/components/schemas/InputModel"
+        )
+        assert (
+            spec["paths"][path]["post"]["responses"]["200"]["content"][
+                "application/json"
+            ]["schema"]["$ref"]
+            == "#/components/schemas/OutputModel"
+        )
+
+
+def test_openapi_does_not_duplicate_ws_paths_on_multiple_calls(isolate_agent_env):
+    app = RealtimeApp()
+    fal_app = app._build_app()
+    first = fal_app.openapi()
+    second = fal_app.openapi()
+
+    expected_order = [
+        "/realtime",
+        "/realtime/bidi",
+        "/realtime/client-streaming",
+        "/realtime/json",
+        "/realtime/server-streaming",
+        "/realtime/server-streaming-sync",
+        "/ws",
+    ]
+    assert [p for p in first["x-fal-order-paths"] if p != "/health"] == expected_order
+    assert [p for p in second["x-fal-order-paths"] if p != "/health"] == expected_order
+
+
+@pytest.mark.asyncio
+async def test_serve_exits_with_exception_on_setup_failure(
+    isolate_agent_env, monkeypatch: pytest.MonkeyPatch
+):
+    import asyncio
+
+    from fal.api import api
+
+    class FakeServer:
+        def __init__(self, config):
+            self.config = config
+            self.started = False
+
+        def set_handle_exit(self, handle_exit):
+            self._handle_exit = handle_exit
+
+        async def serve(self) -> None:
+            app = self.config.app
+            async with app.router.lifespan_context(app):
+                self.started = True
+
+    class FakeMetricsServer:
+        def __init__(self, config):
+            pass
+
+        async def serve(self) -> None:
+            await asyncio.Event().wait()
+
+    monkeypatch.setattr(api, "FalServer", FakeServer)
+    monkeypatch.setattr(api.uvicorn, "Server", FakeMetricsServer)
+
+    class FailingSetupApp(App):
+        def setup(self):
+            raise Exception("TEST EXCEPTION")
+
+        @endpoint("/")
+        def run(self):
+            return {"status": "ok"}
+
+    app = FailingSetupApp()
+
+    with pytest.raises(Exception, match="TEST EXCEPTION"):
+        await app.serve()

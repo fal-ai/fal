@@ -22,8 +22,10 @@ def _deploy(args):
     # If the app_ref is an app name, get team from pyproject.toml
     if app_ref and is_app_name(app_ref):
         try:
-            *_, toml_team = get_app_data_from_toml(app_ref[0])
-            team = team or toml_team
+            toml_data = get_app_data_from_toml(
+                app_ref[0], emit_deprecation_warnings=False
+            )
+            team = team or toml_data.team
         except (ValueError, FileNotFoundError):
             # If we can't find the app in pyproject.toml, team remains None
             pass
@@ -101,13 +103,14 @@ def _deploy(args):
         args.console.print(Rule("", style="green"))
 
         # Reminder about scaling parameter inheritance
-        args.console.print("")
-        note = (
-            "[yellow]Note: Scaling parameters (keep_alive, min_concurrency, etc.) "
-            "are inherited from the previous deployment. "
-            "Use --reset-scale to apply code changes.[/yellow]"
-        )
-        args.console.print(note)
+        if not args.app_scale_settings:
+            args.console.print("")
+            note = (
+                "[yellow]Note: Scaling parameters (keep_alive, min_concurrency, etc.) "
+                "are inherited from the previous deployment. "
+                "Use --reset-scale to apply code changes.[/yellow]"
+            )
+            args.console.print(note)
     else:
         raise AssertionError(f"Invalid output format: {args.output}")
 

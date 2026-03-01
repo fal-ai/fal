@@ -9,6 +9,7 @@ from collections import defaultdict
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field, replace
+from difflib import get_close_matches
 from functools import wraps
 from os import PathLike
 from queue import Queue
@@ -37,6 +38,7 @@ from fastapi import FastAPI
 from fastapi import __version__ as fastapi_version
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
+from isolate.backends.common import Requirements
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 from pydantic import __version__ as pydantic_version
@@ -51,8 +53,9 @@ from fal.exceptions import (
     CUDAOutOfMemoryException,
     FalServerlessException,
     FieldException,
+    GPUException,
 )
-from fal.exceptions._cuda import _is_cuda_oom_exception
+from fal.exceptions.gpu import _is_cuda_oom_exception, _is_generic_gpu_error
 from fal.file_sync import FileSync, FileSyncOptions
 from fal.logging.isolate import IsolateLogPrinter
 from fal.sdk import (
@@ -82,6 +85,15 @@ ArgsT = ParamSpec("ArgsT")
 ReturnT = TypeVar("ReturnT", covariant=True)  # noqa: PLC0105
 
 BasicConfig = Dict[str, Any]
+
+
+def merge_basic_config(target: BasicConfig, incoming: BasicConfig) -> None:
+    for key, value in incoming.items():
+        if key in target:
+            continue
+        target[key] = value
+
+
 _UNSET = object()
 
 SERVE_REQUIREMENTS = [
@@ -142,6 +154,12 @@ class SpawnInfo:
         self._url_ready.set()
         self._url = value
 
+    @property
+    def application(self):
+        from urllib.parse import urlparse  # noqa: PLC0415
+
+        return urlparse(self.url).path.strip("/")
+
 
 @dataclass
 class Host(Generic[ArgsT, ReturnT]):
@@ -150,6 +168,31 @@ class Host(Generic[ArgsT, ReturnT]):
 
     _SUPPORTED_KEYS: ClassVar[frozenset[str]] = frozenset()
     _GATEWAY_KEYS: ClassVar[frozenset[str]] = frozenset({"serve", "exposed_port"})
+    _VIRTUALENV_KEYS: ClassVar[frozenset[str]] = frozenset(
+        {
+            "python_version",
+            "requirements",
+            "resolver",
+        }
+    )
+    _CONTAINER_KEYS: ClassVar[frozenset[str]] = frozenset(
+        {"image", "python_version", "requirements", "resolver", "force"}
+    )
+    _CONDA_KEYS: ClassVar[frozenset[str]] = frozenset(
+        {
+            "python_version",
+            "env_dict",
+            "env_yml_str",
+            "packages",
+            "pip",
+            "channels",
+        }
+    )
+    _ENVIRONMENT_KEYS_BY_KIND: ClassVar[dict[str, frozenset[str]]] = {
+        "virtualenv": _VIRTUALENV_KEYS,
+        "container": _CONTAINER_KEYS,
+        "conda": _CONDA_KEYS,
+    }
 
     def __post_init__(self):
         assert not self._SUPPORTED_KEYS.intersection(
@@ -173,14 +216,45 @@ class Host(Generic[ArgsT, ReturnT]):
         environment options."""
 
         options = Options()
+        kind = config.get("kind", "virtualenv")
+        environment_keys = cls._ENVIRONMENT_KEYS_BY_KIND.get(kind)
+        if environment_keys is None:
+            supported_kinds = ", ".join(cls._ENVIRONMENT_KEYS_BY_KIND.keys())
+            raise ValueError(
+                f"Unrecognised environment kind {kind!r}. "
+                f"Only {supported_kinds} are supported."
+            )
+
+        valid_environment_keys = {"kind", *environment_keys}
+        all_supported_keys = {
+            "kind",
+            *cls._SUPPORTED_KEYS,
+            *cls._GATEWAY_KEYS,
+            *cls._VIRTUALENV_KEYS,
+            *cls._CONTAINER_KEYS,
+            *cls._CONDA_KEYS,
+        }
+
         for item in config.items():
             key, value = cls.parse_key(*item)
             if key in cls._SUPPORTED_KEYS:
                 options.host[key] = value
             elif key in cls._GATEWAY_KEYS:
                 options.gateway[key] = value
-            else:
+            elif key in valid_environment_keys:
                 options.environment[key] = value
+            elif key in all_supported_keys:
+                supported_keys = ", ".join(
+                    f"{supported_key!r}" for supported_key in sorted(environment_keys)
+                )
+                raise ValueError(
+                    f"Unsupported option {key!r} for environment kind {kind!r}. "
+                    f"Supported keys for this kind are: {supported_keys}."
+                )
+            else:
+                closest_match = get_close_matches(key, sorted(all_supported_keys), n=1)
+                hint = f" Did you mean {closest_match[0]!r}?" if closest_match else ""
+                raise ValueError(f"Unrecognised option {key!r}.{hint}")
 
         if options.gateway.get("serve"):
             options.add_requirements(SERVE_REQUIREMENTS)
@@ -213,7 +287,7 @@ class Host(Generic[ArgsT, ReturnT]):
 
 def cached(func: Callable[ArgsT, ReturnT]) -> Callable[ArgsT, ReturnT]:
     """Cache the result of the given function in-memory."""
-    import hashlib
+    import hashlib  # noqa: PLC0415
 
     try:
         source_code = inspect.getsource(func).encode("utf-8")
@@ -230,9 +304,9 @@ def cached(func: Callable[ArgsT, ReturnT]) -> Callable[ArgsT, ReturnT]:
         *args: ArgsT.args,
         **kwargs: ArgsT.kwargs,
     ) -> ReturnT:
-        from functools import lru_cache
+        from functools import lru_cache  # noqa: PLC0415
 
-        import isolate
+        import isolate  # noqa: PLC0415
 
         # HACK: Using the isolate module as a global cache.
 
@@ -281,7 +355,7 @@ def _prepare_partial_func(
 
 
 def _prepare_environment() -> BaseEnvironment:
-    import isolate
+    import isolate  # noqa: PLC0415
 
     return isolate.prepare_environment(
         "virtualenv",
@@ -308,9 +382,9 @@ class LocalHost(Host):
         application_name: str | None = None,
         application_auth_mode: AuthModeLiteral | None = None,
     ) -> ReturnT:
-        import isolate
-        from isolate.backends.settings import DEFAULT_SETTINGS
-        from isolate.connections import PythonIPC
+        import isolate  # noqa: PLC0415
+        from isolate.backends.settings import DEFAULT_SETTINGS  # noqa: PLC0415
+        from isolate.connections import PythonIPC  # noqa: PLC0415
 
         settings = replace(
             DEFAULT_SETTINGS,
@@ -341,7 +415,7 @@ def _handle_grpc_error():
             """
             Wraps grpc errors as fal Serverless Errors.
             """
-            from isolate.connections.common import SerializationError
+            from isolate.connections.common import SerializationError  # noqa: PLC0415
 
             try:
                 return fn(*args, **kwargs)
@@ -387,7 +461,7 @@ def _handle_grpc_error():
 def find_missing_dependencies(
     func: Callable, env: dict
 ) -> Iterator[tuple[str, list[str]]]:
-    import dill
+    import dill  # noqa: PLC0415
 
     if env["kind"] != "virtualenv":
         return
@@ -413,15 +487,17 @@ def find_missing_dependencies(
         used_modules[canonicalize_name(pkg_name)].append(name)  # type: ignore
 
     raw_requirements = env.get("requirements", [])
+    requirements = Requirements.from_raw(raw_requirements)
     specified_requirements = set()
-    for raw_requirement in raw_requirements:
-        try:
-            requirement = Requirement(raw_requirement)
-        except ValueError:
-            # For git+ dependencies, we can't parse the canonical name
-            # so we'll just skip them.
-            continue
-        specified_requirements.add(canonicalize_name(requirement.name))
+    for layer in requirements.layers:
+        for raw_requirement in layer:
+            try:
+                requirement = Requirement(raw_requirement)
+            except ValueError:
+                # For git+ dependencies, we can't parse the canonical name
+                # so we'll just skip them.
+                continue
+            specified_requirements.add(canonicalize_name(requirement.name))
 
     for module_name, used_names in used_modules.items():
         if module_name in specified_requirements:
@@ -458,6 +534,7 @@ class FalServerlessHost(Host):
             "app_files_context_dir",
             "health_check_config",
             "skip_retry_conditions",
+            "termination_grace_period_seconds",
         }
     )
 
@@ -496,8 +573,8 @@ class FalServerlessHost(Host):
         """Sync files to the server."""
         # Auto-exclude the app file, it gets serialized separately
         if self.local_file_path and options.files_list:
-            import re
-            from pathlib import Path
+            import re  # noqa: PLC0415
+            from pathlib import Path  # noqa: PLC0415
 
             context = Path(options.files_context_dir or ".").resolve()
             app_file = Path(self.local_file_path).resolve()
@@ -541,7 +618,7 @@ class FalServerlessHost(Host):
         scale: bool = True,
         environment_name: Optional[str] = None,
     ) -> Optional[RegisterApplicationResult]:
-        from isolate.backends.common import active_python
+        from isolate.backends.common import active_python  # noqa: PLC0415
 
         environment_options = options.environment.copy()
         environment_options.setdefault("python_version", active_python())
@@ -566,6 +643,9 @@ class FalServerlessHost(Host):
         regions = options.host.get("regions")
         health_check_config = options.host.get("health_check_config")
         skip_retry_conditions = options.host.get("skip_retry_conditions")
+        termination_grace_period_seconds = options.host.get(
+            "termination_grace_period_seconds"
+        )
         machine_requirements = MachineRequirements(
             machine_types=machine_type,  # type: ignore
             num_gpus=options.host.get("num_gpus"),
@@ -616,6 +696,7 @@ class FalServerlessHost(Host):
             files=files,
             skip_retry_conditions=skip_retry_conditions,
             environment_name=environment_name,
+            termination_grace_period_seconds=termination_grace_period_seconds,
         ):
             for log in partial_result.logs:
                 self._log_printer.print(log)
@@ -636,7 +717,7 @@ class FalServerlessHost(Host):
         application_name: str | None = None,
         application_auth_mode: AuthModeLiteral | None = None,
     ) -> ReturnT:
-        from isolate.backends.common import active_python
+        from isolate.backends.common import active_python  # noqa: PLC0415
 
         environment_options = options.environment.copy()
         environment_options.setdefault("python_version", active_python())
@@ -728,15 +809,13 @@ class FalServerlessHost(Host):
         effective_auth_mode = application_auth_mode or "public"
 
         def result_handler(partial_result):
-            from fal.console import console
-
             if service_urls := partial_result.service_urls:
-                from rich.rule import Rule
-                from rich.text import Text
+                from rich.rule import Rule  # noqa: PLC0415
+                from rich.text import Text  # noqa: PLC0415
 
-                from fal.flags import URL_OUTPUT
+                from fal.flags import URL_OUTPUT  # noqa: PLC0415
 
-                console.print("")
+                print("")
 
                 # Build panel content with grouped sections
                 lines = Text()
@@ -774,11 +853,6 @@ class FalServerlessHost(Host):
                         lines.append(
                             f"  Async  {service_urls.queue}{endpoint}\n", style="cyan"
                         )
-
-                    # Logs section
-                    lines.append("\n")
-                    lines.append("▸ Logs\n", style="bold")
-                    lines.append(f"  {service_urls.log}", style="cyan")
 
                 title = Text(f"Ephemeral App ({effective_auth_mode})", style="bold")
                 subtitle = Text("Deleted when process exits", style="dim")
@@ -818,8 +892,10 @@ class FalServerlessHost(Host):
 
         def result_handler(partial_result):
             ret.stream = partial_result.stream
+            if service_urls := partial_result.service_urls:
+                ret.url = service_urls.run
             for log in partial_result.logs:
-                if "And API access through" in log.message:
+                if ret._url is None and "And API access through" in log.message:
                     ret.url = log.message.rsplit()[-1].replace("queue.", "")
                 ret.logs.put(log)
 
@@ -855,11 +931,22 @@ class Options:
                 "are supported as environment options."
             )
 
+        parsed = Requirements.from_raw(pip_requirements)
+        existing = {req for layer in parsed.layers for req in layer}
+
         # Already has these.
-        if set(pip_requirements).issuperset(set(requirements)):
+        if existing.issuperset(set(requirements)):
             return None
 
-        pip_requirements.extend(requirements)
+        layered = (
+            pip_requirements
+            and isinstance(pip_requirements, list)
+            and all(isinstance(item, list) for item in pip_requirements)
+        )
+        if layered:
+            pip_requirements.append([*requirements])
+        else:
+            pip_requirements.extend(requirements)
 
     def get_exposed_port(self) -> int | None:
         if self.gateway.get("serve"):
@@ -882,7 +969,7 @@ def function(
     kind: Literal["virtualenv"] = "virtualenv",
     *,
     python_version: str | None = None,
-    requirements: list[str] | None = None,
+    requirements: list[str] | list[list[str]] | None = None,
     # Common options
     host: LocalHost,
     serve: Literal[False] = False,
@@ -900,7 +987,7 @@ def function(
     kind: Literal["virtualenv"] = "virtualenv",
     *,
     python_version: str | None = None,
-    requirements: list[str] | None = None,
+    requirements: list[str] | list[list[str]] | None = None,
     # Common options
     host: LocalHost,
     serve: Literal[True],
@@ -919,7 +1006,7 @@ def function(
     kind: Literal["virtualenv"] = "virtualenv",
     *,
     python_version: str | None = None,
-    requirements: list[str] | None = None,
+    requirements: list[str] | list[list[str]] | None = None,
     # Common options
     host: FalServerlessHost | None = None,
     serve: Literal[False] = False,
@@ -953,7 +1040,7 @@ def function(
     kind: Literal["virtualenv"] = "virtualenv",
     *,
     python_version: str | None = None,
-    requirements: list[str] | None = None,
+    requirements: list[str] | list[list[str]] | None = None,
     # Common options
     host: FalServerlessHost | None = None,
     serve: Literal[True],
@@ -1184,6 +1271,20 @@ def function(  # type: ignore
     if host is None:
         host = FalServerlessHost()
 
+    if "requirements" in config and config["requirements"] is not None:
+        requirements = config["requirements"]
+        is_str_list = isinstance(requirements, list) and all(
+            isinstance(item, str) for item in requirements
+        )
+        is_str_list_list = isinstance(requirements, list) and all(
+            isinstance(item, list) and all(isinstance(req, str) for req in item)
+            for item in requirements
+        )
+        if not is_str_list and not is_str_list_list:
+            raise ValueError(
+                "requirements must be a list of strings or a list of lists of strings."
+            )
+
     # NOTE: assuming kind="container" if image is provided
     if config.get("image"):
         kind = "container"
@@ -1236,6 +1337,24 @@ class FalFastAPI(FastAPI):
     A subclass of FastAPI that adds some fal-specific functionality.
     """
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Store websocket routes for OpenAPI injection
+        self._websocket_routes: list[tuple[RouteSignature, Callable[..., Any]]] = []
+
+    def add_websocket_route_with_metadata(
+        self,
+        signature: RouteSignature,
+        endpoint: Callable[..., Any],
+    ):
+        """Add websocket route and store metadata for OpenAPI injection."""
+        self.add_api_websocket_route(
+            signature.path,
+            endpoint,
+            name=endpoint.__name__,
+        )
+        self._websocket_routes.append((signature, endpoint))
+
     def openapi(self) -> dict[str, Any]:
         """
         Build the OpenAPI specification for the served function.
@@ -1243,7 +1362,148 @@ class FalFastAPI(FastAPI):
         """
         spec = super().openapi()
         self._mark_order_openapi(spec)
+        self._inject_websocket_endpoints(spec)
         return spec
+
+    def _ensure_components_schemas(self, spec: dict[str, Any]) -> dict[str, Any]:
+        if "components" not in spec:
+            spec["components"] = {}
+        if "schemas" not in spec["components"]:
+            spec["components"]["schemas"] = {}
+        return spec["components"]["schemas"]
+
+    def _ensure_path_item(self, spec: dict[str, Any], path: str) -> dict[str, Any]:
+        if "paths" not in spec:
+            spec["paths"] = {}
+        if path not in spec["paths"]:
+            spec["paths"][path] = {}
+        return spec["paths"][path]
+
+    def _register_model_schema(
+        self, schemas: dict[str, Any], model: type | None
+    ) -> str | None:
+        if model is None:
+            return None
+
+        schema_name = model.__name__
+        if pydantic_version.startswith("2."):
+            from pydantic import TypeAdapter  # type: ignore  # noqa: PLC0415
+
+            adapter = TypeAdapter(model)
+            schema = adapter.json_schema(ref_template="#/components/schemas/{model}")
+        else:
+            from pydantic.schema import schema as pydantic_schema  # noqa: PLC0415
+
+            schema = pydantic_schema([model], ref_prefix="#/components/schemas/")
+            schema = schema.get("definitions", {}).get(schema_name, schema)
+
+        if "$defs" in schema:
+            for def_name, def_schema in schema["$defs"].items():
+                schemas[def_name] = def_schema
+            del schema["$defs"]
+
+        schemas[schema_name] = schema
+        return schema_name
+
+    def _build_protocol_operation(
+        self,
+        signature: RouteSignature,
+        display_endpoint: Callable[..., Any],
+        input_schema_name: str | None,
+        output_schema_name: str | None,
+    ) -> dict[str, Any]:
+        operation: dict[str, Any] = {
+            "type": "realtime" if signature.realtime_mode else "websocket",
+            "operationId": display_endpoint.__name__,
+            "config": {
+                "buffering": signature.buffering,
+                "sessionTimeout": signature.session_timeout,
+                "maxBatchSize": signature.max_batch_size,
+            },
+        }
+        if signature.content_type is not None:
+            operation["contentType"] = signature.content_type
+        if signature.realtime_mode is not None:
+            operation["realtimeMode"] = signature.realtime_mode
+        return operation
+
+    def _build_protocol_mirror_post(
+        self,
+        signature: RouteSignature,
+        display_endpoint: Callable[..., Any],
+        input_schema_name: str | None,
+        output_schema_name: str | None,
+    ) -> dict[str, Any]:
+        endpoint_type = "Realtime" if signature.realtime_mode else "WebSocket"
+        operation: dict[str, Any] = {
+            "operationId": f"{display_endpoint.__name__}_post",
+            "summary": f"{endpoint_type} endpoint: {display_endpoint.__name__}",
+            "description": display_endpoint.__doc__ or "",
+        }
+        if input_schema_name:
+            operation["requestBody"] = {
+                "content": {
+                    "application/json": {
+                        "schema": {"$ref": f"#/components/schemas/{input_schema_name}"}
+                    }
+                }
+            }
+        if output_schema_name:
+            operation["responses"] = {
+                "200": {
+                    "description": "WebSocket message response",
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": f"#/components/schemas/{output_schema_name}"
+                            }
+                        }
+                    },
+                }
+            }
+        else:
+            operation["responses"] = {
+                "204": {"description": "WebSocket message response"}
+            }
+        return operation
+
+    def _inject_websocket_endpoints(self, spec: dict[str, Any]):
+        """Inject WebSocket endpoint metadata using x-fal-protocol extension."""
+        for signature, endpoint in self._websocket_routes:
+            path = signature.path
+
+            schemas = self._ensure_components_schemas(spec)
+            input_schema_name = self._register_model_schema(
+                schemas, signature.input_modal
+            )
+            output_schema_name = self._register_model_schema(
+                schemas, signature.output_modal
+            )
+            path_item = self._ensure_path_item(spec, path)
+            display_endpoint = getattr(endpoint, "original_func", endpoint)
+            path_item["x-fal-protocol"] = self._build_protocol_operation(
+                signature,
+                display_endpoint,
+                input_schema_name,
+                output_schema_name,
+            )
+
+            if "post" not in path_item and (input_schema_name or output_schema_name):
+                path_item["post"] = self._build_protocol_mirror_post(
+                    signature,
+                    display_endpoint,
+                    input_schema_name,
+                    output_schema_name,
+                )
+
+        # Update x-fal-order-paths to include websocket paths
+        if self._websocket_routes:
+            ws_paths = [sig.path for sig, _ in self._websocket_routes]
+            existing_order = list(spec.get("x-fal-order-paths", []))
+            for path in ws_paths:
+                if path not in existing_order:
+                    existing_order.append(path)
+            spec["x-fal-order-paths"] = existing_order
 
     def _mark_order_openapi(self, spec: dict[str, Any]):
         """
@@ -1280,6 +1540,9 @@ class RouteSignature(NamedTuple):
     is_websocket: bool = False
     health_check: HealthCheck | None = None
     input_modal: type | None = None
+    output_modal: type | None = None
+    realtime_mode: str | None = None
+    content_type: str | None = None
     buffering: int | None = None
     session_timeout: float | None = None
     max_batch_size: int = 1
@@ -1297,7 +1560,7 @@ class FalServer(uvicorn.Server):
         try:
             self._handle_exit()
         except BaseException as e:
-            from fastapi.logger import logger
+            from fastapi.logger import logger  # noqa: PLC0415
 
             logger.exception(f"Error in handle_exit: {e}")
 
@@ -1322,13 +1585,13 @@ class BaseServable:
         yield
 
     def _build_app(self) -> FalFastAPI:
-        import json
-        import traceback
+        import json  # noqa: PLC0415
+        import traceback  # noqa: PLC0415
 
-        from fastapi import HTTPException, Request
-        from fastapi.middleware.cors import CORSMiddleware
-        from fastapi.responses import JSONResponse
-        from starlette_exporter import PrometheusMiddleware
+        from fastapi import HTTPException, Request  # noqa: PLC0415
+        from fastapi.middleware.cors import CORSMiddleware  # noqa: PLC0415
+        from fastapi.responses import JSONResponse  # noqa: PLC0415
+        from starlette_exporter import PrometheusMiddleware  # noqa: PLC0415
 
         _app = FalFastAPI(
             lifespan=self.lifespan,
@@ -1402,10 +1665,8 @@ class BaseServable:
                 headers={"x-fal-billable-units": "0"},
             )
 
-        @_app.exception_handler(CUDAOutOfMemoryException)
-        async def cuda_out_of_memory_exception_handler(
-            request: Request, exc: CUDAOutOfMemoryException
-        ):
+        @_app.exception_handler(GPUException)
+        async def gpu_exception_handler(request: Request, exc: GPUException):
             return JSONResponse({"detail": exc.message}, exc.status_code)
 
         @_app.exception_handler(Exception)
@@ -1426,14 +1687,12 @@ class BaseServable:
             )
 
             if _is_cuda_oom_exception(exc):
-                return await cuda_out_of_memory_exception_handler(
-                    request, CUDAOutOfMemoryException()
-                )
+                return await gpu_exception_handler(request, CUDAOutOfMemoryException())
 
             # last line of defense against misc GPU errors that could indicate a bad
             # worker
-            if any(marker in str(exc).lower() for marker in ["cuda", "cudnn", "nvml"]):
-                return JSONResponse({"detail": "GPU error"}, 503)
+            if _is_generic_gpu_error(exc):
+                return await gpu_exception_handler(request, GPUException())
 
             return JSONResponse({"detail": "Internal Server Error"}, 500)
 
@@ -1443,11 +1702,7 @@ class BaseServable:
 
         for signature, endpoint in routes.items():
             if signature.is_websocket:
-                _app.add_api_websocket_route(
-                    signature.path,
-                    endpoint,
-                    name=endpoint.__name__,
-                )
+                _app.add_websocket_route_with_metadata(signature, endpoint)
             else:
                 _app.add_api_route(
                     signature.path,
@@ -1476,8 +1731,8 @@ class BaseServable:
         pass
 
     async def serve(self) -> None:
-        from prometheus_client import Gauge
-        from starlette_exporter import handle_metrics
+        from prometheus_client import Gauge  # noqa: PLC0415
+        from starlette_exporter import handle_metrics  # noqa: PLC0415
 
         # NOTE: this uses the global prometheus registry
         app_info = Gauge("fal_app_info", "Fal application information", ["version"])
@@ -1501,17 +1756,35 @@ class BaseServable:
         )
 
         async def _serve() -> None:
-            tasks = {
-                asyncio.create_task(server.serve()),
-                asyncio.create_task(metrics_server.serve()),
-            }
+            app_task = asyncio.create_task(server.serve())
+            metrics_task = asyncio.create_task(metrics_server.serve())
+            tasks = {app_task, metrics_task}
 
-            await asyncio.wait(
+            done, pending = await asyncio.wait(
                 tasks,
-                return_when=asyncio.ALL_COMPLETED,
+                return_when=asyncio.FIRST_COMPLETED,
             )
-            # we do not take care of pending tasks here.
-            # each task should be responsible for its own cleanup.
+
+            from fastapi.logger import logger  # noqa: PLC0415
+
+            if app_task in done and metrics_task in pending:
+                metrics_task.cancel()
+
+            app_exc, metrics_exc = await asyncio.gather(
+                app_task,
+                metrics_task,
+                return_exceptions=True,
+            )
+
+            if app_exc:
+                logger.error("App server exited with error", exc_info=app_exc)
+
+            if metrics_exc and not isinstance(metrics_exc, asyncio.CancelledError):
+                logger.error("Metrics server exited with error", exc_info=metrics_exc)
+
+            if app_exc:
+                raise app_exc
+
             # graceful termination and timeout should be handled by external scheduler.
 
         await _serve()
@@ -1619,6 +1892,31 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
                 # re-raise original exception without our wrappers
                 raise cause
             raise
+
+    def run_local(self, *args: ArgsT.args, **kwargs: ArgsT.kwargs) -> ReturnT:
+        import asyncio  # noqa: PLC0415
+        import inspect  # noqa: PLC0415
+        import os  # noqa: PLC0415
+        from typing import Awaitable, cast  # noqa: PLC0415
+
+        func = self.func
+        previous_isolate_env = os.environ.get("IS_ISOLATE_AGENT")
+        os.environ["IS_ISOLATE_AGENT"] = "1"
+        try:
+            result = func(*args, **kwargs)
+            if inspect.isawaitable(result):
+                awaited = cast(Awaitable[ReturnT], result)
+
+                async def _await_result():
+                    return await awaited
+
+                return asyncio.run(_await_result())  # type: ignore[return-value]
+            return result
+        finally:
+            if previous_isolate_env is None:
+                del os.environ["IS_ISOLATE_AGENT"]
+            else:
+                os.environ["IS_ISOLATE_AGENT"] = previous_isolate_env
 
     @overload
     def on(
