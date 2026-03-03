@@ -1,3 +1,11 @@
+VALID_REGIONS = {
+  "us-west",
+  "us-central",
+  "us-east",
+  "eu-north",
+  "eu-west",
+}
+
 from __future__ import annotations
 
 import copy
@@ -86,7 +94,7 @@ def get_app_data_from_toml(
     app_files_context_dir = app_data.pop("app_files_context_dir", None)
 
     if regions is not None:
-        _validate_str_list("regions", regions)
+        _validate_regions(regions)
     if app_files is not None:
         _validate_str_list("app_files", app_files)
     if app_files_ignore is not None:
@@ -148,6 +156,17 @@ def get_app_data_from_toml(
         options=options,
     )
 
+def _validate_regions(regions: Any) -> None:
+    """Validate that regions is a list of valid region strings."""
+    if not (isinstance(regions, list) and all(isinstance(item, str) for item in regions)):
+        raise ValueError("regions must be a list of strings.")
+    
+    invalid_regions = set(regions) - VALID_REGIONS
+    if invalid_regions:
+        raise ValueError(
+            f"Invalid regions: {', '.join(sorted(invalid_regions))}. "
+            f"Valid regions are: {', '.join(sorted(VALID_REGIONS))}"
+        )
 
 def _validate_requirements(requirements: Any) -> None:
     is_str_list = isinstance(requirements, list) and all(
