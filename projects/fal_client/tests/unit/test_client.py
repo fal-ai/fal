@@ -15,7 +15,6 @@ from fal_client.client import (
     CDN_URL,
     Completed,
     FAL_CDN_FALLBACK_URL,
-    FalClientError,
     FalClientHTTPError,
     FalClientTimeoutError,
     InProgress,
@@ -1617,7 +1616,9 @@ class TestRaiseForStatus:
         assert err.error_type == "request_timeout"
 
     def test_json_body_takes_precedence_over_header(self):
-        body = json.dumps({"detail": "Runner disconnected", "error_type": "runner_disconnected"})
+        body = json.dumps(
+            {"detail": "Runner disconnected", "error_type": "runner_disconnected"}
+        )
         resp = _make_error_response(
             503,
             body=body,
