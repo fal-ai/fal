@@ -419,12 +419,14 @@ def _classify_unavailable_error(
     parts = [s for s in (details, debug_error_string) if s]
     text = " ".join(parts).lower()
 
-    if "dns resolution failed" in text or "name resolution failure" in text:
+    if (
+        "dns resolution failed" in text
+        or "name resolution failure" in text
+        or "name resolver error" in text
+    ):
         return "DNS resolution failed", "Check network/DNS settings."
     elif "connection refused" in text or "econnrefused" in text:
         return "Connection refused", "Server may be temporarily down."
-    elif "deadline exceeded" in text or "context deadline exceeded" in text:
-        return "Connection timed out", "Check network or retry later."
     elif "ssl" in text or "tls" in text or "certificate" in text:
         return "TLS/SSL handshake failed", "Possible proxy/firewall/certificate issue."
     elif "connection reset" in text or "econnreset" in text:
@@ -433,10 +435,23 @@ def _classify_unavailable_error(
         return "No route to host", "Check network/firewall settings."
     elif "network is unreachable" in text or "enetunreach" in text:
         return "Network unreachable", "Check internet connection."
-    elif "socket closed" in text:
+    elif "keepalive" in text or "ping timeout" in text:
+        return "Keepalive failed", "Network path may be broken, retry."
+    elif (
+        "transport is closing" in text
+        or "transport closed" in text
+        or "transport destroyed" in text
+        or "connection closed" in text
+        or "connection is closing" in text
+        or "socket closed" in text
+    ):
         return "Connection closed unexpectedly", "Transient error, retry."
+    elif "failed to connect to all addresses" in text:
+        return "Failed to connect", "Server may be temporarily unreachable."
     elif "goaway" in text:
         return "Server sent GOAWAY", "Server shutting down, retry."
+    elif "deadline exceeded" in text or "i/o timeout" in text or "timed out" in text:
+        return "Connection timed out", "Check network or retry later."
 
     return None
 
@@ -477,6 +492,8 @@ def _handle_grpc_error():
                             "If it persists, please reach out to support@fal.ai "
                             f"with the following details: {msg}"
                         )
+                        if debug_info:
+                            error_msg += f" | debug: {debug_info}"
 
                     raise FalServerlessError(error_msg)
                 elif msg.endswith("died with <Signals.SIGKILL: 9>.`."):

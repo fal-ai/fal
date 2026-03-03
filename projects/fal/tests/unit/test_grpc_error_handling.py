@@ -41,6 +41,12 @@ class TestClassifyUnavailableError:
         )
         assert cause == "DNS resolution failed"
 
+    def test_name_resolver_error(self):
+        cause, _ = _classify_unavailable_error(
+            "name resolver error: produced zero addresses", None
+        )
+        assert cause == "DNS resolution failed"
+
     def test_connection_refused(self):
         cause, _ = _classify_unavailable_error("Connection refused", None)
         assert cause == "Connection refused"
@@ -55,6 +61,18 @@ class TestClassifyUnavailableError:
 
     def test_context_deadline_exceeded(self):
         cause, _ = _classify_unavailable_error("context deadline exceeded", None)
+        assert cause == "Connection timed out"
+
+    def test_io_timeout(self):
+        cause, _ = _classify_unavailable_error(
+            "transport: Error while dialing: dial tcp 10.0.0.1:443: i/o timeout", None
+        )
+        assert cause == "Connection timed out"
+
+    def test_settings_timed_out(self):
+        cause, _ = _classify_unavailable_error(
+            "connection attempt timed out before receiving SETTINGS frame", None
+        )
         assert cause == "Connection timed out"
 
     def test_ssl(self):
@@ -96,6 +114,49 @@ class TestClassifyUnavailableError:
     def test_socket_closed(self):
         cause, _ = _classify_unavailable_error("Socket closed", None)
         assert cause == "Connection closed unexpectedly"
+
+    def test_transport_is_closing(self):
+        cause, _ = _classify_unavailable_error("transport is closing", None)
+        assert cause == "Connection closed unexpectedly"
+
+    def test_transport_closed(self):
+        cause, _ = _classify_unavailable_error("Transport closed", None)
+        assert cause == "Connection closed unexpectedly"
+
+    def test_transport_destroyed(self):
+        cause, _ = _classify_unavailable_error("Transport destroyed", None)
+        assert cause == "Connection closed unexpectedly"
+
+    def test_connection_closed(self):
+        cause, _ = _classify_unavailable_error("connection closed", None)
+        assert cause == "Connection closed unexpectedly"
+
+    def test_connection_is_closing(self):
+        cause, _ = _classify_unavailable_error("the connection is closing", None)
+        assert cause == "Connection closed unexpectedly"
+
+    def test_keepalive_timeout(self):
+        cause, _ = _classify_unavailable_error(
+            "keepalive ping failed to receive ACK within timeout", None
+        )
+        assert cause == "Keepalive failed"
+
+    def test_ping_timeout(self):
+        cause, _ = _classify_unavailable_error("ping timeout", None)
+        assert cause == "Keepalive failed"
+
+    def test_failed_to_connect_to_all_addresses(self):
+        cause, _ = _classify_unavailable_error(
+            "failed to connect to all addresses", None
+        )
+        assert cause == "Failed to connect"
+
+    def test_failed_to_connect_with_nested_error(self):
+        # When nested error contains a more specific pattern, it should match that first
+        cause, _ = _classify_unavailable_error(
+            "failed to connect to all addresses; last error: Connection refused", None
+        )
+        assert cause == "Connection refused"
 
     def test_goaway(self):
         cause, _ = _classify_unavailable_error(None, "received GOAWAY")
@@ -171,6 +232,16 @@ class TestHandleGrpcErrorUnavailable:
         with pytest.raises(FalServerlessError) as exc_info:
             self._call_decorated(error)
         assert "Cause:" not in exc_info.value.message
+
+    def test_unclassified_includes_debug_info(self):
+        debug = '{"description":"weird thing happened"}'
+        error = _FakeRpcError(
+            grpc.StatusCode.UNAVAILABLE, "something unexpected", debug
+        )
+        with pytest.raises(FalServerlessError) as exc_info:
+            self._call_decorated(error)
+        assert "debug:" in exc_info.value.message
+        assert "weird thing happened" in exc_info.value.message
 
     def test_non_unavailable_error_unchanged(self):
         error = _FakeRpcError(grpc.StatusCode.INTERNAL, "internal server error", None)
