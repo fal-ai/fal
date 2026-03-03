@@ -1,3 +1,4 @@
+"""Demo script for the fal SDK: runs an isolated function (pyjokes) and asserts the result."""
 from __future__ import annotations
 
 from fal import isolated

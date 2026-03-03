@@ -62,3 +62,10 @@ jobs:
       - name: Run unit tests
         run: |
           pytest -n auto -v projects/fal/tests/unit
+
+      - name: Run test_sdk
+        env:
+          ISOLATE_AUTH_DISABLED: "1"
+          ISOLATE_TEST_MODE: "1"
+        run: |
+          python projects/fal/tools/demo_script.py
