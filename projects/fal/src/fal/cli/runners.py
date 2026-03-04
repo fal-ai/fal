@@ -239,7 +239,14 @@ def _shell(args):
                 break
         exit_code = exit_code or 0
     except grpc.RpcError as exc:
-        args.console.print(f"\n[red]Connection error:[/] {exc.details()}")
+        if exc.code() == grpc.StatusCode.UNAVAILABLE:
+            from fal.api.api import _format_unavailable_error
+
+            args.console.print(
+                f"\n[red]Connection error:[/] {_format_unavailable_error(exc)}"
+            )
+        else:
+            args.console.print(f"\n[red]Connection error:[/] {exc.details()}")
     except Exception as exc:
         args.console.print(f"\n[red]Error:[/] {exc}")
     finally:
