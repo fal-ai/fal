@@ -8,7 +8,7 @@ import fal.cli.runners as runners
 from fal.api.client import SyncServerlessClient
 from fal.sdk import RunnerState, deconstruct_alias
 
-from ._utils import get_client
+from ._utils import VALID_REGIONS, get_client
 from .parser import FalClientParser, SinceAction, get_output_parser
 
 if TYPE_CHECKING:
@@ -114,6 +114,12 @@ def _add_list_parser(subparsers, parents):
         "--env",
         dest="env",
         help="Target environment (defaults to main).",
+    )
+    parser.add_argument(
+        "--regions",
+        nargs="+",
+        help="Valid regions (pass several items to set multiple).",
+        choices=sorted(VALID_REGIONS),
     )
     parser.set_defaults(func=_list)
 
