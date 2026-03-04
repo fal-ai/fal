@@ -6,6 +6,7 @@ import pytest
 from fal.api.api import (
     FalServerlessError,
     _classify_unavailable_error,
+    _format_unavailable_error,
     _handle_grpc_error,
 )
 
@@ -247,3 +248,39 @@ class TestHandleGrpcErrorUnavailable:
         error = _FakeRpcError(grpc.StatusCode.INTERNAL, "internal server error", None)
         with pytest.raises(FalServerlessError, match="internal server error"):
             self._call_decorated(error)
+
+
+class TestFormatUnavailableError:
+    """Tests for _format_unavailable_error used by the CLI error handlers."""
+
+    def test_classified_error(self):
+        error = _FakeRpcError(
+            grpc.StatusCode.UNAVAILABLE, "DNS resolution failed", None
+        )
+        msg = _format_unavailable_error(error)
+        assert "Cause: DNS resolution failed" in msg
+        assert "Check network/DNS settings" in msg
+
+    def test_unclassified_error_with_debug(self):
+        debug = '{"description":"something odd"}'
+        error = _FakeRpcError(
+            grpc.StatusCode.UNAVAILABLE, "something unexpected", debug
+        )
+        msg = _format_unavailable_error(error)
+        assert "transient problem" in msg
+        assert "debug:" in msg
+        assert "something odd" in msg
+
+    def test_debug_info_appended_when_available(self):
+        debug = '{"created":"@1234"}'
+        error = _FakeRpcError(
+            grpc.StatusCode.UNAVAILABLE, "transport is closing", debug
+        )
+        msg = _format_unavailable_error(error)
+        assert "Cause: Connection closed unexpectedly" in msg
+        assert f"debug: {debug}" in msg
+
+    def test_no_debug_suffix_when_unavailable(self):
+        error = _FakeRpcError(grpc.StatusCode.UNAVAILABLE, "Socket closed", None)
+        msg = _format_unavailable_error(error)
+        assert "debug:" not in msg
