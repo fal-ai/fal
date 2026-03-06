@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import time
 import json
@@ -26,6 +28,7 @@ from fal_client.client import (
     SyncRequestHandle,
     USER_AGENT,
     _BaseRequestHandle,
+    _raise_for_status,
 )
 
 
@@ -55,6 +58,38 @@ from fal_client.client import (
             },
             Completed(
                 logs=[{"msg": "foo"}, {"msg": "bar"}], metrics={"m1": "v1", "m2": "v2"}
+            ),
+            False,
+        ),
+        (
+            {
+                "status": "COMPLETED",
+                "logs": [],
+                "metrics": {},
+                "error": "Runner disconnected",
+                "error_type": "runner_disconnected",
+            },
+            Completed(
+                logs=[],
+                metrics={},
+                error="Runner disconnected",
+                error_type="runner_disconnected",
+            ),
+            False,
+        ),
+        (
+            {
+                "status": "COMPLETED",
+                "logs": None,
+                "metrics": {"inference_time": 1.5},
+                "error": "Request timed out",
+                "error_type": "request_timeout",
+            },
+            Completed(
+                logs=None,
+                metrics={"inference_time": 1.5},
+                error="Request timed out",
+                error_type="request_timeout",
             ),
             False,
         ),
@@ -1536,3 +1571,93 @@ async def test_async_subscribe_with_sync_callbacks():
         assert result == {"result": "done"}
         assert enqueue_called
         assert len(queue_updates) == 1
+
+
+def _make_error_response(
+    status_code: int,
+    body: str | None = None,
+    headers: dict[str, str] | None = None,
+) -> httpx.Response:
+    """Build a fake httpx.Response that will raise on raise_for_status."""
+    resp = httpx.Response(
+        status_code=status_code,
+        text=body or "",
+        headers=headers or {},
+        request=httpx.Request("POST", "https://fal.run/test"),
+    )
+    return resp
+
+
+class TestRaiseForStatus:
+    def test_error_type_from_json_body(self):
+        body = json.dumps({"detail": "not found", "error_type": "bad_request"})
+        resp = _make_error_response(404, body=body)
+
+        with pytest.raises(FalClientHTTPError) as exc_info:
+            _raise_for_status(resp)
+
+        err = exc_info.value
+        assert err.status_code == 404
+        assert err.message == "not found"
+        assert err.error_type == "bad_request"
+
+    def test_error_type_from_header_fallback(self):
+        body = json.dumps({"detail": "Request timed out"})
+        resp = _make_error_response(
+            504,
+            body=body,
+            headers={"x-fal-error-type": "request_timeout"},
+        )
+
+        with pytest.raises(FalClientHTTPError) as exc_info:
+            _raise_for_status(resp)
+
+        err = exc_info.value
+        assert err.status_code == 504
+        assert err.message == "Request timed out"
+        assert err.error_type == "request_timeout"
+
+    def test_json_body_takes_precedence_over_header(self):
+        body = json.dumps(
+            {"detail": "Runner disconnected", "error_type": "runner_disconnected"}
+        )
+        resp = _make_error_response(
+            503,
+            body=body,
+            headers={"x-fal-error-type": "internal_error"},
+        )
+
+        with pytest.raises(FalClientHTTPError) as exc_info:
+            _raise_for_status(resp)
+
+        assert exc_info.value.error_type == "runner_disconnected"
+
+    def test_error_type_none_when_absent(self):
+        body = json.dumps({"detail": "bad request"})
+        resp = _make_error_response(400, body=body)
+
+        with pytest.raises(FalClientHTTPError) as exc_info:
+            _raise_for_status(resp)
+
+        err = exc_info.value
+        assert err.status_code == 400
+        assert err.message == "bad request"
+        assert err.error_type is None
+
+    def test_non_json_response(self):
+        resp = _make_error_response(500, body="Internal Server Error")
+
+        with pytest.raises(FalClientHTTPError) as exc_info:
+            _raise_for_status(resp)
+
+        err = exc_info.value
+        assert err.message == "Internal Server Error"
+        assert err.error_type is None
+
+    def test_success_does_not_raise(self):
+        resp = httpx.Response(
+            200,
+            text="ok",
+            request=httpx.Request("GET", "https://fal.run/test"),
+        )
+        _raise_for_status(resp)  # should not raise

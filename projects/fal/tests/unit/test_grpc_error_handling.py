@@ -1,0 +1,286 @@
+from __future__ import annotations
+
+import grpc
+import pytest
+
+from fal.api.api import (
+    FalServerlessError,
+    _classify_unavailable_error,
+    _format_unavailable_error,
+    _handle_grpc_error,
+)
+
+
+class _FakeRpcError(grpc.RpcError):
+    """A raisable gRPC error for testing."""
+
+    def __init__(self, code, details, debug_error_string=None):
+        self._code = code
+        self._details = details
+        self._debug_error_string = debug_error_string
+
+    def code(self):
+        return self._code
+
+    def details(self):
+        return self._details
+
+    def debug_error_string(self):
+        if self._debug_error_string is None:
+            raise AttributeError("no debug info")
+        return self._debug_error_string
+
+
+class TestClassifyUnavailableError:
+    def test_dns_resolution_failed(self):
+        cause, guidance = _classify_unavailable_error("DNS resolution failed", None)
+        assert cause == "DNS resolution failed"
+
+    def test_name_resolution_failure(self):
+        cause, _ = _classify_unavailable_error(
+            None, '{"description":"Name resolution failure"}'
+        )
+        assert cause == "DNS resolution failed"
+
+    def test_name_resolver_error(self):
+        cause, _ = _classify_unavailable_error(
+            "name resolver error: produced zero addresses", None
+        )
+        assert cause == "DNS resolution failed"
+
+    def test_connection_refused(self):
+        cause, _ = _classify_unavailable_error("Connection refused", None)
+        assert cause == "Connection refused"
+
+    def test_econnrefused(self):
+        cause, _ = _classify_unavailable_error(None, "ECONNREFUSED")
+        assert cause == "Connection refused"
+
+    def test_deadline_exceeded(self):
+        cause, _ = _classify_unavailable_error("Deadline Exceeded", None)
+        assert cause == "Connection timed out"
+
+    def test_context_deadline_exceeded(self):
+        cause, _ = _classify_unavailable_error("context deadline exceeded", None)
+        assert cause == "Connection timed out"
+
+    def test_io_timeout(self):
+        cause, _ = _classify_unavailable_error(
+            "transport: Error while dialing: dial tcp 10.0.0.1:443: i/o timeout", None
+        )
+        assert cause == "Connection timed out"
+
+    def test_settings_timed_out(self):
+        cause, _ = _classify_unavailable_error(
+            "connection attempt timed out before receiving SETTINGS frame", None
+        )
+        assert cause == "Connection timed out"
+
+    def test_ssl(self):
+        cause, _ = _classify_unavailable_error("SSL handshake failed", None)
+        assert cause == "TLS/SSL handshake failed"
+
+    def test_tls(self):
+        cause, _ = _classify_unavailable_error("TLS error", None)
+        assert cause == "TLS/SSL handshake failed"
+
+    def test_certificate(self):
+        cause, _ = _classify_unavailable_error(None, "certificate verify failed")
+        assert cause == "TLS/SSL handshake failed"
+
+    def test_connection_reset(self):
+        cause, _ = _classify_unavailable_error("Connection reset by peer", None)
+        assert cause == "Connection reset by server"
+
+    def test_econnreset(self):
+        cause, _ = _classify_unavailable_error(None, "ECONNRESET")
+        assert cause == "Connection reset by server"
+
+    def test_no_route_to_host(self):
+        cause, _ = _classify_unavailable_error("No route to host", None)
+        assert cause == "No route to host"
+
+    def test_ehostunreach(self):
+        cause, _ = _classify_unavailable_error(None, "EHOSTUNREACH")
+        assert cause == "No route to host"
+
+    def test_network_unreachable(self):
+        cause, _ = _classify_unavailable_error("Network is unreachable", None)
+        assert cause == "Network unreachable"
+
+    def test_enetunreach(self):
+        cause, _ = _classify_unavailable_error(None, "ENETUNREACH")
+        assert cause == "Network unreachable"
+
+    def test_socket_closed(self):
+        cause, _ = _classify_unavailable_error("Socket closed", None)
+        assert cause == "Connection closed unexpectedly"
+
+    def test_transport_is_closing(self):
+        cause, _ = _classify_unavailable_error("transport is closing", None)
+        assert cause == "Connection closed unexpectedly"
+
+    def test_transport_closed(self):
+        cause, _ = _classify_unavailable_error("Transport closed", None)
+        assert cause == "Connection closed unexpectedly"
+
+    def test_transport_destroyed(self):
+        cause, _ = _classify_unavailable_error("Transport destroyed", None)
+        assert cause == "Connection closed unexpectedly"
+
+    def test_connection_closed(self):
+        cause, _ = _classify_unavailable_error("connection closed", None)
+        assert cause == "Connection closed unexpectedly"
+
+    def test_connection_is_closing(self):
+        cause, _ = _classify_unavailable_error("the connection is closing", None)
+        assert cause == "Connection closed unexpectedly"
+
+    def test_keepalive_timeout(self):
+        cause, _ = _classify_unavailable_error(
+            "keepalive ping failed to receive ACK within timeout", None
+        )
+        assert cause == "Keepalive failed"
+
+    def test_ping_timeout(self):
+        cause, _ = _classify_unavailable_error("ping timeout", None)
+        assert cause == "Keepalive failed"
+
+    def test_failed_to_connect_to_all_addresses(self):
+        cause, _ = _classify_unavailable_error(
+            "failed to connect to all addresses", None
+        )
+        assert cause == "Failed to connect"
+
+    def test_failed_to_connect_with_nested_error(self):
+        # When nested error contains a more specific pattern, it should match that first
+        cause, _ = _classify_unavailable_error(
+            "failed to connect to all addresses; last error: Connection refused", None
+        )
+        assert cause == "Connection refused"
+
+    def test_goaway(self):
+        cause, _ = _classify_unavailable_error(None, "received GOAWAY")
+        assert cause == "Server sent GOAWAY"
+
+    def test_unknown_error(self):
+        assert _classify_unavailable_error("something weird", None) is None
+
+    def test_none_inputs(self):
+        assert _classify_unavailable_error(None, None) is None
+
+    def test_empty_inputs(self):
+        assert _classify_unavailable_error("", "") is None
+
+    def test_case_insensitive(self):
+        cause, _ = _classify_unavailable_error("DNS RESOLUTION FAILED", None)
+        assert cause == "DNS resolution failed"
+
+    def test_first_match_wins(self):
+        # DNS match should take priority over socket closed
+        cause, _ = _classify_unavailable_error(
+            "DNS resolution failed and socket closed", None
+        )
+        assert cause == "DNS resolution failed"
+
+
+class TestHandleGrpcErrorUnavailable:
+    def _call_decorated(self, error):
+        @_handle_grpc_error()
+        def failing_func():
+            raise error
+
+        failing_func()
+
+    def test_includes_cause_in_message(self):
+        error = _FakeRpcError(
+            grpc.StatusCode.UNAVAILABLE,
+            "DNS resolution failed",
+            '{"description":"DNS resolution failed"}',
+        )
+        with pytest.raises(FalServerlessError, match="Cause: DNS resolution failed"):
+            self._call_decorated(error)
+
+    def test_includes_debug_info(self):
+        debug = '{"description":"Connection refused"}'
+        error = _FakeRpcError(grpc.StatusCode.UNAVAILABLE, "Connection refused", debug)
+        with pytest.raises(FalServerlessError, match=r"debug: .+Connection refused"):
+            self._call_decorated(error)
+
+    def test_message_starts_with_could_not_reach(self):
+        error = _FakeRpcError(grpc.StatusCode.UNAVAILABLE, "Socket closed", None)
+        with pytest.raises(FalServerlessError, match="^Could not reach fal host"):
+            self._call_decorated(error)
+
+    def test_debug_error_string_failure_handled(self):
+        error = _FakeRpcError(grpc.StatusCode.UNAVAILABLE, "Socket closed", None)
+        with pytest.raises(FalServerlessError, match="Cause: Connection closed"):
+            self._call_decorated(error)
+
+    def test_no_debug_suffix_when_debug_unavailable(self):
+        error = _FakeRpcError(grpc.StatusCode.UNAVAILABLE, "Socket closed", None)
+        with pytest.raises(FalServerlessError) as exc_info:
+            self._call_decorated(error)
+        assert "debug:" not in exc_info.value.message
+
+    def test_unclassified_uses_original_message(self):
+        error = _FakeRpcError(grpc.StatusCode.UNAVAILABLE, "something unexpected", None)
+        with pytest.raises(FalServerlessError, match="transient problem"):
+            self._call_decorated(error)
+
+    def test_unclassified_no_cause_label(self):
+        error = _FakeRpcError(grpc.StatusCode.UNAVAILABLE, "something unexpected", None)
+        with pytest.raises(FalServerlessError) as exc_info:
+            self._call_decorated(error)
+        assert "Cause:" not in exc_info.value.message
+
+    def test_unclassified_includes_debug_info(self):
+        debug = '{"description":"weird thing happened"}'
+        error = _FakeRpcError(
+            grpc.StatusCode.UNAVAILABLE, "something unexpected", debug
+        )
+        with pytest.raises(FalServerlessError) as exc_info:
+            self._call_decorated(error)
+        assert "debug:" in exc_info.value.message
+        assert "weird thing happened" in exc_info.value.message
+
+    def test_non_unavailable_error_unchanged(self):
+        error = _FakeRpcError(grpc.StatusCode.INTERNAL, "internal server error", None)
+        with pytest.raises(FalServerlessError, match="internal server error"):
+            self._call_decorated(error)
+
+
+class TestFormatUnavailableError:
+    """Tests for _format_unavailable_error used by the CLI error handlers."""
+
+    def test_classified_error(self):
+        error = _FakeRpcError(
+            grpc.StatusCode.UNAVAILABLE, "DNS resolution failed", None
+        )
+        msg = _format_unavailable_error(error)
+        assert "Cause: DNS resolution failed" in msg
+        assert "Check network/DNS settings" in msg
+
+    def test_unclassified_error_with_debug(self):
+        debug = '{"description":"something odd"}'
+        error = _FakeRpcError(
+            grpc.StatusCode.UNAVAILABLE, "something unexpected", debug
+        )
+        msg = _format_unavailable_error(error)
+        assert "transient problem" in msg
+        assert "debug:" in msg
+        assert "something odd" in msg
+
+    def test_debug_info_appended_when_available(self):
+        debug = '{"created":"@1234"}'
+        error = _FakeRpcError(
+            grpc.StatusCode.UNAVAILABLE, "transport is closing", debug
+        )
+        msg = _format_unavailable_error(error)
+        assert "Cause: Connection closed unexpectedly" in msg
+        assert f"debug: {debug}" in msg
+
+    def test_no_debug_suffix_when_unavailable(self):
+        error = _FakeRpcError(grpc.StatusCode.UNAVAILABLE, "Socket closed", None)
+        msg = _format_unavailable_error(error)
+        assert "debug:" not in msg
