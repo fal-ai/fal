@@ -169,11 +169,7 @@ class Host(Generic[ArgsT, ReturnT]):
     _SUPPORTED_KEYS: ClassVar[frozenset[str]] = frozenset()
     _GATEWAY_KEYS: ClassVar[frozenset[str]] = frozenset({"serve", "exposed_port"})
     _VIRTUALENV_KEYS: ClassVar[frozenset[str]] = frozenset(
-        {
-            "python_version",
-            "requirements",
-            "resolver",
-        }
+        {"python_version", "requirements", "resolver", "force"}
     )
     _CONTAINER_KEYS: ClassVar[frozenset[str]] = frozenset(
         {"image", "python_version", "requirements", "resolver", "force"}
@@ -1365,12 +1361,12 @@ def function(  # type: ignore
 
     if config.get("force_env_build") is not None:
         force_env_build = config.pop("force_env_build")
-        if kind == "container":
+        if kind == "container" or kind == "virtualenv":
             config["force"] = force_env_build
         elif force_env_build:
             console.print(
                 "[bold yellow]Note:[/bold yellow] [dim]--no-cache[/dim]"
-                " is only supported for container apps as of now. Ignoring."
+                " is not supported for conda apps as of now. Ignoring."
             )
 
     options = host.parse_options(kind=kind, **config)
