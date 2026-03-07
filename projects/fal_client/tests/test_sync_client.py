@@ -77,7 +77,7 @@ def test_fal_client_streaming(client: fal_client.SyncClient):
     for event in client.stream(
         "fal-ai/any-llm",
         arguments={
-            "model": "google/gemini-flash-1.5",
+            "model": "openai/gpt-4o-mini",
             "prompt": "Tell me a joke",
         },
     ):
