@@ -12,6 +12,7 @@ def test_run():
     args = parse_args(["run", "/my/path.py::myfunc"])
     assert args.func == _run
     assert args.func_ref == ("/my/path.py", "myfunc")
+    assert args.machine_type is None
 
 
 def test_run_with_env():
@@ -20,6 +21,13 @@ def test_run_with_env():
     assert args.func_ref == ("/my/path.py", "myfunc")
     assert args.env == "dev"
     assert args.auth == "public"
+
+
+def test_run_with_machine_type():
+    args = parse_args(["run", "/my/path.py::myfunc", "--machine-type", "GPU-H100"])
+    assert args.func == _run
+    assert args.func_ref == ("/my/path.py", "myfunc")
+    assert args.machine_type == "GPU-H100"
 
 
 @patch("fal.api.client.SyncServerlessClient._create_host")
@@ -88,6 +96,7 @@ def mock_args(
     team: Optional[str] = None,
     no_cache: bool = False,
     auth: Optional[str] = "public",
+    machine_type: Optional[str] = None,
 ):
     args = MagicMock()
     args.host = host
@@ -99,7 +108,34 @@ def mock_args(
     args.console = MagicMock()
     args.app_name = None
     args.env = None
+    args.machine_type = machine_type
     return args
+
+
+@patch("fal.api.client.SyncServerlessClient._create_host")
+@patch("fal.utils.load_function_from")
+def test_run_applies_machine_type_override(mock_load_function_from, mock_create_host):
+    host = mocked_fal_serverless_host("my-host")
+    mock_create_host.return_value = host
+
+    isolated_function = MagicMock()
+    isolated_function.options = MagicMock()
+    isolated_function.options.host = {"machine_type": "GPU-A10G"}
+    loaded = MagicMock()
+    loaded.function = isolated_function
+    loaded.app_name = None
+    loaded.app_auth = None
+    mock_load_function_from.return_value = loaded
+
+    args = mock_args(
+        func_ref=("/my/path.py", "myfunc"),
+        host="my-host",
+        machine_type="GPU-H100",
+    )
+
+    _run(args)
+
+    assert isolated_function.options.host["machine_type"] == "GPU-H100"
 
 
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
