@@ -113,7 +113,14 @@ async def _set_logger_labels(
             task_id="RUN",
             metadata=definitions.TaskMetadata(logger_labels=logger_labels),
         )
-        res = isolate.SetMetadata(isolate_request)
+        controller_auth_key = os.getenv("ISOLATE_CONTROLLER_AUTH_KEY")
+        rpc_metadata = (
+            (("controller-token", controller_auth_key),)
+            if controller_auth_key
+            else None
+        )
+
+        res = isolate.SetMetadata(isolate_request, metadata=rpc_metadata)
         code = await res.code()
         assert str(code) == "StatusCode.OK", str(code)
     except BaseException:

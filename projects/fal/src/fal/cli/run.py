@@ -61,6 +61,8 @@ def _run(args):
     )
 
     isolated_function = loaded.function
+    if args.machine_type is not None:
+        isolated_function.options.host["machine_type"] = args.machine_type
     # let our exc handlers handle UserFunctionException
     isolated_function.reraise = False
     if args.local:
@@ -126,5 +128,10 @@ def add_parser(main_subparsers, parents):
         "--local",
         action="store_true",
         help="Run locally without serverless.",
+    )
+    parser.add_argument(
+        "--machine-type",
+        type=str,
+        help="Machine type to use for this run.",
     )
     parser.set_defaults(func=_run)

@@ -85,13 +85,15 @@ def _object_lifecycle_headers(
         )
 
 
-def _caller_cdn_token_header(
+def _caller_cdn_header(
     headers: dict[str, str],
 ):
     current_app = get_current_app()
     if current_app and current_app.current_request:
         if cdn_token := current_app.current_request.headers.get("x-fal-cdn-token"):
             headers["X-Fal-CDN-Token"] = cdn_token
+        if request_id := current_app.current_request.request_id:
+            headers["X-Fal-Request-ID"] = request_id
 
 
 @dataclass
@@ -546,7 +548,7 @@ class FalFileRepository(FalFileRepositoryBase):
             "Authorization": f"{token.token_type} {token.token}",
             "User-Agent": "fal/0.1.0",
         }
-        _caller_cdn_token_header(headers)
+        _caller_cdn_header(headers)
 
         return headers
 
@@ -805,7 +807,7 @@ class MultipartUploadV3:
             "Authorization": f"Key {key_id}:{key_secret}",
             "User-Agent": "fal/0.1.0",
         }
-        _caller_cdn_token_header(headers)
+        _caller_cdn_header(headers)
 
         return headers
 
@@ -1014,7 +1016,7 @@ class InternalMultipartUploadV3:
             "Authorization": f"{token.token_type} {token.token}",
             "User-Agent": "fal/0.1.0",
         }
-        _caller_cdn_token_header(headers)
+        _caller_cdn_header(headers)
 
         return headers
 
@@ -1333,7 +1335,7 @@ class FalFileRepositoryV3(FileRepository):
             "Authorization": f"Key {key_id}:{key_secret}",
             "User-Agent": "fal/0.1.0",
         }
-        _caller_cdn_token_header(headers)
+        _caller_cdn_header(headers)
 
         return headers
 
@@ -1505,7 +1507,7 @@ class InternalFalFileRepositoryV3(FileRepository):
             "Authorization": f"{token.token_type} {token.token}",
             "User-Agent": "fal/0.1.0",
         }
-        _caller_cdn_token_header(headers)
+        _caller_cdn_header(headers)
 
         return headers
 

@@ -408,6 +408,82 @@ FAL_SERVERLESS_DEFAULT_URL = flags.GRPC_HOST
 FAL_SERVERLESS_DEFAULT_MACHINE_TYPE = "XS"
 
 
+def _classify_unavailable_error(
+    details: str | None,
+    debug_error_string: str | None,
+) -> tuple[str, str] | None:
+    """Classify a gRPC UNAVAILABLE error into a human-readable cause and guidance.
+
+    Returns a (cause, guidance) tuple if a known pattern is matched, or None otherwise.
+    """
+    parts = [s for s in (details, debug_error_string) if s]
+    text = " ".join(parts).lower()
+
+    if (
+        "dns resolution failed" in text
+        or "name resolution failure" in text
+        or "name resolver error" in text
+    ):
+        return "DNS resolution failed", "Check network/DNS settings."
+    elif "connection refused" in text or "econnrefused" in text:
+        return "Connection refused", "Server may be temporarily down."
+    elif "ssl" in text or "tls" in text or "certificate" in text:
+        return "TLS/SSL handshake failed", "Possible proxy/firewall/certificate issue."
+    elif "connection reset" in text or "econnreset" in text:
+        return "Connection reset by server", "Transient error, retry."
+    elif "no route to host" in text or "ehostunreach" in text:
+        return "No route to host", "Check network/firewall settings."
+    elif "network is unreachable" in text or "enetunreach" in text:
+        return "Network unreachable", "Check internet connection."
+    elif "keepalive" in text or "ping timeout" in text:
+        return "Keepalive failed", "Network path may be broken, retry."
+    elif (
+        "transport is closing" in text
+        or "transport closed" in text
+        or "transport destroyed" in text
+        or "connection closed" in text
+        or "connection is closing" in text
+        or "socket closed" in text
+    ):
+        return "Connection closed unexpectedly", "Transient error, retry."
+    elif "failed to connect to all addresses" in text:
+        return "Failed to connect", "Server may be temporarily unreachable."
+    elif "goaway" in text:
+        return "Server sent GOAWAY", "Server shutting down, retry."
+    elif "deadline exceeded" in text or "i/o timeout" in text or "timed out" in text:
+        return "Connection timed out", "Check network or retry later."
+
+    return None
+
+
+def _format_unavailable_error(exc: grpc.RpcError) -> str:
+    """Build a user-facing message for a gRPC UNAVAILABLE error."""
+    msg = exc.details() or str(exc)
+    try:
+        debug_info = exc.debug_error_string()
+    except Exception:
+        debug_info = None
+
+    classified = _classify_unavailable_error(msg, debug_info)
+    if classified:
+        error_cause, guidance = classified
+        error_msg = (
+            f"Could not reach fal host. Cause: {error_cause}. "
+            f"{guidance} If it persists, please reach out to "
+            f"support@fal.ai with the following details: {msg}"
+        )
+    else:
+        error_msg = (
+            "Could not reach fal host. "
+            "This is most likely a transient problem. "
+            "If it persists, please reach out to support@fal.ai "
+            f"with the following details: {msg}"
+        )
+    if debug_info:
+        error_msg += f" | debug: {debug_info}"
+    return error_msg
+
+
 def _handle_grpc_error():
     def decorator(fn):
         @wraps(fn)
@@ -422,12 +498,7 @@ def _handle_grpc_error():
             except grpc.RpcError as e:
                 msg = e.details() or str(e)
                 if e.code() == grpc.StatusCode.UNAVAILABLE:
-                    raise FalServerlessError(
-                        "Could not reach fal host. "
-                        "This is most likely a transient problem. "
-                        "If it persists, please reach out to support@fal.ai with the following details: "  # noqa: E501
-                        f"{msg}"
-                    )
+                    raise FalServerlessError(_format_unavailable_error(e))
                 elif msg.endswith("died with <Signals.SIGKILL: 9>.`."):
                     raise FalServerlessError(
                         "Isolated function crashed. "
