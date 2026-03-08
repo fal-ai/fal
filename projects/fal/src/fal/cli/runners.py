@@ -259,7 +259,7 @@ def _shell(args):
 
 def _stop(args):
     client = SyncServerlessClient(host=args.host, team=args.team)
-    client.runners.stop(args.id, replace_first=not args.no_replace)
+    client.runners.stop(args.id, replace_first=args.replace)
 
 
 def _kill(args):
