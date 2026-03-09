@@ -76,6 +76,14 @@ def _list(args):
     client = SyncServerlessClient(host=args.host, team=args.team)
     apps = client.apps.list(filter=args.filter, environment_name=args.env)
 
+    if args.regions:
+        target_regions = set(args.regions)
+        apps = [
+            app
+            for app in apps
+            if target_regions.intersection(getattr(app, "valid_regions", []))
+        ]
+
     if args.sort_by_runners:
         apps.sort(key=lambda x: x.active_runners)
     else:

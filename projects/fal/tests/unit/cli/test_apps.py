@@ -1,3 +1,6 @@
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
+
 from fal.cli.apps import (
     _delete,
     _delete_rev,
@@ -20,6 +23,38 @@ def test_list_with_env():
     args = parse_args(["apps", "list", "--env", "dev"])
     assert args.func == _list
     assert args.env == "dev"
+
+
+def test_list_with_regions():
+    args = parse_args(["apps", "list", "--regions", "us-east", "eu-west"])
+    assert args.func == _list
+    assert args.regions == ["us-east", "eu-west"]
+
+
+@patch("fal.cli.apps._apps_table")
+@patch("fal.cli.apps.SyncServerlessClient")
+def test_list_filters_apps_by_regions(mock_client_cls, mock_apps_table):
+    app_us = SimpleNamespace(
+        alias="app-us", active_runners=1, valid_regions=["us-east"]
+    )
+    app_eu = SimpleNamespace(
+        alias="app-eu", active_runners=2, valid_regions=["eu-west"]
+    )
+    app_multi = SimpleNamespace(
+        alias="app-multi", active_runners=3, valid_regions=["us-east", "eu-west"]
+    )
+
+    mock_client = MagicMock()
+    mock_client.apps.list.return_value = [app_us, app_eu, app_multi]
+    mock_client_cls.return_value = mock_client
+    mock_apps_table.return_value = "table-output"
+
+    args = parse_args(["apps", "list", "--regions", "us-east"])
+    args.console = MagicMock()
+    _list(args)
+
+    table_apps = mock_apps_table.call_args.args[0]
+    assert table_apps == [app_multi, app_us]
 
 
 def test_list_rev():
