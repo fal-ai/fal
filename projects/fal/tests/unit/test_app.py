@@ -4,6 +4,7 @@ import os
 import pickle
 from contextvars import ContextVar
 from typing import AsyncIterator, Iterator
+from unittest.mock import MagicMock, PropertyMock, patch
 
 import pytest
 from fastapi import WebSocket
@@ -82,6 +83,38 @@ def test_app_regions_propagate_to_function_options():
 
     fn = wrap_app(RegionsApp)
     assert fn.options.host.get("regions") == ["us-east", "eu-west"]
+
+
+def test_run_forwards_regions_to_machine_requirements():
+    from fal.api.api import FalServerlessHost, Options
+    from fal.sdk import HostedRunState
+
+    host = FalServerlessHost()
+    options = Options()
+    options.host["regions"] = ["us-east"]
+
+    connection = MagicMock()
+    connection.define_environment.return_value = object()
+    partial_result = MagicMock()
+    partial_result.status.state = HostedRunState.SUCCESS
+    partial_result.result = "ok"
+    connection.run.return_value = iter([partial_result])
+
+    with patch.object(
+        FalServerlessHost, "_connection", new_callable=PropertyMock
+    ) as mock_connection:
+        mock_connection.return_value = connection
+        result = host._run(
+            lambda: "ok",
+            options,
+            args=(),
+            kwargs={},
+            result_handler=lambda _: None,
+        )
+
+    assert result == "ok"
+    _, call_kwargs = connection.run.call_args
+    assert call_kwargs["machine_requirements"].valid_regions == ["us-east"]
 
 
 def test_wrap_app_allows_resolver_with_container_kind():
