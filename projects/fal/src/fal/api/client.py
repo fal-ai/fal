@@ -124,7 +124,7 @@ class AppsNamespace:
             request_timeout: Request timeout in seconds.
             startup_timeout: Startup timeout in seconds.
             machine_types: List of allowed machine types (e.g., ["GPU-H100"]).
-            regions: List of allowed regions (e.g., ["us-east-1"]).
+            regions: List of allowed regions (e.g., ["us-east"]).
 
         Example:
             client.apps.scale(

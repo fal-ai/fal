@@ -807,6 +807,7 @@ class FalServerlessHost(Host):
         setup_function = options.host.get("setup_function", None)
         request_timeout = options.host.get("request_timeout")
         startup_timeout = options.host.get("startup_timeout")
+        regions = options.host.get("regions")
         machine_requirements = MachineRequirements(
             machine_types=machine_type,  # type: ignore
             num_gpus=options.host.get("num_gpus"),
@@ -823,6 +824,7 @@ class FalServerlessHost(Host):
             scaling_delay=scaling_delay,
             request_timeout=request_timeout,
             startup_timeout=startup_timeout,
+            valid_regions=regions,
         )
 
         files = self.files_sync(FileSyncOptions.from_options(options))
