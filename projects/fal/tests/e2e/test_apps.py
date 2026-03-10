@@ -1779,6 +1779,10 @@ class SetUUIDInput(BaseModel):
     uuid: str
 
 
+class SetWaitTimeInput(BaseModel):
+    wait_time: int
+
+
 # for now it only works in newly built containers
 class GracefulShutdownApp(
     fal.App,
@@ -1799,6 +1803,7 @@ RUN apt-get update \
     machine_type = "XS"
     latest_request_id = None
     uuid = None
+    wait_time = None
 
     def setup(self):
         self.stop = False
@@ -1811,34 +1816,19 @@ RUN apt-get update \
         self.uuid = input.uuid
         return "ok"
 
+    @fal.endpoint("/set-wait-time")
+    async def set_wait_time(self, input: SetWaitTimeInput) -> str:
+        self.wait_time = input.wait_time
+        return "ok"
+
     @fal.endpoint("/")
-    async def sleep(self, input: SleepInput, request: Request) -> SleepOutput:
+    async def request_handler(self, request: Request) -> str:
         request_id = request.headers.get(REQUEST_ID_KEY)
         if request_id is None:
             raise Exception("No request id found")
 
         self.latest_request_id = request_id
-
-        for i in range(input.wait_time):
-            print(f"sleeping {i + 1} of {input.wait_time}...", flush=True)
-            await asyncio.sleep(1)
-        return SleepOutput(slept=True)
-
-    @fal.endpoint("/with-stop")
-    async def sleep_with_stop(self, input: SleepInput, request: Request) -> SleepOutput:
-        request_id = request.headers.get(REQUEST_ID_KEY)
-        if request_id is None:
-            raise Exception("No request id found")
-
-        self.latest_request_id = request_id
-
-        for i in range(input.wait_time):
-            if self.stop:
-                break
-            print(f"sleeping {i + 1} of {input.wait_time}...", flush=True)
-            await asyncio.sleep(1)
-
-        return SleepOutput(slept=True)
+        return "ok"
 
     @fal.endpoint("/latest-request-id")
     async def fetch_latest_request_id(self) -> str:
@@ -1858,9 +1848,15 @@ RUN apt-get update \
         if self.latest_request_id is None or self.uuid is None:
             return
 
+        if self.wait_time is not None:
+            for i in range(self.wait_time):
+                print(f"sleeping {i + 1} of {self.wait_time}...", flush=True)
+                time.sleep(1)
+
         os.makedirs("/data/teardown", exist_ok=True)
         with open(f"/data/teardown/{self.uuid}.txt", "w") as f:
-            f.write(self.latest_request_id)
+            f.write(self.latest_request_id + "\n")
+            f.write("t" if self.stop else "f")
 
 
 @pytest.fixture(scope="module")
@@ -1888,9 +1884,14 @@ def graceful_shutdown(
         apps.run(test_graceful_shutdown_app, {"uuid": token}, path="/set-uuid") == "ok"
     ), "UUID not set"
 
-    handle = submit_and_wait_for_runner(
-        test_graceful_shutdown_app, arguments={"wait_time": wait_time}, path=path
-    )
+    assert (
+        apps.run(
+            test_graceful_shutdown_app, {"wait_time": wait_time}, path="/set-wait-time"
+        )
+        == "ok"
+    ), "Wait time not set"
+
+    handle = submit_and_wait_for_runner(test_graceful_shutdown_app, path=path)
     saved_request_id = handle.request_id
 
     time.sleep(2)
@@ -1918,13 +1919,10 @@ def graceful_shutdown(
     ), "UUID not set"
     res = apps.run(test_graceful_shutdown_app, {}, path="/latest-request-id")
 
-    teardown_called = res == saved_request_id
-    try:
-        request_processed = handle.fetch_result()["slept"]
-    except Exception:
-        request_processed = False
+    teardown_called = res.split("\n")[0] == saved_request_id
+    stop_called = len(res.split("\n")) > 1 and res.split("\n")[1] == "t"
 
-    return teardown_called and request_processed
+    return teardown_called and stop_called
 
 
 @pytest.mark.flaky(max_runs=3)
@@ -1945,16 +1943,6 @@ def test_graceful_shutdown_force_kill(
     assert not graceful_shutdown(
         test_graceful_shutdown_app, host, wait_time=60, path="/"
     ), "app should be forcefully killed if it takes too long to clean up"
-
-
-@pytest.mark.flaky(max_runs=3)
-def test_graceful_shutdown_handle_exit(
-    host: api.FalServerlessHost,
-    test_graceful_shutdown_app: str,
-):
-    assert graceful_shutdown(
-        test_graceful_shutdown_app, host, wait_time=60, path="/with-stop"
-    ), "app should be called handle_exit on SIGTERM"
 
 
 @pytest.mark.flaky(max_runs=3)
