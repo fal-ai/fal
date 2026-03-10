@@ -1902,7 +1902,7 @@ def graceful_shutdown(
         assert runner is not None, "Runner not found"
 
         client.stop_runner(runner.runner_id)
-    # Need to wait longer than 10s
+    # Need to wait longer than 10s because how we stop the runner
     time.sleep(12)
 
     assert (
