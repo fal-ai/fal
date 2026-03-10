@@ -1931,7 +1931,7 @@ def test_graceful_shutdown(
     test_graceful_shutdown_app: str,
 ):
     assert graceful_shutdown(
-        test_graceful_shutdown_app, host, wait_time=5, path="/"
+        test_graceful_shutdown_app, host, wait_time=1, path="/"
     ), "app should be gracefully shutdown"
 
 
@@ -1941,7 +1941,7 @@ def test_graceful_shutdown_force_kill(
     test_graceful_shutdown_app: str,
 ):
     assert not graceful_shutdown(
-        test_graceful_shutdown_app, host, wait_time=60, path="/"
+        test_graceful_shutdown_app, host, wait_time=10, path="/"
     ), "app should be forcefully killed if it takes too long to clean up"
 
 
@@ -1951,7 +1951,7 @@ def test_forceful_shutdown(
     test_graceful_shutdown_app: str,
 ):
     assert not graceful_shutdown(
-        test_graceful_shutdown_app, host, wait_time=5, path="/", kill=True
+        test_graceful_shutdown_app, host, wait_time=1, path="/", kill=True
     ), "app should be forcefully killed on kill_runner"
 
 
