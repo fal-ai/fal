@@ -1794,6 +1794,7 @@ RUN apt-get update \
 """
     ),
     skip_retry_conditions=["server_error", "connection_error", "timeout"],
+    termination_grace_period_seconds=5,
 ):
     machine_type = "XS"
     latest_request_id = None
@@ -1878,6 +1879,7 @@ def graceful_shutdown(
     *,
     wait_time: int,
     path: str,
+    kill: bool = False,
 ) -> bool:
     time.sleep(2)
 
@@ -1900,8 +1902,16 @@ def graceful_shutdown(
 
         assert runner is not None, "Runner not found"
 
-        client.kill_runner(runner.runner_id)
-    time.sleep(2)
+        if kill:
+            client.kill_runner(runner.runner_id)
+        else:
+            client.stop_runner(runner.runner_id)
+
+    if kill:
+        time.sleep(2)
+    else:
+        # Need to wait longer than 10s because how we stop the runner
+        time.sleep(12)
 
     assert (
         apps.run(test_graceful_shutdown_app, {"uuid": token}, path="/set-uuid") == "ok"
@@ -1945,6 +1955,16 @@ def test_graceful_shutdown_handle_exit(
     assert graceful_shutdown(
         test_graceful_shutdown_app, host, wait_time=60, path="/with-stop"
     ), "app should be called handle_exit on SIGTERM"
+
+
+@pytest.mark.flaky(max_runs=3)
+def test_forceful_shutdown(
+    host: api.FalServerlessHost,
+    test_graceful_shutdown_app: str,
+):
+    assert not graceful_shutdown(
+        test_graceful_shutdown_app, host, wait_time=5, path="/", kill=True
+    ), "app should be forcefully killed on kill_runner"
 
 
 @pytest.mark.flaky(max_runs=3)
