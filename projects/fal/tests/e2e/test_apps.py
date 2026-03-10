@@ -1794,6 +1794,7 @@ RUN apt-get update \
 """
     ),
     skip_retry_conditions=["server_error", "connection_error", "timeout"],
+    termination_grace_period_seconds=5,
 ):
     machine_type = "XS"
     latest_request_id = None
@@ -1900,8 +1901,9 @@ def graceful_shutdown(
 
         assert runner is not None, "Runner not found"
 
-        client.kill_runner(runner.runner_id)
-    time.sleep(2)
+        client.stop_runner(runner.runner_id)
+    # Need to wait longer than 10s
+    time.sleep(12)
 
     assert (
         apps.run(test_graceful_shutdown_app, {"uuid": token}, path="/set-uuid") == "ok"
