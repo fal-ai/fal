@@ -3,6 +3,7 @@ import datetime
 import json
 import os
 import pickle
+import socket
 import threading
 import warnings
 from collections.abc import Callable
@@ -312,6 +313,23 @@ def wrap_distributed_worker(
         func(*args, **kwargs)
     finally:
         dist.destroy_process_group()
+
+
+def _pick_random_free_port(addr: str) -> int:
+    """
+    Picks a random free port on the given address.
+    :param addr: The address to pick a free port on.
+    :return: The free port.
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind((addr, 0))
+        return s.getsockname()[1]
+
+
+def _check_port_in_use(errs: list[Exception], exc: Exception) -> bool:
+    txt = f"{exc}\n" + "\n".join(str(e) for e in errs)
+    txt = txt.lower()
+    return "address already in use" in txt or "eaddrinuse" in txt
 
 
 def launch_distributed_processes(

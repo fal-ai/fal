@@ -18,6 +18,8 @@ from typing import TYPE_CHECKING, Any, Optional, Union
 
 from fal.distributed.utils import (
     KeepAliveTimer,
+    _check_port_in_use,
+    _pick_random_free_port,
     distributed_deserialize,
     distributed_serialize,
     encode_text_event,
@@ -231,9 +233,9 @@ class DistributedRunner:
         worker_cls: type[DistributedWorker] = DistributedWorker,
         world_size: int = 1,
         master_addr: str = "127.0.0.1",
-        master_port: int = 29500,
+        master_port: int = 0,
         worker_addr: str = "127.0.0.1",
-        worker_port: int = 54923,
+        worker_port: int = 0,
         timeout: int = 86400,  # 24 hours
         keepalive_payload: dict[str, Any] = {},
         keepalive_interval: Optional[Union[int, float]] = None,
@@ -537,52 +539,87 @@ class DistributedRunner:
         if self.is_alive():
             raise RuntimeError("Distributed processes are already running.")
 
-        self.context = launch_distributed_processes(
-            self.run,
-            world_size=self.world_size,
-            master_addr=self.master_addr,
-            master_port=self.master_port,
-            timeout=self.timeout,
-            cwd=self.cwd,
-            **kwargs,
-        )
+        max_attempts = int(kwargs.pop("max_start_attempts", 3))
+        if max_attempts < 1:
+            raise ValueError("max_start_attempts must be at least 1.")
 
-        try:
-            ready_workers: set[int] = set()
-            socket = self.get_zmq_socket()
-            start_time = time.perf_counter()
+        pick_master_port = self.master_port == 0
+        pick_worker_port = self.worker_port == 0
 
-            while len(ready_workers) < self.world_size:
-                try:
-                    ident, msg = await socket.recv_multipart(flags=zmq.NOBLOCK)  # type: ignore[misc]
+        if pick_worker_port:
+            # Pick a concrete worker port before spawn without creating ZMQ socket;
+            # spawned children pickle `self`, and pyzmq sockets are not picklable.
+            self.worker_port = _pick_random_free_port(self.worker_addr)
 
-                    if msg != b"READY":
-                        worker_id = ident.decode("utf-8")
-                        worker_msg = msg.decode("utf-8")
-                        raise RuntimeError(
-                            f"Unexpected message from worker {worker_id}: {worker_msg}"
-                        )
+        for attempt in range(max_attempts):
+            try:
+                if pick_master_port:
+                    self.master_port = _pick_random_free_port(self.master_addr)
+                if pick_worker_port and attempt > 0:
+                    self.worker_port = _pick_random_free_port(self.worker_addr)
 
-                    print(f"[debug] Worker {ident.decode('utf-8')} is ready.")
-                    ready_workers.add(ident)
-                except zmq.Again:
-                    total_wait_time = time.perf_counter() - start_time
-                    if total_wait_time > timeout:
-                        raise TimeoutError(
-                            f"Timeout reached after {timeout} seconds while "
-                            f"waiting for workers to be ready."
-                        )
-                    await asyncio.sleep(0.5)
-                self.ensure_alive()
-        except Exception as e:
-            print(f"[debug] Error during startup: {e}\n{traceback.format_exc()}")
-            self.terminate(timeout=timeout)
-            raise RuntimeError("Failed to start distributed processes.") from e
+                self.context = launch_distributed_processes(
+                    self.run,
+                    world_size=self.world_size,
+                    master_addr=self.master_addr,
+                    master_port=self.master_port,
+                    timeout=self.timeout,
+                    cwd=self.cwd,
+                    **kwargs,
+                )
 
-        print("[debug] All workers are ready and running.")
+                ready_workers: set[bytes] = set()
+                socket = self.get_zmq_socket()
+                start_time = time.perf_counter()
 
-        # Start the keepalive timer
-        self.maybe_start_keepalive()
+                while len(ready_workers) < self.world_size:
+                    try:
+                        ident, msg = await socket.recv_multipart(flags=zmq.NOBLOCK)  # type: ignore[misc]
+
+                        if msg != b"READY":
+                            worker_id = ident.decode("utf-8")
+                            worker_msg = msg.decode("utf-8")
+                            raise RuntimeError(
+                                f"Unexpected message from worker {worker_id}:"
+                                f"{worker_msg}"
+                            )
+
+                        print(f"[debug] Worker {ident.decode('utf-8')} is ready.")
+                        ready_workers.add(ident)
+                    except zmq.Again:
+                        total_wait_time = time.perf_counter() - start_time
+                        if total_wait_time > timeout:
+                            raise TimeoutError(
+                                f"Timeout reached after {timeout} seconds"
+                                "while waiting for workers to be ready."
+                            )
+                        await asyncio.sleep(0.5)
+                    self.ensure_alive()
+            except Exception as e:
+                errs = self.gather_errors() if self.context else []
+                print(
+                    f"[debug] Error during startup (attempt"
+                    f" {attempt + 1}/{max_attempts}): {e}\n{traceback.format_exc()}"
+                )
+                self.terminate(timeout=timeout)
+                self.context = None
+                self.close_zmq_socket()
+
+                can_retry = (
+                    (pick_master_port or pick_worker_port)
+                    and attempt < max_attempts - 1
+                    and _check_port_in_use(errs, e)
+                )
+                if not can_retry:
+                    raise RuntimeError("Failed to start distributed processes.") from e
+
+                await asyncio.sleep(0.1)
+                continue
+
+            print("[debug] All workers are ready and running.")
+            # Start the keepalive timer
+            self.maybe_start_keepalive()
+            return
 
     def keepalive(self, timeout: Optional[Union[int, float]] = 60.0) -> None:
         """
