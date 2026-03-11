@@ -326,7 +326,7 @@ def _pick_random_free_port(addr: str) -> int:
         return s.getsockname()[1]
 
 
-def _check_port_in_use(errs: list[Exception], exc: Exception) -> bool:
+def _check_port_in_use(errs: list, exc: Exception) -> bool:
     txt = f"{exc}\n" + "\n".join(str(e) for e in errs)
     txt = txt.lower()
     return "address already in use" in txt or "eaddrinuse" in txt
