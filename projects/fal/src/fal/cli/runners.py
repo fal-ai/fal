@@ -239,7 +239,11 @@ def _shell(args):
                 break
         exit_code = exit_code or 0
     except grpc.RpcError as exc:
-        if exc.code() == grpc.StatusCode.UNAVAILABLE:
+        if exc.code() == grpc.StatusCode.NOT_FOUND:
+            args.console.print(
+                f"\n[red]Error:[/] Runner '{runner_id}' not found."
+            )
+        elif exc.code() == grpc.StatusCode.UNAVAILABLE:
             from fal.api.api import _format_unavailable_error
 
             args.console.print(
