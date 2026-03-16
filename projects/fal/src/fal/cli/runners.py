@@ -781,7 +781,7 @@ def _add_shell_parser(subparsers, parents):
     """Add hidden shell command parser."""
     parser = subparsers.add_parser(
         "shell",
-        help=argparse.SUPPRESS,
+        help="Open a shell on a runner.",
         parents=parents,
     )
     parser.add_argument("id", help="Runner ID.")
@@ -792,7 +792,7 @@ def _add_exec_parser(subparsers, parents):
     """Add hidden exec command parser."""
     parser = subparsers.add_parser(
         "exec",
-        help=argparse.SUPPRESS,
+        help="Execute a command on a runner.",
         parents=parents,
     )
     parser.add_argument("id", help="Runner ID.")
