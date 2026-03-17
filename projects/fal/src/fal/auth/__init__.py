@@ -63,12 +63,12 @@ def get_colab_token() -> Optional[str]:
         return _colab_state.secret
 
 
-def key_credentials() -> tuple[str, str] | None:
+def key_credentials(profile: str | None = None) -> tuple[str, str] | None:
     # Ignore key credentials when the user forces auth by user.
     if os.environ.get("FAL_FORCE_AUTH_BY_USER") == "1":
         return None
 
-    config = Config()
+    config = Config(profile=profile)
 
     def _check_key(key: str, key_name: str) -> tuple[str, str] | None:
         try:

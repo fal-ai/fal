@@ -75,7 +75,7 @@ from fal.sdk import (
     MachineRequirements,
     RegisterApplicationResult,
     get_agent_credentials,
-    get_default_credentials,
+    get_credentials,
 )
 
 if TYPE_CHECKING:
@@ -607,7 +607,7 @@ class FalServerlessHost(Host):
 
     url: str = FAL_SERVERLESS_DEFAULT_URL
     local_file_path: str = ""
-    credentials: Credentials = field(default_factory=get_default_credentials)
+    credentials: Credentials = field(default_factory=get_credentials)
     environment_name: Optional[str] = None
 
     _lock: threading.Lock = field(default_factory=threading.Lock, init=False)
