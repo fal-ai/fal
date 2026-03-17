@@ -58,6 +58,7 @@ def _run(args):
         options=app_data.options,
         app_name=app_data.name,
         app_auth=app_data.auth,
+        limit_max_requests=args.limit_max_requests,
     )
 
     isolated_function = loaded.function
@@ -133,5 +134,11 @@ def add_parser(main_subparsers, parents):
         "--machine-type",
         type=str,
         help="Machine type to use for this run.",
+    )
+    parser.add_argument(
+        "--limit-max-requests",
+        type=int,
+        default=None,
+        help="For fal.App runs, gracefully stop the server after serving N requests.",
     )
     parser.set_defaults(func=_run)

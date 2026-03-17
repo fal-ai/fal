@@ -123,6 +123,7 @@ def load_function_from(
     options: Optional[Options] = None,
     app_name: str | None = None,
     app_auth: AuthModeLiteral | None = None,
+    limit_max_requests: int | None = None,
 ) -> LoadedFunction:
     import os
     import runpy
@@ -152,7 +153,12 @@ def load_function_from(
     if isinstance(target, type) and issubclass(target, App):
         _apply_toml_app_file_options(target, options)
         endpoints = target.get_endpoints() or ["/"]
-        target = wrap_app(target, host=host, force_env_build=force_env_build)
+        target = wrap_app(
+            target,
+            host=host,
+            force_env_build=force_env_build,
+            limit_max_requests=limit_max_requests,
+        )
 
     if not isinstance(target, IsolatedFunction):
         raise FalServerlessError(
