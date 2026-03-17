@@ -160,6 +160,11 @@ def load_function_from(
         )
     if options is not None:
         _merge_options(target.options, options)
+
+    # Override the host so CLI-provided context (e.g. team) is applied.
+    # For @fal.function, the host was set at import time without CLI context.
+    target.host = host
+
     target.app_name = app_name
     target.app_auth = app_auth
     return LoadedFunction(

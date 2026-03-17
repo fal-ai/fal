@@ -184,10 +184,10 @@ class FileMetadata:
 
 
 class FileSync:
-    def __init__(self, local_file_path: str):
+    def __init__(self, local_file_path: str, credentials=None):
         from fal.sdk import get_default_credentials  # noqa: PLC0415
 
-        self.creds = get_default_credentials()
+        self.creds = credentials or get_default_credentials()
         self.local_file_path = local_file_path
 
     @cached_property
