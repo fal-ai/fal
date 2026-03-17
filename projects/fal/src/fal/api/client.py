@@ -407,18 +407,20 @@ class SyncServerlessClient:
 
     @property
     def _credentials(self) -> Credentials:
-        from fal.sdk import FalServerlessKeyCredentials, get_default_credentials
+        from fal.sdk import (
+            FalServerlessKeyCredentials,
+            check_team_key,
+            get_default_credentials,
+        )
 
         if self.api_key:
-            if self.team:
-                raise ValueError(
-                    "Using explicit team with key credentials is not allowed"
-                )
             try:
                 key_id, key_secret = self.api_key.split(":", 1)
             except ValueError:
                 raise ValueError("api_key must be in 'KEY_ID:KEY_SECRET' format")
-            return FalServerlessKeyCredentials(key_id, key_secret)
+            credentials = FalServerlessKeyCredentials(key_id, key_secret)
+            check_team_key(self.team, credentials)
+            return credentials
 
         if self.profile:
             prev = os.environ.get("FAL_PROFILE")

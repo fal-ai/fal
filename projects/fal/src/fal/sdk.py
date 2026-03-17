@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import enum
+import warnings
 from contextlib import ExitStack
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -22,7 +23,7 @@ from isolate.server.interface import from_grpc, to_serialized_object, to_struct
 
 from fal import flags
 from fal._serialization import patch_pickle
-from fal.auth import UserAccess, key_credentials
+from fal.auth import UserAccess, current_user_info, key_credentials
 from fal.logging import get_logger
 from fal.logging.trace import TraceContextInterceptor
 
@@ -232,6 +233,21 @@ def get_agent_credentials(original_credentials: Credentials) -> Credentials:
         return original_credentials
 
 
+def check_team_key(team: str | None, credentials: FalServerlessKeyCredentials) -> None:
+    if not team:
+        return
+
+    user_info = current_user_info(credentials.to_headers())
+    full_name = user_info["full_name"]
+    nickname = user_info["nickname"]
+    user_id = user_info["user_id"]
+    warnings.warn(
+        f"Ignoring explicit team {team} because key is used. "
+        f"The key belongs to {full_name}: {nickname} - {user_id}.",
+        stacklevel=2,
+    )
+
+
 def get_default_credentials(team: str | None = None) -> Credentials:
     from fal.config import Config  # noqa: PLC0415
 
@@ -241,9 +257,9 @@ def get_default_credentials(team: str | None = None) -> Credentials:
     key_creds = key_credentials()
     if key_creds:
         logger.debug("Using key credentials")
-        if team:
-            raise ValueError("Using explicit team with key credentials is not allowed")
-        return FalServerlessKeyCredentials(key_creds[0], key_creds[1])
+        credentials = FalServerlessKeyCredentials(key_creds[0], key_creds[1])
+        check_team_key(team, credentials)
+        return credentials
     else:
         config = Config()
         team = team or config.get_internal("team")
