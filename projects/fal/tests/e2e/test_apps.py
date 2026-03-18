@@ -46,7 +46,7 @@ from fal.exceptions import (
 )
 from fal.exceptions.gpu import _CUDA_OOM_MESSAGE, _GPU_ERROR_STATUS_CODE
 from fal.ref import get_current_app
-from fal.sdk import RunnerState, get_default_credentials
+from fal.sdk import RunnerState, get_credentials
 from fal.toolkit.utils.endpoint import cancel_on_disconnect
 from fal.workflows import Workflow
 
@@ -1163,7 +1163,7 @@ def test_realtime_connection(test_realtime_app):
 def test_realtime_ws_endpoint(test_realtime_app):
     app_id = apps._backwards_compatible_app_id(test_realtime_app)
     url = apps._REALTIME_URL_FORMAT.format(app_id=app_id) + "/ws"
-    creds = get_default_credentials()
+    creds = get_credentials()
 
     with ws_client.connect(
         url, additional_headers=creds.to_headers(), open_timeout=90
@@ -1458,6 +1458,7 @@ def submit_and_wait_for_runner(app: str, arguments: dict = {}, *, path: str = ""
 def test_stop_runner(host: api.FalServerlessHost, test_sleep_app: str):
     # Submit a runner and wait for it to be idle
     submit_and_wait_for_runner(test_sleep_app, arguments={"wait_time": 1})
+    original_runner_id = None
 
     with host._connection as client:
         timeout = 10
@@ -1468,6 +1469,7 @@ def test_stop_runner(host: api.FalServerlessHost, test_sleep_app: str):
             assert len(runners) == 1
 
             if runners[0].in_flight_requests == 0:
+                original_runner_id = runners[0].runner_id
                 break
             elif time.time() - start_time > timeout:
                 raise Exception(f"Timeout waiting for runner to be idle: {runners[0]}")
@@ -1500,7 +1502,8 @@ def test_stop_runner(host: api.FalServerlessHost, test_sleep_app: str):
 
     with host._connection as client:
         runners = client.list_alias_runners(app_alias)
-        assert len(runners) == 2
+        assert original_runner_id is not None
+        assert any(runner.runner_id != original_runner_id for runner in runners)
 
 
 @pytest.mark.flaky(max_runs=3)

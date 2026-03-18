@@ -18,7 +18,9 @@ class Config:
 
     DEFAULT_CONFIG_PATH = "~/.fal/config.toml"
 
-    def __init__(self, *, validate_profile: bool = False):
+    def __init__(
+        self, *, validate_profile: bool = False, profile: Optional[str] = None
+    ):
         import tomli  # noqa: PLC0415
 
         self.config_path = os.path.expanduser(
@@ -31,11 +33,15 @@ class Config:
         except FileNotFoundError:
             self._config = {}
 
-        profile = os.getenv("FAL_PROFILE") or self.get_internal("profile")
+        selected_profile = (
+            profile
+            if profile is not None
+            else os.getenv("FAL_PROFILE") or self.get_internal("profile")
+        )
 
         # Try to set the profile, but don't fail if it doesn't exist
         try:
-            self.profile = profile
+            self.profile = selected_profile
         except ValueError:
             # Profile doesn't exist, set to None
             self._profile = None

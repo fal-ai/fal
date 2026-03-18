@@ -29,9 +29,9 @@ class AppData:
 
 
 def get_client(host: str, team: str | None = None):
-    from fal.sdk import FalServerlessClient, get_default_credentials  # noqa: PLC0415
+    from fal.sdk import FalServerlessClient, get_credentials  # noqa: PLC0415
 
-    credentials = get_default_credentials(team=team)
+    credentials = get_credentials(team=team)
     return FalServerlessClient(host, credentials)
 
 

@@ -131,6 +131,32 @@ def test_wrap_app_allows_resolver_with_container_kind():
     assert fn.options.environment.get("resolver") == "uv"
 
 
+def test_wrap_app_limit_max_requests_propagates_to_serve(
+    isolate_agent_env, monkeypatch: pytest.MonkeyPatch
+):
+    import asyncio
+
+    from fal.app import wrap_app
+
+    class SingleUseApp(App):
+        @endpoint("/")
+        def hello(self) -> str:
+            return "Hello, world!"
+
+    called_limit_max_requests: int | None = None
+
+    async def fake_serve(self, *, limit_max_requests: int | None = None):
+        nonlocal called_limit_max_requests
+        called_limit_max_requests = limit_max_requests
+
+    monkeypatch.setattr(SingleUseApp, "serve", fake_serve)
+
+    fn = wrap_app(SingleUseApp, limit_max_requests=1)
+    asyncio.run(fn.func())
+
+    assert called_limit_max_requests == 1
+
+
 def test_wrap_app_raises_for_virtualenv_only_keys_with_conda_kind():
     from fal.app import wrap_app
 

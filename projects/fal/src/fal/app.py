@@ -133,6 +133,7 @@ async def _set_logger_labels(
 
 def wrap_app(cls: type[App], **kwargs) -> IsolatedFunction:
     include_modules_from(cls)
+    limit_max_requests = kwargs.pop("limit_max_requests", None)
 
     host = kwargs.get("host", None)
     if host:
@@ -145,10 +146,10 @@ def wrap_app(cls: type[App], **kwargs) -> IsolatedFunction:
         set_current_app(app)
 
         if threading.current_thread() == threading.main_thread():
-            return app.serve()
+            return app.serve(limit_max_requests=limit_max_requests)
         else:
             asyncio.set_event_loop(asyncio.new_event_loop())
-            asyncio.run(app.serve())
+            asyncio.run(app.serve(limit_max_requests=limit_max_requests))
 
     # if the function is not marked with _run_on_main_thread, it runs on a thread pool
     # however in thread pool, the function cannot receive SIGTERM

@@ -7,10 +7,10 @@ import pytest
 
 from fal import function
 from fal.flags import GRPC_HOST
-from fal.sdk import get_default_credentials
+from fal.sdk import get_credentials
 
 print("TARGET:", GRPC_HOST, file=sys.stderr)
-print("AUTH:", get_default_credentials(), file=sys.stderr)
+print("AUTH:", get_credentials(), file=sys.stderr)
 
 
 @pytest.fixture(scope="function")
