@@ -3,7 +3,7 @@ from __future__ import annotations
 from fal.auth import current_user_info
 from fal.auth.local import load_preference, save_preference
 from fal.cli import profile
-from fal.sdk import get_default_credentials
+from fal.sdk import get_credentials
 
 AUTH_CONNECTIONS = [
     {"name": "github", "label": "Continue with GitHub"},
@@ -284,7 +284,7 @@ def _set_account(args):
 
 
 def _whoami(args):
-    creds = get_default_credentials()
+    creds = get_credentials()
     user_info = current_user_info(creds.to_headers())
 
     full_name = user_info["full_name"]

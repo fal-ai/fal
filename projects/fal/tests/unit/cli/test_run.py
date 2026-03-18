@@ -13,6 +13,7 @@ def test_run():
     assert args.func == _run
     assert args.func_ref == ("/my/path.py", "myfunc")
     assert args.machine_type is None
+    assert args.limit_max_requests is None
 
 
 def test_run_with_env():
@@ -28,6 +29,13 @@ def test_run_with_machine_type():
     assert args.func == _run
     assert args.func_ref == ("/my/path.py", "myfunc")
     assert args.machine_type == "GPU-H100"
+
+
+def test_run_with_limit_max_requests():
+    args = parse_args(["run", "/my/path.py::myfunc", "--limit-max-requests", "1"])
+    assert args.func == _run
+    assert args.func_ref == ("/my/path.py", "myfunc")
+    assert args.limit_max_requests == 1
 
 
 @patch("fal.api.client.SyncServerlessClient._create_host")
@@ -97,6 +105,7 @@ def mock_args(
     no_cache: bool = False,
     auth: Optional[str] = "public",
     machine_type: Optional[str] = None,
+    limit_max_requests: Optional[int] = None,
 ):
     args = MagicMock()
     args.host = host
@@ -109,7 +118,35 @@ def mock_args(
     args.app_name = None
     args.env = None
     args.machine_type = machine_type
+    args.limit_max_requests = limit_max_requests
     return args
+
+
+@patch("fal.api.client.SyncServerlessClient._create_host")
+@patch("fal.utils.load_function_from")
+def test_run_forwards_limit_max_requests_to_load_function_from(
+    mock_load_function_from, mock_create_host
+):
+    host = mocked_fal_serverless_host("my-host")
+    mock_create_host.return_value = host
+
+    isolated_function = MagicMock()
+    loaded = MagicMock()
+    loaded.function = isolated_function
+    loaded.app_name = None
+    loaded.app_auth = "private"
+    mock_load_function_from.return_value = loaded
+
+    args = mock_args(
+        func_ref=("/my/path.py", "myfunc"),
+        host="my-host",
+        limit_max_requests=1,
+    )
+
+    _run(args)
+
+    _, call_kwargs = mock_load_function_from.call_args
+    assert call_kwargs["limit_max_requests"] == 1
 
 
 @patch("fal.api.client.SyncServerlessClient._create_host")

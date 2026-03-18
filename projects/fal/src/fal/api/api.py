@@ -75,7 +75,7 @@ from fal.sdk import (
     MachineRequirements,
     RegisterApplicationResult,
     get_agent_credentials,
-    get_default_credentials,
+    get_credentials,
 )
 
 if TYPE_CHECKING:
@@ -607,7 +607,7 @@ class FalServerlessHost(Host):
 
     url: str = FAL_SERVERLESS_DEFAULT_URL
     local_file_path: str = ""
-    credentials: Credentials = field(default_factory=get_default_credentials)
+    credentials: Credentials = field(default_factory=get_credentials)
     environment_name: Optional[str] = None
 
     _lock: threading.Lock = field(default_factory=threading.Lock, init=False)
@@ -1799,7 +1799,7 @@ class BaseServable:
     def handle_exit(self):
         pass
 
-    async def serve(self) -> None:
+    async def serve(self, *, limit_max_requests: int | None = None) -> None:
         from prometheus_client import Gauge  # noqa: PLC0415
         from starlette_exporter import handle_metrics  # noqa: PLC0415
 
@@ -1813,7 +1813,12 @@ class BaseServable:
         # and it runs once per worker.
         server = FalServer(
             config=uvicorn.Config(
-                app, host="0.0.0.0", port=8080, timeout_keep_alive=300, lifespan="on"
+                app,
+                host="0.0.0.0",
+                port=8080,
+                timeout_keep_alive=300,
+                lifespan="on",
+                limit_max_requests=limit_max_requests,
             )
         )
         server.set_handle_exit(self.handle_exit)
