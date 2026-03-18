@@ -6,9 +6,9 @@ from fal.api.client import SyncServerlessClient
 from fal.sdk import FalServerlessKeyCredentials
 
 
-def test_sync_client_warns_when_team_set_with_explicit_api_key():
+def test_sync_client_prints_when_team_set_with_explicit_api_key():
     client = SyncServerlessClient(api_key="key-id:key-secret", team="config-team")
-    warning_message = (
+    message = (
         "Ignoring explicit team config-team because key is used. "
         "The key belongs to Test User: my-nickname - usr_456."
     )
@@ -21,12 +21,10 @@ def test_sync_client_warns_when_team_set_with_explicit_api_key():
             "user_id": "usr_456",
         },
     ):
-        with pytest.warns(
-            UserWarning,
-            match=warning_message,
-        ):
+        with patch("fal.sdk.console.print") as mock_console_print:
             credentials = client._credentials
 
+    mock_console_print.assert_called_once_with(message)
     assert isinstance(credentials, FalServerlessKeyCredentials)
     assert credentials.key_id == "key-id"
     assert credentials.key_secret == "key-secret"
