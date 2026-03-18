@@ -46,7 +46,7 @@ from fal.exceptions import (
 )
 from fal.exceptions.gpu import _CUDA_OOM_MESSAGE, _GPU_ERROR_STATUS_CODE
 from fal.ref import get_current_app
-from fal.sdk import RunnerState, get_default_credentials
+from fal.sdk import RunnerState, get_credentials
 from fal.toolkit.utils.endpoint import cancel_on_disconnect
 from fal.workflows import Workflow
 
@@ -1163,7 +1163,7 @@ def test_realtime_connection(test_realtime_app):
 def test_realtime_ws_endpoint(test_realtime_app):
     app_id = apps._backwards_compatible_app_id(test_realtime_app)
     url = apps._REALTIME_URL_FORMAT.format(app_id=app_id) + "/ws"
-    creds = get_default_credentials()
+    creds = get_credentials()
 
     with ws_client.connect(
         url, additional_headers=creds.to_headers(), open_timeout=90
