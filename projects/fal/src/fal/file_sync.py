@@ -187,7 +187,7 @@ class FileSync:
     def __init__(self, local_file_path: str, credentials=None):
         from fal.sdk import get_credentials  # noqa: PLC0415
 
-        self.creds = credentials or get_default_credentials()
+        self.creds = credentials or get_credentials()
         self.local_file_path = local_file_path
 
     @cached_property
