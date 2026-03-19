@@ -12,6 +12,7 @@ import uuid
 import warnings
 from collections.abc import AsyncIterator, Callable, Coroutine
 from concurrent.futures import Future
+from contextlib import asynccontextmanager
 from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional, Union
@@ -227,6 +228,7 @@ class DistributedRunner:
     zmq_socket: Optional[Socket[Any]]
     context: Optional[mp.ProcessContext]
     keepalive_timer: Optional[KeepAliveTimer]
+    _lock: Optional[asyncio.Lock]
 
     def __init__(
         self,
@@ -255,10 +257,21 @@ class DistributedRunner:
         self.keepalive_payload = keepalive_payload
         self.keepalive_interval = keepalive_interval
         self.keepalive_timer = None
-        self.lock = asyncio.Lock()
+        self._lock = None
 
         if set_device is not None:
             warnings.warn("set_device is deprecated and will be removed in the future.")
+
+    @asynccontextmanager
+    async def _invocation_lock(self) -> AsyncIterator[None]:
+        """
+        Acquire the invocation lock lazily in the running event loop.
+        """
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+
+        async with self._lock:
+            yield
 
     def is_alive(self) -> bool:
         """
@@ -737,7 +750,7 @@ class DistributedRunner:
         :param as_text_events: Whether to yield results as text events.
         :return: An async iterator that yields the result from the worker.
         """
-        async with self.lock:
+        async with self._invocation_lock():
             async for result in self._stream(
                 payload, timeout, streaming_timeout, as_text_events
             ):
@@ -821,7 +834,7 @@ class DistributedRunner:
         :return: The result from the worker.
         """
         # Lock the invocation to prevent concurrent invocations
-        async with self.lock:
+        async with self._invocation_lock():
             return await self._invoke(payload, timeout)
 
     async def _invoke(
