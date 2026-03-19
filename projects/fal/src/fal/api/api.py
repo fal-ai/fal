@@ -1825,8 +1825,33 @@ class BaseServable:
 
         metrics_app = FastAPI()
         metrics_app.add_route("/metrics", handle_metrics)
+
+        class _SilentAccessConfig(uvicorn.Config):
+            """Uvicorn config that suppresses access logs without mutating the
+            global ``uvicorn.access`` logger state.
+
+            NOTE: We can't simply pass access_log=False to uvicorn.Config because
+            that clears handlers on the global ``uvicorn.access`` logger in
+            configure_logging(), which would disable access logs for the main
+            app server too (both servers share the same process-wide logger).
+            """
+
+            def configure_logging(self):
+                pass
+
+            def load(self):
+                super().load()
+                _original_protocol = self.http_protocol_class
+
+                class _SilentProtocol(_original_protocol):  # type: ignore[valid-type,misc]
+                    def __init__(self, *args: Any, **kwargs: Any):
+                        super().__init__(*args, **kwargs)
+                        self.access_log = False
+
+                self.http_protocol_class = _SilentProtocol
+
         metrics_server = uvicorn.Server(
-            config=uvicorn.Config(metrics_app, host="0.0.0.0", port=9090)
+            config=_SilentAccessConfig(metrics_app, host="0.0.0.0", port=9090)
         )
 
         async def _serve() -> None:
