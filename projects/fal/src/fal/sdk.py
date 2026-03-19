@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import enum
-import warnings
 from contextlib import ExitStack
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -24,6 +23,7 @@ from isolate.server.interface import from_grpc, to_serialized_object, to_struct
 from fal import flags
 from fal._serialization import patch_pickle
 from fal.auth import UserAccess, current_user_info, key_credentials
+from fal.console import console
 from fal.logging import get_logger
 from fal.logging.trace import TraceContextInterceptor
 
@@ -262,11 +262,12 @@ def get_credentials(
             full_name = user_info["full_name"]
             nickname = user_info["nickname"]
             user_id = user_info["user_id"]
-            warnings.warn(
-                f"Ignoring explicit team {_team} because key is used. "
-                f"The key belongs to {full_name}: {nickname} - {user_id}.",
-                stacklevel=2,
-            )
+
+            if _team != nickname:
+                console.print(
+                    f"Ignoring explicit team {_team} because key is used. "
+                    f"The key belongs to {full_name}: {nickname} - {user_id}."
+                )
         return credentials
 
     return AuthenticatedCredentials(team=_team)
