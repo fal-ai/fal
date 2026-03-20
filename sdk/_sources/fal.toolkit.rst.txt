@@ -40,14 +40,6 @@ fal.toolkit.kv module
    :undoc-members:
    :show-inheritance:
 
-fal.toolkit.optimize module
----------------------------
-
-.. automodule:: fal.toolkit.optimize
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 fal.toolkit.pydantic module
 ---------------------------
 
