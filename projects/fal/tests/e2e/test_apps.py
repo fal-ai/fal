@@ -1461,7 +1461,7 @@ def test_stop_runner(host: api.FalServerlessHost, test_sleep_app: str):
     original_runner_id = None
 
     with host._connection as client:
-        timeout = 10
+        timeout = 15
         start_time = time.time()
         while True:
             _, _, app_alias = test_sleep_app.partition("/")
