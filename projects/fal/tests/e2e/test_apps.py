@@ -1915,7 +1915,7 @@ def graceful_shutdown(
         time.sleep(2)
     else:
         # Need to wait longer than 10s because how we stop the runner
-        time.sleep(12)
+        time.sleep(15)
 
     assert (
         apps.run(test_graceful_shutdown_app, {"uuid": token}, path="/set-uuid") == "ok"
