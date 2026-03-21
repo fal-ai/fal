@@ -220,5 +220,8 @@ def add_env_argument(parser):
         "--env",
         dest="env",
         default=os.environ.get("FAL_ENV"),
-        help="Target environment (defaults to main). Can also be set via FAL_ENV environment variable.",
+        help=(
+            "Target environment (defaults to main). "
+            "Can also be set via FAL_ENV environment variable."
+        ),
     )
