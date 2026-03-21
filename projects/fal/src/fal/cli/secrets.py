@@ -1,6 +1,6 @@
 from fal.api.client import SyncServerlessClient
 
-from .parser import DictAction, FalClientParser
+from .parser import DictAction, FalClientParser, add_env_argument
 
 
 def _set(args):
@@ -27,11 +27,7 @@ def _add_set_parser(subparsers, parents):
         action=DictAction,
         help="Secret NAME=VALUE pairs.",
     )
-    parser.add_argument(
-        "--env",
-        dest="env",
-        help="Target environment (defaults to main).",
-    )
+    add_env_argument(parser)
     parser.set_defaults(func=_set)
 
 
@@ -81,11 +77,7 @@ def _add_list_parser(subparsers, parents):
         help=list_help,
         parents=[*parents, get_output_parser()],
     )
-    parser.add_argument(
-        "--env",
-        dest="env",
-        help="Target environment (defaults to main).",
-    )
+    add_env_argument(parser)
     parser.set_defaults(func=_list)
 
 
@@ -107,11 +99,7 @@ def _add_unset_parser(subparsers, parents):
         metavar="NAME",
         help="Secret's name.",
     )
-    parser.add_argument(
-        "--env",
-        dest="env",
-        help="Target environment (defaults to main).",
-    )
+    add_env_argument(parser)
     parser.set_defaults(func=_unset)
 
 

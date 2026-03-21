@@ -43,6 +43,18 @@ def test_deploy_with_env_and_other_options():
     assert args.env == "staging"
 
 
+@patch.dict("os.environ", {"FAL_ENV": "from-env-var"})
+def test_deploy_uses_fal_env_variable():
+    args = parse_args(["deploy", "myfile.py::MyApp"])
+    assert args.env == "from-env-var"
+
+
+@patch.dict("os.environ", {"FAL_ENV": "from-env-var"})
+def test_deploy_cli_env_overrides_fal_env_variable():
+    args = parse_args(["deploy", "myfile.py::MyApp", "--env", "cli-env"])
+    assert args.env == "cli-env"
+
+
 @pytest.fixture
 def mock_parse_pyproject_toml():
     return {
