@@ -1,10 +1,18 @@
+from types import SimpleNamespace
+from unittest.mock import patch
+
 import pytest
 
 import fal
 from fal.api import IsolatedFunction, Options
 from fal.api.api import merge_basic_config
 from fal.api.client import SyncServerlessClient
-from fal.utils import _find_target, load_function_from
+from fal.utils import (
+    _find_target,
+    _parse_python_entry_point,
+    _parse_python_entry_point_probe_payload,
+    load_function_from,
+)
 
 
 class DummyHost:
@@ -197,3 +205,168 @@ def test_load_function_from_preserves_app_defined_app_files_over_toml(tmp_path):
     assert wrapped_cls.app_files == ["class-files"]
     assert wrapped_cls.app_files_ignore == ["class-ignore"]
     assert wrapped_cls.app_files_context_dir == "class-context"
+
+
+@patch("fal.toolkit.File.from_path")
+@patch("fal.utils._build_project_sdist")
+@patch("fal.utils._probe_python_entry_point_metadata")
+def test_load_from_python_entry_point_strips_local_requirements(
+    mock_probe_metadata, mock_build_sdist, mock_file_from_path, tmp_path
+):
+    from fal.utils import _load_from_python_entry_point
+
+    mock_probe_metadata.return_value = (["/predict"], {"openapi": "spec"}, 8123)
+    sdist_dir = tmp_path / "dist"
+    sdist_dir.mkdir()
+    sdist_path = sdist_dir / "simple-0.1.0.tar.gz"
+    sdist_path.write_text("sdist")
+    mock_build_sdist.return_value = sdist_path
+    mock_file_from_path.return_value = SimpleNamespace(
+        url="https://cdn.example/simple.tgz"
+    )
+
+    host = SyncServerlessClient(host="api.alpha.fal.ai")._create_host()
+    options = Options(environment={"requirements": [".[func]", "torch"]})
+    loaded = _load_from_python_entry_point(
+        host,
+        "simple.func:simple_func",
+        project_root=tmp_path,
+        options=options,
+    )
+
+    assert loaded.function.options.environment["requirements"] == [
+        "simple[func] @ https://cdn.example/simple.tgz",
+        "torch",
+    ]
+    mock_probe_metadata.assert_called_once()
+    assert loaded.endpoints == ["/predict"]
+    assert loaded.function.options.host["metadata"]["openapi"] == {"openapi": "spec"}
+    assert loaded.function.options.host["exposed_port"] == 8123
+
+
+@patch("fal.toolkit.File.from_path")
+@patch("fal.utils._build_project_sdist")
+@patch("fal.utils._probe_python_entry_point_metadata")
+def test_load_from_python_entry_point_preserves_existing_requirements(
+    mock_probe_metadata, mock_build_sdist, mock_file_from_path, tmp_path
+):
+    from fal.utils import _load_from_python_entry_point
+
+    mock_probe_metadata.return_value = (["/predict"], {"openapi": "spec"}, 8123)
+    sdist_dir = tmp_path / "dist"
+    sdist_dir.mkdir()
+    sdist_path = sdist_dir / "simple-0.1.0.tar.gz"
+    sdist_path.write_text("sdist")
+    mock_build_sdist.return_value = sdist_path
+    mock_file_from_path.return_value = SimpleNamespace(
+        url="https://cdn.example/simple.tgz"
+    )
+
+    host = SyncServerlessClient(host="api.alpha.fal.ai")._create_host()
+    options = Options(environment={"requirements": [".[func]", "fal>=1.0.0", "torch"]})
+    loaded = _load_from_python_entry_point(
+        host,
+        "simple.func:simple_func",
+        project_root=tmp_path,
+        options=options,
+    )
+
+    assert loaded.function.options.environment["requirements"] == [
+        "simple[func] @ https://cdn.example/simple.tgz",
+        "fal>=1.0.0",
+        "torch",
+    ]
+
+
+@patch("fal.toolkit.File.from_path")
+@patch("fal.utils._build_project_sdist")
+@patch("fal.utils._probe_python_entry_point_metadata")
+def test_load_from_python_entry_point_does_not_mutate_host_app_files(
+    mock_probe_metadata, mock_build_sdist, mock_file_from_path, tmp_path
+):
+    from fal.utils import _load_from_python_entry_point
+
+    mock_probe_metadata.return_value = (["/predict"], {"openapi": "spec"}, 8123)
+    sdist_dir = tmp_path / "dist"
+    sdist_dir.mkdir(exist_ok=True)
+    sdist_path = sdist_dir / "simple-0.1.0.tar.gz"
+    sdist_path.write_text("sdist")
+    mock_build_sdist.return_value = sdist_path
+    mock_file_from_path.return_value = SimpleNamespace(
+        url="https://cdn.example/simple.tgz"
+    )
+
+    host = SyncServerlessClient(host="api.alpha.fal.ai")._create_host()
+    options = Options(
+        host={
+            "app_files_context_dir": str(tmp_path.parent.resolve()),
+            "app_files": ["assets/config.json"],
+        }
+    )
+    loaded = _load_from_python_entry_point(
+        host,
+        "simple.func:simple_func",
+        project_root=tmp_path,
+        options=options,
+    )
+
+    assert loaded.function.options.host["app_files"] == [
+        "assets/config.json",
+    ]
+
+
+@patch("fal.toolkit.File.from_path")
+@patch("fal.utils._build_project_sdist")
+@patch("fal.utils._probe_python_entry_point_metadata")
+def test_load_from_python_entry_point_raises_when_probe_fails(
+    mock_probe_metadata, mock_build_sdist, mock_file_from_path, tmp_path
+):
+    from fal.api import FalServerlessError
+    from fal.utils import _load_from_python_entry_point
+
+    mock_probe_metadata.side_effect = FalServerlessError("probe failed")
+    sdist_dir = tmp_path / "dist"
+    sdist_dir.mkdir()
+    sdist_path = sdist_dir / "simple-0.1.0.tar.gz"
+    sdist_path.write_text("sdist")
+    mock_build_sdist.return_value = sdist_path
+    mock_file_from_path.return_value = SimpleNamespace(
+        url="https://cdn.example/simple.tgz"
+    )
+
+    host = SyncServerlessClient(host="api.alpha.fal.ai")._create_host()
+    with pytest.raises(FalServerlessError, match="probe failed"):
+        _load_from_python_entry_point(
+            host,
+            "simple.func:simple_func",
+            project_root=tmp_path,
+            options=Options(),
+        )
+
+
+def test_parse_python_entry_point_probe_payload_raises_for_invalid_payload():
+    with pytest.raises(Exception) as exc:
+        _parse_python_entry_point_probe_payload({"openapi": {}})
+    assert "missing valid endpoints" in str(exc.value)
+
+    with pytest.raises(Exception) as exc:
+        _parse_python_entry_point_probe_payload({"endpoints": ["/"]})
+    assert "missing valid openapi spec" in str(exc.value)
+
+    with pytest.raises(Exception) as exc:
+        _parse_python_entry_point_probe_payload(
+            {"endpoints": ["/"], "openapi": {}, "exposed_port": "8080"}
+        )
+    assert "missing valid exposed_port" in str(exc.value)
+
+
+def test_parse_python_entry_point():
+    module_name, symbol_name = _parse_python_entry_point("pkg.mod:MyApp")
+    assert module_name == "pkg.mod"
+    assert symbol_name == "MyApp"
+
+
+def test_parse_python_entry_point_invalid_format():
+    with pytest.raises(Exception) as exc:
+        _parse_python_entry_point("pkg.mod")
+    assert "python_entry_point must be in '<module>:<symbol>' format." in str(exc.value)
