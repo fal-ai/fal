@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 from fal.api.api import merge_basic_config
@@ -175,6 +177,121 @@ def load_function_from(
         app_auth=app_auth,
         source_code=source_code,
         class_name=class_name,
+    )
+
+
+def _prepare_no_pickle_options(
+    file_path: str, options: Optional[Options]
+) -> tuple[Options, str]:
+    from fal.api import FalServerlessError, Options
+
+    target_path = Path(file_path).resolve()
+    merged_options = deepcopy(options) if options is not None else Options()
+
+    host_options = merged_options.host
+    app_files = host_options.get("app_files")
+    context_dir_raw = host_options.get("app_files_context_dir")
+    if context_dir_raw is None and app_files is None:
+        context_dir = target_path.parent
+        host_options["app_files_context_dir"] = str(context_dir)
+        remote_file_path = target_path.name
+        host_options["app_files"] = [remote_file_path]
+        return merged_options, remote_file_path
+
+    context_dir = (
+        Path(context_dir_raw).resolve()
+        if context_dir_raw is not None
+        else Path.cwd().resolve()
+    )
+    try:
+        remote_file_path = str(target_path.relative_to(context_dir))
+    except ValueError as exc:
+        raise FalServerlessError(
+            "The target file must be inside app_files_context_dir "
+            "when using --no-pickle."
+        ) from exc
+
+    if app_files is None:
+        host_options["app_files"] = [remote_file_path]
+    elif remote_file_path not in app_files:
+        host_options["app_files"] = [*app_files, remote_file_path]
+
+    return merged_options, remote_file_path
+
+
+def load_no_pickle_function_from(
+    host: FalServerlessHost,
+    file_path: str,
+    function_name: str | None = None,
+    *,
+    options: Optional[Options] = None,
+    app_name: str | None = None,
+    app_auth: AuthModeLiteral | None = None,
+) -> LoadedFunction:
+    import fal
+    from fal.api import FalServerlessError
+
+    merged_options, remote_file_path = _prepare_no_pickle_options(file_path, options)
+
+    def is_isolated_function_like(value: object) -> bool:
+        from fal.api import IsolatedFunction
+
+        if isinstance(value, IsolatedFunction):
+            return True
+
+        run_local = getattr(value, "run_local", None)
+        return callable(run_local) and hasattr(value, "options")
+
+    def resolve_target(module: dict[str, object]):
+        if function_name is not None:
+            if function_name not in module:
+                raise FalServerlessError(
+                    f"Function '{function_name}' not found in module"
+                )
+            target = module[function_name]
+            if not is_isolated_function_like(target):
+                raise FalServerlessError(
+                    f"Function '{function_name}' is not a fal.function"
+                )
+            return target
+
+        fal_functions = {
+            obj_name: obj
+            for obj_name, obj in module.items()
+            if is_isolated_function_like(obj)
+        }
+        if len(fal_functions) == 0:
+            raise FalServerlessError("No fal.function found in the module.")
+        if len(fal_functions) > 1:
+            raise FalServerlessError(
+                "Multiple fal.functions found in the module: "
+                f"{list(fal_functions.keys())}. "
+                "Please specify the name of the function."
+            )
+
+        [(_, target)] = fal_functions.items()
+        return target
+
+    @fal.function()
+    def no_pickle_wrapper():
+        import runpy
+
+        module = runpy.run_path(remote_file_path)
+        target = resolve_target(module)
+        target.run_local()
+
+    isolated_function = no_pickle_wrapper.on(host=host)
+    _merge_options(isolated_function.options, merged_options)
+    isolated_function.app_name = app_name
+    isolated_function.app_auth = app_auth
+
+    return LoadedFunction(
+        isolated_function,
+        ["/"],
+        app_name=app_name,
+        app_auth=app_auth,
+        source_code=None,
+        class_name=function_name,
     )
 
 

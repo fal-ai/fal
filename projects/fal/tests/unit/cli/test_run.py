@@ -14,6 +14,7 @@ def test_run():
     assert args.func_ref == ("/my/path.py", "myfunc")
     assert args.machine_type is None
     assert args.limit_max_requests is None
+    assert args.no_pickle is False
 
 
 def test_run_with_env():
@@ -36,6 +37,13 @@ def test_run_with_limit_max_requests():
     assert args.func == _run
     assert args.func_ref == ("/my/path.py", "myfunc")
     assert args.limit_max_requests == 1
+
+
+def test_run_with_no_pickle():
+    args = parse_args(["run", "/my/path.py::myfunc", "--no-pickle"])
+    assert args.func == _run
+    assert args.func_ref == ("/my/path.py", "myfunc")
+    assert args.no_pickle is True
 
 
 @patch("fal.api.client.SyncServerlessClient._create_host")
@@ -106,6 +114,8 @@ def mock_args(
     auth: Optional[str] = "public",
     machine_type: Optional[str] = None,
     limit_max_requests: Optional[int] = None,
+    no_pickle: bool = False,
+    local: bool = False,
 ):
     args = MagicMock()
     args.host = host
@@ -119,7 +129,73 @@ def mock_args(
     args.env = None
     args.machine_type = machine_type
     args.limit_max_requests = limit_max_requests
+    args.no_pickle = no_pickle
+    args.local = local
     return args
+
+
+@patch("fal.api.client.SyncServerlessClient._create_host")
+@patch("fal.utils.load_no_pickle_function_from")
+@patch("fal.utils.load_function_from")
+def test_run_uses_no_pickle_loader_when_enabled(
+    mock_load_function_from,
+    mock_load_no_pickle_function_from,
+    mock_create_host,
+):
+    host = mocked_fal_serverless_host("my-host")
+    mock_create_host.return_value = host
+
+    isolated_function = MagicMock()
+    isolated_function.options = MagicMock()
+    isolated_function.options.host = {}
+    loaded = MagicMock()
+    loaded.function = isolated_function
+    loaded.app_name = None
+    loaded.app_auth = None
+    mock_load_no_pickle_function_from.return_value = loaded
+
+    args = mock_args(
+        func_ref=("/my/path.py", "myfunc"),
+        host="my-host",
+        no_pickle=True,
+    )
+
+    _run(args)
+
+    mock_load_no_pickle_function_from.assert_called_once()
+    mock_load_function_from.assert_not_called()
+    mock_create_host.assert_called_once_with(environment_name=None)
+
+
+@patch("fal.api.client.SyncServerlessClient._create_host")
+@patch("fal.utils.load_no_pickle_function_from")
+def test_run_with_no_pickle_and_local_runs_wrapper_locally(
+    mock_load_no_pickle_function_from,
+    mock_create_host,
+):
+    host = mocked_fal_serverless_host("my-host")
+    mock_create_host.return_value = host
+
+    isolated_function = MagicMock()
+    isolated_function.options = MagicMock()
+    isolated_function.options.host = {}
+    loaded = MagicMock()
+    loaded.function = isolated_function
+    loaded.app_name = None
+    loaded.app_auth = None
+    mock_load_no_pickle_function_from.return_value = loaded
+
+    args = mock_args(
+        func_ref=("/my/path.py", "myfunc"),
+        host="my-host",
+        no_pickle=True,
+        local=True,
+    )
+
+    _run(args)
+
+    isolated_function.run_local.assert_called_once_with()
+    isolated_function.assert_not_called()
 
 
 @patch("fal.api.client.SyncServerlessClient._create_host")
@@ -321,6 +397,46 @@ def test_run_with_toml_cli_auth_override(
 
     _, call_kwargs = mock_load_function_from.call_args
     assert call_kwargs["app_auth"] == "private"
+
+
+@patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+@patch("fal.api.client.SyncServerlessClient._create_host")
+@patch("fal.utils.load_no_pickle_function_from")
+@patch("fal.utils.load_function_from")
+def test_run_with_no_pickle_and_toml_app(
+    mock_load_function_from,
+    mock_load_no_pickle_function_from,
+    mock_create_host,
+    mock_parse_toml,
+    mock_find_toml,
+    mock_parse_pyproject_toml,
+):
+    mock_parse_toml.return_value = mock_parse_pyproject_toml
+
+    host = mocked_fal_serverless_host("my-host")
+    mock_create_host.return_value = host
+
+    isolated_function = MagicMock()
+    isolated_function.options = MagicMock()
+    isolated_function.options.host = {}
+    loaded = MagicMock()
+    loaded.function = isolated_function
+    loaded.app_name = None
+    loaded.app_auth = None
+    mock_load_no_pickle_function_from.return_value = loaded
+
+    args = mock_args(func_ref=("override-app", None), host="my-host", no_pickle=True)
+
+    _run(args)
+
+    mock_load_function_from.assert_not_called()
+    _, call_kwargs = mock_load_no_pickle_function_from.call_args
+    assert call_kwargs["app_name"] is None
+    assert call_kwargs["app_auth"] == "public"
+    assert call_kwargs["options"].environment["requirements"] == ["numpy==1.26.4"]
+    assert call_kwargs["options"].host["min_concurrency"] == 2
+    assert call_kwargs["options"].host["regions"] == ["us-east"]
 
 
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
