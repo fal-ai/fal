@@ -1,10 +1,19 @@
+from unittest.mock import patch
+
 import pytest
 
 import fal
 from fal.api import IsolatedFunction, Options
 from fal.api.api import merge_basic_config
 from fal.api.client import SyncServerlessClient
-from fal.utils import _find_target, load_function_from
+from fal.utils import (
+    _build_local_wheel_install_target,
+    _build_runtime_pip_install_command,
+    _find_target,
+    _materialize_runtime_wheel_path,
+    _parse_python_entry_point,
+    load_function_from,
+)
 
 
 class DummyHost:
@@ -197,3 +206,174 @@ def test_load_function_from_preserves_app_defined_app_files_over_toml(tmp_path):
     assert wrapped_cls.app_files == ["class-files"]
     assert wrapped_cls.app_files_ignore == ["class-ignore"]
     assert wrapped_cls.app_files_context_dir == "class-context"
+
+
+@patch("fal.utils._build_project_wheel")
+def test_load_from_python_entry_point_strips_local_requirements(
+    mock_build_wheel, tmp_path
+):
+    from fal.utils import _load_from_python_entry_point
+
+    wheel_dir = tmp_path / "dist"
+    wheel_dir.mkdir()
+    wheel_path = wheel_dir / "simple-0.1.0-py3-none-any.whl"
+    wheel_path.write_text("wheel")
+    mock_build_wheel.return_value = wheel_path
+
+    host = SyncServerlessClient(host="api.alpha.fal.ai")._create_host()
+    options = Options(environment={"requirements": [".[func]", "torch"]})
+    loaded = _load_from_python_entry_point(
+        host,
+        "simple.func:simple_func",
+        project_root=tmp_path,
+        options=options,
+    )
+
+    assert loaded.function.options.environment["requirements"] == ["torch", "fal"]
+    assert loaded.function.options.host["app_files_context_dir"] == str(
+        tmp_path.resolve()
+    )
+    assert loaded.function.options.host["app_files"] == [
+        str(wheel_path.relative_to(tmp_path.resolve()))
+    ]
+
+
+@patch("fal.utils._build_project_wheel")
+def test_load_from_python_entry_point_does_not_duplicate_fal_requirement(
+    mock_build_wheel, tmp_path
+):
+    from fal.utils import _load_from_python_entry_point
+
+    wheel_dir = tmp_path / "dist"
+    wheel_dir.mkdir()
+    wheel_path = wheel_dir / "simple-0.1.0-py3-none-any.whl"
+    wheel_path.write_text("wheel")
+    mock_build_wheel.return_value = wheel_path
+
+    host = SyncServerlessClient(host="api.alpha.fal.ai")._create_host()
+    options = Options(environment={"requirements": [".[func]", "fal>=1.0.0", "torch"]})
+    loaded = _load_from_python_entry_point(
+        host,
+        "simple.func:simple_func",
+        project_root=tmp_path,
+        options=options,
+    )
+
+    assert loaded.function.options.environment["requirements"] == [
+        "fal>=1.0.0",
+        "torch",
+    ]
+
+
+@patch("fal.utils._build_project_wheel")
+def test_load_from_python_entry_point_stages_wheel_inside_context_dir(
+    mock_build_wheel, tmp_path
+):
+    from fal.utils import _load_from_python_entry_point
+
+    external_wheel_dir = tmp_path.parent / "external-no-pickle-wheel"
+    external_wheel_dir.mkdir(exist_ok=True)
+    external_wheel_path = external_wheel_dir / "simple-0.1.0-py3-none-any.whl"
+    external_wheel_path.write_text("wheel")
+    mock_build_wheel.return_value = external_wheel_path
+
+    host = SyncServerlessClient(host="api.alpha.fal.ai")._create_host()
+    options = Options(
+        host={
+            "app_files_context_dir": str(tmp_path.resolve()),
+            "app_files": ["assets/config.json"],
+        }
+    )
+    loaded = _load_from_python_entry_point(
+        host,
+        "simple.func:simple_func",
+        project_root=tmp_path,
+        options=options,
+    )
+
+    staged_relative_path = "fal-no-pickle-wheels/simple-0.1.0-py3-none-any.whl"
+    assert loaded.function.options.host["app_files"] == [
+        "assets/config.json",
+        staged_relative_path,
+    ]
+    assert (tmp_path / staged_relative_path).read_text() == "wheel"
+
+
+def test_build_local_wheel_install_target_without_extras(tmp_path, monkeypatch):
+    wheel_path = tmp_path / "fal-no-pickle-wheels" / "simple-0.1.0-py3-none-any.whl"
+    expected = str(wheel_path.resolve())
+
+    assert (
+        _build_local_wheel_install_target(
+            wheel_local_path=wheel_path,
+            wheel_file_name="simple-0.1.0-py3-none-any.whl",
+            extras=[],
+        )
+        == expected
+    )
+
+
+def test_build_local_wheel_install_target_with_extras(tmp_path):
+    wheel_local_path = (
+        tmp_path / "fal-no-pickle-wheels" / "simple-0.1.0-py3-none-any.whl"
+    ).resolve()
+    expected = f"simple[func,image] @ {wheel_local_path.as_uri()}"
+
+    assert (
+        _build_local_wheel_install_target(
+            wheel_local_path=wheel_local_path,
+            wheel_file_name="simple-0.1.0-py3-none-any.whl",
+            extras=["image", "func", "func"],
+        )
+        == expected
+    )
+
+
+def test_materialize_runtime_wheel_path_keeps_named_whl(tmp_path):
+    wheel_path = tmp_path / "simple-0.1.0-py3-none-any.whl"
+    wheel_path.write_text("wheel")
+
+    materialized = _materialize_runtime_wheel_path(
+        wheel_local_path=wheel_path,
+        wheel_file_name="simple-0.1.0-py3-none-any.whl",
+    )
+
+    assert materialized == wheel_path.resolve()
+
+
+def test_materialize_runtime_wheel_path_copies_blob_path(tmp_path):
+    blob_path = tmp_path / "app-blobs" / "fce09c55484593342d0eb63df89b6cae"
+    blob_path.parent.mkdir(parents=True)
+    blob_path.write_text("wheel")
+
+    materialized = _materialize_runtime_wheel_path(
+        wheel_local_path=blob_path,
+        wheel_file_name="simple-0.1.0-py3-none-any.whl",
+    )
+
+    assert materialized.name == "simple-0.1.0-py3-none-any.whl"
+    assert materialized.suffix == ".whl"
+    assert materialized.read_text() == "wheel"
+
+
+def test_build_runtime_pip_install_command(tmp_path):
+    command = _build_runtime_pip_install_command(
+        install_target="simple[func] @ file:///tmp/simple-0.1.0-py3-none-any.whl",
+        target_dir=tmp_path / "site",
+    )
+
+    assert command[1:6] == ["-m", "pip", "install", "--no-cache-dir", "--target"]
+    assert command[6] == str(tmp_path / "site")
+    assert command[7] == "simple[func] @ file:///tmp/simple-0.1.0-py3-none-any.whl"
+
+
+def test_parse_python_entry_point():
+    module_name, symbol_name = _parse_python_entry_point("pkg.mod:MyApp")
+    assert module_name == "pkg.mod"
+    assert symbol_name == "MyApp"
+
+
+def test_parse_python_entry_point_invalid_format():
+    with pytest.raises(Exception) as exc:
+        _parse_python_entry_point("pkg.mod")
+    assert "python_entry_point must be in '<module>:<symbol>' format." in str(exc.value)
