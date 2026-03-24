@@ -8,8 +8,13 @@ from ._base import (
     FileTooLargeError,
     RequestCancelledException,
 )
-from ._cuda import CUDAOutOfMemoryException
 from .auth import UnauthenticatedException
+from .gpu import (
+    CUDAOutOfMemoryException,
+    GPUException,
+    GPUOutOfMemoryException,
+    catch_gpu_exceptions,
+)
 
 __all__ = [
     "FalServerlessException",
@@ -18,6 +23,9 @@ __all__ = [
     "RequestCancelledException",
     "FileTooLargeError",
     "AppFileUploadException",
+    "GPUException",
+    "GPUOutOfMemoryException",
     "CUDAOutOfMemoryException",
     "UnauthenticatedException",
+    "catch_gpu_exceptions",
 ]

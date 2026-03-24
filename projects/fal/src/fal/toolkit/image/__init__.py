@@ -64,7 +64,7 @@ def read_image_from_url(
 
     try:
         request = urllib.request.Request(url, headers=TEMP_HEADERS)
-        response = urllib.request.urlopen(request)
+        response = urllib.request.urlopen(request, timeout=30)
         image_pil = Image.open(response)
     except Exception:
         import traceback

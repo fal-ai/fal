@@ -3,7 +3,7 @@ name: Run fal-client tests
 on:
   push:
     branches:
-    - main
+      - main
   pull_request:
   workflow_dispatch:
 
@@ -13,20 +13,20 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.8", "3.13"]
+        python: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
     steps:
-    - uses: actions/checkout@v3
-      with:
-        fetch-depth: 0
-    - uses: actions/setup-python@v4
-      with:
-        python-version: ${{ matrix.python }}
-    - name: Install dependencies
-      run: |
-        pip install --upgrade pip wheel
-        pip install -e 'projects/fal_client[test]'
-    - name: Run tests
-      env:
-        FAL_KEY: ${{ secrets.FAL_KEY_PROD }}
-      run: |
-        pytest projects/fal_client/tests
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip wheel
+          pip install -e 'projects/fal_client[test]'
+      - name: Run tests
+        env:
+          FAL_KEY: ${{ secrets.FAL_KEY_PROD }}
+        run: |
+          pytest projects/fal_client/tests

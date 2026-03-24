@@ -3,6 +3,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from fal.api import Options
+from fal.cli._utils import AppData
 from fal.cli.deploy import _deploy
 from fal.cli.main import parse_args
 from fal.project import find_project_root
@@ -14,6 +16,45 @@ def test_deploy():
     assert args.app_ref == ("myfile.py", "MyApp")
 
 
+def test_deploy_with_env():
+    args = parse_args(["deploy", "myfile.py::MyApp", "--env", "dev"])
+    assert args.func == _deploy
+    assert args.app_ref == ("myfile.py", "MyApp")
+    assert args.env == "dev"
+
+
+def test_deploy_with_env_and_other_options():
+    args = parse_args(
+        [
+            "deploy",
+            "myfile.py::MyApp",
+            "--app-name",
+            "my-app",
+            "--auth",
+            "public",
+            "--env",
+            "staging",
+        ]
+    )
+    assert args.func == _deploy
+    assert args.app_ref == ("myfile.py", "MyApp")
+    assert args.app_name == "my-app"
+    assert args.auth == "public"
+    assert args.env == "staging"
+
+
+@patch.dict("os.environ", {"FAL_ENV": "from-env-var"})
+def test_deploy_uses_fal_env_variable():
+    args = parse_args(["deploy", "myfile.py::MyApp"])
+    assert args.env == "from-env-var"
+
+
+@patch.dict("os.environ", {"FAL_ENV": "from-env-var"})
+def test_deploy_cli_env_overrides_fal_env_variable():
+    args = parse_args(["deploy", "myfile.py::MyApp", "--env", "cli-env"])
+    assert args.env == "cli-env"
+
+
 @pytest.fixture
 def mock_parse_pyproject_toml():
     return {
@@ -23,8 +64,22 @@ def mock_parse_pyproject_toml():
                 "auth": "shared",
                 "deployment_strategy": "rolling",
             },
+            "override-app": {
+                "ref": "src/override_app/inference.py::OverrideApp",
+                "name": "override-name",
+                "auth": "private",
+                "requirements": ["numpy==1.26.4"],
+                "min_concurrency": 2,
+                "regions": ["us-east"],
+            },
             "another-app": {
                 "ref": "src/another_app/inference.py::AnotherApp",
+            },
+            "app-with-files": {
+                "ref": "src/app_with_files/inference.py::AppWithFiles",
+                "app_files": ["assets", "config.yaml"],
+                "app_files_ignore": [r"\\.venv/"],
+                "app_files_context_dir": ".",
             },
             "app-with-extras": {
                 "ref": "src/app_with_extras/inference.py::AppWithExtras",
@@ -34,6 +89,11 @@ def mock_parse_pyproject_toml():
                 "ref": "src/team_app/inference.py::TeamApp",
                 "team": "my-team",
                 "auth": "shared",
+            },
+            "no-scale-app": {
+                "ref": "src/no_scale_app/inference.py::NoScaleApp",
+                "team": "my-team",
+                "no_scale": True,
             },
         }
     }
@@ -46,7 +106,8 @@ def mock_args(
     strategy: Optional[str] = None,
     reset_scale: bool = False,
     team: Optional[str] = None,
-    force_env_build: bool = False,
+    no_cache: bool = False,
+    env: Optional[str] = None,
 ):
     args = MagicMock()
 
@@ -57,7 +118,9 @@ def mock_args(
     args.app_scale_settings = reset_scale
     args.output = "pretty"
     args.team = team
-    args.force_env_build = force_env_build
+    args.no_cache = no_cache
+    args.force_env_build = False
+    args.env = env
 
     return args
 
@@ -81,11 +144,16 @@ def test_deploy_with_toml_success(
     mock_deploy_ref.assert_called_once_with(
         mock_deploy_ref.call_args[0][0],
         (f"{project_root / 'src/my_app/inference.py'}", "MyApp"),
-        "my-app",
-        "shared",
-        strategy="rolling",
-        scale=False,
+        AppData(
+            ref=f"{project_root / 'src/my_app/inference.py'}::MyApp",
+            auth="shared",
+            deployment_strategy="rolling",
+            reset_scale=False,
+            team=None,
+            name="my-app",
+        ),
         force_env_build=False,
+        environment_name=None,
     )
 
 
@@ -108,11 +176,49 @@ def test_deploy_with_toml_no_auth(
     mock_deploy_ref.assert_called_once_with(
         mock_deploy_ref.call_args[0][0],
         (f"{project_root / 'src/another_app/inference.py'}", "AnotherApp"),
-        "another-app",
-        None,
-        strategy=None,
-        scale=False,
+        AppData(
+            ref=f"{project_root / 'src/another_app/inference.py'}::AnotherApp",
+            auth=None,
+            deployment_strategy=None,
+            reset_scale=False,
+            team=None,
+            name="another-app",
+        ),
         force_env_build=False,
+        environment_name=None,
+    )
+
+
+@patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+@patch("fal.api.deploy._deploy_from_reference")
+def test_deploy_with_toml_overrides_applied(
+    mock_deploy_ref, mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml
+):
+    mock_parse_toml.return_value = mock_parse_pyproject_toml
+
+    args = mock_args(app_ref=("override-app", None))
+
+    _deploy(args)
+
+    project_root, _ = find_project_root(None)
+    mock_deploy_ref.assert_called_once_with(
+        mock_deploy_ref.call_args[0][0],
+        (f"{project_root / 'src/override_app/inference.py'}", "OverrideApp"),
+        AppData(
+            ref=f"{project_root / 'src/override_app/inference.py'}::OverrideApp",
+            auth="private",
+            deployment_strategy=None,
+            reset_scale=False,
+            team=None,
+            name="override-name",
+            options=Options(
+                host={"min_concurrency": 2, "regions": ["us-east"]},
+                environment={"requirements": ["numpy==1.26.4"]},
+            ),
+        ),
+        force_env_build=False,
+        environment_name=None,
     )
 
 
@@ -220,11 +326,16 @@ def test_deploy_with_toml_deployment_strategy(
     mock_deploy_ref.assert_called_once_with(
         mock_deploy_ref.call_args[0][0],
         (f"{project_root / 'src/my_app/inference.py'}", "MyApp"),
-        "my-app",
-        "shared",
-        strategy="rolling",
-        scale=False,
+        AppData(
+            ref=f"{project_root / 'src/my_app/inference.py'}::MyApp",
+            auth="shared",
+            deployment_strategy="rolling",
+            reset_scale=False,
+            team=None,
+            name="my-app",
+        ),
         force_env_build=False,
+        environment_name=None,
     )
 
 
@@ -245,11 +356,16 @@ def test_deploy_with_toml_default_deployment_strategy(
     mock_deploy_ref.assert_called_once_with(
         mock_deploy_ref.call_args[0][0],
         (f"{project_root / 'src/another_app/inference.py'}", "AnotherApp"),
-        "another-app",
-        None,
-        strategy=None,
-        scale=False,
+        AppData(
+            ref=f"{project_root / 'src/another_app/inference.py'}::AnotherApp",
+            auth=None,
+            deployment_strategy=None,
+            reset_scale=False,
+            team=None,
+            name="another-app",
+        ),
         force_env_build=False,
+        environment_name=None,
     )
 
 
@@ -270,11 +386,49 @@ def test_deploy_with_cli_auth(
     mock_deploy_ref.assert_called_once_with(
         mock_deploy_ref.call_args[0][0],
         (f"{project_root / 'src/my_app/inference.py'}", "MyApp"),
-        None,
-        "shared",
-        strategy=None,
-        scale=False,
+        AppData(
+            ref=f"{project_root / 'src/my_app/inference.py'}::MyApp",
+            auth="shared",
+            deployment_strategy=None,
+            reset_scale=False,
+            team=None,
+            name=None,
+        ),
         force_env_build=False,
+        environment_name=None,
+    )
+
+
+@patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+@patch("fal.api.deploy._deploy_from_reference")
+def test_deploy_with_cli_app_name(
+    mock_deploy_ref, mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml
+):
+    mock_parse_toml.return_value = mock_parse_pyproject_toml
+
+    args = mock_args(
+        app_ref=("src/my_app/inference.py", "MyApp"),
+        app_name="cli-app",
+    )
+
+    _deploy(args)
+
+    project_root, _ = find_project_root(None)
+
+    mock_deploy_ref.assert_called_once_with(
+        mock_deploy_ref.call_args[0][0],
+        (f"{project_root / 'src/my_app/inference.py'}", "MyApp"),
+        AppData(
+            ref=f"{project_root / 'src/my_app/inference.py'}::MyApp",
+            auth=None,
+            deployment_strategy=None,
+            reset_scale=False,
+            team=None,
+            name="cli-app",
+        ),
+        force_env_build=False,
+        environment_name=None,
     )
 
 
@@ -295,11 +449,16 @@ def test_deploy_with_cli_deployment_strategy(
     mock_deploy_ref.assert_called_once_with(
         mock_deploy_ref.call_args[0][0],
         (f"{project_root / 'src/my_app/inference.py'}", "MyApp"),
-        None,
-        None,
-        strategy="rolling",
-        scale=False,
+        AppData(
+            ref=f"{project_root / 'src/my_app/inference.py'}::MyApp",
+            auth=None,
+            deployment_strategy="rolling",
+            reset_scale=False,
+            team=None,
+            name=None,
+        ),
         force_env_build=False,
+        environment_name=None,
     )
 
 
@@ -320,11 +479,16 @@ def test_deploy_with_cli_reset_scale(
     mock_deploy_ref.assert_called_once_with(
         mock_deploy_ref.call_args[0][0],
         (f"{project_root / 'src/my_app/inference.py'}", "MyApp"),
-        None,
-        None,
-        strategy=None,
-        scale=True,
+        AppData(
+            ref=f"{project_root / 'src/my_app/inference.py'}::MyApp",
+            auth=None,
+            deployment_strategy=None,
+            reset_scale=True,
+            team=None,
+            name=None,
+        ),
         force_env_build=False,
+        environment_name=None,
     )
 
 
@@ -345,23 +509,28 @@ def test_deploy_with_cli_scale(
     mock_deploy_ref.assert_called_once_with(
         mock_deploy_ref.call_args[0][0],
         (f"{project_root / 'src/my_app/inference.py'}", "MyApp"),
-        None,
-        None,
-        strategy=None,
-        scale=False,
+        AppData(
+            ref=f"{project_root / 'src/my_app/inference.py'}::MyApp",
+            auth=None,
+            deployment_strategy=None,
+            reset_scale=False,
+            team=None,
+            name=None,
+        ),
         force_env_build=False,
+        environment_name=None,
     )
 
 
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
 @patch("fal.cli._utils.parse_pyproject_toml")
 @patch("fal.api.deploy._deploy_from_reference")
-def test_deploy_with_cli_force_env_build(
+def test_deploy_with_cli_no_cache(
     mock_deploy_ref, mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml
 ):
     mock_parse_toml.return_value = mock_parse_pyproject_toml
 
-    args = mock_args(app_ref=("src/my_app/inference.py", "MyApp"), force_env_build=True)
+    args = mock_args(app_ref=("src/my_app/inference.py", "MyApp"), no_cache=True)
 
     _deploy(args)
 
@@ -370,11 +539,16 @@ def test_deploy_with_cli_force_env_build(
     mock_deploy_ref.assert_called_once_with(
         mock_deploy_ref.call_args[0][0],
         (f"{project_root / 'src/my_app/inference.py'}", "MyApp"),
-        None,
-        None,
-        strategy=None,
-        scale=False,
+        AppData(
+            ref=f"{project_root / 'src/my_app/inference.py'}::MyApp",
+            auth=None,
+            deployment_strategy=None,
+            reset_scale=False,
+            team=None,
+            name=None,
+        ),
         force_env_build=True,
+        environment_name=None,
     )
 
 
@@ -478,14 +652,17 @@ def test_get_app_data_from_toml_with_team(
 
     mock_parse_toml.return_value = mock_parse_pyproject_toml
 
-    app_ref, auth, strategy, reset_scale, team = get_app_data_from_toml("team-app")
+    toml_data = get_app_data_from_toml("team-app")
 
     project_root, _ = find_project_root(None)
-    assert app_ref == f"{project_root / 'src/team_app/inference.py'}::TeamApp"
-    assert auth == "shared"
-    assert strategy is None
-    assert reset_scale is False
-    assert team == "my-team"
+    assert toml_data.ref == f"{project_root / 'src/team_app/inference.py'}::TeamApp"
+    assert toml_data.auth == "shared"
+    assert toml_data.deployment_strategy is None
+    assert toml_data.reset_scale is False
+    assert toml_data.team == "my-team"
+    assert toml_data.name == "team-app"
+    assert toml_data.options.host == {}
+    assert toml_data.options.environment == {}
 
 
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
@@ -498,11 +675,104 @@ def test_get_app_data_from_toml_without_team(
 
     mock_parse_toml.return_value = mock_parse_pyproject_toml
 
-    app_ref, auth, strategy, reset_scale, team = get_app_data_from_toml("my-app")
+    toml_data = get_app_data_from_toml("my-app")
 
     project_root, _ = find_project_root(None)
-    assert app_ref == f"{project_root / 'src/my_app/inference.py'}::MyApp"
-    assert auth == "shared"
-    assert strategy == "rolling"
-    assert reset_scale is False
-    assert team is None
+    assert toml_data.ref == f"{project_root / 'src/my_app/inference.py'}::MyApp"
+    assert toml_data.auth == "shared"
+    assert toml_data.deployment_strategy == "rolling"
+    assert toml_data.reset_scale is False
+    assert toml_data.team is None
+    assert toml_data.name == "my-app"
+    assert toml_data.options.host == {}
+    assert toml_data.options.environment == {}
+
+
+@patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+def test_get_app_data_from_toml_with_app_files(
+    mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml
+):
+    from fal.cli._utils import get_app_data_from_toml
+
+    mock_parse_toml.return_value = mock_parse_pyproject_toml
+
+    toml_data = get_app_data_from_toml("app-with-files")
+
+    project_root, _ = find_project_root(None)
+    assert toml_data.ref == (
+        f"{project_root / 'src/app_with_files/inference.py'}::AppWithFiles"
+    )
+    assert toml_data.options.host == {
+        "app_files": ["assets", "config.yaml"],
+        "app_files_ignore": [r"\\.venv/"],
+        "app_files_context_dir": ".",
+    }
+    assert toml_data.options.environment == {}
+
+
+@patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+def test_get_app_data_from_toml_rejects_app_files_context_dir_without_app_files(
+    mock_parse_toml, mock_find_toml
+):
+    from fal.cli._utils import get_app_data_from_toml
+
+    mock_parse_toml.return_value = {
+        "apps": {
+            "my-app": {
+                "ref": "src/my_app/inference.py::MyApp",
+                "app_files_context_dir": ".",
+            }
+        }
+    }
+
+    with pytest.raises(
+        ValueError,
+        match="app_files_context_dir is only supported when app_files is provided.",
+    ):
+        get_app_data_from_toml("my-app")
+
+
+@patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+def test_get_app_data_from_toml_no_scale_warning_can_be_suppressed(
+    mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml, capsys
+):
+    from fal.cli._utils import get_app_data_from_toml
+
+    mock_parse_toml.return_value = mock_parse_pyproject_toml
+
+    get_app_data_from_toml("no-scale-app", emit_deprecation_warnings=False)
+    captured = capsys.readouterr()
+
+    assert (
+        "[WARNING] no_scale is deprecated, use app_scale_settings instead"
+        not in captured.out
+    )
+
+
+@patch("fal.cli._utils.get_app_data_from_toml")
+@patch("fal.cli.deploy.SyncServerlessClient")
+def test_deploy_team_lookup_uses_silent_toml_read(mock_client, mock_get_app_data):
+    mock_get_app_data.return_value = AppData(team="my-team")
+
+    # Mock the client instance
+    mock_client_instance = MagicMock()
+    mock_client.return_value = mock_client_instance
+    mock_client_instance.deploy.return_value = MagicMock(
+        revision="rev-123",
+        app_name="no-scale-app",
+        auth_mode="private",
+        urls={"playground": {}, "sync": {}, "async": {}},
+        log_url="https://fal.ai/logs/123",
+    )
+
+    args = mock_args(app_ref=("no-scale-app", None))
+    args.host = "my-host"
+
+    _deploy(args)
+
+    mock_get_app_data.assert_called_once_with(
+        "no-scale-app", emit_deprecation_warnings=False
+    )

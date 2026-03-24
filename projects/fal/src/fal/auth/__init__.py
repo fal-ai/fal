@@ -32,7 +32,7 @@ _colab_state = GoogleColabState()
 
 def is_google_colab() -> bool:
     try:
-        from IPython import get_ipython
+        from IPython import get_ipython  # noqa: PLC0415
 
         return "google.colab" in str(get_ipython())
     except ModuleNotFoundError:
@@ -49,7 +49,7 @@ def get_colab_token() -> Optional[str]:
             return _colab_state.secret
 
         try:
-            from google.colab import userdata  # noqa: I001
+            from google.colab import userdata  # noqa: I001, PLC0415
         except ImportError:
             return None
 
@@ -63,26 +63,37 @@ def get_colab_token() -> Optional[str]:
         return _colab_state.secret
 
 
-def key_credentials() -> tuple[str, str] | None:
+def key_credentials(profile: str | None = None) -> tuple[str, str] | None:
     # Ignore key credentials when the user forces auth by user.
     if os.environ.get("FAL_FORCE_AUTH_BY_USER") == "1":
         return None
 
-    config = Config()
+    config = Config(profile=profile)
 
-    key = os.environ.get("FAL_KEY") or config.get("key") or get_colab_token()
-    if key:
+    def _check_key(key: str, key_name: str) -> tuple[str, str] | None:
         try:
             key_id, key_secret = key.split(":", 1)
             return (key_id, key_secret)
         except ValueError:
-            print(f"Invalid key format: {key}")
+            print(f"Invalid key format for {key_name}. Expected '<id>:<secret>'.")
             return None
 
-    elif "FAL_KEY_ID" in os.environ and "FAL_KEY_SECRET" in os.environ:
+    env_key = os.environ.get("FAL_KEY")
+    if env_key:
+        return _check_key(env_key, "FAL_KEY environment variable")
+
+    config_key = config.get("key")
+    if config_key:
+        return _check_key(config_key, f"key in fal config {config.config_path}")
+
+    colab_key = get_colab_token()
+    if colab_key:
+        return _check_key(colab_key, "FAL_KEY in google colab")
+
+    if "FAL_KEY_ID" in os.environ and "FAL_KEY_SECRET" in os.environ:
         return (os.environ["FAL_KEY_ID"], os.environ["FAL_KEY_SECRET"])
-    else:
-        return None
+
+    return None
 
 
 def _fetch_access_token() -> str:
@@ -119,13 +130,16 @@ def _fetch_access_token() -> str:
         return token_data["access_token"]
 
 
-def _fetch_teams(bearer_token: str) -> list[dict]:
-    import json
-    from urllib.error import HTTPError
-    from urllib.request import Request, urlopen
+_ARCHIVE_REASON = "This account has been archived. Please contact support@fal.ai."
 
-    from fal.exceptions import FalServerlessException
-    from fal.flags import REST_URL
+
+def _fetch_teams(bearer_token: str) -> list[dict]:
+    import json  # noqa: PLC0415
+    from urllib.error import HTTPError  # noqa: PLC0415
+    from urllib.request import Request, urlopen  # noqa: PLC0415
+
+    from fal.exceptions import FalServerlessException  # noqa: PLC0415
+    from fal.flags import REST_URL  # noqa: PLC0415
 
     request = Request(
         method="GET",
@@ -133,19 +147,19 @@ def _fetch_teams(bearer_token: str) -> list[dict]:
         headers={"Authorization": bearer_token},
     )
     try:
-        with urlopen(request) as response:
+        with urlopen(request, timeout=30) as response:
             return json.load(response)
     except HTTPError as exc:
         raise FalServerlessException("Failed to fetch teams") from exc
 
 
 def current_user_info(headers: dict[str, str]) -> dict:
-    import json
-    from urllib.error import HTTPError
-    from urllib.request import Request, urlopen
+    import json  # noqa: PLC0415
+    from urllib.error import HTTPError  # noqa: PLC0415
+    from urllib.request import Request, urlopen  # noqa: PLC0415
 
-    from fal.exceptions import FalServerlessException
-    from fal.flags import REST_URL
+    from fal.exceptions import FalServerlessException  # noqa: PLC0415
+    from fal.flags import REST_URL  # noqa: PLC0415
 
     request = Request(
         method="GET",
@@ -153,14 +167,14 @@ def current_user_info(headers: dict[str, str]) -> dict:
         headers=headers,
     )
     try:
-        with urlopen(request) as response:
+        with urlopen(request, timeout=30) as response:
             return json.load(response)
     except HTTPError as exc:
         raise FalServerlessException("Failed to fetch user info") from exc
 
 
-def login(console):
-    token_data = auth0.login(console)
+def login(console, connection: str | None = None):
+    token_data = auth0.login(console, connection=connection)
     with local.lock_token():
         local.save_token(token_data["refresh_token"])
 
@@ -213,6 +227,9 @@ class UserAccess:
     def accounts(self) -> list[dict]:
         if self._accounts is None:
             self._accounts = _fetch_teams(self.bearer_token)
+            self._accounts = [
+                a for a in self._accounts if a.get("lock_reason") != _ARCHIVE_REASON
+            ]
             self._accounts = sorted(
                 self._accounts, key=lambda x: (not x["is_personal"], x["nickname"])
             )

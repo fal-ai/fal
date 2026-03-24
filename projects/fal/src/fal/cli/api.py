@@ -2,6 +2,8 @@ import re
 
 import rich
 
+from fal import flags
+
 # = or := only
 KV_SPLIT_RE = re.compile(r"(=|:=)")
 
@@ -46,27 +48,52 @@ def queue_run(model_id: str, params: dict):
     handle = fal.apps.submit(model_id, params)  # type: ignore
     logs = []  # type: ignore
 
-    with Live(auto_refresh=False) as live:
-        for event in handle.iter_events(logs=True):
-            if isinstance(event, fal.apps.Queued):
-                status = Text(f"⏳ Queued (position: {event.position})", style="yellow")
-            elif isinstance(event, fal.apps.InProgress):
-                status = Text("🔄 In Progress", style="blue")
-                if event.logs:
-                    logs.extend(log.get("message", str(log)) for log in event.logs)
-                    logs = logs[-10:]  # Keep only last 10 logs
+    try:
+        with Live(auto_refresh=False) as live:
+            for event in handle.iter_events(logs=True):
+                if isinstance(event, fal.apps.Queued):
+                    status = Text(
+                        f"⏳ Queued (position: {event.position})",
+                        style="yellow",
+                    )
+                elif isinstance(event, fal.apps.InProgress):
+                    status = Text("🔄 In Progress", style="blue")
+                    if event.logs:
+                        logs.extend(log.get("message", str(log)) for log in event.logs)
+                        logs = logs[-10:]  # Keep only last 10 logs
+                else:
+                    status = Text("✅ Done", style="green")
+
+                request_id = handle.request_id
+                status_panel = Panel(
+                    status,
+                    title="Status",
+                    subtitle=request_id,
+                    subtitle_align="right",
+                )
+                logs_panel = Panel("\n".join(logs), title="Logs")
+
+                live.update(Group(status_panel, logs_panel))
+                live.refresh()
+
+            if flags.DEBUG:
+                response = handle.fetch_raw_response()
+                headers = "\n".join(
+                    f"{header}: {value}"
+                    for header, value in response.headers.multi_items()
+                )
+                headers_panel = Panel(headers, title="Headers")
+
+                body = rich.pretty.Pretty(response.json())
+                live.update(Group(headers_panel, body))
+                live.refresh()
             else:
-                status = Text("✅ Done", style="green")
-
-            status_panel = Panel(status, title="Status")
-            logs_panel = Panel("\n".join(logs), title="Logs")
-
-            live.update(Group(status_panel, logs_panel))
-            live.refresh()
-
-        # Show final result
-        result = handle.get()
-        live.update(rich.pretty.Pretty(result))
+                result = handle.fetch_result()
+                live.update(rich.pretty.Pretty(result))
+    except KeyboardInterrupt:
+        rich.print("[yellow]Cancelling request...[/yellow]")
+        handle.cancel()
+        rich.print("[green]Request cancelled.[/green]")
 
 
 def add_parser(main_subparsers, parents):

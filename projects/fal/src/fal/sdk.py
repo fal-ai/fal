@@ -22,7 +22,7 @@ from isolate.server.interface import from_grpc, to_serialized_object, to_struct
 
 from fal import flags
 from fal._serialization import patch_pickle
-from fal.auth import UserAccess, key_credentials
+from fal.auth import UserAccess, current_user_info, key_credentials
 from fal.console import console
 from fal.logging import get_logger
 from fal.logging.trace import TraceContextInterceptor
@@ -51,6 +51,36 @@ AuthModeLiteral = Literal["public", "private", "shared"]
 DeploymentStrategyLiteral = Literal["recreate", "rolling"]
 RetryConditionLiteral = Literal["timeout", "server_error", "connection_error"]
 
+ENVIRONMENT_SEPARATOR = "--"
+
+
+def construct_alias(base_name: str, environment_name: str | None = None) -> str:
+    """Construct the full alias with environment suffix.
+
+    Examples:
+    - ("my-app", None) → "my-app"
+    - ("my-app", "main") → "my-app"
+    - ("my-app", "staging") → "my-app--staging"
+    """
+    if not environment_name or environment_name == "main":
+        return base_name
+    return f"{base_name}{ENVIRONMENT_SEPARATOR}{environment_name}"
+
+
+def deconstruct_alias(full_alias: str, environment_name: str | None = None) -> str:
+    """Extract base name from full alias for display.
+
+    Examples:
+    - ("my-app--staging", "staging") → "my-app"
+    - ("my-app", "main") → "my-app"
+    - ("my-app", None) → "my-app"
+    """
+    if environment_name and environment_name != "main":
+        suffix = f"{ENVIRONMENT_SEPARATOR}{environment_name}"
+        if full_alias.endswith(suffix):
+            return full_alias[: -len(suffix)]
+    return full_alias
+
 
 class ServerCredentials:
     def to_grpc(self) -> grpc.ChannelCredentials:
@@ -58,9 +88,9 @@ class ServerCredentials:
 
     @property
     def base_options(self) -> dict[str, str | int]:
-        import json
+        import json  # noqa: PLC0415
 
-        from isolate_proto.configuration import GRPC_OPTIONS
+        from isolate_proto.configuration import GRPC_OPTIONS  # noqa: PLC0415
 
         grpc_ops: dict[str, str | int] = dict(GRPC_OPTIONS)
         grpc_ops["grpc.enable_retries"] = 1
@@ -179,13 +209,22 @@ class AuthenticatedCredentials(Credentials):
 class ServerlessSecret:
     name: str
     created_at: datetime
+    environment_name: str | None = None
+
+
+@dataclass
+class EnvironmentInfo:
+    name: str
+    description: str | None
+    is_default: bool
+    created_at: datetime
 
 
 def get_agent_credentials(original_credentials: Credentials) -> Credentials:
     """If running inside a fal Serverless box, use the preconfigured credentials
     instead of the user provided ones."""
 
-    from isolate.connections.common import is_agent
+    from isolate.connections.common import is_agent  # noqa: PLC0415
 
     key_creds = key_credentials()
     if is_agent() and key_creds:
@@ -194,28 +233,50 @@ def get_agent_credentials(original_credentials: Credentials) -> Credentials:
         return original_credentials
 
 
-def get_default_credentials(team: str | None = None) -> Credentials:
-    from fal.config import Config
+def get_credentials(
+    team: str | None = None,
+    key: str | None = None,
+    profile: str | None = None,
+) -> Credentials:
+    from fal.config import Config  # noqa: PLC0415
 
     if flags.AUTH_DISABLED:
         return Credentials()
 
-    key_creds = key_credentials()
+    config = Config()
+    _team = team or config.get_internal("team")
+
+    key_creds = key_credentials(profile=profile)
+    if key:
+        try:
+            key_id, key_secret = key.split(":", 1)
+        except ValueError:
+            raise ValueError("api_key must be in 'KEY_ID:KEY_SECRET' format")
+        key_creds = (key_id, key_secret)
+
     if key_creds:
         logger.debug("Using key credentials")
-        if team:
-            raise ValueError("Using explicit team with key credentials is not allowed")
-        return FalServerlessKeyCredentials(key_creds[0], key_creds[1])
-    else:
-        config = Config()
-        team = team or config.get_internal("team")
-        return AuthenticatedCredentials(team=team)
+        credentials = FalServerlessKeyCredentials(key_creds[0], key_creds[1])
+        if _team:
+            user_info = current_user_info(credentials.to_headers())
+            full_name = user_info["full_name"]
+            nickname = user_info["nickname"]
+            user_id = user_info["user_id"]
+
+            if _team != nickname:
+                console.print(
+                    f"Ignoring explicit team {_team} because key is used. "
+                    f"The key belongs to {full_name}: {nickname} - {user_id}."
+                )
+        return credentials
+
+    return AuthenticatedCredentials(team=_team)
 
 
 @dataclass
 class FalServerlessClient:
     hostname: str
-    credentials: Credentials = field(default_factory=get_default_credentials)
+    credentials: Credentials = field(default_factory=get_credentials)
 
     def connect(self) -> FalServerlessConnection:
         return FalServerlessConnection(self.hostname, self.credentials)
@@ -254,6 +315,7 @@ class ApplicationInfo:
     startup_timeout: int
     valid_regions: list[str]
     created_at: datetime
+    environment_name: str | None = None
 
 
 @dataclass
@@ -273,6 +335,7 @@ class AliasInfo:
     request_timeout: int
     startup_timeout: int
     valid_regions: list[str]
+    environment_name: str | None = None
 
 
 class RunnerState(Enum):
@@ -285,6 +348,13 @@ class RunnerState(Enum):
     TERMINATING = "TERMINATING"
     TERMINATED = "TERMINATED"
     IDLE = "IDLE"
+    FAILURE_DELAY = "FAILURE_DELAY"
+
+
+class ReplaceState(Enum):
+    NO_REPLACE = "NO_REPLACE"
+    WILL_REPLACE = "WILL_REPLACE"
+    DID_REPLACE = "DID_REPLACE"
 
 
 @dataclass
@@ -297,6 +367,8 @@ class RunnerInfo:
     revision: str
     alias: str
     state: RunnerState
+    machine_type: str
+    replacement: ReplaceState = ReplaceState.NO_REPLACE
 
 
 @dataclass
@@ -305,6 +377,7 @@ class ServiceURLs:
     run: str
     queue: str
     ws: str
+    log: str
 
 
 @dataclass
@@ -393,6 +466,18 @@ class DeploymentStrategy(enum.Enum):
             raise ValueError(f"Unknown DeploymentStrategy: {self}")
 
 
+def _to_auth_mode_proto(
+    auth_mode: Optional[AuthModeLiteral],
+) -> isolate_proto.ApplicationAuthMode.ValueType | None:
+    if auth_mode == "public":
+        return isolate_proto.ApplicationAuthMode.PUBLIC
+    if auth_mode == "shared":
+        return isolate_proto.ApplicationAuthMode.SHARED
+    if auth_mode == "private":
+        return isolate_proto.ApplicationAuthMode.PRIVATE
+    return None
+
+
 @from_grpc.register(isolate_proto.ApplicationInfo)
 def _from_grpc_application_info(
     message: isolate_proto.ApplicationInfo,
@@ -412,6 +497,7 @@ def _from_grpc_application_info(
         startup_timeout=message.startup_timeout,
         valid_regions=list(message.valid_regions),
         created_at=isolate_proto.datetime_from_timestamp(message.created_at),
+        environment_name=message.environment_name,
     )
 
 
@@ -442,14 +528,21 @@ def _from_grpc_alias_info(message: isolate_proto.AliasInfo) -> AliasInfo:
         request_timeout=message.request_timeout,
         startup_timeout=message.startup_timeout,
         valid_regions=list(message.valid_regions),
+        environment_name=message.environment_name,
     )
 
 
 @from_grpc.register(isolate_proto.RunnerInfo)
 def _from_grpc_runner_info(message: isolate_proto.RunnerInfo) -> RunnerInfo:
-    from isolate.server import definitions as worker_definitions
+    from isolate.server import definitions as worker_definitions  # noqa: PLC0415
 
     external_metadata = worker_definitions.struct_to_dict(message.external_metadata)
+
+    try:
+        replace_value = isolate_proto.RunnerInfo.ReplaceState.Name(message.replacement)
+    except ValueError:
+        replace_value = ReplaceState.NO_REPLACE
+
     return RunnerInfo(
         runner_id=message.runner_id,
         in_flight_requests=message.in_flight_requests,
@@ -463,6 +556,8 @@ def _from_grpc_runner_info(message: isolate_proto.RunnerInfo) -> RunnerInfo:
         revision=message.revision,
         alias=message.alias,
         state=RunnerState(isolate_proto.RunnerInfo.State.Name(message.state)),
+        machine_type=message.machine_type,
+        replacement=ReplaceState(replace_value),
     )
 
 
@@ -494,7 +589,9 @@ def _from_grpc_hosted_run_status(
 def _from_grpc_service_urls(
     message: isolate_proto.ServiceURLs,
 ) -> ServiceURLs:
-    return ServiceURLs(message.playground, message.run, message.queue, message.ws)
+    return ServiceURLs(
+        message.playground, message.run, message.queue, message.ws, message.log
+    )
 
 
 @from_grpc.register(isolate_proto.HostedRunResult)
@@ -580,10 +677,10 @@ class HealthCheck:
 
         if call_regularly is False:
             if failure_threshold is not None or start_period_seconds is not None:
-                console.print(
-                    "[bold yellow]Note:[/bold yellow] [dim]failure_threshold[/dim] "
-                    "and [dim]start_period_seconds[/dim] are ignored when "
-                    "[dim]call_regularly[/dim] is set to False. "
+                print(
+                    "Note: HealthCheck's failure_threshold "
+                    "and start_period_seconds are ignored when "
+                    "call_regularly is set to False. "
                     "See https://docs.fal.ai/serverless/development/add-health-check-endpoint#manual-health-checks for details."  # noqa: E501
                 )
 
@@ -656,7 +753,7 @@ class FalServerlessConnection:
 
         request = isolate_proto.CreateUserKeyRequest(scope=scope_proto, alias=alias)
         response = self.stub.CreateUserKey(request)
-        return response.key_secret, response.key_id
+        return response.key_id, response.key_secret
 
     def list_user_keys(self) -> list[UserKeyInfo]:
         request = isolate_proto.ListUserKeysRequest()
@@ -704,6 +801,8 @@ class FalServerlessConnection:
         private_logs: bool = False,
         files: list[File] | None = None,
         skip_retry_conditions: list[RetryConditionLiteral] | None = None,
+        environment_name: str | None = None,
+        termination_grace_period_seconds: int | None = None,
     ) -> Iterator[RegisterApplicationResult]:
         wrapped_function = to_serialized_object(function, serialization_method)
         if machine_requirements:
@@ -738,14 +837,7 @@ class FalServerlessConnection:
                 for file in files
             ]
 
-        if auth_mode == "public":
-            auth = isolate_proto.ApplicationAuthMode.PUBLIC
-        elif auth_mode == "shared":
-            auth = isolate_proto.ApplicationAuthMode.SHARED
-        elif auth_mode == "private":
-            auth = isolate_proto.ApplicationAuthMode.PRIVATE
-        else:
-            auth = None
+        auth = _to_auth_mode_proto(auth_mode)
 
         struct_metadata = None
         if metadata:
@@ -775,11 +867,17 @@ class FalServerlessConnection:
         else:
             wrapped_skip_retry_conditions = []
 
+        full_application_name = (
+            construct_alias(application_name, environment_name)
+            if application_name
+            else None
+        )
+
         request = isolate_proto.RegisterApplicationRequest(
             function=wrapped_function,
             environments=environments,
             machine_requirements=wrapped_requirements,
-            application_name=application_name,
+            application_name=full_application_name,
             auth_mode=auth,
             metadata=struct_metadata,
             deployment_strategy=deployment_strategy_proto,
@@ -789,6 +887,8 @@ class FalServerlessConnection:
             source_code=source_code,
             health_check_config=wrapped_health_check_config,
             skip_retry_conditions=wrapped_skip_retry_conditions,
+            environment_name=environment_name,
+            termination_grace_period_seconds=termination_grace_period_seconds,
         )
         for partial_result in self.stub.RegisterApplication(request):
             yield from_grpc(partial_result)
@@ -810,9 +910,13 @@ class FalServerlessConnection:
         startup_timeout: int | None = None,
         valid_regions: list[str] | None = None,
         machine_types: list[str] | None = None,
+        *,
+        environment_name: str | None = None,
     ) -> AliasInfo:
+        full_application_name = construct_alias(application_name, environment_name)
+
         request = isolate_proto.UpdateApplicationRequest(
-            application_name=application_name,
+            application_name=full_application_name,
             keep_alive=keep_alive,
             max_multiplexing=max_multiplexing,
             max_concurrency=max_concurrency,
@@ -824,6 +928,7 @@ class FalServerlessConnection:
             startup_timeout=startup_timeout,
             valid_regions=valid_regions,
             machine_types=machine_types,
+            environment_name=environment_name,
         )
         res: isolate_proto.UpdateApplicationResult = self.stub.UpdateApplication(
             request
@@ -831,10 +936,20 @@ class FalServerlessConnection:
         return from_grpc(res.alias_info)
 
     def list_applications(
-        self, application_name: str | None = None
+        self,
+        application_name: str | None = None,
+        *,
+        environment_name: str | None = None,
     ) -> list[ApplicationInfo]:
+        full_application_name = (
+            construct_alias(application_name, environment_name)
+            if application_name
+            else None
+        )
+
         request = isolate_proto.ListApplicationsRequest(
-            application_name=application_name
+            application_name=full_application_name,
+            environment_name=environment_name,
         )
         res: isolate_proto.ListApplicationsResult = self.stub.ListApplications(request)
         return [from_grpc(app) for app in res.applications]
@@ -850,10 +965,15 @@ class FalServerlessConnection:
         self,
         application_name: str,
         force: bool = False,
+        *,
+        environment_name: str | None = None,
     ) -> None:
+        full_application_name = construct_alias(application_name, environment_name)
+
         request = isolate_proto.RolloutApplicationRequest(
-            application_name=application_name,
+            application_name=full_application_name,
             force=force,
+            environment_name=environment_name,
         )
         self.stub.RolloutApplication(request)
 
@@ -866,6 +986,9 @@ class FalServerlessConnection:
         machine_requirements: MachineRequirements | None = None,
         setup_function: Callable[[], InputT] | None = None,
         files: list[File] | None = None,
+        application_name: str | None = None,
+        auth_mode: Optional[AuthModeLiteral] = None,
+        environment_name: str | None = None,
     ) -> Iterator[HostedRunResult[ResultT]]:
         wrapped_function = to_serialized_object(function, serialization_method)
         if machine_requirements:
@@ -898,11 +1021,21 @@ class FalServerlessConnection:
                 isolate_proto.File(hash=file.hash, relative_path=file.relative_path)
                 for file in files
             ]
+        auth = _to_auth_mode_proto(auth_mode)
+
+        full_application_name = (
+            construct_alias(application_name, environment_name)
+            if application_name
+            else None
+        )
         request = isolate_proto.HostedRun(
             function=wrapped_function,
             environments=environments,
             machine_requirements=wrapped_requirements,
             files=files,
+            application_name=full_application_name,
+            auth_mode=auth,
+            environment_name=environment_name,
         )
         if setup_function:
             request.setup_func.MergeFrom(
@@ -919,6 +1052,8 @@ class FalServerlessConnection:
         alias: str,
         revision: str,
         auth_mode: Optional[AuthModeLiteral],
+        *,
+        environment_name: str | None = None,
     ) -> AliasInfo:
         if auth_mode == "public":
             auth = isolate_proto.ApplicationAuthMode.PUBLIC
@@ -929,16 +1064,25 @@ class FalServerlessConnection:
         else:
             auth = None
 
+        full_alias = construct_alias(alias, environment_name)
+
         request = isolate_proto.SetAliasRequest(
-            alias=alias,
+            alias=full_alias,
             revision=revision,
             auth_mode=auth,
+            environment_name=environment_name,
         )
         res = self.stub.SetAlias(request)
         return from_grpc(res.alias_info)
 
-    def delete_alias(self, alias: str) -> str | None:
-        request = isolate_proto.DeleteAliasRequest(alias=alias)
+    def delete_alias(
+        self, alias: str, *, environment_name: str | None = None
+    ) -> str | None:
+        full_alias = construct_alias(alias, environment_name)
+
+        request = isolate_proto.DeleteAliasRequest(
+            alias=full_alias, environment_name=environment_name
+        )
         try:
             res: isolate_proto.DeleteAliasResult = self.stub.DeleteAlias(request)
             return res.revision
@@ -947,8 +1091,8 @@ class FalServerlessConnection:
                 return None
             raise
 
-    def list_aliases(self) -> list[AliasInfo]:
-        request = isolate_proto.ListAliasesRequest()
+    def list_aliases(self, *, environment_name: str | None = None) -> list[AliasInfo]:
+        request = isolate_proto.ListAliasesRequest(environment_name=environment_name)
         response: isolate_proto.ListAliasesResult = self.stub.ListAliases(request)
         return [from_grpc(alias) for alias in response.aliases]
 
@@ -958,8 +1102,15 @@ class FalServerlessConnection:
         *,
         list_pending: bool = True,
         start_time: datetime | None = None,
+        environment_name: str | None = None,
     ) -> list[RunnerInfo]:
-        kwargs = {"alias": alias, "list_pending": list_pending}
+        full_alias = construct_alias(alias, environment_name)
+
+        kwargs: dict[str, Any] = {
+            "alias": full_alias,
+            "list_pending": list_pending,
+            "environment_name": environment_name,
+        }
         if start_time:
             kwargs["start_time"] = isolate_proto.timestamp_from_datetime(start_time)
 
@@ -967,27 +1118,38 @@ class FalServerlessConnection:
         response = self.stub.ListAliasRunners(request)
         return [from_grpc(runner) for runner in response.runners]
 
-    def set_secret(self, name: str, value: str) -> None:
-        request = isolate_proto.SetSecretRequest(name=name, value=value)
+    def set_secret(
+        self, name: str, value: str, *, environment_name: str | None = None
+    ) -> None:
+        request = isolate_proto.SetSecretRequest(
+            name=name, value=value, environment_name=environment_name
+        )
         self.stub.SetSecret(request)
 
-    def delete_secret(self, name: str) -> None:
-        request = isolate_proto.SetSecretRequest(name=name, value=None)
+    def delete_secret(self, name: str, *, environment_name: str | None = None) -> None:
+        request = isolate_proto.SetSecretRequest(
+            name=name, value=None, environment_name=environment_name
+        )
         self.stub.SetSecret(request)
 
-    def list_secrets(self) -> list[ServerlessSecret]:
-        request = isolate_proto.ListSecretsRequest()
+    def list_secrets(
+        self, *, environment_name: str | None = None
+    ) -> list[ServerlessSecret]:
+        request = isolate_proto.ListSecretsRequest(environment_name=environment_name)
         response = self.stub.ListSecrets(request)
         return [
             ServerlessSecret(
                 name=secret.name,
                 created_at=isolate_proto.datetime_from_timestamp(secret.created_time),
+                environment_name=secret.environment_name,
             )
             for secret in response.secrets
         ]
 
-    def stop_runner(self, runner_id: str) -> None:
-        request = isolate_proto.StopRunnerRequest(runner_id=runner_id)
+    def stop_runner(self, runner_id: str, replace_first: bool = False) -> None:
+        request = isolate_proto.StopRunnerRequest(
+            runner_id=runner_id, replace_first=replace_first
+        )
         self.stub.StopRunner(request)
 
     def kill_runner(self, runner_id: str) -> None:
@@ -995,7 +1157,7 @@ class FalServerlessConnection:
         self.stub.KillRunner(request)
 
     def list_runners(self, start_time: datetime | None = None) -> list[RunnerInfo]:
-        kwargs = {
+        kwargs: dict[str, Any] = {
             "list_pending": True,
         }
         if start_time:
@@ -1004,3 +1166,35 @@ class FalServerlessConnection:
         request = isolate_proto.ListRunnersRequest(**kwargs)
         response = self.stub.ListRunners(request)
         return [from_grpc(runner) for runner in response.runners]
+
+    def list_environments(self) -> list[EnvironmentInfo]:
+        request = isolate_proto.ListEnvironmentsRequest()
+        response = self.stub.ListEnvironments(request)
+        return [
+            EnvironmentInfo(
+                name=env.name,
+                description=env.description if env.HasField("description") else None,
+                is_default=env.is_default,
+                created_at=isolate_proto.datetime_from_timestamp(env.created_at),
+            )
+            for env in response.environments
+        ]
+
+    def create_environment(
+        self, name: str, description: str | None = None
+    ) -> EnvironmentInfo:
+        request = isolate_proto.CreateEnvironmentRequest(
+            name=name, description=description
+        )
+        response = self.stub.CreateEnvironment(request)
+        env = response.environment
+        return EnvironmentInfo(
+            name=env.name,
+            description=env.description if env.HasField("description") else None,
+            is_default=env.is_default,
+            created_at=isolate_proto.datetime_from_timestamp(env.created_at),
+        )
+
+    def delete_environment(self, name: str) -> None:
+        request = isolate_proto.DeleteEnvironmentRequest(name=name)
+        self.stub.DeleteEnvironment(request)

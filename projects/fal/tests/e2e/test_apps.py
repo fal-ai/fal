@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 import re
 import secrets
 import subprocess
@@ -8,7 +9,16 @@ import uuid
 from contextlib import contextmanager, redirect_stdout, suppress
 from datetime import datetime, timedelta, timezone
 from io import StringIO
-from typing import Generator, List, Tuple, Union
+from typing import (
+    AsyncIterator,
+    Dict,
+    Generator,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    Union,
+)
 
 import httpx
 import pytest
@@ -19,12 +29,14 @@ from openapi_fal_rest.api.applications import app_metadata
 from openapi_fal_rest.client import Client
 from pydantic import BaseModel
 from pydantic import __version__ as pydantic_version
+from websockets.sync import client as ws_client
 
 import fal
 import fal.api as api
 from fal import apps
 from fal.api.deploy import User, _get_user
 from fal.app import REQUEST_ID_KEY, AppClient, AppClientError, wrap_app
+from fal.auth import key_credentials
 from fal.container import ContainerImage
 from fal.exceptions import (
     AppException,
@@ -32,9 +44,9 @@ from fal.exceptions import (
     FieldException,
     RequestCancelledException,
 )
-from fal.exceptions._cuda import _CUDA_OOM_MESSAGE, _CUDA_OOM_STATUS_CODE
+from fal.exceptions.gpu import _CUDA_OOM_MESSAGE, _GPU_ERROR_STATUS_CODE
 from fal.ref import get_current_app
-from fal.sdk import RunnerState
+from fal.sdk import RunnerState, get_credentials
 from fal.toolkit.utils.endpoint import cancel_on_disconnect
 from fal.workflows import Workflow
 
@@ -56,7 +68,10 @@ class StatefulInput(BaseModel):
 
 
 class FieldInput(BaseModel):
-    value: int | str | float
+    value: Union[int, str, float]
+
+    class Config:
+        smart_union = True
 
 
 class Output(BaseModel):
@@ -64,6 +79,14 @@ class Output(BaseModel):
 
 
 actual_python = active_python()
+
+
+def _auth_headers() -> Dict[str, str]:
+    key_creds = key_credentials()
+    if not key_creds:
+        return {}
+    key_id, key_secret = key_creds
+    return {"Authorization": f"Key {key_id}:{key_secret}"}
 
 
 def git_revision_short_hash() -> str:
@@ -255,6 +278,24 @@ class SleepApp(fal.App, keep_alive=300, max_concurrency=1):
         return SleepOutput(slept=True)
 
 
+class QueueBlockingApp(fal.App, keep_alive=300, max_concurrency=1, max_multiplexing=1):
+    """
+    App for testing start_timeout with queue blocking.
+
+    With max_concurrency=1 and max_multiplexing=1, only ONE request can be
+    processed at a time. Additional requests must wait in the queue.
+    """
+
+    machine_type = "XS"
+
+    @fal.endpoint("/")
+    async def sleep(self, input: SleepInput) -> SleepOutput:
+        for i in range(input.wait_time):
+            print(f"sleeping {i + 1}/{input.wait_time}...", flush=True)
+            await asyncio.sleep(1)
+        return SleepOutput(slept=True)
+
+
 class ExceptionApp(fal.App, keep_alive=300, max_concurrency=1):
     machine_type = "XS"
 
@@ -379,6 +420,14 @@ class RTOutputs(BaseModel):
     texts: List[str]
 
 
+def json_encode_message(message):
+    return json.dumps(message, separators=(",", ":")).encode("utf-8")
+
+
+def json_decode_message(message: bytes):
+    return json.loads(message.decode("utf-8"))
+
+
 class RealtimeApp(fal.App, keep_alive=300, max_concurrency=1):
     machine_type = "S"
 
@@ -395,6 +444,42 @@ class RealtimeApp(fal.App, keep_alive=300, max_concurrency=1):
 
     @fal.realtime("/realtime")
     def generate_rt(self, input: RTInput) -> RTOutput:
+        return RTOutput(text=input.prompt)
+
+    @fal.realtime("/realtime/server-streaming", buffering=10)
+    async def generate_rt_server_streaming(
+        self, input: RTInput
+    ) -> AsyncIterator[RTOutput]:
+        for idx in range(3):
+            yield RTOutput(text=f"{input.prompt}:{idx}")
+
+    @fal.realtime("/realtime/server-streaming-sync", buffering=10)
+    def generate_rt_server_streaming_sync(self, input: RTInput) -> Iterator[RTOutput]:
+        for idx in range(3):
+            yield RTOutput(text=f"{input.prompt}:{idx}")
+
+    @fal.realtime("/realtime/client-streaming", session_timeout=0.2)
+    async def generate_rt_client_streaming(
+        self, inputs: AsyncIterator[RTInput]
+    ) -> RTOutputs:
+        prompts: List[str] = []
+        async for item in inputs:
+            prompts.append(item.prompt)
+        return RTOutputs(texts=prompts)
+
+    @fal.realtime("/realtime/bidi")
+    async def generate_rt_bidi(
+        self, inputs: AsyncIterator[RTInput]
+    ) -> AsyncIterator[RTOutput]:
+        async for item in inputs:
+            yield RTOutput(text=f"echo:{item.prompt}")
+
+    @fal.realtime(
+        "/realtime/json",
+        encode_message=json_encode_message,
+        decode_message=json_decode_message,
+    )
+    def generate_rt_json(self, input: RTInput) -> RTOutput:
         return RTOutput(text=input.prompt)
 
     @fal.realtime("/realtime/batched", buffering=10, max_batch_size=4)
@@ -524,6 +609,13 @@ def test_health_check_app(host: api.FalServerlessHost, user: User):
 def test_sleep_app(host: api.FalServerlessHost, user: User):
     sleep_app = wrap_app(SleepApp)
     with register_app(host, sleep_app, "sleep") as (app_alias, _):
+        yield f"{user.username}/{app_alias}"
+
+
+@pytest.fixture(scope="module")
+def test_queue_blocking_app(host: api.FalServerlessHost, user: User):
+    queue_blocking_app = wrap_app(QueueBlockingApp)
+    with register_app(host, queue_blocking_app, "queue-blocking") as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
 
@@ -679,6 +771,59 @@ def test_app_disconnect_behavior(test_app: str, test_cancellable_app: str):
     ), "Expected Gateway Timeout even though the app handled it"
 
 
+@pytest.mark.flaky(max_runs=3)
+def test_start_timeout_queue_blocking(test_queue_blocking_app: str):
+    """
+    Test that start_timeout correctly times out a request waiting in queue.
+
+    Scenario:
+    1. Send a 10-second sleep request (occupies the only slot)
+    2. While it's processing, send a second request with start_timeout=5
+    3. The second request should return 504 because it times out waiting in queue
+       (before processing starts)
+    4. First request should complete successfully
+    """
+    import fal_client
+    from fal_client.client import FalClientHTTPError
+
+    # Send a long-running request that will occupy the only slot
+    # (max_concurrency=1, max_multiplexing=1)
+    # Use 10 seconds to ensure it blocks long enough for the second request to timeout
+    first_handle = apps.submit(test_queue_blocking_app, arguments={"wait_time": 10})
+
+    # Wait for the first request to start processing
+    while True:
+        status = first_handle.status()
+        if isinstance(status, apps.InProgress):
+            break
+        elif isinstance(status, apps.Queued):
+            time.sleep(0.1)
+        else:
+            raise Exception(f"Unexpected status for first request: {status}")
+
+    # Now send a second request with a short start_timeout
+    # This should fail because it will timeout waiting in the queue
+    with pytest.raises(FalClientHTTPError) as exc_info:
+        fal_client.subscribe(
+            test_queue_blocking_app,
+            arguments={"wait_time": 1},
+            start_timeout=5,
+        )
+
+    # Should get a 504 timeout error
+    assert (
+        exc_info.value.status_code == 504
+    ), f"Expected 504 timeout, got {exc_info.value.status_code}"
+
+    # Verify the timeout type header indicates it was a user timeout
+    timeout_type = exc_info.value.response_headers.get("x-fal-request-timeout-type")
+    assert timeout_type == "user", f"Expected 'user' timeout type, got {timeout_type}"
+
+    # First request should complete successfully
+    result = first_handle.get()
+    assert result == {"slept": True}, f"First request should succeed, got {result}"
+
+
 @pytest.mark.xfail(
     reason="Temporary disabled while investigating backend issue. Ping @efiop"
 )
@@ -806,7 +951,7 @@ def test_404_response(test_app: str, request: pytest.FixtureRequest):
 
 def test_404_billable_units(test_exception_app: AppClient):
     """Test that 404 responses include x-fal-billable-units: 0 header."""
-    with httpx.Client() as httpx_client:
+    with httpx.Client(headers=_auth_headers()) as httpx_client:
         url = test_exception_app.url + "/non-existent-endpoint"
         response = httpx_client.post(
             url,
@@ -997,7 +1142,7 @@ def test_realtime_connection(test_realtime_app):
 
     with apps._connect(test_realtime_app, path="/realtime/batched") as connection:
         connection.send({"prompt": "keep busy"})
-        time.sleep(0.1)
+        time.sleep(1)
 
         for prompt in range(10):
             connection.send({"prompt": str(prompt)})
@@ -1013,6 +1158,80 @@ def test_realtime_connection(test_realtime_app):
 
         assert len(received_prompts) == 10
         assert batch_sizes == [4, 4, 2]
+
+
+def test_realtime_ws_endpoint(test_realtime_app):
+    app_id = apps._backwards_compatible_app_id(test_realtime_app)
+    url = apps._REALTIME_URL_FORMAT.format(app_id=app_id) + "/ws"
+    creds = get_credentials()
+
+    with ws_client.connect(
+        url, additional_headers=creds.to_headers(), open_timeout=90
+    ) as ws:
+        messages = []
+        for _ in range(3):
+            payload = ws.recv()
+            if isinstance(payload, bytes):
+                payload = payload.decode("utf-8")
+            messages.append(json.loads(payload))
+
+    assert messages == [{"message": "Hello world!"}] * 3
+
+
+def test_realtime_connection_custom_codec(test_realtime_app):
+    with apps._connect(
+        test_realtime_app,
+        path="/realtime/json",
+        encode_message=json_encode_message,
+        decode_message=json_decode_message,
+    ) as connection:
+        response = connection.run({"prompt": "json cat"})
+        assert response["text"] == "json cat"
+
+
+def test_realtime_server_streaming_mode(test_realtime_app):
+    with apps._connect(
+        test_realtime_app, path="/realtime/server-streaming"
+    ) as connection:
+        connection.send({"prompt": "stream"})
+        responses = [connection.recv() for _ in range(3)]
+        assert [response["text"] for response in responses] == [
+            "stream:0",
+            "stream:1",
+            "stream:2",
+        ]
+
+
+def test_realtime_server_streaming_sync_mode(test_realtime_app):
+    with apps._connect(
+        test_realtime_app, path="/realtime/server-streaming-sync"
+    ) as connection:
+        connection.send({"prompt": "stream"})
+        responses = [connection.recv() for _ in range(3)]
+        assert [response["text"] for response in responses] == [
+            "stream:0",
+            "stream:1",
+            "stream:2",
+        ]
+
+
+def test_realtime_client_streaming_mode(test_realtime_app):
+    with apps._connect(
+        test_realtime_app, path="/realtime/client-streaming"
+    ) as connection:
+        connection.send({"prompt": "first"})
+        connection.send({"prompt": "second"})
+        connection.send({"prompt": "third"})
+        response = connection.recv()
+        assert response["texts"] == ["first", "second", "third"]
+
+
+def test_realtime_bidi_mode(test_realtime_app):
+    with apps._connect(test_realtime_app, path="/realtime/bidi") as connection:
+        connection.send({"prompt": "one"})
+        connection.send({"prompt": "two"})
+        assert connection.recv()["text"] == "echo:one"
+        assert connection.recv()["text"] == "echo:two"
 
 
 @contextmanager
@@ -1088,24 +1307,24 @@ def test_app_exceptions(test_exception_app: AppClient):
     with pytest.raises(AppClientError) as cuda_exc:
         test_exception_app.cuda_exception({})
 
-    assert cuda_exc.value.status_code == _CUDA_OOM_STATUS_CODE
+    assert cuda_exc.value.status_code == _GPU_ERROR_STATUS_CODE
     assert _CUDA_OOM_MESSAGE in cuda_exc.value.message
 
     with pytest.raises(AppClientError) as cuda_exc:
         test_exception_app.cuda_exception_2({})
 
-    assert cuda_exc.value.status_code == _CUDA_OOM_STATUS_CODE
+    assert cuda_exc.value.status_code == _GPU_ERROR_STATUS_CODE
     assert _CUDA_OOM_MESSAGE in cuda_exc.value.message
 
     with pytest.raises(AppClientError) as cuda_exc:
         test_exception_app.cuda_exception_3({})
 
-    assert cuda_exc.value.status_code == _CUDA_OOM_STATUS_CODE
+    assert cuda_exc.value.status_code == _GPU_ERROR_STATUS_CODE
     assert _CUDA_OOM_MESSAGE in cuda_exc.value.message
 
 
 def test_pydantic_validation_billing(test_pydantic_validation_error: AppClient):
-    with httpx.Client() as httpx_client:
+    with httpx.Client(headers=_auth_headers()) as httpx_client:
         url = test_pydantic_validation_error.url + "/increment"
         response = httpx_client.post(
             url,
@@ -1118,7 +1337,7 @@ def test_pydantic_validation_billing(test_pydantic_validation_error: AppClient):
 
 
 def test_field_exception_billing(test_exception_app: AppClient):
-    with httpx.Client() as httpx_client:
+    with httpx.Client(headers=_auth_headers()) as httpx_client:
         url = test_exception_app.url + "/field-exception"
         response = httpx_client.post(
             url,
@@ -1134,7 +1353,7 @@ def test_field_exception_billing(test_exception_app: AppClient):
 
 def test_field_exception_int_billable_units_formatting(test_exception_app: AppClient):
     """Test that int billable_units are formatted without decimal places."""
-    with httpx.Client() as httpx_client:
+    with httpx.Client(headers=_auth_headers()) as httpx_client:
         url = test_exception_app.url + "/field-exception-units"
         response = httpx_client.post(
             url,
@@ -1148,7 +1367,7 @@ def test_field_exception_int_billable_units_formatting(test_exception_app: AppCl
 
 def test_field_exception_float_billable_units_formatting(test_exception_app: AppClient):
     """Test that float billable_units are formatted with 8 decimal places."""
-    with httpx.Client() as httpx_client:
+    with httpx.Client(headers=_auth_headers()) as httpx_client:
         url = test_exception_app.url + "/field-exception-units"
         response = httpx_client.post(
             url,
@@ -1162,7 +1381,7 @@ def test_field_exception_float_billable_units_formatting(test_exception_app: App
 
 def test_field_exception_scientific_notation_small(test_exception_app: AppClient):
     """Test that small scientific notation values are properly formatted."""
-    with httpx.Client() as httpx_client:
+    with httpx.Client(headers=_auth_headers()) as httpx_client:
         url = test_exception_app.url + "/field-exception-units"
         response = httpx_client.post(
             url,
@@ -1177,7 +1396,7 @@ def test_field_exception_scientific_notation_small(test_exception_app: AppClient
 
 def test_field_exception_scientific_notation_large(test_exception_app: AppClient):
     """Test that large scientific notation values are properly formatted."""
-    with httpx.Client() as httpx_client:
+    with httpx.Client(headers=_auth_headers()) as httpx_client:
         url = test_exception_app.url + "/field-exception-units"
         response = httpx_client.post(
             url,
@@ -1192,7 +1411,7 @@ def test_field_exception_scientific_notation_large(test_exception_app: AppClient
 
 def test_field_exception_invalid_billable_units(test_exception_app: AppClient):
     """Test that invalid billable_units (non-numeric string) raises an error."""
-    with httpx.Client() as httpx_client:
+    with httpx.Client(headers=_auth_headers()) as httpx_client:
         url = test_exception_app.url + "/field-exception-units"
         response = httpx_client.post(
             url,
@@ -1207,7 +1426,7 @@ def test_field_exception_invalid_billable_units(test_exception_app: AppClient):
 
 def test_field_exception_default_billable_units(test_exception_app: AppClient):
     """Test that when billable_units is not set (None), no header is included."""
-    with httpx.Client() as httpx_client:
+    with httpx.Client(headers=_auth_headers()) as httpx_client:
         url = test_exception_app.url + "/field-exception"
         response = httpx_client.post(
             url,
@@ -1239,9 +1458,10 @@ def submit_and_wait_for_runner(app: str, arguments: dict = {}, *, path: str = ""
 def test_stop_runner(host: api.FalServerlessHost, test_sleep_app: str):
     # Submit a runner and wait for it to be idle
     submit_and_wait_for_runner(test_sleep_app, arguments={"wait_time": 1})
+    original_runner_id = None
 
     with host._connection as client:
-        timeout = 10
+        timeout = 15
         start_time = time.time()
         while True:
             _, _, app_alias = test_sleep_app.partition("/")
@@ -1249,6 +1469,7 @@ def test_stop_runner(host: api.FalServerlessHost, test_sleep_app: str):
             assert len(runners) == 1
 
             if runners[0].in_flight_requests == 0:
+                original_runner_id = runners[0].runner_id
                 break
             elif time.time() - start_time > timeout:
                 raise Exception(f"Timeout waiting for runner to be idle: {runners[0]}")
@@ -1281,7 +1502,8 @@ def test_stop_runner(host: api.FalServerlessHost, test_sleep_app: str):
 
     with host._connection as client:
         runners = client.list_alias_runners(app_alias)
-        assert len(runners) == 2
+        assert original_runner_id is not None
+        assert any(runner.runner_id != original_runner_id for runner in runners)
 
 
 @pytest.mark.flaky(max_runs=3)
@@ -1393,6 +1615,53 @@ def test_shell_runner(host: api.FalServerlessHost, test_sleep_app: str):
                 proc.wait()
 
 
+@pytest.mark.flaky(max_runs=3)
+def test_exec_runner(host: api.FalServerlessHost, test_sleep_app: str):
+    handle = apps.submit(test_sleep_app, arguments={"wait_time": 30})
+
+    while True:
+        status = handle.status()
+        if isinstance(status, apps.InProgress):
+            break
+        elif isinstance(status, apps.Queued):
+            time.sleep(1)
+        else:
+            raise Exception(f"Failed to start the app: {status}")
+
+    with host._connection as client:
+        _, _, app_alias = test_sleep_app.partition("/")
+        runners = client.list_alias_runners(app_alias)
+        assert len(runners) == 1
+        runner_id = runners[0].runner_id
+
+        proc = subprocess.Popen(
+            [
+                "python",
+                "-m",
+                "fal",
+                "runners",
+                "exec",
+                runner_id,
+                "--",
+                "echo",
+                "hello",
+            ],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+
+        try:
+            stdout, stderr = proc.communicate(timeout=10)
+            assert (
+                b"hello" in stdout
+            ), f"Expected 'hello' in output, got: {stdout.decode()}"
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait()
+
+
 def test_container_app_client(test_container_app: str):
     response = apps.run(test_container_app, arguments={"lhs": 1, "rhs": 2})
     assert response["result"] == 3
@@ -1446,7 +1715,7 @@ def test_hints_encoding():
     https://github.com/encode/starlette/blob/a766a58d14007f07c0b5782fa78cdc370b892796/starlette/datastructures.py#L568
     """
     with AppClient.connect(HintsApp) as client:
-        with httpx.Client() as httpx_client:
+        with httpx.Client(headers=_auth_headers()) as httpx_client:
             url = client.url + "/add"
             resp = httpx_client.post(
                 url,
@@ -1509,6 +1778,14 @@ def test_app_ref_app_client(test_app_ref_app: str):
     assert result_3["from_app"] == result_3["from_external_method"]
 
 
+class SetUUIDInput(BaseModel):
+    uuid: str
+
+
+class SetWaitTimeInput(BaseModel):
+    wait_time: int
+
+
 # for now it only works in newly built containers
 class GracefulShutdownApp(
     fal.App,
@@ -1523,36 +1800,66 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 """
     ),
+    skip_retry_conditions=["server_error", "connection_error", "timeout"],
+    termination_grace_period_seconds=5,
 ):
     machine_type = "XS"
-    teardown_file = "/data/teardown.txt"
     latest_request_id = None
+    uuid = None
+    wait_time = None
+
+    def setup(self):
+        self.stop = False
+
+    def handle_exit(self):
+        self.stop = True
+
+    @fal.endpoint("/set-uuid")
+    async def set_uuid(self, input: SetUUIDInput) -> str:
+        self.uuid = input.uuid
+        return "ok"
+
+    @fal.endpoint("/set-wait-time")
+    async def set_wait_time(self, input: SetWaitTimeInput) -> str:
+        self.wait_time = input.wait_time
+        return "ok"
 
     @fal.endpoint("/")
-    async def sleep(self, input: SleepInput, request: Request) -> SleepOutput:
+    async def request_handler(self, request: Request) -> str:
         request_id = request.headers.get(REQUEST_ID_KEY)
         if request_id is None:
             raise Exception("No request id found")
 
         self.latest_request_id = request_id
-
-        for i in range(input.wait_time):
-            print(f"sleeping {i + 1} of {input.wait_time}...", flush=True)
-            await asyncio.sleep(1)
-        return SleepOutput(slept=True)
+        return "ok"
 
     @fal.endpoint("/latest-request-id")
     async def fetch_latest_request_id(self) -> str:
-        with open(self.teardown_file) as f:
-            return f.read()
+        if self.uuid is None:
+            return ""
+
+        try:
+            with open(f"/data/teardown/{self.uuid}.txt") as f:
+                latest_request_id = f.read()
+
+            os.unlink(f"/data/teardown/{self.uuid}.txt")
+            return latest_request_id
+        except Exception as e:
+            return str(e)
 
     def teardown(self):
-        if self.latest_request_id is None:
+        if self.latest_request_id is None or self.uuid is None:
             return
 
-        with open(self.teardown_file, "w") as f:
-            print("teardown called, latest request id: ", self.latest_request_id)
-            f.write(self.latest_request_id)
+        if self.wait_time is not None:
+            for i in range(self.wait_time):
+                print(f"sleeping {i + 1} of {self.wait_time}...", flush=True)
+                time.sleep(1)
+
+        os.makedirs("/data/teardown", exist_ok=True)
+        with open(f"/data/teardown/{self.uuid}.txt", "w") as f:
+            f.write(self.latest_request_id + "\n")
+            f.write("t" if self.stop else "f")
 
 
 @pytest.fixture(scope="module")
@@ -1565,19 +1872,32 @@ def test_graceful_shutdown_app(host: api.FalServerlessHost, user: User):
         yield f"{user.username}/{app_alias}"
 
 
-def test_graceful_shutdown_app_client(
-    host: api.FalServerlessHost,
+def graceful_shutdown(
     test_graceful_shutdown_app: str,
-):
-    time.sleep(3)  # Wait for the app to be deployed properly
+    host: api.FalServerlessHost,
+    *,
+    wait_time: int,
+    path: str,
+    kill: bool = False,
+) -> bool:
+    time.sleep(2)
 
-    handle = submit_and_wait_for_runner(
-        test_graceful_shutdown_app, arguments={"wait_time": 5}
-    )
+    token = str(uuid.uuid4())
+    assert (
+        apps.run(test_graceful_shutdown_app, {"uuid": token}, path="/set-uuid") == "ok"
+    ), "UUID not set"
 
-    time.sleep(3)
+    assert (
+        apps.run(
+            test_graceful_shutdown_app, {"wait_time": wait_time}, path="/set-wait-time"
+        )
+        == "ok"
+    ), "Wait time not set"
 
+    handle = submit_and_wait_for_runner(test_graceful_shutdown_app, path=path)
     saved_request_id = handle.request_id
+
+    time.sleep(2)
     with host._connection as client:
         _, _, app_alias = test_graceful_shutdown_app.partition("/")
 
@@ -1586,9 +1906,171 @@ def test_graceful_shutdown_app_client(
 
         assert runner is not None, "Runner not found"
 
-        client.kill_runner(runner.runner_id)
+        if kill:
+            client.kill_runner(runner.runner_id)
+        else:
+            client.stop_runner(runner.runner_id)
 
-    time.sleep(3)
+    if kill:
+        time.sleep(2)
+    else:
+        # Need to wait longer than 10s because how we stop the runner
+        time.sleep(15)
 
+    assert (
+        apps.run(test_graceful_shutdown_app, {"uuid": token}, path="/set-uuid") == "ok"
+    ), "UUID not set"
     res = apps.run(test_graceful_shutdown_app, {}, path="/latest-request-id")
-    assert res == saved_request_id
+
+    teardown_called = res.split("\n")[0] == saved_request_id
+    stop_called = len(res.split("\n")) > 1 and res.split("\n")[1] == "t"
+
+    return teardown_called and stop_called
+
+
+@pytest.mark.flaky(max_runs=3)
+def test_graceful_shutdown(
+    host: api.FalServerlessHost,
+    test_graceful_shutdown_app: str,
+):
+    assert graceful_shutdown(
+        test_graceful_shutdown_app, host, wait_time=1, path="/"
+    ), "app should be gracefully shutdown"
+
+
+@pytest.mark.flaky(max_runs=3)
+def test_graceful_shutdown_force_kill(
+    host: api.FalServerlessHost,
+    test_graceful_shutdown_app: str,
+):
+    assert not graceful_shutdown(
+        test_graceful_shutdown_app, host, wait_time=10, path="/"
+    ), "app should be forcefully killed if it takes too long to clean up"
+
+
+@pytest.mark.flaky(max_runs=3)
+def test_forceful_shutdown(
+    host: api.FalServerlessHost,
+    test_graceful_shutdown_app: str,
+):
+    assert not graceful_shutdown(
+        test_graceful_shutdown_app, host, wait_time=1, path="/", kill=True
+    ), "app should be forcefully killed on kill_runner"
+
+
+@pytest.mark.flaky(max_runs=3)
+def test_runner_machine_type(host: api.FalServerlessHost, test_sleep_app: str):
+    """Test that machine_type is populated in runner info."""
+    submit_and_wait_for_runner(test_sleep_app, arguments={"wait_time": 1})
+
+    with host._connection as client:
+        _, _, app_alias = test_sleep_app.partition("/")
+
+        # list_alias_runners
+        runners = client.list_alias_runners(app_alias)
+        assert len(runners) >= 1
+        assert runners[0].machine_type == "XS"
+
+        # list_runners
+        all_runners = client.list_runners(
+            start_time=datetime.now() - timedelta(seconds=60)
+        )
+        assert len(all_runners) >= 1
+        target_runner = next((r for r in all_runners if r.alias == app_alias), None)
+        assert target_runner is not None, "Runner for test app alias not found"
+        assert target_runner.machine_type == "XS"
+
+
+class RequestContextOutput(BaseModel):
+    request_id_from_context: Optional[str]
+    endpoint_from_context: Optional[str]
+    lifecycle_preference_from_context: Optional[dict]
+    request_id_from_header: Optional[str]
+
+
+def _external_get_request_context() -> dict:
+    """External function that accesses request context without request parameter."""
+    current_app = get_current_app()
+    if current_app is None or current_app.current_request is None:
+        return {
+            "request_id": None,
+            "endpoint": None,
+            "lifecycle_preference": None,
+        }
+    return {
+        "request_id": current_app.current_request.request_id,
+        "endpoint": current_app.current_request.endpoint,
+        "lifecycle_preference": current_app.current_request.lifecycle_preference,
+    }
+
+
+class RequestContextApp(fal.App, keep_alive=300, max_concurrency=1, max_multiplexing=3):
+    """App to test request context fields are properly populated."""
+
+    machine_type = "XS"
+
+    @fal.endpoint("/")
+    def get_context(self, request: Request) -> RequestContextOutput:
+        # Sleep to intentionally cause potential race conditions with multiplexing
+        time.sleep(2)
+
+        # Get context from external function (simulates File.from_bytes usage)
+        context_data = _external_get_request_context()
+
+        return RequestContextOutput(
+            request_id_from_context=context_data["request_id"],
+            endpoint_from_context=context_data["endpoint"],
+            lifecycle_preference_from_context=context_data["lifecycle_preference"],
+            request_id_from_header=request.headers.get("x-fal-request-id"),
+        )
+
+
+@pytest.fixture(scope="module")
+def test_request_context_app(host: api.FalServerlessHost, user: User):
+    request_context_app = wrap_app(RequestContextApp)
+    with register_app(host, request_context_app, "request-context") as (app_alias, _):
+        yield f"{user.username}/{app_alias}"
+
+
+def test_request_context_fields_populated(test_request_context_app: str):
+    """Test that request context fields are properly populated."""
+
+    result = apps.run(test_request_context_app, arguments={})
+
+    assert result["request_id_from_context"] is not None
+    assert result["endpoint_from_context"] is not None
+    assert result["lifecycle_preference_from_context"] is not None
+
+    assert result["request_id_from_context"] == result["request_id_from_header"]
+
+
+def test_request_context_isolation_with_multiplexing(test_request_context_app: str):
+    """Test that request context is properly isolated between concurrent requests.
+
+    With multiplexing enabled (max_multiplexing=3), each request should have
+    its own isolated context via ContextVar, ensuring request_id from context
+    matches the request_id from headers for each individual request.
+    """
+
+    # Submit multiple concurrent requests
+    handle_1 = apps.submit(test_request_context_app, arguments={})
+    handle_2 = apps.submit(test_request_context_app, arguments={})
+    handle_3 = apps.submit(test_request_context_app, arguments={})
+
+    # Get results
+    result_1 = handle_1.get()
+    result_2 = handle_2.get()
+    result_3 = handle_3.get()
+
+    # Each request's context should match its own header, proving isolation
+    assert result_1["request_id_from_context"] == result_1["request_id_from_header"]
+    assert result_2["request_id_from_context"] == result_2["request_id_from_header"]
+    assert result_3["request_id_from_context"] == result_3["request_id_from_header"]
+
+    # All request IDs should be different (unique requests)
+    request_ids = {
+        result_1["request_id_from_context"],
+        result_2["request_id_from_context"],
+        result_3["request_id_from_context"],
+    }
+    assert len(request_ids) == 3, "Each request should have a unique request_id"

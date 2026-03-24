@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, List, Optional
 
@@ -8,6 +7,7 @@ from fal.api import FAL_SERVERLESS_DEFAULT_URL, FalServerlessHost
 from fal.sdk import (
     AliasInfo,
     Credentials,
+    EnvironmentInfo,
     KeyScope,
     RunnerInfo,
     ServerlessSecret,
@@ -19,6 +19,7 @@ if TYPE_CHECKING:
 
 from . import apps as apps_api
 from . import deploy as deploy_api
+from . import environments as environments_api
 from . import keys as keys_api
 from . import runners as runners_api
 from . import secrets as secrets_api
@@ -42,20 +43,30 @@ class AppsNamespace:
     def __init__(self, client: SyncServerlessClient):
         self.client = client
 
-    def list(self, *, filter: str | None = None) -> List[AliasInfo]:
+    def list(
+        self, *, filter: str | None = None, environment_name: str | None = None
+    ) -> List[AliasInfo]:
         """List all applications. Corresponds to `fal apps list`.
 
         Args:
             filter: Optional app name filter string.
+            environment_name: Optional environment name.
 
         Example:
             apps = client.apps.list()
             filtered = client.apps.list(filter="stable")
         """
-        return apps_api.list_apps(self.client, filter=filter)
+        return apps_api.list_apps(
+            self.client, filter=filter, environment_name=environment_name
+        )
 
     def runners(
-        self, app_name: str, *, since=None, state: List[str] | None = None
+        self,
+        app_name: str,
+        *,
+        since=None,
+        state: List[str] | None = None,
+        environment_name: str | None = None,
     ) -> List[RunnerInfo]:
         """List runners for a specific app. Corresponds to `fal apps runners <app>`.
 
@@ -63,6 +74,7 @@ class AppsNamespace:
             app_name: Name of the application.
             since: Only return runners started after this datetime.
             state: Filter by runner state (e.g., ["running"]).
+            environment_name: Optional environment name.
 
         Example:
             from datetime import datetime, timedelta
@@ -73,7 +85,13 @@ class AppsNamespace:
             )
             running = client.apps.runners("my-app", state=["running"])
         """
-        return apps_api.apps_runners(self.client, app_name, since=since, state=state)
+        return apps_api.apps_runners(
+            self.client,
+            app_name,
+            since=since,
+            state=state,
+            environment_name=environment_name,
+        )
 
     def scale(
         self,
@@ -90,6 +108,7 @@ class AppsNamespace:
         startup_timeout: int | None = None,
         machine_types: List[str] | None = None,
         regions: List[str] | None = None,
+        environment_name: str | None = None,
     ) -> apps_api.AliasInfo:
         """Adjust scaling settings for an application. Corresponds to `fal apps scale`.
 
@@ -104,7 +123,7 @@ class AppsNamespace:
             request_timeout: Request timeout in seconds.
             startup_timeout: Startup timeout in seconds.
             machine_types: List of allowed machine types (e.g., ["GPU-H100"]).
-            regions: List of allowed regions (e.g., ["us-east-1"]).
+            regions: List of allowed regions (e.g., ["us-east"]).
 
         Example:
             client.apps.scale(
@@ -129,10 +148,15 @@ class AppsNamespace:
             startup_timeout=startup_timeout,
             machine_types=machine_types,
             regions=regions,
+            environment_name=environment_name,
         )
 
-    def rollout(self, app_name: str, *, force: bool = False) -> None:
-        return apps_api.rollout_app(self.client, app_name, force=force)
+    def rollout(
+        self, app_name: str, *, force: bool = False, environment_name: str | None = None
+    ) -> None:
+        return apps_api.rollout_app(
+            self.client, app_name, force=force, environment_name=environment_name
+        )
 
 
 class RunnersNamespace:
@@ -167,13 +191,16 @@ class RunnersNamespace:
         """
         return runners_api.list_runners(self.client, since=since)
 
-    def stop(self, runner_id: str) -> None:
+    def stop(self, runner_id: str, replace_first: bool = False) -> None:
         """Gracefully stop a runner.
 
         Args:
             runner_id: The ID of the runner to stop.
+            replace_first: Whether to replace the runner before stopping it.
         """
-        return runners_api.stop_runner(self.client, runner_id)
+        return runners_api.stop_runner(
+            self.client, runner_id, replace_first=replace_first
+        )
 
     def kill(self, runner_id: str) -> None:
         """Forcefully kill a runner.
@@ -243,26 +270,47 @@ class SecretsNamespace:
     def __init__(self, client: SyncServerlessClient):
         self.client = client
 
-    def set(self, name: str, value: str) -> None:
+    def set(self, name: str, value: str, environment_name: str | None = None) -> None:
         """Set a secret value.
 
         Args:
             name: Name of the secret.
             value: Value to store.
         """
-        return secrets_api.set_secret(self.client, name, value)
+        return secrets_api.set_secret(
+            self.client, name, value, environment_name=environment_name
+        )
 
-    def list(self) -> List[ServerlessSecret]:
+    def list(self, environment_name: str | None = None) -> List[ServerlessSecret]:
         """List all secrets (names only, not values)."""
-        return secrets_api.list_secrets(self.client)
+        return secrets_api.list_secrets(self.client, environment_name=environment_name)
 
-    def unset(self, name: str) -> None:
+    def unset(self, name: str, environment_name: str | None = None) -> None:
         """Delete a secret.
 
         Args:
             name: Name of the secret to delete.
+            environment_name: Optional environment name.
         """
-        return secrets_api.unset_secret(self.client, name)
+        return secrets_api.unset_secret(
+            self.client, name, environment_name=environment_name
+        )
+
+
+class _EnvironmentsNamespace:
+    def __init__(self, client: SyncServerlessClient):
+        self.client = client
+
+    def create(self, name: str, description: str | None = None) -> EnvironmentInfo:
+        return environments_api.create_environment(
+            self.client, name, description=description
+        )
+
+    def list(self) -> List[EnvironmentInfo]:
+        return environments_api.list_environments(self.client)
+
+    def delete(self, name: str) -> None:
+        return environments_api.delete_environment(self.client, name)
 
 
 @dataclass
@@ -310,6 +358,7 @@ class SyncServerlessClient:
         self.runners = RunnersNamespace(self)
         self.keys = KeysNamespace(self)
         self.secrets = SecretsNamespace(self)
+        self.environments = _EnvironmentsNamespace(self)
 
     def deploy(self, *args, **kwargs):
         """Deploy an application. Corresponds to `fal deploy`.
@@ -357,37 +406,18 @@ class SyncServerlessClient:
 
     @property
     def _credentials(self) -> Credentials:
-        from fal.sdk import FalServerlessKeyCredentials, get_default_credentials
+        from fal.sdk import get_credentials
 
-        if self.api_key:
-            if self.team:
-                raise ValueError(
-                    "Using explicit team with key credentials is not allowed"
-                )
-            try:
-                key_id, key_secret = self.api_key.split(":", 1)
-            except ValueError:
-                raise ValueError("api_key must be in 'KEY_ID:KEY_SECRET' format")
-            return FalServerlessKeyCredentials(key_id, key_secret)
+        return get_credentials(team=self.team, key=self.api_key, profile=self.profile)
 
-        if self.profile:
-            prev = os.environ.get("FAL_PROFILE")
-            os.environ["FAL_PROFILE"] = self.profile
-            try:
-                return get_default_credentials(team=self.team)
-            finally:
-                if prev is None:
-                    os.environ.pop("FAL_PROFILE", None)
-                else:
-                    os.environ["FAL_PROFILE"] = prev
-
-        return get_default_credentials(team=self.team)
-
-    def _create_host(self, *, local_file_path: str = "") -> FalServerlessHost:
+    def _create_host(
+        self, *, local_file_path: str = "", environment_name: str | None = None
+    ) -> FalServerlessHost:
         return FalServerlessHost(
             self._grpc_host,
             local_file_path=local_file_path,
             credentials=self._credentials,
+            environment_name=environment_name,
         )
 
     def _create_rest_client(self) -> Client:

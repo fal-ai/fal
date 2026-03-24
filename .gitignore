@@ -30,5 +30,5 @@ tmp/
 
 venv
 
-
-
+.DS_Store
+.vscode

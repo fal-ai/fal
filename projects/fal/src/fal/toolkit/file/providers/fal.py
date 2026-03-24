@@ -8,6 +8,7 @@ from base64 import b64encode
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from functools import partial
 from pathlib import Path
 from typing import Any, Dict, Generator, Generic, TypeVar
 from urllib.error import HTTPError, URLError
@@ -33,15 +34,6 @@ MAX_DELAY = 30
 RETRY_CODES = [408, 409, 429, 500, 502, 503, 504]
 
 
-@contextmanager
-def _urlopen(
-    request: Request,
-    timeout: int = DEFAULT_REQUEST_TIMEOUT,
-) -> Generator[addinfourl, None, None]:
-    with urlopen(request, timeout=timeout) as response:
-        yield response
-
-
 def _should_retry(exc: Exception) -> bool:
     if isinstance(exc, HTTPError) and exc.code in RETRY_CODES:
         return True
@@ -62,6 +54,8 @@ def _maybe_retry_request(
     request: Request,
     **kwargs: Any,
 ) -> Generator[addinfourl, None, None]:
+    timeout = kwargs.pop("timeout", DEFAULT_REQUEST_TIMEOUT)
+
     _urlopen_with_retry = retry(
         max_retries=MAX_ATTEMPTS,
         base_delay=BASE_DELAY,
@@ -69,10 +63,13 @@ def _maybe_retry_request(
         backoff_type="exponential",
         jitter=True,
         should_retry=_should_retry,
-    )(_urlopen)
+    )(partial(urlopen, request, timeout=timeout))
 
-    with _urlopen_with_retry(request, **kwargs) as response:
+    response = _urlopen_with_retry()
+    try:
         yield response
+    finally:
+        response.close()
 
 
 def _object_lifecycle_headers(
@@ -86,6 +83,17 @@ def _object_lifecycle_headers(
         headers["X-Fal-Object-Lifecycle-Preference"] = json.dumps(
             object_lifecycle_preference
         )
+
+
+def _caller_cdn_header(
+    headers: dict[str, str],
+):
+    current_app = get_current_app()
+    if current_app and current_app.current_request:
+        if cdn_token := current_app.current_request.headers.get("x-fal-cdn-token"):
+            headers["X-Fal-CDN-Token"] = cdn_token
+        if request_id := current_app.current_request.request_id:
+            headers["X-Fal-Request-ID"] = request_id
 
 
 @dataclass
@@ -220,7 +228,28 @@ class VariableReference(Generic[VariableType]):
         self.value = value
 
 
-LIFECYCLE_PREFERENCE: VariableReference[dict[str, str] | None] = VariableReference(None)
+# @deprecated LIFECYCLE_PREFERENCE was removed in favor of
+# contextvar-based request context in fal.app.App. This global variable
+# is preserved for external packages that still import it.
+# New code should use the request context pattern instead.
+# fal.ref.get_current_app().current_request.lifecycle_preference
+_LIFECYCLE_PREFERENCE: VariableReference[dict[str, str] | None] = VariableReference(
+    None
+)
+
+
+def __getattr__(name: str):
+    if name == "LIFECYCLE_PREFERENCE":
+        import warnings  # noqa: PLC0415
+
+        warnings.warn(
+            "LIFECYCLE_PREFERENCE is deprecated. Use "
+            "fal.ref.get_current_app().current_request.lifecycle_preference instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return _LIFECYCLE_PREFERENCE
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 @dataclass
@@ -330,20 +359,22 @@ class MultipartUploadGCS:
             "Authorization": f"Key {key_id}:{key_secret}",
         }
 
-    def create(self):
+    def create(self, object_lifecycle_preference: dict[str, str] | None = None) -> None:
         grpc_host = os.environ.get("FAL_HOST", "api.alpha.fal.ai")
         rest_host = grpc_host.replace("api", "rest", 1)
         url = f"https://{rest_host}/storage/upload/initiate-multipart?storage_type=gcs"
 
         try:
+            headers = {
+                **self.auth_headers,
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            }
+            _object_lifecycle_headers(headers, object_lifecycle_preference)
             req = Request(
                 url,
                 method="POST",
-                headers={
-                    **self.auth_headers,
-                    "Content-Type": "application/json",
-                    "Accept": "application/json",
-                },
+                headers=headers,
                 data=json.dumps(
                     {
                         "file_name": self.file_name,
@@ -432,8 +463,9 @@ class MultipartUploadGCS:
         file: FileData,
         chunk_size: int | None = None,
         max_concurrency: int | None = None,
+        object_lifecycle_preference: dict[str, str] | None = None,
     ):
-        import concurrent.futures
+        import concurrent.futures  # noqa: PLC0415
 
         multipart = cls(
             file.file_name,
@@ -441,7 +473,7 @@ class MultipartUploadGCS:
             content_type=file.content_type,
             max_concurrency=max_concurrency,
         )
-        multipart.create()
+        multipart.create(object_lifecycle_preference=object_lifecycle_preference)
 
         parts = math.ceil(len(file.data) / multipart.chunk_size)
         with concurrent.futures.ThreadPoolExecutor(
@@ -467,8 +499,9 @@ class MultipartUploadGCS:
         chunk_size: int | None = None,
         content_type: str | None = None,
         max_concurrency: int | None = None,
+        object_lifecycle_preference: dict[str, str] | None = None,
     ) -> str:
-        import concurrent.futures
+        import concurrent.futures  # noqa: PLC0415
 
         file_name = os.path.basename(file_path)
         size = os.path.getsize(file_path)
@@ -479,7 +512,7 @@ class MultipartUploadGCS:
             content_type=content_type,
             max_concurrency=max_concurrency,
         )
-        multipart.create()
+        multipart.create(object_lifecycle_preference=object_lifecycle_preference)
 
         parts = math.ceil(size / multipart.chunk_size)
         with concurrent.futures.ThreadPoolExecutor(
@@ -523,6 +556,7 @@ class FalFileRepository(FalFileRepositoryBase):
                 file,
                 chunk_size=multipart_chunk_size,
                 max_concurrency=multipart_max_concurrency,
+                object_lifecycle_preference=object_lifecycle_preference,
             )
 
         headers: Dict[str, str] = {}
@@ -533,10 +567,13 @@ class FalFileRepository(FalFileRepositoryBase):
     @property
     def auth_headers(self) -> dict[str, str]:
         token = fal_v3_token_manager.get_token()
-        return {
+        headers = {
             "Authorization": f"{token.token_type} {token.token}",
             "User-Agent": "fal/0.1.0",
         }
+        _caller_cdn_header(headers)
+
+        return headers
 
     def save_file(
         self,
@@ -558,6 +595,7 @@ class FalFileRepository(FalFileRepositoryBase):
                 chunk_size=multipart_chunk_size,
                 content_type=content_type,
                 max_concurrency=multipart_max_concurrency,
+                object_lifecycle_preference=object_lifecycle_preference,
             )
             data = None
         else:
@@ -594,17 +632,19 @@ class MultipartUpload:
 
         self._parts: list[dict] = []
 
-    def create(self):
+    def create(self, object_lifecycle_preference: dict[str, str] | None = None) -> None:
         token = fal_v2_token_manager.get_token()
+        headers = {
+            "Authorization": f"{token.token_type} {token.token}",
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        }
+        _object_lifecycle_headers(headers, object_lifecycle_preference)
         try:
             req = Request(
                 f"{token.base_upload_url}/upload/initiate-multipart",
                 method="POST",
-                headers={
-                    "Authorization": f"{token.token_type} {token.token}",
-                    "Accept": "application/json",
-                    "Content-Type": "application/json",
-                },
+                headers=headers,
                 data=json.dumps(
                     {
                         "file_name": self.file_name,
@@ -672,8 +712,9 @@ class MultipartUpload:
         file: FileData,
         chunk_size: int | None = None,
         max_concurrency: int | None = None,
+        object_lifecycle_preference: dict[str, str] | None = None,
     ):
-        import concurrent.futures
+        import concurrent.futures  # noqa: PLC0415
 
         multipart = cls(
             file.file_name,
@@ -681,7 +722,7 @@ class MultipartUpload:
             content_type=file.content_type,
             max_concurrency=max_concurrency,
         )
-        multipart.create()
+        multipart.create(object_lifecycle_preference=object_lifecycle_preference)
 
         parts = math.ceil(len(file.data) / multipart.chunk_size)
         with concurrent.futures.ThreadPoolExecutor(
@@ -707,8 +748,9 @@ class MultipartUpload:
         chunk_size: int | None = None,
         content_type: str | None = None,
         max_concurrency: int | None = None,
+        object_lifecycle_preference: dict[str, str] | None = None,
     ) -> str:
-        import concurrent.futures
+        import concurrent.futures  # noqa: PLC0415
 
         file_name = os.path.basename(file_path)
         size = os.path.getsize(file_path)
@@ -719,7 +761,7 @@ class MultipartUpload:
             content_type=content_type,
             max_concurrency=max_concurrency,
         )
-        multipart.create()
+        multipart.create(object_lifecycle_preference=object_lifecycle_preference)
 
         parts = math.ceil(size / multipart.chunk_size)
         with concurrent.futures.ThreadPoolExecutor(
@@ -784,24 +826,30 @@ class MultipartUploadV3:
             raise FileUploadException("FAL_KEY must be set")
 
         key_id, key_secret = fal_key
-        return {
+        headers = {
             "Authorization": f"Key {key_id}:{key_secret}",
+            "User-Agent": "fal/0.1.0",
         }
+        _caller_cdn_header(headers)
 
-    def create(self):
+        return headers
+
+    def create(self, object_lifecycle_preference: dict[str, str] | None = None) -> None:
         grpc_host = os.environ.get("FAL_HOST", "api.alpha.fal.ai")
         rest_host = grpc_host.replace("api", "rest", 1)
         url = f"https://{rest_host}/storage/upload/initiate-multipart?storage_type=fal-cdn-v3"
 
         try:
+            headers = {
+                **self.auth_headers,
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            }
+            _object_lifecycle_headers(headers, object_lifecycle_preference)
             req = Request(
                 url,
                 method="POST",
-                headers={
-                    **self.auth_headers,
-                    "Content-Type": "application/json",
-                    "Accept": "application/json",
-                },
+                headers=headers,
                 data=json.dumps(
                     {
                         "file_name": self.file_name,
@@ -878,8 +926,9 @@ class MultipartUploadV3:
         file: FileData,
         chunk_size: int | None = None,
         max_concurrency: int | None = None,
+        object_lifecycle_preference: dict[str, str] | None = None,
     ):
-        import concurrent.futures
+        import concurrent.futures  # noqa: PLC0415
 
         multipart = cls(
             file.file_name,
@@ -887,7 +936,7 @@ class MultipartUploadV3:
             content_type=file.content_type,
             max_concurrency=max_concurrency,
         )
-        multipart.create()
+        multipart.create(object_lifecycle_preference=object_lifecycle_preference)
 
         parts = math.ceil(len(file.data) / multipart.chunk_size)
         with concurrent.futures.ThreadPoolExecutor(
@@ -913,8 +962,9 @@ class MultipartUploadV3:
         chunk_size: int | None = None,
         content_type: str | None = None,
         max_concurrency: int | None = None,
+        object_lifecycle_preference: dict[str, str] | None = None,
     ) -> str:
-        import concurrent.futures
+        import concurrent.futures  # noqa: PLC0415
 
         file_name = os.path.basename(file_path)
         size = os.path.getsize(file_path)
@@ -925,7 +975,7 @@ class MultipartUploadV3:
             content_type=content_type,
             max_concurrency=max_concurrency,
         )
-        multipart.create()
+        multipart.create(object_lifecycle_preference=object_lifecycle_preference)
 
         parts = math.ceil(size / multipart.chunk_size)
         with concurrent.futures.ThreadPoolExecutor(
@@ -985,23 +1035,28 @@ class InternalMultipartUploadV3:
     @property
     def auth_headers(self) -> dict[str, str]:
         token = fal_v3_token_manager.get_token()
-        return {
+        headers = {
             "Authorization": f"{token.token_type} {token.token}",
             "User-Agent": "fal/0.1.0",
         }
+        _caller_cdn_header(headers)
 
-    def create(self):
+        return headers
+
+    def create(self, object_lifecycle_preference: dict[str, str] | None = None) -> None:
         token = fal_v3_token_manager.get_token()
         try:
+            headers = {
+                **self.auth_headers,
+                "Accept": "application/json",
+                "Content-Type": self.content_type,
+                "X-Fal-File-Name": self.file_name,
+            }
+            _object_lifecycle_headers(headers, object_lifecycle_preference)
             req = Request(
                 f"{token.base_upload_url}/files/upload/multipart",
                 method="POST",
-                headers={
-                    **self.auth_headers,
-                    "Accept": "application/json",
-                    "Content-Type": self.content_type,
-                    "X-Fal-File-Name": self.file_name,
-                },
+                headers=headers,
             )
             with _maybe_retry_request(req) as response:
                 result = json.load(response)
@@ -1068,8 +1123,9 @@ class InternalMultipartUploadV3:
         file: FileData,
         chunk_size: int | None = None,
         max_concurrency: int | None = None,
+        object_lifecycle_preference: dict[str, str] | None = None,
     ):
-        import concurrent.futures
+        import concurrent.futures  # noqa: PLC0415
 
         multipart = cls(
             file.file_name,
@@ -1077,7 +1133,7 @@ class InternalMultipartUploadV3:
             content_type=file.content_type,
             max_concurrency=max_concurrency,
         )
-        multipart.create()
+        multipart.create(object_lifecycle_preference=object_lifecycle_preference)
 
         parts = math.ceil(len(file.data) / multipart.chunk_size)
         with concurrent.futures.ThreadPoolExecutor(
@@ -1103,8 +1159,9 @@ class InternalMultipartUploadV3:
         chunk_size: int | None = None,
         content_type: str | None = None,
         max_concurrency: int | None = None,
+        object_lifecycle_preference: dict[str, str] | None = None,
     ) -> str:
-        import concurrent.futures
+        import concurrent.futures  # noqa: PLC0415
 
         file_name = os.path.basename(file_path)
         size = os.path.getsize(file_path)
@@ -1115,7 +1172,7 @@ class InternalMultipartUploadV3:
             content_type=content_type,
             max_concurrency=max_concurrency,
         )
-        multipart.create()
+        multipart.create(object_lifecycle_preference=object_lifecycle_preference)
 
         parts = math.ceil(size / multipart.chunk_size)
         with concurrent.futures.ThreadPoolExecutor(
@@ -1159,6 +1216,7 @@ class FalFileRepositoryV2(FalFileRepositoryBase):
                 file,
                 chunk_size=multipart_chunk_size,
                 max_concurrency=multipart_max_concurrency,
+                object_lifecycle_preference=object_lifecycle_preference,
             )
 
         token = fal_v2_token_manager.get_token()
@@ -1209,6 +1267,7 @@ class FalFileRepositoryV2(FalFileRepositoryBase):
                 chunk_size=multipart_chunk_size,
                 content_type=content_type,
                 max_concurrency=multipart_max_concurrency,
+                object_lifecycle_preference=object_lifecycle_preference,
             )
             data = None
         else:
@@ -1299,12 +1358,7 @@ class FalFileRepositoryV3(FileRepository):
             "Authorization": f"Key {key_id}:{key_secret}",
             "User-Agent": "fal/0.1.0",
         }
-
-        # Inject the CDN token if it is available
-        current_app = get_current_app()
-        if current_app and current_app.current_request:
-            if cdn_token := current_app.current_request.headers.get("x-fal-cdn-token"):
-                headers["X-Fal-CDN-Token"] = cdn_token
+        _caller_cdn_header(headers)
 
         return headers
 
@@ -1326,6 +1380,7 @@ class FalFileRepositoryV3(FileRepository):
                 file,
                 chunk_size=multipart_chunk_size,
                 max_concurrency=multipart_max_concurrency,
+                object_lifecycle_preference=object_lifecycle_preference,
             )
 
         headers = {
@@ -1396,6 +1451,7 @@ class FalFileRepositoryV3(FileRepository):
                 chunk_size=multipart_chunk_size,
                 content_type=content_type,
                 max_concurrency=multipart_max_concurrency,
+                object_lifecycle_preference=object_lifecycle_preference,
             )
             data = None
         else:
@@ -1442,6 +1498,7 @@ class InternalFalFileRepositoryV3(FileRepository):
                 file,
                 chunk_size=multipart_chunk_size,
                 max_concurrency=multipart_max_concurrency,
+                object_lifecycle_preference=object_lifecycle_preference,
             )
 
         headers = {
@@ -1469,10 +1526,13 @@ class InternalFalFileRepositoryV3(FileRepository):
     @property
     def auth_headers(self) -> dict[str, str]:
         token = fal_v3_token_manager.get_token()
-        return {
+        headers = {
             "Authorization": f"{token.token_type} {token.token}",
             "User-Agent": "fal/0.1.0",
         }
+        _caller_cdn_header(headers)
+
+        return headers
 
     def save_file(
         self,
@@ -1496,6 +1556,7 @@ class InternalFalFileRepositoryV3(FileRepository):
                 chunk_size=multipart_chunk_size,
                 content_type=content_type,
                 max_concurrency=multipart_max_concurrency,
+                object_lifecycle_preference=object_lifecycle_preference,
             )
             data = None
         else:
