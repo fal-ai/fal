@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools_scm]
 root = "../../"
-git_describe_command= 'git describe --tags --abbrev=0 --dirty --match "fal_v*"'
+git_describe_command= 'git describe --tags --dirty --match "fal_v*"'
 tag_regex = "^fal_v(?P<version>.*)$"
 fallback_version = "0.0.0"
 version_file = "src/fal/_fal_version.py"
