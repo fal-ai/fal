@@ -979,6 +979,12 @@ MAX_DELAY = 30
 RETRY_CODES = [408, 409, 429]
 INGRESS_ERROR_CODES = [502, 503, 504]
 
+# Explicit timeout for queue polling requests (status checks and result fetching).
+# httpx's default timeout (120s) operates at the HTTP protocol layer and can fail
+# to fire when the hang is at the raw SSL socket level (ssl.read()).  Using an
+# httpx.Timeout object with a shorter connect timeout ensures we detect stalls.
+QUEUE_POLL_TIMEOUT = httpx.Timeout(120.0, connect=30.0)
+
 
 def _is_ingress_error(response: httpx.Response) -> bool:
     """Tell apart ingress errors from client errors."""
@@ -1372,6 +1378,7 @@ class SyncRequestHandle(_BaseRequestHandle):
             params={
                 "logs": with_logs,
             },
+            timeout=QUEUE_POLL_TIMEOUT,
         )
         _raise_for_status(response)
 
@@ -1397,7 +1404,9 @@ class SyncRequestHandle(_BaseRequestHandle):
         for _ in self.iter_events(with_logs=False):
             continue
 
-        response = _maybe_retry_request(self.client, "GET", self.response_url)
+        response = _maybe_retry_request(
+            self.client, "GET", self.response_url, timeout=QUEUE_POLL_TIMEOUT
+        )
         _raise_for_status(response)
         return response.json()
 
@@ -1407,6 +1416,7 @@ class SyncRequestHandle(_BaseRequestHandle):
             self.client,
             "PUT",
             self.cancel_url,
+            timeout=QUEUE_POLL_TIMEOUT,
         )
         _raise_for_status(response)
 
@@ -1445,6 +1455,7 @@ class AsyncRequestHandle(_BaseRequestHandle):
             params={
                 "logs": with_logs,
             },
+            timeout=QUEUE_POLL_TIMEOUT,
         )
         _raise_for_status(response)
 
@@ -1474,6 +1485,7 @@ class AsyncRequestHandle(_BaseRequestHandle):
             self.client,
             "GET",
             self.response_url,
+            timeout=QUEUE_POLL_TIMEOUT,
         )
         _raise_for_status(response)
         return response.json()
@@ -1484,6 +1496,7 @@ class AsyncRequestHandle(_BaseRequestHandle):
             self.client,
             "PUT",
             self.cancel_url,
+            timeout=QUEUE_POLL_TIMEOUT,
         )
         _raise_for_status(response)
 
