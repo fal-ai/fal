@@ -74,7 +74,7 @@ def _get_remote_file_properties(
     headers = {**TEMP_HEADERS, **(request_headers or {})}
     request = Request(url, headers=headers)
 
-    with urlopen(request) as response:
+    with urlopen(request, timeout=30) as response:
         file_name = response.headers.get_filename()
         content_length = int(response.headers.get("Content-Length", -1))
 
@@ -323,7 +323,7 @@ def _stream_url_data_to_file(
     received_size = 0
     total_size = 0
 
-    with urlopen(request) as response, open(file_path, "wb") as f_stream:
+    with urlopen(request, timeout=30) as response, open(file_path, "wb") as f_stream:
         total_size = int(response.headers.get("content-length", total_size))
         while data := response.read(chunk_size_in_mb * ONE_MB):
             f_stream.write(data)
