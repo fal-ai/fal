@@ -1880,7 +1880,7 @@ def graceful_shutdown(
     path: str,
     kill: bool = False,
 ) -> bool:
-    time.sleep(2)
+    time.sleep(5)
 
     token = str(uuid.uuid4())
     assert (
@@ -1897,7 +1897,7 @@ def graceful_shutdown(
     handle = submit_and_wait_for_runner(test_graceful_shutdown_app, path=path)
     saved_request_id = handle.request_id
 
-    time.sleep(2)
+    time.sleep(5)
     with host._connection as client:
         _, _, app_alias = test_graceful_shutdown_app.partition("/")
 
@@ -1912,10 +1912,10 @@ def graceful_shutdown(
             client.stop_runner(runner.runner_id)
 
     if kill:
-        time.sleep(2)
+        time.sleep(5)
     else:
         # Need to wait longer than 10s because how we stop the runner
-        time.sleep(15)
+        time.sleep(20)
 
     assert (
         apps.run(test_graceful_shutdown_app, {"uuid": token}, path="/set-uuid") == "ok"
