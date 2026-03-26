@@ -25,6 +25,18 @@ def test_list_with_env():
     assert args.env == "dev"
 
 
+@patch.dict("os.environ", {"FAL_ENV": "from-env-var"})
+def test_list_uses_fal_env_variable():
+    args = parse_args(["apps", "list"])
+    assert args.env == "from-env-var"
+
+
+@patch.dict("os.environ", {"FAL_ENV": "from-env-var"})
+def test_list_cli_env_overrides_fal_env_variable():
+    args = parse_args(["apps", "list", "--env", "cli-env"])
+    assert args.env == "cli-env"
+
+
 def test_list_with_regions():
     args = parse_args(["apps", "list", "--regions", "us-east", "eu-west"])
     assert args.func == _list

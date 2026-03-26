@@ -3,7 +3,7 @@ import json
 
 from fal.api.client import SyncServerlessClient
 
-from .parser import FalClientParser, RefAction, get_output_parser
+from .parser import FalClientParser, RefAction, add_env_argument, get_output_parser
 
 
 def _deploy(args):
@@ -208,10 +208,6 @@ def add_parser(main_subparsers, parents):
             "Ignore the environment build cache and force rebuild."
         ),
     )
-    parser.add_argument(
-        "--env",
-        dest="env",
-        help="Target environment (defaults to main).",
-    )
+    add_env_argument(parser)
 
     parser.set_defaults(func=_deploy)

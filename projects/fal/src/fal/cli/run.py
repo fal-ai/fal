@@ -3,7 +3,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from ._utils import AppData, get_app_data_from_toml, is_app_name
-from .parser import FalClientParser, RefAction
+from .parser import FalClientParser, RefAction, add_env_argument
 
 
 def _run(args):
@@ -120,11 +120,7 @@ def add_parser(main_subparsers, parents):
             "Ignore the environment build cache and force rebuild."
         ),
     )
-    parser.add_argument(
-        "--env",
-        dest="env",
-        help="Target environment (defaults to main).",
-    )
+    add_env_argument(parser)
     parser.add_argument(
         "--local",
         action="store_true",

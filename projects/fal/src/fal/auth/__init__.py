@@ -147,7 +147,7 @@ def _fetch_teams(bearer_token: str) -> list[dict]:
         headers={"Authorization": bearer_token},
     )
     try:
-        with urlopen(request) as response:
+        with urlopen(request, timeout=30) as response:
             return json.load(response)
     except HTTPError as exc:
         raise FalServerlessException("Failed to fetch teams") from exc
@@ -167,7 +167,7 @@ def current_user_info(headers: dict[str, str]) -> dict:
         headers=headers,
     )
     try:
-        with urlopen(request) as response:
+        with urlopen(request, timeout=30) as response:
             return json.load(response)
     except HTTPError as exc:
         raise FalServerlessException("Failed to fetch user info") from exc

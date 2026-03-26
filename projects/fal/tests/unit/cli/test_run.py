@@ -24,6 +24,18 @@ def test_run_with_env():
     assert args.auth == "public"
 
 
+@patch.dict("os.environ", {"FAL_ENV": "from-env-var"})
+def test_run_uses_fal_env_variable():
+    args = parse_args(["run", "/my/path.py::myfunc"])
+    assert args.env == "from-env-var"
+
+
+@patch.dict("os.environ", {"FAL_ENV": "from-env-var"})
+def test_run_cli_env_overrides_fal_env_variable():
+    args = parse_args(["run", "/my/path.py::myfunc", "--env", "cli-env"])
+    assert args.env == "cli-env"
+
+
 def test_run_with_machine_type():
     args = parse_args(["run", "/my/path.py::myfunc", "--machine-type", "GPU-H100"])
     assert args.func == _run

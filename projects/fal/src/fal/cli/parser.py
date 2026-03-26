@@ -1,4 +1,5 @@
 import argparse
+import os
 import sys
 from datetime import datetime, timedelta
 from typing import Optional
@@ -211,3 +212,16 @@ def get_output_parser():
         help="Output in JSON format (same as --output json)",
     )
     return parser
+
+
+def add_env_argument(parser):
+    """Add the --env argument with FAL_ENV environment variable fallback."""
+    parser.add_argument(
+        "--env",
+        dest="env",
+        default=os.environ.get("FAL_ENV"),
+        help=(
+            "Target environment (defaults to main). "
+            "Can also be set via FAL_ENV environment variable."
+        ),
+    )
