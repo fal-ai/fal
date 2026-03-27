@@ -8,7 +8,7 @@ from .parser import FalClientParser, RefAction, add_env_argument
 
 def _run(args):
     from fal.api.client import SyncServerlessClient
-    from fal.utils import load_function_from
+    from fal.utils import load_function_from, load_no_pickle_function_from
 
     # Handle deprecated --force-env-build flag
     if args.force_env_build:
@@ -48,18 +48,28 @@ def _run(args):
 
     no_cache = args.no_cache or args.force_env_build
     client = SyncServerlessClient(host=args.host, team=team)
-    host = client._create_host(local_file_path=file_path, environment_name=args.env)
-
-    loaded = load_function_from(
-        host,
-        file_path,
-        func_name,
-        force_env_build=no_cache,
-        options=app_data.options,
-        app_name=app_data.name,
-        app_auth=app_data.auth,
-        limit_max_requests=args.limit_max_requests,
-    )
+    if args.no_pickle:
+        host = client._create_host(environment_name=args.env)
+        loaded = load_no_pickle_function_from(
+            host,
+            file_path,
+            func_name,
+            options=app_data.options,
+            app_name=app_data.name,
+            app_auth=app_data.auth,
+        )
+    else:
+        host = client._create_host(local_file_path=file_path, environment_name=args.env)
+        loaded = load_function_from(
+            host,
+            file_path,
+            func_name,
+            force_env_build=no_cache,
+            options=app_data.options,
+            app_name=app_data.name,
+            app_auth=app_data.auth,
+            limit_max_requests=args.limit_max_requests,
+        )
 
     isolated_function = loaded.function
     if args.machine_type is not None:
@@ -121,6 +131,14 @@ def add_parser(main_subparsers, parents):
         ),
     )
     add_env_argument(parser)
+    parser.add_argument(
+        "--no-pickle",
+        action="store_true",
+        help=(
+            "Run a lightweight wrapper remotely instead of pickling "
+            "and loading the target function locally."
+        ),
+    )
     parser.add_argument(
         "--local",
         action="store_true",

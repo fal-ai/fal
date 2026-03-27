@@ -1,10 +1,12 @@
+from unittest.mock import patch
+
 import pytest
 
 import fal
 from fal.api import IsolatedFunction, Options
 from fal.api.api import merge_basic_config
 from fal.api.client import SyncServerlessClient
-from fal.utils import _find_target, load_function_from
+from fal.utils import _find_target, load_function_from, load_no_pickle_function_from
 
 
 class DummyHost:
@@ -197,3 +199,82 @@ def test_load_function_from_preserves_app_defined_app_files_over_toml(tmp_path):
     assert wrapped_cls.app_files == ["class-files"]
     assert wrapped_cls.app_files_ignore == ["class-ignore"]
     assert wrapped_cls.app_files_context_dir == "class-context"
+
+
+def test_load_no_pickle_function_from_infers_app_files(tmp_path):
+    app_file = tmp_path / "simple.py"
+    app_file.write_text(
+        "import fal\n\n@fal.function()\ndef simple():\n    return 'ok'\n"
+    )
+
+    host = SyncServerlessClient(host="api.alpha.fal.ai")._create_host()
+    loaded = load_no_pickle_function_from(host, str(app_file), "simple")
+
+    assert loaded.function.options.host["app_files_context_dir"] == str(tmp_path)
+    assert loaded.function.options.host["app_files"] == ["simple.py"]
+    assert loaded.class_name == "simple"
+
+
+def test_load_no_pickle_function_from_appends_target_file_when_missing(tmp_path):
+    app_file = tmp_path / "nested" / "simple.py"
+    app_file.parent.mkdir(parents=True)
+    app_file.write_text(
+        "import fal\n\n@fal.function()\ndef simple():\n    return 'ok'\n"
+    )
+
+    host = SyncServerlessClient(host="api.alpha.fal.ai")._create_host()
+    options = Options(
+        host={
+            "app_files_context_dir": str(tmp_path),
+            "app_files": ["assets/config.json"],
+        }
+    )
+    loaded = load_no_pickle_function_from(
+        host, str(app_file), "simple", options=options
+    )
+
+    assert loaded.function.options.host["app_files"] == [
+        "assets/config.json",
+        "nested/simple.py",
+    ]
+    assert loaded.function.options.host["app_files_context_dir"] == str(tmp_path)
+
+
+@patch("runpy.run_path")
+def test_load_no_pickle_function_from_does_not_run_target_locally(
+    mock_run_path, tmp_path
+):
+    app_file = tmp_path / "simple.py"
+    app_file.write_text(
+        "import fal\n\n@fal.function()\ndef simple():\n    return 'ok'\n"
+    )
+
+    host = SyncServerlessClient(host="api.alpha.fal.ai")._create_host()
+    load_no_pickle_function_from(host, str(app_file), "simple")
+
+    mock_run_path.assert_not_called()
+
+
+@patch("runpy.run_path")
+def test_load_no_pickle_function_from_accepts_isolated_function_like_target(
+    mock_run_path, tmp_path
+):
+    class FunctionLike:
+        def __init__(self):
+            self.options = {}
+            self.called = False
+
+        def run_local(self):
+            self.called = True
+
+    target = FunctionLike()
+    mock_run_path.return_value = {"simple": target}
+
+    app_file = tmp_path / "simple.py"
+    app_file.write_text("placeholder")
+    host = SyncServerlessClient(host="api.alpha.fal.ai")._create_host()
+
+    loaded = load_no_pickle_function_from(host, str(app_file), "simple")
+    loaded.function.run_local()
+
+    assert target.called is True
