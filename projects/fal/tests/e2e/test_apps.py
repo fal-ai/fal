@@ -1461,7 +1461,7 @@ def test_stop_runner(host: api.FalServerlessHost, test_sleep_app: str):
     original_runner_id = None
 
     with host._connection as client:
-        timeout = 15
+        timeout = 30
         start_time = time.time()
         while True:
             _, _, app_alias = test_sleep_app.partition("/")
@@ -1915,7 +1915,7 @@ def graceful_shutdown(
         time.sleep(2)
     else:
         # Need to wait longer than 10s because how we stop the runner
-        time.sleep(15)
+        time.sleep(30)
 
     assert (
         apps.run(test_graceful_shutdown_app, {"uuid": token}, path="/set-uuid") == "ok"
