@@ -52,3 +52,17 @@ def add_priority_header(priority: Priority, headers: dict[str, str]) -> None:
             f"Priority must be one of {valid_priorities}, got '{priority}'"
         )
     headers[QUEUE_PRIORITY_HEADER] = priority
+
+
+def add_forwarded_headers(request_headers, _headers: dict[str, str]) -> None:
+    if cdn_token := request_headers.get("x-fal-cdn-token"):
+        _headers["x-fal-forwarded-cdn-token"] = cdn_token
+
+    forwarded_request_ids = []
+    if request_ids := request_headers.get("x-fal-forwarded-request-id"):
+        forwarded_request_ids.extend(request_ids.split(","))
+    if request_id := request_headers.get("x-fal-request-id"):
+        forwarded_request_ids.append(request_id)
+
+    if forwarded_request_ids:
+        _headers["x-fal-forwarded-request-id"] = ",".join(forwarded_request_ids)
