@@ -820,9 +820,12 @@
 <li class="toctree-l4"><a class="reference internal" href="fal.toolkit.html#fal.toolkit.File.file_name"><code class="docutils literal notranslate"><span class="pre">File.file_name</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.toolkit.html#fal.toolkit.File.file_size"><code class="docutils literal notranslate"><span class="pre">File.file_size</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.toolkit.html#fal.toolkit.File.from_bytes"><code class="docutils literal notranslate"><span class="pre">File.from_bytes()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.toolkit.html#fal.toolkit.File.from_bytes_async"><code class="docutils literal notranslate"><span class="pre">File.from_bytes_async()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.toolkit.html#fal.toolkit.File.from_path"><code class="docutils literal notranslate"><span class="pre">File.from_path()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.toolkit.html#fal.toolkit.File.from_path_async"><code class="docutils literal notranslate"><span class="pre">File.from_path_async()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.toolkit.html#fal.toolkit.File.model_config"><code class="docutils literal notranslate"><span class="pre">File.model_config</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.toolkit.html#fal.toolkit.File.save"><code class="docutils literal notranslate"><span class="pre">File.save()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.toolkit.html#fal.toolkit.File.save_async"><code class="docutils literal notranslate"><span class="pre">File.save_async()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.toolkit.html#fal.toolkit.File.url"><code class="docutils literal notranslate"><span class="pre">File.url</span></code></a></li>
 </ul>
 </li>
@@ -1566,6 +1569,20 @@ experimental API, use it at your own risk.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">Iterator</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">_WSConnection</span></code>]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+<section id="module-fal.compat">
+<span id="fal-compat-module"></span><h2>fal.compat module<a class="headerlink" href="#module-fal.compat" title="Link to this heading">¶</a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.compat.run_in_thread">
+<em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.compat.</span></span><span class="sig-name descname"><span class="pre">run_in_thread</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">func</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.compat.run_in_thread" title="Link to this definition">¶</a></dt>
+<dd><p>Run sync code on a worker thread with Python 3.8+ support.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code></span></p>
 </dd>
 </dl>
 </dd></dl>

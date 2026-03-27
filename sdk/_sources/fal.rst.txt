@@ -35,6 +35,14 @@ fal.apps module
    :undoc-members:
    :show-inheritance:
 
+fal.compat module
+-----------------
+
+.. automodule:: fal.compat
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 fal.config module
 -----------------
 
