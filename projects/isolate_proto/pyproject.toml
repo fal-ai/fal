@@ -39,3 +39,10 @@ dev = [
     "grpcio-tools==1.64.0",
     "mypy-protobuf==3.5.0",
 ]
+
+[tool.uv]
+exclude-newer = "7 days"
+
+[tool.uv.exclude-newer-package]
+# Keep newest versions available for first-party packages.
+isolate = "2100-01-01T00:00:00Z"
