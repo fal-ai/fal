@@ -62,7 +62,7 @@ jobs:
 
       - name: Run integration tests
         env:
-          FAL_KEY: ${{ secrets.FAL_CLOUD_KEY_ID }}:${{ secrets.FAL_CLOUD_KEY_SECRET }}
+          FAL_KEY: ${{ secrets.FAL_KEY_DEV }}
           FAL_HOST: api.fal.dev
           FAL_RUN_HOST: run.fal.dev
         run: |
