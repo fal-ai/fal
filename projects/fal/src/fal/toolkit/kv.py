@@ -3,6 +3,7 @@ from typing import Any, Dict, Optional
 from urllib.error import HTTPError
 from urllib.request import Request
 
+from fal._user_agent import USER_AGENT
 from fal.toolkit.exceptions import KVStoreException
 from fal.toolkit.file.providers.fal import _maybe_retry_request, fal_v3_token_manager
 
@@ -24,7 +25,7 @@ class KVStore:
         token = fal_v3_token_manager.get_token()
         return {
             "Authorization": f"{token.token_type} {token.token}",
-            "User-Agent": "fal/0.1.0",
+            "User-Agent": USER_AGENT,
         }
 
     def get(self, key: str) -> Optional[str]:

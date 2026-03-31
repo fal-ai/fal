@@ -211,7 +211,7 @@ class MultipartUpload:
         token = self._token_manager.get_token()
         return {
             "Authorization": f"{token.token_type} {token.token}",
-            "User-Agent": "fal/0.1.0",
+            "User-Agent": USER_AGENT,
         }
 
     def create(self):
@@ -387,7 +387,7 @@ class AsyncMultipartUpload:
         token = await self._token_manager.get_token()
         return {
             "Authorization": f"{token.token_type} {token.token}",
-            "User-Agent": "fal/0.1.0",
+            "User-Agent": USER_AGENT,
         }
 
     async def create(self):

@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, Callable, Iterator
 import httpx
 
 from fal import flags
+from fal._user_agent import USER_AGENT
 from fal.sdk import Credentials, get_credentials
 
 if TYPE_CHECKING:
@@ -59,7 +60,7 @@ class Completed(_Status):
 
 @lru_cache(maxsize=1)
 def _get_http_client() -> httpx.Client:
-    return httpx.Client(headers={"User-Agent": "Fal/Python"})
+    return httpx.Client(headers={"User-Agent": USER_AGENT})
 
 
 @dataclass
