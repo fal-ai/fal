@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Optional
 
 from fsspec import AbstractFileSystem
 
+from fal._user_agent import USER_AGENT
 from fal.upload import (
     MULTIPART_CHUNK_SIZE,
     MULTIPART_MAX_CONCURRENCY,
@@ -15,8 +16,6 @@ from fal.upload import (
 
 if TYPE_CHECKING:
     import httpx
-
-USER_AGENT = "fal-sdk/1.14.0 (python)"
 
 
 def _compute_md5(lpath, chunk_size=8192):
@@ -173,7 +172,7 @@ class FalFileSystem(AbstractFileSystem):
 
         if etag and etag != md5:
             raise RuntimeError(
-                f"MD5 mismatch on {rpath}: {etag} != {md5}, " "please contact support"
+                f"MD5 mismatch on {rpath}: {etag} != {md5}, please contact support"
             )
 
     def put_file(self, lpath, rpath, mode="overwrite", **kwargs):

@@ -16,6 +16,7 @@ from urllib.parse import urlparse, urlunparse
 from urllib.request import Request, urlopen
 from urllib.response import addinfourl
 
+from fal._user_agent import USER_AGENT
 from fal.auth import key_credentials
 from fal.ref import get_current_app
 from fal.toolkit.exceptions import FileUploadException
@@ -569,7 +570,7 @@ class FalFileRepository(FalFileRepositoryBase):
         token = fal_v3_token_manager.get_token()
         headers = {
             "Authorization": f"{token.token_type} {token.token}",
-            "User-Agent": "fal/0.1.0",
+            "User-Agent": USER_AGENT,
         }
         _caller_cdn_header(headers)
 
@@ -828,7 +829,7 @@ class MultipartUploadV3:
         key_id, key_secret = fal_key
         headers = {
             "Authorization": f"Key {key_id}:{key_secret}",
-            "User-Agent": "fal/0.1.0",
+            "User-Agent": USER_AGENT,
         }
         _caller_cdn_header(headers)
 
@@ -1037,7 +1038,7 @@ class InternalMultipartUploadV3:
         token = fal_v3_token_manager.get_token()
         headers = {
             "Authorization": f"{token.token_type} {token.token}",
-            "User-Agent": "fal/0.1.0",
+            "User-Agent": USER_AGENT,
         }
         _caller_cdn_header(headers)
 
@@ -1341,7 +1342,7 @@ class FalCDNFileRepository(FileRepository):
         key_id, key_secret = key_creds
         return {
             "Authorization": f"Bearer {key_id}:{key_secret}",
-            "User-Agent": "fal/0.1.0",
+            "User-Agent": USER_AGENT,
         }
 
 
@@ -1356,7 +1357,7 @@ class FalFileRepositoryV3(FileRepository):
         key_id, key_secret = fal_key
         headers = {
             "Authorization": f"Key {key_id}:{key_secret}",
-            "User-Agent": "fal/0.1.0",
+            "User-Agent": USER_AGENT,
         }
         _caller_cdn_header(headers)
 
@@ -1528,7 +1529,7 @@ class InternalFalFileRepositoryV3(FileRepository):
         token = fal_v3_token_manager.get_token()
         headers = {
             "Authorization": f"{token.token_type} {token.token}",
-            "User-Agent": "fal/0.1.0",
+            "User-Agent": USER_AGENT,
         }
         _caller_cdn_header(headers)
 
