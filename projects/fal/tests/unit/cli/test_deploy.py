@@ -810,7 +810,7 @@ def _prepared_deployment(
     *,
     reset_scale: bool,
     auth: str = "public",
-    host_options: dict | None = None,
+    host_options: Optional[dict] = None,
 ):
     return SimpleNamespace(
         loaded=SimpleNamespace(
