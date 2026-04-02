@@ -1,6 +1,23 @@
 from __future__ import annotations
 
-from typing import Literal, Union, get_args
+from typing import Literal, Union, get_args, Optional, Any
+
+from httpx import Headers
+
+try:
+    from fal.ref import get_current_app
+except ImportError:
+
+    def get_current_app() -> Optional[Any]:
+        return None
+
+
+def _current_fal_app_request() -> Optional[Any]:
+    """Get the current request if we are running in a fal app."""
+    if (app := get_current_app()) is not None and app.current_request is not None:
+        return app.current_request
+    return None
+
 
 MIN_REQUEST_TIMEOUT_SECONDS = 1  # Minimum allowed request timeout in seconds
 
@@ -54,15 +71,13 @@ def add_priority_header(priority: Priority, headers: dict[str, str]) -> None:
     headers[QUEUE_PRIORITY_HEADER] = priority
 
 
-def add_forwarded_headers(request_headers, _headers: dict[str, str]) -> None:
-    if cdn_token := request_headers.get("x-fal-cdn-token"):
-        _headers["x-fal-forwarded-cdn-token"] = cdn_token
+def add_fal_app_context_headers(headers: dict[str, str]) -> None:
+    if request := _current_fal_app_request():
+        if cdn_token := request.headers.get("x-fal-cdn-token"):
+            headers["x-fal-cdn-token"] = cdn_token
 
-    forwarded_request_ids = []
-    if request_ids := request_headers.get("x-fal-forwarded-request-id"):
-        forwarded_request_ids.extend(request_ids.split(","))
-    if request_id := request_headers.get("x-fal-request-id"):
-        forwarded_request_ids.append(request_id)
 
-    if forwarded_request_ids:
-        _headers["x-fal-forwarded-request-id"] = ",".join(forwarded_request_ids)
+def handle_response_headers(response_headers: Headers) -> None:
+    if request := _current_fal_app_request():
+        if cdn_token := response_headers.get("x-fal-cdn-token"):
+            request.headers["x-fal-cdn-token"] = cdn_token

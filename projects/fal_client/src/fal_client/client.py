@@ -49,9 +49,10 @@ from fal_client._headers import (
     add_priority_header,
     add_timeout_header,
     add_hint_header,
+    add_fal_app_context_headers,
+    handle_response_headers,
     REQUEST_TIMEOUT_TYPE_HEADER,
     REQUEST_TIMEOUT_HEADER,
-    add_forwarded_headers,
 )
 
 if TYPE_CHECKING:
@@ -62,14 +63,6 @@ logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from PIL import Image
-
-try:
-    from fal.ref import get_current_app
-except ImportError:
-
-    def get_current_app() -> Optional[Any]:
-        return None
-
 
 AnyJSON = Dict[str, Any]
 UploadRepositoryId = Literal["fal_v3", "cdn", "fal"]
@@ -1609,8 +1602,7 @@ class AsyncClient:
         if start_timeout is not None:
             add_timeout_header(start_timeout, _headers)
 
-        if (app := get_current_app()) is not None and app.current_request is not None:
-            add_forwarded_headers(app.current_request.headers, _headers)
+        add_fal_app_context_headers(_headers)
 
         response = await _async_maybe_retry_request(
             self._client,
@@ -1620,8 +1612,9 @@ class AsyncClient:
             timeout=timeout,
             headers=_headers,
         )
-
         _raise_for_status(response)
+        handle_response_headers(response.headers)
+
         return response.json()
 
     async def submit(
@@ -1665,8 +1658,7 @@ class AsyncClient:
         if start_timeout is not None:
             add_timeout_header(start_timeout, _headers)
 
-        if (app := get_current_app()) is not None and app.current_request is not None:
-            add_forwarded_headers(app.current_request.headers, _headers)
+        add_fal_app_context_headers(_headers)
 
         response = await _async_maybe_retry_request(
             self._client,
@@ -1677,6 +1669,7 @@ class AsyncClient:
             headers=_headers,
         )
         _raise_for_status(response)
+        handle_response_headers(response.headers)
 
         data = response.json()
         return AsyncRequestHandle(
@@ -2111,8 +2104,7 @@ class SyncClient:
         if start_timeout is not None:
             add_timeout_header(start_timeout, _headers)
 
-        if (app := get_current_app()) is not None and app.current_request is not None:
-            add_forwarded_headers(app.current_request.headers, _headers)
+        add_fal_app_context_headers(_headers)
 
         response = _maybe_retry_request(
             self._client,
@@ -2123,6 +2115,8 @@ class SyncClient:
             headers=_headers,
         )
         _raise_for_status(response)
+        handle_response_headers(response.headers)
+
         return response.json()
 
     def submit(
@@ -2163,8 +2157,7 @@ class SyncClient:
         if start_timeout is not None:
             add_timeout_header(start_timeout, _headers)
 
-        if (app := get_current_app()) is not None and app.current_request is not None:
-            add_forwarded_headers(app.current_request.headers, _headers)
+        add_fal_app_context_headers(_headers)
 
         response = _maybe_retry_request(
             self._client,
@@ -2175,6 +2168,7 @@ class SyncClient:
             headers=_headers,
         )
         _raise_for_status(response)
+        handle_response_headers(response.headers)
 
         data = response.json()
         return SyncRequestHandle(
