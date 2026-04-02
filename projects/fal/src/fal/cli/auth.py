@@ -103,7 +103,7 @@ def _login(args):
         connection = _prompt_connection(args)
 
     try:
-        login(args.console, connection=connection)
+        login(args.console, connection=connection, no_browser=args.no_browser)
         args.console.print(f"{CHECK_ICON} Authenticated successfully, welcome!")
     except FalServerlessException as e:
         args.console.print(f"{CROSS_ICON} {e}")
@@ -124,7 +124,7 @@ def _logout(args):
     from fal.exceptions import FalServerlessException
 
     try:
-        logout(args.console)
+        logout(args.console, no_browser=args.no_browser)
         args.console.print(f"{CHECK_ICON} Logged out of [cyan bold]fal[/]. Bye!")
     except FalServerlessException as e:
         args.console.print(f"{CROSS_ICON} {e}")
@@ -323,6 +323,12 @@ def add_parser(main_subparsers, parents):
         " Skips the interactive prompt.",
         default=None,
     )
+    login_parser.add_argument(
+        "--no-browser",
+        action="store_true",
+        default=False,
+        help="Don't attempt to open a browser. Just print the URL to visit.",
+    )
     login_parser.set_defaults(func=_login)
 
     logout_help = "Log out the currently logged-in user."
@@ -331,6 +337,12 @@ def add_parser(main_subparsers, parents):
         description=logout_help,
         help=logout_help,
         parents=parents,
+    )
+    logout_parser.add_argument(
+        "--no-browser",
+        action="store_true",
+        default=False,
+        help="Don't attempt to open a browser. Just print the URL to visit.",
     )
     logout_parser.set_defaults(func=_logout)
 
