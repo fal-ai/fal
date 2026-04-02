@@ -27,13 +27,18 @@ def logout_url(return_url: str):
     return f"https://{AUTH0_DOMAIN}/v2/logout?client_id={AUTH0_CLIENT_ID}&returnTo={encoded}"
 
 
-def _open_browser(url: str, code: str | None, console) -> None:
-    maybe_open_browser_tab(url)
+def _open_browser(
+    url: str, code: str | None, console, *, no_browser: bool = False
+) -> None:
+    if no_browser:
+        console.print("Open the following URL in a browser:")
+    else:
+        maybe_open_browser_tab(url)
+        console.print(
+            "If browser didn't open automatically, "
+            "on your computer or mobile device navigate to"
+        )
 
-    console.print(
-        "If browser didn't open automatically, "
-        "on your computer or mobile device navigate to"
-    )
     console.print(url)
 
     if code:
@@ -60,7 +65,7 @@ def _build_device_login_url(
     return f"{WEBSITE_URL}/api/auth/cli/session-seed?{params}"
 
 
-def login(console, connection: str | None = None) -> dict:
+def login(console, connection: str | None = None, *, no_browser: bool = False) -> dict:
     """
     Runs the device authorization flow and stores the user object in memory.
 
@@ -98,7 +103,7 @@ def login(console, connection: str | None = None) -> dict:
     else:
         url = logout_url(device_confirmation_url)
 
-    _open_browser(url, device_user_code, console)
+    _open_browser(url, device_user_code, console, no_browser=no_browser)
 
     # This is needed to suppress the ResourceWarning emitted
     # when the process is waiting for user confirmation
@@ -152,7 +157,7 @@ def refresh(token: str) -> dict:
         raise FalServerlessException(token_data["error_description"])
 
 
-def revoke(token: str, console):
+def revoke(token: str, console, *, no_browser: bool = False):
     token_payload = {
         "client_id": AUTH0_CLIENT_ID,
         "token": token,
@@ -166,7 +171,7 @@ def revoke(token: str, console):
         token_data = token_response.json()
         raise FalServerlessException(token_data["error_description"])
 
-    _open_browser(logout_url(WEBSITE_URL), None, console)
+    _open_browser(logout_url(WEBSITE_URL), None, console, no_browser=no_browser)
 
 
 def get_user_info(bearer_token: str) -> dict:
