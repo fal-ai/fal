@@ -10,7 +10,8 @@ from typing import TYPE_CHECKING, Any, Callable, Iterator
 import httpx
 
 from fal import flags
-from fal.sdk import Credentials, get_default_credentials
+from fal._user_agent import USER_AGENT
+from fal.sdk import Credentials, get_credentials
 
 if TYPE_CHECKING:
     from websockets.sync.connection import Connection
@@ -59,7 +60,7 @@ class Completed(_Status):
 
 @lru_cache(maxsize=1)
 def _get_http_client() -> httpx.Client:
-    return httpx.Client(headers={"User-Agent": "Fal/Python"})
+    return httpx.Client(headers={"User-Agent": USER_AGENT})
 
 
 @dataclass
@@ -72,7 +73,7 @@ class RequestHandle:
     _client: httpx.Client = field(default_factory=_get_http_client)
 
     # Use the credentials that were used to submit the request by default.
-    _creds: Credentials = field(default_factory=get_default_credentials, repr=False)
+    _creds: Credentials = field(default_factory=get_credentials, repr=False)
 
     def __post_init__(self):
         app_id = _backwards_compatible_app_id(self.app_id)
@@ -181,7 +182,7 @@ def stream(
         _path = path[len("/") :] if path.startswith("/") else path
         url += "/" + _path
 
-    creds = get_default_credentials()
+    creds = get_credentials()
     client = _get_http_client()
 
     response = client.post(
@@ -217,7 +218,7 @@ def submit(app_id: str, arguments: dict[str, Any], *, path: str = "") -> Request
         _path = path[len("/") :] if path.startswith("/") else path
         url += "/" + _path
 
-    creds = get_default_credentials()
+    creds = get_credentials()
     client = _get_http_client()
 
     response = client.post(
@@ -295,7 +296,7 @@ def _connect(
         _path = path[len("/") :] if path.startswith("/") else path
         url += "/" + _path
 
-    creds = get_default_credentials()
+    creds = get_credentials()
 
     with client.connect(
         url, additional_headers=creds.to_headers(), open_timeout=90
@@ -426,7 +427,7 @@ def ws(app_id: str, *, path: str = "") -> Iterator[_WSConnection]:
         _path = path[len("/") :] if path.startswith("/") else path
         url += "/" + _path
 
-    creds = get_default_credentials()
+    creds = get_credentials()
 
     with client.connect(
         url, additional_headers=creds.to_headers(), open_timeout=90

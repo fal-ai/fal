@@ -75,7 +75,7 @@ from fal.sdk import (
     MachineRequirements,
     RegisterApplicationResult,
     get_agent_credentials,
-    get_default_credentials,
+    get_credentials,
 )
 
 if TYPE_CHECKING:
@@ -169,11 +169,7 @@ class Host(Generic[ArgsT, ReturnT]):
     _SUPPORTED_KEYS: ClassVar[frozenset[str]] = frozenset()
     _GATEWAY_KEYS: ClassVar[frozenset[str]] = frozenset({"serve", "exposed_port"})
     _VIRTUALENV_KEYS: ClassVar[frozenset[str]] = frozenset(
-        {
-            "python_version",
-            "requirements",
-            "resolver",
-        }
+        {"python_version", "requirements", "resolver", "force"}
     )
     _CONTAINER_KEYS: ClassVar[frozenset[str]] = frozenset(
         {"image", "python_version", "requirements", "resolver", "force"}
@@ -408,6 +404,82 @@ FAL_SERVERLESS_DEFAULT_URL = flags.GRPC_HOST
 FAL_SERVERLESS_DEFAULT_MACHINE_TYPE = "XS"
 
 
+def _classify_unavailable_error(
+    details: str | None,
+    debug_error_string: str | None,
+) -> tuple[str, str] | None:
+    """Classify a gRPC UNAVAILABLE error into a human-readable cause and guidance.
+
+    Returns a (cause, guidance) tuple if a known pattern is matched, or None otherwise.
+    """
+    parts = [s for s in (details, debug_error_string) if s]
+    text = " ".join(parts).lower()
+
+    if (
+        "dns resolution failed" in text
+        or "name resolution failure" in text
+        or "name resolver error" in text
+    ):
+        return "DNS resolution failed", "Check network/DNS settings."
+    elif "connection refused" in text or "econnrefused" in text:
+        return "Connection refused", "Server may be temporarily down."
+    elif "ssl" in text or "tls" in text or "certificate" in text:
+        return "TLS/SSL handshake failed", "Possible proxy/firewall/certificate issue."
+    elif "connection reset" in text or "econnreset" in text:
+        return "Connection reset by server", "Transient error, retry."
+    elif "no route to host" in text or "ehostunreach" in text:
+        return "No route to host", "Check network/firewall settings."
+    elif "network is unreachable" in text or "enetunreach" in text:
+        return "Network unreachable", "Check internet connection."
+    elif "keepalive" in text or "ping timeout" in text:
+        return "Keepalive failed", "Network path may be broken, retry."
+    elif (
+        "transport is closing" in text
+        or "transport closed" in text
+        or "transport destroyed" in text
+        or "connection closed" in text
+        or "connection is closing" in text
+        or "socket closed" in text
+    ):
+        return "Connection closed unexpectedly", "Transient error, retry."
+    elif "failed to connect to all addresses" in text:
+        return "Failed to connect", "Server may be temporarily unreachable."
+    elif "goaway" in text:
+        return "Server sent GOAWAY", "Server shutting down, retry."
+    elif "deadline exceeded" in text or "i/o timeout" in text or "timed out" in text:
+        return "Connection timed out", "Check network or retry later."
+
+    return None
+
+
+def _format_unavailable_error(exc: grpc.RpcError) -> str:
+    """Build a user-facing message for a gRPC UNAVAILABLE error."""
+    msg = exc.details() or str(exc)
+    try:
+        debug_info = exc.debug_error_string()
+    except Exception:
+        debug_info = None
+
+    classified = _classify_unavailable_error(msg, debug_info)
+    if classified:
+        error_cause, guidance = classified
+        error_msg = (
+            f"Could not reach fal host. Cause: {error_cause}. "
+            f"{guidance} If it persists, please reach out to "
+            f"support@fal.ai with the following details: {msg}"
+        )
+    else:
+        error_msg = (
+            "Could not reach fal host. "
+            "This is most likely a transient problem. "
+            "If it persists, please reach out to support@fal.ai "
+            f"with the following details: {msg}"
+        )
+    if debug_info:
+        error_msg += f" | debug: {debug_info}"
+    return error_msg
+
+
 def _handle_grpc_error():
     def decorator(fn):
         @wraps(fn)
@@ -422,12 +494,7 @@ def _handle_grpc_error():
             except grpc.RpcError as e:
                 msg = e.details() or str(e)
                 if e.code() == grpc.StatusCode.UNAVAILABLE:
-                    raise FalServerlessError(
-                        "Could not reach fal host. "
-                        "This is most likely a transient problem. "
-                        "If it persists, please reach out to support@fal.ai with the following details: "  # noqa: E501
-                        f"{msg}"
-                    )
+                    raise FalServerlessError(_format_unavailable_error(e))
                 elif msg.endswith("died with <Signals.SIGKILL: 9>.`."):
                     raise FalServerlessError(
                         "Isolated function crashed. "
@@ -540,7 +607,7 @@ class FalServerlessHost(Host):
 
     url: str = FAL_SERVERLESS_DEFAULT_URL
     local_file_path: str = ""
-    credentials: Credentials = field(default_factory=get_default_credentials)
+    credentials: Credentials = field(default_factory=get_credentials)
     environment_name: Optional[str] = None
 
     _lock: threading.Lock = field(default_factory=threading.Lock, init=False)
@@ -740,6 +807,7 @@ class FalServerlessHost(Host):
         setup_function = options.host.get("setup_function", None)
         request_timeout = options.host.get("request_timeout")
         startup_timeout = options.host.get("startup_timeout")
+        regions = options.host.get("regions")
         machine_requirements = MachineRequirements(
             machine_types=machine_type,  # type: ignore
             num_gpus=options.host.get("num_gpus"),
@@ -756,6 +824,7 @@ class FalServerlessHost(Host):
             scaling_delay=scaling_delay,
             request_timeout=request_timeout,
             startup_timeout=startup_timeout,
+            valid_regions=regions,
         )
 
         files = self.files_sync(FileSyncOptions.from_options(options))
@@ -1294,12 +1363,12 @@ def function(  # type: ignore
 
     if config.get("force_env_build") is not None:
         force_env_build = config.pop("force_env_build")
-        if kind == "container":
+        if kind == "container" or kind == "virtualenv":
             config["force"] = force_env_build
         elif force_env_build:
             console.print(
                 "[bold yellow]Note:[/bold yellow] [dim]--no-cache[/dim]"
-                " is only supported for container apps as of now. Ignoring."
+                " is not supported for conda apps as of now. Ignoring."
             )
 
     options = host.parse_options(kind=kind, **config)
@@ -1730,7 +1799,7 @@ class BaseServable:
     def handle_exit(self):
         pass
 
-    async def serve(self) -> None:
+    async def serve(self, *, limit_max_requests: int | None = None) -> None:
         from prometheus_client import Gauge  # noqa: PLC0415
         from starlette_exporter import handle_metrics  # noqa: PLC0415
 
@@ -1744,15 +1813,45 @@ class BaseServable:
         # and it runs once per worker.
         server = FalServer(
             config=uvicorn.Config(
-                app, host="0.0.0.0", port=8080, timeout_keep_alive=300, lifespan="on"
+                app,
+                host="0.0.0.0",
+                port=8080,
+                timeout_keep_alive=300,
+                lifespan="on",
+                limit_max_requests=limit_max_requests,
             )
         )
         server.set_handle_exit(self.handle_exit)
 
         metrics_app = FastAPI()
         metrics_app.add_route("/metrics", handle_metrics)
+
+        class _SilentAccessConfig(uvicorn.Config):
+            """Uvicorn config that suppresses access logs without mutating the
+            global ``uvicorn.access`` logger state.
+
+            NOTE: We can't simply pass access_log=False to uvicorn.Config because
+            that clears handlers on the global ``uvicorn.access`` logger in
+            configure_logging(), which would disable access logs for the main
+            app server too (both servers share the same process-wide logger).
+            """
+
+            def configure_logging(self):
+                pass
+
+            def load(self):
+                super().load()
+                _original_protocol = self.http_protocol_class
+
+                class _SilentProtocol(_original_protocol):  # type: ignore[valid-type,misc]
+                    def __init__(self, *args: Any, **kwargs: Any):
+                        super().__init__(*args, **kwargs)
+                        self.access_log = False
+
+                self.http_protocol_class = _SilentProtocol
+
         metrics_server = uvicorn.Server(
-            config=uvicorn.Config(metrics_app, host="0.0.0.0", port=9090)
+            config=_SilentAccessConfig(metrics_app, host="0.0.0.0", port=9090)
         )
 
         async def _serve() -> None:

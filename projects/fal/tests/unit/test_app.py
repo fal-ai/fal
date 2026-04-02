@@ -4,6 +4,7 @@ import os
 import pickle
 from contextvars import ContextVar
 from typing import AsyncIterator, Iterator
+from unittest.mock import MagicMock, PropertyMock, patch
 
 import pytest
 from fastapi import WebSocket
@@ -84,6 +85,38 @@ def test_app_regions_propagate_to_function_options():
     assert fn.options.host.get("regions") == ["us-east", "eu-west"]
 
 
+def test_run_forwards_regions_to_machine_requirements():
+    from fal.api.api import FalServerlessHost, Options
+    from fal.sdk import HostedRunState
+
+    host = FalServerlessHost()
+    options = Options()
+    options.host["regions"] = ["us-east"]
+
+    connection = MagicMock()
+    connection.define_environment.return_value = object()
+    partial_result = MagicMock()
+    partial_result.status.state = HostedRunState.SUCCESS
+    partial_result.result = "ok"
+    connection.run.return_value = iter([partial_result])
+
+    with patch.object(
+        FalServerlessHost, "_connection", new_callable=PropertyMock
+    ) as mock_connection:
+        mock_connection.return_value = connection
+        result = host._run(
+            lambda: "ok",
+            options,
+            args=(),
+            kwargs={},
+            result_handler=lambda _: None,
+        )
+
+    assert result == "ok"
+    _, call_kwargs = connection.run.call_args
+    assert call_kwargs["machine_requirements"].valid_regions == ["us-east"]
+
+
 def test_wrap_app_allows_resolver_with_container_kind():
     from fal.app import wrap_app
 
@@ -96,6 +129,32 @@ def test_wrap_app_allows_resolver_with_container_kind():
 
     fn = wrap_app(ContainerKindApp)
     assert fn.options.environment.get("resolver") == "uv"
+
+
+def test_wrap_app_limit_max_requests_propagates_to_serve(
+    isolate_agent_env, monkeypatch: pytest.MonkeyPatch
+):
+    import asyncio
+
+    from fal.app import wrap_app
+
+    class SingleUseApp(App):
+        @endpoint("/")
+        def hello(self) -> str:
+            return "Hello, world!"
+
+    called_limit_max_requests: int | None = None
+
+    async def fake_serve(self, *, limit_max_requests: int | None = None):
+        nonlocal called_limit_max_requests
+        called_limit_max_requests = limit_max_requests
+
+    monkeypatch.setattr(SingleUseApp, "serve", fake_serve)
+
+    fn = wrap_app(SingleUseApp, limit_max_requests=1)
+    asyncio.run(fn.func())
+
+    assert called_limit_max_requests == 1
 
 
 def test_wrap_app_raises_for_virtualenv_only_keys_with_conda_kind():

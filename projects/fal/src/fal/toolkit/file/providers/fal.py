@@ -7,7 +7,7 @@ import threading
 from base64 import b64encode
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from functools import partial
 from pathlib import Path
 from typing import Any, Dict, Generator, Generic, TypeVar
@@ -16,6 +16,7 @@ from urllib.parse import urlparse, urlunparse
 from urllib.request import Request, urlopen
 from urllib.response import addinfourl
 
+from fal._user_agent import USER_AGENT
 from fal.auth import key_credentials
 from fal.ref import get_current_app
 from fal.toolkit.exceptions import FileUploadException
@@ -103,8 +104,21 @@ class FalV2Token:
     base_upload_url: str
     expires_at: datetime
 
-    def is_expired(self) -> bool:
-        return datetime.now(timezone.utc) >= self.expires_at
+    def is_expired(self, offset: timedelta | int | None = None) -> bool:
+        """
+        Return whether the token has expired.
+
+        If `offset` is provided, return whether the token *will have* expired as of
+        `now + offset`, rather than whether it is *currently* expired. Offsets can be
+        either a number of seconds or a `timedelta` object.
+        """
+        as_of = datetime.now(timezone.utc)
+        if offset is not None:
+            if isinstance(offset, timedelta):
+                as_of += offset
+            else:
+                as_of += timedelta(seconds=offset)
+        return as_of >= self.expires_at
 
 
 class FalV3Token(FalV2Token):
@@ -125,9 +139,19 @@ class FalV2TokenManager:
         )
         self._lock: threading.Lock = threading.Lock()
 
-    def get_token(self) -> FalV2Token:
+    def get_token(
+        self,
+        valid_for: timedelta | int | None = timedelta(hours=1),
+    ) -> FalV2Token:
+        """
+        Get a valid authentication token.
+
+        If `valid_for` is specified, return a token that's guaranteed to remain valid
+        for the specified duration. Durations can be specified as an integer number of
+        seconds, or as a `timedelta` object.
+        """
         with self._lock:
-            if self._token.is_expired():
+            if self._token.is_expired(offset=valid_for):
                 self._refresh_token()
             return self._token
 
@@ -546,7 +570,7 @@ class FalFileRepository(FalFileRepositoryBase):
         token = fal_v3_token_manager.get_token()
         headers = {
             "Authorization": f"{token.token_type} {token.token}",
-            "User-Agent": "fal/0.1.0",
+            "User-Agent": USER_AGENT,
         }
         _caller_cdn_header(headers)
 
@@ -805,7 +829,7 @@ class MultipartUploadV3:
         key_id, key_secret = fal_key
         headers = {
             "Authorization": f"Key {key_id}:{key_secret}",
-            "User-Agent": "fal/0.1.0",
+            "User-Agent": USER_AGENT,
         }
         _caller_cdn_header(headers)
 
@@ -1014,7 +1038,7 @@ class InternalMultipartUploadV3:
         token = fal_v3_token_manager.get_token()
         headers = {
             "Authorization": f"{token.token_type} {token.token}",
-            "User-Agent": "fal/0.1.0",
+            "User-Agent": USER_AGENT,
         }
         _caller_cdn_header(headers)
 
@@ -1318,7 +1342,7 @@ class FalCDNFileRepository(FileRepository):
         key_id, key_secret = key_creds
         return {
             "Authorization": f"Bearer {key_id}:{key_secret}",
-            "User-Agent": "fal/0.1.0",
+            "User-Agent": USER_AGENT,
         }
 
 
@@ -1333,7 +1357,7 @@ class FalFileRepositoryV3(FileRepository):
         key_id, key_secret = fal_key
         headers = {
             "Authorization": f"Key {key_id}:{key_secret}",
-            "User-Agent": "fal/0.1.0",
+            "User-Agent": USER_AGENT,
         }
         _caller_cdn_header(headers)
 
@@ -1505,7 +1529,7 @@ class InternalFalFileRepositoryV3(FileRepository):
         token = fal_v3_token_manager.get_token()
         headers = {
             "Authorization": f"{token.token_type} {token.token}",
-            "User-Agent": "fal/0.1.0",
+            "User-Agent": USER_AGENT,
         }
         _caller_cdn_header(headers)
 

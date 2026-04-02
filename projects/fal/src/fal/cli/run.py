@@ -3,7 +3,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from ._utils import AppData, get_app_data_from_toml, is_app_name
-from .parser import FalClientParser, RefAction
+from .parser import FalClientParser, RefAction, add_env_argument
 
 
 def _run(args):
@@ -58,9 +58,12 @@ def _run(args):
         options=app_data.options,
         app_name=app_data.name,
         app_auth=app_data.auth,
+        limit_max_requests=args.limit_max_requests,
     )
 
     isolated_function = loaded.function
+    if args.machine_type is not None:
+        isolated_function.options.host["machine_type"] = args.machine_type
     # let our exc handlers handle UserFunctionException
     isolated_function.reraise = False
     if args.local:
@@ -117,14 +120,21 @@ def add_parser(main_subparsers, parents):
             "Ignore the environment build cache and force rebuild."
         ),
     )
-    parser.add_argument(
-        "--env",
-        dest="env",
-        help="Target environment (defaults to main).",
-    )
+    add_env_argument(parser)
     parser.add_argument(
         "--local",
         action="store_true",
         help="Run locally without serverless.",
+    )
+    parser.add_argument(
+        "--machine-type",
+        type=str,
+        help="Machine type to use for this run.",
+    )
+    parser.add_argument(
+        "--limit-max-requests",
+        type=int,
+        default=None,
+        help="For fal.App runs, gracefully stop the server after serving N requests.",
     )
     parser.set_defaults(func=_run)

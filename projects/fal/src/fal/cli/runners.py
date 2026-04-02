@@ -239,7 +239,14 @@ def _shell(args):
                 break
         exit_code = exit_code or 0
     except grpc.RpcError as exc:
-        args.console.print(f"\n[red]Connection error:[/] {exc.details()}")
+        if exc.code() == grpc.StatusCode.UNAVAILABLE:
+            from fal.api.api import _format_unavailable_error
+
+            args.console.print(
+                f"\n[red]Connection error:[/] {_format_unavailable_error(exc)}"
+            )
+        else:
+            args.console.print(f"\n[red]Connection error:[/] {exc.details()}")
     except Exception as exc:
         args.console.print(f"\n[red]Error:[/] {exc}")
     finally:
@@ -252,7 +259,7 @@ def _shell(args):
 
 def _stop(args):
     client = SyncServerlessClient(host=args.host, team=args.team)
-    client.runners.stop(args.id, replace_first=not args.no_replace)
+    client.runners.stop(args.id, replace_first=args.replace)
 
 
 def _kill(args):
@@ -774,7 +781,7 @@ def _add_shell_parser(subparsers, parents):
     """Add hidden shell command parser."""
     parser = subparsers.add_parser(
         "shell",
-        help=argparse.SUPPRESS,
+        help="Open a shell on a runner.",
         parents=parents,
     )
     parser.add_argument("id", help="Runner ID.")
@@ -785,7 +792,7 @@ def _add_exec_parser(subparsers, parents):
     """Add hidden exec command parser."""
     parser = subparsers.add_parser(
         "exec",
-        help=argparse.SUPPRESS,
+        help="Execute a command on a runner.",
         parents=parents,
     )
     parser.add_argument("id", help="Runner ID.")

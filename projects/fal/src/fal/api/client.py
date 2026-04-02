@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, List, Optional
 
@@ -124,7 +123,7 @@ class AppsNamespace:
             request_timeout: Request timeout in seconds.
             startup_timeout: Startup timeout in seconds.
             machine_types: List of allowed machine types (e.g., ["GPU-H100"]).
-            regions: List of allowed regions (e.g., ["us-east-1"]).
+            regions: List of allowed regions (e.g., ["us-east"]).
 
         Example:
             client.apps.scale(
@@ -407,31 +406,9 @@ class SyncServerlessClient:
 
     @property
     def _credentials(self) -> Credentials:
-        from fal.sdk import FalServerlessKeyCredentials, get_default_credentials
+        from fal.sdk import get_credentials
 
-        if self.api_key:
-            if self.team:
-                raise ValueError(
-                    "Using explicit team with key credentials is not allowed"
-                )
-            try:
-                key_id, key_secret = self.api_key.split(":", 1)
-            except ValueError:
-                raise ValueError("api_key must be in 'KEY_ID:KEY_SECRET' format")
-            return FalServerlessKeyCredentials(key_id, key_secret)
-
-        if self.profile:
-            prev = os.environ.get("FAL_PROFILE")
-            os.environ["FAL_PROFILE"] = self.profile
-            try:
-                return get_default_credentials(team=self.team)
-            finally:
-                if prev is None:
-                    os.environ.pop("FAL_PROFILE", None)
-                else:
-                    os.environ["FAL_PROFILE"] = prev
-
-        return get_default_credentials(team=self.team)
+        return get_credentials(team=self.team, key=self.api_key, profile=self.profile)
 
     def _create_host(
         self, *, local_file_path: str = "", environment_name: str | None = None

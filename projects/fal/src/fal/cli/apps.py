@@ -8,8 +8,8 @@ import fal.cli.runners as runners
 from fal.api.client import SyncServerlessClient
 from fal.sdk import RunnerState, deconstruct_alias
 
-from ._utils import get_client
-from .parser import FalClientParser, SinceAction, get_output_parser
+from ._utils import VALID_REGIONS, get_client
+from .parser import FalClientParser, SinceAction, add_env_argument, get_output_parser
 
 if TYPE_CHECKING:
     from fal.sdk import AliasInfo, ApplicationInfo
@@ -76,6 +76,14 @@ def _list(args):
     client = SyncServerlessClient(host=args.host, team=args.team)
     apps = client.apps.list(filter=args.filter, environment_name=args.env)
 
+    if args.regions:
+        target_regions = set(args.regions)
+        apps = [
+            app
+            for app in apps
+            if target_regions.intersection(getattr(app, "valid_regions", []))
+        ]
+
     if args.sort_by_runners:
         apps.sort(key=lambda x: x.active_runners)
     else:
@@ -110,10 +118,12 @@ def _add_list_parser(subparsers, parents):
         type=str,
         help="Filter applications by alias contents",
     )
+    add_env_argument(parser)
     parser.add_argument(
-        "--env",
-        dest="env",
-        help="Target environment (defaults to main).",
+        "--regions",
+        nargs="+",
+        help="Valid regions (pass several items to set multiple).",
+        choices=sorted(VALID_REGIONS),
     )
     parser.set_defaults(func=_list)
 
@@ -176,11 +186,7 @@ def _add_list_rev_parser(subparsers, parents):
         nargs="?",
         help="Application name.",
     )
-    parser.add_argument(
-        "--env",
-        dest="env",
-        help="Target environment (defaults to main).",
-    )
+    add_env_argument(parser)
     parser.set_defaults(func=_list_rev)
 
 
@@ -304,11 +310,7 @@ def _add_scale_parser(subparsers, parents):
         nargs="+",
         help="Valid regions (pass several items to set multiple).",
     )
-    parser.add_argument(
-        "--env",
-        dest="env",
-        help="Target environment (defaults to main).",
-    )
+    add_env_argument(parser)
     parser.set_defaults(func=_scale)
 
 
@@ -336,11 +338,7 @@ def _add_rollout_parser(subparsers, parents):
         default=False,
         help="Force rollout (kills runners immidietely)",
     )
-    parser.add_argument(
-        "--env",
-        dest="env",
-        help="Target environment (defaults to main).",
-    )
+    add_env_argument(parser)
     parser.set_defaults(func=_rollout)
 
 
@@ -379,11 +377,7 @@ def _add_set_rev_parser(subparsers, parents):
         default=None,
         help="Application authentication mode.",
     )
-    parser.add_argument(
-        "--env",
-        dest="env",
-        help="Target environment (defaults to main).",
-    )
+    add_env_argument(parser)
     parser.set_defaults(func=_set_rev)
 
 
@@ -469,11 +463,7 @@ def _add_runners_parser(subparsers, parents):
         default=None,
         help=("Filter by runner state(s). Choose one or more, or 'all'(default)."),
     )
-    parser.add_argument(
-        "--env",
-        dest="env",
-        help="Target environment (defaults to main).",
-    )
+    add_env_argument(parser)
     parser.set_defaults(func=_runners)
 
 
@@ -499,11 +489,7 @@ def _add_delete_parser(subparsers, parents):
         "app_name",
         help="Application name.",
     )
-    parser.add_argument(
-        "--env",
-        dest="env",
-        help="Target environment (defaults to main).",
-    )
+    add_env_argument(parser)
     parser.set_defaults(func=_delete)
 
 

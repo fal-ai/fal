@@ -185,6 +185,7 @@ def test_repository_auth_headers_include_cdn_token(repo_cls, token_manager, toke
 
     assert headers["X-Fal-CDN-Token"] == cdn_token
     assert "Authorization" in headers
+    assert headers["User-Agent"] == providers.USER_AGENT
 
 
 @pytest.mark.parametrize(
@@ -224,6 +225,7 @@ def test_repository_auth_headers_no_cdn_token_when_not_present(
 
     assert "X-Fal-CDN-Token" not in headers
     assert "Authorization" in headers
+    assert headers["User-Agent"] == providers.USER_AGENT
 
 
 def test_fal_file_repository_v3_auth_headers_include_cdn_token():
@@ -239,6 +241,7 @@ def test_fal_file_repository_v3_auth_headers_include_cdn_token():
 
     assert headers["X-Fal-CDN-Token"] == cdn_token
     assert headers["Authorization"] == "Key key_id:key_secret"
+    assert headers["User-Agent"] == providers.USER_AGENT
 
 
 def test_multipart_upload_v3_auth_headers_include_cdn_token():
@@ -254,6 +257,7 @@ def test_multipart_upload_v3_auth_headers_include_cdn_token():
 
     assert headers["X-Fal-CDN-Token"] == cdn_token
     assert headers["Authorization"] == "Key key_id:key_secret"
+    assert headers["User-Agent"] == providers.USER_AGENT
 
 
 def test_internal_multipart_upload_v3_auth_headers_include_cdn_token():
@@ -275,3 +279,4 @@ def test_internal_multipart_upload_v3_auth_headers_include_cdn_token():
 
     assert headers["X-Fal-CDN-Token"] == cdn_token
     assert "Authorization" in headers
+    assert headers["User-Agent"] == providers.USER_AGENT

@@ -151,7 +151,12 @@ def main(argv=None) -> int:
     except KeyboardInterrupt:
         _print_error("Aborted.")
     except grpc.RpcError as exc:
-        _print_error(exc.details())
+        if exc.code() == grpc.StatusCode.UNAVAILABLE:
+            from fal.api.api import _format_unavailable_error
+
+            _print_error(_format_unavailable_error(exc))
+        else:
+            _print_error(exc.details())
     except FalParserExit as exc:
         ret = exc.status
     except Exception as exc:

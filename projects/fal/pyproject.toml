@@ -22,7 +22,7 @@ authors = [{ name = "Features & Labels <support@fal.ai>"}]
 readme = "README.md"
 requires-python = ">=3.8"
 dependencies = [
-    "isolate[build]>=0.23.1,<0.24",
+    "isolate[build]>=0.23.1,<0.26",
     "isolate-proto>=0.30.6,<1",
     "grpcio>=1.64.0,<2",
     "dill==0.3.7",
@@ -87,6 +87,14 @@ dev = [
     "fal[docs,test]",
     "openapi-python-client>=0.14.1,<1",
 ]
+
+[tool.uv]
+exclude-newer = "7 days"
+
+[tool.uv.exclude-newer-package]
+# Keep newest versions available for first-party packages.
+isolate = "2100-01-01T00:00:00Z"
+isolate-proto = "2100-01-01T00:00:00Z"
 
 [project.scripts]
 fal = "fal.cli:main"

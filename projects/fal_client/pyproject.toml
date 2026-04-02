@@ -39,6 +39,9 @@ dev = [
     "fal_client[docs,test]",
 ]
 
+[tool.uv]
+exclude-newer = "7 days"
+
 [project.urls]
 homepage = "https://fal.ai"
 repository = "https://github.com/fal-ai/fal"
