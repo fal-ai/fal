@@ -651,7 +651,7 @@ class FalServerlessHost(Host):
 
         res = []
         if options.files_list:
-            sync = FileSync(self.local_file_path)
+            sync = FileSync(self.local_file_path, credentials=self.credentials)
             files, errors = sync.sync_files(
                 options.files_list,
                 files_ignore=options.files_ignore,
