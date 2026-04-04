@@ -589,7 +589,6 @@ class FalServerlessHost(Host):
             "scaling_delay",
             "max_multiplexing",
             "setup_function",
-            "data_dirs",
             "metadata",
             "request_timeout",
             "startup_timeout",
@@ -1097,7 +1096,6 @@ def function(
     request_timeout: int | None = None,
     startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
-    data_dirs: list[str] | None = None,
     force_env_build: bool = False,
     _base_image: str | None = None,
     _scheduler: str | None = None,
@@ -1132,7 +1130,6 @@ def function(
     request_timeout: int | None = None,
     startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
-    data_dirs: list[str] | None = None,
     force_env_build: bool = False,
     _base_image: str | None = None,
     _scheduler: str | None = None,
@@ -1219,7 +1216,6 @@ def function(
     request_timeout: int | None = None,
     startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
-    data_dirs: list[str] | None = None,
     force_env_build: bool = False,
     _base_image: str | None = None,
     _scheduler: str | None = None,
@@ -1259,7 +1255,6 @@ def function(
     request_timeout: int | None = None,
     startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
-    data_dirs: list[str] | None = None,
     force_env_build: bool = False,
     _base_image: str | None = None,
     _scheduler: str | None = None,
@@ -1293,7 +1288,6 @@ def function(
     request_timeout: int | None = None,
     startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
-    data_dirs: list[str] | None = None,
     force_env_build: bool = False,
     _base_image: str | None = None,
     _scheduler: str | None = None,
@@ -1327,7 +1321,6 @@ def function(
     request_timeout: int | None = None,
     startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
-    data_dirs: list[str] | None = None,
     force_env_build: bool = False,
     _base_image: str | None = None,
     _scheduler: str | None = None,
@@ -1907,10 +1900,6 @@ class ServeWrapper(BaseServable):
             RouteSignature("/"): self._func,
         }
 
-    @asynccontextmanager
-    async def lifespan(self, app: FastAPI):
-        yield
-
     async def __call__(self, *args, **kwargs) -> None:
         if len(args) != 0 or len(kwargs) != 0:
             print(
@@ -2068,6 +2057,8 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
     def func(self) -> Callable[ArgsT, ReturnT]:
         serve_mode = self.options.gateway.get("serve")
         if serve_mode:
+            # This type can be safely ignored because this case only happens when it
+            # is a ServedIsolatedFunction
             serve_func = ServeWrapper(self.raw_func)
             return serve_func  # type: ignore
         else:
