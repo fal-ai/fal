@@ -576,6 +576,11 @@ class App(BaseServable):
         kind: Deployment kind. For internal use.
         image: Custom container image for the application. Use ContainerImage
             to specify a Dockerfile.
+        data_mounts: Persistent data mount paths to expose to the application.
+            By default, apps have no `/data` access. Use `["/data"]` for full
+            access, or specific subdirectories like `["/data/.cache"]`.
+            When omitted (None), the server applies a backwards-compatible
+            default based on the user model.
     """
 
     requirements: ClassVar[list[str] | list[list[str]]] = []  # type: ignore[assignment]
@@ -609,6 +614,7 @@ class App(BaseServable):
     local_file_path: ClassVar[Optional[str]] = None
     skip_retry_conditions: ClassVar[Optional[list[RetryConditionLiteral]]] = None
     termination_grace_period_seconds: ClassVar[Optional[int]] = None
+    data_mounts: ClassVar[Optional[list[str]]] = None
 
     isolate_channel: async_grpc.Channel | None = None
 
@@ -679,6 +685,9 @@ class App(BaseServable):
             cls.host_kwargs["termination_grace_period_seconds"] = (
                 cls.termination_grace_period_seconds
             )
+
+        if cls.data_mounts is not None:
+            cls.host_kwargs["data_mounts"] = cls.data_mounts
 
         cls.host_kwargs["health_check_config"] = cls.get_health_check_config()
 
