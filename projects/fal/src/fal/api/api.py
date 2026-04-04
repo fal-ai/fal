@@ -57,7 +57,6 @@ from fal.exceptions import (
 )
 from fal.exceptions.gpu import _is_cuda_oom_exception, _is_generic_gpu_error
 from fal.file_sync import FileSync, FileSyncOptions
-from fal.helpers import warm_dir
 from fal.logging.isolate import IsolateLogPrinter
 from fal.sdk import (
     FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER,
@@ -349,26 +348,6 @@ def _prepare_partial_func(
         return result
 
     return wrapper
-
-
-def _wrap_setup_function(
-    setup_function: Callable[..., Any] | None,
-    data_dirs: list[str] | None,
-) -> Callable[..., Any] | None:
-    if not data_dirs:
-        return setup_function
-    dirs = tuple(data_dirs)
-
-    def wrapped_setup_function():
-        for directory in dirs:
-            warm_dir(directory)
-
-        if setup_function is not None:
-            return setup_function()
-
-        return None
-
-    return wrapped_setup_function
 
 
 async def _call_any_fn(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
@@ -834,7 +813,6 @@ class FalServerlessHost(Host):
         scheduler_options = options.host.get("_scheduler_options", None)
         exposed_port = options.get_exposed_port()
         setup_function = options.host.get("setup_function", None)
-        data_dirs = options.host.get("data_dirs")
         request_timeout = options.host.get("request_timeout")
         startup_timeout = options.host.get("startup_timeout")
         regions = options.host.get("regions")
@@ -870,7 +848,7 @@ class FalServerlessHost(Host):
             partial_func,
             environments,
             machine_requirements=machine_requirements,
-            setup_function=_wrap_setup_function(setup_function, data_dirs),
+            setup_function=setup_function,
             files=files,
             application_name=effective_app_name,
             auth_mode=effective_auth_mode,
@@ -1936,7 +1914,7 @@ class ServeWrapper(BaseServable):
         data_dirs: list[str] | None = None,
     ):
         self._func = func
-        self._setup_function = _wrap_setup_function(setup_function, data_dirs)
+        self._setup_function = setup_function
 
     def collect_routes(self) -> dict[RouteSignature, Callable[..., Any]]:
         return {
