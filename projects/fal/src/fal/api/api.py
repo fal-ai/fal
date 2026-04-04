@@ -811,6 +811,7 @@ class FalServerlessHost(Host):
         request_timeout = options.host.get("request_timeout")
         startup_timeout = options.host.get("startup_timeout")
         regions = options.host.get("regions")
+        data_mounts = options.host.get("data_mounts")
         machine_requirements = MachineRequirements(
             machine_types=machine_type,  # type: ignore
             num_gpus=options.host.get("num_gpus"),
@@ -848,6 +849,7 @@ class FalServerlessHost(Host):
             application_name=effective_app_name,
             auth_mode=effective_auth_mode,
             environment_name=self.environment_name,
+            data_mounts=data_mounts,
         ):
             result_handler(partial_result)
 

@@ -456,6 +456,37 @@ def test_data_mounts_register_sends_to_connection():
     assert call_kwargs["data_mounts"] == ["/data/.cache"]
 
 
+def test_data_mounts_run_sends_to_connection():
+    from fal.api.api import FalServerlessHost, Options
+    from fal.sdk import HostedRunState
+
+    host = FalServerlessHost()
+    options = Options()
+    options.host["data_mounts"] = ["/data"]
+
+    connection = MagicMock()
+    connection.define_environment.return_value = object()
+    partial_result = MagicMock()
+    partial_result.status.state = HostedRunState.SUCCESS
+    partial_result.result = "ok"
+    connection.run.return_value = iter([partial_result])
+
+    with patch.object(
+        FalServerlessHost, "_connection", new_callable=PropertyMock
+    ) as mock_connection:
+        mock_connection.return_value = connection
+        host._run(
+            lambda: "ok",
+            options,
+            args=(),
+            kwargs={},
+            result_handler=lambda _: None,
+        )
+
+    _, call_kwargs = connection.run.call_args
+    assert call_kwargs["data_mounts"] == ["/data"]
+
+
 def test_app_files_classvars_propagate_to_host_kwargs():
     class VarsApp(App):
         request_timeout = 11
