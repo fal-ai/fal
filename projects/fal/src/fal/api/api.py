@@ -2438,7 +2438,6 @@ class ServeWrapper(BaseServable):
         func: Callable,
         *,
         setup_function: Callable[..., Any] | None = None,
-        data_dirs: list[str] | None = None,
     ):
         self._func = func
         self._setup_function = setup_function
@@ -2809,7 +2808,6 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
             serve_func = ServeWrapper(
                 self.raw_func,
                 setup_function=self.options.host.get("setup_function"),
-                data_dirs=self.options.host.get("data_dirs"),
             )
             return serve_func  # type: ignore
         else:
