@@ -6,8 +6,12 @@ from os import PathLike
 from pathlib import Path
 from typing import Iterator
 
+from fal.logging import get_logger
+
 DEFAULT_WARM_DIR_PARALLELISM = 32
 DEFAULT_WARM_FILE_CHUNK_SIZE = 1024 * 1024
+
+logger = get_logger(__name__)
 
 
 def _iter_regular_files(directory: Path) -> Iterator[Path]:
@@ -29,6 +33,9 @@ def warm_file(
         raise ValueError("chunk_size must be greater than or equal to 1")
 
     path = Path(file_path).expanduser()
+    if path.is_symlink():
+        logger.info("Skipping warm_file for symlink", path=os.fspath(path))
+        return
     if not path.exists():
         raise FileNotFoundError(f"File not found: {path}")
     if path.is_dir():
@@ -59,23 +66,24 @@ def warm_dir(
     if parallelism == 1:
         for file_path in _iter_regular_files(path):
             warm_file(file_path)
-        return
+    else:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=parallelism) as executor:
+            pending = set()
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=parallelism) as executor:
-        pending = set()
+            for file_path in _iter_regular_files(path):
+                pending.add(executor.submit(warm_file, file_path))
 
-        for file_path in _iter_regular_files(path):
-            pending.add(executor.submit(warm_file, file_path))
+                # Keep a small bounded queue of work instead of materializing the
+                # full directory tree before starting any reads.
+                if len(pending) >= parallelism * 2:
+                    done, pending = concurrent.futures.wait(
+                        pending,
+                        return_when=concurrent.futures.FIRST_COMPLETED,
+                    )
+                    for future in done:
+                        future.result()
 
-            # Keep a small bounded queue of work instead of materializing the
-            # full directory tree before starting any reads.
-            if len(pending) >= parallelism * 2:
-                done, pending = concurrent.futures.wait(
-                    pending,
-                    return_when=concurrent.futures.FIRST_COMPLETED,
-                )
-                for future in done:
-                    future.result()
+            for future in concurrent.futures.as_completed(pending):
+                future.result()
 
-        for future in concurrent.futures.as_completed(pending):
-            future.result()
+    logger.info("Warmed directory into OS page cache", path=os.fspath(path))
