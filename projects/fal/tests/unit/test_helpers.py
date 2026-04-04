@@ -7,7 +7,17 @@ import pytest
 import fal.helpers as helpers
 
 
-def test_warm_file_reads_file_and_validates_inputs(tmp_path: Path):
+def test_warm_file_reads_file_and_validates_inputs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    logs: list[tuple[str, dict[str, str]]] = []
+
+    class FakeLogger:
+        def info(self, event: str, **kwargs: str) -> None:
+            logs.append((event, kwargs))
+
+    monkeypatch.setattr(helpers, "logger", FakeLogger())
+
     file_path = tmp_path / "model.bin"
     file_path.write_bytes(b"abcdef")
 
@@ -22,10 +32,29 @@ def test_warm_file_reads_file_and_validates_inputs(tmp_path: Path):
     with pytest.raises(IsADirectoryError, match="Expected a file"):
         helpers.warm_file(tmp_path)
 
+    symlink_path = tmp_path / "model-link.bin"
+    try:
+        symlink_path.symlink_to(file_path)
+    except OSError:
+        pytest.skip("symlinks are not supported in this environment")
+
+    helpers.warm_file(symlink_path)
+    assert logs == [
+        ("Skipping warm_file for symlink", {"path": str(symlink_path)}),
+    ]
+
 
 def test_warm_dir_warms_nested_files_with_parallelism(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
+    logs: list[tuple[str, dict[str, str]]] = []
+
+    class FakeLogger:
+        def info(self, event: str, **kwargs: str) -> None:
+            logs.append((event, kwargs))
+
+    monkeypatch.setattr(helpers, "logger", FakeLogger())
+
     top_level_file = tmp_path / "model.bin"
     top_level_file.write_bytes(b"top-level")
 
@@ -56,6 +85,9 @@ def test_warm_dir_warms_nested_files_with_parallelism(
     assert set(warmed_paths) == {top_level_file, nested_file}
     if symlink_path is not None:
         assert symlink_path not in warmed_paths
+    assert logs == [
+        ("Warmed directory into OS page cache", {"path": str(tmp_path)}),
+    ]
 
 
 def test_warm_dir_skips_empty_directories(
