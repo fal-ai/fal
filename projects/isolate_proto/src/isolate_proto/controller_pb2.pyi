@@ -654,6 +654,7 @@ class RegisterApplicationRequest(google.protobuf.message.Message):
     SKIP_RETRY_CONDITIONS_FIELD_NUMBER: builtins.int
     TERMINATION_GRACE_PERIOD_SECONDS_FIELD_NUMBER: builtins.int
     FETCH_OPENAPI_FIELD_NUMBER: builtins.int
+    DATA_MOUNTS_FIELD_NUMBER: builtins.int
     @property
     def environments(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[server_pb2.EnvironmentDefinition]:
         """Environment definitions."""
@@ -702,6 +703,11 @@ class RegisterApplicationRequest(google.protobuf.message.Message):
     """Grace period in seconds before forced termination of runners after a shutdown request."""
     fetch_openapi: builtins.bool
     """Fetch OpenAPI metadata from an app runner."""
+    @property
+    def data_mounts(self) -> google.protobuf.internal.containers.RepeatedScalarFieldContainer[builtins.str]:
+        """Persistent data mount paths (e.g. "/data", "/data/.cache").
+        When omitted, the server applies a default based on the user model
+        """
     def __init__(
         self,
         *,
@@ -724,9 +730,10 @@ class RegisterApplicationRequest(google.protobuf.message.Message):
         skip_retry_conditions: collections.abc.Iterable[global___RetryCondition.ValueType] | None = ...,
         termination_grace_period_seconds: builtins.int | None = ...,
         fetch_openapi: builtins.bool | None = ...,
+        data_mounts: collections.abc.Iterable[builtins.str] | None = ...,
     ) -> None: ...
     def HasField(self, field_name: typing_extensions.Literal["_application_name", b"_application_name", "_auth_mode", b"_auth_mode", "_deployment_strategy", b"_deployment_strategy", "_environment_name", b"_environment_name", "_fetch_openapi", b"_fetch_openapi", "_health_check_config", b"_health_check_config", "_health_check_path", b"_health_check_path", "_machine_requirements", b"_machine_requirements", "_max_concurrency", b"_max_concurrency", "_metadata", b"_metadata", "_private_logs", b"_private_logs", "_scale", b"_scale", "_setup_func", b"_setup_func", "_source_code", b"_source_code", "_termination_grace_period_seconds", b"_termination_grace_period_seconds", "application_name", b"application_name", "auth_mode", b"auth_mode", "deployment_strategy", b"deployment_strategy", "environment_name", b"environment_name", "fetch_openapi", b"fetch_openapi", "function", b"function", "health_check_config", b"health_check_config", "health_check_path", b"health_check_path", "machine_requirements", b"machine_requirements", "max_concurrency", b"max_concurrency", "metadata", b"metadata", "private_logs", b"private_logs", "scale", b"scale", "setup_func", b"setup_func", "source_code", b"source_code", "termination_grace_period_seconds", b"termination_grace_period_seconds"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing_extensions.Literal["_application_name", b"_application_name", "_auth_mode", b"_auth_mode", "_deployment_strategy", b"_deployment_strategy", "_environment_name", b"_environment_name", "_fetch_openapi", b"_fetch_openapi", "_health_check_config", b"_health_check_config", "_health_check_path", b"_health_check_path", "_machine_requirements", b"_machine_requirements", "_max_concurrency", b"_max_concurrency", "_metadata", b"_metadata", "_private_logs", b"_private_logs", "_scale", b"_scale", "_setup_func", b"_setup_func", "_source_code", b"_source_code", "_termination_grace_period_seconds", b"_termination_grace_period_seconds", "application_name", b"application_name", "auth_mode", b"auth_mode", "deployment_strategy", b"deployment_strategy", "environment_name", b"environment_name", "environments", b"environments", "fetch_openapi", b"fetch_openapi", "files", b"files", "function", b"function", "health_check_config", b"health_check_config", "health_check_path", b"health_check_path", "machine_requirements", b"machine_requirements", "max_concurrency", b"max_concurrency", "metadata", b"metadata", "private_logs", b"private_logs", "scale", b"scale", "setup_func", b"setup_func", "skip_retry_conditions", b"skip_retry_conditions", "source_code", b"source_code", "termination_grace_period_seconds", b"termination_grace_period_seconds"]) -> None: ...
+    def ClearField(self, field_name: typing_extensions.Literal["_application_name", b"_application_name", "_auth_mode", b"_auth_mode", "_deployment_strategy", b"_deployment_strategy", "_environment_name", b"_environment_name", "_fetch_openapi", b"_fetch_openapi", "_health_check_config", b"_health_check_config", "_health_check_path", b"_health_check_path", "_machine_requirements", b"_machine_requirements", "_max_concurrency", b"_max_concurrency", "_metadata", b"_metadata", "_private_logs", b"_private_logs", "_scale", b"_scale", "_setup_func", b"_setup_func", "_source_code", b"_source_code", "_termination_grace_period_seconds", b"_termination_grace_period_seconds", "application_name", b"application_name", "auth_mode", b"auth_mode", "data_mounts", b"data_mounts", "deployment_strategy", b"deployment_strategy", "environment_name", b"environment_name", "environments", b"environments", "fetch_openapi", b"fetch_openapi", "files", b"files", "function", b"function", "health_check_config", b"health_check_config", "health_check_path", b"health_check_path", "machine_requirements", b"machine_requirements", "max_concurrency", b"max_concurrency", "metadata", b"metadata", "private_logs", b"private_logs", "scale", b"scale", "setup_func", b"setup_func", "skip_retry_conditions", b"skip_retry_conditions", "source_code", b"source_code", "termination_grace_period_seconds", b"termination_grace_period_seconds"]) -> None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_application_name", b"_application_name"]) -> typing_extensions.Literal["application_name"] | None: ...
     @typing.overload
