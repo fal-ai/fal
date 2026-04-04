@@ -350,13 +350,6 @@ def _prepare_partial_func(
     return wrapper
 
 
-async def _call_any_fn(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
-    result = fn(*args, **kwargs)
-    if inspect.isawaitable(result):
-        return await result
-    return result
-
-
 def _prepare_environment() -> BaseEnvironment:
     import isolate  # noqa: PLC0415
 
@@ -1906,14 +1899,8 @@ class BaseServable:
 class ServeWrapper(BaseServable):
     _func: Callable
 
-    def __init__(
-        self,
-        func: Callable,
-        *,
-        setup_function: Callable[..., Any] | None = None,
-    ):
+    def __init__(self, func: Callable):
         self._func = func
-        self._setup_function = setup_function
 
     def collect_routes(self) -> dict[RouteSignature, Callable[..., Any]]:
         return {
@@ -1922,8 +1909,6 @@ class ServeWrapper(BaseServable):
 
     @asynccontextmanager
     async def lifespan(self, app: FastAPI):
-        if self._setup_function is not None:
-            await _call_any_fn(self._setup_function)
         yield
 
     async def __call__(self, *args, **kwargs) -> None:
@@ -2083,10 +2068,7 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
     def func(self) -> Callable[ArgsT, ReturnT]:
         serve_mode = self.options.gateway.get("serve")
         if serve_mode:
-            serve_func = ServeWrapper(
-                self.raw_func,
-                setup_function=self.options.host.get("setup_function"),
-            )
+            serve_func = ServeWrapper(self.raw_func)
             return serve_func  # type: ignore
         else:
             return self.raw_func
