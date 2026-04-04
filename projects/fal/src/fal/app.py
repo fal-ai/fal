@@ -30,6 +30,7 @@ from fal.api import (
 from fal.auth import key_credentials
 from fal.container import ContainerImage
 from fal.exceptions import FalServerlessException, RequestCancelledException
+from fal.helpers import warm_dir
 from fal.logging import get_logger
 from fal.realtime import realtime  # noqa: F401
 from fal.ref import get_current_app, set_current_app
@@ -59,10 +60,10 @@ logger = get_logger(__name__)
 
 
 async def _call_any_fn(fn, *args, **kwargs):
-    if inspect.iscoroutinefunction(fn):
-        return await fn(*args, **kwargs)
-    else:
-        return fn(*args, **kwargs)
+    result = fn(*args, **kwargs)
+    if inspect.isawaitable(result):
+        return await result
+    return result
 
 
 async def open_isolate_channel(address: str) -> async_grpc.Channel | None:
@@ -512,6 +513,8 @@ class App(BaseServable):
             Default excludes `.pyc`, `__pycache__`, `.git`, `.DS_Store`.
         app_files_context_dir: Base directory for resolving app_files paths.
             Defaults to the directory containing the app file.
+        data_dirs: Directories to pre-read in parallel during setup. This is
+            primarily useful for warming model weights stored under `/data`.
         request_timeout: Maximum seconds for a single request. None for default.
         startup_timeout: Maximum seconds for app startup/setup. None for default.
         min_concurrency: Minimum warm instances to keep running. Set to 1+ to
@@ -555,6 +558,7 @@ class App(BaseServable):
     app_files: ClassVar[list[str]] = []
     app_files_ignore: ClassVar[list[str]] = DEFAULT_APP_FILES_IGNORE
     app_files_context_dir: ClassVar[Optional[str]] = None
+    data_dirs: ClassVar[list[str]] = []
     request_timeout: ClassVar[Optional[int]] = None
     startup_timeout: ClassVar[Optional[int]] = None
     min_concurrency: ClassVar[Optional[int]] = None
@@ -612,6 +616,9 @@ class App(BaseServable):
                 raise ValueError(
                     "app_files_context_dir is only supported when app_files is provided"
                 )
+
+        if cls.data_dirs:
+            cls.host_kwargs["data_dirs"] = cls.data_dirs
 
         if cls.min_concurrency is not None:
             cls.host_kwargs["min_concurrency"] = cls.min_concurrency
@@ -789,6 +796,22 @@ class App(BaseServable):
             fal_client.set_get_current_app(get_current_app)
         except (ImportError, AttributeError):
             pass
+
+        # We want to not do any directory changes for container apps,
+        # since we don't have explicit checks to see the kind of app
+        # We check for app_files here and check kind and app_files earlier
+        # to ensure that container apps don't have app_files
+        if self.app_files:
+            # For app_files deployments (always use /app)
+            _include_app_files_path(self.local_file_path, self.app_files_context_dir)
+        elif self.image is not None:
+            # For containers, add the working directory to sys.path
+            # isolate's runpy.run_path() overrides sys.path[0],
+            # so the working directory is never added to sys.path
+            sys.path.insert(0, "")
+
+        for directory in self.host_kwargs.get("data_dirs", []):
+            warm_dir(directory)
 
         _print_python_packages()
         setup_started_at = time.perf_counter()
