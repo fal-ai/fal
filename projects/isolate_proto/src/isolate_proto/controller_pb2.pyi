@@ -139,6 +139,7 @@ class HostedRun(google.protobuf.message.Message):
     APPLICATION_NAME_FIELD_NUMBER: builtins.int
     AUTH_MODE_FIELD_NUMBER: builtins.int
     FETCH_OPENAPI_FIELD_NUMBER: builtins.int
+    DATA_MOUNTS_FIELD_NUMBER: builtins.int
     @property
     def environments(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[server_pb2.EnvironmentDefinition]:
         """Environment definitions."""
@@ -162,6 +163,11 @@ class HostedRun(google.protobuf.message.Message):
     """Auth mode to use for the ephemeral app"""
     fetch_openapi: builtins.bool
     """Fetch OpenAPI metadata from an app runner."""
+    @property
+    def data_mounts(self) -> google.protobuf.internal.containers.RepeatedScalarFieldContainer[builtins.str]:
+        """Persistent data mount paths (e.g. "/data", "/data/.cache").
+        When omitted, the server applies a default based on the user model.
+        """
     def __init__(
         self,
         *,
@@ -174,9 +180,10 @@ class HostedRun(google.protobuf.message.Message):
         application_name: builtins.str | None = ...,
         auth_mode: global___ApplicationAuthMode.ValueType | None = ...,
         fetch_openapi: builtins.bool | None = ...,
+        data_mounts: collections.abc.Iterable[builtins.str] | None = ...,
     ) -> None: ...
     def HasField(self, field_name: typing_extensions.Literal["_application_name", b"_application_name", "_auth_mode", b"_auth_mode", "_environment_name", b"_environment_name", "_fetch_openapi", b"_fetch_openapi", "_machine_requirements", b"_machine_requirements", "_setup_func", b"_setup_func", "application_name", b"application_name", "auth_mode", b"auth_mode", "environment_name", b"environment_name", "fetch_openapi", b"fetch_openapi", "function", b"function", "machine_requirements", b"machine_requirements", "setup_func", b"setup_func"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing_extensions.Literal["_application_name", b"_application_name", "_auth_mode", b"_auth_mode", "_environment_name", b"_environment_name", "_fetch_openapi", b"_fetch_openapi", "_machine_requirements", b"_machine_requirements", "_setup_func", b"_setup_func", "application_name", b"application_name", "auth_mode", b"auth_mode", "environment_name", b"environment_name", "environments", b"environments", "fetch_openapi", b"fetch_openapi", "files", b"files", "function", b"function", "machine_requirements", b"machine_requirements", "setup_func", b"setup_func"]) -> None: ...
+    def ClearField(self, field_name: typing_extensions.Literal["_application_name", b"_application_name", "_auth_mode", b"_auth_mode", "_environment_name", b"_environment_name", "_fetch_openapi", b"_fetch_openapi", "_machine_requirements", b"_machine_requirements", "_setup_func", b"_setup_func", "application_name", b"application_name", "auth_mode", b"auth_mode", "data_mounts", b"data_mounts", "environment_name", b"environment_name", "environments", b"environments", "fetch_openapi", b"fetch_openapi", "files", b"files", "function", b"function", "machine_requirements", b"machine_requirements", "setup_func", b"setup_func"]) -> None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_application_name", b"_application_name"]) -> typing_extensions.Literal["application_name"] | None: ...
     @typing.overload

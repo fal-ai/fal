@@ -97,6 +97,9 @@ message HostedRun {
     optional ApplicationAuthMode auth_mode = 8;
     // Fetch OpenAPI metadata from an app runner.
     optional bool fetch_openapi = 9;
+    // Persistent data mount paths (e.g. "/data", "/data/.cache").
+    // When omitted, the server applies a default based on the user model.
+    repeated string data_mounts = 10;
 }
 
 message CreateUserKeyRequest {
