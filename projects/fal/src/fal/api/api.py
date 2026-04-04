@@ -57,6 +57,7 @@ from fal.exceptions import (
 )
 from fal.exceptions.gpu import _is_cuda_oom_exception, _is_generic_gpu_error
 from fal.file_sync import FileSync, FileSyncOptions
+from fal.helpers import warm_dir
 from fal.logging.isolate import IsolateLogPrinter
 from fal.sdk import (
     FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER,
@@ -350,6 +351,33 @@ def _prepare_partial_func(
     return wrapper
 
 
+def _wrap_setup_function(
+    setup_function: Callable[..., Any] | None,
+    data_dirs: list[str] | None,
+) -> Callable[..., Any] | None:
+    if not data_dirs:
+        return setup_function
+    dirs = tuple(data_dirs)
+
+    def wrapped_setup_function():
+        for directory in dirs:
+            warm_dir(directory)
+
+        if setup_function is not None:
+            return setup_function()
+
+        return None
+
+    return wrapped_setup_function
+
+
+async def _call_any_fn(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+    result = fn(*args, **kwargs)
+    if inspect.isawaitable(result):
+        return await result
+    return result
+
+
 def _prepare_environment() -> BaseEnvironment:
     import isolate  # noqa: PLC0415
 
@@ -589,6 +617,7 @@ class FalServerlessHost(Host):
             "scaling_delay",
             "max_multiplexing",
             "setup_function",
+            "data_dirs",
             "metadata",
             "request_timeout",
             "startup_timeout",
@@ -805,6 +834,7 @@ class FalServerlessHost(Host):
         scheduler_options = options.host.get("_scheduler_options", None)
         exposed_port = options.get_exposed_port()
         setup_function = options.host.get("setup_function", None)
+        data_dirs = options.host.get("data_dirs")
         request_timeout = options.host.get("request_timeout")
         startup_timeout = options.host.get("startup_timeout")
         regions = options.host.get("regions")
@@ -840,7 +870,7 @@ class FalServerlessHost(Host):
             partial_func,
             environments,
             machine_requirements=machine_requirements,
-            setup_function=setup_function,
+            setup_function=_wrap_setup_function(setup_function, data_dirs),
             files=files,
             application_name=effective_app_name,
             auth_mode=effective_auth_mode,
@@ -1096,6 +1126,7 @@ def function(
     request_timeout: int | None = None,
     startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
+    data_dirs: list[str] | None = None,
     force_env_build: bool = False,
     _base_image: str | None = None,
     _scheduler: str | None = None,
@@ -1130,6 +1161,7 @@ def function(
     request_timeout: int | None = None,
     startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
+    data_dirs: list[str] | None = None,
     force_env_build: bool = False,
     _base_image: str | None = None,
     _scheduler: str | None = None,
@@ -1216,6 +1248,7 @@ def function(
     request_timeout: int | None = None,
     startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
+    data_dirs: list[str] | None = None,
     force_env_build: bool = False,
     _base_image: str | None = None,
     _scheduler: str | None = None,
@@ -1255,6 +1288,7 @@ def function(
     request_timeout: int | None = None,
     startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
+    data_dirs: list[str] | None = None,
     force_env_build: bool = False,
     _base_image: str | None = None,
     _scheduler: str | None = None,
@@ -1288,6 +1322,7 @@ def function(
     request_timeout: int | None = None,
     startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
+    data_dirs: list[str] | None = None,
     force_env_build: bool = False,
     _base_image: str | None = None,
     _scheduler: str | None = None,
@@ -1321,6 +1356,7 @@ def function(
     request_timeout: int | None = None,
     startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
+    data_dirs: list[str] | None = None,
     force_env_build: bool = False,
     _base_image: str | None = None,
     _scheduler: str | None = None,
@@ -1892,13 +1928,26 @@ class BaseServable:
 class ServeWrapper(BaseServable):
     _func: Callable
 
-    def __init__(self, func: Callable):
+    def __init__(
+        self,
+        func: Callable,
+        *,
+        setup_function: Callable[..., Any] | None = None,
+        data_dirs: list[str] | None = None,
+    ):
         self._func = func
+        self._setup_function = _wrap_setup_function(setup_function, data_dirs)
 
     def collect_routes(self) -> dict[RouteSignature, Callable[..., Any]]:
         return {
             RouteSignature("/"): self._func,
         }
+
+    @asynccontextmanager
+    async def lifespan(self, app: FastAPI):
+        if self._setup_function is not None:
+            await _call_any_fn(self._setup_function)
+        yield
 
     async def __call__(self, *args, **kwargs) -> None:
         if len(args) != 0 or len(kwargs) != 0:
@@ -2057,9 +2106,11 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
     def func(self) -> Callable[ArgsT, ReturnT]:
         serve_mode = self.options.gateway.get("serve")
         if serve_mode:
-            # This type can be safely ignored because this case only happens when it
-            # is a ServedIsolatedFunction
-            serve_func = ServeWrapper(self.raw_func)
+            serve_func = ServeWrapper(
+                self.raw_func,
+                setup_function=self.options.host.get("setup_function"),
+                data_dirs=self.options.host.get("data_dirs"),
+            )
             return serve_func  # type: ignore
         else:
             return self.raw_func

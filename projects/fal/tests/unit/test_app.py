@@ -7,7 +7,7 @@ from typing import AsyncIterator, Iterator
 from unittest.mock import MagicMock, PropertyMock, patch
 
 import pytest
-from fastapi import WebSocket
+from fastapi import FastAPI, WebSocket
 from pydantic import BaseModel
 
 import fal
@@ -115,6 +115,120 @@ def test_run_forwards_regions_to_machine_requirements():
     assert result == "ok"
     _, call_kwargs = connection.run.call_args
     assert call_kwargs["machine_requirements"].valid_regions == ["us-east"]
+
+
+@pytest.mark.asyncio
+async def test_app_lifespan_warms_data_dirs_before_setup(
+    isolate_agent_env, monkeypatch: pytest.MonkeyPatch
+):
+    import fal.app as fal_app_module
+
+    calls: list[tuple[str, str | None]] = []
+
+    monkeypatch.setattr(
+        fal_app_module,
+        "warm_dir",
+        lambda directory: calls.append(("warm", directory)),
+    )
+
+    class WarmedApp(App):
+        data_dirs = ["/data/models", "/data/tokenizer"]
+
+        def setup(self):
+            calls.append(("setup", None))
+
+    app = WarmedApp()
+
+    async with app.lifespan(FastAPI()):
+        pass
+
+    assert calls == [
+        ("warm", "/data/models"),
+        ("warm", "/data/tokenizer"),
+        ("setup", None),
+    ]
+
+
+def test_run_wraps_setup_function_with_data_dirs(monkeypatch: pytest.MonkeyPatch):
+    import fal.api.api as fal_api_module
+    from fal.api.api import FalServerlessHost, Options
+    from fal.sdk import HostedRunState
+
+    host = FalServerlessHost()
+    options = Options()
+    options.host["data_dirs"] = ["/data/models", "/data/tokenizer"]
+
+    setup_calls: list[str] = []
+
+    def user_setup():
+        setup_calls.append("setup")
+        return 42
+
+    options.host["setup_function"] = user_setup
+
+    connection = MagicMock()
+    connection.define_environment.return_value = object()
+    partial_result = MagicMock()
+    partial_result.status.state = HostedRunState.SUCCESS
+    partial_result.result = "ok"
+    connection.run.return_value = iter([partial_result])
+
+    warm_calls: list[str] = []
+    monkeypatch.setattr(
+        fal_api_module,
+        "warm_dir",
+        lambda directory: warm_calls.append(directory),
+    )
+
+    with patch.object(
+        FalServerlessHost, "_connection", new_callable=PropertyMock
+    ) as mock_connection:
+        mock_connection.return_value = connection
+        result = host._run(
+            lambda: "ok",
+            options,
+            args=(),
+            kwargs={},
+            result_handler=lambda _: None,
+        )
+
+    assert result == "ok"
+    _, call_kwargs = connection.run.call_args
+    wrapped_setup = call_kwargs["setup_function"]
+    assert wrapped_setup is not None
+    assert wrapped_setup() == 42
+    assert warm_calls == ["/data/models", "/data/tokenizer"]
+    assert setup_calls == ["setup"]
+
+
+@pytest.mark.asyncio
+async def test_served_function_lifespan_warms_data_dirs_before_setup(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    import fal.api.api as fal_api_module
+
+    calls: list[tuple[str, str | None]] = []
+
+    monkeypatch.setattr(
+        fal_api_module,
+        "warm_dir",
+        lambda directory: calls.append(("warm", directory)),
+    )
+
+    async def user_setup():
+        calls.append(("setup", None))
+
+    @fal.function(serve=True, data_dirs=["/data/models"], setup_function=user_setup)
+    def served_function():
+        return "ok"
+
+    async with served_function.func.lifespan(FastAPI()):
+        pass
+
+    assert calls == [
+        ("warm", "/data/models"),
+        ("setup", None),
+    ]
 
 
 def test_wrap_app_allows_resolver_with_container_kind():
