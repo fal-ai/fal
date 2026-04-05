@@ -100,6 +100,10 @@ def mock_parse_pyproject_toml():
                 "team": "my-team",
                 "auth": "shared",
             },
+            "entrypoint-app": {
+                "python_entry_point": "simple.app:SimpleApp",
+                "requirements": [".[app]"],
+            },
         }
     }
 
@@ -118,6 +122,7 @@ def mock_args(
     auth: Optional[str] = "public",
     machine_type: Optional[str] = None,
     limit_max_requests: Optional[int] = None,
+    local: bool = False,
 ):
     args = MagicMock()
     args.host = host
@@ -131,7 +136,76 @@ def mock_args(
     args.env = None
     args.machine_type = machine_type
     args.limit_max_requests = limit_max_requests
+    args.local = local
     return args
+
+
+@patch("fal.api.client.SyncServerlessClient._create_host")
+@patch("fal.utils.load_function_from")
+def test_run_uses_regular_loader_without_python_entry_point(
+    mock_load_function_from,
+    mock_create_host,
+):
+    host = mocked_fal_serverless_host("my-host")
+    mock_create_host.return_value = host
+
+    isolated_function = MagicMock()
+    isolated_function.options = MagicMock()
+    isolated_function.options.host = {}
+    loaded = MagicMock()
+    loaded.function = isolated_function
+    loaded.app_name = None
+    loaded.app_auth = None
+    mock_load_function_from.return_value = loaded
+
+    args = mock_args(
+        func_ref=("/my/path.py", "myfunc"),
+        host="my-host",
+    )
+
+    _run(args)
+
+    mock_load_function_from.assert_called_once()
+    mock_create_host.assert_called_once_with(
+        local_file_path="/my/path.py", environment_name=None
+    )
+
+
+@patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+@patch("fal.api.client.SyncServerlessClient._create_host")
+@patch("fal.utils.load_function_from")
+def test_run_auto_enables_no_pickle_for_python_entry_point(
+    mock_load_function_from,
+    mock_create_host,
+    mock_parse_toml,
+    mock_find_toml,
+    mock_parse_pyproject_toml,
+):
+    mock_parse_toml.return_value = mock_parse_pyproject_toml
+
+    host = mocked_fal_serverless_host("my-host")
+    mock_create_host.return_value = host
+
+    isolated_function = MagicMock()
+    isolated_function.options = MagicMock()
+    isolated_function.options.host = {}
+    loaded = MagicMock()
+    loaded.function = isolated_function
+    loaded.app_name = None
+    loaded.app_auth = None
+    mock_load_function_from.return_value = loaded
+
+    args = mock_args(func_ref=("entrypoint-app", None), host="my-host")
+
+    _run(args)
+
+    mock_create_host.assert_called_once_with(local_file_path="", environment_name=None)
+    mock_load_function_from.assert_called_once()
+    _, call_kwargs = mock_load_function_from.call_args
+    assert call_kwargs["python_entry_point"] == "simple.app:SimpleApp"
+    assert call_kwargs["project_root"] is not None
+    assert call_kwargs["options"].environment["requirements"] == [".[app]"]
 
 
 @patch("fal.api.client.SyncServerlessClient._create_host")
@@ -337,6 +411,43 @@ def test_run_with_toml_cli_auth_override(
 
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
 @patch("fal.cli._utils.parse_pyproject_toml")
+@patch("fal.api.client.SyncServerlessClient._create_host")
+@patch("fal.utils.load_function_from")
+def test_run_with_toml_app_uses_regular_loader_when_no_python_entry_point(
+    mock_load_function_from,
+    mock_create_host,
+    mock_parse_toml,
+    mock_find_toml,
+    mock_parse_pyproject_toml,
+):
+    mock_parse_toml.return_value = mock_parse_pyproject_toml
+
+    host = mocked_fal_serverless_host("my-host")
+    mock_create_host.return_value = host
+
+    isolated_function = MagicMock()
+    isolated_function.options = MagicMock()
+    isolated_function.options.host = {}
+    loaded = MagicMock()
+    loaded.function = isolated_function
+    loaded.app_name = None
+    loaded.app_auth = None
+    mock_load_function_from.return_value = loaded
+
+    args = mock_args(func_ref=("override-app", None), host="my-host")
+
+    _run(args)
+
+    _, call_kwargs = mock_load_function_from.call_args
+    assert call_kwargs["app_name"] is None
+    assert call_kwargs["app_auth"] == "public"
+    assert call_kwargs["options"].environment["requirements"] == ["numpy==1.26.4"]
+    assert call_kwargs["options"].host["min_concurrency"] == 2
+    assert call_kwargs["options"].host["regions"] == ["us-east"]
+
+
+@patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
 @patch("fal.utils.load_function_from")
 def test_run_with_toml_app_not_found(
     mock_load_function_from, mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml
@@ -370,7 +481,8 @@ def test_run_with_toml_missing_ref_key(
     args = mock_args(func_ref=("my-app", None), host="my-host")
 
     with pytest.raises(
-        ValueError, match="App my-app does not have a ref key in pyproject.toml"
+        ValueError,
+        match="App my-app does not have a ref key in pyproject.toml",
     ):
         _run(args)
 
