@@ -812,7 +812,10 @@ class App(BaseServable):
             sys.path.insert(0, "")
 
         for directory in self.host_kwargs.get("data_dirs", []):
-            warm_dir(directory)
+            warm_path = Path(directory).expanduser()
+            if not warm_path.is_absolute():
+                warm_path = Path("/data") / warm_path
+            warm_dir(os.fspath(warm_path))
 
         _print_python_packages()
         await _call_any_fn(self.setup)

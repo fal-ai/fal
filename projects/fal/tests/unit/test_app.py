@@ -149,6 +149,38 @@ async def test_app_lifespan_warms_data_dirs_before_setup(
     ]
 
 
+@pytest.mark.asyncio
+async def test_app_lifespan_resolves_relative_data_dirs_from_data(
+    isolate_agent_env, monkeypatch: pytest.MonkeyPatch
+):
+    import fal.app as fal_app_module
+
+    calls: list[tuple[str, str | None]] = []
+
+    monkeypatch.setattr(
+        fal_app_module,
+        "warm_dir",
+        lambda directory: calls.append(("warm", str(directory))),
+    )
+
+    class WarmedApp(App):
+        data_dirs = ["models", "nested/tokenizer"]
+
+        def setup(self):
+            calls.append(("setup", None))
+
+    app = WarmedApp()
+
+    async with app.lifespan(FastAPI()):
+        pass
+
+    assert calls == [
+        ("warm", "/data/models"),
+        ("warm", "/data/nested/tokenizer"),
+        ("setup", None),
+    ]
+
+
 def test_wrap_app_allows_resolver_with_container_kind():
     from fal.app import wrap_app
 
