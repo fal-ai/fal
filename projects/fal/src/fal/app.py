@@ -413,7 +413,7 @@ class AppClient:
             return resp.json()
 
 
-PART_FINDER_RE = re.compile(r"[A-Z][a-z]*")
+PART_FINDER_RE = re.compile(r"[A-Z][a-z]+|[A-Z]+(?=[A-Z][a-z]|$)|[a-z]+|\d+")
 
 
 def _to_fal_app_name(name: str) -> str:
