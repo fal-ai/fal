@@ -113,3 +113,6 @@ keep-runtime-typing = true
 
 [tool.pytest.ini_options]
 timeout = 300
+markers = [
+    "shark_smoke: lightweight staging smoke coverage for the shark post-deploy workflow",
+]
