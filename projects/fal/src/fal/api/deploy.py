@@ -8,7 +8,9 @@ from fal.sdk import AuthModeLiteral, DeploymentStrategyLiteral
 
 if TYPE_CHECKING:
     from fal.cli._utils import AppData
+    from fal.utils import LoadedFunction
 
+    from .api import FalServerlessHost
     from .client import SyncServerlessClient
 
 
@@ -29,6 +31,15 @@ class DeploymentResult:
     urls: dict[str, dict[str, str]]
     log_url: str
     auth_mode: str
+
+
+@dataclass
+class PreparedDeployment:
+    host: FalServerlessHost
+    loaded: LoadedFunction
+    app_data: AppData
+    display_name: str
+    environment_name: str | None = None
 
 
 def _remove_http_and_port_from_url(url):
@@ -120,17 +131,36 @@ def _deploy_from_reference(
         app_name=app_data.name,
         app_auth=app_data.auth,
     )
+
+    # Get the actual function/class name that was loaded
+    return _execute_loaded_deployment(
+        host=host,
+        loaded=loaded,
+        app_data=app_data,
+        display_name=str(func_name) if func_name is not None else loaded.class_name,
+        environment_name=environment_name,
+    )
+
+
+def _execute_loaded_deployment(
+    *,
+    host: FalServerlessHost,
+    loaded: LoadedFunction,
+    app_data: AppData,
+    display_name: str | None,
+    environment_name: str | None = None,
+) -> DeploymentResult:
+    from fal.api import FalServerlessError
+
     isolated_function = loaded.function
     strategy = app_data.deployment_strategy or "rolling"
 
-    # Get the actual function/class name that was loaded
-    display_name = func_name or loaded.class_name
-
-    # Show what app name will be used
     from fal.console import console
 
+    # Show what app name will be used
     console.print(
-        f"Deploying '{display_name}' as app '{loaded.app_name}'", style="bold"
+        f"Deploying '{display_name or loaded.class_name}' as app '{loaded.app_name}'",
+        style="bold",
     )
     console.print("")
 
@@ -176,6 +206,99 @@ def _deploy_from_reference(
         urls=urls,
         log_url=result.service_urls.log,
         auth_mode=loaded.app_auth or "private",
+    )
+
+
+def prepare_deployment(
+    client: SyncServerlessClient,
+    app_ref: str | tuple[str | None, str | None] | None = None,
+    *,
+    app_name: str | None = None,
+    auth: AuthModeLiteral | None = None,
+    strategy: DeploymentStrategyLiteral = "rolling",
+    reset_scale: bool = False,
+    force_env_build: bool = False,
+    environment_name: str | None = None,
+) -> PreparedDeployment:
+    from fal.api import FalServerlessError
+    from fal.cli._utils import AppData, get_app_data_from_toml, is_app_name
+    from fal.cli.parser import RefAction
+    from fal.utils import load_function_from
+
+    if isinstance(app_ref, tuple):
+        app_ref_tuple = app_ref
+    elif app_ref:
+        app_ref_tuple = RefAction.split_ref(app_ref)
+    else:
+        raise ValueError("Invalid app reference")
+
+    app_data = AppData(
+        auth=auth,
+        deployment_strategy=cast(DeploymentStrategyLiteral, strategy),
+        reset_scale=cast(bool, reset_scale),
+        name=app_name,
+    )
+
+    app_ref_candidate = cast(tuple[str, str | None], app_ref_tuple)
+    if is_app_name(app_ref_candidate):
+        if app_name or auth:
+            raise ValueError("Cannot use --app-name or --auth with app name reference.")
+
+        app_name, _unused_func_name = app_ref_candidate
+        assert app_name is not None
+        app_data = get_app_data_from_toml(app_name)
+        app_ref = app_data.ref
+
+        file_path, func_name = RefAction.split_ref(app_ref)
+    else:
+        file_path, func_name = app_ref_tuple
+        file_path = str(Path(file_path).absolute())
+        ref = f"{file_path}::{func_name}" if func_name else file_path
+        app_data = replace(app_data, ref=ref)
+
+    if file_path is None:
+        options = list(Path(".").glob("*.py"))
+        if len(options) == 0:
+            raise FalServerlessError("No python files found in the current directory")
+        elif len(options) > 1:
+            raise FalServerlessError(
+                "Multiple python files found in the current directory. "
+                "Please specify the file path of the app you want to deploy."
+            )
+
+        [resolved_file_path] = options
+        file_path = str(resolved_file_path)
+
+    host = client._create_host(
+        local_file_path=str(file_path),
+        environment_name=environment_name,
+    )
+    loaded = load_function_from(
+        host,
+        file_path,
+        func_name,
+        force_env_build=force_env_build,
+        options=app_data.options,
+        app_name=app_data.name,
+        app_auth=app_data.auth,
+    )
+
+    return PreparedDeployment(
+        host=host,
+        loaded=loaded,
+        app_data=app_data,
+        display_name=func_name or loaded.class_name or loaded.app_name or "",
+        environment_name=environment_name,
+    )
+
+
+def execute_prepared_deployment(prepared: PreparedDeployment) -> DeploymentResult:
+    return _execute_loaded_deployment(
+        host=prepared.host,
+        loaded=prepared.loaded,
+        app_data=prepared.app_data,
+        display_name=prepared.display_name,
+        environment_name=prepared.environment_name,
     )
 
 
