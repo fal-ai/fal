@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Optional
 
 from fal.api import Options
@@ -20,6 +21,8 @@ VALID_REGIONS = {
 @dataclass(frozen=True)
 class AppData:
     ref: Optional[str] = None
+    python_entry_point: Optional[str] = None
+    project_root: Optional[Path] = None
     auth: Optional[AuthModeLiteral] = None
     deployment_strategy: Optional[DeploymentStrategyLiteral] = None
     reset_scale: bool = False
@@ -58,14 +61,26 @@ def get_app_data_from_toml(
     except KeyError:
         raise ValueError(f"App {app_name} not found in pyproject.toml")
 
-    try:
-        app_ref: str = app_data.pop("ref")
-    except KeyError:
-        raise ValueError(f"App {app_name} does not have a ref key in pyproject.toml")
-
-    # Convert the app_ref to a path relative to the project root
+    python_entry_point: str | None = app_data.pop("python_entry_point", None)
     project_root, _ = find_project_root(None)
-    app_ref = str(project_root / app_ref)
+    if python_entry_point is not None:
+        app_ref: str | None = app_data.pop("ref", None)
+        if app_ref is not None:
+            raise ValueError(
+                f"App {app_name} cannot have both ref "
+                "and python_entry_point keys in pyproject.toml"
+            )
+    else:
+        try:
+            app_ref = app_data.pop("ref")
+        except KeyError:
+            raise ValueError(
+                f"App {app_name} does not have a ref key in pyproject.toml"
+            )
+        if not isinstance(app_ref, str):
+            raise ValueError(f"App {app_name} ref must be a string in pyproject.toml")
+        # Convert the app_ref to a path relative to the project root.
+        app_ref = str(project_root / app_ref)
 
     app_auth: Optional[AuthModeLiteral] = app_data.pop("auth", None)
     app_deployment_strategy: Optional[DeploymentStrategyLiteral] = app_data.pop(
@@ -77,8 +92,11 @@ def get_app_data_from_toml(
         app_name_value = app_name
 
     requirements = app_data.pop("requirements", None)
+    python_version = app_data.pop("python_version", None)
     if requirements is not None:
         _validate_requirements(requirements)
+    if python_version is not None and not isinstance(python_version, str):
+        raise ValueError("python_version must be a string.")
     options = Options()
     min_concurrency = app_data.pop("min_concurrency", None)
     max_concurrency = app_data.pop("max_concurrency", None)
@@ -132,6 +150,8 @@ def get_app_data_from_toml(
         options.host["app_files_context_dir"] = app_files_context_dir
     if requirements is not None:
         options.environment["requirements"] = requirements
+    if python_version is not None:
+        options.environment["python_version"] = python_version
 
     app_reset_scale: bool
     if "no_scale" in app_data:
@@ -148,6 +168,8 @@ def get_app_data_from_toml(
 
     return AppData(
         ref=app_ref,
+        python_entry_point=python_entry_point,
+        project_root=project_root,
         auth=app_auth,
         deployment_strategy=app_deployment_strategy,
         reset_scale=app_reset_scale,
