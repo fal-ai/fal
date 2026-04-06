@@ -1,9 +1,12 @@
 import posixpath
 import uuid
 
+import pytest
+
 from fal.files import FalFileSystem
 
 
+@pytest.mark.shark_smoke
 def test_fal_fs(tmp_path):
     (tmp_path / "myfile").write_text("myfile")
     (tmp_path / "mydir").mkdir()

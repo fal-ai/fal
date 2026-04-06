@@ -27,6 +27,7 @@ def client():
 
 
 @pytest.mark.flaky(max_runs=3)
+@pytest.mark.shark_smoke
 def test_environment_lifecycle(client: SyncServerlessClient, test_env_name: str):
     """Test creating, listing, and deleting environments."""
     # Create environment

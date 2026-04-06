@@ -198,6 +198,14 @@ class AppClientError(FalServerlessException):
     headers: dict[str, str] = field(default_factory=dict)
 
 
+def _should_retry_health_check_response(status_code: int, headers: Any) -> bool:
+    if status_code in (404, 500):
+        return True
+
+    retry_hint = headers.get("x-fal-needs-retry", "")
+    return str(retry_hint).strip().lower() in {"1", "true", "yes"}
+
+
 class AppSpawnInfo:
     def __init__(self, info: SpawnInfo):
         self.info = info
@@ -266,7 +274,9 @@ class AppSpawnInfo:
                     if resp.is_success:
                         return
 
-                    if resp.status_code in (500, 404):
+                    if _should_retry_health_check_response(
+                        resp.status_code, resp.headers
+                    ):
                         last_error = f"Server not ready (HTTP {resp.status_code})"
                     else:
                         raise AppClientError(

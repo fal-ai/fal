@@ -157,6 +157,49 @@ def test_wrap_app_limit_max_requests_propagates_to_serve(
     assert called_limit_max_requests == 1
 
 
+def test_app_spawn_info_wait_retries_health_checks_when_server_requests_retry():
+    from fal.app import AppSpawnInfo
+
+    info = AppSpawnInfo(MagicMock(url="https://example.com"))
+
+    retry_response = MagicMock(
+        is_success=False,
+        status_code=503,
+        text='{"detail":"Runner connection failed"}',
+        headers={"x-fal-needs-retry": "1"},
+    )
+    success_response = MagicMock(is_success=True)
+    mock_client = MagicMock()
+    mock_client.get.side_effect = [retry_response, success_response]
+
+    with patch("httpx.Client") as mock_httpx_client:
+        mock_httpx_client.return_value.__enter__.return_value = mock_client
+        with patch("fal.app.time.sleep"):
+            info.wait(startup_timeout=1)
+
+    assert mock_client.get.call_count == 2
+
+
+def test_app_spawn_info_wait_fails_fast_on_non_retryable_health_error():
+    from fal.app import AppClientError, AppSpawnInfo
+
+    info = AppSpawnInfo(MagicMock(url="https://example.com"))
+
+    response = MagicMock(
+        is_success=False,
+        status_code=503,
+        text='{"detail":"bad request"}',
+        headers={},
+    )
+    mock_client = MagicMock()
+    mock_client.get.return_value = response
+
+    with patch("httpx.Client") as mock_httpx_client:
+        mock_httpx_client.return_value.__enter__.return_value = mock_client
+        with pytest.raises(AppClientError, match="non-retryable error: 503"):
+            info.wait(startup_timeout=1)
+
+
 def test_wrap_app_raises_for_virtualenv_only_keys_with_conda_kind():
     from fal.app import wrap_app
 

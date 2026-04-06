@@ -41,6 +41,8 @@ def test_missing_dependencies_nested_server_error(isolated_client):
         test2()
 
 
+@pytest.mark.flaky(max_runs=3)
+@pytest.mark.shark_smoke
 def test_regular_function(isolated_client):
     @isolated_client("virtualenv")
     def regular_function():
