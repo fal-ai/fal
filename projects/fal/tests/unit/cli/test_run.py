@@ -3,9 +3,88 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from fal.cli._utils import warn_if_vulnerable_torch
 from fal.cli.main import parse_args
 from fal.cli.run import _run
 from fal.project import find_project_root
+
+
+def make_console(is_terminal=True):
+    console = MagicMock()
+    console.is_terminal = is_terminal
+    return console
+
+
+class TestWarnIfVulnerableTorch:
+    def test_no_torch_in_requirements(self):
+        console = make_console()
+        warn_if_vulnerable_torch(["numpy==1.26.4", "pillow"], console)
+        console.print.assert_not_called()
+
+    def test_empty_requirements(self):
+        console = make_console()
+        warn_if_vulnerable_torch([], console)
+        console.print.assert_not_called()
+
+    def test_torch_pinned_to_vulnerable_version(self):
+        console = make_console()
+        warn_if_vulnerable_torch(["torch==2.4.0"], console)
+        console.print.assert_called_once()
+
+    def test_torch_pinned_to_latest_vulnerable_version(self):
+        console = make_console()
+        warn_if_vulnerable_torch(["torch==2.5.0"], console)
+        console.print.assert_called_once()
+
+    def test_torch_pinned_to_vulnerable_patch_version(self):
+        console = make_console()
+        warn_if_vulnerable_torch(["torch==2.4.1"], console)
+        console.print.assert_called_once()
+
+    def test_torch_pinned_to_safe_version(self):
+        console = make_console()
+        warn_if_vulnerable_torch(["torch==2.6.0"], console)
+        console.print.assert_not_called()
+
+    def test_torch_with_safe_lower_bound(self):
+        console = make_console()
+        warn_if_vulnerable_torch(["torch>=2.6"], console)
+        console.print.assert_not_called()
+
+    def test_torch_specifier_spanning_boundary(self):
+        console = make_console()
+        warn_if_vulnerable_torch(["torch>=2.4,<2.6"], console)
+        console.print.assert_called_once()
+
+    def test_torch_with_vulnerable_upper_bound(self):
+        console = make_console()
+        warn_if_vulnerable_torch(["torch<=2.5"], console)
+        console.print.assert_called_once()
+
+    def test_torch_with_exclusive_vulnerable_upper_bound(self):
+        console = make_console()
+        warn_if_vulnerable_torch(["torch<2.6"], console)
+        console.print.assert_called_once()
+
+    def test_torch_without_version_pin(self):
+        console = make_console()
+        warn_if_vulnerable_torch(["torch"], console)
+        console.print.assert_not_called()
+
+    def test_layered_requirements_with_vulnerable_torch(self):
+        console = make_console()
+        warn_if_vulnerable_torch([["torch==2.4.0"], ["flash-attn"]], console)
+        console.print.assert_called_once()
+
+    def test_layered_requirements_with_safe_torch(self):
+        console = make_console()
+        warn_if_vulnerable_torch([["torch==2.6.0"], ["flash-attn"]], console)
+        console.print.assert_not_called()
+
+    def test_non_terminal_console_suppresses_warning(self):
+        console = make_console(is_terminal=False)
+        warn_if_vulnerable_torch(["torch==2.4.0"], console)
+        console.print.assert_not_called()
 
 
 def test_run():
