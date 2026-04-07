@@ -4,6 +4,11 @@ import copy
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
+from packaging.requirements import Requirement
+from packaging.utils import canonicalize_name
+from rich.panel import Panel
+from rich.text import Text
+
 from fal.api import Options
 from fal.project import find_project_root, find_pyproject_toml, parse_pyproject_toml
 from fal.sdk import AuthModeLiteral, DeploymentStrategyLiteral
@@ -195,16 +200,13 @@ def warn_if_vulnerable_torch(
     requirements: list[str] | list[list[str]],
     console: Any,
 ) -> None:
-    """Warn if requirements include a torch version with known serialization vulnerabilities.
+    """Warn if requirements include a torch version with known serialization
+    vulnerabilities.
 
-    PyTorch <= 2.5 is vulnerable to arbitrary code execution via malicious model files
-    due to unsafe pickle deserialization. See https://github.com/pytorch/pytorch/issues/31875
+    PyTorch <= 2.5 is vulnerable to arbitrary code execution via malicious model
+    files due to unsafe pickle deserialization.
+    See https://github.com/pytorch/pytorch/issues/31875
     """
-    from packaging.requirements import Requirement
-    from packaging.utils import canonicalize_name
-    from rich.panel import Panel
-    from rich.text import Text
-
     if not console.is_terminal:
         return
 
@@ -230,8 +232,10 @@ def warn_if_vulnerable_torch(
         return
 
     _MITIGATION = (
-        "In a future release, fal will automatically set [bold cyan]weights_only=True[/bold cyan]\n"
-        "on [bold cyan]torch.load()[/bold cyan] calls for torch versions prior to 2.6 as a mitigation,\n"
+        "In a future release, fal will automatically set "
+        "[bold cyan]weights_only=True[/bold cyan]\n"
+        "on [bold cyan]torch.load()[/bold cyan] calls for torch versions prior to 2.6 "
+        "as a mitigation,\n"
         "but upgrading to [bold cyan]torch>=2.6[/bold cyan] is strongly recommended."
     )
 
@@ -258,8 +262,8 @@ def warn_if_vulnerable_torch(
     ):
         return
     detail = (
-        f"[bold]torch{specifier}[/bold] can resolve to a vulnerable version.\n"
-        "Versions [bold]2.5 and earlier[/bold] have a known serialization vulnerability\n"
+        "Versions [bold]2.5 and earlier[/bold] of pytorch have a known "
+        "serialization vulnerability\n"
         "that may allow malicious model files to execute arbitrary code.\n\n"
         + _MITIGATION
     )

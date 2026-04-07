@@ -2,7 +2,12 @@ import argparse
 from dataclasses import replace
 from pathlib import Path
 
-from ._utils import AppData, get_app_data_from_toml, is_app_name, warn_if_vulnerable_torch
+from ._utils import (
+    AppData,
+    get_app_data_from_toml,
+    is_app_name,
+    warn_if_vulnerable_torch,
+)
 from .parser import FalClientParser, RefAction, add_env_argument
 
 
