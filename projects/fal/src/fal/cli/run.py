@@ -55,6 +55,7 @@ def _run(args):
         file_path,
         func_name,
         force_env_build=no_cache,
+        fetch_openapi=args.fetch_openapi,
         options=app_data.options,
         app_name=app_data.name,
         app_auth=app_data.auth,
@@ -136,5 +137,13 @@ def add_parser(main_subparsers, parents):
         type=int,
         default=None,
         help="For fal.App runs, gracefully stop the server after serving N requests.",
+    )
+    parser.add_argument(
+        "--fetch-openapi",
+        action="store_true",
+        help=(
+            "Fetch OpenAPI from the runner at execution time instead of "
+            "building it locally."
+        ),
     )
     parser.set_defaults(func=_run)

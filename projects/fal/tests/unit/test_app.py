@@ -117,6 +117,65 @@ def test_run_forwards_regions_to_machine_requirements():
     assert call_kwargs["machine_requirements"].valid_regions == ["us-east"]
 
 
+def test_run_forwards_fetch_openapi_flag():
+    from fal.api.api import FalServerlessHost, Options
+    from fal.sdk import HostedRunState
+
+    host = FalServerlessHost()
+    options = Options()
+    options.host["fetch_openapi"] = True
+
+    connection = MagicMock()
+    connection.define_environment.return_value = object()
+    partial_result = MagicMock()
+    partial_result.status.state = HostedRunState.SUCCESS
+    partial_result.result = "ok"
+    connection.run.return_value = iter([partial_result])
+
+    with patch.object(
+        FalServerlessHost, "_connection", new_callable=PropertyMock
+    ) as mock_connection:
+        mock_connection.return_value = connection
+        host._run(
+            lambda: "ok",
+            options,
+            args=(),
+            kwargs={},
+            result_handler=lambda _: None,
+        )
+
+    _, call_kwargs = connection.run.call_args
+    assert call_kwargs["fetch_openapi"] is True
+
+
+def test_register_forwards_fetch_openapi_flag():
+    from fal.api.api import FalServerlessHost, Options
+
+    host = FalServerlessHost()
+    options = Options()
+    options.host["fetch_openapi"] = True
+
+    connection = MagicMock()
+    connection.define_environment.return_value = object()
+    partial_result = MagicMock()
+    partial_result.logs = []
+    partial_result.result = object()
+    connection.register.return_value = iter([partial_result])
+
+    with patch.object(
+        FalServerlessHost, "_connection", new_callable=PropertyMock
+    ) as mock_connection:
+        mock_connection.return_value = connection
+        host.register(
+            lambda: "ok",
+            options,
+            deployment_strategy="rolling",
+        )
+
+    _, call_kwargs = connection.register.call_args
+    assert call_kwargs["fetch_openapi"] is True
+
+
 def test_wrap_app_allows_resolver_with_container_kind():
     from fal.app import wrap_app
 
@@ -155,6 +214,21 @@ def test_wrap_app_limit_max_requests_propagates_to_serve(
     asyncio.run(fn.func())
 
     assert called_limit_max_requests == 1
+
+
+def test_wrap_app_skips_local_openapi_generation_when_fetch_enabled():
+    from fal.app import wrap_app
+
+    class FetchOpenapiApp(App):
+        @endpoint("/")
+        def hello(self) -> str:
+            return "Hello, world!"
+
+        def openapi(self):
+            raise AssertionError("openapi() should not be called")
+
+    fn = wrap_app(FetchOpenapiApp, fetch_openapi=True)
+    assert fn.options.host["metadata"] == {}
 
 
 def test_wrap_app_raises_for_virtualenv_only_keys_with_conda_kind():
