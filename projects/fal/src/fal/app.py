@@ -134,6 +134,7 @@ async def _set_logger_labels(
 def wrap_app(cls: type[App], **kwargs) -> IsolatedFunction:
     include_modules_from(cls)
     limit_max_requests = kwargs.pop("limit_max_requests", None)
+    fetch_openapi = kwargs.pop("fetch_openapi", False)
 
     host = kwargs.get("host", None)
     if host:
@@ -159,7 +160,8 @@ def wrap_app(cls: type[App], **kwargs) -> IsolatedFunction:
     metadata = {}
     app = cls(_allow_init=True)
 
-    metadata["openapi"] = app.openapi()
+    if not fetch_openapi:
+        metadata["openapi"] = app.openapi()
 
     routes = app.collect_routes()
     initialize_and_serve._routes = [r.path for r in routes.keys()] or ["/"]  # type: ignore[attr-defined]
