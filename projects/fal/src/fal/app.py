@@ -814,7 +814,7 @@ class App(BaseServable):
         )
         if setup_elapsed > effective_startup_timeout:
             print(
-                "[bold yellow]Warning:[/bold yellow] "
+                "Warning: "
                 "app setup exceeded startup_timeout "
                 f"({setup_elapsed:.1f}s > {effective_startup_timeout}s). "
                 "`fal deploy` or app startup may time out."
