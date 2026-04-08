@@ -479,6 +479,45 @@ async def test_runner_state_lifecycle_complete(isolate_agent_env):
     assert states[2] == ("teardown", "TERMINATING")
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("startup_timeout", "elapsed_seconds", "expected_timeout"),
+    [
+        (1, 2.5, 1),
+        (None, 601.0, 600),
+    ],
+)
+async def test_lifespan_warns_when_setup_exceeds_startup_timeout(
+    isolate_agent_env,
+    startup_timeout,
+    elapsed_seconds,
+    expected_timeout,
+):
+    import fastapi
+
+    class SlowSetupApp(App):
+        def setup(self):
+            return None
+
+    SlowSetupApp.startup_timeout = startup_timeout
+    app = SlowSetupApp()
+    fastapi_app = fastapi.FastAPI()
+
+    with (
+        patch("builtins.print") as mock_print,
+        patch("fal.app._print_python_packages"),
+        patch("fal.app.time.perf_counter", side_effect=[0.0, elapsed_seconds]),
+    ):
+        async with app.lifespan(fastapi_app):
+            pass
+
+    assert any(
+        "app setup exceeded startup_timeout" in "".join(map(str, call.args))
+        and f"> {expected_timeout}s" in "".join(map(str, call.args))
+        for call in mock_print.call_args_list
+    )
+
+
 def test_function_decorator_rejects_app_files_with_container_kind():
     """Test that app_files cannot be used with kind='container'."""
     image = ContainerImage.from_dockerfile_str("FROM python:3.11-slim")
