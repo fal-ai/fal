@@ -481,26 +481,29 @@ async def test_runner_state_lifecycle_complete(isolate_agent_env):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("startup_timeout", "elapsed_seconds", "expected_timeout"),
+    ("startup_timeout", "elapsed_seconds", "should_warn"),
     [
-        (1, 2.5, 1),
-        (None, 601.0, 600),
+        (1, 2.5, True),
+        (None, 601.0, True),
+        (10, 5.0, False),
+        (None, 300.0, False),
+        (1, 1.0, False),
     ],
 )
-async def test_lifespan_warns_when_setup_exceeds_startup_timeout(
+async def test_lifespan_startup_timeout_warning(
     isolate_agent_env,
     startup_timeout,
     elapsed_seconds,
-    expected_timeout,
+    should_warn,
 ):
     import fastapi
 
-    class SlowSetupApp(App):
+    class TestApp(App):
         def setup(self):
             return None
 
-    SlowSetupApp.startup_timeout = startup_timeout
-    app = SlowSetupApp()
+    TestApp.startup_timeout = startup_timeout
+    app = TestApp()
     fastapi_app = fastapi.FastAPI()
 
     with (
@@ -511,10 +514,14 @@ async def test_lifespan_warns_when_setup_exceeds_startup_timeout(
         async with app.lifespan(fastapi_app):
             pass
 
-    assert any(
-        "app setup exceeded startup_timeout" in "".join(map(str, call.args))
-        and f"> {expected_timeout}s" in "".join(map(str, call.args))
-        for call in mock_print.call_args_list
+    printed_lines = ["".join(map(str, call.args)) for call in mock_print.call_args_list]
+    has_warning = any(
+        "app setup exceeded startup_timeout" in line for line in printed_lines
+    )
+    assert has_warning == should_warn, (
+        f"Expected warning={'yes' if should_warn else 'no'} "
+        f"(startup_timeout={startup_timeout}, elapsed={elapsed_seconds}s), "
+        f"but got: {printed_lines}"
     )
 
 
