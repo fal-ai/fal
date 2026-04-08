@@ -190,8 +190,6 @@ ENV OUTPUT="$OUTPUT"
     max_concurrency=1,
 )
 def container_build_args_app() -> str:
-    import os
-
     return os.environ["OUTPUT"]
 
 
@@ -1805,7 +1803,7 @@ RUN apt-get update \
 ):
     machine_type = "XS"
     latest_request_id = None
-    uuid = None
+    token = None
     wait_time = None
 
     def setup(self):
@@ -1816,7 +1814,7 @@ RUN apt-get update \
 
     @fal.endpoint("/set-uuid")
     async def set_uuid(self, input: SetUUIDInput) -> str:
-        self.uuid = input.uuid
+        self.token = input.uuid
         return "ok"
 
     @fal.endpoint("/set-wait-time")
@@ -1833,22 +1831,8 @@ RUN apt-get update \
         self.latest_request_id = request_id
         return "ok"
 
-    @fal.endpoint("/latest-request-id")
-    async def fetch_latest_request_id(self) -> str:
-        if self.uuid is None:
-            return ""
-
-        try:
-            with open(f"/data/teardown/{self.uuid}.txt") as f:
-                latest_request_id = f.read()
-
-            os.unlink(f"/data/teardown/{self.uuid}.txt")
-            return latest_request_id
-        except Exception as e:
-            return str(e)
-
     def teardown(self):
-        if self.latest_request_id is None or self.uuid is None:
+        if self.latest_request_id is None or self.token is None:
             return
 
         if self.wait_time is not None:
@@ -1856,10 +1840,14 @@ RUN apt-get update \
                 print(f"sleeping {i + 1} of {self.wait_time}...", flush=True)
                 time.sleep(1)
 
-        os.makedirs("/data/teardown", exist_ok=True)
-        with open(f"/data/teardown/{self.uuid}.txt", "w") as f:
-            f.write(self.latest_request_id + "\n")
-            f.write("t" if self.stop else "f")
+        # Emit a deterministic marker so tests can verify teardown happened.
+        print(
+            "graceful-shutdown-marker:"
+            f"{self.token}:"
+            f"{self.latest_request_id}:"
+            f"{'t' if self.stop else 'f'}",
+            flush=True,
+        )
 
 
 @pytest.fixture(scope="module")
@@ -1875,6 +1863,7 @@ def test_graceful_shutdown_app(host: api.FalServerlessHost, user: User):
 def graceful_shutdown(
     test_graceful_shutdown_app: str,
     host: api.FalServerlessHost,
+    rest_client: Client,
     *,
     wait_time: int,
     path: str,
@@ -1911,50 +1900,59 @@ def graceful_shutdown(
         else:
             client.stop_runner(runner.runner_id)
 
-    if kill:
-        time.sleep(2)
-    else:
-        # Need to wait longer than 10s because how we stop the runner
-        time.sleep(60)
+    log_since = (
+        datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=5)
+    ).isoformat()
+    marker_prefix = f"graceful-shutdown-marker:{token}:{saved_request_id}:"
 
-    assert (
-        apps.run(test_graceful_shutdown_app, {"uuid": token}, path="/set-uuid") == "ok"
-    ), "UUID not set"
-    res = apps.run(test_graceful_shutdown_app, {}, path="/latest-request-id")
+    timeout = 120 if not kill else 20
+    with httpx.Client(
+        base_url=rest_client.base_url,
+        headers=rest_client.get_headers(),
+        timeout=30,
+    ) as client:
+        for _ in range(timeout // 2):
+            response = client.get(rest_client.base_url + f"/logs/?since={log_since}")
+            logs = response.json()
+            for log in logs:
+                message = log.get("message", "")
+                if marker_prefix in message:
+                    return message.strip().endswith(":t")
+            time.sleep(2)
 
-    teardown_called = res.split("\n")[0] == saved_request_id
-    stop_called = len(res.split("\n")) > 1 and res.split("\n")[1] == "t"
-
-    return teardown_called and stop_called
+    return False
 
 
 @pytest.mark.flaky(max_runs=3)
 def test_graceful_shutdown(
     host: api.FalServerlessHost,
+    rest_client: Client,
     test_graceful_shutdown_app: str,
 ):
     assert graceful_shutdown(
-        test_graceful_shutdown_app, host, wait_time=1, path="/"
+        test_graceful_shutdown_app, host, rest_client, wait_time=1, path="/"
     ), "app should be gracefully shutdown"
 
 
 @pytest.mark.flaky(max_runs=3)
 def test_graceful_shutdown_force_kill(
     host: api.FalServerlessHost,
+    rest_client: Client,
     test_graceful_shutdown_app: str,
 ):
     assert not graceful_shutdown(
-        test_graceful_shutdown_app, host, wait_time=10, path="/"
+        test_graceful_shutdown_app, host, rest_client, wait_time=10, path="/"
     ), "app should be forcefully killed if it takes too long to clean up"
 
 
 @pytest.mark.flaky(max_runs=3)
 def test_forceful_shutdown(
     host: api.FalServerlessHost,
+    rest_client: Client,
     test_graceful_shutdown_app: str,
 ):
     assert not graceful_shutdown(
-        test_graceful_shutdown_app, host, wait_time=1, path="/", kill=True
+        test_graceful_shutdown_app, host, rest_client, wait_time=1, path="/", kill=True
     ), "app should be forcefully killed on kill_runner"
 
 
