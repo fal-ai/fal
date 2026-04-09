@@ -810,7 +810,9 @@ class App(BaseServable):
         setup_elapsed = time.perf_counter() - setup_started_at
 
         effective_startup_timeout = (
-            self.startup_timeout or DEFAULT_PLATFORM_STARTUP_TIMEOUT
+            self.startup_timeout
+            if self.startup_timeout is not None
+            else DEFAULT_PLATFORM_STARTUP_TIMEOUT
         )
         if setup_elapsed > effective_startup_timeout:
             print(
