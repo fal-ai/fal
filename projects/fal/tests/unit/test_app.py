@@ -479,6 +479,52 @@ async def test_runner_state_lifecycle_complete(isolate_agent_env):
     assert states[2] == ("teardown", "TERMINATING")
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("startup_timeout", "elapsed_seconds", "should_warn"),
+    [
+        (1, 2.5, True),
+        (None, 601.0, True),
+        (10, 5.0, False),
+        (None, 300.0, False),
+        (1, 1.0, False),
+    ],
+)
+async def test_lifespan_startup_timeout_warning(
+    isolate_agent_env,
+    startup_timeout,
+    elapsed_seconds,
+    should_warn,
+):
+    import fastapi
+
+    class TestApp(App):
+        def setup(self):
+            return None
+
+    TestApp.startup_timeout = startup_timeout
+    app = TestApp()
+    fastapi_app = fastapi.FastAPI()
+
+    with (
+        patch("builtins.print") as mock_print,
+        patch("fal.app._print_python_packages"),
+        patch("fal.app.time.perf_counter", side_effect=[0.0, elapsed_seconds]),
+    ):
+        async with app.lifespan(fastapi_app):
+            pass
+
+    printed_lines = ["".join(map(str, call.args)) for call in mock_print.call_args_list]
+    has_warning = any(
+        "app setup exceeded startup_timeout" in line for line in printed_lines
+    )
+    assert has_warning == should_warn, (
+        f"Expected warning={'yes' if should_warn else 'no'} "
+        f"(startup_timeout={startup_timeout}, elapsed={elapsed_seconds}s), "
+        f"but got: {printed_lines}"
+    )
+
+
 def test_function_decorator_rejects_app_files_with_container_kind():
     """Test that app_files cannot be used with kind='container'."""
     image = ContainerImage.from_dockerfile_str("FROM python:3.11-slim")
