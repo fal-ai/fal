@@ -133,7 +133,8 @@ def test_fal_image_input_to_pil(isolated_client):
         pil_image = input_image.to_pil()
         return pil_image_to_bytes(pil_image)
 
-    test_input = TestInput(image=Image.from_pil(get_image()))
+    # Use a data URI input to avoid transient remote object-store 404s.
+    test_input = TestInput(image=image_to_data_uri(get_image()))
     image_bytes = init_image_on_fal(test_input)
 
     assert image_bytes == get_image(as_bytes=True)

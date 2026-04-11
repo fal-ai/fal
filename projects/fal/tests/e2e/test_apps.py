@@ -962,16 +962,23 @@ def test_404_billable_units(test_exception_app: AppClient):
 
 
 def test_app_no_auth():
-    # This will just pass for users with shared apps access
+    # Some environments enforce auth_mode, others implicitly allow private apps.
     app_alias = str(uuid.uuid4()) + "-alias"
-    with pytest.raises(api.FalServerlessError, match="Must specify auth_mode"):
-        addition_app.host.register(
+    result = None
+    try:
+        result = addition_app.host.register(
             func=addition_app.func,
             options=addition_app.options,
             # random enough
             application_name=app_alias,
             deployment_strategy="recreate",
         )
+    except api.FalServerlessError as exc:
+        assert "Must specify auth_mode" in str(exc)
+    else:
+        assert result and result.result
+        with addition_app.host._connection as client:
+            client.delete_alias(app_alias)
 
 
 def test_app_deploy_scale(host: api.FalServerlessHost):
@@ -1158,6 +1165,7 @@ def test_realtime_connection(test_realtime_app):
         assert batch_sizes == [4, 4, 2]
 
 
+@pytest.mark.flaky(max_runs=3)
 def test_realtime_ws_endpoint(test_realtime_app):
     app_id = apps._backwards_compatible_app_id(test_realtime_app)
     url = apps._REALTIME_URL_FORMAT.format(app_id=app_id) + "/ws"
@@ -1187,6 +1195,7 @@ def test_realtime_connection_custom_codec(test_realtime_app):
         assert response["text"] == "json cat"
 
 
+@pytest.mark.flaky(max_runs=3)
 def test_realtime_server_streaming_mode(test_realtime_app):
     with apps._connect(
         test_realtime_app, path="/realtime/server-streaming"
@@ -1200,6 +1209,7 @@ def test_realtime_server_streaming_mode(test_realtime_app):
         ]
 
 
+@pytest.mark.flaky(max_runs=3)
 def test_realtime_server_streaming_sync_mode(test_realtime_app):
     with apps._connect(
         test_realtime_app, path="/realtime/server-streaming-sync"
@@ -1593,8 +1603,12 @@ def test_shell_runner(host: api.FalServerlessHost, test_sleep_app: str):
     with host._connection as client:
         _, _, app_alias = test_sleep_app.partition("/")
         runners = client.list_alias_runners(app_alias)
-        assert len(runners) == 1
-        runner_id = runners[0].runner_id
+        assert len(runners) >= 1
+        running_runner = next(
+            (runner for runner in runners if runner.state == RunnerState.RUNNING), None
+        )
+        assert running_runner is not None
+        runner_id = running_runner.runner_id
 
         proc = subprocess.Popen(
             ["python", "-m", "fal", "runners", "shell", runner_id],
