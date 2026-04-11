@@ -1869,18 +1869,25 @@ def graceful_shutdown(
     path: str,
     kill: bool = False,
 ) -> bool:
+    def run_with_retry(arguments: dict, *, path: str) -> dict | str:
+        # Queueing can transiently fail under load with scheduler 503s.
+        retryable_status_codes = {502, 503, 504}
+        for attempt in range(5):
+            try:
+                return apps.run(test_graceful_shutdown_app, arguments, path=path)
+            except HTTPStatusError as exc:
+                status_code = exc.response.status_code if exc.response else None
+                if status_code not in retryable_status_codes or attempt == 4:
+                    raise
+                time.sleep(1 + attempt)
+
     time.sleep(2)
 
     token = str(uuid.uuid4())
-    assert (
-        apps.run(test_graceful_shutdown_app, {"uuid": token}, path="/set-uuid") == "ok"
-    ), "UUID not set"
+    assert run_with_retry({"uuid": token}, path="/set-uuid") == "ok", "UUID not set"
 
     assert (
-        apps.run(
-            test_graceful_shutdown_app, {"wait_time": wait_time}, path="/set-wait-time"
-        )
-        == "ok"
+        run_with_retry({"wait_time": wait_time}, path="/set-wait-time") == "ok"
     ), "Wait time not set"
 
     handle = submit_and_wait_for_runner(test_graceful_shutdown_app, path=path)
