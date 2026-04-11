@@ -2,7 +2,12 @@ import argparse
 from dataclasses import replace
 from pathlib import Path
 
-from ._utils import AppData, get_app_data_from_toml, is_app_name
+from ._utils import (
+    AppData,
+    get_app_data_from_toml,
+    is_app_name,
+    warn_if_vulnerable_torch,
+)
 from .parser import FalClientParser, RefAction, add_env_argument
 
 
@@ -59,6 +64,11 @@ def _run(args):
         app_name=app_data.name,
         app_auth=app_data.auth,
         limit_max_requests=args.limit_max_requests,
+    )
+
+    warn_if_vulnerable_torch(
+        loaded.function.options.environment.get("requirements", []),
+        args.console,
     )
 
     isolated_function = loaded.function
