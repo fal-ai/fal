@@ -512,13 +512,32 @@ def register_app(
     suffix: str = "",
 ):
     app_alias = str(uuid.uuid4()) + "-test-alias" + ("-" + suffix if suffix else "")
-    result = host.register(
-        func=app.func,
-        options=app.options,
-        application_name=app_alias,
-        application_auth_mode="private",
-        deployment_strategy="recreate",
-    )
+    result = None
+    for attempt in range(4):
+        try:
+            result = host.register(
+                func=app.func,
+                options=app.options,
+                application_name=app_alias,
+                application_auth_mode="private",
+                deployment_strategy="recreate",
+            )
+            break
+        except api.FalServerlessError as exc:
+            error_message = str(exc).lower()
+            transient_error = any(
+                marker in error_message
+                for marker in (
+                    "unexpected error. please contact support",
+                    "statuscode.internal",
+                    "statuscode.unavailable",
+                    "service unavailable",
+                    "connection timed out",
+                )
+            )
+            if not transient_error or attempt == 3:
+                raise
+            time.sleep(2 + attempt)
 
     assert result
     assert result.result

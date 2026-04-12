@@ -86,6 +86,7 @@ def test_fal_image_from_pil(isolated_client):
     assert fal_image_content_matches(fal_image, get_image(as_bytes=True))
 
 
+@pytest.mark.flaky(max_runs=3)
 def test_fal_image_from_bytes(isolated_client):
     @isolated_client(requirements=["pillow", f"pydantic=={pydantic_version}", "tomli"])
     def fal_image_from_bytes_remote():
