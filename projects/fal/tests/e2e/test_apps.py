@@ -1902,8 +1902,10 @@ def graceful_shutdown(
     path: str,
     kill: bool = False,
 ) -> bool:
-    def run_with_retry(arguments: dict, *, path: str) -> dict | str:
-        # Queueing can transiently fail under load with scheduler 503s.
+    def run_with_retry(
+        arguments: Dict[str, Union[str, int]], *, path: str
+    ) -> Union[dict, str]:
+        # Queueing can transiently fail under load with scheduler 5xxs.
         retryable_status_codes = {502, 503, 504}
         for attempt in range(5):
             try:
