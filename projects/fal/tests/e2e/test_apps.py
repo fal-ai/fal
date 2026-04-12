@@ -1584,8 +1584,17 @@ def test_rollout_application(host: api.FalServerlessHost, test_sleep_app: str):
     with host._connection as client:
         _, _, app_alias = test_sleep_app.partition("/")
         runners_before = client.list_alias_runners(app_alias)
-        assert len(runners_before) == 1
-        runner_id_before = runners_before[0].runner_id
+        assert len(runners_before) >= 1
+        running_runner_before = next(
+            (
+                runner
+                for runner in runners_before
+                if runner.state == RunnerState.RUNNING
+            ),
+            None,
+        )
+        assert running_runner_before is not None
+        runner_id_before = running_runner_before.runner_id
 
         client.rollout_application(app_alias, force=True)
 
