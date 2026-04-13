@@ -393,9 +393,11 @@ class Workflow:
         if not published_workflow:
             raise RuntimeError("Failed to publish the workflow")
 
-        # NOTE: dropping the provider prefix from the user_id
-        user_id_part = published_workflow.user_id.split("|")[-1]
-        return f"{user_id_part}/{published_workflow.name}"
+        owner = getattr(published_workflow, "user_nickname", None)
+        if not owner:
+            # Fall back to the legacy owner format if nickname is unavailable.
+            owner = published_workflow.user_id.split("|")[-1]
+        return f"{owner}/{published_workflow.name}"
 
 
 def create_workflow(
