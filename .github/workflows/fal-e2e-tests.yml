@@ -32,13 +32,6 @@ jobs:
         target: ["dev", "prod"]
         deps: ["pydantic==1.10.18", "pydantic==2.11.7"]
         python: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
-        include:
-          - target: dev
-            fal_grpc_host: api.fal.dev
-            fal_run_host: run.fal.dev
-          - target: prod
-            fal_grpc_host: api.alpha.fal.ai
-            fal_run_host: fal.run
         exclude:
           - deps: "pydantic==2.11.7"
             python: "3.8"
@@ -71,7 +64,7 @@ jobs:
       - name: Run e2e tests
         env:
           FAL_KEY: ${{ matrix.target == 'prod' && secrets.FAL_KEY_PROD || secrets.FAL_KEY_DEV }}
-          FAL_GRPC_HOST: ${{ matrix.fal_grpc_host }}
-          FAL_RUN_HOST: ${{ matrix.fal_run_host }}
+          FAL_GRPC_HOST: ${{ matrix.target == 'prod' && 'api.alpha.fal.ai' || secrets.FAL_GRPC_HOST_DEV }}
+          FAL_RUN_HOST: ${{ matrix.target == 'prod' && 'fal.run' || secrets.FAL_RUN_HOST_DEV }}
         run: |
           pytest -n auto -v projects/fal/tests/e2e
