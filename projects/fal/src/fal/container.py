@@ -2,6 +2,7 @@ import json
 import os
 import re
 import shlex
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Literal, Optional
@@ -74,6 +75,19 @@ class ContainerImage:
         if self.builder and self.builder not in BUILDERS:
             raise ValueError(
                 f"Invalid builder: {self.builder}, must be one of {BUILDERS}"
+            )
+
+        if self.builder and self.builder in ("service", "worker"):
+            # Yellow "Warning:" prefix via ANSI; falls back to plain text
+            # on non-TTY or color-less terminals.
+            prefix = (
+                "\033[1;33mWarning:\033[0m " if sys.stderr.isatty() else "Warning: "
+            )
+            print(
+                f"{prefix}builder='{self.builder}' is deprecated and has "
+                "been removed. All builds now use Depot. You can safely "
+                "remove the builder parameter or set builder='depot'.",
+                file=sys.stderr,
             )
 
     @classmethod
