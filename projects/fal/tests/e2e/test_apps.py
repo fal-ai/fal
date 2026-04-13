@@ -962,23 +962,16 @@ def test_404_billable_units(test_exception_app: AppClient):
 
 
 def test_app_no_auth():
-    # Some environments enforce auth_mode, others implicitly allow private apps.
+    # This will just pass for users with shared apps access
     app_alias = str(uuid.uuid4()) + "-alias"
-    result = None
-    try:
-        result = addition_app.host.register(
+    with pytest.raises(api.FalServerlessError, match="Must specify auth_mode"):
+        addition_app.host.register(
             func=addition_app.func,
             options=addition_app.options,
             # random enough
             application_name=app_alias,
             deployment_strategy="recreate",
         )
-    except api.FalServerlessError as exc:
-        assert "Must specify auth_mode" in str(exc)
-    else:
-        assert result and result.result
-        with addition_app.host._connection as client:
-            client.delete_alias(app_alias)
 
 
 def test_app_deploy_scale(host: api.FalServerlessHost):
