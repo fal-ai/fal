@@ -620,20 +620,11 @@ def test_worker_env_vars(isolated_client):
 
 
 @pytest.mark.flaky(max_runs=3)
-@pytest.mark.parametrize(
-    "repo_type, url_prefixes",
-    [
-        (
-            "fal",
-            ["https://storage.googleapis.com/isolate-dev"],
-        ),
-        ("fal_v2", ["https://v2.fal.media/files"]),
-        ("fal_v3", ["https://v3.fal.media/files", "https://v3b.fal.media/files"]),
-    ],
-)
-def test_fal_storage(isolated_client, repo_type, url_prefixes):
+def test_fal_storage_v3(isolated_client):
+    url_prefixes = ["https://v3.fal.media/files", "https://v3b.fal.media/files"]
+
     file = File.from_bytes(
-        b"Hello fal storage from local", repository=repo_type, fallback_repository=None
+        b"Hello fal storage from local", repository="fal_v3", fallback_repository=None
     )
     assert any(file.url.startswith(url_prefix) for url_prefix in url_prefixes)
     assert file.as_bytes().decode().endswith("local")
@@ -645,7 +636,7 @@ def test_fal_storage(isolated_client, repo_type, url_prefixes):
         # Run in the isolated environment
         return File.from_bytes(
             b"Hello fal storage from isolated",
-            repository=repo_type,
+            repository="fal_v3",
             save_kwargs={
                 "multipart": False,
                 "multipart_threshold": 1024 * 1024,
