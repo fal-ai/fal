@@ -36,10 +36,6 @@ MAX_DELAY = 30
 RETRY_CODES = [408, 409, 429, 500, 502, 503, 504]
 
 
-def _rest_url(path: str) -> str:
-    return f"https://{REST_HOST}{path}"
-
-
 def _should_retry(exc: Exception) -> bool:
     if isinstance(exc, HTTPError) and exc.code in RETRY_CODES:
         return True
@@ -172,7 +168,7 @@ class FalV2TokenManager:
             "Content-Type": "application/json",
         }
 
-        url = _rest_url(f"/storage/auth/token?storage_type={self.storage_type}")
+        url = f"https://{REST_HOST}/storage/auth/token?storage_type={self.storage_type}"
 
         req = Request(
             url,
@@ -273,7 +269,9 @@ class FalFileRepositoryBase(FileRepository):
             **(headers or {}),
         }
 
-        storage_url = _rest_url(f"/storage/upload/initiate?storage_type={storage_type}")
+        storage_url = (
+            f"https://{REST_HOST}/storage/upload/initiate?storage_type={storage_type}"
+        )
 
         try:
             req = Request(
@@ -360,7 +358,7 @@ class MultipartUploadGCS:
         }
 
     def create(self, object_lifecycle_preference: dict[str, str] | None = None) -> None:
-        url = _rest_url("/storage/upload/initiate-multipart?storage_type=gcs")
+        url = f"https://{REST_HOST}/storage/upload/initiate-multipart?storage_type=gcs"
 
         try:
             headers = {
@@ -833,7 +831,7 @@ class MultipartUploadV3:
         return headers
 
     def create(self, object_lifecycle_preference: dict[str, str] | None = None) -> None:
-        url = _rest_url("/storage/upload/initiate-multipart?storage_type=fal-cdn-v3")
+        url = f"https://{REST_HOST}/storage/upload/initiate-multipart?storage_type=fal-cdn-v3"
 
         try:
             headers = {
@@ -1386,7 +1384,7 @@ class FalFileRepositoryV3(FileRepository):
         }
         _object_lifecycle_headers(headers, object_lifecycle_preference)
 
-        url = _rest_url("/storage/upload/initiate?storage_type=fal-cdn-v3")
+        url = f"https://{REST_HOST}/storage/upload/initiate?storage_type=fal-cdn-v3"
 
         request = Request(
             url,
