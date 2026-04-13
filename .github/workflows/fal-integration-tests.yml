@@ -35,11 +35,9 @@ jobs:
         python: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
         include:
           - target: dev
-            fal_key_secret: FAL_KEY_DEV
             fal_host: api.fal.dev
             fal_run_host: run.fal.dev
           - target: prod
-            fal_key_secret: FAL_KEY_PROD
             fal_host: api.alpha.fal.ai
             fal_run_host: fal.run
         exclude:
@@ -72,7 +70,7 @@ jobs:
 
       - name: Run integration tests
         env:
-          FAL_KEY: ${{ secrets[matrix.fal_key_secret] }}
+          FAL_KEY: ${{ matrix.target == 'prod' && secrets.FAL_KEY_PROD || secrets.FAL_KEY_DEV }}
           FAL_HOST: ${{ matrix.fal_host }}
           FAL_RUN_HOST: ${{ matrix.fal_run_host }}
         run: |
