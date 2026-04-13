@@ -64,7 +64,7 @@ jobs:
       - name: Run e2e tests
         env:
           FAL_KEY: ${{ matrix.target == 'prod' && secrets.FAL_KEY_PROD || secrets.FAL_KEY_DEV }}
-          FAL_GRPC_HOST: ${{ matrix.target == 'prod' && 'api.alpha.fal.ai' || secrets.FAL_GRPC_HOST_DEV }}
+          FAL_GRPC_HOST: ${{ matrix.target == 'prod' && 'api.fal.ai' || secrets.FAL_GRPC_HOST_DEV }}
           FAL_RUN_HOST: ${{ matrix.target == 'prod' && 'fal.run' || secrets.FAL_RUN_HOST_DEV }}
         run: |
           pytest -n auto -v projects/fal/tests/e2e
