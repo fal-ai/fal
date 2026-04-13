@@ -1510,14 +1510,29 @@ def test_kill_runner(host: api.FalServerlessHost, test_sleep_app: str):
         existing_runners = len(
             [runner for runner in runners if runner.state == RunnerState.RUNNING]
         )
+        runner_id = runners[0].runner_id
 
-        client.kill_runner(runners[0].runner_id)
+        client.kill_runner(runner_id)
 
-        runners = client.list_alias_runners(app_alias)
-        num_runners = len(
-            [runner for runner in runners if runner.state == RunnerState.RUNNING]
-        )
-        assert num_runners == existing_runners - 1
+        timeout = 15
+        start_time = time.time()
+        while True:
+            runners = client.list_alias_runners(app_alias)
+            running_runner_ids = {
+                runner.runner_id
+                for runner in runners
+                if runner.state == RunnerState.RUNNING
+            }
+            if runner_id not in running_runner_ids:
+                break
+            if time.time() - start_time > timeout:
+                raise AssertionError(
+                    f"Runner {runner_id} still running after kill request: {runners}"
+                )
+            time.sleep(0.5)
+
+        num_runners = len(running_runner_ids)
+        assert num_runners <= existing_runners - 1
 
 
 @pytest.mark.flaky(max_runs=3)
