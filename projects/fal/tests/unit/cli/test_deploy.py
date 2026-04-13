@@ -1,13 +1,26 @@
+from types import SimpleNamespace
 from typing import Optional, Tuple
 from unittest.mock import MagicMock, patch
 
 import pytest
+from rich.console import Console
 
 from fal.api import Options
 from fal.cli._utils import AppData
-from fal.cli.deploy import _deploy
+from fal.cli.deploy import (
+    _build_deployment_check_summary,
+    _deploy,
+    _diff_table,
+    _payload_requires_deploy_check,
+    _render_auth_line,
+    _render_deployment_check_summary,
+    _render_deployment_strategy_line,
+    _render_environment_build_cache_line,
+    _resolve_deploy_check_source,
+)
 from fal.cli.main import parse_args
 from fal.project import find_project_root
+from fal.sdk import AliasInfo
 
 
 def test_deploy():
@@ -43,6 +56,12 @@ def test_deploy_with_env_and_other_options():
     assert args.env == "staging"
 
 
+def test_deploy_with_check_and_yes():
+    args = parse_args(["deploy", "myfile.py::MyApp", "--check", "--yes"])
+    assert args.check is True
+    assert args.yes is True
+
+
 @patch.dict("os.environ", {"FAL_ENV": "from-env-var"})
 def test_deploy_uses_fal_env_variable():
     args = parse_args(["deploy", "myfile.py::MyApp"])
@@ -53,6 +72,12 @@ def test_deploy_uses_fal_env_variable():
 def test_deploy_cli_env_overrides_fal_env_variable():
     args = parse_args(["deploy", "myfile.py::MyApp", "--env", "cli-env"])
     assert args.env == "cli-env"
+
+
+@pytest.fixture(autouse=True)
+def disable_admin_deploy_check_lookup():
+    with patch("fal.cli.deploy._admin_requires_deploy_check", return_value=False):
+        yield
 
 
 @pytest.fixture
@@ -121,6 +146,9 @@ def mock_args(
     args.no_cache = no_cache
     args.force_env_build = False
     args.env = env
+    args.check = False
+    args.yes = False
+    args.host = "my-host"
 
     return args
 
@@ -776,3 +804,293 @@ def test_deploy_team_lookup_uses_silent_toml_read(mock_client, mock_get_app_data
     mock_get_app_data.assert_called_once_with(
         "no-scale-app", emit_deprecation_warnings=False
     )
+
+
+def _prepared_deployment(
+    *,
+    reset_scale: bool,
+    auth: str = "public",
+    host_options: Optional[dict] = None,
+):
+    return SimpleNamespace(
+        loaded=SimpleNamespace(
+            app_name="my-app",
+            app_auth=auth,
+            function=SimpleNamespace(
+                options=Options(
+                    host=host_options
+                    or {
+                        "machine_type": ["GPU-H100"],
+                        "keep_alive": 10,
+                        "max_concurrency": 2,
+                        "min_concurrency": 0,
+                        "concurrency_buffer": 0,
+                        "concurrency_buffer_perc": 0,
+                        "scaling_delay": 0,
+                        "max_multiplexing": 4,
+                        "request_timeout": 3600,
+                        "startup_timeout": 900,
+                        "regions": ["us-east"],
+                    },
+                    environment={},
+                )
+            ),
+        ),
+        display_name="MyApp",
+        environment_name="staging",
+        app_data=AppData(
+            reset_scale=reset_scale,
+            deployment_strategy="rolling",
+            name="my-app",
+        ),
+    )
+
+
+def _production_alias(**overrides) -> AliasInfo:
+    defaults = dict(
+        alias="my-app--staging",
+        revision="rev-prod",
+        auth_mode="private",
+        keep_alive=300,
+        max_concurrency=8,
+        max_multiplexing=1,
+        active_runners=1,
+        min_concurrency=1,
+        concurrency_buffer=2,
+        concurrency_buffer_perc=0,
+        scaling_delay=30,
+        machine_types=["GPU-A100"],
+        request_timeout=120,
+        startup_timeout=600,
+        valid_regions=["eu-west"],
+        environment_name="staging",
+    )
+    defaults.update(overrides)
+    return AliasInfo(**defaults)
+
+
+def _render_summary(summary) -> str:
+    console = Console(record=True, width=120)
+    _render_deployment_check_summary(console, summary)
+    return console.export_text()
+
+
+@patch("fal.cli.deploy._admin_requires_deploy_check")
+@patch.dict("os.environ", {"FAL_DEPLOY_CHECK": "true"})
+def test_resolve_deploy_check_source_env_can_be_skipped_with_yes(mock_admin):
+    args = mock_args(app_ref=("src/my_app/inference.py", "MyApp"))
+    args.yes = True
+
+    assert _resolve_deploy_check_source(args, MagicMock()) is None
+    mock_admin.assert_not_called()
+
+
+@patch("fal.cli.deploy._admin_requires_deploy_check", return_value=True)
+def test_resolve_deploy_check_source_uses_admin_trigger(mock_admin):
+    args = mock_args(app_ref=("src/my_app/inference.py", "MyApp"))
+
+    assert _resolve_deploy_check_source(args, MagicMock()) == "admin"
+    mock_admin.assert_called_once()
+
+
+def test_payload_requires_deploy_check_supports_nested_org_config():
+    payload = SimpleNamespace(
+        additional_properties={
+            "org_config": {
+                "deploy_check": True,
+            }
+        }
+    )
+
+    assert _payload_requires_deploy_check(payload) is True
+
+
+def test_build_deployment_check_summary_inherits_production_scale_without_reset_scale():
+    summary = _build_deployment_check_summary(
+        _prepared_deployment(reset_scale=False),
+        _production_alias(),
+        source="flag",
+        force_env_build=False,
+    )
+
+    effective_changes = {row.label: row for row in summary.effective_changes}
+
+    assert effective_changes["Machine Types"].production == "GPU-A100"
+    assert effective_changes["Machine Types"].after_deploy == "GPU-H100"
+    assert effective_changes["Machine Types"].note is None
+    assert effective_changes["Max Multiplexing"].production == "1"
+    assert effective_changes["Max Multiplexing"].after_deploy == "4"
+    assert effective_changes["Startup Timeout"].production == "600"
+    assert effective_changes["Startup Timeout"].after_deploy == "900"
+
+    assert effective_changes["Keep Alive"].production == "300"
+    assert effective_changes["Keep Alive"].after_deploy == "10"
+    assert (
+        effective_changes["Keep Alive"].note
+        == "Code value will not apply without --reset-scale"
+    )
+    assert effective_changes["Max Concurrency"].production == "8"
+    assert effective_changes["Max Concurrency"].after_deploy == "2"
+    assert effective_changes["Regions"].production == "eu-west"
+    assert effective_changes["Regions"].after_deploy == "us-east"
+
+
+def test_diff_table_colors_unapplied_after_deploy_values_yellow():
+    summary = _build_deployment_check_summary(
+        _prepared_deployment(reset_scale=False),
+        _production_alias(),
+        source="flag",
+        force_env_build=False,
+    )
+
+    table = _diff_table("Effective Production Diff", summary.effective_changes)
+    labels = list(table.columns[0]._cells)
+    after_deploy_cells = table.columns[2]._cells
+
+    keep_alive_index = labels.index("Keep Alive")
+    machine_types_index = labels.index("Machine Types")
+
+    assert after_deploy_cells[keep_alive_index].plain == "10"
+    assert after_deploy_cells[keep_alive_index].style == "yellow"
+    assert after_deploy_cells[machine_types_index].plain == "GPU-H100"
+    assert after_deploy_cells[machine_types_index].style == ""
+
+
+def test_render_auth_line_is_red_when_auth_changes():
+    auth_line = _render_auth_line("private", "public")
+
+    assert auth_line.plain == "Auth: private -> public"
+    assert any(span.style == "red" for span in auth_line.spans)
+
+
+def test_render_auth_line_is_not_red_when_auth_is_unchanged():
+    auth_line = _render_auth_line("private", "private")
+
+    assert auth_line.plain == "Auth: private -> private"
+    assert all(span.style != "red" for span in auth_line.spans)
+
+
+def test_render_deployment_strategy_line_colors_rolling_green():
+    strategy_line = _render_deployment_strategy_line("rolling")
+
+    assert strategy_line.plain == "Deployment strategy: rolling (this deployment only)"
+    assert any(span.style == "green" for span in strategy_line.spans)
+
+
+def test_render_deployment_strategy_line_colors_non_rolling_red():
+    strategy_line = _render_deployment_strategy_line("recreate")
+
+    assert strategy_line.plain == "Deployment strategy: recreate (this deployment only)"
+    assert any(span.style == "red" for span in strategy_line.spans)
+
+
+def test_render_environment_build_cache_line_colors_enabled_green():
+    cache_line = _render_environment_build_cache_line(False)
+
+    assert cache_line.plain == "Environment build cache: enabled"
+    assert any(span.style == "green" for span in cache_line.spans)
+
+
+def test_render_environment_build_cache_line_colors_disabled_orange():
+    cache_line = _render_environment_build_cache_line(True)
+
+    assert cache_line.plain == "Environment build cache: disabled (--no-cache)"
+    assert any(span.style == "#ff8800" for span in cache_line.spans)
+
+
+def test_build_deployment_check_summary_reset_scale_applies_code_scale():
+    summary = _build_deployment_check_summary(
+        _prepared_deployment(reset_scale=True),
+        _production_alias(),
+        source="flag",
+        force_env_build=True,
+    )
+
+    effective_changes = {row.label: row for row in summary.effective_changes}
+
+    assert all(row.note is None for row in summary.effective_changes)
+    assert effective_changes["Keep Alive"].production == "300"
+    assert effective_changes["Keep Alive"].after_deploy == "10"
+    assert effective_changes["Max Concurrency"].production == "8"
+    assert effective_changes["Max Concurrency"].after_deploy == "2"
+    assert effective_changes["Regions"].production == "eu-west"
+    assert effective_changes["Regions"].after_deploy == "us-east"
+
+
+def test_build_deployment_check_summary_handles_none_regions():
+    summary = _build_deployment_check_summary(
+        _prepared_deployment(
+            reset_scale=True,
+            host_options={
+                "machine_type": ["GPU-H100"],
+                "keep_alive": 10,
+                "max_concurrency": 2,
+                "min_concurrency": 0,
+                "concurrency_buffer": 0,
+                "concurrency_buffer_perc": 0,
+                "scaling_delay": 0,
+                "max_multiplexing": 4,
+                "request_timeout": 3600,
+                "startup_timeout": 900,
+                "regions": None,
+            },
+        ),
+        _production_alias(valid_regions=["eu-west"]),
+        source="flag",
+        force_env_build=False,
+    )
+
+    effective_changes = {row.label: row for row in summary.effective_changes}
+
+    assert effective_changes["Regions"].production == "eu-west"
+    assert effective_changes["Regions"].after_deploy == "any"
+
+
+def test_render_deployment_check_summary_removes_triggered_by_and_scale_behavior():
+    summary = _build_deployment_check_summary(
+        _prepared_deployment(reset_scale=False),
+        _production_alias(),
+        source="flag",
+        force_env_build=False,
+    )
+
+    rendered = _render_summary(summary)
+
+    assert "Triggered by:" not in rendered
+    assert "Scale behavior:" not in rendered
+    assert "Code Values Not Applied" not in rendered
+    assert "Code value will not apply without --reset-scale" in rendered
+    assert rendered.index("Target:") < rendered.index("Current revision:")
+    assert "Deployment strategy:" in rendered
+    assert "Environment build cache:" in rendered
+
+
+@patch("fal.api.deploy.execute_prepared_deployment")
+@patch("fal.api.deploy.prepare_deployment")
+@patch("fal.cli.deploy._get_production_alias", return_value=None)
+@patch("sys.stdin.isatty", return_value=True)
+@patch("builtins.input", return_value="ConFiRm")
+def test_deploy_with_check_prepares_and_executes(
+    mock_input,
+    mock_isatty,
+    mock_get_production_alias,
+    mock_prepare_deployment,
+    mock_execute_prepared_deployment,
+):
+    mock_prepare_deployment.return_value = _prepared_deployment(reset_scale=False)
+    mock_execute_prepared_deployment.return_value = MagicMock(
+        revision="rev-checked",
+        app_name="my-app",
+        auth_mode="public",
+        urls={"playground": {}, "sync": {}, "async": {}},
+        log_url="https://fal.ai/logs/checked",
+    )
+
+    args = mock_args(app_ref=("src/my_app/inference.py", "MyApp"))
+    args.check = True
+
+    _deploy(args)
+
+    mock_prepare_deployment.assert_called_once()
+    mock_execute_prepared_deployment.assert_called_once()
+    mock_input.assert_called_once_with("Type 'confirm' to confirm deployment: ")
