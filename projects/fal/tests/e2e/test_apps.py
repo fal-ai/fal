@@ -2023,6 +2023,7 @@ class RequestContextApp(fal.App, keep_alive=300, max_concurrency=1, max_multiple
 def test_request_context_app(host: api.FalServerlessHost, user: User):
     request_context_app = wrap_app(RequestContextApp)
     with register_app(host, request_context_app, "request-context") as (app_alias, _):
+        time.sleep(1)
         yield f"{user.username}/{app_alias}"
 
 
