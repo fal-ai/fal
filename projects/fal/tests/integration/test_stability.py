@@ -619,7 +619,7 @@ def test_worker_env_vars(isolated_client):
     assert fal_key_secret, "FAL_KEY_SECRET is not set"
 
 
-@pytest.mark.flaky(max_runs=5)
+@pytest.mark.flaky(max_runs=3)
 def test_fal_storage_v3(isolated_client):
     url_prefixes = ["https://v3.fal.media/files", "https://v3b.fal.media/files"]
 
