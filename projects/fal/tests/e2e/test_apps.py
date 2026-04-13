@@ -903,8 +903,9 @@ def test_app_openapi_spec_metadata(
     base_app: Tuple[str, str], user: User, rest_client: Client
 ):
     app_alias, _ = base_app
+    app_user_id = user.username
     res = app_metadata.sync_detailed(
-        app_alias_or_id=app_alias, app_user_id=user.user_id, client=rest_client
+        app_alias_or_id=app_alias, app_user_id=app_user_id, client=rest_client
     )
 
     assert res.status_code == 200, f"Failed to fetch metadata for app {app_alias}"
