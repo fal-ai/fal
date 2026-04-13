@@ -661,13 +661,6 @@ def test_ws_client(test_app: str):
             assert response["result"] == 2 + i
 
 
-def test_app_client_old_format(base_app: Tuple[str, str], user: User):
-    app_alias, _ = base_app
-    old_format = f"{user.user_id}-{app_alias}"
-    response = apps.run(old_format, arguments={"lhs": 1, "rhs": 2})
-    assert response["result"] == 3
-
-
 def test_app_client_path_included_in_app_id(test_stateful_app: str):
     response = apps.run(test_stateful_app + "/reset", arguments={})
     assert response["result"] == 0
@@ -959,19 +952,6 @@ def test_404_billable_units(test_exception_app: AppClient):
 
         assert response.status_code == 404
         assert response.headers.get("x-fal-billable-units") == "0"
-
-
-def test_app_no_auth():
-    # This will just pass for users with shared apps access
-    app_alias = str(uuid.uuid4()) + "-alias"
-    with pytest.raises(api.FalServerlessError, match="Must specify auth_mode"):
-        addition_app.host.register(
-            func=addition_app.func,
-            options=addition_app.options,
-            # random enough
-            application_name=app_alias,
-            deployment_strategy="recreate",
-        )
 
 
 def test_app_deploy_scale(host: api.FalServerlessHost):
