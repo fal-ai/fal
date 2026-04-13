@@ -226,7 +226,7 @@ class DistributedRunner:
     zmq_socket: Optional[Socket[Any]]
     context: Optional[mp.ProcessContext]
     keepalive_timer: Optional[KeepAliveTimer]
-    _lock: Optional[asyncio.Lock]
+    _lock: threading.Lock
 
     def __init__(
         self,
@@ -255,7 +255,10 @@ class DistributedRunner:
         self.keepalive_payload = keepalive_payload
         self.keepalive_interval = keepalive_interval
         self.keepalive_timer = None
-        self._lock = None
+        self._lock = threading.Lock()
+        self._keepalive_shutdown = False
+        self._keepalive_loop: Optional[asyncio.AbstractEventLoop] = None
+        self._keepalive_loop_thread: Optional[threading.Thread] = None
 
         if set_device is not None:
             warnings.warn("set_device is deprecated and will be removed in the future.")
@@ -263,13 +266,18 @@ class DistributedRunner:
     @asynccontextmanager
     async def _invocation_lock(self) -> AsyncIterator[None]:
         """
-        Acquire the invocation lock lazily in the running event loop.
+        Acquire the invocation lock using a threading.Lock so it serializes
+        across event loops (main loop vs keepalive loop). Uses non-blocking
+        acquire with asyncio.sleep to stay cancellation-safe: if the caller
+        is cancelled while waiting, the lock is never acquired and cannot
+        be left permanently held.
         """
-        if self._lock is None:
-            self._lock = asyncio.Lock()
-
-        async with self._lock:
+        while not self._lock.acquire(blocking=False):
+            await asyncio.sleep(0.01)
+        try:
             yield
+        finally:
+            self._lock.release()
 
     def is_alive(self) -> bool:
         """
@@ -283,11 +291,28 @@ class DistributedRunner:
                 return False
         return True
 
+    def _shutdown_keepalive(self, timeout: Union[int, float] = 10) -> None:
+        """
+        Cancel the keepalive timer and stop the persistent keepalive event loop.
+        """
+        self._keepalive_shutdown = True
+        self.maybe_cancel_keepalive()
+        if self._keepalive_loop is not None and self._keepalive_loop.is_running():
+            self._keepalive_loop.call_soon_threadsafe(self._keepalive_loop.stop)
+        if self._keepalive_loop_thread is not None:
+            self._keepalive_loop_thread.join(timeout=timeout)
+            self._keepalive_loop_thread = None
+        if self._keepalive_loop is not None and not self._keepalive_loop.is_closed():
+            self._keepalive_loop.close()
+            self._keepalive_loop = None
+
     def terminate(self, timeout: Union[int, float] = 10) -> None:
         """
         Terminates the distributed worker processes.
         This method should be called to clean up the worker processes.
         """
+        self._shutdown_keepalive(timeout=timeout)
+
         if self.context is not None:
             for process in self.context.processes:
                 if process.is_alive():
@@ -550,6 +575,8 @@ class DistributedRunner:
         if self.is_alive():
             raise RuntimeError("Distributed processes are already running.")
 
+        self._keepalive_shutdown = False
+
         self.context = launch_distributed_processes(
             self.run,
             world_size=self.world_size,
@@ -597,20 +624,34 @@ class DistributedRunner:
         # Start the keepalive timer
         self.maybe_start_keepalive()
 
+    def _get_keepalive_loop(self) -> asyncio.AbstractEventLoop:
+        """
+        Return a persistent event loop for keepalive calls.
+        Reuses the same loop across ticks to avoid creating throwaway loops.
+        """
+        if (
+            self._keepalive_loop is None
+            or self._keepalive_loop.is_closed()
+            or self._keepalive_loop_thread is None
+            or not self._keepalive_loop_thread.is_alive()
+        ):
+            self._keepalive_loop = asyncio.new_event_loop()
+            self._keepalive_loop_thread = threading.Thread(
+                target=self._keepalive_loop.run_forever, daemon=True
+            )
+            self._keepalive_loop_thread.start()
+        return self._keepalive_loop
+
     def keepalive(self, timeout: Optional[Union[int, float]] = 60.0) -> None:
         """
         Sends the keepalive payload to the worker.
         """
+        if self._keepalive_shutdown:
+            return
+
         # Cancel the keepalive timer
         self.maybe_cancel_keepalive()
-        loop_thread = None
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            loop_thread = threading.Thread(target=loop.run_forever, daemon=True)
-            loop_thread.start()
-
+        loop = self._get_keepalive_loop()
         future = asyncio.run_coroutine_threadsafe(
             self.invoke(self.keepalive_payload), loop
         )
@@ -621,9 +662,6 @@ class DistributedRunner:
             print(f"[debug] Error during keepalive: {e}\n{traceback.format_exc()}")
             raise RuntimeError("Failed to run keepalive.") from e
         finally:
-            if loop_thread is not None:
-                loop.call_soon_threadsafe(loop.stop)
-                loop_thread.join(timeout=timeout)
             # Restart the keepalive timer
             self.maybe_start_keepalive()
 
@@ -631,6 +669,8 @@ class DistributedRunner:
         """
         Starts the keepalive timer if it is set.
         """
+        if self._keepalive_shutdown:
+            return
         if self.keepalive_timer is None and self.keepalive_interval is not None:
             self.keepalive_timer = KeepAliveTimer(
                 self.keepalive, self.keepalive_interval, start=True
@@ -661,7 +701,7 @@ class DistributedRunner:
         if not self.is_alive():
             raise RuntimeError("Distributed processes are not running.")
 
-        self.maybe_cancel_keepalive()
+        self._shutdown_keepalive(timeout=timeout)
         worker_exits: set[int] = set()
         socket = self.get_zmq_socket()
         await socket.send_multipart([b"0", b"EXIT"])
