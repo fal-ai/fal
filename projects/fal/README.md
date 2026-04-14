@@ -1,9 +1,11 @@
 [![PyPI](https://img.shields.io/pypi/v/fal.svg?logo=PyPI)](https://pypi.org/project/fal)
 [![Tests](https://img.shields.io/github/actions/workflow/status/fal-ai/fal/fal-unit-tests.yml?label=Tests)](https://github.com/fal-ai/fal/actions)
 
-# fal for Python
+# fal
 
-This repository contains the Python packages for building on [fal](https://fal.ai):
+fal is a serverless Python runtime that lets you run and scale code in the cloud with no infra management.
+
+This repository contains the main Python packages for building on [fal](https://fal.ai):
 
 - `fal` (in `projects/fal`): define, test, and deploy serverless apps on fal
 - `fal-client` (in `projects/fal_client`): call fal model APIs or your deployed endpoints from Python
