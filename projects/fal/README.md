@@ -7,69 +7,75 @@ fal is a serverless Python runtime that lets you run and scale code in the cloud
 
 With fal, you can build pipelines, serve ML models and scale them up to many users. You scale down to 0 when you don't use any resources.
 
+For full product and platform documentation, see [fal.ai/docs](https://fal.ai/docs/documentation).
+
 ## Quickstart
 
-First, you need to install the `fal` package. You can do so using pip:
+Install the package and authenticate:
 
-```shell
+```bash
 pip install fal
-```
-
-Then you need to authenticate:
-
-```shell
 fal auth login
 ```
 
-You can also use fal keys that you can get from [our dashboard](https://fal.ai/dashboard/keys).
+Create a minimal app:
 
-Now can use the fal package in your Python scripts as follows:
-
-```py
+```python
 import fal
 
-@fal.function(
-    "virtualenv",
-    requirements=["pyjokes"],
-)
-def tell_joke() -> str:
-    import pyjokes
 
-    joke = pyjokes.get_joke()
-    return joke
-
-print("Joke from the clouds: ", tell_joke())
+class MyApp(fal.App):
+    @fal.endpoint("/")
+    def run(self) -> dict:
+        return {"message": "Hello, World!"}
 ```
 
-A new virtual environment will be created by fal in the cloud and the set of requirements that we passed will be installed as soon as this function is called. From that point on, our code will be executed as if it were running locally, and the joke prepared by the pyjokes library will be returned.
+Run it on fal for testing:
+
+```bash
+fal run hello_world.py::MyApp
+```
+
+Deploy it to a persistent endpoint:
+
+```bash
+fal deploy hello_world.py::MyApp
+```
 
 ## Next steps
 
-If you would like to find out more about the capabilities of fal, check out to the [docs](https://fal.ai/docs). You can learn more about persistent storage, function caches and deploying your functions as API endpoints.
+If you want to go deeper, start with:
+
+- [Quick start](https://fal.ai/docs/documentation/development/getting-started/quick-start)
+- [Deploy to production](https://fal.ai/docs/documentation/deployment/deploy-to-production)
+- [Serverless documentation](https://fal.ai/docs/documentation/serverless)
+
+## Install from source
+
+From the repository root:
+
+```bash
+pip install -e 'projects/fal[dev]'
+```
 
 ## Contributing
 
-### Installing in editable mode with dev dependencies
-
-```py
-pip install -e 'projects/fal[dev]'
-pip install -e 'projects/fal_client[dev]'
-pip install -e 'projects/isolate_proto[dev]'
-```
-
 ### Running tests
 
-```py
-pytest
+Use the smallest relevant scope first:
+
+```bash
+pytest -n auto -v projects/fal/tests/unit
 ```
 
 ### Pre-commit
 
+Run the repository hooks before opening or finishing work:
+
 ```bash
-cd projects/fal
-pre-commit install
+pre-commit run --all-files
 ```
 
 ### Commit format
 
-Please follow [conventional commits specification](https://www.conventionalcommits.org/) for descriptions/messages.
+Please follow the [Conventional Commits](https://www.conventionalcommits.org/) specification for commit messages.
