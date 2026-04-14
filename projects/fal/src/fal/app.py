@@ -52,6 +52,7 @@ DEFAULT_APP_FILES_IGNORE = [
     r"\.git/",
     r"\.DS_Store$",
 ]
+DEFAULT_PLATFORM_STARTUP_TIMEOUT = 600
 
 
 logger = get_logger(__name__)
@@ -809,7 +810,26 @@ class App(BaseServable):
             # so the working directory is never added to sys.path
             sys.path.insert(0, "")
         _print_python_packages()
+        setup_started_at = time.perf_counter()
         await _call_any_fn(self.setup)
+        setup_elapsed = time.perf_counter() - setup_started_at
+
+        effective_startup_timeout = (
+            self.startup_timeout
+            if self.startup_timeout is not None
+            else DEFAULT_PLATFORM_STARTUP_TIMEOUT
+        )
+        if setup_elapsed > effective_startup_timeout:
+            # Yellow "Warning:" prefix via ANSI; falls back to plain text
+            # on non-TTY or color-less terminals.
+            prefix = (
+                "\033[1;33mWarning:\033[0m " if sys.stderr.isatty() else "Warning: "
+            )
+            print(
+                f"{prefix}app setup exceeded startup_timeout "
+                f"({setup_elapsed:.1f}s > {effective_startup_timeout}s). "
+                "`fal deploy` would have triggered the startup timeout."
+            )
 
         os.environ["FAL_RUNNER_STATE"] = "RUNNING"
 
