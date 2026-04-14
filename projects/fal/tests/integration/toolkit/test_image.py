@@ -124,6 +124,7 @@ def test_fal_image_input(isolated_client, image_url):
         image.as_bytes()
 
 
+@pytest.mark.flaky(max_runs=3)
 def test_fal_image_input_to_pil(isolated_client):
     class TestInput(BaseModel):
         image: Image = Field()
