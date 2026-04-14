@@ -10,8 +10,7 @@ import time
 from contextlib import suppress
 from pathlib import Path, PurePath
 from tempfile import NamedTemporaryFile, TemporaryDirectory
-from urllib.error import HTTPError
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 FAL_PERSISTENT_DIR = PurePath("/data")
@@ -30,11 +29,6 @@ TEMP_HEADERS = {
 
 class DownloadError(Exception):
     pass
-
-
-def _sanitized_url(url: str) -> str:
-    parsed = urlparse(url)
-    return urlunparse(parsed._replace(query="", fragment=""))
 
 
 def _hash_url(url: str) -> str:
@@ -329,31 +323,23 @@ def _stream_url_data_to_file(
     received_size = 0
     total_size = 0
 
-    try:
-        with urlopen(request, timeout=30) as response, open(
-            file_path, "wb"
-        ) as f_stream:
-            total_size = int(response.headers.get("content-length", total_size))
-            while data := response.read(chunk_size_in_mb * ONE_MB):
-                f_stream.write(data)
+    with urlopen(request, timeout=30) as response, open(file_path, "wb") as f_stream:
+        total_size = int(response.headers.get("content-length", total_size))
+        while data := response.read(chunk_size_in_mb * ONE_MB):
+            f_stream.write(data)
 
-                received_size = f_stream.tell()
-                if filesize_limit is not None and received_size > filesize_limit:
-                    raise DownloadError(
-                        f"""Attempted to download more data {received_size}
-                            than the set limit of {filesize_limit}"""
-                    )
+            received_size = f_stream.tell()
+            if filesize_limit is not None and received_size > filesize_limit:
+                raise DownloadError(
+                    f"""Attempted to download more data {received_size}
+                        than the set limit of {filesize_limit}"""
+                )
 
-                if total_size:
-                    progress = received_size / total_size
-                else:
-                    progress = received_size / ONE_MB
-                yield progress, total_size
-    except HTTPError as e:
-        raise DownloadError(
-            "Failed to download file from "
-            f"{_sanitized_url(url)}: HTTP {e.code} {e.reason}"
-        ) from e
+            if total_size:
+                progress = received_size / total_size
+            else:
+                progress = received_size / ONE_MB
+            yield progress, total_size
 
     # Check if received size matches the expected total size
     if total_size and received_size < total_size:

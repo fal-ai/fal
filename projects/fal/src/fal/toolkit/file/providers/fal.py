@@ -36,11 +36,6 @@ MAX_DELAY = 30
 RETRY_CODES = [408, 409, 429, 500, 502, 503, 504]
 
 
-def _sanitized_url(url: str) -> str:
-    parsed = urlparse(url)
-    return urlunparse(parsed._replace(query="", fragment=""))
-
-
 def _should_retry(exc: Exception) -> bool:
     if isinstance(exc, HTTPError) and exc.code in RETRY_CODES:
         return True
@@ -1423,9 +1418,7 @@ class FalFileRepositoryV3(FileRepository):
                 pass
         except HTTPError as e:
             raise FileUploadException(
-                "Error uploading file. "
-                f"Status {e.status}: {e.reason}. "
-                f"Upload URL: {_sanitized_url(upload_url)}"
+                f"Error uploading file. Status {e.status}: {e.reason}"
             )
 
         return file_url
