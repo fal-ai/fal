@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from base64 import b64encode
 from io import BytesIO
 from typing import Literal, overload
@@ -128,23 +127,23 @@ def test_fal_image_input_to_pil(isolated_client):
     class TestInput(BaseModel):
         image: Image = Field()
 
-    class DummyRequest:
-        headers = {
-            "x-fal-object-lifecycle-preference": json.dumps(
-                {
-                    "allow_io_storage": True,
-                    "initial_acl": {"default": "allow", "rules": []},
-                }
-            )
-        }
-
     @isolated_client(requirements=["pillow", f"pydantic=={pydantic_version}", "tomli"])
     def init_image_on_fal(input: TestInput) -> bytes:
         input_image = TestInput(image=input.image).image
         pil_image = input_image.to_pil()
         return pil_image_to_bytes(pil_image)
 
-    test_input = TestInput(image=Image.from_pil(get_image(), request=DummyRequest()))
+    test_input = TestInput(
+        image=Image.from_pil(
+            get_image(),
+            save_kwargs={
+                "object_lifecycle_preference": {
+                    "allow_io_storage": True,
+                    "initial_acl": {"default": "allow", "rules": []},
+                }
+            },
+        )
+    )
     image_bytes = init_image_on_fal(test_input)
 
     assert image_bytes == get_image(as_bytes=True)
