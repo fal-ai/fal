@@ -45,6 +45,7 @@ from fal.exceptions import (
     RequestCancelledException,
 )
 from fal.exceptions.gpu import _CUDA_OOM_MESSAGE, _GPU_ERROR_STATUS_CODE
+from fal.flags import FAL_QUEUE_RUN_HOST
 from fal.ref import get_current_app
 from fal.sdk import RunnerState, get_credentials
 from fal.toolkit.utils.endpoint import cancel_on_disconnect
@@ -1789,7 +1790,6 @@ class TeardownTokenInput(BaseModel):
     token: str
 
 
-# https://github.com/fal-ai/isolate-cloud/actions/runs/24111837768/job/70348089612
 # for now it only works in newly built containers
 class GracefulShutdownApp(
     fal.App,
@@ -1911,7 +1911,6 @@ def graceful_shutdown(
     time.sleep(2)
 
     token = str(uuid.uuid4())
-    from fal.flags import FAL_QUEUE_RUN_HOST
 
     callback_url = (
         f"https://{FAL_QUEUE_RUN_HOST}/{test_graceful_shutdown_app}/teardown-callback"
