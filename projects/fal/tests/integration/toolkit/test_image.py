@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from base64 import b64encode
 from io import BytesIO
 from typing import Literal, overload
@@ -134,6 +135,7 @@ def test_fal_image_input_to_pil(isolated_client):
         return pil_image_to_bytes(pil_image)
 
     test_input = TestInput(image=Image.from_pil(get_image()))
+    time.sleep(1)
     image_bytes = init_image_on_fal(test_input)
 
     assert image_bytes == get_image(as_bytes=True)
