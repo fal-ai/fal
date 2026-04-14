@@ -12,7 +12,7 @@ This repository contains the main Python packages for building on [fal](https://
 - `fal` (in `projects/fal`): define, test, and deploy serverless apps on fal
 - `fal-client` (in `projects/fal_client`): call fal model APIs or your deployed endpoints from Python
 
-If you want the full product and platform documentation, start at [fal.ai/docs](https://fal.ai/docs/documentation).
+For full product and platform documentation, see [fal.ai/docs](https://fal.ai/docs/documentation).
 
 ## Which package should I use?
 
