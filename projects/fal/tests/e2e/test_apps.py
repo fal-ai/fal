@@ -1883,7 +1883,7 @@ def _wait_for_in_progress(handle: apps.RequestHandle, timeout: int = 60) -> None
     raise Exception("Request was not picked up by a runner within timeout")
 
 
-def _wait_for_result(handle: apps.RequestHandle, timeout: int = 120) -> dict | None:
+def _wait_for_result(handle: apps.RequestHandle, timeout: int = 120) -> Optional[dict]:
     """Poll until the request completes or times out. Returns the result dict
     on success, or None if the request failed or timed out."""
     deadline = time.time() + timeout
