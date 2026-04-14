@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import pickle
+from contextlib import ExitStack
 from contextvars import ContextVar
 from typing import AsyncIterator, Iterator
 from unittest.mock import MagicMock, PropertyMock, patch
@@ -506,11 +507,12 @@ async def test_lifespan_startup_timeout_warning(
     app = TestApp()
     fastapi_app = fastapi.FastAPI()
 
-    with (
-        patch("builtins.print") as mock_print,
-        patch("fal.app._print_python_packages"),
-        patch("fal.app.time.perf_counter", side_effect=[0.0, elapsed_seconds]),
-    ):
+    with ExitStack() as stack:
+        mock_print = stack.enter_context(patch("builtins.print"))
+        stack.enter_context(patch("fal.app._print_python_packages"))
+        stack.enter_context(
+            patch("fal.app.time.perf_counter", side_effect=[0.0, elapsed_seconds])
+        )
         async with app.lifespan(fastapi_app):
             pass
 
