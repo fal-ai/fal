@@ -35,7 +35,7 @@ import fal
 import fal.api as api
 from fal import apps
 from fal.api.deploy import User, _get_user
-from fal.app import REQUEST_ID_KEY, AppClient, AppClientError, wrap_app
+from fal.app import AppClient, AppClientError, wrap_app
 from fal.auth import key_credentials
 from fal.container import ContainerImage
 from fal.exceptions import (
@@ -1778,14 +1778,18 @@ def test_app_ref_app_client(test_app_ref_app: str):
     assert result_3["from_app"] == result_3["from_external_method"]
 
 
-class SetUUIDInput(BaseModel):
-    uuid: str
+class GracefulShutdownConfigInput(BaseModel):
+    teardown_wait_time: int = 0
+    teardown_token: str = ""
+    callback_url: str = ""
+    auth_key: str = ""
 
 
-class SetWaitTimeInput(BaseModel):
-    wait_time: int
+class TeardownTokenInput(BaseModel):
+    token: str
 
 
+# https://github.com/fal-ai/isolate-cloud/actions/runs/24111837768/job/70348089612
 # for now it only works in newly built containers
 class GracefulShutdownApp(
     fal.App,
@@ -1804,62 +1808,59 @@ RUN apt-get update \
     termination_grace_period_seconds=5,
 ):
     machine_type = "XS"
-    latest_request_id = None
-    uuid = None
-    wait_time = None
 
     def setup(self):
         self.stop = False
+        self._teardown_wait_time = 0
+        self._teardown_token = ""
+        self._callback_url = ""
+        self._auth_key = ""
+        self._received_teardown_tokens = set()
 
     def handle_exit(self):
         self.stop = True
 
-    @fal.endpoint("/set-uuid")
-    async def set_uuid(self, input: SetUUIDInput) -> str:
-        self.uuid = input.uuid
-        return "ok"
-
-    @fal.endpoint("/set-wait-time")
-    async def set_wait_time(self, input: SetWaitTimeInput) -> str:
-        self.wait_time = input.wait_time
+    @fal.endpoint("/configure")
+    def configure(self, input: GracefulShutdownConfigInput) -> str:
+        self._teardown_wait_time = input.teardown_wait_time
+        self._teardown_token = input.teardown_token
+        self._callback_url = input.callback_url
+        self._auth_key = input.auth_key
         return "ok"
 
     @fal.endpoint("/")
-    async def request_handler(self, request: Request) -> str:
-        request_id = request.headers.get(REQUEST_ID_KEY)
-        if request_id is None:
-            raise Exception("No request id found")
+    def wait_for_stop(self) -> dict:
+        for _ in range(240):
+            if self.stop:
+                return {"handle_exit_called": True}
+            time.sleep(0.5)
+        return {"handle_exit_called": False}
 
-        self.latest_request_id = request_id
+    @fal.endpoint("/teardown-callback")
+    def teardown_callback(self, input: TeardownTokenInput) -> str:
+        self._received_teardown_tokens.add(input.token)
         return "ok"
 
-    @fal.endpoint("/latest-request-id")
-    async def fetch_latest_request_id(self) -> str:
-        if self.uuid is None:
-            return ""
-
-        try:
-            with open(f"/data/teardown/{self.uuid}.txt") as f:
-                latest_request_id = f.read()
-
-            os.unlink(f"/data/teardown/{self.uuid}.txt")
-            return latest_request_id
-        except Exception as e:
-            return str(e)
+    @fal.endpoint("/check-teardown")
+    def check_teardown(self, input: TeardownTokenInput) -> dict:
+        return {"teardown_completed": input.token in self._received_teardown_tokens}
 
     def teardown(self):
-        if self.latest_request_id is None or self.uuid is None:
+        if not self._teardown_token or not self._callback_url:
             return
+        for i in range(self._teardown_wait_time):
+            time.sleep(1)
+        import httpx
 
-        if self.wait_time is not None:
-            for i in range(self.wait_time):
-                print(f"sleeping {i + 1} of {self.wait_time}...", flush=True)
-                time.sleep(1)
-
-        os.makedirs("/data/teardown", exist_ok=True)
-        with open(f"/data/teardown/{self.uuid}.txt", "w") as f:
-            f.write(self.latest_request_id + "\n")
-            f.write("t" if self.stop else "f")
+        try:
+            httpx.post(
+                self._callback_url,
+                json={"token": self._teardown_token},
+                headers={"Authorization": f"Key {self._auth_key}"},
+                timeout=10,
+            )
+        except Exception:
+            pass
 
 
 @pytest.fixture(scope="module")
@@ -1872,60 +1873,102 @@ def test_graceful_shutdown_app(host: api.FalServerlessHost, user: User):
         yield f"{user.username}/{app_alias}"
 
 
+def _wait_for_in_progress(handle: apps.RequestHandle, timeout: int = 60) -> None:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        status = handle.status()
+        if isinstance(status, apps.InProgress):
+            return
+        time.sleep(1)
+    raise Exception("Request was not picked up by a runner within timeout")
+
+
+def _wait_for_result(handle: apps.RequestHandle, timeout: int = 120) -> dict | None:
+    """Poll until the request completes or times out. Returns the result dict
+    on success, or None if the request failed or timed out."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            status = handle.status()
+        except Exception:
+            return None
+        if isinstance(status, apps.Completed):
+            try:
+                return handle.fetch_result()
+            except Exception:
+                return None
+        time.sleep(2)
+    return None
+
+
 def graceful_shutdown(
     test_graceful_shutdown_app: str,
     host: api.FalServerlessHost,
     *,
-    wait_time: int,
-    path: str,
+    teardown_wait_time: int,
     kill: bool = False,
 ) -> bool:
     time.sleep(2)
 
     token = str(uuid.uuid4())
-    assert (
-        apps.run(test_graceful_shutdown_app, {"uuid": token}, path="/set-uuid") == "ok"
-    ), "UUID not set"
+    from fal.flags import FAL_QUEUE_RUN_HOST
+
+    callback_url = (
+        f"https://{FAL_QUEUE_RUN_HOST}/{test_graceful_shutdown_app}/teardown-callback"
+    )
+    fal_key = os.environ.get("FAL_KEY", "")
 
     assert (
         apps.run(
-            test_graceful_shutdown_app, {"wait_time": wait_time}, path="/set-wait-time"
+            test_graceful_shutdown_app,
+            {
+                "teardown_wait_time": teardown_wait_time,
+                "teardown_token": token,
+                "callback_url": callback_url,
+                "auth_key": fal_key,
+            },
+            path="/configure",
         )
         == "ok"
-    ), "Wait time not set"
+    ), "Configuration failed"
 
-    handle = submit_and_wait_for_runner(test_graceful_shutdown_app, path=path)
-    saved_request_id = handle.request_id
-
+    handle = apps.submit(test_graceful_shutdown_app, arguments={})
+    _wait_for_in_progress(handle)
     time.sleep(2)
+
     with host._connection as client:
         _, _, app_alias = test_graceful_shutdown_app.partition("/")
 
-        runners = client.list_runners(start_time=datetime.now() - timedelta(seconds=10))
-        runner = next((r for r in runners if r.alias == app_alias), None)
-
-        assert runner is not None, "Runner not found"
+        runners = client.list_alias_runners(app_alias)
+        runner = next((r for r in runners if r.state == RunnerState.RUNNING), None)
+        assert runner is not None, "Running runner not found"
 
         if kill:
             client.kill_runner(runner.runner_id)
         else:
             client.stop_runner(runner.runner_id)
 
-    if kill:
-        time.sleep(2)
-    else:
-        # Need to wait longer than 10s because how we stop the runner
-        time.sleep(60)
+    result = _wait_for_result(handle)
+    handle_exit_called = result is not None and result.get("handle_exit_called", False)
 
-    assert (
-        apps.run(test_graceful_shutdown_app, {"uuid": token}, path="/set-uuid") == "ok"
-    ), "UUID not set"
-    res = apps.run(test_graceful_shutdown_app, {}, path="/latest-request-id")
+    # Poll until the teardown callback is received by the next runner, or timeout.
+    deadline = time.time() + 45
+    teardown_completed = False
+    while time.time() < deadline:
+        try:
+            check = apps.run(
+                test_graceful_shutdown_app,
+                {"token": token},
+                path="/check-teardown",
+            )
+            if check.get("teardown_completed", False):
+                teardown_completed = True
+                break
+        except Exception:
+            pass
+        time.sleep(5)
 
-    teardown_called = res.split("\n")[0] == saved_request_id
-    stop_called = len(res.split("\n")) > 1 and res.split("\n")[1] == "t"
-
-    return teardown_called and stop_called
+    return handle_exit_called and teardown_completed
 
 
 @pytest.mark.flaky(max_runs=3)
@@ -1934,7 +1977,7 @@ def test_graceful_shutdown(
     test_graceful_shutdown_app: str,
 ):
     assert graceful_shutdown(
-        test_graceful_shutdown_app, host, wait_time=1, path="/"
+        test_graceful_shutdown_app, host, teardown_wait_time=1
     ), "app should be gracefully shutdown"
 
 
@@ -1944,7 +1987,7 @@ def test_graceful_shutdown_force_kill(
     test_graceful_shutdown_app: str,
 ):
     assert not graceful_shutdown(
-        test_graceful_shutdown_app, host, wait_time=10, path="/"
+        test_graceful_shutdown_app, host, teardown_wait_time=10
     ), "app should be forcefully killed if it takes too long to clean up"
 
 
@@ -1954,7 +1997,7 @@ def test_forceful_shutdown(
     test_graceful_shutdown_app: str,
 ):
     assert not graceful_shutdown(
-        test_graceful_shutdown_app, host, wait_time=1, path="/", kill=True
+        test_graceful_shutdown_app, host, teardown_wait_time=1, kill=True
     ), "app should be forcefully killed on kill_runner"
 
 
