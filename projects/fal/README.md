@@ -5,6 +5,8 @@
 
 fal is a serverless Python runtime that lets you run and scale code in the cloud with no infra management.
 
+With fal, you can build pipelines, serve ML models and scale them up to many users. You scale down to 0 when you don't use any resources.
+
 This repository contains the main Python packages for building on [fal](https://fal.ai):
 
 - `fal` (in `projects/fal`): define, test, and deploy serverless apps on fal
