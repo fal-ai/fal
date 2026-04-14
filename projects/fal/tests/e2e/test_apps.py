@@ -731,6 +731,7 @@ def test_app_cancellation(test_app: str, test_cancellable_app: str):
 
 
 @pytest.mark.flaky(max_runs=3)
+@pytest.mark.timeout(180)
 def test_app_disconnect_behavior(test_app: str, test_cancellable_app: str):
     with pytest.raises(HTTPStatusError) as e:
         apps.run(
@@ -1920,6 +1921,7 @@ def graceful_shutdown(
 
 
 @pytest.mark.flaky(max_runs=3)
+@pytest.mark.timeout(180)
 def test_graceful_shutdown(
     host: api.FalServerlessHost,
     rest_client: Client,
@@ -1931,6 +1933,7 @@ def test_graceful_shutdown(
 
 
 @pytest.mark.flaky(max_runs=3)
+@pytest.mark.timeout(180)
 def test_graceful_shutdown_force_kill(
     host: api.FalServerlessHost,
     rest_client: Client,
@@ -1942,6 +1945,7 @@ def test_graceful_shutdown_force_kill(
 
 
 @pytest.mark.flaky(max_runs=3)
+@pytest.mark.timeout(120)
 def test_forceful_shutdown(
     host: api.FalServerlessHost,
     rest_client: Client,
