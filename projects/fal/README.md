@@ -7,18 +7,11 @@ fal is a serverless Python runtime that lets you run and scale code in the cloud
 
 With fal, you can build pipelines, serve ML models and scale them up to many users. You scale down to 0 when you don't use any resources.
 
-This repository contains the main Python packages for building on [fal](https://fal.ai):
-
-- `fal` (in `projects/fal`): define, test, and deploy serverless apps on fal
-- `fal-client` (in `projects/fal_client`): call fal model APIs or your deployed endpoints from Python
-
 For full product and platform documentation, see [fal.ai/docs](https://fal.ai/docs/documentation).
 
-## Which package should I use?
+## Quickstart
 
-### Use `fal` when you want to deploy Python code to fal
-
-The `fal` package includes the Python SDK and CLI for building serverless apps, testing them with temporary URLs, and deploying them to production.
+Install the package and authenticate:
 
 ```bash
 pip install fal
@@ -49,44 +42,13 @@ Deploy it to a persistent endpoint:
 fal deploy hello_world.py::MyApp
 ```
 
-Docs:
+## Next steps
+
+If you want to go deeper, start with:
 
 - [Quick start](https://fal.ai/docs/documentation/development/getting-started/quick-start)
 - [Deploy to production](https://fal.ai/docs/documentation/deployment/deploy-to-production)
 - [Serverless documentation](https://fal.ai/docs/documentation/serverless)
-
-### Use `fal-client` when you want to call models or deployed endpoints
-
-The `fal-client` package is the simplest way to call model APIs on fal from Python.
-
-```bash
-pip install fal-client
-export FAL_KEY="your-api-key"
-```
-
-Call a model:
-
-```python
-import fal_client
-
-result = fal_client.subscribe(
-    "fal-ai/flux/schnell",
-    arguments={
-        "prompt": "a futuristic cityscape at sunset",
-        "image_size": "landscape_16_9",
-    },
-)
-
-print(result["images"][0]["url"])
-```
-
-You can also use `fal-client` to call your own deployed `fal` apps by passing your endpoint ID instead of a model ID.
-
-Docs:
-
-- [Client setup](https://fal.ai/docs/documentation/model-apis/inference/client-setup)
-- [Inference methods](https://fal.ai/docs/documentation/model-apis/inference)
-- [Model APIs documentation](https://fal.ai/docs/documentation/model-apis)
 
 ## Install from source
 
@@ -94,13 +56,26 @@ From the repository root:
 
 ```bash
 pip install -e 'projects/fal[dev]'
-pip install -e 'projects/fal_client[dev]'
-pip install -e 'projects/isolate_proto[dev]'
 ```
 
-## More resources
+## Contributing
 
-- [Documentation index](https://fal.ai/docs/documentation)
-- [API reference](https://fal.ai/docs/api-reference)
-- [Model gallery](https://fal.ai/models)
-- [Dashboard](https://fal.ai/dashboard)
+### Running tests
+
+Use the smallest relevant scope first:
+
+```bash
+pytest -n auto -v projects/fal/tests/unit
+```
+
+### Pre-commit
+
+Run the repository hooks before opening or finishing work:
+
+```bash
+pre-commit run --all-files
+```
+
+### Commit format
+
+Please follow the [Conventional Commits](https://www.conventionalcommits.org/) specification for commit messages.
