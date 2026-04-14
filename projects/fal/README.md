@@ -1,4 +1,7 @@
-# fal Python SDKs
+[![PyPI](https://img.shields.io/pypi/v/fal.svg?logo=PyPI)](https://pypi.org/project/fal)
+[![Tests](https://img.shields.io/github/actions/workflow/status/fal-ai/fal/fal-unit-tests.yml?label=Tests)](https://github.com/fal-ai/fal/actions)
+
+# fal for Python
 
 This repository contains the Python packages for building on [fal](https://fal.ai):
 
