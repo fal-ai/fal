@@ -88,6 +88,14 @@ dev = [
     "openapi-python-client>=0.14.1,<1",
 ]
 
+[tool.uv]
+exclude-newer = "7 days"
+
+[tool.uv.exclude-newer-package]
+# Keep newest versions available for first-party packages.
+isolate = "2100-01-01T00:00:00Z"
+isolate-proto = "2100-01-01T00:00:00Z"
+
 [project.scripts]
 fal = "fal.cli:main"
 

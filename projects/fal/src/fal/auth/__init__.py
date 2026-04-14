@@ -173,17 +173,17 @@ def current_user_info(headers: dict[str, str]) -> dict:
         raise FalServerlessException("Failed to fetch user info") from exc
 
 
-def login(console, connection: str | None = None):
-    token_data = auth0.login(console, connection=connection)
+def login(console, connection: str | None = None, *, no_browser: bool = False):
+    token_data = auth0.login(console, connection=connection, no_browser=no_browser)
     with local.lock_token():
         local.save_token(token_data["refresh_token"])
 
 
-def logout(console):
+def logout(console, *, no_browser: bool = False):
     refresh_token, _ = local.load_token()
     if refresh_token is None:
         raise FalServerlessException("You're not logged in")
-    auth0.revoke(refresh_token, console)
+    auth0.revoke(refresh_token, console, no_browser=no_browser)
     with local.lock_token():
         local.delete_token()
 

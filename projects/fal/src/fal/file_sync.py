@@ -11,7 +11,7 @@ import httpx
 from rich.tree import Tree
 
 import fal.flags as flags
-from fal._version import version_tuple
+from fal._user_agent import USER_AGENT
 from fal.console import console
 from fal.console.icons import CROSS_ICON
 from fal.exceptions import (
@@ -27,7 +27,6 @@ from fal.upload import (
 if TYPE_CHECKING:
     from fal.api.api import Options
 
-USER_AGENT = f"fal-sdk/{'.'.join(map(str, version_tuple))} (python)"
 FILE_SIZE_LIMIT = 1024 * 1024 * 1024  # 1GB
 DEFAULT_CONCURRENCY_UPLOADS = 10
 

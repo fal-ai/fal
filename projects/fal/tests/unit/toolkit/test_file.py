@@ -63,6 +63,50 @@ def test_in_memory_repository_url():
     assert file.url.endswith(b64encode(content).decode("utf-8"))
 
 
+@pytest.mark.asyncio
+async def test_file_from_bytes_async():
+    content = b"Hello World"
+    file = await File.from_bytes_async(content, repository="in_memory")
+
+    assert isinstance(file, File)
+    assert file.as_bytes() == content
+    assert file.url.endswith(b64encode(content).decode("utf-8"))
+
+
+@pytest.mark.asyncio
+async def test_file_from_path_async(tmp_path: Path):
+    file_path = tmp_path / "hello.txt"
+    file_path.write_text("Hello from async path", encoding="utf-8")
+
+    file = await File.from_path_async(
+        file_path, content_type="text/plain", repository="in_memory"
+    )
+
+    assert isinstance(file, File)
+    assert file.file_name == "hello.txt"
+    assert file.content_type == "text/plain"
+    assert file.file_size == file_path.stat().st_size
+
+
+@pytest.mark.asyncio
+async def test_file_save_async(tmp_path: Path):
+    content = b"Hello save async"
+    file = File.from_bytes(content, repository="in_memory")
+
+    output_path = tmp_path / "saved.bin"
+    saved_path = await file.save_async(output_path)
+
+    assert saved_path == output_path.resolve()
+    assert output_path.read_bytes() == content
+
+    with pytest.raises(FileExistsError):
+        await file.save_async(output_path)
+
+    overwritten_path = await file.save_async(output_path, overwrite=True)
+    assert overwritten_path == output_path.resolve()
+    assert output_path.read_bytes() == content
+
+
 def test_gcp_storage_if_available():
     gcp_sa_json = os.environ.get("GCLOUD_SA_JSON")
     if gcp_sa_json is None:

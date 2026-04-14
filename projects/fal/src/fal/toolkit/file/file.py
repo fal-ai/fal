@@ -22,6 +22,7 @@ else:
 
 from pydantic import BaseModel, Field
 
+from fal.compat import run_in_thread
 from fal.ref import get_current_app
 from fal.toolkit.file.providers.fal import (
     FalCDNFileRepository,
@@ -258,6 +259,32 @@ class File(BaseModel):
         )
 
     @classmethod
+    async def from_bytes_async(
+        cls,
+        data: bytes,
+        content_type: Optional[str] = None,
+        file_name: Optional[str] = None,
+        repository: FileRepository | RepositoryId = DEFAULT_REPOSITORY,
+        fallback_repository: Optional[
+            FileRepository | RepositoryId | list[FileRepository | RepositoryId]
+        ] = FALLBACK_REPOSITORY,
+        request: Optional[Request] = None,
+        save_kwargs: Optional[dict] = None,
+        fallback_save_kwargs: Optional[dict] = None,
+    ) -> File:
+        return await run_in_thread(
+            cls.from_bytes,
+            data,
+            content_type=content_type,
+            file_name=file_name,
+            repository=repository,
+            fallback_repository=fallback_repository,
+            request=request,
+            save_kwargs=save_kwargs,
+            fallback_save_kwargs=fallback_save_kwargs,
+        )
+
+    @classmethod
     def from_path(
         cls,
         path: str | Path,
@@ -317,6 +344,32 @@ class File(BaseModel):
             file_size=file_path.stat().st_size,
         )
 
+    @classmethod
+    async def from_path_async(
+        cls,
+        path: str | Path,
+        content_type: Optional[str] = None,
+        repository: FileRepository | RepositoryId = DEFAULT_REPOSITORY,
+        multipart: bool | None = None,
+        fallback_repository: Optional[
+            FileRepository | RepositoryId | list[FileRepository | RepositoryId]
+        ] = FALLBACK_REPOSITORY,
+        request: Optional[Request] = None,
+        save_kwargs: Optional[dict] = None,
+        fallback_save_kwargs: Optional[dict] = None,
+    ) -> File:
+        return await run_in_thread(
+            cls.from_path,
+            path,
+            content_type=content_type,
+            repository=repository,
+            multipart=multipart,
+            fallback_repository=fallback_repository,
+            request=request,
+            save_kwargs=save_kwargs,
+            fallback_save_kwargs=fallback_save_kwargs,
+        )
+
     def as_bytes(self) -> bytes:
         if self.file_data is None:
             raise ValueError("File has not been downloaded")
@@ -333,6 +386,9 @@ class File(BaseModel):
         downloaded_path.rename(file_path)
 
         return file_path
+
+    async def save_async(self, path: str | Path, overwrite: bool = False) -> Path:
+        return await run_in_thread(self.save, path, overwrite)
 
 
 class CompressedFile(File):

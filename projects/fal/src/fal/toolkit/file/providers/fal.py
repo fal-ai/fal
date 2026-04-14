@@ -16,7 +16,9 @@ from urllib.parse import urlparse, urlunparse
 from urllib.request import Request, urlopen
 from urllib.response import addinfourl
 
+from fal._user_agent import USER_AGENT
 from fal.auth import key_credentials
+from fal.flags import REST_HOST
 from fal.ref import get_current_app
 from fal.toolkit.exceptions import FileUploadException
 from fal.toolkit.file.types import FileData, FileRepository
@@ -166,9 +168,7 @@ class FalV2TokenManager:
             "Content-Type": "application/json",
         }
 
-        grpc_host = os.environ.get("FAL_HOST", "api.alpha.fal.ai")
-        rest_host = grpc_host.replace("api", "rest", 1)
-        url = f"https://{rest_host}/storage/auth/token?storage_type={self.storage_type}"
+        url = f"https://{REST_HOST}/storage/auth/token?storage_type={self.storage_type}"
 
         req = Request(
             url,
@@ -269,10 +269,8 @@ class FalFileRepositoryBase(FileRepository):
             **(headers or {}),
         }
 
-        grpc_host = os.environ.get("FAL_HOST", "api.alpha.fal.ai")
-        rest_host = grpc_host.replace("api", "rest", 1)
         storage_url = (
-            f"https://{rest_host}/storage/upload/initiate?storage_type={storage_type}"
+            f"https://{REST_HOST}/storage/upload/initiate?storage_type={storage_type}"
         )
 
         try:
@@ -360,9 +358,7 @@ class MultipartUploadGCS:
         }
 
     def create(self, object_lifecycle_preference: dict[str, str] | None = None) -> None:
-        grpc_host = os.environ.get("FAL_HOST", "api.alpha.fal.ai")
-        rest_host = grpc_host.replace("api", "rest", 1)
-        url = f"https://{rest_host}/storage/upload/initiate-multipart?storage_type=gcs"
+        url = f"https://{REST_HOST}/storage/upload/initiate-multipart?storage_type=gcs"
 
         try:
             headers = {
@@ -569,7 +565,7 @@ class FalFileRepository(FalFileRepositoryBase):
         token = fal_v3_token_manager.get_token()
         headers = {
             "Authorization": f"{token.token_type} {token.token}",
-            "User-Agent": "fal/0.1.0",
+            "User-Agent": USER_AGENT,
         }
         _caller_cdn_header(headers)
 
@@ -828,16 +824,14 @@ class MultipartUploadV3:
         key_id, key_secret = fal_key
         headers = {
             "Authorization": f"Key {key_id}:{key_secret}",
-            "User-Agent": "fal/0.1.0",
+            "User-Agent": USER_AGENT,
         }
         _caller_cdn_header(headers)
 
         return headers
 
     def create(self, object_lifecycle_preference: dict[str, str] | None = None) -> None:
-        grpc_host = os.environ.get("FAL_HOST", "api.alpha.fal.ai")
-        rest_host = grpc_host.replace("api", "rest", 1)
-        url = f"https://{rest_host}/storage/upload/initiate-multipart?storage_type=fal-cdn-v3"
+        url = f"https://{REST_HOST}/storage/upload/initiate-multipart?storage_type=fal-cdn-v3"
 
         try:
             headers = {
@@ -1037,7 +1031,7 @@ class InternalMultipartUploadV3:
         token = fal_v3_token_manager.get_token()
         headers = {
             "Authorization": f"{token.token_type} {token.token}",
-            "User-Agent": "fal/0.1.0",
+            "User-Agent": USER_AGENT,
         }
         _caller_cdn_header(headers)
 
@@ -1341,7 +1335,7 @@ class FalCDNFileRepository(FileRepository):
         key_id, key_secret = key_creds
         return {
             "Authorization": f"Bearer {key_id}:{key_secret}",
-            "User-Agent": "fal/0.1.0",
+            "User-Agent": USER_AGENT,
         }
 
 
@@ -1356,7 +1350,7 @@ class FalFileRepositoryV3(FileRepository):
         key_id, key_secret = fal_key
         headers = {
             "Authorization": f"Key {key_id}:{key_secret}",
-            "User-Agent": "fal/0.1.0",
+            "User-Agent": USER_AGENT,
         }
         _caller_cdn_header(headers)
 
@@ -1390,9 +1384,7 @@ class FalFileRepositoryV3(FileRepository):
         }
         _object_lifecycle_headers(headers, object_lifecycle_preference)
 
-        grpc_host = os.environ.get("FAL_HOST", "api.alpha.fal.ai")
-        rest_host = grpc_host.replace("api", "rest", 1)
-        url = f"https://{rest_host}/storage/upload/initiate?storage_type=fal-cdn-v3"
+        url = f"https://{REST_HOST}/storage/upload/initiate?storage_type=fal-cdn-v3"
 
         request = Request(
             url,
@@ -1528,7 +1520,7 @@ class InternalFalFileRepositoryV3(FileRepository):
         token = fal_v3_token_manager.get_token()
         headers = {
             "Authorization": f"{token.token_type} {token.token}",
-            "User-Agent": "fal/0.1.0",
+            "User-Agent": USER_AGENT,
         }
         _caller_cdn_header(headers)
 
