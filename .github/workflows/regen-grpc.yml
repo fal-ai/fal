@@ -25,24 +25,31 @@ permissions:
 jobs:
   regen:
     runs-on: ubuntu-latest
-    # Auto-commit only works for branches in the same repo. PRs from forks
-    # would need a PAT with cross-repo write access, which we don't grant.
+    # Auto-commit only works for branches in the same repo. Fork PRs don't
+    # have access to secrets anyway, so we skip them entirely.
     if: >-
       github.event_name == 'workflow_dispatch' ||
       github.event.pull_request.head.repo.full_name == github.repository
     steps:
+      - name: Mint GitHub App token
+        id: app_token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.REGEN_APP_ID }}
+          private-key: ${{ secrets.REGEN_APP_PRIVATE_KEY }}
+          owner: fal-ai
+          repositories: |
+            fal
+            isolate
+
       - name: Checkout PR branch
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.ref || github.ref }}
           repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
-          # PAT with `contents: write` on this repo and `contents: read` on
-          # fal-ai/isolate. Using a PAT (instead of GITHUB_TOKEN) ensures the
-          # auto-commit re-triggers downstream workflows. Falls back to
-          # GITHUB_TOKEN so checkout doesn't fail with a cryptic "Input
-          # required" error — the next step will produce a clearer message
-          # if the secret isn't set.
-          token: ${{ secrets.PROTO_REGEN_TOKEN || secrets.GITHUB_TOKEN }}
+          # App token so the auto-commit re-triggers downstream workflows
+          # (the default GITHUB_TOKEN suppresses on-push events).
+          token: ${{ steps.app_token.outputs.token }}
           fetch-depth: 0
 
       - uses: actions/setup-python@v5
@@ -52,26 +59,22 @@ jobs:
 
       - name: Configure git auth for private fal-ai/isolate clone
         env:
-          PROTO_REGEN_TOKEN: ${{ secrets.PROTO_REGEN_TOKEN }}
+          APP_TOKEN: ${{ steps.app_token.outputs.token }}
         run: |
-          if [ -z "${PROTO_REGEN_TOKEN}" ]; then
-            echo "::error::PROTO_REGEN_TOKEN secret is not set; cannot clone the private fal-ai/isolate repo."
-            exit 1
-          fi
           # Inject token for any https://github.com/ clone (regen_grpc.py does
           # its own `git clone` of fal-ai/isolate).
-          git config --global url."https://x-access-token:${PROTO_REGEN_TOKEN}@github.com/".insteadOf "https://github.com/"
+          git config --global url."https://x-access-token:${APP_TOKEN}@github.com/".insteadOf "https://github.com/"
 
       - name: Determine isolate version
         id: isolate_version
         env:
           INPUT_VERSION: ${{ inputs.isolate_version }}
-          GH_TOKEN: ${{ secrets.PROTO_REGEN_TOKEN }}
+          GH_TOKEN: ${{ steps.app_token.outputs.token }}
         run: |
           if [ -n "${INPUT_VERSION}" ]; then
             version="${INPUT_VERSION}"
           else
-            # Latest tag from the private isolate repo (requires ISOLATE_REPO_TOKEN).
+            # Latest tag from the private isolate repo.
             version=$(gh api repos/fal-ai/isolate/tags --jq '.[0].name' | sed 's/^v//')
           fi
           if [ -z "${version}" ]; then
@@ -100,14 +103,16 @@ jobs:
       - name: Commit regenerated files back to the PR
         env:
           ISOLATE_VERSION: ${{ steps.isolate_version.outputs.version }}
+          APP_SLUG: ${{ steps.app_token.outputs.app-slug }}
         run: |
           if [ -z "$(git status --porcelain projects/isolate_proto)" ]; then
             echo "No changes after regeneration."
             exit 0
           fi
 
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # Author the commit as the GitHub App's bot user.
+          git config user.name "${APP_SLUG}[bot]"
+          git config user.email "${APP_SLUG}[bot]@users.noreply.github.com"
 
           git add projects/isolate_proto
           git commit -m "chore(isolate_proto): regenerate gRPC bindings (isolate v${ISOLATE_VERSION})"
