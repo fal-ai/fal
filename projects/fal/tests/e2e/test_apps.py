@@ -509,10 +509,10 @@ def user(rest_client: Client) -> Generator[User, None, None]:
 
 @pytest.fixture()
 def register_app(
+    host: api.FalServerlessHost,
     make_tmp_app_name: Callable[[str], str],
 ) -> Callable[
     [
-        api.FalServerlessHost,
         Union[api.ServedIsolatedFunction, api.IsolatedFunction],
         str,
     ],
@@ -520,7 +520,6 @@ def register_app(
 ]:
     @contextmanager
     def _register_app(
-        host: api.FalServerlessHost,
         app: Union[api.ServedIsolatedFunction, api.IsolatedFunction],
         suffix: str = "",
     ):
@@ -548,10 +547,10 @@ def register_app(
 
 
 @pytest.fixture()
-def base_app(host: api.FalServerlessHost, register_app):
+def base_app(register_app):
     # running apps without aliases is no longer supported
     # so we need to create an alias for the app
-    with register_app(host, addition_app, "base") as (
+    with register_app(addition_app, "base") as (
         app_alias,
         app_revision,
     ):
@@ -560,11 +559,10 @@ def base_app(host: api.FalServerlessHost, register_app):
 
 @pytest.fixture()
 def test_app(
-    host: api.FalServerlessHost,
     user: User,
     register_app,
 ):
-    with register_app(host, addition_app, "addition") as (
+    with register_app(addition_app, "addition") as (
         app_alias,
         _,
     ):
@@ -573,11 +571,10 @@ def test_app(
 
 @pytest.fixture()
 def test_nomad_app(
-    host: api.FalServerlessHost,
     user: User,
     register_app,
 ):
-    with register_app(host, nomad_addition_app, "nomad") as (
+    with register_app(nomad_addition_app, "nomad") as (
         app_alias,
         _,
     ):
@@ -586,42 +583,38 @@ def test_nomad_app(
 
 @pytest.fixture()
 def test_container_app(
-    host: api.FalServerlessHost,
     user: User,
     register_app,
 ):
-    with register_app(host, container_addition_app, "container") as (app_alias, _):
+    with register_app(container_addition_app, "container") as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
 
 @pytest.fixture()
 def test_container_build_args_app(
-    host: api.FalServerlessHost,
     user: User,
     register_app,
 ):
-    with register_app(host, container_build_args_app, "build-args") as (app_alias, _):
+    with register_app(container_build_args_app, "build-args") as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
 
 @pytest.fixture()
 def test_fastapi_app(
-    host: api.FalServerlessHost,
     user: User,
     register_app,
 ):
-    with register_app(host, calculator_app, "fastapi") as (app_alias, _):
+    with register_app(calculator_app, "fastapi") as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
 
 @pytest.fixture()
 def test_stateful_app(
-    host: api.FalServerlessHost,
     user: User,
     register_app,
 ):
     stateful_app = wrap_app(StatefulAdditionApp)
-    with register_app(host, stateful_app, "stateful") as (app_alias, _):
+    with register_app(stateful_app, "stateful") as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
 
@@ -633,12 +626,11 @@ def test_pydantic_validation_error():
 
 @pytest.fixture()
 def test_cancellable_app(
-    host: api.FalServerlessHost,
     user: User,
     register_app,
 ):
     cancellable_app = wrap_app(CancellableApp)
-    with register_app(host, cancellable_app, "cancellable") as (app_alias, _):
+    with register_app(cancellable_app, "cancellable") as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
 
@@ -650,45 +642,41 @@ def test_exception_app():
 
 @pytest.fixture()
 def test_health_check_app(
-    host: api.FalServerlessHost,
     user: User,
     register_app,
 ):
     health_check_app = wrap_app(HealthCheckApp)
-    with register_app(host, health_check_app, "health-check") as (app_alias, _):
+    with register_app(health_check_app, "health-check") as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
 
 @pytest.fixture()
 def test_sleep_app(
-    host: api.FalServerlessHost,
     user: User,
     register_app,
 ):
     sleep_app = wrap_app(SleepApp)
-    with register_app(host, sleep_app, "sleep") as (app_alias, _):
+    with register_app(sleep_app, "sleep") as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
 
 @pytest.fixture()
 def test_queue_blocking_app(
-    host: api.FalServerlessHost,
     user: User,
     register_app,
 ):
     queue_blocking_app = wrap_app(QueueBlockingApp)
-    with register_app(host, queue_blocking_app, "queue-blocking") as (app_alias, _):
+    with register_app(queue_blocking_app, "queue-blocking") as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
 
 @pytest.fixture()
 def test_realtime_app(
-    host: api.FalServerlessHost,
     user: User,
     register_app,
 ):
     realtime_app = wrap_app(RealtimeApp)
-    with register_app(host, realtime_app, "realtime") as (app_alias, _):
+    with register_app(realtime_app, "realtime") as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
 
@@ -1026,7 +1014,7 @@ def test_404_billable_units(test_exception_app: AppClient):
 def test_app_deploy_scale(host: api.FalServerlessHost, register_app):
     from dataclasses import replace
 
-    with register_app(host, addition_app, "deploy-scale") as (app_alias, _):
+    with register_app(addition_app, "deploy-scale") as (app_alias, _):
         options = replace(
             addition_app.options,
             host={
@@ -1726,18 +1714,15 @@ def test_container_build_args_app_client(test_container_build_args_app: str):
     assert response == "built with build args"
 
 
-def test_container_no_cache_app_client(host: api.FalServerlessHost, register_app):
+def test_container_no_cache_app_client(register_app):
     stdout = StringIO()
     with redirect_stdout(stdout):
-        with register_app(host, container_no_cache_app, "container") as (app_alias, _):
+        with register_app(container_no_cache_app, "container") as (app_alias, _):
             pass
 
     stdout = StringIO()
     with redirect_stdout(stdout):
-        with register_app(host, container_cache_enabled_app, "container") as (
-            app_alias,
-            _,
-        ):
+        with register_app(container_cache_enabled_app, "container") as (app_alias, _):
             pass
 
     logs = stdout.getvalue()
@@ -1745,7 +1730,7 @@ def test_container_no_cache_app_client(host: api.FalServerlessHost, register_app
 
     stdout = StringIO()
     with redirect_stdout(stdout):
-        with register_app(host, container_no_cache_app, "container") as (app_alias, _):
+        with register_app(container_no_cache_app, "container") as (app_alias, _):
             pass
 
     logs = stdout.getvalue()
@@ -1808,12 +1793,11 @@ class AppRefApp(fal.App, keep_alive=300, max_concurrency=1, max_multiplexing=3):
 
 @pytest.fixture()
 def test_app_ref_app(
-    host: api.FalServerlessHost,
     user: User,
     register_app,
 ):
     app_ref_app = wrap_app(AppRefApp)
-    with register_app(host, app_ref_app, "app-ref") as (app_alias, _):
+    with register_app(app_ref_app, "app-ref") as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
 
@@ -1912,15 +1896,11 @@ RUN apt-get update \
 
 @pytest.fixture()
 def test_graceful_shutdown_app(
-    host: api.FalServerlessHost,
     user: User,
     register_app,
 ):
     graceful_shutdown_app = wrap_app(GracefulShutdownApp)
-    with register_app(host, graceful_shutdown_app, "graceful-shutdown") as (
-        app_alias,
-        _,
-    ):
+    with register_app(graceful_shutdown_app, "graceful-shutdown") as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
 
@@ -2089,12 +2069,11 @@ class RequestContextApp(fal.App, keep_alive=300, max_concurrency=1, max_multiple
 
 @pytest.fixture()
 def test_request_context_app(
-    host: api.FalServerlessHost,
     user: User,
     register_app,
 ):
     request_context_app = wrap_app(RequestContextApp)
-    with register_app(host, request_context_app, "request-context") as (app_alias, _):
+    with register_app(request_context_app, "request-context") as (app_alias, _):
         time.sleep(1)
         yield f"{user.username}/{app_alias}"
 
