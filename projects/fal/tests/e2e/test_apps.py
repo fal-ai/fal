@@ -532,7 +532,7 @@ def register_app(
             client.delete_alias(app_alias)
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture()
 def base_app(host: api.FalServerlessHost):
     # running apps without aliases is no longer supported
     # so we need to create an alias for the app
@@ -540,84 +540,84 @@ def base_app(host: api.FalServerlessHost):
         yield app_alias, app_revision
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture()
 def test_app(host: api.FalServerlessHost, user: User):
     with register_app(host, addition_app, "addition") as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture()
 def test_nomad_app(host: api.FalServerlessHost, user: User):
     with register_app(host, nomad_addition_app, "nomad") as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture()
 def test_container_app(host: api.FalServerlessHost, user: User):
     with register_app(host, container_addition_app, "container") as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture()
 def test_container_build_args_app(host: api.FalServerlessHost, user: User):
     with register_app(host, container_build_args_app, "build-args") as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture()
 def test_fastapi_app(host: api.FalServerlessHost, user: User):
     with register_app(host, calculator_app, "fastapi") as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture()
 def test_stateful_app(host: api.FalServerlessHost, user: User):
     stateful_app = wrap_app(StatefulAdditionApp)
     with register_app(host, stateful_app, "stateful") as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture()
 def test_pydantic_validation_error():
     with AppClient.connect(StatefulAdditionApp) as client:
         yield client
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture()
 def test_cancellable_app(host: api.FalServerlessHost, user: User):
     cancellable_app = wrap_app(CancellableApp)
     with register_app(host, cancellable_app, "cancellable") as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture()
 def test_exception_app():
     with AppClient.connect(ExceptionApp) as client:
         yield client
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture()
 def test_health_check_app(host: api.FalServerlessHost, user: User):
     health_check_app = wrap_app(HealthCheckApp)
     with register_app(host, health_check_app, "health-check") as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture()
 def test_sleep_app(host: api.FalServerlessHost, user: User):
     sleep_app = wrap_app(SleepApp)
     with register_app(host, sleep_app, "sleep") as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture()
 def test_queue_blocking_app(host: api.FalServerlessHost, user: User):
     queue_blocking_app = wrap_app(QueueBlockingApp)
     with register_app(host, queue_blocking_app, "queue-blocking") as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture()
 def test_realtime_app(host: api.FalServerlessHost, user: User):
     realtime_app = wrap_app(RealtimeApp)
     with register_app(host, realtime_app, "realtime") as (app_alias, _):
@@ -1738,7 +1738,7 @@ class AppRefApp(fal.App, keep_alive=300, max_concurrency=1, max_multiplexing=3):
         )
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture()
 def test_app_ref_app(host: api.FalServerlessHost, user: User):
     app_ref_app = wrap_app(AppRefApp)
     with register_app(host, app_ref_app, "app-ref") as (app_alias, _):
@@ -1838,7 +1838,7 @@ RUN apt-get update \
         )
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture()
 def test_graceful_shutdown_app(host: api.FalServerlessHost, user: User):
     graceful_shutdown_app = wrap_app(GracefulShutdownApp)
     with register_app(host, graceful_shutdown_app, "graceful-shutdown") as (
@@ -2011,7 +2011,7 @@ class RequestContextApp(fal.App, keep_alive=300, max_concurrency=1, max_multiple
         )
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture()
 def test_request_context_app(host: api.FalServerlessHost, user: User):
     request_context_app = wrap_app(RequestContextApp)
     with register_app(host, request_context_app, "request-context") as (app_alias, _):
