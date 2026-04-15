@@ -87,6 +87,7 @@ def _deploy_from_reference(
     app_ref: Tuple[Optional[Union[Path, str]], ...],
     app_data: AppData,
     force_env_build: bool,
+    fetch_openapi: bool = False,
     environment_name: Optional[str] = None,
 ) -> DeploymentResult:
     from fal.api import FalServerlessError
@@ -116,6 +117,7 @@ def _deploy_from_reference(
         file_path,  # type: ignore
         func_name,  # type: ignore
         force_env_build=force_env_build,
+        fetch_openapi=fetch_openapi,
         options=app_data.options,
         app_name=app_data.name,
         app_auth=app_data.auth,
@@ -141,6 +143,7 @@ def _deploy_from_reference(
         application_auth_mode=loaded.app_auth,  # type: ignore
         source_code=loaded.source_code,
         metadata=isolated_function.options.host.get("metadata", {}),
+        fetch_openapi=fetch_openapi,
         deployment_strategy=strategy,
         scale=app_data.reset_scale,
         environment_name=environment_name,
@@ -188,6 +191,7 @@ def deploy(
     strategy: DeploymentStrategyLiteral = "rolling",
     reset_scale: bool = False,
     force_env_build: bool = False,
+    fetch_openapi: bool = False,
     environment_name: str | None = None,
 ) -> DeploymentResult:
     from fal.cli._utils import AppData, get_app_data_from_toml, is_app_name
@@ -225,6 +229,16 @@ def deploy(
         file_path = str(Path(file_path).absolute())
         ref = f"{file_path}::{func_name}" if func_name else file_path
         app_data = replace(app_data, ref=ref)
+
+    if fetch_openapi:
+        return _deploy_from_reference(
+            client,
+            (file_path, func_name),
+            app_data,
+            force_env_build=force_env_build,
+            fetch_openapi=True,
+            environment_name=environment_name,
+        )
 
     return _deploy_from_reference(
         client,

@@ -14,6 +14,7 @@ def test_run():
     assert args.func_ref == ("/my/path.py", "myfunc")
     assert args.machine_type is None
     assert args.limit_max_requests is None
+    assert args.fetch_openapi is False
 
 
 def test_run_with_env():
@@ -22,6 +23,11 @@ def test_run_with_env():
     assert args.func_ref == ("/my/path.py", "myfunc")
     assert args.env == "dev"
     assert args.auth == "public"
+
+
+def test_run_with_fetch_openapi():
+    args = parse_args(["run", "/my/path.py::myfunc", "--fetch-openapi"])
+    assert args.fetch_openapi is True
 
 
 @patch.dict("os.environ", {"FAL_ENV": "from-env-var"})
@@ -118,6 +124,7 @@ def mock_args(
     auth: Optional[str] = "public",
     machine_type: Optional[str] = None,
     limit_max_requests: Optional[int] = None,
+    fetch_openapi: bool = False,
 ):
     args = MagicMock()
     args.host = host
@@ -131,6 +138,7 @@ def mock_args(
     args.env = None
     args.machine_type = machine_type
     args.limit_max_requests = limit_max_requests
+    args.fetch_openapi = fetch_openapi
     return args
 
 
@@ -185,6 +193,33 @@ def test_run_applies_machine_type_override(mock_load_function_from, mock_create_
     _run(args)
 
     assert isolated_function.options.host["machine_type"] == "GPU-H100"
+
+
+@patch("fal.api.client.SyncServerlessClient._create_host")
+@patch("fal.utils.load_function_from")
+def test_run_forwards_fetch_openapi_to_load_function_from(
+    mock_load_function_from, mock_create_host
+):
+    host = mocked_fal_serverless_host("my-host")
+    mock_create_host.return_value = host
+
+    isolated_function = MagicMock()
+    loaded = MagicMock()
+    loaded.function = isolated_function
+    loaded.app_name = None
+    loaded.app_auth = None
+    mock_load_function_from.return_value = loaded
+
+    args = mock_args(
+        func_ref=("/my/path.py", "myfunc"),
+        host="my-host",
+        fetch_openapi=True,
+    )
+
+    _run(args)
+
+    _, call_kwargs = mock_load_function_from.call_args
+    assert call_kwargs["fetch_openapi"] is True
 
 
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")

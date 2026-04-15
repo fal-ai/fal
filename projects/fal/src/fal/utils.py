@@ -120,6 +120,7 @@ def load_function_from(
     function_name: str | None = None,
     *,
     force_env_build: bool = False,
+    fetch_openapi: bool = False,
     options: Optional[Options] = None,
     app_name: str | None = None,
     app_auth: AuthModeLiteral | None = None,
@@ -157,6 +158,7 @@ def load_function_from(
             target,
             host=host,
             force_env_build=force_env_build,
+            fetch_openapi=fetch_openapi,
             limit_max_requests=limit_max_requests,
         )
 
@@ -164,6 +166,8 @@ def load_function_from(
         raise FalServerlessError(
             f"Function '{function_name}' is not a fal.function or a fal.App"
         )
+    if fetch_openapi:
+        target.options.host["fetch_openapi"] = True
     if options is not None:
         _merge_options(target.options, options)
 

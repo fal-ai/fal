@@ -14,6 +14,7 @@ def test_deploy():
     args = parse_args(["deploy", "myfile.py::MyApp"])
     assert args.func == _deploy
     assert args.app_ref == ("myfile.py", "MyApp")
+    assert args.fetch_openapi is False
 
 
 def test_deploy_with_env():
@@ -21,6 +22,11 @@ def test_deploy_with_env():
     assert args.func == _deploy
     assert args.app_ref == ("myfile.py", "MyApp")
     assert args.env == "dev"
+
+
+def test_deploy_with_fetch_openapi():
+    args = parse_args(["deploy", "myfile.py::MyApp", "--fetch-openapi"])
+    assert args.fetch_openapi is True
 
 
 def test_deploy_with_env_and_other_options():
@@ -108,6 +114,7 @@ def mock_args(
     team: Optional[str] = None,
     no_cache: bool = False,
     env: Optional[str] = None,
+    fetch_openapi: bool = False,
 ):
     args = MagicMock()
 
@@ -121,6 +128,7 @@ def mock_args(
     args.no_cache = no_cache
     args.force_env_build = False
     args.env = env
+    args.fetch_openapi = fetch_openapi
 
     return args
 
@@ -776,3 +784,24 @@ def test_deploy_team_lookup_uses_silent_toml_read(mock_client, mock_get_app_data
     mock_get_app_data.assert_called_once_with(
         "no-scale-app", emit_deprecation_warnings=False
     )
+
+
+@patch("fal.cli.deploy.SyncServerlessClient")
+def test_deploy_forwards_fetch_openapi_to_client(mock_client):
+    mock_client_instance = MagicMock()
+    mock_client.return_value = mock_client_instance
+    mock_client_instance.deploy.return_value = MagicMock(
+        revision="rev-123",
+        app_name="my-app",
+        auth_mode="private",
+        urls={"playground": {}, "sync": {}, "async": {}},
+        log_url="https://fal.ai/logs/123",
+    )
+
+    args = mock_args(app_ref=("myfile.py", "MyApp"), fetch_openapi=True)
+    args.host = "my-host"
+
+    _deploy(args)
+
+    _, call_kwargs = mock_client_instance.deploy.call_args
+    assert call_kwargs["fetch_openapi"] is True
