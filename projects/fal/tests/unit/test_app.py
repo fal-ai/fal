@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import pickle
+from contextlib import ExitStack
 from contextvars import ContextVar
 from typing import AsyncIterator, Iterator
 from unittest.mock import MagicMock, PropertyMock, patch
@@ -477,6 +478,53 @@ async def test_runner_state_lifecycle_complete(isolate_agent_env):
     assert states[0] == ("setup", "SETUP")
     assert states[1] == ("running", "RUNNING")
     assert states[2] == ("teardown", "TERMINATING")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("startup_timeout", "elapsed_seconds", "should_warn"),
+    [
+        (1, 2.5, True),
+        (None, 601.0, True),
+        (10, 5.0, False),
+        (None, 300.0, False),
+        (1, 1.0, False),
+    ],
+)
+async def test_lifespan_startup_timeout_warning(
+    isolate_agent_env,
+    startup_timeout,
+    elapsed_seconds,
+    should_warn,
+):
+    import fastapi
+
+    class TestApp(App):
+        def setup(self):
+            return None
+
+    TestApp.startup_timeout = startup_timeout
+    app = TestApp()
+    fastapi_app = fastapi.FastAPI()
+
+    with ExitStack() as stack:
+        mock_print = stack.enter_context(patch("builtins.print"))
+        stack.enter_context(patch("fal.app._print_python_packages"))
+        stack.enter_context(
+            patch("fal.app.time.perf_counter", side_effect=[0.0, elapsed_seconds])
+        )
+        async with app.lifespan(fastapi_app):
+            pass
+
+    printed_lines = ["".join(map(str, call.args)) for call in mock_print.call_args_list]
+    has_warning = any(
+        "app setup exceeded startup_timeout" in line for line in printed_lines
+    )
+    assert has_warning == should_warn, (
+        f"Expected warning={'yes' if should_warn else 'no'} "
+        f"(startup_timeout={startup_timeout}, elapsed={elapsed_seconds}s), "
+        f"but got: {printed_lines}"
+    )
 
 
 def test_function_decorator_rejects_app_files_with_container_kind():

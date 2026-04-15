@@ -124,6 +124,8 @@ class Image(File):
             FileRepository | RepositoryId | list[FileRepository | RepositoryId]
         ] = FALLBACK_REPOSITORY,
         request: Optional[Request] = None,
+        save_kwargs: Optional[dict] = None,
+        fallback_save_kwargs: Optional[dict] = None,
     ) -> Image:
         obj = super().from_bytes(
             data,
@@ -132,6 +134,8 @@ class Image(File):
             repository=repository,
             fallback_repository=fallback_repository,
             request=request,
+            save_kwargs=save_kwargs,
+            fallback_save_kwargs=fallback_save_kwargs,
         )
         obj.width = size.width if size else None
         obj.height = size.height if size else None
@@ -148,6 +152,8 @@ class Image(File):
             FileRepository | RepositoryId | list[FileRepository | RepositoryId]
         ] = FALLBACK_REPOSITORY,
         request: Optional[Request] = None,
+        save_kwargs: Optional[dict] = None,
+        fallback_save_kwargs: Optional[dict] = None,
     ) -> Image:
         size = ImageSize(width=pil_image.width, height=pil_image.height)
         if format is None:
@@ -178,6 +184,8 @@ class Image(File):
             repository,
             fallback_repository=fallback_repository,
             request=request,
+            save_kwargs=save_kwargs,
+            fallback_save_kwargs=fallback_save_kwargs,
         )
 
     def to_pil(self, mode: str = "RGB") -> PILImage.Image:

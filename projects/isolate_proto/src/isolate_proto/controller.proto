@@ -97,6 +97,9 @@ message HostedRun {
     optional ApplicationAuthMode auth_mode = 8;
     // Fetch OpenAPI metadata from an app runner.
     optional bool fetch_openapi = 9;
+    // Persistent data mount paths (e.g. "/data", "/data/.cache").
+    // When omitted, the server applies a default based on the user model.
+    repeated string data_mounts = 10;
 }
 
 message CreateUserKeyRequest {
@@ -298,6 +301,9 @@ message RegisterApplicationRequest {
     optional int32 termination_grace_period_seconds = 18;
     // Fetch OpenAPI metadata from an app runner.
     optional bool fetch_openapi = 19;
+    // Persistent data mount paths (e.g. "/data", "/data/.cache").
+    // When omitted, the server applies a default based on the user model
+    repeated string data_mounts = 20;
 }
 
 message RegisterApplicationResultType {

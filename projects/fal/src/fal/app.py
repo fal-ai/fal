@@ -52,6 +52,7 @@ DEFAULT_APP_FILES_IGNORE = [
     r"\.git/",
     r"\.DS_Store$",
 ]
+DEFAULT_PLATFORM_STARTUP_TIMEOUT = 600
 
 
 logger = get_logger(__name__)
@@ -162,7 +163,7 @@ def wrap_app(cls: type[App], **kwargs) -> IsolatedFunction:
     metadata["openapi"] = app.openapi()
 
     routes = app.collect_routes()
-    initialize_and_serve._routes = [r.path for r in routes.keys()] or ["/"]  # type: ignore[attr-defined]
+    initialize_and_serve._routes = sorted(r.path for r in routes.keys()) or ["/"]  # type: ignore[attr-defined]
     realtime_app = any(route.is_websocket for route in routes)
 
     kind = cls.host_kwargs.pop("kind", "virtualenv")
@@ -768,11 +769,16 @@ class App(BaseServable):
         )
 
     def collect_routes(self) -> dict[RouteSignature, Callable[..., Any]]:
-        return {
-            signature: endpoint
-            for _, endpoint in inspect.getmembers(self, inspect.ismethod)
-            if (signature := getattr(endpoint, "route_signature", None))
-        }
+        return dict(
+            sorted(
+                (
+                    (signature, endpoint)
+                    for _, endpoint in inspect.getmembers(self, inspect.ismethod)
+                    if (signature := getattr(endpoint, "route_signature", None))
+                ),
+                key=lambda item: item[0].path,
+            )
+        )
 
     @asynccontextmanager
     async def lifespan(self, app: fastapi.FastAPI):
@@ -804,7 +810,26 @@ class App(BaseServable):
             # so the working directory is never added to sys.path
             sys.path.insert(0, "")
         _print_python_packages()
+        setup_started_at = time.perf_counter()
         await _call_any_fn(self.setup)
+        setup_elapsed = time.perf_counter() - setup_started_at
+
+        effective_startup_timeout = (
+            self.startup_timeout
+            if self.startup_timeout is not None
+            else DEFAULT_PLATFORM_STARTUP_TIMEOUT
+        )
+        if setup_elapsed > effective_startup_timeout:
+            # Yellow "Warning:" prefix via ANSI; falls back to plain text
+            # on non-TTY or color-less terminals.
+            prefix = (
+                "\033[1;33mWarning:\033[0m " if sys.stderr.isatty() else "Warning: "
+            )
+            print(
+                f"{prefix}app setup exceeded startup_timeout "
+                f"({setup_elapsed:.1f}s > {effective_startup_timeout}s). "
+                "`fal deploy` would have triggered the startup timeout."
+            )
 
         os.environ["FAL_RUNNER_STATE"] = "RUNNING"
 
