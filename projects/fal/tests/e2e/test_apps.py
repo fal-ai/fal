@@ -687,7 +687,6 @@ def test_broken_app_failure(host: api.FalServerlessHost, user: User):
     assert "Failed to generate OpenAPI" in str(e)
 
 
-@pytest.mark.flaky(max_runs=3)
 def test_app_client(test_app: str, test_nomad_app: str):
     response = apps.run(test_app, arguments={"lhs": 1, "rhs": 2})
     assert response["result"] == 3
@@ -746,7 +745,6 @@ def test_stateful_app_client(test_stateful_app: str):
     assert response["result"] == 0
 
 
-@pytest.mark.flaky(max_runs=3)
 def test_app_cancellation(test_app: str, test_cancellable_app: str):
     request_handle = apps.submit(
         test_cancellable_app, arguments={"lhs": 1, "rhs": 2, "wait_time": 6}
@@ -786,7 +784,6 @@ def test_app_cancellation(test_app: str, test_cancellable_app: str):
     assert response == {"result": 3}
 
 
-@pytest.mark.flaky(max_runs=3)
 def test_app_disconnect_behavior(test_app: str, test_cancellable_app: str):
     with pytest.raises(HTTPStatusError) as e:
         apps.run(
@@ -818,7 +815,6 @@ def test_app_disconnect_behavior(test_app: str, test_cancellable_app: str):
     ), "Expected Gateway Timeout even though the app handled it"
 
 
-@pytest.mark.flaky(max_runs=3)
 def test_start_timeout_queue_blocking(test_queue_blocking_app: str):
     """
     Test that start_timeout correctly times out a request waiting in queue.
@@ -874,7 +870,6 @@ def test_start_timeout_queue_blocking(test_queue_blocking_app: str):
 @pytest.mark.xfail(
     reason="Temporary disabled while investigating backend issue. Ping @efiop"
 )
-@pytest.mark.flaky(max_runs=3)
 def test_app_client_async(test_sleep_app: str):
     handle = apps.submit(test_sleep_app, arguments={"wait_time": 1})
     with pytest.raises(HTTPStatusError) as e:
@@ -1153,7 +1148,6 @@ def test_app_set_delete_alias(base_app: Tuple[str, str]):
         assert not found, f"Found app {app_alias} in {res} after deletion"
 
 
-@pytest.mark.flaky(max_runs=3)
 def test_realtime_connection(test_realtime_app):
     response = apps.run(test_realtime_app, arguments={"prompt": "a cat"})
     assert response["text"] == "a cat"
@@ -1477,7 +1471,6 @@ def submit_and_wait_for_runner(app: str, arguments: dict = {}, *, path: str = ""
     return handle
 
 
-@pytest.mark.flaky(max_runs=3)
 def test_stop_runner(host: api.FalServerlessHost, test_sleep_app: str):
     # Submit a runner and wait for it to be idle
     submit_and_wait_for_runner(test_sleep_app, arguments={"wait_time": 1})
@@ -1529,7 +1522,6 @@ def test_stop_runner(host: api.FalServerlessHost, test_sleep_app: str):
         assert any(runner.runner_id != original_runner_id for runner in runners)
 
 
-@pytest.mark.flaky(max_runs=3)
 def test_kill_runner(host: api.FalServerlessHost, test_sleep_app: str):
     # Kill all the replicas of the app that is already running
     handle = apps.submit(test_sleep_app, arguments={"wait_time": 10})
@@ -1579,7 +1571,6 @@ def test_kill_runner(host: api.FalServerlessHost, test_sleep_app: str):
         assert num_runners <= existing_runners - 1
 
 
-@pytest.mark.flaky(max_runs=3)
 def test_rollout_application(host: api.FalServerlessHost, test_sleep_app: str):
     handle = apps.submit(test_sleep_app, arguments={"wait_time": 30})
 
@@ -1617,7 +1608,6 @@ def test_rollout_application(host: api.FalServerlessHost, test_sleep_app: str):
         assert not runner_ids_after.intersection(runner_ids_final)
 
 
-@pytest.mark.flaky(max_runs=3)
 def test_shell_runner(host: api.FalServerlessHost, test_sleep_app: str):
     handle = apps.submit(test_sleep_app, arguments={"wait_time": 30})
 
@@ -1653,7 +1643,6 @@ def test_shell_runner(host: api.FalServerlessHost, test_sleep_app: str):
                 proc.wait()
 
 
-@pytest.mark.flaky(max_runs=3)
 def test_exec_runner(host: api.FalServerlessHost, test_sleep_app: str):
     handle = apps.submit(test_sleep_app, arguments={"wait_time": 30})
 
@@ -1963,7 +1952,6 @@ def graceful_shutdown(
     return False
 
 
-@pytest.mark.flaky(max_runs=3)
 def test_graceful_shutdown(
     host: api.FalServerlessHost,
     rest_client: Client,
@@ -1974,7 +1962,6 @@ def test_graceful_shutdown(
     ), "app should be gracefully shutdown"
 
 
-@pytest.mark.flaky(max_runs=3)
 def test_graceful_shutdown_force_kill(
     host: api.FalServerlessHost,
     rest_client: Client,
@@ -1985,7 +1972,6 @@ def test_graceful_shutdown_force_kill(
     ), "app should be forcefully killed if it takes too long to clean up"
 
 
-@pytest.mark.flaky(max_runs=3)
 def test_forceful_shutdown(
     host: api.FalServerlessHost,
     rest_client: Client,
@@ -1996,7 +1982,6 @@ def test_forceful_shutdown(
     ), "app should be forcefully killed on kill_runner"
 
 
-@pytest.mark.flaky(max_runs=3)
 def test_runner_machine_type(host: api.FalServerlessHost, test_sleep_app: str):
     """Test that machine_type is populated in runner info."""
     submit_and_wait_for_runner(test_sleep_app, arguments={"wait_time": 1})
