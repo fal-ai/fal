@@ -1,0 +1,111 @@
+name: Regenerate gRPC bindings
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - "projects/isolate_proto/**/*.proto"
+      - "tools/regen_grpc.py"
+      - "tools/pyproject.toml"
+  workflow_dispatch:
+    inputs:
+      isolate_version:
+        description: "fal-ai/isolate tag to clone (without leading 'v'). If empty, the latest tag is used."
+        required: false
+        type: string
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  regen:
+    runs-on: ubuntu-latest
+    # Auto-commit only works for branches in the same repo. PRs from forks
+    # would need a PAT with cross-repo write access, which we don't grant.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref || github.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          # PAT with `contents: write` on this repo and `contents: read` on
+          # fal-ai/isolate. Using a PAT (instead of GITHUB_TOKEN) ensures the
+          # auto-commit re-triggers downstream workflows.
+          token: ${{ secrets.PROTO_REGEN_TOKEN }}
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Configure git auth for private fal-ai/isolate clone
+        env:
+          PROTO_REGEN_TOKEN: ${{ secrets.PROTO_REGEN_TOKEN }}
+        run: |
+          if [ -z "${PROTO_REGEN_TOKEN}" ]; then
+            echo "::error::PROTO_REGEN_TOKEN secret is not set; cannot clone the private fal-ai/isolate repo."
+            exit 1
+          fi
+          # Inject token for any https://github.com/ clone (regen_grpc.py does
+          # its own `git clone` of fal-ai/isolate).
+          git config --global url."https://x-access-token:${PROTO_REGEN_TOKEN}@github.com/".insteadOf "https://github.com/"
+
+      - name: Determine isolate version
+        id: isolate_version
+        env:
+          INPUT_VERSION: ${{ inputs.isolate_version }}
+          GH_TOKEN: ${{ secrets.PROTO_REGEN_TOKEN }}
+        run: |
+          if [ -n "${INPUT_VERSION}" ]; then
+            version="${INPUT_VERSION}"
+          else
+            # Latest tag from the private isolate repo (requires ISOLATE_REPO_TOKEN).
+            version=$(gh api repos/fal-ai/isolate/tags --jq '.[0].name' | sed 's/^v//')
+          fi
+          if [ -z "${version}" ]; then
+            echo "::error::Could not determine isolate version."
+            exit 1
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "Using isolate version: ${version}"
+
+      - name: Install isolate_proto[dev] (provides regen tooling)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e 'projects/isolate_proto[dev]'
+
+      - name: Regenerate gRPC bindings
+        working-directory: projects/isolate_proto
+        run: |
+          python ../../tools/regen_grpc.py --isolate-version "${{ steps.isolate_version.outputs.version }}"
+
+      - name: Run pre-commit on regenerated files
+        continue-on-error: true
+        run: |
+          pip install pre-commit
+          pre-commit run --all-files || true
+
+      - name: Commit regenerated files back to the PR
+        env:
+          ISOLATE_VERSION: ${{ steps.isolate_version.outputs.version }}
+        run: |
+          if [ -z "$(git status --porcelain projects/isolate_proto)" ]; then
+            echo "No changes after regeneration."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add projects/isolate_proto
+          git commit -m "chore(isolate_proto): regenerate gRPC bindings (isolate v${ISOLATE_VERSION})"
+          git push
