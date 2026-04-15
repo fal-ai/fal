@@ -115,14 +115,25 @@ def sync_isolate(isolate_version: str, cwd: Path) -> set[str]:
             "1",
             "--branch",
             f"v{isolate_version}",
-            "https://github.com/fal-ai/isolate",
+            "git@github.com:fal-ai/isolate.git",
             target_repo_path,
         ],
         cwd=cwd,
     )
 
+    return _collect_proto_imports(target_repo_path, src_dir, cwd)
+
+
+def use_local_isolate(isolate_path: Path, cwd: Path) -> dict[str, str]:
+    src_dir = (isolate_path / "src").resolve()
+    return _collect_proto_imports(isolate_path.resolve(), src_dir, cwd)
+
+
+def _collect_proto_imports(
+    repo_path: Path, src_dir: Path, cwd: Path
+) -> dict[str, str]:
     known_imports = {}
-    for proto_file in target_repo_path.rglob("*.proto"):
+    for proto_file in repo_path.rglob("*.proto"):
         shutil.copy(proto_file, cwd)
         known_imports[proto_file.stem] = _to_qualified_name(proto_file.parent, src_dir)
     return known_imports
@@ -134,12 +145,22 @@ def main() -> None:
     parser = ArgumentParser()
     parser.add_argument("--definition-file")
     parser.add_argument("--isolate-version")
+    parser.add_argument(
+        "--isolate-path",
+        type=Path,
+        help="Path to a local isolate checkout (skips git clone).",
+    )
 
     options = parser.parse_args()
 
+    if options.isolate_version and options.isolate_path:
+        parser.error("--isolate-version and --isolate-path are mutually exclusive")
+
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_path = Path(tmp_dir)
-        if options.isolate_version:
+        if options.isolate_path:
+            isolate_imports = use_local_isolate(options.isolate_path, cwd=tmp_path)
+        elif options.isolate_version:
             isolate_imports = sync_isolate(options.isolate_version, cwd=tmp_path)
         else:
             isolate_imports = {}
