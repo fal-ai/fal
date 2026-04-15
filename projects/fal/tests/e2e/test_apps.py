@@ -958,65 +958,57 @@ def test_404_billable_units(test_exception_app: AppClient):
 def test_app_deploy_scale(host: api.FalServerlessHost):
     from dataclasses import replace
 
-    app_alias = str(uuid.uuid4()) + "-alias"
-    result = addition_app.host.register(
-        func=addition_app.func,
-        options=addition_app.options,
-        application_name=app_alias,
-        application_auth_mode="private",
-        deployment_strategy="recreate",
-    )
-    assert result
-    assert result.result
-    assert result.service_urls
-    app_revision = result.result.application_id
+    with register_app(host, addition_app, "deploy-scale") as (app_alias, _):
+        options = replace(
+            addition_app.options,
+            host={
+                **addition_app.options.host,
+                "max_multiplexing": 3,
+                "max_concurrency": 2,
+            },
+        )
+        kwargs = dict(
+            func=addition_app.func,
+            options=options,
+            application_name=app_alias,
+            application_auth_mode="private",
+            deployment_strategy="recreate",
+        )
 
-    options = replace(
-        addition_app.options,
-        host={
-            **addition_app.options.host,
-            "max_multiplexing": 3,
-            "max_concurrency": 2,
-        },
-    )
-    kwargs = dict(
-        func=addition_app.func,
-        options=options,
-        application_name=app_alias,
-        application_auth_mode="private",
-        deployment_strategy="recreate",
-    )
+        result = addition_app.host.register(**kwargs, scale=False)
+        assert result
+        assert result.result
+        assert result.service_urls
+        app_revision = result.result.application_id
 
-    result = addition_app.host.register(**kwargs, scale=False)
-    assert result
-    assert result.result
-    assert result.service_urls
-    app_revision = result.result.application_id
+        with host._connection as client:
+            res = client.list_aliases()
+            found = next(filter(lambda alias: alias.alias == app_alias, res), None)
+            assert found, f"Could not find app {app_alias} in {res}"
+            assert found.revision == app_revision
+            # multiplexing is revision-specific
+            assert (
+                found.max_multiplexing == 3
+            ), "Expected max_multiplexing to have changed"
+            # max_concurrency is alias-specific
+            assert (
+                found.max_concurrency == 1
+            ), "Expected max_concurrency to stay the same"
 
-    with host._connection as client:
-        res = client.list_aliases()
-        found = next(filter(lambda alias: alias.alias == app_alias, res), None)
-        assert found, f"Could not find app {app_alias} in {res}"
-        assert found.revision == app_revision
-        # multiplexing is revision-specific
-        assert found.max_multiplexing == 3, "Expected max_multiplexing to have changed"
-        # max_concurrency is alias-specific
-        assert found.max_concurrency == 1, "Expected max_concurrency to stay the same"
+        result = addition_app.host.register(**kwargs, scale=True)
+        assert result
+        assert result.result
+        assert result.service_urls
+        app_revision = result.result.application_id
 
-    result = addition_app.host.register(**kwargs, scale=True)
-    assert result
-    assert result.result
-    assert result.service_urls
-    app_revision = result.result.application_id
-
-    with host._connection as client:
-        res = client.list_aliases()
-        found = next(filter(lambda alias: alias.alias == app_alias, res), None)
-        assert found, f"Could not find app {app_alias} in {res}"
-        assert found.revision == app_revision
-        # when scaling, all values are updated
-        assert found.max_multiplexing == 3
-        assert found.max_concurrency == 2
+        with host._connection as client:
+            res = client.list_aliases()
+            found = next(filter(lambda alias: alias.alias == app_alias, res), None)
+            assert found, f"Could not find app {app_alias} in {res}"
+            assert found.revision == app_revision
+            # when scaling, all values are updated
+            assert found.max_multiplexing == 3
+            assert found.max_concurrency == 2
 
 
 # List aliases is taking long
