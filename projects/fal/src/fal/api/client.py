@@ -177,11 +177,12 @@ class RunnersNamespace:
     def __init__(self, client: SyncServerlessClient):
         self.client = client
 
-    def list(self, *, since=None) -> List[RunnerInfo]:
+    def list(self, *, since=None, include_leases=False) -> List[RunnerInfo]:
         """List all runners. Corresponds to `fal runners list`.
 
         Args:
             since: Only return runners started after this datetime.
+            include_leases: Include lease (request) information for each runner.
 
         Example:
             from datetime import datetime, timedelta
@@ -189,7 +190,9 @@ class RunnersNamespace:
             all_runners = client.runners.list()
             recent = client.runners.list(since=datetime.now() - timedelta(minutes=10))
         """
-        return runners_api.list_runners(self.client, since=since)
+        return runners_api.list_runners(
+            self.client, since=since, include_leases=include_leases
+        )
 
     def stop(self, runner_id: str, replace_first: bool = False) -> None:
         """Gracefully stop a runner.

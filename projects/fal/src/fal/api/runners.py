@@ -10,10 +10,13 @@ if TYPE_CHECKING:
 
 
 def list_runners(
-    client: SyncServerlessClient, *, since: Optional[datetime] = None
+    client: SyncServerlessClient,
+    *,
+    since: Optional[datetime] = None,
+    include_leases: bool = False,
 ) -> List[RunnerInfo]:
     with FalServerlessClient(client._grpc_host, client._credentials).connect() as conn:
-        return conn.list_runners(start_time=since)
+        return conn.list_runners(start_time=since, include_leases=include_leases)
 
 
 def stop_runner(
