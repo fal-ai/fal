@@ -38,8 +38,11 @@ jobs:
           repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
           # PAT with `contents: write` on this repo and `contents: read` on
           # fal-ai/isolate. Using a PAT (instead of GITHUB_TOKEN) ensures the
-          # auto-commit re-triggers downstream workflows.
-          token: ${{ secrets.PROTO_REGEN_TOKEN }}
+          # auto-commit re-triggers downstream workflows. Falls back to
+          # GITHUB_TOKEN so checkout doesn't fail with a cryptic "Input
+          # required" error — the next step will produce a clearer message
+          # if the secret isn't set.
+          token: ${{ secrets.PROTO_REGEN_TOKEN || secrets.GITHUB_TOKEN }}
           fetch-depth: 0
 
       - uses: actions/setup-python@v5
