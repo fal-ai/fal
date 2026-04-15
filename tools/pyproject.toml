@@ -1,0 +1,13 @@
+[project]
+name = "fal-tools"
+version = "0.0.0"
+description = "Internal scripts for the fal repo"
+requires-python = ">=3.9,<3.13"
+dependencies = [
+    "grpcio-tools",
+    "mypy-protobuf",
+    "refactor",
+]
+
+[tool.uv]
+package = false
