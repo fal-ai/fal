@@ -338,6 +338,7 @@ class ExceptionApp(fal.App, keep_alive=300, max_concurrency=1):
 
 
 class CancellableApp(fal.App, keep_alive=300, max_concurrency=1, request_timeout=4):
+    skip_retry_conditions = ["timeout"]
     task = None
     running = 0
 
