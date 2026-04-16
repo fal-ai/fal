@@ -101,19 +101,45 @@ jobs:
           pre-commit run --all-files || true
 
       - name: Commit regenerated files back to the PR
+        working-directory: projects/isolate_proto
         env:
           ISOLATE_VERSION: ${{ steps.isolate_version.outputs.version }}
+          ISOLATE_PATH: ${{ github.workspace }}/_isolate
           APP_SLUG: ${{ steps.app_token.outputs.app-slug }}
         run: |
-          if [ -z "$(git status --porcelain projects/isolate_proto)" ]; then
-            echo "No changes after regeneration."
-            exit 0
-          fi
+          set -euo pipefail
 
           # Author the commit as the GitHub App's bot user.
           git config user.name "${APP_SLUG}[bot]"
           git config user.email "${APP_SLUG}[bot]@users.noreply.github.com"
 
-          git add projects/isolate_proto
-          git commit -m "chore(isolate_proto): regenerate gRPC bindings (isolate v${ISOLATE_VERSION})"
-          git push
+          branch="$(git rev-parse --abbrev-ref HEAD)"
+          commit_msg="chore(isolate_proto): regenerate gRPC bindings (isolate v${ISOLATE_VERSION})"
+
+          # Try to commit + push. On push rejection (someone else pushed to the
+          # branch in the meantime), reset to remote HEAD, re-run regen against
+          # the new state, and try again. We never rebase the regen commit
+          # itself because generated files don't merge cleanly across two
+          # different regen baselines.
+          for attempt in 1 2 3 4 5; do
+            if [ -n "$(git status --porcelain .)" ]; then
+              git add .
+              git commit -m "${commit_msg}"
+            else
+              echo "No changes to commit on attempt ${attempt}."
+              exit 0
+            fi
+
+            if git push origin "HEAD:${branch}"; then
+              echo "Push succeeded on attempt ${attempt}."
+              exit 0
+            fi
+
+            echo "Push rejected on attempt ${attempt}; re-syncing and regenerating."
+            git fetch origin "${branch}"
+            git reset --hard "origin/${branch}"
+            python ../../tools/regen_grpc.py --isolate-path "${ISOLATE_PATH}"
+          done
+
+          echo "::error::Failed to push regenerated bindings after 5 attempts."
+          exit 1
