@@ -346,7 +346,11 @@ def _set_rev(args):
     client = get_client(args.host, args.team)
     with client.connect() as connection:
         alias_info = connection.create_alias(
-            args.app_name, args.app_rev, args.auth, environment_name=args.env
+            args.app_name,
+            args.app_rev,
+            args.auth,
+            environment_name=args.env,
+            deployment_strategy=args.strategy,
         )
         table = _apps_table([alias_info])
 
@@ -354,7 +358,7 @@ def _set_rev(args):
 
 
 def _add_set_rev_parser(subparsers, parents):
-    from fal.sdk import ALIAS_AUTH_MODES
+    from fal.sdk import ALIAS_AUTH_MODES, DEPLOYMENT_STRATEGIES
 
     set_help = "Set application to a particular revision."
     parser = subparsers.add_parser(
@@ -376,6 +380,12 @@ def _add_set_rev_parser(subparsers, parents):
         choices=ALIAS_AUTH_MODES,
         default=None,
         help="Application authentication mode.",
+    )
+    parser.add_argument(
+        "--strategy",
+        choices=DEPLOYMENT_STRATEGIES,
+        required=True,
+        help="Deployment strategy.",
     )
     add_env_argument(parser)
     parser.set_defaults(func=_set_rev)
