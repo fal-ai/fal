@@ -341,7 +341,8 @@ def test_sync_upload_passes_lifecycle_to_multipart(monkeypatch):
 
     with patch(
         "fal_client.client.MultipartUpload.save", return_value="https://file"
-    ) as mock_save:
+    ) as mock_save, patch("fal_client.client.SyncClient._get_cdn_client") as mock_cdn:
+        mock_cdn.return_value = Mock()
         client = SyncClient(key="test-key")
         url = client.upload(
             b"hello",
@@ -542,7 +543,10 @@ async def test_async_upload_passes_lifecycle_to_multipart(monkeypatch):
         "fal_client.client.AsyncMultipartUpload.save",
         new_callable=AsyncMock,
         return_value="https://file",
-    ) as mock_save:
+    ) as mock_save, patch(
+        "fal_client.client.AsyncClient._get_cdn_client", new_callable=AsyncMock
+    ) as mock_cdn:
+        mock_cdn.return_value = Mock()
         client = AsyncClient(key="test-key")
         url = await client.upload(
             b"hello",
