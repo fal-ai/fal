@@ -112,9 +112,6 @@ def addition_app(input: Input) -> Output:
     return Output(result=input.lhs + input.rhs)
 
 
-nomad_addition_app = addition_app.on(_scheduler="nomad")
-
-
 @fal.function(
     kind="container",
     image=ContainerImage.from_dockerfile_str(
@@ -548,18 +545,6 @@ def test_app(
 
 
 @pytest.fixture()
-def test_nomad_app(
-    user: User,
-    register_app,
-):
-    with register_app(nomad_addition_app, "nomad") as (
-        app_alias,
-        _,
-    ):
-        yield f"{user.username}/{app_alias}"
-
-
-@pytest.fixture()
 def test_container_app(
     user: User,
     register_app,
@@ -665,17 +650,11 @@ def test_broken_app_failure(host: api.FalServerlessHost, user: User):
     assert "Failed to generate OpenAPI" in str(e)
 
 
-def test_app_client(test_app: str, test_nomad_app: str):
+def test_app_client(test_app: str):
     response = apps.run(test_app, arguments={"lhs": 1, "rhs": 2})
     assert response["result"] == 3
 
     response = apps.run(test_app, arguments={"lhs": 2, "rhs": 3, "wait_time": 1})
-    assert response["result"] == 5
-
-    response = apps.run(test_nomad_app, arguments={"lhs": 1, "rhs": 2})
-    assert response["result"] == 3
-
-    response = apps.run(test_nomad_app, arguments={"lhs": 2, "rhs": 3, "wait_time": 1})
     assert response["result"] == 5
 
 

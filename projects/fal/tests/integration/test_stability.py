@@ -55,20 +55,6 @@ def test_regular_function(isolated_client):
     assert mult(5, 2) == 10
 
 
-def test_regular_function_on_nomad(isolated_client):
-    @isolated_client(_scheduler="nomad")
-    def regular_function():
-        return 42
-
-    assert regular_function() == 42
-
-    @isolated_client(_scheduler="nomad")
-    def mult(a, b):
-        return a * b
-
-    assert mult(5, 2) == 10
-
-
 def test_regular_function_in_a_container(isolated_client):
     @isolated_client("container")
     def regular_function():
@@ -470,23 +456,6 @@ def test_futures(isolated_client):
     assert future_2.result() == 4
     assert future_3.result() == 6
     assert future_4.result() == 8
-
-
-@pytest.mark.xfail(reason="Nomad does not support conda")
-def test_conda_environment_on_nomad(isolated_client):
-    @isolated_client(
-        "conda",
-        packages=["pyjokes=0.6.0"],
-        machine_type="L",
-        # conda is only supported on Kubernetes
-        _scheduler="nomad",
-    )
-    def regular_function():
-        import pyjokes
-
-        return pyjokes.__version__
-
-    assert regular_function() == "0.6.0"
 
 
 @pytest.mark.xfail(reason="Broken on nomad")
