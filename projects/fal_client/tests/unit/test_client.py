@@ -264,14 +264,30 @@ def test_sync_upload_falls_back_to_cdn():
         fallback_response.json.return_value = {"access_url": "https://fallback/file"}
         mock_request.side_effect = [Exception("boom"), fallback_response]
         mock_cdn_client.return_value = Mock()
+        preference = {"expiration_duration_seconds": 3600}
 
         client = SyncClient(key="test-key")
-        url = client.upload(b"hello", content_type="text/plain")
+        url = client.upload(
+            b"hello",
+            content_type="text/plain",
+            lifecycle=preference,
+        )
 
     assert url == "https://fallback/file"
     assert mock_request.call_args_list[0][0][2] == f"{CDN_URL}/files/upload"
     assert (
         mock_request.call_args_list[1][0][2] == f"{FAL_CDN_FALLBACK_URL}/files/upload"
+    )
+    expected = json.dumps(preference)
+    assert (
+        mock_request.call_args_list[0][1]["headers"]["X-Fal-Object-Lifecycle"]
+        == expected
+    )
+    assert (
+        mock_request.call_args_list[1][1]["headers"][
+            "X-Fal-Object-Lifecycle-Preference"
+        ]
+        == expected
     )
 
 
@@ -291,9 +307,14 @@ def test_sync_upload_falls_back_to_storage():
             Mock(),
         ]
         mock_cdn_client.return_value = Mock()
+        preference = {"expiration_duration_seconds": 3600}
 
         client = SyncClient(key="test-key")
-        url = client.upload(b"hello", content_type="text/plain")
+        url = client.upload(
+            b"hello",
+            content_type="text/plain",
+            lifecycle=preference,
+        )
 
     assert url == "https://file.example.com/file"
     assert mock_request.call_args_list[0][0][2] == f"{CDN_URL}/files/upload"
@@ -305,6 +326,76 @@ def test_sync_upload_falls_back_to_storage():
         == f"{REST_URL}/storage/upload/initiate?storage_type=gcs"
     )
     assert mock_request.call_args_list[3][0][2] == "https://upload.example.com/put"
+    expected = json.dumps(preference)
+    assert (
+        mock_request.call_args_list[2][1]["headers"][
+            "X-Fal-Object-Lifecycle-Preference"
+        ]
+        == expected
+    )
+
+
+def test_sync_upload_passes_lifecycle_to_multipart(monkeypatch):
+    monkeypatch.setattr("fal_client.client.MULTIPART_THRESHOLD", 1)
+    preference = {"expiration_duration_seconds": 3600}
+
+    with patch(
+        "fal_client.client.MultipartUpload.save", return_value="https://file"
+    ) as mock_save:
+        client = SyncClient(key="test-key")
+        url = client.upload(
+            b"hello",
+            content_type="text/plain",
+            lifecycle=preference,
+        )
+
+    assert url == "https://file"
+    assert mock_save.call_args.kwargs["object_lifecycle_preference"] == preference
+
+
+def test_sync_upload_lifecycle_expires_in_is_normalized():
+    with patch("fal_client.client._maybe_retry_request") as mock_request:
+        response = Mock()
+        response.json.return_value = {"access_url": "https://cdn-only/file"}
+        mock_request.return_value = response
+
+        client = SyncClient(key="test-key")
+        url = client.upload(
+            b"hello",
+            content_type="text/plain",
+            repository="cdn",
+            fallback_repository=[],
+            lifecycle={"expiresIn": "1h"},
+        )
+
+    assert url == "https://cdn-only/file"
+    lifecycle_header = mock_request.call_args[1]["headers"]["X-Fal-Object-Lifecycle"]
+    assert json.loads(lifecycle_header) == {
+        "expiration_duration_seconds": 3600,
+        "allow_io_storage": True,
+    }
+
+
+def test_sync_upload_lifecycle_immediate_disables_io_storage():
+    with patch("fal_client.client._maybe_retry_request") as mock_request:
+        response = Mock()
+        response.json.return_value = {"access_url": "https://cdn-only/file"}
+        mock_request.return_value = response
+
+        client = SyncClient(key="test-key")
+        url = client.upload(
+            b"hello",
+            content_type="text/plain",
+            repository="cdn",
+            fallback_repository=[],
+            lifecycle={"expiresIn": "immediate"},
+        )
+
+    assert url == "https://cdn-only/file"
+    lifecycle_header = mock_request.call_args[1]["headers"]["X-Fal-Object-Lifecycle"]
+    assert json.loads(lifecycle_header) == {
+        "allow_io_storage": False,
+    }
 
 
 def test_sync_upload_respects_repository_order():
@@ -366,14 +457,30 @@ async def test_async_upload_falls_back_to_cdn():
         )
         mock_request.side_effect = [Exception("boom"), fallback_response]
         mock_cdn_client.return_value = Mock()
+        preference = {"expiration_duration_seconds": 3600}
 
         client = AsyncClient(key="test-key")
-        url = await client.upload(b"hello", content_type="text/plain")
+        url = await client.upload(
+            b"hello",
+            content_type="text/plain",
+            lifecycle=preference,
+        )
 
     assert url == "https://fallback/file"
     assert mock_request.call_args_list[0][0][2] == f"{CDN_URL}/files/upload"
     assert (
         mock_request.call_args_list[1][0][2] == f"{FAL_CDN_FALLBACK_URL}/files/upload"
+    )
+    expected = json.dumps(preference)
+    assert (
+        mock_request.call_args_list[0][1]["headers"]["X-Fal-Object-Lifecycle"]
+        == expected
+    )
+    assert (
+        mock_request.call_args_list[1][1]["headers"][
+            "X-Fal-Object-Lifecycle-Preference"
+        ]
+        == expected
     )
 
 
@@ -398,9 +505,14 @@ async def test_async_upload_falls_back_to_storage():
             Mock(),
         ]
         mock_cdn_client.return_value = Mock()
+        preference = {"expiration_duration_seconds": 3600}
 
         client = AsyncClient(key="test-key")
-        url = await client.upload(b"hello", content_type="text/plain")
+        url = await client.upload(
+            b"hello",
+            content_type="text/plain",
+            lifecycle=preference,
+        )
 
     assert url == "https://file.example.com/file"
     assert mock_request.call_args_list[0][0][2] == f"{CDN_URL}/files/upload"
@@ -412,6 +524,34 @@ async def test_async_upload_falls_back_to_storage():
         == f"{REST_URL}/storage/upload/initiate?storage_type=gcs"
     )
     assert mock_request.call_args_list[3][0][2] == "https://upload.example.com/put"
+    expected = json.dumps(preference)
+    assert (
+        mock_request.call_args_list[2][1]["headers"][
+            "X-Fal-Object-Lifecycle-Preference"
+        ]
+        == expected
+    )
+
+
+@pytest.mark.asyncio
+async def test_async_upload_passes_lifecycle_to_multipart(monkeypatch):
+    monkeypatch.setattr("fal_client.client.MULTIPART_THRESHOLD", 1)
+    preference = {"expiration_duration_seconds": 3600}
+
+    with patch(
+        "fal_client.client.AsyncMultipartUpload.save",
+        new_callable=AsyncMock,
+        return_value="https://file",
+    ) as mock_save:
+        client = AsyncClient(key="test-key")
+        url = await client.upload(
+            b"hello",
+            content_type="text/plain",
+            lifecycle=preference,
+        )
+
+    assert url == "https://file"
+    assert mock_save.call_args.kwargs["object_lifecycle_preference"] == preference
 
 
 @pytest.mark.asyncio
