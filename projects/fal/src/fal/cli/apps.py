@@ -384,7 +384,7 @@ def _add_set_rev_parser(subparsers, parents):
     parser.add_argument(
         "--strategy",
         choices=DEPLOYMENT_STRATEGIES,
-        required=True,
+        default=None,
         help="Deployment strategy.",
     )
     add_env_argument(parser)
