@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       isolate_version:
-        description: "fal-ai/isolate tag to clone (without leading 'v'). If empty, the latest tag is used."
+        description: "fal-ai/isolate tag to use (without leading 'v'). If empty, the latest tag is used."
         required: false
         type: string
 
@@ -52,19 +52,6 @@ jobs:
           token: ${{ steps.app_token.outputs.token }}
           fetch-depth: 0
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-          cache: pip
-
-      - name: Configure git auth for private fal-ai/isolate clone
-        env:
-          APP_TOKEN: ${{ steps.app_token.outputs.token }}
-        run: |
-          # Inject token for any https://github.com/ clone (regen_grpc.py does
-          # its own `git clone` of fal-ai/isolate).
-          git config --global url."https://x-access-token:${APP_TOKEN}@github.com/".insteadOf "https://github.com/"
-
       - name: Determine isolate version
         id: isolate_version
         env:
@@ -84,6 +71,19 @@ jobs:
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "Using isolate version: ${version}"
 
+      - name: Checkout fal-ai/isolate
+        uses: actions/checkout@v4
+        with:
+          repository: fal-ai/isolate
+          ref: v${{ steps.isolate_version.outputs.version }}
+          token: ${{ steps.app_token.outputs.token }}
+          path: _isolate
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
       - name: Install isolate_proto[dev] (provides regen tooling)
         run: |
           python -m pip install --upgrade pip
@@ -92,7 +92,7 @@ jobs:
       - name: Regenerate gRPC bindings
         working-directory: projects/isolate_proto
         run: |
-          python ../../tools/regen_grpc.py --isolate-version "${{ steps.isolate_version.outputs.version }}"
+          python ../../tools/regen_grpc.py --isolate-path "${{ github.workspace }}/_isolate"
 
       - name: Run pre-commit on regenerated files
         continue-on-error: true
