@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import pickle
 import signal
+import socket
 import subprocess
 import sys
 import textwrap
@@ -757,8 +758,18 @@ async def test_serve_exits_with_exception_on_setup_failure(
         await app.serve()
 
 
+def _find_free_port():
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("localhost", 0))
+        return s.getsockname()[1]
+
+
 def test_app_lifecycle_callbacks_are_called():
-    script = textwrap.dedent("""\
+    """SIGTERM triggers handle_exit, then teardown runs during shutdown."""
+    port = _find_free_port()
+    metrics_port = _find_free_port()
+
+    script = textwrap.dedent(f"""\
         import os
         os.environ["IS_ISOLATE_AGENT"] = "1"
 
@@ -780,16 +791,26 @@ def test_app_lifecycle_callbacks_are_called():
                 return "ok"
 
         app = LifecycleApp()
-        asyncio.run(app.serve())
+        asyncio.run(app.serve(port={port}, metrics_port={metrics_port}))
     """)
 
     proc = subprocess.Popen(
-        [sys.executable, "-c", script],
+        [sys.executable, "-u", "-c", script],
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
     )
+    assert proc.stdout is not None
 
     try:
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                if s.connect_ex(("localhost", port)) == 0:
+                    break
+            time.sleep(0.1)
+        else:
+            raise AssertionError("App server did not start in time")
+
         time.sleep(0.5)
         proc.send_signal(signal.SIGTERM)
         proc.wait(timeout=10)
@@ -798,7 +819,6 @@ def test_app_lifecycle_callbacks_are_called():
             proc.kill()
             proc.wait()
 
-    assert proc.stdout is not None
     lines = [line.decode("utf-8").strip() for line in proc.stdout.readlines()]
 
     assert "setup" in lines
