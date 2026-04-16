@@ -571,20 +571,24 @@ def test_worker_env_vars(isolated_client):
     from fal.flags import GRPC_HOST
 
     @isolated_client("virtualenv", keep_alive=5)
-    def get_env_var(name: str) -> str | None:
+    def get_env_vars() -> str | None:
         import os
 
-        return os.getenv(name, None)
+        return {
+            "FAL_HOST": os.getenv("FAL_HOST", None),
+            "FAL_KEY_ID": os.getenv("FAL_KEY_ID", None),
+            "FAL_KEY_SECRET": os.getenv("FAL_KEY_SECRET", None),
+        }
 
-    fal_host = get_env_var("FAL_HOST")
+    env_vars = get_env_vars()
+    fal_host = env_vars["FAL_HOST"]
+    fal_key_id = env_vars["FAL_KEY_ID"]
+    fal_key_secret = env_vars["FAL_KEY_SECRET"]
+
     assert fal_host, "FAL_HOST is not set"
     assert fal_host == GRPC_HOST, "FAL_HOST is not set to the correct value"
     print(f"FAL_HOST: {fal_host}, GRPC_HOST: {GRPC_HOST}")
-
-    fal_key_id = get_env_var("FAL_KEY_ID")
     assert fal_key_id, "FAL_KEY_ID is not set"
-
-    fal_key_secret = get_env_var("FAL_KEY_SECRET")
     assert fal_key_secret, "FAL_KEY_SECRET is not set"
 
 
