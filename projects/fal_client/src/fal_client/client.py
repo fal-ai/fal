@@ -1225,7 +1225,8 @@ def _normalize_upload_lifecycle(
                 {"user": rule.user, "decision": rule.decision}
                 for rule in lifecycle.initial_acl.rules
             ]
-        normalized["initial_acl"] = acl_payload
+        if acl_payload:
+            normalized["initial_acl"] = acl_payload
 
     return normalized or None
 

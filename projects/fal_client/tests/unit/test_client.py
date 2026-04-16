@@ -509,6 +509,29 @@ def test_sync_upload_lifecycle_skips_empty_acl_rules():
     }
 
 
+def test_sync_upload_lifecycle_omits_empty_acl_object():
+    with patch("fal_client.client._maybe_retry_request") as mock_request:
+        response = Mock()
+        response.json.return_value = {"access_url": "https://cdn-only/file"}
+        mock_request.return_value = response
+
+        client = SyncClient(key="test-key")
+        url = client.upload(
+            b"hello",
+            content_type="text/plain",
+            repository="cdn",
+            fallback_repository=[],
+            lifecycle=StorageSettings(
+                initial_acl=StorageACL(),
+            ),
+        )
+
+    assert url == "https://cdn-only/file"
+    request_headers = mock_request.call_args[1]["headers"]
+    assert "X-Fal-Object-Lifecycle" not in request_headers
+    assert "X-Fal-Object-Lifecycle-Preference" not in request_headers
+
+
 def test_sync_upload_respects_repository_order():
     with patch("fal_client.client._maybe_retry_request") as mock_request:
         cdn_response = Mock()
