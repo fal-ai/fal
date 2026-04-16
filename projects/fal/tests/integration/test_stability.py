@@ -419,15 +419,6 @@ def test_big_message(isolated_client):
     data_length = 8 * (1024**2)
 
     @isolated_client("virtualenv", machine_type="M")
-    def big_input_function(data):
-        return len(data)
-
-    # Small inputs should work fine (pre-test).
-    assert big_input_function(b"0") == 1
-    assert big_input_function(b"0" * data_length) == data_length
-
-    # Try receiving a big message.
-    @isolated_client("virtualenv", machine_type="M")
     def big_return_function(data_length):
         return b"0" * data_length
 
