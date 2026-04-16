@@ -386,6 +386,8 @@ message SetAliasRequest {
     string revision = 2;
     optional ApplicationAuthMode auth_mode = 3;
     optional string environment_name = 4;
+
+    // Optional since nullable means no-op on the server side
     optional DeploymentStrategy deployment_strategy = 5;
 }
 
