@@ -766,8 +766,6 @@ async def test_serve_exits_with_exception_on_setup_failure(
 
     with pytest.raises(Exception, match="TEST EXCEPTION"):
         await app.serve()
-
-
 def _find_free_port():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(("localhost", 0))
