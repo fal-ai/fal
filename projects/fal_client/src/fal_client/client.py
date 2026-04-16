@@ -65,7 +65,10 @@ if TYPE_CHECKING:
 AnyJSON = Dict[str, Any]
 UploadRepositoryId = Literal["fal_v3", "cdn", "fal"]
 LifecyclePreferencePayload = Dict[str, Any]
-ObjectExpiration = Literal["never", "immediate", "1h", "1d", "7d", "30d", "1y"] | int
+ObjectExpiration = Union[
+    Literal["never", "immediate", "1h", "1d", "7d", "30d", "1y"],
+    int,
+]
 StorageACLDecision = Literal["hide", "forbid", "allow"]
 
 RUN_URL_FORMAT = f"https://{FAL_RUN_HOST}/"
