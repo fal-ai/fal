@@ -138,6 +138,16 @@ def test_wrap_app_allows_resolver_with_container_kind():
     assert fn.options.environment.get("resolver") == "uv"
 
 
+def test_function_force_env_build_propagates_for_container_apps():
+    image = ContainerImage.from_dockerfile_str("FROM python:3.11-slim")
+
+    @fal.function(image=image, force_env_build=True)
+    def container_function():
+        return "ok"
+
+    assert container_function.options.environment.get("force") is True
+
+
 def test_wrap_app_limit_max_requests_propagates_to_serve(
     isolate_agent_env, monkeypatch: pytest.MonkeyPatch
 ):

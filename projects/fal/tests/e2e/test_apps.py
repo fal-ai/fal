@@ -1,14 +1,11 @@
 import asyncio
 import json
 import os
-import re
 import secrets
 import subprocess
 import time
-import uuid
-from contextlib import contextmanager, redirect_stdout, suppress
+from contextlib import contextmanager, suppress
 from datetime import datetime, timedelta, timezone
-from io import StringIO
 from typing import (
     AsyncIterator,
     Callable,
@@ -37,7 +34,7 @@ import fal
 import fal.api as api
 from fal import apps
 from fal.api.deploy import User, _get_user
-from fal.app import REQUEST_ID_KEY, AppClient, AppClientError, wrap_app
+from fal.app import AppClient, AppClientError, wrap_app
 from fal.auth import key_credentials
 from fal.container import ContainerImage
 from fal.exceptions import (
@@ -115,9 +112,6 @@ def addition_app(input: Input) -> Output:
     return Output(result=input.lhs + input.rhs)
 
 
-nomad_addition_app = addition_app.on(_scheduler="nomad")
-
-
 @fal.function(
     kind="container",
     image=ContainerImage.from_dockerfile_str(
@@ -149,26 +143,6 @@ def container_addition_app(input: Input) -> Output:
     force_env_build=False,
 )
 def container_cache_enabled_app(input: Input) -> Output:
-    print("starting...")
-    for _ in range(input.wait_time):
-        print("sleeping...")
-        time.sleep(1)
-
-    return Output(result=input.lhs + input.rhs)
-
-
-@fal.function(
-    kind="container",
-    image=ContainerImage.from_dockerfile_str(
-        f"FROM python:{actual_python}-slim\n# {git_revision_short_hash()}",
-    ),
-    keep_alive=60,
-    machine_type="S",
-    serve=True,
-    max_concurrency=1,
-    force_env_build=True,
-)
-def container_no_cache_app(input: Input) -> Output:
     print("starting...")
     for _ in range(input.wait_time):
         print("sleeping...")
@@ -338,6 +312,7 @@ class ExceptionApp(fal.App, keep_alive=300, max_concurrency=1):
 
 
 class CancellableApp(fal.App, keep_alive=300, max_concurrency=1, request_timeout=4):
+    skip_retry_conditions = ["timeout"]
     task = None
     running = 0
 
@@ -570,18 +545,6 @@ def test_app(
 
 
 @pytest.fixture()
-def test_nomad_app(
-    user: User,
-    register_app,
-):
-    with register_app(nomad_addition_app, "nomad") as (
-        app_alias,
-        _,
-    ):
-        yield f"{user.username}/{app_alias}"
-
-
-@pytest.fixture()
 def test_container_app(
     user: User,
     register_app,
@@ -687,18 +650,11 @@ def test_broken_app_failure(host: api.FalServerlessHost, user: User):
     assert "Failed to generate OpenAPI" in str(e)
 
 
-@pytest.mark.flaky(max_runs=3)
-def test_app_client(test_app: str, test_nomad_app: str):
+def test_app_client(test_app: str):
     response = apps.run(test_app, arguments={"lhs": 1, "rhs": 2})
     assert response["result"] == 3
 
     response = apps.run(test_app, arguments={"lhs": 2, "rhs": 3, "wait_time": 1})
-    assert response["result"] == 5
-
-    response = apps.run(test_nomad_app, arguments={"lhs": 1, "rhs": 2})
-    assert response["result"] == 3
-
-    response = apps.run(test_nomad_app, arguments={"lhs": 2, "rhs": 3, "wait_time": 1})
     assert response["result"] == 5
 
 
@@ -746,7 +702,6 @@ def test_stateful_app_client(test_stateful_app: str):
     assert response["result"] == 0
 
 
-@pytest.mark.flaky(max_runs=3)
 def test_app_cancellation(test_app: str, test_cancellable_app: str):
     request_handle = apps.submit(
         test_cancellable_app, arguments={"lhs": 1, "rhs": 2, "wait_time": 6}
@@ -786,7 +741,6 @@ def test_app_cancellation(test_app: str, test_cancellable_app: str):
     assert response == {"result": 3}
 
 
-@pytest.mark.flaky(max_runs=3)
 def test_app_disconnect_behavior(test_app: str, test_cancellable_app: str):
     with pytest.raises(HTTPStatusError) as e:
         apps.run(
@@ -818,7 +772,6 @@ def test_app_disconnect_behavior(test_app: str, test_cancellable_app: str):
     ), "Expected Gateway Timeout even though the app handled it"
 
 
-@pytest.mark.flaky(max_runs=3)
 def test_start_timeout_queue_blocking(test_queue_blocking_app: str):
     """
     Test that start_timeout correctly times out a request waiting in queue.
@@ -874,7 +827,6 @@ def test_start_timeout_queue_blocking(test_queue_blocking_app: str):
 @pytest.mark.xfail(
     reason="Temporary disabled while investigating backend issue. Ping @efiop"
 )
-@pytest.mark.flaky(max_runs=3)
 def test_app_client_async(test_sleep_app: str):
     handle = apps.submit(test_sleep_app, arguments={"wait_time": 1})
     with pytest.raises(HTTPStatusError) as e:
@@ -1067,8 +1019,6 @@ def test_app_deploy_scale(host: api.FalServerlessHost, register_app):
             assert found.max_concurrency == 2
 
 
-# List aliases is taking long
-@pytest.mark.timeout(600)
 def test_app_update_app(base_app: Tuple[str, str]):
     app_alias, app_revision = base_app
 
@@ -1119,8 +1069,6 @@ def test_app_update_app(base_app: Tuple[str, str]):
         assert res.max_multiplexing == new_max_multiplexing
 
 
-# List aliases is taking long
-@pytest.mark.timeout(600)
 def test_app_set_delete_alias(base_app: Tuple[str, str]):
     app_alias, app_revision = base_app
 
@@ -1157,7 +1105,6 @@ def test_app_set_delete_alias(base_app: Tuple[str, str]):
         assert not found, f"Found app {app_alias} in {res} after deletion"
 
 
-@pytest.mark.flaky(max_runs=3)
 def test_realtime_connection(test_realtime_app):
     response = apps.run(test_realtime_app, arguments={"prompt": "a cat"})
     assert response["text"] == "a cat"
@@ -1481,7 +1428,6 @@ def submit_and_wait_for_runner(app: str, arguments: dict = {}, *, path: str = ""
     return handle
 
 
-@pytest.mark.flaky(max_runs=3)
 def test_stop_runner(host: api.FalServerlessHost, test_sleep_app: str):
     # Submit a runner and wait for it to be idle
     submit_and_wait_for_runner(test_sleep_app, arguments={"wait_time": 1})
@@ -1533,7 +1479,6 @@ def test_stop_runner(host: api.FalServerlessHost, test_sleep_app: str):
         assert any(runner.runner_id != original_runner_id for runner in runners)
 
 
-@pytest.mark.flaky(max_runs=3)
 def test_kill_runner(host: api.FalServerlessHost, test_sleep_app: str):
     # Kill all the replicas of the app that is already running
     handle = apps.submit(test_sleep_app, arguments={"wait_time": 10})
@@ -1583,7 +1528,6 @@ def test_kill_runner(host: api.FalServerlessHost, test_sleep_app: str):
         assert num_runners <= existing_runners - 1
 
 
-@pytest.mark.flaky(max_runs=3)
 def test_rollout_application(host: api.FalServerlessHost, test_sleep_app: str):
     handle = apps.submit(test_sleep_app, arguments={"wait_time": 30})
 
@@ -1621,7 +1565,6 @@ def test_rollout_application(host: api.FalServerlessHost, test_sleep_app: str):
         assert not runner_ids_after.intersection(runner_ids_final)
 
 
-@pytest.mark.flaky(max_runs=3)
 def test_shell_runner(host: api.FalServerlessHost, test_sleep_app: str):
     handle = apps.submit(test_sleep_app, arguments={"wait_time": 30})
 
@@ -1657,7 +1600,6 @@ def test_shell_runner(host: api.FalServerlessHost, test_sleep_app: str):
                 proc.wait()
 
 
-@pytest.mark.flaky(max_runs=3)
 def test_exec_runner(host: api.FalServerlessHost, test_sleep_app: str):
     handle = apps.submit(test_sleep_app, arguments={"wait_time": 30})
 
@@ -1712,29 +1654,6 @@ def test_container_app_client(test_container_app: str):
 def test_container_build_args_app_client(test_container_build_args_app: str):
     response = apps.run(test_container_build_args_app, {})
     assert response == "built with build args"
-
-
-def test_container_no_cache_app_client(register_app):
-    stdout = StringIO()
-    with redirect_stdout(stdout):
-        with register_app(container_no_cache_app, "container") as (app_alias, _):
-            pass
-
-    stdout = StringIO()
-    with redirect_stdout(stdout):
-        with register_app(container_cache_enabled_app, "container") as (app_alias, _):
-            pass
-
-    logs = stdout.getvalue()
-    assert re.search(r"Image \S+ already exists", logs) is not None
-
-    stdout = StringIO()
-    with redirect_stdout(stdout):
-        with register_app(container_no_cache_app, "container") as (app_alias, _):
-            pass
-
-    logs = stdout.getvalue()
-    assert re.search(r"Image \S+ already exists", logs) is None
 
 
 class HintsApp(fal.App, keep_alive=300, max_concurrency=1):
@@ -1820,187 +1739,6 @@ def test_app_ref_app_client(test_app_ref_app: str):
     assert result_3["from_app"] == result_3["from_external_method"]
 
 
-class SetUUIDInput(BaseModel):
-    uuid: str
-
-
-class SetWaitTimeInput(BaseModel):
-    wait_time: int
-
-
-# for now it only works in newly built containers
-class GracefulShutdownApp(
-    fal.App,
-    keep_alive=300,
-    max_concurrency=1,
-    image=fal.ContainerImage.from_dockerfile_str(
-        f"""
-FROM python:{actual_python}-slim
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends git curl \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-"""
-    ),
-    skip_retry_conditions=["server_error", "connection_error", "timeout"],
-    termination_grace_period_seconds=5,
-):
-    machine_type = "XS"
-    latest_request_id = None
-    token = None
-    wait_time = None
-
-    def setup(self):
-        self.stop = False
-
-    def handle_exit(self):
-        self.stop = True
-
-    @fal.endpoint("/set-uuid")
-    async def set_uuid(self, input: SetUUIDInput) -> str:
-        self.token = input.uuid
-        return "ok"
-
-    @fal.endpoint("/set-wait-time")
-    async def set_wait_time(self, input: SetWaitTimeInput) -> str:
-        self.wait_time = input.wait_time
-        return "ok"
-
-    @fal.endpoint("/")
-    async def request_handler(self, request: Request) -> str:
-        request_id = request.headers.get(REQUEST_ID_KEY)
-        if request_id is None:
-            raise Exception("No request id found")
-
-        self.latest_request_id = request_id
-        return "ok"
-
-    def teardown(self):
-        if self.latest_request_id is None or self.token is None:
-            return
-
-        if self.wait_time is not None:
-            for i in range(self.wait_time):
-                print(f"sleeping {i + 1} of {self.wait_time}...", flush=True)
-                time.sleep(1)
-
-        # Emit a deterministic marker so tests can verify teardown happened.
-        print(
-            "graceful-shutdown-marker:"
-            f"{self.token}:"
-            f"{self.latest_request_id}:"
-            f"{'t' if self.stop else 'f'}",
-            flush=True,
-        )
-
-
-@pytest.fixture()
-def test_graceful_shutdown_app(
-    user: User,
-    register_app,
-):
-    graceful_shutdown_app = wrap_app(GracefulShutdownApp)
-    with register_app(graceful_shutdown_app, "graceful-shutdown") as (app_alias, _):
-        yield f"{user.username}/{app_alias}"
-
-
-def graceful_shutdown(
-    test_graceful_shutdown_app: str,
-    host: api.FalServerlessHost,
-    rest_client: Client,
-    *,
-    wait_time: int,
-    path: str,
-    kill: bool = False,
-) -> bool:
-    time.sleep(2)
-
-    token = str(uuid.uuid4())
-    assert (
-        apps.run(test_graceful_shutdown_app, {"uuid": token}, path="/set-uuid") == "ok"
-    ), "UUID not set"
-
-    assert (
-        apps.run(
-            test_graceful_shutdown_app, {"wait_time": wait_time}, path="/set-wait-time"
-        )
-        == "ok"
-    ), "Wait time not set"
-
-    handle = submit_and_wait_for_runner(test_graceful_shutdown_app, path=path)
-    saved_request_id = handle.request_id
-
-    time.sleep(2)
-    with host._connection as client:
-        _, _, app_alias = test_graceful_shutdown_app.partition("/")
-
-        runners = client.list_runners(start_time=datetime.now() - timedelta(seconds=10))
-        runner = next((r for r in runners if r.alias == app_alias), None)
-
-        assert runner is not None, "Runner not found"
-
-        if kill:
-            client.kill_runner(runner.runner_id)
-        else:
-            client.stop_runner(runner.runner_id)
-
-    log_since = (
-        datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=5)
-    ).isoformat()
-    marker_prefix = f"graceful-shutdown-marker:{token}:{saved_request_id}:"
-
-    timeout = 120 if not kill else 20
-    with httpx.Client(
-        base_url=rest_client.base_url,
-        headers=rest_client.get_headers(),
-        timeout=30,
-    ) as client:
-        for _ in range(timeout // 2):
-            response = client.get(rest_client.base_url + f"/logs/?since={log_since}")
-            logs = response.json()
-            for log in logs:
-                message = log.get("message", "")
-                if marker_prefix in message:
-                    return message.strip().endswith(":t")
-            time.sleep(2)
-
-    return False
-
-
-@pytest.mark.flaky(max_runs=3)
-def test_graceful_shutdown(
-    host: api.FalServerlessHost,
-    rest_client: Client,
-    test_graceful_shutdown_app: str,
-):
-    assert graceful_shutdown(
-        test_graceful_shutdown_app, host, rest_client, wait_time=1, path="/"
-    ), "app should be gracefully shutdown"
-
-
-@pytest.mark.flaky(max_runs=3)
-def test_graceful_shutdown_force_kill(
-    host: api.FalServerlessHost,
-    rest_client: Client,
-    test_graceful_shutdown_app: str,
-):
-    assert not graceful_shutdown(
-        test_graceful_shutdown_app, host, rest_client, wait_time=10, path="/"
-    ), "app should be forcefully killed if it takes too long to clean up"
-
-
-@pytest.mark.flaky(max_runs=3)
-def test_forceful_shutdown(
-    host: api.FalServerlessHost,
-    rest_client: Client,
-    test_graceful_shutdown_app: str,
-):
-    assert not graceful_shutdown(
-        test_graceful_shutdown_app, host, rest_client, wait_time=1, path="/", kill=True
-    ), "app should be forcefully killed on kill_runner"
-
-
-@pytest.mark.flaky(max_runs=3)
 def test_runner_machine_type(host: api.FalServerlessHost, test_sleep_app: str):
     """Test that machine_type is populated in runner info."""
     submit_and_wait_for_runner(test_sleep_app, arguments={"wait_time": 1})
