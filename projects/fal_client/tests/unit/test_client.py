@@ -409,6 +409,44 @@ def test_sync_upload_lifecycle_immediate_disables_io_storage():
     }
 
 
+def test_sync_upload_lifecycle_never_is_normalized():
+    with patch("fal_client.client._maybe_retry_request") as mock_request:
+        response = Mock()
+        response.json.return_value = {"access_url": "https://cdn-only/file"}
+        mock_request.return_value = response
+
+        client = SyncClient(key="test-key")
+        url = client.upload(
+            b"hello",
+            content_type="text/plain",
+            repository="cdn",
+            fallback_repository=[],
+            lifecycle=StorageSettings(expires_in="never"),
+        )
+
+    assert url == "https://cdn-only/file"
+    lifecycle_header = mock_request.call_args[1]["headers"]["X-Fal-Object-Lifecycle"]
+    assert json.loads(lifecycle_header) == {
+        "expiration_duration_seconds": 3153600000,
+        "allow_io_storage": True,
+    }
+
+
+def test_sync_upload_lifecycle_integer_must_be_positive():
+    client = SyncClient(key="test-key")
+    with pytest.raises(
+        ValueError,
+        match="Integer lifecycle expiresIn value must be greater than 0 seconds",
+    ):
+        client.upload(
+            b"hello",
+            content_type="text/plain",
+            repository="cdn",
+            fallback_repository=[],
+            lifecycle=StorageSettings(expires_in=0),
+        )
+
+
 def test_sync_upload_lifecycle_includes_acl_and_allow_io_storage_override():
     with patch("fal_client.client._maybe_retry_request") as mock_request:
         response = Mock()
@@ -438,6 +476,35 @@ def test_sync_upload_lifecycle_includes_acl_and_allow_io_storage_override():
         "initial_acl": {
             "default": "forbid",
             "rules": [{"user": "usr_123", "decision": "allow"}],
+        },
+    }
+
+
+def test_sync_upload_lifecycle_skips_empty_acl_rules():
+    with patch("fal_client.client._maybe_retry_request") as mock_request:
+        response = Mock()
+        response.json.return_value = {"access_url": "https://cdn-only/file"}
+        mock_request.return_value = response
+
+        client = SyncClient(key="test-key")
+        url = client.upload(
+            b"hello",
+            content_type="text/plain",
+            repository="cdn",
+            fallback_repository=[],
+            lifecycle=StorageSettings(
+                initial_acl=StorageACL(
+                    default="forbid",
+                    rules=[],
+                ),
+            ),
+        )
+
+    assert url == "https://cdn-only/file"
+    lifecycle_header = mock_request.call_args[1]["headers"]["X-Fal-Object-Lifecycle"]
+    assert json.loads(lifecycle_header) == {
+        "initial_acl": {
+            "default": "forbid",
         },
     }
 

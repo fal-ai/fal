@@ -1175,7 +1175,7 @@ def _object_lifecycle_headers(
     headers: dict[str, str],
     object_lifecycle_preference: LifecyclePreferencePayload | None,
 ) -> None:
-    if object_lifecycle_preference:
+    if object_lifecycle_preference is not None:
         lifecycle_json = json.dumps(object_lifecycle_preference)
         # V3 and V1 upload backends do not use the same header key.
         headers["X-Fal-Object-Lifecycle"] = lifecycle_json
@@ -1184,6 +1184,10 @@ def _object_lifecycle_headers(
 
 def _get_upload_expiration_duration_seconds(expires_in: ObjectExpiration) -> int | None:
     if isinstance(expires_in, int):
+        if expires_in <= 0:
+            raise ValueError(
+                "Integer lifecycle expiresIn value must be greater than 0 seconds."
+            )
         return expires_in
     if expires_in in _UPLOAD_LIFECYCLE_EXPIRATION_VALUES:
         return _UPLOAD_LIFECYCLE_EXPIRATION_VALUES[expires_in]
@@ -1216,7 +1220,7 @@ def _normalize_upload_lifecycle(
         acl_payload: LifecyclePreferencePayload = {}
         if lifecycle.initial_acl.default is not None:
             acl_payload["default"] = lifecycle.initial_acl.default
-        if lifecycle.initial_acl.rules is not None:
+        if lifecycle.initial_acl.rules:
             acl_payload["rules"] = [
                 {"user": rule.user, "decision": rule.decision}
                 for rule in lifecycle.initial_acl.rules
@@ -1224,12 +1228,6 @@ def _normalize_upload_lifecycle(
         normalized["initial_acl"] = acl_payload
 
     return normalized or None
-
-
-def _resolve_upload_lifecycle(
-    lifecycle: StorageSettings | None,
-) -> LifecyclePreferencePayload | None:
-    return _normalize_upload_lifecycle(lifecycle)
 
 
 def _cdn_upload_headers(
@@ -1949,7 +1947,7 @@ class AsyncClient:
         if isinstance(data, str):
             data = data.encode("utf-8")
 
-        resolved_lifecycle = _resolve_upload_lifecycle(lifecycle)
+        resolved_lifecycle = _normalize_upload_lifecycle(lifecycle)
 
         repository_chain = _normalize_upload_repositories(
             repository, fallback_repository
@@ -2031,8 +2029,6 @@ class AsyncClient:
         if mime_type is None:
             mime_type = "application/octet-stream"
 
-        resolved_lifecycle = _resolve_upload_lifecycle(lifecycle)
-
         repository_chain = _normalize_upload_repositories(
             repository, fallback_repository
         )
@@ -2040,6 +2036,7 @@ class AsyncClient:
             os.path.getsize(path) > MULTIPART_THRESHOLD
             and repository_chain[0] == "fal_v3"
         ):
+            resolved_lifecycle = _normalize_upload_lifecycle(lifecycle)
             client = await self._get_cdn_client()
             return await AsyncMultipartUpload.save_file(
                 file_path=str(path),
@@ -2448,7 +2445,7 @@ class SyncClient:
         if isinstance(data, str):
             data = data.encode("utf-8")
 
-        resolved_lifecycle = _resolve_upload_lifecycle(lifecycle)
+        resolved_lifecycle = _normalize_upload_lifecycle(lifecycle)
 
         repository_chain = _normalize_upload_repositories(
             repository, fallback_repository
@@ -2530,8 +2527,6 @@ class SyncClient:
         if mime_type is None:
             mime_type = "application/octet-stream"
 
-        resolved_lifecycle = _resolve_upload_lifecycle(lifecycle)
-
         repository_chain = _normalize_upload_repositories(
             repository, fallback_repository
         )
@@ -2539,6 +2534,7 @@ class SyncClient:
             os.path.getsize(path) > MULTIPART_THRESHOLD
             and repository_chain[0] == "fal_v3"
         ):
+            resolved_lifecycle = _normalize_upload_lifecycle(lifecycle)
             client = self._get_cdn_client()
             return MultipartUpload.save_file(
                 file_path=str(path),
