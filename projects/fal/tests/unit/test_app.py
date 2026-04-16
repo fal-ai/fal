@@ -2,6 +2,11 @@ from __future__ import annotations
 
 import os
 import pickle
+import signal
+import subprocess
+import sys
+import textwrap
+import time
 from contextlib import ExitStack
 from contextvars import ContextVar
 from typing import AsyncIterator, Iterator
@@ -750,3 +755,52 @@ async def test_serve_exits_with_exception_on_setup_failure(
 
     with pytest.raises(Exception, match="TEST EXCEPTION"):
         await app.serve()
+
+
+def test_app_lifecycle_callbacks_are_called():
+    script = textwrap.dedent("""\
+        import os
+        os.environ["IS_ISOLATE_AGENT"] = "1"
+
+        import asyncio
+        from fal import App, endpoint
+
+        class LifecycleApp(App):
+            def setup(self):
+                print("setup")
+
+            def handle_exit(self):
+                print("handle_exit")
+
+            def teardown(self):
+                print("teardown")
+
+            @endpoint("/")
+            def run(self):
+                return "ok"
+
+        app = LifecycleApp()
+        asyncio.run(app.serve())
+    """)
+
+    proc = subprocess.Popen(
+        [sys.executable, "-c", script],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+    try:
+        time.sleep(0.5)
+        proc.send_signal(signal.SIGTERM)
+        proc.wait(timeout=10)
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait()
+
+    assert proc.stdout is not None
+    lines = [line.decode("utf-8").strip() for line in proc.stdout.readlines()]
+
+    assert "setup" in lines
+    assert "handle_exit" in lines
+    assert "teardown" in lines
