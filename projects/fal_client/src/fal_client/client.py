@@ -88,11 +88,13 @@ EXECUTOR = concurrent.futures.ThreadPoolExecutor(
     thread_name_prefix="FAL_CLIENT_EXECUTOR"
 )
 
+_IMMEDIATE_EXPIRATION_SECONDS = 60
+
 _UPLOAD_LIFECYCLE_EXPIRATION_VALUES: dict[str, int | None] = {
     "never": None,
     # Backends treat None and 0 as no-expiration, so use a small positive TTL
     # for deterministic near-immediate expiration behavior.
-    "immediate": 60,
+    "immediate": _IMMEDIATE_EXPIRATION_SECONDS,
     "1h": 3600,
     "1d": 86400,
     "7d": 604800,
@@ -115,6 +117,13 @@ class StorageACL:
 
 @dataclass(frozen=True)
 class StorageSettings:
+    """Lifecycle configuration for uploaded files.
+
+    `expires_in="never"` is represented by omitting lifecycle expiration headers
+    when no other lifecycle fields are set, which relies on the backend default
+    retention behavior for uploads.
+    """
+
     expires_in: ObjectExpiration | None = None
     initial_acl: StorageACL | None = None
 
@@ -1932,8 +1941,12 @@ class AsyncClient:
         | None = None,
         lifecycle: StorageSettings | None = None,
     ) -> str:
-        """Upload the given data blob to the CDN and return the access URL. The content type should be specified
-        as the second argument. Use upload_file or upload_image for convenience."""
+        """Upload the given data blob and return the access URL.
+
+        The content type should be specified as the second argument. Use
+        `upload_file()` or `upload_image()` for convenience. Pass `lifecycle` to
+        control uploaded object expiration and initial ACL settings.
+        """
 
         auth = self._get_auth()
 
@@ -2016,7 +2029,11 @@ class AsyncClient:
         | None = None,
         lifecycle: StorageSettings | None = None,
     ) -> str:
-        """Upload a file from the local filesystem to the CDN and return the access URL."""
+        """Upload a local file and return the access URL.
+
+        Pass `lifecycle` to control uploaded object expiration and initial ACL
+        settings.
+        """
 
         mime_type, _ = mimetypes.guess_type(path)
         if mime_type is None:
@@ -2060,7 +2077,11 @@ class AsyncClient:
         | None = None,
         lifecycle: StorageSettings | None = None,
     ) -> str:
-        """Upload a pillow image object to the CDN and return the access URL."""
+        """Upload a Pillow image object and return the access URL.
+
+        Pass `lifecycle` to control uploaded object expiration and initial ACL
+        settings.
+        """
 
         with io.BytesIO() as buffer:
             image.save(buffer, format=format)
@@ -2430,8 +2451,12 @@ class SyncClient:
         | None = None,
         lifecycle: StorageSettings | None = None,
     ) -> str:
-        """Upload the given data blob to the CDN and return the access URL. The content type should be specified
-        as the second argument. Use upload_file or upload_image for convenience."""
+        """Upload the given data blob and return the access URL.
+
+        The content type should be specified as the second argument. Use
+        `upload_file()` or `upload_image()` for convenience. Pass `lifecycle` to
+        control uploaded object expiration and initial ACL settings.
+        """
 
         auth = self._get_auth()
 
@@ -2514,7 +2539,11 @@ class SyncClient:
         | None = None,
         lifecycle: StorageSettings | None = None,
     ) -> str:
-        """Upload a file from the local filesystem to the CDN and return the access URL."""
+        """Upload a local file and return the access URL.
+
+        Pass `lifecycle` to control uploaded object expiration and initial ACL
+        settings.
+        """
 
         mime_type, _ = mimetypes.guess_type(path)
         if mime_type is None:
@@ -2558,7 +2587,11 @@ class SyncClient:
         | None = None,
         lifecycle: StorageSettings | None = None,
     ) -> str:
-        """Upload a pillow image object to the CDN and return the access URL."""
+        """Upload a Pillow image object and return the access URL.
+
+        Pass `lifecycle` to control uploaded object expiration and initial ACL
+        settings.
+        """
 
         with io.BytesIO() as buffer:
             image.save(buffer, format=format)

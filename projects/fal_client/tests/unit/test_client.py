@@ -400,6 +400,31 @@ def test_sync_upload_lifecycle_expires_in_is_normalized():
     }
 
 
+def test_sync_upload_lifecycle_is_sent_to_fal_v3():
+    with patch("fal_client.client._maybe_retry_request") as mock_request, patch(
+        "fal_client.client.SyncClient._get_cdn_client"
+    ) as mock_cdn_client:
+        response = Mock()
+        response.json.return_value = {"access_url": "https://v3-only/file"}
+        mock_request.return_value = response
+        mock_cdn_client.return_value = Mock()
+
+        client = SyncClient(key="test-key")
+        url = client.upload(
+            b"hello",
+            content_type="text/plain",
+            repository="fal_v3",
+            fallback_repository=[],
+            lifecycle=StorageSettings(expires_in="1h"),
+        )
+
+    assert url == "https://v3-only/file"
+    lifecycle_header = mock_request.call_args[1]["headers"]["X-Fal-Object-Lifecycle"]
+    assert json.loads(lifecycle_header) == {
+        "expiration_duration_seconds": 3600,
+    }
+
+
 def test_sync_upload_lifecycle_immediate_is_normalized():
     with patch("fal_client.client._maybe_retry_request") as mock_request:
         response = Mock()
@@ -766,6 +791,35 @@ async def test_async_upload_file_passes_lifecycle_to_multipart(tmp_path, monkeyp
 
     assert url == "https://file"
     assert mock_save.call_args.kwargs["object_lifecycle_preference"] == {
+        "expiration_duration_seconds": 3600,
+    }
+
+
+@pytest.mark.asyncio
+async def test_async_upload_lifecycle_is_sent_to_fal_v3():
+    with patch(
+        "fal_client.client._async_maybe_retry_request", new_callable=AsyncMock
+    ) as mock_request, patch(
+        "fal_client.client.AsyncClient._get_cdn_client", new_callable=AsyncMock
+    ) as mock_cdn_client:
+        response = httpx.Response(
+            status_code=200, json={"access_url": "https://v3-only/file"}
+        )
+        mock_request.return_value = response
+        mock_cdn_client.return_value = Mock()
+
+        client = AsyncClient(key="test-key")
+        url = await client.upload(
+            b"hello",
+            content_type="text/plain",
+            repository="fal_v3",
+            fallback_repository=[],
+            lifecycle=StorageSettings(expires_in="1h"),
+        )
+
+    assert url == "https://v3-only/file"
+    lifecycle_header = mock_request.call_args[1]["headers"]["X-Fal-Object-Lifecycle"]
+    assert json.loads(lifecycle_header) == {
         "expiration_duration_seconds": 3600,
     }
 
