@@ -405,6 +405,7 @@ def test_sync_upload_lifecycle_immediate_disables_io_storage():
     assert url == "https://cdn-only/file"
     lifecycle_header = mock_request.call_args[1]["headers"]["X-Fal-Object-Lifecycle"]
     assert json.loads(lifecycle_header) == {
+        "expiration_duration_seconds": 60,
         "allow_io_storage": False,
     }
 
@@ -427,7 +428,6 @@ def test_sync_upload_lifecycle_never_is_normalized():
     assert url == "https://cdn-only/file"
     lifecycle_header = mock_request.call_args[1]["headers"]["X-Fal-Object-Lifecycle"]
     assert json.loads(lifecycle_header) == {
-        "expiration_duration_seconds": 3153600000,
         "allow_io_storage": True,
     }
 
@@ -472,6 +472,7 @@ def test_sync_upload_lifecycle_includes_acl_and_allow_io_storage_override():
     assert url == "https://cdn-only/file"
     lifecycle_header = mock_request.call_args[1]["headers"]["X-Fal-Object-Lifecycle"]
     assert json.loads(lifecycle_header) == {
+        "expiration_duration_seconds": 60,
         "allow_io_storage": True,
         "initial_acl": {
             "default": "forbid",
@@ -727,6 +728,7 @@ async def test_async_upload_lifecycle_includes_acl_and_allow_io_storage_override
     assert url == "https://cdn-only/file"
     lifecycle_header = mock_request.call_args[1]["headers"]["X-Fal-Object-Lifecycle"]
     assert json.loads(lifecycle_header) == {
+        "expiration_duration_seconds": 60,
         "allow_io_storage": True,
         "initial_acl": {
             "default": "forbid",

@@ -89,8 +89,8 @@ EXECUTOR = concurrent.futures.ThreadPoolExecutor(
 )
 
 _UPLOAD_LIFECYCLE_EXPIRATION_VALUES: dict[str, int | None] = {
-    "never": 3153600000,  # 100 years
-    "immediate": None,
+    "never": None,
+    "immediate": 60,
     "1h": 3600,
     "1d": 86400,
     "7d": 604800,
@@ -113,12 +113,6 @@ class StorageACL:
 
 @dataclass(frozen=True)
 class StorageSettings:
-    """Lifecycle configuration for uploaded files.
-
-    Mirrors the fal-js `StorageSettings` model while exposing additional
-    lifecycle fields used by backend object lifecycle preferences.
-    """
-
     expires_in: ObjectExpiration | None = None
     allow_io_storage: bool | None = None
     initial_acl: StorageACL | None = None
