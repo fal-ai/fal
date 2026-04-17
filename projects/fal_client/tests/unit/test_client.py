@@ -526,6 +526,14 @@ def test_sync_upload_lifecycle_invalid_string_is_rejected():
         )
 
 
+def test_storage_settings_validates_expires_in_on_init():
+    with pytest.raises(
+        ValueError,
+        match="Integer lifecycle expires_in value must be greater than 0 seconds",
+    ):
+        StorageSettings(expires_in=-1)
+
+
 def test_sync_upload_lifecycle_includes_acl():
     with patch("fal_client.client._maybe_retry_request") as mock_request:
         response = Mock()
@@ -608,6 +616,25 @@ def test_sync_upload_lifecycle_omits_empty_acl_object():
     request_headers = mock_request.call_args[1]["headers"]
     assert "X-Fal-Object-Lifecycle" not in request_headers
     assert "X-Fal-Object-Lifecycle-Preference" not in request_headers
+
+
+def test_sync_upload_image_passes_lifecycle():
+    image = Mock()
+
+    def save(buffer, format):
+        buffer.write(b"image-bytes")
+
+    image.save.side_effect = save
+    settings = StorageSettings(expires_in="1h")
+
+    with patch.object(
+        SyncClient, "upload", return_value="https://image"
+    ) as mock_upload:
+        client = SyncClient(key="test-key")
+        url = client.upload_image(image, lifecycle=settings)
+
+    assert url == "https://image"
+    assert mock_upload.call_args.kwargs["lifecycle"] == settings
 
 
 def test_sync_upload_respects_repository_order():
@@ -822,6 +849,26 @@ async def test_async_upload_lifecycle_is_sent_to_fal_v3():
     assert json.loads(lifecycle_header) == {
         "expiration_duration_seconds": 3600,
     }
+
+
+@pytest.mark.asyncio
+async def test_async_upload_image_passes_lifecycle():
+    image = Mock()
+
+    def save(buffer, format):
+        buffer.write(b"image-bytes")
+
+    image.save.side_effect = save
+    settings = StorageSettings(expires_in="1h")
+
+    with patch.object(
+        AsyncClient, "upload", new_callable=AsyncMock, return_value="https://image"
+    ) as mock_upload:
+        client = AsyncClient(key="test-key")
+        url = await client.upload_image(image, lifecycle=settings)
+
+    assert url == "https://image"
+    assert mock_upload.call_args.kwargs["lifecycle"] == settings
 
 
 @pytest.mark.asyncio

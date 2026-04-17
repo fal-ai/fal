@@ -119,13 +119,17 @@ class StorageACL:
 class StorageSettings:
     """Lifecycle configuration for uploaded files.
 
-    `expires_in="never"` is represented by omitting lifecycle expiration headers
-    when no other lifecycle fields are set, which relies on the backend default
-    retention behavior for uploads.
+    Use `expires_in="never"` (or omit `expires_in`) to keep the backend's
+    default retention policy. `expires_in="immediate"` maps to approximately
+    60 seconds because the backend treats `0` as no expiration.
     """
 
     expires_in: ObjectExpiration | None = None
     initial_acl: StorageACL | None = None
+
+    def __post_init__(self) -> None:
+        if self.expires_in is not None:
+            _get_upload_expiration_duration_seconds(self.expires_in)
 
 
 @dataclass
@@ -1181,7 +1185,8 @@ def _object_lifecycle_headers(
 ) -> None:
     if object_lifecycle_preference is not None:
         lifecycle_json = json.dumps(object_lifecycle_preference)
-        # V3 and V1 upload backends do not use the same header key.
+        # CDN uploads expect X-Fal-Object-Lifecycle, while storage-backed
+        # upload initiation uses X-Fal-Object-Lifecycle-Preference.
         headers["X-Fal-Object-Lifecycle"] = lifecycle_json
         headers["X-Fal-Object-Lifecycle-Preference"] = lifecycle_json
 
