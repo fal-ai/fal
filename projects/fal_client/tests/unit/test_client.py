@@ -445,7 +445,7 @@ def test_sync_upload_lifecycle_integer_must_be_positive():
     client = SyncClient(key="test-key")
     with pytest.raises(
         ValueError,
-        match="Integer lifecycle expiresIn value must be greater than 0 seconds",
+        match="Integer lifecycle expires_in value must be greater than 0 seconds",
     ):
         client.upload(
             b"hello",
@@ -453,6 +453,51 @@ def test_sync_upload_lifecycle_integer_must_be_positive():
             repository="cdn",
             fallback_repository=[],
             lifecycle=StorageSettings(expires_in=0),
+        )
+
+
+def test_sync_upload_lifecycle_negative_integer_is_rejected():
+    client = SyncClient(key="test-key")
+    with pytest.raises(
+        ValueError,
+        match="Integer lifecycle expires_in value must be greater than 0 seconds",
+    ):
+        client.upload(
+            b"hello",
+            content_type="text/plain",
+            repository="cdn",
+            fallback_repository=[],
+            lifecycle=StorageSettings(expires_in=-1),
+        )
+
+
+def test_sync_upload_lifecycle_boolean_is_rejected():
+    client = SyncClient(key="test-key")
+    with pytest.raises(
+        ValueError,
+        match="Boolean values are not valid lifecycle expires_in values",
+    ):
+        client.upload(
+            b"hello",
+            content_type="text/plain",
+            repository="cdn",
+            fallback_repository=[],
+            lifecycle=StorageSettings(expires_in=True),
+        )
+
+
+def test_sync_upload_lifecycle_invalid_string_is_rejected():
+    client = SyncClient(key="test-key")
+    with pytest.raises(
+        ValueError,
+        match="Unsupported lifecycle expires_in value",
+    ):
+        client.upload(
+            b"hello",
+            content_type="text/plain",
+            repository="cdn",
+            fallback_repository=[],
+            lifecycle=StorageSettings(expires_in="2h"),  # type: ignore[arg-type]
         )
 
 

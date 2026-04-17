@@ -90,6 +90,8 @@ EXECUTOR = concurrent.futures.ThreadPoolExecutor(
 
 _UPLOAD_LIFECYCLE_EXPIRATION_VALUES: dict[str, int | None] = {
     "never": None,
+    # Backends treat non-positive values as no-expiration, so use the smallest
+    # positive TTL to provide deterministic near-immediate expiration behavior.
     "immediate": 60,
     "1h": 3600,
     "1d": 86400,
@@ -1176,16 +1178,18 @@ def _object_lifecycle_headers(
 
 
 def _get_upload_expiration_duration_seconds(expires_in: ObjectExpiration) -> int | None:
+    if isinstance(expires_in, bool):
+        raise ValueError("Boolean values are not valid lifecycle expires_in values.")
     if isinstance(expires_in, int):
         if expires_in <= 0:
             raise ValueError(
-                "Integer lifecycle expiresIn value must be greater than 0 seconds."
+                "Integer lifecycle expires_in value must be greater than 0 seconds."
             )
         return expires_in
     if expires_in in _UPLOAD_LIFECYCLE_EXPIRATION_VALUES:
         return _UPLOAD_LIFECYCLE_EXPIRATION_VALUES[expires_in]
     raise ValueError(
-        "Unsupported lifecycle expiresIn value. "
+        "Unsupported lifecycle expires_in value. "
         "Use one of: never, immediate, 1h, 1d, 7d, 30d, 1y, or an integer seconds value."
     )
 
