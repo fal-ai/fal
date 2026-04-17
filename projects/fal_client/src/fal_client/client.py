@@ -114,7 +114,6 @@ class StorageACL:
 @dataclass(frozen=True)
 class StorageSettings:
     expires_in: ObjectExpiration | None = None
-    allow_io_storage: bool | None = None
     initial_acl: StorageACL | None = None
 
 
@@ -1204,12 +1203,6 @@ def _normalize_upload_lifecycle(
         )
         if expiration_duration_seconds is not None:
             normalized["expiration_duration_seconds"] = expiration_duration_seconds
-        if lifecycle.allow_io_storage is None:
-            # Keep storage behavior aligned with expires_in unless explicitly overridden.
-            normalized["allow_io_storage"] = lifecycle.expires_in != "immediate"
-
-    if lifecycle.allow_io_storage is not None:
-        normalized["allow_io_storage"] = lifecycle.allow_io_storage
 
     if lifecycle.initial_acl is not None:
         acl_payload: LifecyclePreferencePayload = {}

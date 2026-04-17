@@ -281,9 +281,7 @@ def test_sync_upload_falls_back_to_cdn():
     assert (
         mock_request.call_args_list[1][0][2] == f"{FAL_CDN_FALLBACK_URL}/files/upload"
     )
-    expected = json.dumps(
-        {"expiration_duration_seconds": 3600, "allow_io_storage": True}
-    )
+    expected = json.dumps({"expiration_duration_seconds": 3600})
     assert (
         mock_request.call_args_list[0][1]["headers"]["X-Fal-Object-Lifecycle"]
         == expected
@@ -331,9 +329,7 @@ def test_sync_upload_falls_back_to_storage():
         == f"{REST_URL}/storage/upload/initiate?storage_type=gcs"
     )
     assert mock_request.call_args_list[3][0][2] == "https://upload.example.com/put"
-    expected = json.dumps(
-        {"expiration_duration_seconds": 3600, "allow_io_storage": True}
-    )
+    expected = json.dumps({"expiration_duration_seconds": 3600})
     assert (
         mock_request.call_args_list[2][1]["headers"][
             "X-Fal-Object-Lifecycle-Preference"
@@ -360,7 +356,6 @@ def test_sync_upload_passes_lifecycle_to_multipart(monkeypatch):
     assert url == "https://file"
     assert mock_save.call_args.kwargs["object_lifecycle_preference"] == {
         "expiration_duration_seconds": 3600,
-        "allow_io_storage": True,
     }
 
 
@@ -380,7 +375,6 @@ def test_sync_upload_file_passes_lifecycle_to_multipart(tmp_path, monkeypatch):
     assert url == "https://file"
     assert mock_save.call_args.kwargs["object_lifecycle_preference"] == {
         "expiration_duration_seconds": 3600,
-        "allow_io_storage": True,
     }
 
 
@@ -403,11 +397,10 @@ def test_sync_upload_lifecycle_expires_in_is_normalized():
     lifecycle_header = mock_request.call_args[1]["headers"]["X-Fal-Object-Lifecycle"]
     assert json.loads(lifecycle_header) == {
         "expiration_duration_seconds": 3600,
-        "allow_io_storage": True,
     }
 
 
-def test_sync_upload_lifecycle_immediate_disables_io_storage():
+def test_sync_upload_lifecycle_immediate_is_normalized():
     with patch("fal_client.client._maybe_retry_request") as mock_request:
         response = Mock()
         response.json.return_value = {"access_url": "https://cdn-only/file"}
@@ -426,7 +419,6 @@ def test_sync_upload_lifecycle_immediate_disables_io_storage():
     lifecycle_header = mock_request.call_args[1]["headers"]["X-Fal-Object-Lifecycle"]
     assert json.loads(lifecycle_header) == {
         "expiration_duration_seconds": 60,
-        "allow_io_storage": False,
     }
 
 
@@ -446,10 +438,7 @@ def test_sync_upload_lifecycle_never_is_normalized():
         )
 
     assert url == "https://cdn-only/file"
-    lifecycle_header = mock_request.call_args[1]["headers"]["X-Fal-Object-Lifecycle"]
-    assert json.loads(lifecycle_header) == {
-        "allow_io_storage": True,
-    }
+    assert "X-Fal-Object-Lifecycle" not in mock_request.call_args[1]["headers"]
 
 
 def test_sync_upload_lifecycle_integer_must_be_positive():
@@ -467,7 +456,7 @@ def test_sync_upload_lifecycle_integer_must_be_positive():
         )
 
 
-def test_sync_upload_lifecycle_includes_acl_and_allow_io_storage_override():
+def test_sync_upload_lifecycle_includes_acl():
     with patch("fal_client.client._maybe_retry_request") as mock_request:
         response = Mock()
         response.json.return_value = {"access_url": "https://cdn-only/file"}
@@ -481,7 +470,6 @@ def test_sync_upload_lifecycle_includes_acl_and_allow_io_storage_override():
             fallback_repository=[],
             lifecycle=StorageSettings(
                 expires_in="immediate",
-                allow_io_storage=True,
                 initial_acl=StorageACL(
                     default="forbid",
                     rules=[StorageACLRule(user="usr_123", decision="allow")],
@@ -493,7 +481,6 @@ def test_sync_upload_lifecycle_includes_acl_and_allow_io_storage_override():
     lifecycle_header = mock_request.call_args[1]["headers"]["X-Fal-Object-Lifecycle"]
     assert json.loads(lifecycle_header) == {
         "expiration_duration_seconds": 60,
-        "allow_io_storage": True,
         "initial_acl": {
             "default": "forbid",
             "rules": [{"user": "usr_123", "decision": "allow"}],
@@ -626,9 +613,7 @@ async def test_async_upload_falls_back_to_cdn():
     assert (
         mock_request.call_args_list[1][0][2] == f"{FAL_CDN_FALLBACK_URL}/files/upload"
     )
-    expected = json.dumps(
-        {"expiration_duration_seconds": 3600, "allow_io_storage": True}
-    )
+    expected = json.dumps({"expiration_duration_seconds": 3600})
     assert (
         mock_request.call_args_list[0][1]["headers"]["X-Fal-Object-Lifecycle"]
         == expected
@@ -681,9 +666,7 @@ async def test_async_upload_falls_back_to_storage():
         == f"{REST_URL}/storage/upload/initiate?storage_type=gcs"
     )
     assert mock_request.call_args_list[3][0][2] == "https://upload.example.com/put"
-    expected = json.dumps(
-        {"expiration_duration_seconds": 3600, "allow_io_storage": True}
-    )
+    expected = json.dumps({"expiration_duration_seconds": 3600})
     assert (
         mock_request.call_args_list[2][1]["headers"][
             "X-Fal-Object-Lifecycle-Preference"
@@ -715,7 +698,6 @@ async def test_async_upload_passes_lifecycle_to_multipart(monkeypatch):
     assert url == "https://file"
     assert mock_save.call_args.kwargs["object_lifecycle_preference"] == {
         "expiration_duration_seconds": 3600,
-        "allow_io_storage": True,
     }
 
 
@@ -740,12 +722,11 @@ async def test_async_upload_file_passes_lifecycle_to_multipart(tmp_path, monkeyp
     assert url == "https://file"
     assert mock_save.call_args.kwargs["object_lifecycle_preference"] == {
         "expiration_duration_seconds": 3600,
-        "allow_io_storage": True,
     }
 
 
 @pytest.mark.asyncio
-async def test_async_upload_lifecycle_includes_acl_and_allow_io_storage_override():
+async def test_async_upload_lifecycle_includes_acl():
     with patch(
         "fal_client.client._async_maybe_retry_request", new_callable=AsyncMock
     ) as mock_request:
@@ -762,7 +743,6 @@ async def test_async_upload_lifecycle_includes_acl_and_allow_io_storage_override
             fallback_repository=[],
             lifecycle=StorageSettings(
                 expires_in="immediate",
-                allow_io_storage=True,
                 initial_acl=StorageACL(
                     default="forbid",
                     rules=[StorageACLRule(user="usr_123", decision="allow")],
@@ -774,7 +754,6 @@ async def test_async_upload_lifecycle_includes_acl_and_allow_io_storage_override
     lifecycle_header = mock_request.call_args[1]["headers"]["X-Fal-Object-Lifecycle"]
     assert json.loads(lifecycle_header) == {
         "expiration_duration_seconds": 60,
-        "allow_io_storage": True,
         "initial_acl": {
             "default": "forbid",
             "rules": [{"user": "usr_123", "decision": "allow"}],
