@@ -1205,6 +1205,7 @@ def _normalize_upload_lifecycle(
         if expiration_duration_seconds is not None:
             normalized["expiration_duration_seconds"] = expiration_duration_seconds
         if lifecycle.allow_io_storage is None:
+            # Keep storage behavior aligned with expires_in unless explicitly overridden.
             normalized["allow_io_storage"] = lifecycle.expires_in != "immediate"
 
     if lifecycle.allow_io_storage is not None:

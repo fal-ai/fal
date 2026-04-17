@@ -364,6 +364,26 @@ def test_sync_upload_passes_lifecycle_to_multipart(monkeypatch):
     }
 
 
+def test_sync_upload_file_passes_lifecycle_to_multipart(tmp_path, monkeypatch):
+    monkeypatch.setattr("fal_client.client.MULTIPART_THRESHOLD", 1)
+    file_path = tmp_path / "upload.txt"
+    file_path.write_bytes(b"hello")
+    settings = StorageSettings(expires_in=3600)
+
+    with patch(
+        "fal_client.client.MultipartUpload.save_file", return_value="https://file"
+    ) as mock_save, patch("fal_client.client.SyncClient._get_cdn_client") as mock_cdn:
+        mock_cdn.return_value = Mock()
+        client = SyncClient(key="test-key")
+        url = client.upload_file(file_path, lifecycle=settings)
+
+    assert url == "https://file"
+    assert mock_save.call_args.kwargs["object_lifecycle_preference"] == {
+        "expiration_duration_seconds": 3600,
+        "allow_io_storage": True,
+    }
+
+
 def test_sync_upload_lifecycle_expires_in_is_normalized():
     with patch("fal_client.client._maybe_retry_request") as mock_request:
         response = Mock()
@@ -691,6 +711,31 @@ async def test_async_upload_passes_lifecycle_to_multipart(monkeypatch):
             content_type="text/plain",
             lifecycle=settings,
         )
+
+    assert url == "https://file"
+    assert mock_save.call_args.kwargs["object_lifecycle_preference"] == {
+        "expiration_duration_seconds": 3600,
+        "allow_io_storage": True,
+    }
+
+
+@pytest.mark.asyncio
+async def test_async_upload_file_passes_lifecycle_to_multipart(tmp_path, monkeypatch):
+    monkeypatch.setattr("fal_client.client.MULTIPART_THRESHOLD", 1)
+    file_path = tmp_path / "upload.txt"
+    file_path.write_bytes(b"hello")
+    settings = StorageSettings(expires_in=3600)
+
+    with patch(
+        "fal_client.client.AsyncMultipartUpload.save_file",
+        new_callable=AsyncMock,
+        return_value="https://file",
+    ) as mock_save, patch(
+        "fal_client.client.AsyncClient._get_cdn_client", new_callable=AsyncMock
+    ) as mock_cdn:
+        mock_cdn.return_value = Mock()
+        client = AsyncClient(key="test-key")
+        url = await client.upload_file(file_path, lifecycle=settings)
 
     assert url == "https://file"
     assert mock_save.call_args.kwargs["object_lifecycle_preference"] == {
