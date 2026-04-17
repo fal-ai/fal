@@ -90,8 +90,8 @@ EXECUTOR = concurrent.futures.ThreadPoolExecutor(
 
 _UPLOAD_LIFECYCLE_EXPIRATION_VALUES: dict[str, int | None] = {
     "never": None,
-    # Backends treat non-positive values as no-expiration, so use the smallest
-    # positive TTL to provide deterministic near-immediate expiration behavior.
+    # Backends treat None and 0 as no-expiration, so use a small positive TTL
+    # for deterministic near-immediate expiration behavior.
     "immediate": 60,
     "1h": 3600,
     "1d": 86400,
