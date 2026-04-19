@@ -2,6 +2,12 @@ from __future__ import annotations
 
 import os
 import pickle
+import signal
+import socket
+import subprocess
+import sys
+import textwrap
+import time
 from contextlib import ExitStack
 from contextvars import ContextVar
 from typing import AsyncIterator, Iterator
@@ -130,6 +136,16 @@ def test_wrap_app_allows_resolver_with_container_kind():
 
     fn = wrap_app(ContainerKindApp)
     assert fn.options.environment.get("resolver") == "uv"
+
+
+def test_function_force_env_build_propagates_for_container_apps():
+    image = ContainerImage.from_dockerfile_str("FROM python:3.11-slim")
+
+    @fal.function(image=image, force_env_build=True)
+    def container_function():
+        return "ok"
+
+    assert container_function.options.environment.get("force") is True
 
 
 def test_wrap_app_limit_max_requests_propagates_to_serve(
@@ -750,3 +766,71 @@ async def test_serve_exits_with_exception_on_setup_failure(
 
     with pytest.raises(Exception, match="TEST EXCEPTION"):
         await app.serve()
+
+
+def _find_free_port():
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("localhost", 0))
+        return s.getsockname()[1]
+
+
+def test_app_lifecycle_callbacks_are_called():
+    """SIGTERM triggers handle_exit, then teardown runs during shutdown."""
+    port = _find_free_port()
+    metrics_port = _find_free_port()
+
+    script = textwrap.dedent(f"""\
+        import os
+        os.environ["IS_ISOLATE_AGENT"] = "1"
+
+        import asyncio
+        from fal import App, endpoint
+
+        class LifecycleApp(App):
+            def setup(self):
+                print("setup")
+
+            def handle_exit(self):
+                print("handle_exit")
+
+            def teardown(self):
+                print("teardown")
+
+            @endpoint("/")
+            def run(self):
+                return "ok"
+
+        app = LifecycleApp()
+        asyncio.run(app.serve(port={port}, metrics_port={metrics_port}))
+    """)
+
+    proc = subprocess.Popen(
+        [sys.executable, "-u", "-c", script],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    assert proc.stdout is not None
+
+    try:
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                if s.connect_ex(("localhost", port)) == 0:
+                    break
+            time.sleep(0.1)
+        else:
+            raise AssertionError("App server did not start in time")
+
+        time.sleep(0.5)
+        proc.send_signal(signal.SIGTERM)
+        proc.wait(timeout=10)
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait()
+
+    lines = [line.decode("utf-8").strip() for line in proc.stdout.readlines()]
+
+    assert "setup" in lines
+    assert "handle_exit" in lines
+    assert "teardown" in lines

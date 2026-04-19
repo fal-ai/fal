@@ -23,13 +23,12 @@ permissions:
 
 jobs:
   e2e:
-    name: e2e (${{ matrix.target }}, py ${{ matrix.python }}, ${{ matrix.deps }})
+    name: e2e (py ${{ matrix.python }}, ${{ matrix.deps }})
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
-        target: ["dev", "prod"]
         deps: ["pydantic==1.10.18", "pydantic==2.11.7"]
         python: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
         exclude:
@@ -63,8 +62,8 @@ jobs:
 
       - name: Run e2e tests
         env:
-          FAL_KEY: ${{ matrix.target == 'prod' && secrets.FAL_KEY_PROD || secrets.FAL_KEY_DEV }}
-          FAL_GRPC_HOST: ${{ matrix.target == 'prod' && 'api.alpha.fal.ai' || secrets.FAL_GRPC_HOST_DEV }}
-          FAL_REST_HOST: ${{ matrix.target == 'prod' && 'rest.fal.ai' || secrets.FAL_REST_HOST_DEV }}
-          FAL_RUN_HOST: ${{ matrix.target == 'prod' && 'fal.run' || secrets.FAL_RUN_HOST_DEV }}
+          FAL_KEY: ${{ secrets.FAL_KEY_PROD }}
+          FAL_GRPC_HOST: api.alpha.fal.ai
+          FAL_REST_HOST: rest.fal.ai
+          FAL_RUN_HOST: fal.run
         run: pytest -n auto -v projects/fal/tests/e2e
