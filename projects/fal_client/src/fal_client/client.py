@@ -49,6 +49,8 @@ from fal_client._headers import (
     add_priority_header,
     add_timeout_header,
     add_hint_header,
+    add_fal_app_context_headers,
+    handle_response_headers,
     REQUEST_TIMEOUT_TYPE_HEADER,
     REQUEST_TIMEOUT_HEADER,
 )
@@ -1736,6 +1738,8 @@ class AsyncClient:
         if start_timeout is not None:
             add_timeout_header(start_timeout, _headers)
 
+        add_fal_app_context_headers(_headers)
+
         response = await _async_maybe_retry_request(
             self._client,
             "POST",
@@ -1744,8 +1748,9 @@ class AsyncClient:
             timeout=timeout,
             headers=_headers,
         )
-
         _raise_for_status(response)
+        handle_response_headers(response.headers)
+
         return response.json()
 
     async def submit(
@@ -1789,6 +1794,8 @@ class AsyncClient:
         if start_timeout is not None:
             add_timeout_header(start_timeout, _headers)
 
+        add_fal_app_context_headers(_headers)
+
         response = await _async_maybe_retry_request(
             self._client,
             "POST",
@@ -1798,6 +1805,7 @@ class AsyncClient:
             headers=_headers,
         )
         _raise_for_status(response)
+        handle_response_headers(response.headers)
 
         data = response.json()
         return AsyncRequestHandle(
@@ -2257,6 +2265,8 @@ class SyncClient:
         if start_timeout is not None:
             add_timeout_header(start_timeout, _headers)
 
+        add_fal_app_context_headers(_headers)
+
         response = _maybe_retry_request(
             self._client,
             "POST",
@@ -2266,6 +2276,8 @@ class SyncClient:
             headers=_headers,
         )
         _raise_for_status(response)
+        handle_response_headers(response.headers)
+
         return response.json()
 
     def submit(
@@ -2306,6 +2318,8 @@ class SyncClient:
         if start_timeout is not None:
             add_timeout_header(start_timeout, _headers)
 
+        add_fal_app_context_headers(_headers)
+
         response = _maybe_retry_request(
             self._client,
             "POST",
@@ -2315,6 +2329,7 @@ class SyncClient:
             headers=_headers,
         )
         _raise_for_status(response)
+        handle_response_headers(response.headers)
 
         data = response.json()
         return SyncRequestHandle(
