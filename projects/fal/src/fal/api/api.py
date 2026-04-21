@@ -1673,6 +1673,7 @@ class BaseServable:
     ) -> None:
         raw_endpoint = getattr(endpoint, "__func__", endpoint)
         endpoint_name = getattr(raw_endpoint, "__qualname__", endpoint.__name__)
+        is_async = inspect.iscoroutinefunction(raw_endpoint)
         parameter_names = [
             name
             for name, parameter in inspect.signature(raw_endpoint).parameters.items()
@@ -1689,12 +1690,18 @@ class BaseServable:
         except Exception:
             annotations = getattr(raw_endpoint, "__annotations__", {}) or {}
 
+        has_websocket_annotation = False
         for parameter_name in parameter_names:
             annotation = annotations.get(parameter_name)
             if inspect.isclass(annotation) and issubclass(annotation, WebSocket):
-                return
+                has_websocket_annotation = True
+                break
             if isinstance(annotation, str) and annotation.split(".")[-1] == "WebSocket":
-                return
+                has_websocket_annotation = True
+                break
+
+        if is_async and has_websocket_annotation:
+            return
 
         suggested_parameter_name = "websocket"
         for parameter_name in parameter_names:
@@ -1703,11 +1710,17 @@ class BaseServable:
                 break
 
         endpoint_signature = inspect.signature(raw_endpoint)
+        requirements = []
+        if not is_async:
+            requirements.append("be defined with async def")
+        if not has_websocket_annotation:
+            requirements.append("declare a parameter annotated as fastapi.WebSocket")
+
         error_message = (
-            f"Websocket endpoint {endpoint_name!r} at {signature.path!r} must declare "
-            f"a parameter annotated as fastapi.WebSocket. "
+            f"Websocket endpoint {endpoint_name!r} at {signature.path!r} must "
+            f"{' and '.join(requirements)}. "
             f"Got signature {endpoint_signature}. "
-            f"Did you mean `async def {endpoint.__name__}(self, "
+            f"For example: `async def {endpoint.__name__}(self, "
             f"{suggested_parameter_name}: WebSocket): ...`?"
         )
         fastapi_logger.error(error_message)
