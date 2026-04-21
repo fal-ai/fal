@@ -37,10 +37,10 @@ import uvicorn
 import yaml
 from fastapi import FastAPI
 from fastapi import __version__ as fastapi_version
-from fastapi.logger import logger as fastapi_logger
-from fastapi.params import Param
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
+from fastapi.logger import logger as fastapi_logger
+from fastapi.params import Param
 from isolate.backends.common import Requirements
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name

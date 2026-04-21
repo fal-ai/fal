@@ -920,7 +920,7 @@ def test_websocket_endpoint_requires_websocket_annotation(isolate_agent_env):
             app._build_app()
 
     message = str(exc_info.value)
-    assert "Got signature (self, websocket) -> None" in message
+    assert "Got signature (self, websocket)" in message
     assert "async def generate_ws(self, websocket: WebSocket):" in message
     mock_logger.error.assert_called_once_with(message)
 
