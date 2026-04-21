@@ -26,6 +26,7 @@ from typing import (
     Optional,
     TypeVar,
     cast,
+    get_type_hints,
     overload,
 )
 
@@ -36,12 +37,15 @@ import uvicorn
 import yaml
 from fastapi import FastAPI
 from fastapi import __version__ as fastapi_version
+from fastapi.logger import logger as fastapi_logger
+from fastapi.params import Param
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from isolate.backends.common import Requirements
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 from pydantic import __version__ as pydantic_version
+from starlette.websockets import WebSocket
 from typing_extensions import Concatenate, ParamSpec
 
 import fal.flags as flags
@@ -1662,6 +1666,53 @@ class BaseServable:
     async def lifespan(self, app: FastAPI):
         yield
 
+    def _validate_websocket_endpoint(
+        self,
+        signature: RouteSignature,
+        endpoint: Callable[..., Any],
+    ) -> None:
+        raw_endpoint = getattr(endpoint, "__func__", endpoint)
+        endpoint_name = getattr(raw_endpoint, "__qualname__", endpoint.__name__)
+        parameter_names = [
+            name
+            for name, parameter in inspect.signature(raw_endpoint).parameters.items()
+            if parameter.kind
+            not in (
+                inspect.Parameter.VAR_POSITIONAL,
+                inspect.Parameter.VAR_KEYWORD,
+            )
+            and not isinstance(parameter.default, Param)
+        ]
+
+        try:
+            annotations = get_type_hints(raw_endpoint)
+        except Exception:
+            annotations = getattr(raw_endpoint, "__annotations__", {}) or {}
+
+        for parameter_name in parameter_names:
+            annotation = annotations.get(parameter_name)
+            if inspect.isclass(annotation) and issubclass(annotation, WebSocket):
+                return
+            if isinstance(annotation, str) and annotation.split(".")[-1] == "WebSocket":
+                return
+
+        suggested_parameter_name = "websocket"
+        for parameter_name in parameter_names:
+            if parameter_name not in {"self", "cls"}:
+                suggested_parameter_name = parameter_name
+                break
+
+        endpoint_signature = inspect.signature(raw_endpoint)
+        error_message = (
+            f"Websocket endpoint {endpoint_name!r} at {signature.path!r} must declare "
+            f"a parameter annotated as fastapi.WebSocket. "
+            f"Got signature {endpoint_signature}. "
+            f"Did you mean `async def {endpoint.__name__}(self, "
+            f"{suggested_parameter_name}: WebSocket): ...`?"
+        )
+        fastapi_logger.error(error_message)
+        raise ValueError(error_message)
+
     def _build_app(self) -> FalFastAPI:
         import json  # noqa: PLC0415
         import traceback  # noqa: PLC0415
@@ -1780,6 +1831,7 @@ class BaseServable:
 
         for signature, endpoint in routes.items():
             if signature.is_websocket:
+                self._validate_websocket_endpoint(signature, endpoint)
                 _app.add_websocket_route_with_metadata(signature, endpoint)
             else:
                 _app.add_api_route(
