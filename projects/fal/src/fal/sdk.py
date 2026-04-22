@@ -1165,12 +1165,16 @@ class FalServerlessConnection:
         request = isolate_proto.KillRunnerRequest(runner_id=runner_id)
         self.stub.KillRunner(request)
 
-    def list_runners(self, start_time: datetime | None = None) -> list[RunnerInfo]:
+    def list_runners(
+        self, start_time: datetime | None = None, include_leases: bool = False
+    ) -> list[RunnerInfo]:
         kwargs: dict[str, Any] = {
             "list_pending": True,
         }
         if start_time:
             kwargs["start_time"] = isolate_proto.timestamp_from_datetime(start_time)
+        if include_leases:
+            kwargs["include_leases"] = True
 
         request = isolate_proto.ListRunnersRequest(**kwargs)
         response = self.stub.ListRunners(request)

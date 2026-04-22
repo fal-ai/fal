@@ -292,7 +292,7 @@ def _list_json(args, runners: list[RunnerInfo]):
 def _list(args):
     client = SyncServerlessClient(host=args.host, team=args.team)
     start_time = args.since
-    runners = client.runners.list(since=start_time)
+    runners = client.runners.list(since=start_time, include_leases=not args.skip_leases)
 
     if args.state:
         states = set(args.state)
@@ -342,9 +342,10 @@ def _list(args):
         if any(runner.replacement == ReplaceState.WILL_REPLACE for runner in runners):
             args.console.print("[dim](*) Runner has been scheduled for replacement[/]")
 
-        requests_table = runners_requests_table(runners)
-        args.console.print(f"Requests: {len(requests_table.rows)}")
-        args.console.print(requests_table)
+        if not args.skip_leases:
+            requests_table = runners_requests_table(runners)
+            args.console.print(f"Requests: {len(requests_table.rows)}")
+            args.console.print(requests_table)
     elif args.output == "json":
         _list_json(args, runners)
     else:
@@ -421,6 +422,12 @@ def _add_list_parser(subparsers, parents):
         nargs="+",
         default=None,
         help=("Filter by runner state(s). Choose one or more, or 'all'(default)."),
+    )
+    parser.add_argument(
+        "--skip-leases",
+        action="store_true",
+        default=False,
+        help=("Skip getting lease information about runners (no request/caller info)"),
     )
     parser.set_defaults(func=_list)
 
