@@ -4,6 +4,11 @@ import copy
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
+from packaging.requirements import Requirement
+from packaging.utils import canonicalize_name
+from rich.panel import Panel
+from rich.text import Text
+
 from fal.api import Options
 from fal.project import find_project_root, find_pyproject_toml, parse_pyproject_toml
 from fal.sdk import AuthModeLiteral, DeploymentStrategyLiteral
@@ -189,3 +194,85 @@ def _validate_requirements(requirements: Any) -> None:
 def _validate_str_list(field_name: str, value: Any) -> None:
     if not (isinstance(value, list) and all(isinstance(item, str) for item in value)):
         raise ValueError(f"{field_name} must be a list of strings.")
+
+
+def warn_if_vulnerable_torch(
+    requirements: list[str] | list[list[str]],
+    console: Any,
+) -> None:
+    """Warn if requirements include a torch version with known serialization
+    vulnerabilities.
+
+    PyTorch <= 2.5 is vulnerable to arbitrary code execution via malicious model
+    files due to unsafe pickle deserialization.
+    See https://github.com/pytorch/pytorch/issues/31875
+    """
+    if not console.is_terminal:
+        return
+
+    # Flatten potentially layered requirements (list[str] or list[list[str]])
+    flat_reqs: list[str] = []
+    for item in requirements:
+        if isinstance(item, list):
+            flat_reqs.extend(item)
+        else:
+            flat_reqs.append(item)
+
+    torch_req = None
+    for req_str in flat_reqs:
+        try:
+            req = Requirement(req_str)
+        except Exception:
+            continue
+        if canonicalize_name(req.name) == "torch":
+            torch_req = req
+            break
+
+    if torch_req is None:
+        return
+
+    _MITIGATION = (
+        "In a future release, fal will automatically set "
+        "[bold cyan]weights_only=True[/bold cyan]\n"
+        "on [bold cyan]torch.load()[/bold cyan] calls for torch versions prior to 2.6 "
+        "as a mitigation,\n"
+        "but upgrading to [bold cyan]torch>=2.6[/bold cyan] is strongly recommended."
+    )
+
+    specifier = torch_req.specifier
+    if not specifier:
+        return
+
+    # A version is safe if major > 2, or major == 2 and minor >= 6.
+    def _is_safe_version(version_str: str) -> bool:
+        parts = version_str.split(".")
+        try:
+            major, minor = int(parts[0]), int(parts[1])
+        except (IndexError, ValueError):
+            return False
+        return major > 2 or (major == 2 and minor >= 6)
+
+    # Safe only if there's an explicit constraint guaranteeing a safe minimum:
+    # ==2.6.x, >=2.6, >2.5.x, etc. Upper-bound operators (<, <=) don't
+    # guarantee safety so we ignore them here and warn.
+    guaranteeing_ops = {"==", "===", ">=", ">"}
+    if any(
+        c.operator in guaranteeing_ops and _is_safe_version(c.version)
+        for c in specifier
+    ):
+        return
+    detail = (
+        "Versions [bold]2.5 and earlier[/bold] of pytorch have a known "
+        "serialization vulnerability\n"
+        "that may allow malicious model files to execute arbitrary code.\n\n"
+        + _MITIGATION
+    )
+
+    panel = Panel(
+        Text.from_markup(detail),
+        title="[bold red]Security Warning[/bold red]",
+        border_style="red",
+        padding=(1, 2),
+        expand=False,
+    )
+    console.print(panel)
