@@ -891,7 +891,11 @@ class FalServerlessConnection:
             skip_retry_conditions=wrapped_skip_retry_conditions,
             environment_name=environment_name,
             termination_grace_period_seconds=termination_grace_period_seconds,
-            secrets=secrets or [],
+            secrets=(
+                isolate_proto.SecretsConfig(names=secrets)
+                if secrets is not None
+                else None
+            ),
         )
         for partial_result in self.stub.RegisterApplication(request):
             yield from_grpc(partial_result)
@@ -1040,7 +1044,11 @@ class FalServerlessConnection:
             application_name=full_application_name,
             auth_mode=auth,
             environment_name=environment_name,
-            secrets=secrets or [],
+            secrets=(
+                isolate_proto.SecretsConfig(names=secrets)
+                if secrets is not None
+                else None
+            ),
         )
         if setup_function:
             request.setup_func.MergeFrom(
