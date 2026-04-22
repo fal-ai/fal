@@ -3,11 +3,15 @@ name: Integration Tests (fal)
 on:
   push:
     branches: [main]
+    paths:
+      - "projects/fal/**"
+      - ".github/workflows/fal-integration-tests.yml"
 
   pull_request:
     types: [assigned, opened, synchronize, reopened]
-    paths-ignore:
-      - "README.md"
+    paths:
+      - "projects/fal/**"
+      - ".github/workflows/fal-integration-tests.yml"
 
   schedule:
     - cron: "30 5 * * *" # every day at 5:30 UTC

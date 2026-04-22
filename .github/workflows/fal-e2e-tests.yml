@@ -3,11 +3,17 @@ name: E2E Tests (fal)
 on:
   push:
     branches: [main]
+    paths:
+      - "projects/fal/**"
+      - "projects/fal_client/**"
+      - ".github/workflows/fal-e2e-tests.yml"
 
   pull_request:
     types: [assigned, opened, synchronize, reopened]
-    paths-ignore:
-      - "README.md"
+    paths:
+      - "projects/fal/**"
+      - "projects/fal_client/**"
+      - ".github/workflows/fal-e2e-tests.yml"
 
   schedule:
     - cron: "30 5 * * *" # every day at 5:30 UTC
