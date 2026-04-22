@@ -9,6 +9,14 @@ def test_proto():
 
 
 def test_callable_entrypoint_fields():
+    hosted_map = isolate_proto.HostedMap(
+        entrypoint="pkg.mod:func",
+        run_on_main_thread=True,
+    )
+    assert hosted_map.WhichOneof("callable") == "entrypoint"
+    assert hosted_map.entrypoint == "pkg.mod:func"
+    assert hosted_map.run_on_main_thread is True
+
     hosted_run = isolate_proto.HostedRun(
         entrypoint="pkg.mod:func",
         run_on_main_thread=True,
