@@ -579,7 +579,7 @@ class App(BaseServable):
             to specify a Dockerfile.
         secrets: Names of user secrets to expose to the app as environment
             variables. When omitted, the server applies the default behavior
-            (typically injecting all user secrets). Pass an explicit list to
+            (follows the user's preferences). Pass an explicit list to
             opt in to only the secrets listed.
             Example: `["OPENAI_API_KEY", "HF_TOKEN"]`
     """
