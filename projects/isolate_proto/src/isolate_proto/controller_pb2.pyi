@@ -202,9 +202,7 @@ class HostedRun(google.protobuf.message.Message):
         """
     @property
     def secrets(self) -> global___SecretsConfig:
-        """Explicit allow-list of user secrets exposed as env vars.
-        Absent => server default; present => expose exactly `names` (empty = none).
-        """
+        """Explicit allow-list of user secrets exposed as env vars."""
     run_on_main_thread: builtins.bool
     """Run the resolved callable on the backend main thread instead of a thread pool."""
     def __init__(
@@ -768,9 +766,7 @@ class RegisterApplicationRequest(google.protobuf.message.Message):
         """
     @property
     def secrets(self) -> global___SecretsConfig:
-        """Explicit allow-list of user secrets exposed as env vars.
-        Absent => server default; present => expose exactly `names` (empty = none).
-        """
+        """Explicit allow-list of user secrets exposed as env vars."""
     run_on_main_thread: builtins.bool
     """Run the resolved callable on the backend main thread instead of a thread pool."""
     def __init__(
