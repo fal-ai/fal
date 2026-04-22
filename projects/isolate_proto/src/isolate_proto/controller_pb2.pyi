@@ -168,7 +168,7 @@ class HostedRun(google.protobuf.message.Message):
     AUTH_MODE_FIELD_NUMBER: builtins.int
     FETCH_OPENAPI_FIELD_NUMBER: builtins.int
     DATA_MOUNTS_FIELD_NUMBER: builtins.int
-    SECRETS_CONFIG_FIELD_NUMBER: builtins.int
+    SECRETS_FIELD_NUMBER: builtins.int
     RUN_ON_MAIN_THREAD_FIELD_NUMBER: builtins.int
     @property
     def environments(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[server_pb2.EnvironmentDefinition]:
@@ -201,7 +201,7 @@ class HostedRun(google.protobuf.message.Message):
         When omitted, the server applies a default based on the user model.
         """
     @property
-    def secrets_config(self) -> global___SecretsConfig:
+    def secrets(self) -> global___SecretsConfig:
         """Explicit allow-list of user secrets exposed as env vars.
         Absent => server default; present => expose exactly `names` (empty = none).
         """
@@ -221,11 +221,11 @@ class HostedRun(google.protobuf.message.Message):
         auth_mode: global___ApplicationAuthMode.ValueType | None = ...,
         fetch_openapi: builtins.bool | None = ...,
         data_mounts: collections.abc.Iterable[builtins.str] | None = ...,
-        secrets_config: global___SecretsConfig | None = ...,
+        secrets: global___SecretsConfig | None = ...,
         run_on_main_thread: builtins.bool = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing_extensions.Literal["_application_name", b"_application_name", "_auth_mode", b"_auth_mode", "_environment_name", b"_environment_name", "_fetch_openapi", b"_fetch_openapi", "_machine_requirements", b"_machine_requirements", "_secrets_config", b"_secrets_config", "_setup_func", b"_setup_func", "application_name", b"application_name", "auth_mode", b"auth_mode", "callable", b"callable", "entrypoint", b"entrypoint", "environment_name", b"environment_name", "fetch_openapi", b"fetch_openapi", "function", b"function", "machine_requirements", b"machine_requirements", "secrets_config", b"secrets_config", "setup_func", b"setup_func"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing_extensions.Literal["_application_name", b"_application_name", "_auth_mode", b"_auth_mode", "_environment_name", b"_environment_name", "_fetch_openapi", b"_fetch_openapi", "_machine_requirements", b"_machine_requirements", "_secrets_config", b"_secrets_config", "_setup_func", b"_setup_func", "application_name", b"application_name", "auth_mode", b"auth_mode", "callable", b"callable", "data_mounts", b"data_mounts", "entrypoint", b"entrypoint", "environment_name", b"environment_name", "environments", b"environments", "fetch_openapi", b"fetch_openapi", "files", b"files", "function", b"function", "machine_requirements", b"machine_requirements", "run_on_main_thread", b"run_on_main_thread", "secrets_config", b"secrets_config", "setup_func", b"setup_func"]) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["_application_name", b"_application_name", "_auth_mode", b"_auth_mode", "_environment_name", b"_environment_name", "_fetch_openapi", b"_fetch_openapi", "_machine_requirements", b"_machine_requirements", "_secrets", b"_secrets", "_setup_func", b"_setup_func", "application_name", b"application_name", "auth_mode", b"auth_mode", "callable", b"callable", "entrypoint", b"entrypoint", "environment_name", b"environment_name", "fetch_openapi", b"fetch_openapi", "function", b"function", "machine_requirements", b"machine_requirements", "secrets", b"secrets", "setup_func", b"setup_func"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["_application_name", b"_application_name", "_auth_mode", b"_auth_mode", "_environment_name", b"_environment_name", "_fetch_openapi", b"_fetch_openapi", "_machine_requirements", b"_machine_requirements", "_secrets", b"_secrets", "_setup_func", b"_setup_func", "application_name", b"application_name", "auth_mode", b"auth_mode", "callable", b"callable", "data_mounts", b"data_mounts", "entrypoint", b"entrypoint", "environment_name", b"environment_name", "environments", b"environments", "fetch_openapi", b"fetch_openapi", "files", b"files", "function", b"function", "machine_requirements", b"machine_requirements", "run_on_main_thread", b"run_on_main_thread", "secrets", b"secrets", "setup_func", b"setup_func"]) -> None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_application_name", b"_application_name"]) -> typing_extensions.Literal["application_name"] | None: ...
     @typing.overload
@@ -237,7 +237,7 @@ class HostedRun(google.protobuf.message.Message):
     @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_machine_requirements", b"_machine_requirements"]) -> typing_extensions.Literal["machine_requirements"] | None: ...
     @typing.overload
-    def WhichOneof(self, oneof_group: typing_extensions.Literal["_secrets_config", b"_secrets_config"]) -> typing_extensions.Literal["secrets_config"] | None: ...
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_secrets", b"_secrets"]) -> typing_extensions.Literal["secrets"] | None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_setup_func", b"_setup_func"]) -> typing_extensions.Literal["setup_func"] | None: ...
     @typing.overload
