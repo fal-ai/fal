@@ -100,6 +100,9 @@ message HostedRun {
     // Persistent data mount paths (e.g. "/data", "/data/.cache").
     // When omitted, the server applies a default based on the user model.
     repeated string data_mounts = 10;
+    // Names of user secrets to expose to the app as environment variables.
+    // When omitted, the server applies a default based on the user model.
+    repeated string secrets = 11;
 }
 
 message CreateUserKeyRequest {
@@ -304,6 +307,9 @@ message RegisterApplicationRequest {
     // Persistent data mount paths (e.g. "/data", "/data/.cache").
     // When omitted, the server applies a default based on the user model
     repeated string data_mounts = 20;
+    // Names of user secrets to expose to the app as environment variables.
+    // When omitted, the server applies a default based on the user model.
+    repeated string secrets = 21;
 }
 
 message RegisterApplicationResultType {
