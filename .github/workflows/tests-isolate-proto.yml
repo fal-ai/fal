@@ -1,16 +1,16 @@
-name: Run fal-client tests
+name: Run isolate-proto tests
 
 on:
   push:
     branches:
       - main
     paths:
-      - "projects/fal_client/**"
-      - ".github/workflows/tests-fal-client.yml"
+      - "projects/isolate_proto/**"
+      - ".github/workflows/tests-isolate-proto.yml"
   pull_request:
     paths:
-      - "projects/fal_client/**"
-      - ".github/workflows/tests-fal-client.yml"
+      - "projects/isolate_proto/**"
+      - ".github/workflows/tests-isolate-proto.yml"
   workflow_dispatch:
 
 permissions:
@@ -19,23 +19,27 @@ permissions:
 jobs:
   tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
         python: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
+
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v4
+
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
+          cache: pip
+
       - name: Install dependencies
         run: |
           pip install --upgrade pip wheel
-          pip install -e 'projects/fal_client[test]'
+          pip install -e 'projects/isolate_proto[test]'
+
       - name: Run tests
-        env:
-          FAL_KEY: ${{ secrets.FAL_KEY_PROD }}
         run: |
-          pytest projects/fal_client/tests
+          pytest -n auto -v projects/isolate_proto/tests
