@@ -78,6 +78,10 @@ message File {
     string relative_path = 2;
 }
 
+message SecretsConfig {
+    repeated string names = 1;
+}
+
 message HostedRun {
     // Environment definitions.
     repeated EnvironmentDefinition environments = 1;
@@ -100,9 +104,9 @@ message HostedRun {
     // Persistent data mount paths (e.g. "/data", "/data/.cache").
     // When omitted, the server applies a default based on the user model.
     repeated string data_mounts = 10;
-    // Names of user secrets to expose to the app as environment variables.
-    // When omitted, the server applies a default based on the user model.
-    repeated string secrets = 11;
+    // Explicit allow-list of user secrets exposed as env vars.
+    // Absent => server default; present => expose exactly `names` (empty = none).
+    optional SecretsConfig secrets_config = 11;
 }
 
 message CreateUserKeyRequest {
@@ -307,9 +311,9 @@ message RegisterApplicationRequest {
     // Persistent data mount paths (e.g. "/data", "/data/.cache").
     // When omitted, the server applies a default based on the user model
     repeated string data_mounts = 20;
-    // Names of user secrets to expose to the app as environment variables.
-    // When omitted, the server applies a default based on the user model.
-    repeated string secrets = 21;
+    // Explicit allow-list of user secrets exposed as env vars.
+    // Absent => server default; present => expose exactly `names` (empty = none).
+    optional SecretsConfig secrets = 22;
 }
 
 message RegisterApplicationResultType {
