@@ -126,15 +126,16 @@ def test_run_forwards_regions_to_machine_requirements():
 
 def test_register_leaves_private_logs_unset_by_default():
     from fal.api.api import FalServerlessHost, Options
-    from fal.sdk import RegisterApplicationResult
+    from fal.sdk import RegisterApplicationResult, RegisterApplicationResultType
 
     host = FalServerlessHost()
     options = Options()
 
     connection = MagicMock()
     connection.define_environment.return_value = object()
-    partial_result = RegisterApplicationResult()
-    partial_result.result = "ok"
+    partial_result = RegisterApplicationResult(
+        result=RegisterApplicationResultType(application_id="app-id")
+    )
     connection.register.return_value = iter([partial_result])
 
     with patch.object(
@@ -155,7 +156,7 @@ def test_register_leaves_private_logs_unset_by_default():
 
 def test_register_forwards_explicit_private_logs_false():
     from fal.api.api import FalServerlessHost, Options
-    from fal.sdk import RegisterApplicationResult
+    from fal.sdk import RegisterApplicationResult, RegisterApplicationResultType
 
     host = FalServerlessHost()
     options = Options()
@@ -163,8 +164,9 @@ def test_register_forwards_explicit_private_logs_false():
 
     connection = MagicMock()
     connection.define_environment.return_value = object()
-    partial_result = RegisterApplicationResult()
-    partial_result.result = "ok"
+    partial_result = RegisterApplicationResult(
+        result=RegisterApplicationResultType(application_id="app-id")
+    )
     connection.register.return_value = iter([partial_result])
 
     with patch.object(
