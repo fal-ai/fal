@@ -578,10 +578,9 @@ class App(BaseServable):
         image: Custom container image for the application. Use ContainerImage
             to specify a Dockerfile.
         data_mounts: Persistent data mount paths to expose to the application.
-            By default, apps have no `/data` access. Use `["/data"]` for full
-            access, or specific subdirectories like `["/data/.cache"]`.
-            When omitted (None), the server applies a backwards-compatible
-            default based on the user model.
+            Use `["/data"]` for full access, or specific subdirectories like
+            `["/data/.cache"]`. When omitted (None), the server applies a default
+            based on the user model.
     """
 
     requirements: ClassVar[list[str] | list[list[str]]] = []  # type: ignore[assignment]
