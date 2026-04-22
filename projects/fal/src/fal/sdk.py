@@ -41,6 +41,7 @@ FAL_SERVERLESS_DEFAULT_MIN_CONCURRENCY = 0
 FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER = 0
 FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER_PERC = 0
 ALIAS_AUTH_MODES = ["public", "private", "shared"]
+DEPLOYMENT_STRATEGIES = ["recreate", "rolling"]
 
 logger = get_logger(__name__)
 
@@ -1058,6 +1059,7 @@ class FalServerlessConnection:
         auth_mode: Optional[AuthModeLiteral],
         *,
         environment_name: str | None = None,
+        deployment_strategy: DeploymentStrategyLiteral | None = None,
     ) -> AliasInfo:
         if auth_mode == "public":
             auth = isolate_proto.ApplicationAuthMode.PUBLIC
@@ -1070,11 +1072,18 @@ class FalServerlessConnection:
 
         full_alias = construct_alias(alias, environment_name)
 
+        deployment_strategy_proto = (
+            DeploymentStrategy[deployment_strategy.upper()].to_proto()
+            if deployment_strategy is not None
+            else None
+        )
+
         request = isolate_proto.SetAliasRequest(
             alias=full_alias,
             revision=revision,
             auth_mode=auth,
             environment_name=environment_name,
+            deployment_strategy=deployment_strategy_proto,
         )
         res = self.stub.SetAlias(request)
         return from_grpc(res.alias_info)

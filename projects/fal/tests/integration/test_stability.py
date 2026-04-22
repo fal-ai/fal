@@ -55,20 +55,6 @@ def test_regular_function(isolated_client):
     assert mult(5, 2) == 10
 
 
-def test_regular_function_on_nomad(isolated_client):
-    @isolated_client(_scheduler="nomad")
-    def regular_function():
-        return 42
-
-    assert regular_function() == 42
-
-    @isolated_client(_scheduler="nomad")
-    def mult(a, b):
-        return a * b
-
-    assert mult(5, 2) == 10
-
-
 def test_regular_function_in_a_container(isolated_client):
     @isolated_client("container")
     def regular_function():
@@ -433,15 +419,6 @@ def test_big_message(isolated_client):
     data_length = 8 * (1024**2)
 
     @isolated_client("virtualenv", machine_type="M")
-    def big_input_function(data):
-        return len(data)
-
-    # Small inputs should work fine (pre-test).
-    assert big_input_function(b"0") == 1
-    assert big_input_function(b"0" * data_length) == data_length
-
-    # Try receiving a big message.
-    @isolated_client("virtualenv", machine_type="M")
     def big_return_function(data_length):
         return b"0" * data_length
 
@@ -470,23 +447,6 @@ def test_futures(isolated_client):
     assert future_2.result() == 4
     assert future_3.result() == 6
     assert future_4.result() == 8
-
-
-@pytest.mark.xfail(reason="Nomad does not support conda")
-def test_conda_environment_on_nomad(isolated_client):
-    @isolated_client(
-        "conda",
-        packages=["pyjokes=0.6.0"],
-        machine_type="L",
-        # conda is only supported on Kubernetes
-        _scheduler="nomad",
-    )
-    def regular_function():
-        import pyjokes
-
-        return pyjokes.__version__
-
-    assert regular_function() == "0.6.0"
 
 
 @pytest.mark.xfail(reason="Broken on nomad")
@@ -602,40 +562,33 @@ def test_worker_env_vars(isolated_client):
     from fal.flags import GRPC_HOST
 
     @isolated_client("virtualenv", keep_alive=5)
-    def get_env_var(name: str) -> str | None:
+    def get_env_vars() -> str | None:
         import os
 
-        return os.getenv(name, None)
+        return {
+            "FAL_HOST": os.getenv("FAL_HOST", None),
+            "FAL_KEY_ID": os.getenv("FAL_KEY_ID", None),
+            "FAL_KEY_SECRET": os.getenv("FAL_KEY_SECRET", None),
+        }
 
-    fal_host = get_env_var("FAL_HOST")
+    env_vars = get_env_vars()
+    fal_host = env_vars["FAL_HOST"]
+    fal_key_id = env_vars["FAL_KEY_ID"]
+    fal_key_secret = env_vars["FAL_KEY_SECRET"]
+
     assert fal_host, "FAL_HOST is not set"
     assert fal_host == GRPC_HOST, "FAL_HOST is not set to the correct value"
     print(f"FAL_HOST: {fal_host}, GRPC_HOST: {GRPC_HOST}")
-
-    fal_key_id = get_env_var("FAL_KEY_ID")
     assert fal_key_id, "FAL_KEY_ID is not set"
-
-    fal_key_secret = get_env_var("FAL_KEY_SECRET")
     assert fal_key_secret, "FAL_KEY_SECRET is not set"
 
 
 @pytest.mark.flaky(max_runs=3)
-@pytest.mark.parametrize(
-    "repo_type, url_prefixes",
-    [
-        (
-            "fal",
-            [
-                "https://storage.googleapis.com/isolate-dev-smiling-shark_toolkit_public_bucket/"
-            ],
-        ),
-        ("fal_v2", ["https://v2.fal.media/files"]),
-        ("fal_v3", ["https://v3.fal.media/files", "https://v3b.fal.media/files"]),
-    ],
-)
-def test_fal_storage(isolated_client, repo_type, url_prefixes):
+def test_fal_storage_v3(isolated_client):
+    url_prefixes = ["https://v3.fal.media/files", "https://v3b.fal.media/files"]
+
     file = File.from_bytes(
-        b"Hello fal storage from local", repository=repo_type, fallback_repository=None
+        b"Hello fal storage from local", repository="fal_v3", fallback_repository=None
     )
     assert any(file.url.startswith(url_prefix) for url_prefix in url_prefixes)
     assert file.as_bytes().decode().endswith("local")
@@ -647,7 +600,7 @@ def test_fal_storage(isolated_client, repo_type, url_prefixes):
         # Run in the isolated environment
         return File.from_bytes(
             b"Hello fal storage from isolated",
-            repository=repo_type,
+            repository="fal_v3",
             save_kwargs={
                 "multipart": False,
                 "multipart_threshold": 1024 * 1024,

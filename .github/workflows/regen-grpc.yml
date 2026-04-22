@@ -1,0 +1,145 @@
+name: Regenerate gRPC bindings
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - "projects/isolate_proto/**/*.proto"
+      - "tools/regen_grpc.py"
+      - "tools/pyproject.toml"
+  workflow_dispatch:
+    inputs:
+      isolate_version:
+        description: "fal-ai/isolate tag to use (without leading 'v'). If empty, the latest tag is used."
+        required: false
+        type: string
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  regen:
+    runs-on: ubuntu-latest
+    # Auto-commit only works for branches in the same repo. Fork PRs don't
+    # have access to secrets anyway, so we skip them entirely.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - name: Mint GitHub App token
+        id: app_token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.REGEN_APP_ID }}
+          private-key: ${{ secrets.REGEN_APP_PRIVATE_KEY }}
+          owner: fal-ai
+          repositories: |
+            fal
+            isolate
+
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref || github.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          # App token so the auto-commit re-triggers downstream workflows
+          # (the default GITHUB_TOKEN suppresses on-push events).
+          token: ${{ steps.app_token.outputs.token }}
+          fetch-depth: 0
+
+      - name: Determine isolate version
+        id: isolate_version
+        env:
+          INPUT_VERSION: ${{ inputs.isolate_version }}
+          GH_TOKEN: ${{ steps.app_token.outputs.token }}
+        run: |
+          if [ -n "${INPUT_VERSION}" ]; then
+            version="${INPUT_VERSION}"
+          else
+            # Latest tag from the private isolate repo.
+            version=$(gh api repos/fal-ai/isolate/tags --jq '.[0].name' | sed 's/^v//')
+          fi
+          if [ -z "${version}" ]; then
+            echo "::error::Could not determine isolate version."
+            exit 1
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "Using isolate version: ${version}"
+
+      - name: Checkout fal-ai/isolate
+        uses: actions/checkout@v4
+        with:
+          repository: fal-ai/isolate
+          ref: v${{ steps.isolate_version.outputs.version }}
+          token: ${{ steps.app_token.outputs.token }}
+          path: _isolate
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install isolate_proto[dev] (provides regen tooling)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e 'projects/isolate_proto[dev]'
+
+      - name: Regenerate gRPC bindings
+        working-directory: projects/isolate_proto
+        run: |
+          python ../../tools/regen_grpc.py --isolate-path "${{ github.workspace }}/_isolate"
+
+      - name: Run pre-commit on regenerated files
+        continue-on-error: true
+        run: |
+          pip install pre-commit
+          pre-commit run --all-files || true
+
+      - name: Commit regenerated files back to the PR
+        working-directory: projects/isolate_proto
+        env:
+          ISOLATE_VERSION: ${{ steps.isolate_version.outputs.version }}
+          ISOLATE_PATH: ${{ github.workspace }}/_isolate
+          APP_SLUG: ${{ steps.app_token.outputs.app-slug }}
+        run: |
+          set -euo pipefail
+
+          # Author the commit as the GitHub App's bot user.
+          git config user.name "${APP_SLUG}[bot]"
+          git config user.email "${APP_SLUG}[bot]@users.noreply.github.com"
+
+          branch="$(git rev-parse --abbrev-ref HEAD)"
+          commit_msg="chore(isolate_proto): regenerate gRPC bindings (isolate v${ISOLATE_VERSION})"
+
+          # Try to commit + push. On push rejection (someone else pushed to the
+          # branch in the meantime), reset to remote HEAD, re-run regen against
+          # the new state, and try again. We never rebase the regen commit
+          # itself because generated files don't merge cleanly across two
+          # different regen baselines.
+          for attempt in 1 2 3 4 5; do
+            if [ -n "$(git status --porcelain .)" ]; then
+              git add .
+              git commit -m "${commit_msg}"
+            else
+              echo "No changes to commit on attempt ${attempt}."
+              exit 0
+            fi
+
+            if git push origin "HEAD:${branch}"; then
+              echo "Push succeeded on attempt ${attempt}."
+              exit 0
+            fi
+
+            echo "Push rejected on attempt ${attempt}; re-syncing and regenerating."
+            git fetch origin "${branch}"
+            git reset --hard "origin/${branch}"
+            python ../../tools/regen_grpc.py --isolate-path "${ISOLATE_PATH}"
+          done
+
+          echo "::error::Failed to push regenerated bindings after 5 attempts."
+          exit 1

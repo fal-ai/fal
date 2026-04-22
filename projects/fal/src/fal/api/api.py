@@ -652,7 +652,7 @@ class FalServerlessHost(Host):
 
         res = []
         if options.files_list:
-            sync = FileSync(self.local_file_path)
+            sync = FileSync(self.local_file_path, credentials=self.credentials)
             files, errors = sync.sync_files(
                 options.files_list,
                 files_ignore=options.files_ignore,
@@ -1804,7 +1804,13 @@ class BaseServable:
     def handle_exit(self):
         pass
 
-    async def serve(self, *, limit_max_requests: int | None = None) -> None:
+    async def serve(
+        self,
+        *,
+        limit_max_requests: int | None = None,
+        port: int = 8080,
+        metrics_port: int = 9090,
+    ) -> None:
         from prometheus_client import Gauge  # noqa: PLC0415
         from starlette_exporter import handle_metrics  # noqa: PLC0415
 
@@ -1820,7 +1826,7 @@ class BaseServable:
             config=uvicorn.Config(
                 app,
                 host="0.0.0.0",
-                port=8080,
+                port=port,
                 timeout_keep_alive=300,
                 lifespan="on",
                 limit_max_requests=limit_max_requests,
@@ -1856,7 +1862,7 @@ class BaseServable:
                 self.http_protocol_class = _SilentProtocol
 
         metrics_server = uvicorn.Server(
-            config=_SilentAccessConfig(metrics_app, host="0.0.0.0", port=9090)
+            config=_SilentAccessConfig(metrics_app, host="0.0.0.0", port=metrics_port)
         )
 
         async def _serve() -> None:

@@ -49,6 +49,8 @@ from fal_client._headers import (
     add_priority_header,
     add_timeout_header,
     add_hint_header,
+    add_fal_app_context_headers,
+    handle_response_headers,
     REQUEST_TIMEOUT_TYPE_HEADER,
     REQUEST_TIMEOUT_HEADER,
 )
@@ -64,6 +66,12 @@ if TYPE_CHECKING:
 
 AnyJSON = Dict[str, Any]
 UploadRepositoryId = Literal["fal_v3", "cdn", "fal"]
+LifecyclePreferencePayload = Dict[str, Any]
+ObjectExpiration = Union[
+    Literal["never", "immediate", "1h", "1d", "7d", "30d", "1y"],
+    int,
+]
+StorageACLDecision = Literal["hide", "forbid", "allow"]
 
 RUN_URL_FORMAT = f"https://{FAL_RUN_HOST}/"
 QUEUE_URL_FORMAT = f"https://{FAL_QUEUE_RUN_HOST}/"
@@ -81,6 +89,49 @@ MIN_REQUEST_TIMEOUT_SECONDS = 1
 EXECUTOR = concurrent.futures.ThreadPoolExecutor(
     thread_name_prefix="FAL_CLIENT_EXECUTOR"
 )
+
+_IMMEDIATE_EXPIRATION_SECONDS = 60
+
+_UPLOAD_LIFECYCLE_EXPIRATION_VALUES: dict[str, int | None] = {
+    "never": None,
+    # Backends treat None and 0 as no-expiration, so use a small positive TTL
+    # for deterministic near-immediate expiration behavior.
+    "immediate": _IMMEDIATE_EXPIRATION_SECONDS,
+    "1h": 3600,
+    "1d": 86400,
+    "7d": 604800,
+    "30d": 2592000,
+    "1y": 31536000,
+}
+
+
+@dataclass(frozen=True)
+class StorageACLRule:
+    user: str
+    decision: StorageACLDecision
+
+
+@dataclass(frozen=True)
+class StorageACL:
+    default: StorageACLDecision | None = None
+    rules: list[StorageACLRule] | None = None
+
+
+@dataclass(frozen=True)
+class StorageSettings:
+    """Lifecycle configuration for uploaded files.
+
+    Use `expires_in="never"` (or omit `expires_in`) to keep the backend's
+    default retention policy. `expires_in="immediate"` maps to approximately
+    60 seconds because the backend treats `0` as no expiration.
+    """
+
+    expires_in: ObjectExpiration | None = None
+    initial_acl: StorageACL | None = None
+
+    def __post_init__(self) -> None:
+        if self.expires_in is not None:
+            _get_upload_expiration_duration_seconds(self.expires_in)
 
 
 @dataclass
@@ -214,19 +265,23 @@ class MultipartUpload:
             "User-Agent": USER_AGENT,
         }
 
-    def create(self):
+    def create(
+        self, object_lifecycle_preference: LifecyclePreferencePayload | None = None
+    ):
         token = self._token_manager.get_token()
         url = f"{token.base_upload_url}/files/upload/multipart"
+        headers = {
+            **self.auth_headers,
+            "Accept": "application/json",
+            "Content-Type": self.content_type,
+            "X-Fal-File-Name": self.file_name,
+        }
+        _object_lifecycle_headers(headers, object_lifecycle_preference)
         response = _maybe_retry_request(
             self._client,
             "POST",
             url,
-            headers={
-                **self.auth_headers,
-                "Accept": "application/json",
-                "Content-Type": self.content_type,
-                "X-Fal-File-Name": self.file_name,
-            },
+            headers=headers,
         )
         result = response.json()
         self._access_url = result["access_url"]
@@ -278,6 +333,7 @@ class MultipartUpload:
         content_type: str | None = None,
         chunk_size: int | None = None,
         max_concurrency: int | None = None,
+        object_lifecycle_preference: LifecyclePreferencePayload | None = None,
     ):
         import concurrent.futures
 
@@ -289,7 +345,7 @@ class MultipartUpload:
             content_type=content_type,
             max_concurrency=max_concurrency,
         )
-        multipart.create()
+        multipart.create(object_lifecycle_preference=object_lifecycle_preference)
         parts = math.ceil(len(data) / multipart.chunk_size)
         with concurrent.futures.ThreadPoolExecutor(
             max_workers=multipart.max_concurrency
@@ -315,6 +371,7 @@ class MultipartUpload:
         chunk_size: int | None = None,
         content_type: str | None = None,
         max_concurrency: int | None = None,
+        object_lifecycle_preference: LifecyclePreferencePayload | None = None,
     ) -> str:
         import concurrent.futures
 
@@ -328,7 +385,7 @@ class MultipartUpload:
             content_type=content_type,
             max_concurrency=max_concurrency,
         )
-        multipart.create()
+        multipart.create(object_lifecycle_preference=object_lifecycle_preference)
         parts = math.ceil(size / multipart.chunk_size)
         with concurrent.futures.ThreadPoolExecutor(
             max_workers=multipart.max_concurrency
@@ -390,20 +447,24 @@ class AsyncMultipartUpload:
             "User-Agent": USER_AGENT,
         }
 
-    async def create(self):
+    async def create(
+        self, object_lifecycle_preference: LifecyclePreferencePayload | None = None
+    ):
         token = await self._token_manager.get_token()
         url = f"{token.base_upload_url}/files/upload/multipart"
         headers = await self.auth_headers
+        request_headers = {
+            **headers,
+            "Accept": "application/json",
+            "Content-Type": self.content_type,
+            "X-Fal-File-Name": self.file_name,
+        }
+        _object_lifecycle_headers(request_headers, object_lifecycle_preference)
         response = await _async_maybe_retry_request(
             self._client,
             "POST",
             url,
-            headers={
-                **headers,
-                "Accept": "application/json",
-                "Content-Type": self.content_type,
-                "X-Fal-File-Name": self.file_name,
-            },
+            headers=request_headers,
         )
         result = response.json()
         self._access_url = result["access_url"]
@@ -457,6 +518,7 @@ class AsyncMultipartUpload:
         content_type: str | None = None,
         chunk_size: int | None = None,
         max_concurrency: int | None = None,
+        object_lifecycle_preference: LifecyclePreferencePayload | None = None,
     ) -> str:
         multipart = cls(
             file_name=file_name,
@@ -466,7 +528,7 @@ class AsyncMultipartUpload:
             content_type=content_type,
             max_concurrency=max_concurrency,
         )
-        await multipart.create()
+        await multipart.create(object_lifecycle_preference=object_lifecycle_preference)
         parts = math.ceil(len(data) / multipart.chunk_size)
 
         async def upload_part(part_number: int) -> None:
@@ -499,6 +561,7 @@ class AsyncMultipartUpload:
         chunk_size: int | None = None,
         content_type: str | None = None,
         max_concurrency: int | None = None,
+        object_lifecycle_preference: LifecyclePreferencePayload | None = None,
     ) -> str:
         file_name = os.path.basename(file_path)
         size = os.path.getsize(file_path)
@@ -510,7 +573,7 @@ class AsyncMultipartUpload:
             content_type=content_type,
             max_concurrency=max_concurrency,
         )
-        await multipart.create()
+        await multipart.create(object_lifecycle_preference=object_lifecycle_preference)
         parts = math.ceil(size / multipart.chunk_size)
 
         async def upload_part(part_number: int) -> None:
@@ -1118,21 +1181,88 @@ def _cdn_auth_header(auth: AuthCredentials) -> str:
     return auth.header_value
 
 
+def _object_lifecycle_headers(
+    headers: dict[str, str],
+    object_lifecycle_preference: LifecyclePreferencePayload | None,
+) -> None:
+    if object_lifecycle_preference is not None:
+        lifecycle_json = json.dumps(object_lifecycle_preference)
+        # CDN uploads expect X-Fal-Object-Lifecycle, while storage-backed
+        # upload initiation uses X-Fal-Object-Lifecycle-Preference.
+        headers["X-Fal-Object-Lifecycle"] = lifecycle_json
+        headers["X-Fal-Object-Lifecycle-Preference"] = lifecycle_json
+
+
+def _get_upload_expiration_duration_seconds(expires_in: ObjectExpiration) -> int | None:
+    if isinstance(expires_in, bool):
+        raise ValueError("Boolean values are not valid lifecycle expires_in values.")
+    if isinstance(expires_in, int):
+        if expires_in <= 0:
+            raise ValueError(
+                "Integer lifecycle expires_in value must be greater than 0 seconds."
+            )
+        return expires_in
+    if expires_in in _UPLOAD_LIFECYCLE_EXPIRATION_VALUES:
+        return _UPLOAD_LIFECYCLE_EXPIRATION_VALUES[expires_in]
+    raise ValueError(
+        "Unsupported lifecycle expires_in value. "
+        "Use one of: never, immediate, 1h, 1d, 7d, 30d, 1y, or an integer seconds value."
+    )
+
+
+def _normalize_upload_lifecycle(
+    lifecycle: StorageSettings | None,
+) -> LifecyclePreferencePayload | None:
+    if lifecycle is None:
+        return None
+
+    normalized: LifecyclePreferencePayload = {}
+    if lifecycle.expires_in is not None:
+        expiration_duration_seconds = _get_upload_expiration_duration_seconds(
+            lifecycle.expires_in
+        )
+        if expiration_duration_seconds is not None:
+            normalized["expiration_duration_seconds"] = expiration_duration_seconds
+
+    if lifecycle.initial_acl is not None:
+        acl_payload: LifecyclePreferencePayload = {}
+        if lifecycle.initial_acl.default is not None:
+            acl_payload["default"] = lifecycle.initial_acl.default
+        if lifecycle.initial_acl.rules:
+            acl_payload["rules"] = [
+                {"user": rule.user, "decision": rule.decision}
+                for rule in lifecycle.initial_acl.rules
+            ]
+        if acl_payload:
+            normalized["initial_acl"] = acl_payload
+
+    return normalized or None
+
+
 def _cdn_upload_headers(
-    auth: AuthCredentials, content_type: str, file_name: str | None
+    auth: AuthCredentials,
+    content_type: str,
+    file_name: str | None,
+    object_lifecycle_preference: LifecyclePreferencePayload | None,
 ) -> dict[str, str]:
     headers = {"Content-Type": content_type, "Authorization": _cdn_auth_header(auth)}
     if file_name is not None:
         headers["X-Fal-File-Name"] = file_name
+    _object_lifecycle_headers(headers, object_lifecycle_preference)
     return headers
 
 
-def _storage_upload_headers(auth: AuthCredentials) -> dict[str, str]:
-    return {
+def _storage_upload_headers(
+    auth: AuthCredentials,
+    object_lifecycle_preference: LifecyclePreferencePayload | None,
+) -> dict[str, str]:
+    headers = {
         "Authorization": auth.header_value,
         "Accept": "application/json",
         "Content-Type": "application/json",
     }
+    _object_lifecycle_headers(headers, object_lifecycle_preference)
+    return headers
 
 
 def _normalize_upload_repositories(
@@ -1172,13 +1302,14 @@ def _upload_via_storage(
     data: bytes,
     content_type: str,
     file_name: str | None,
+    object_lifecycle_preference: LifecyclePreferencePayload | None = None,
 ) -> str:
     init_response = _maybe_retry_request(
         client,
         "POST",
         f"{REST_URL}/storage/upload/initiate?storage_type=gcs",
         json=_storage_upload_payload(file_name, content_type),
-        headers=_storage_upload_headers(auth),
+        headers=_storage_upload_headers(auth, object_lifecycle_preference),
     )
     init_result = init_response.json()
     upload_url = init_result["upload_url"]
@@ -1201,13 +1332,14 @@ async def _async_upload_via_storage(
     data: bytes,
     content_type: str,
     file_name: str | None,
+    object_lifecycle_preference: LifecyclePreferencePayload | None = None,
 ) -> str:
     init_response = await _async_maybe_retry_request(
         client,
         "POST",
         f"{REST_URL}/storage/upload/initiate?storage_type=gcs",
         json=_storage_upload_payload(file_name, content_type),
-        headers=_storage_upload_headers(auth),
+        headers=_storage_upload_headers(auth, object_lifecycle_preference),
     )
     init_result = init_response.json()
     upload_url = init_result["upload_url"]
@@ -1246,13 +1378,16 @@ def _upload_cdn(
     data: bytes,
     content_type: str,
     file_name: str | None,
+    object_lifecycle_preference: LifecyclePreferencePayload | None = None,
 ) -> str:
     response = _maybe_retry_request(
         client,
         "POST",
         FAL_CDN_FALLBACK_URL + "/files/upload",
         content=data,
-        headers=_cdn_upload_headers(auth, content_type, file_name),
+        headers=_cdn_upload_headers(
+            auth, content_type, file_name, object_lifecycle_preference
+        ),
     )
     return response.json()["access_url"]
 
@@ -1280,13 +1415,16 @@ async def _async_upload_cdn(
     data: bytes,
     content_type: str,
     file_name: str | None,
+    object_lifecycle_preference: LifecyclePreferencePayload | None = None,
 ) -> str:
     response = await _async_maybe_retry_request(
         client,
         "POST",
         FAL_CDN_FALLBACK_URL + "/files/upload",
         content=data,
-        headers=_cdn_upload_headers(auth, content_type, file_name),
+        headers=_cdn_upload_headers(
+            auth, content_type, file_name, object_lifecycle_preference
+        ),
     )
     return response.json()["access_url"]
 
@@ -1600,6 +1738,8 @@ class AsyncClient:
         if start_timeout is not None:
             add_timeout_header(start_timeout, _headers)
 
+        add_fal_app_context_headers(_headers)
+
         response = await _async_maybe_retry_request(
             self._client,
             "POST",
@@ -1608,8 +1748,9 @@ class AsyncClient:
             timeout=timeout,
             headers=_headers,
         )
-
         _raise_for_status(response)
+        handle_response_headers(response.headers)
+
         return response.json()
 
     async def submit(
@@ -1653,6 +1794,8 @@ class AsyncClient:
         if start_timeout is not None:
             add_timeout_header(start_timeout, _headers)
 
+        add_fal_app_context_headers(_headers)
+
         response = await _async_maybe_retry_request(
             self._client,
             "POST",
@@ -1662,6 +1805,7 @@ class AsyncClient:
             headers=_headers,
         )
         _raise_for_status(response)
+        handle_response_headers(response.headers)
 
         data = response.json()
         return AsyncRequestHandle(
@@ -1808,14 +1952,21 @@ class AsyncClient:
         fallback_repository: UploadRepositoryId
         | list[UploadRepositoryId]
         | None = None,
+        lifecycle: StorageSettings | None = None,
     ) -> str:
-        """Upload the given data blob to the CDN and return the access URL. The content type should be specified
-        as the second argument. Use upload_file or upload_image for convenience."""
+        """Upload the given data blob and return the access URL.
+
+        The content type should be specified as the second argument. Use
+        `upload_file()` or `upload_image()` for convenience. Pass `lifecycle` to
+        control uploaded object expiration and initial ACL settings.
+        """
 
         auth = self._get_auth()
 
         if isinstance(data, str):
             data = data.encode("utf-8")
+
+        resolved_lifecycle = _normalize_upload_lifecycle(lifecycle)
 
         repository_chain = _normalize_upload_repositories(
             repository, fallback_repository
@@ -1830,11 +1981,13 @@ class AsyncClient:
                 file_name=file_name,
                 data=data,
                 content_type=content_type,
+                object_lifecycle_preference=resolved_lifecycle,
             )
 
         headers = {"Content-Type": content_type}
         if file_name is not None:
             headers["X-Fal-File-Name"] = file_name
+        _object_lifecycle_headers(headers, resolved_lifecycle)
 
         attempts: list[tuple[str, Callable[[], Any]]] = []
         for repo in repository_chain:
@@ -1857,6 +2010,7 @@ class AsyncClient:
                             data=data,
                             content_type=content_type,
                             file_name=file_name,
+                            object_lifecycle_preference=resolved_lifecycle,
                         ),
                     )
                 )
@@ -1871,6 +2025,7 @@ class AsyncClient:
                             data=data,
                             content_type=content_type,
                             file_name=file_name,
+                            object_lifecycle_preference=resolved_lifecycle,
                         ),
                     )
                 )
@@ -1885,8 +2040,13 @@ class AsyncClient:
         fallback_repository: UploadRepositoryId
         | list[UploadRepositoryId]
         | None = None,
+        lifecycle: StorageSettings | None = None,
     ) -> str:
-        """Upload a file from the local filesystem to the CDN and return the access URL."""
+        """Upload a local file and return the access URL.
+
+        Pass `lifecycle` to control uploaded object expiration and initial ACL
+        settings.
+        """
 
         mime_type, _ = mimetypes.guess_type(path)
         if mime_type is None:
@@ -1899,12 +2059,14 @@ class AsyncClient:
             os.path.getsize(path) > MULTIPART_THRESHOLD
             and repository_chain[0] == "fal_v3"
         ):
+            resolved_lifecycle = _normalize_upload_lifecycle(lifecycle)
             client = await self._get_cdn_client()
             return await AsyncMultipartUpload.save_file(
                 file_path=str(path),
                 client=client,
                 token_manager=self._token_manager,
                 content_type=mime_type,
+                object_lifecycle_preference=resolved_lifecycle,
             )
 
         with open(path, "rb") as file:
@@ -1914,6 +2076,7 @@ class AsyncClient:
                 file_name=os.path.basename(path),
                 repository=repository,
                 fallback_repository=fallback_repository,
+                lifecycle=lifecycle,
             )
 
     async def upload_image(
@@ -1925,8 +2088,13 @@ class AsyncClient:
         fallback_repository: UploadRepositoryId
         | list[UploadRepositoryId]
         | None = None,
+        lifecycle: StorageSettings | None = None,
     ) -> str:
-        """Upload a pillow image object to the CDN and return the access URL."""
+        """Upload a Pillow image object and return the access URL.
+
+        Pass `lifecycle` to control uploaded object expiration and initial ACL
+        settings.
+        """
 
         with io.BytesIO() as buffer:
             image.save(buffer, format=format)
@@ -1935,6 +2103,7 @@ class AsyncClient:
                 f"image/{format}",
                 repository=repository,
                 fallback_repository=fallback_repository,
+                lifecycle=lifecycle,
             )
 
     @asynccontextmanager
@@ -2096,6 +2265,8 @@ class SyncClient:
         if start_timeout is not None:
             add_timeout_header(start_timeout, _headers)
 
+        add_fal_app_context_headers(_headers)
+
         response = _maybe_retry_request(
             self._client,
             "POST",
@@ -2105,6 +2276,8 @@ class SyncClient:
             headers=_headers,
         )
         _raise_for_status(response)
+        handle_response_headers(response.headers)
+
         return response.json()
 
     def submit(
@@ -2145,6 +2318,8 @@ class SyncClient:
         if start_timeout is not None:
             add_timeout_header(start_timeout, _headers)
 
+        add_fal_app_context_headers(_headers)
+
         response = _maybe_retry_request(
             self._client,
             "POST",
@@ -2154,6 +2329,7 @@ class SyncClient:
             headers=_headers,
         )
         _raise_for_status(response)
+        handle_response_headers(response.headers)
 
         data = response.json()
         return SyncRequestHandle(
@@ -2293,14 +2469,21 @@ class SyncClient:
         fallback_repository: UploadRepositoryId
         | list[UploadRepositoryId]
         | None = None,
+        lifecycle: StorageSettings | None = None,
     ) -> str:
-        """Upload the given data blob to the CDN and return the access URL. The content type should be specified
-        as the second argument. Use upload_file or upload_image for convenience."""
+        """Upload the given data blob and return the access URL.
+
+        The content type should be specified as the second argument. Use
+        `upload_file()` or `upload_image()` for convenience. Pass `lifecycle` to
+        control uploaded object expiration and initial ACL settings.
+        """
 
         auth = self._get_auth()
 
         if isinstance(data, str):
             data = data.encode("utf-8")
+
+        resolved_lifecycle = _normalize_upload_lifecycle(lifecycle)
 
         repository_chain = _normalize_upload_repositories(
             repository, fallback_repository
@@ -2315,11 +2498,13 @@ class SyncClient:
                 file_name=file_name,
                 data=data,
                 content_type=content_type,
+                object_lifecycle_preference=resolved_lifecycle,
             )
 
         headers = {"Content-Type": content_type}
         if file_name is not None:
             headers["X-Fal-File-Name"] = file_name
+        _object_lifecycle_headers(headers, resolved_lifecycle)
 
         attempts: list[tuple[str, Callable[[], str]]] = []
         for repo in repository_chain:
@@ -2342,6 +2527,7 @@ class SyncClient:
                             data=data,
                             content_type=content_type,
                             file_name=file_name,
+                            object_lifecycle_preference=resolved_lifecycle,
                         ),
                     )
                 )
@@ -2356,6 +2542,7 @@ class SyncClient:
                             data=data,
                             content_type=content_type,
                             file_name=file_name,
+                            object_lifecycle_preference=resolved_lifecycle,
                         ),
                     )
                 )
@@ -2370,8 +2557,13 @@ class SyncClient:
         fallback_repository: UploadRepositoryId
         | list[UploadRepositoryId]
         | None = None,
+        lifecycle: StorageSettings | None = None,
     ) -> str:
-        """Upload a file from the local filesystem to the CDN and return the access URL."""
+        """Upload a local file and return the access URL.
+
+        Pass `lifecycle` to control uploaded object expiration and initial ACL
+        settings.
+        """
 
         mime_type, _ = mimetypes.guess_type(path)
         if mime_type is None:
@@ -2384,12 +2576,14 @@ class SyncClient:
             os.path.getsize(path) > MULTIPART_THRESHOLD
             and repository_chain[0] == "fal_v3"
         ):
+            resolved_lifecycle = _normalize_upload_lifecycle(lifecycle)
             client = self._get_cdn_client()
             return MultipartUpload.save_file(
                 file_path=str(path),
                 client=client,
                 token_manager=self._token_manager,
                 content_type=mime_type,
+                object_lifecycle_preference=resolved_lifecycle,
             )
 
         with open(path, "rb") as file:
@@ -2399,6 +2593,7 @@ class SyncClient:
                 file_name=os.path.basename(path),
                 repository=repository,
                 fallback_repository=fallback_repository,
+                lifecycle=lifecycle,
             )
 
     def upload_image(
@@ -2410,8 +2605,13 @@ class SyncClient:
         fallback_repository: UploadRepositoryId
         | list[UploadRepositoryId]
         | None = None,
+        lifecycle: StorageSettings | None = None,
     ) -> str:
-        """Upload a pillow image object to the CDN and return the access URL."""
+        """Upload a Pillow image object and return the access URL.
+
+        Pass `lifecycle` to control uploaded object expiration and initial ACL
+        settings.
+        """
 
         with io.BytesIO() as buffer:
             image.save(buffer, format=format)
@@ -2420,6 +2620,7 @@ class SyncClient:
                 f"image/{format}",
                 repository=repository,
                 fallback_repository=fallback_repository,
+                lifecycle=lifecycle,
             )
 
     @contextmanager

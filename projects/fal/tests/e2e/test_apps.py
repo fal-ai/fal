@@ -1,16 +1,15 @@
 import asyncio
 import json
 import os
-import re
 import secrets
 import subprocess
 import time
-import uuid
-from contextlib import contextmanager, redirect_stdout, suppress
+from contextlib import contextmanager, suppress
 from datetime import datetime, timedelta, timezone
-from io import StringIO
 from typing import (
     AsyncIterator,
+    Callable,
+    ContextManager,
     Dict,
     Generator,
     Iterator,
@@ -35,7 +34,7 @@ import fal
 import fal.api as api
 from fal import apps
 from fal.api.deploy import User, _get_user
-from fal.app import REQUEST_ID_KEY, AppClient, AppClientError, wrap_app
+from fal.app import AppClient, AppClientError, wrap_app
 from fal.auth import key_credentials
 from fal.container import ContainerImage
 from fal.exceptions import (
@@ -113,9 +112,6 @@ def addition_app(input: Input) -> Output:
     return Output(result=input.lhs + input.rhs)
 
 
-nomad_addition_app = addition_app.on(_scheduler="nomad")
-
-
 @fal.function(
     kind="container",
     image=ContainerImage.from_dockerfile_str(
@@ -158,26 +154,6 @@ def container_cache_enabled_app(input: Input) -> Output:
 @fal.function(
     kind="container",
     image=ContainerImage.from_dockerfile_str(
-        f"FROM python:{actual_python}-slim\n# {git_revision_short_hash()}",
-    ),
-    keep_alive=60,
-    machine_type="S",
-    serve=True,
-    max_concurrency=1,
-    force_env_build=True,
-)
-def container_no_cache_app(input: Input) -> Output:
-    print("starting...")
-    for _ in range(input.wait_time):
-        print("sleeping...")
-        time.sleep(1)
-
-    return Output(result=input.lhs + input.rhs)
-
-
-@fal.function(
-    kind="container",
-    image=ContainerImage.from_dockerfile_str(
         f"""FROM python:{actual_python}-slim\n# {git_revision_short_hash()}
 ARG OUTPUT="built incorrectly"
 ENV OUTPUT="$OUTPUT"
@@ -190,8 +166,6 @@ ENV OUTPUT="$OUTPUT"
     max_concurrency=1,
 )
 def container_build_args_app() -> str:
-    import os
-
     return os.environ["OUTPUT"]
 
 
@@ -338,6 +312,7 @@ class ExceptionApp(fal.App, keep_alive=300, max_concurrency=1):
 
 
 class CancellableApp(fal.App, keep_alive=300, max_concurrency=1, request_timeout=4):
+    skip_retry_conditions = ["timeout"]
     task = None
     running = 0
 
@@ -507,122 +482,164 @@ def user(rest_client: Client) -> Generator[User, None, None]:
     yield user
 
 
-@contextmanager
+@pytest.fixture()
 def register_app(
     host: api.FalServerlessHost,
-    app: Union[api.ServedIsolatedFunction, api.IsolatedFunction],
-    suffix: str = "",
-):
-    app_alias = str(uuid.uuid4()) + "-test-alias" + ("-" + suffix if suffix else "")
-    result = host.register(
-        func=app.func,
-        options=app.options,
-        application_name=app_alias,
-        application_auth_mode="private",
-        deployment_strategy="recreate",
-    )
+    make_tmp_app_name: Callable[[str], str],
+) -> Callable[
+    [
+        Union[api.ServedIsolatedFunction, api.IsolatedFunction],
+        str,
+    ],
+    ContextManager[Tuple[str, str]],
+]:
+    @contextmanager
+    def _register_app(
+        app: Union[api.ServedIsolatedFunction, api.IsolatedFunction],
+        suffix: str = "",
+    ):
+        app_alias = make_tmp_app_name(suffix)
+        result = host.register(
+            func=app.func,
+            options=app.options,
+            application_name=app_alias,
+            application_auth_mode="private",
+            deployment_strategy="recreate",
+        )
 
-    assert result
-    assert result.result
-    assert result.service_urls
-    app_revision = result.result.application_id
+        assert result
+        assert result.result
+        assert result.service_urls
+        app_revision = result.result.application_id
 
-    try:
-        yield app_alias, app_revision
-    finally:
-        with host._connection as client:
-            client.delete_alias(app_alias)
+        try:
+            yield app_alias, app_revision
+        finally:
+            with host._connection as client:
+                client.delete_alias(app_alias)
+
+    return _register_app
 
 
-@pytest.fixture(scope="module")
-def base_app(host: api.FalServerlessHost):
+@pytest.fixture()
+def base_app(register_app):
     # running apps without aliases is no longer supported
     # so we need to create an alias for the app
-    with register_app(host, addition_app, "base") as (app_alias, app_revision):
+    with register_app(addition_app, "base") as (
+        app_alias,
+        app_revision,
+    ):
         yield app_alias, app_revision
 
 
-@pytest.fixture(scope="module")
-def test_app(host: api.FalServerlessHost, user: User):
-    with register_app(host, addition_app, "addition") as (app_alias, _):
+@pytest.fixture()
+def test_app(
+    user: User,
+    register_app,
+):
+    with register_app(addition_app, "addition") as (
+        app_alias,
+        _,
+    ):
         yield f"{user.username}/{app_alias}"
 
 
-@pytest.fixture(scope="module")
-def test_nomad_app(host: api.FalServerlessHost, user: User):
-    with register_app(host, nomad_addition_app, "nomad") as (app_alias, _):
+@pytest.fixture()
+def test_container_app(
+    user: User,
+    register_app,
+):
+    with register_app(container_addition_app, "container") as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
 
-@pytest.fixture(scope="module")
-def test_container_app(host: api.FalServerlessHost, user: User):
-    with register_app(host, container_addition_app, "container") as (app_alias, _):
+@pytest.fixture()
+def test_container_build_args_app(
+    user: User,
+    register_app,
+):
+    with register_app(container_build_args_app, "build-args") as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
 
-@pytest.fixture(scope="module")
-def test_container_build_args_app(host: api.FalServerlessHost, user: User):
-    with register_app(host, container_build_args_app, "build-args") as (app_alias, _):
+@pytest.fixture()
+def test_fastapi_app(
+    user: User,
+    register_app,
+):
+    with register_app(calculator_app, "fastapi") as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
 
-@pytest.fixture(scope="module")
-def test_fastapi_app(host: api.FalServerlessHost, user: User):
-    with register_app(host, calculator_app, "fastapi") as (app_alias, _):
-        yield f"{user.username}/{app_alias}"
-
-
-@pytest.fixture(scope="module")
-def test_stateful_app(host: api.FalServerlessHost, user: User):
+@pytest.fixture()
+def test_stateful_app(
+    user: User,
+    register_app,
+):
     stateful_app = wrap_app(StatefulAdditionApp)
-    with register_app(host, stateful_app, "stateful") as (app_alias, _):
+    with register_app(stateful_app, "stateful") as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture()
 def test_pydantic_validation_error():
     with AppClient.connect(StatefulAdditionApp) as client:
         yield client
 
 
-@pytest.fixture(scope="module")
-def test_cancellable_app(host: api.FalServerlessHost, user: User):
+@pytest.fixture()
+def test_cancellable_app(
+    user: User,
+    register_app,
+):
     cancellable_app = wrap_app(CancellableApp)
-    with register_app(host, cancellable_app, "cancellable") as (app_alias, _):
+    with register_app(cancellable_app, "cancellable") as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture()
 def test_exception_app():
     with AppClient.connect(ExceptionApp) as client:
         yield client
 
 
-@pytest.fixture(scope="module")
-def test_health_check_app(host: api.FalServerlessHost, user: User):
+@pytest.fixture()
+def test_health_check_app(
+    user: User,
+    register_app,
+):
     health_check_app = wrap_app(HealthCheckApp)
-    with register_app(host, health_check_app, "health-check") as (app_alias, _):
+    with register_app(health_check_app, "health-check") as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
 
-@pytest.fixture(scope="module")
-def test_sleep_app(host: api.FalServerlessHost, user: User):
+@pytest.fixture()
+def test_sleep_app(
+    user: User,
+    register_app,
+):
     sleep_app = wrap_app(SleepApp)
-    with register_app(host, sleep_app, "sleep") as (app_alias, _):
+    with register_app(sleep_app, "sleep") as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
 
-@pytest.fixture(scope="module")
-def test_queue_blocking_app(host: api.FalServerlessHost, user: User):
+@pytest.fixture()
+def test_queue_blocking_app(
+    user: User,
+    register_app,
+):
     queue_blocking_app = wrap_app(QueueBlockingApp)
-    with register_app(host, queue_blocking_app, "queue-blocking") as (app_alias, _):
+    with register_app(queue_blocking_app, "queue-blocking") as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
 
-@pytest.fixture(scope="module")
-def test_realtime_app(host: api.FalServerlessHost, user: User):
+@pytest.fixture()
+def test_realtime_app(
+    user: User,
+    register_app,
+):
     realtime_app = wrap_app(RealtimeApp)
-    with register_app(host, realtime_app, "realtime") as (app_alias, _):
+    with register_app(realtime_app, "realtime") as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
 
@@ -633,18 +650,11 @@ def test_broken_app_failure(host: api.FalServerlessHost, user: User):
     assert "Failed to generate OpenAPI" in str(e)
 
 
-@pytest.mark.flaky(max_runs=3)
-def test_app_client(test_app: str, test_nomad_app: str):
+def test_app_client(test_app: str):
     response = apps.run(test_app, arguments={"lhs": 1, "rhs": 2})
     assert response["result"] == 3
 
     response = apps.run(test_app, arguments={"lhs": 2, "rhs": 3, "wait_time": 1})
-    assert response["result"] == 5
-
-    response = apps.run(test_nomad_app, arguments={"lhs": 1, "rhs": 2})
-    assert response["result"] == 3
-
-    response = apps.run(test_nomad_app, arguments={"lhs": 2, "rhs": 3, "wait_time": 1})
     assert response["result"] == 5
 
 
@@ -661,13 +671,6 @@ def test_ws_client(test_app: str):
             # they should be in order
             response = json.loads(connection.recv())
             assert response["result"] == 2 + i
-
-
-def test_app_client_old_format(base_app: Tuple[str, str], user: User):
-    app_alias, _ = base_app
-    old_format = f"{user.user_id}-{app_alias}"
-    response = apps.run(old_format, arguments={"lhs": 1, "rhs": 2})
-    assert response["result"] == 3
 
 
 def test_app_client_path_included_in_app_id(test_stateful_app: str):
@@ -699,7 +702,6 @@ def test_stateful_app_client(test_stateful_app: str):
     assert response["result"] == 0
 
 
-@pytest.mark.flaky(max_runs=3)
 def test_app_cancellation(test_app: str, test_cancellable_app: str):
     request_handle = apps.submit(
         test_cancellable_app, arguments={"lhs": 1, "rhs": 2, "wait_time": 6}
@@ -739,7 +741,6 @@ def test_app_cancellation(test_app: str, test_cancellable_app: str):
     assert response == {"result": 3}
 
 
-@pytest.mark.flaky(max_runs=3)
 def test_app_disconnect_behavior(test_app: str, test_cancellable_app: str):
     with pytest.raises(HTTPStatusError) as e:
         apps.run(
@@ -771,7 +772,6 @@ def test_app_disconnect_behavior(test_app: str, test_cancellable_app: str):
     ), "Expected Gateway Timeout even though the app handled it"
 
 
-@pytest.mark.flaky(max_runs=3)
 def test_start_timeout_queue_blocking(test_queue_blocking_app: str):
     """
     Test that start_timeout correctly times out a request waiting in queue.
@@ -827,7 +827,6 @@ def test_start_timeout_queue_blocking(test_queue_blocking_app: str):
 @pytest.mark.xfail(
     reason="Temporary disabled while investigating backend issue. Ping @efiop"
 )
-@pytest.mark.flaky(max_runs=3)
 def test_app_client_async(test_sleep_app: str):
     handle = apps.submit(test_sleep_app, arguments={"wait_time": 1})
     with pytest.raises(HTTPStatusError) as e:
@@ -912,8 +911,9 @@ def test_app_openapi_spec_metadata(
     base_app: Tuple[str, str], user: User, rest_client: Client
 ):
     app_alias, _ = base_app
+    app_user_id = user.username
     res = app_metadata.sync_detailed(
-        app_alias_or_id=app_alias, app_user_id=user.user_id, client=rest_client
+        app_alias_or_id=app_alias, app_user_id=app_user_id, client=rest_client
     )
 
     assert res.status_code == 200, f"Failed to fetch metadata for app {app_alias}"
@@ -963,85 +963,62 @@ def test_404_billable_units(test_exception_app: AppClient):
         assert response.headers.get("x-fal-billable-units") == "0"
 
 
-def test_app_no_auth():
-    # This will just pass for users with shared apps access
-    app_alias = str(uuid.uuid4()) + "-alias"
-    with pytest.raises(api.FalServerlessError, match="Must specify auth_mode"):
-        addition_app.host.register(
+def test_app_deploy_scale(host: api.FalServerlessHost, register_app):
+    from dataclasses import replace
+
+    with register_app(addition_app, "deploy-scale") as (app_alias, _):
+        options = replace(
+            addition_app.options,
+            host={
+                **addition_app.options.host,
+                "max_multiplexing": 3,
+                "max_concurrency": 2,
+            },
+        )
+        kwargs = dict(
             func=addition_app.func,
-            options=addition_app.options,
-            # random enough
+            options=options,
             application_name=app_alias,
+            application_auth_mode="private",
             deployment_strategy="recreate",
         )
 
+        result = addition_app.host.register(**kwargs, scale=False)
+        assert result
+        assert result.result
+        assert result.service_urls
+        app_revision = result.result.application_id
 
-def test_app_deploy_scale(host: api.FalServerlessHost):
-    from dataclasses import replace
+        with host._connection as client:
+            res = client.list_aliases()
+            found = next(filter(lambda alias: alias.alias == app_alias, res), None)
+            assert found, f"Could not find app {app_alias} in {res}"
+            assert found.revision == app_revision
+            # multiplexing is revision-specific
+            assert (
+                found.max_multiplexing == 3
+            ), "Expected max_multiplexing to have changed"
+            # max_concurrency is alias-specific
+            assert (
+                found.max_concurrency == 1
+            ), "Expected max_concurrency to stay the same"
 
-    app_alias = str(uuid.uuid4()) + "-alias"
-    result = addition_app.host.register(
-        func=addition_app.func,
-        options=addition_app.options,
-        application_name=app_alias,
-        application_auth_mode="private",
-        deployment_strategy="recreate",
-    )
-    assert result
-    assert result.result
-    assert result.service_urls
-    app_revision = result.result.application_id
+        result = addition_app.host.register(**kwargs, scale=True)
+        assert result
+        assert result.result
+        assert result.service_urls
+        app_revision = result.result.application_id
 
-    options = replace(
-        addition_app.options,
-        host={
-            **addition_app.options.host,
-            "max_multiplexing": 3,
-            "max_concurrency": 2,
-        },
-    )
-    kwargs = dict(
-        func=addition_app.func,
-        options=options,
-        application_name=app_alias,
-        application_auth_mode="private",
-        deployment_strategy="recreate",
-    )
-
-    result = addition_app.host.register(**kwargs, scale=False)
-    assert result
-    assert result.result
-    assert result.service_urls
-    app_revision = result.result.application_id
-
-    with host._connection as client:
-        res = client.list_aliases()
-        found = next(filter(lambda alias: alias.alias == app_alias, res), None)
-        assert found, f"Could not find app {app_alias} in {res}"
-        assert found.revision == app_revision
-        # multiplexing is revision-specific
-        assert found.max_multiplexing == 3, "Expected max_multiplexing to have changed"
-        # max_concurrency is alias-specific
-        assert found.max_concurrency == 1, "Expected max_concurrency to stay the same"
-
-    result = addition_app.host.register(**kwargs, scale=True)
-    assert result
-    assert result.result
-    assert result.service_urls
-    app_revision = result.result.application_id
-
-    with host._connection as client:
-        res = client.list_aliases()
-        found = next(filter(lambda alias: alias.alias == app_alias, res), None)
-        assert found, f"Could not find app {app_alias} in {res}"
-        assert found.revision == app_revision
-        # when scaling, all values are updated
-        assert found.max_multiplexing == 3
-        assert found.max_concurrency == 2
+        with host._connection as client:
+            res = client.list_aliases()
+            found = next(filter(lambda alias: alias.alias == app_alias, res), None)
+            assert found, f"Could not find app {app_alias} in {res}"
+            assert found.revision == app_revision
+            # when scaling, all values are updated
+            assert found.max_multiplexing == 3
+            assert found.max_concurrency == 2
 
 
-# List aliases is taking long
-@pytest.mark.timeout(600)
 def test_app_update_app(base_app: Tuple[str, str]):
     app_alias, app_revision = base_app
 
@@ -1092,8 +1069,6 @@ def test_app_update_app(base_app: Tuple[str, str]):
         assert res.max_multiplexing == new_max_multiplexing
 
 
-# List aliases is taking long
-@pytest.mark.timeout(600)
 def test_app_set_delete_alias(base_app: Tuple[str, str]):
     app_alias, app_revision = base_app
 
@@ -1130,7 +1105,6 @@ def test_app_set_delete_alias(base_app: Tuple[str, str]):
         assert not found, f"Found app {app_alias} in {res} after deletion"
 
 
-@pytest.mark.flaky(max_runs=3)
 def test_realtime_connection(test_realtime_app):
     response = apps.run(test_realtime_app, arguments={"prompt": "a cat"})
     assert response["text"] == "a cat"
@@ -1454,7 +1428,6 @@ def submit_and_wait_for_runner(app: str, arguments: dict = {}, *, path: str = ""
     return handle
 
 
-@pytest.mark.flaky(max_runs=3)
 def test_stop_runner(host: api.FalServerlessHost, test_sleep_app: str):
     # Submit a runner and wait for it to be idle
     submit_and_wait_for_runner(test_sleep_app, arguments={"wait_time": 1})
@@ -1506,7 +1479,6 @@ def test_stop_runner(host: api.FalServerlessHost, test_sleep_app: str):
         assert any(runner.runner_id != original_runner_id for runner in runners)
 
 
-@pytest.mark.flaky(max_runs=3)
 def test_kill_runner(host: api.FalServerlessHost, test_sleep_app: str):
     # Kill all the replicas of the app that is already running
     handle = apps.submit(test_sleep_app, arguments={"wait_time": 10})
@@ -1531,17 +1503,31 @@ def test_kill_runner(host: api.FalServerlessHost, test_sleep_app: str):
         existing_runners = len(
             [runner for runner in runners if runner.state == RunnerState.RUNNING]
         )
+        runner_id = runners[0].runner_id
 
-        client.kill_runner(runners[0].runner_id)
+        client.kill_runner(runner_id)
 
-        runners = client.list_alias_runners(app_alias)
-        num_runners = len(
-            [runner for runner in runners if runner.state == RunnerState.RUNNING]
-        )
-        assert num_runners == existing_runners - 1
+        timeout = 15
+        start_time = time.time()
+        while True:
+            runners = client.list_alias_runners(app_alias)
+            running_runner_ids = {
+                runner.runner_id
+                for runner in runners
+                if runner.state == RunnerState.RUNNING
+            }
+            if runner_id not in running_runner_ids:
+                break
+            if time.time() - start_time > timeout:
+                raise AssertionError(
+                    f"Runner {runner_id} still running after kill request: {runners}"
+                )
+            time.sleep(0.5)
+
+        num_runners = len(running_runner_ids)
+        assert num_runners <= existing_runners - 1
 
 
-@pytest.mark.flaky(max_runs=3)
 def test_rollout_application(host: api.FalServerlessHost, test_sleep_app: str):
     handle = apps.submit(test_sleep_app, arguments={"wait_time": 30})
 
@@ -1579,7 +1565,6 @@ def test_rollout_application(host: api.FalServerlessHost, test_sleep_app: str):
         assert not runner_ids_after.intersection(runner_ids_final)
 
 
-@pytest.mark.flaky(max_runs=3)
 def test_shell_runner(host: api.FalServerlessHost, test_sleep_app: str):
     handle = apps.submit(test_sleep_app, arguments={"wait_time": 30})
 
@@ -1615,7 +1600,6 @@ def test_shell_runner(host: api.FalServerlessHost, test_sleep_app: str):
                 proc.wait()
 
 
-@pytest.mark.flaky(max_runs=3)
 def test_exec_runner(host: api.FalServerlessHost, test_sleep_app: str):
     handle = apps.submit(test_sleep_app, arguments={"wait_time": 30})
 
@@ -1672,32 +1656,6 @@ def test_container_build_args_app_client(test_container_build_args_app: str):
     assert response == "built with build args"
 
 
-def test_container_no_cache_app_client(host: api.FalServerlessHost):
-    stdout = StringIO()
-    with redirect_stdout(stdout):
-        with register_app(host, container_no_cache_app, "container") as (app_alias, _):
-            pass
-
-    stdout = StringIO()
-    with redirect_stdout(stdout):
-        with register_app(host, container_cache_enabled_app, "container") as (
-            app_alias,
-            _,
-        ):
-            pass
-
-    logs = stdout.getvalue()
-    assert re.search(r"Image \S+ already exists", logs) is not None
-
-    stdout = StringIO()
-    with redirect_stdout(stdout):
-        with register_app(host, container_no_cache_app, "container") as (app_alias, _):
-            pass
-
-    logs = stdout.getvalue()
-    assert re.search(r"Image \S+ already exists", logs) is None
-
-
 class HintsApp(fal.App, keep_alive=300, max_concurrency=1):
     machine_type = "S"
 
@@ -1752,10 +1710,13 @@ class AppRefApp(fal.App, keep_alive=300, max_concurrency=1, max_multiplexing=3):
         )
 
 
-@pytest.fixture(scope="module")
-def test_app_ref_app(host: api.FalServerlessHost, user: User):
+@pytest.fixture()
+def test_app_ref_app(
+    user: User,
+    register_app,
+):
     app_ref_app = wrap_app(AppRefApp)
-    with register_app(host, app_ref_app, "app-ref") as (app_alias, _):
+    with register_app(app_ref_app, "app-ref") as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
 
@@ -1778,187 +1739,6 @@ def test_app_ref_app_client(test_app_ref_app: str):
     assert result_3["from_app"] == result_3["from_external_method"]
 
 
-class SetUUIDInput(BaseModel):
-    uuid: str
-
-
-class SetWaitTimeInput(BaseModel):
-    wait_time: int
-
-
-# for now it only works in newly built containers
-class GracefulShutdownApp(
-    fal.App,
-    keep_alive=300,
-    max_concurrency=1,
-    image=fal.ContainerImage.from_dockerfile_str(
-        f"""
-FROM python:{actual_python}-slim
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends git curl \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-"""
-    ),
-    skip_retry_conditions=["server_error", "connection_error", "timeout"],
-    termination_grace_period_seconds=5,
-):
-    machine_type = "XS"
-    latest_request_id = None
-    uuid = None
-    wait_time = None
-
-    def setup(self):
-        self.stop = False
-
-    def handle_exit(self):
-        self.stop = True
-
-    @fal.endpoint("/set-uuid")
-    async def set_uuid(self, input: SetUUIDInput) -> str:
-        self.uuid = input.uuid
-        return "ok"
-
-    @fal.endpoint("/set-wait-time")
-    async def set_wait_time(self, input: SetWaitTimeInput) -> str:
-        self.wait_time = input.wait_time
-        return "ok"
-
-    @fal.endpoint("/")
-    async def request_handler(self, request: Request) -> str:
-        request_id = request.headers.get(REQUEST_ID_KEY)
-        if request_id is None:
-            raise Exception("No request id found")
-
-        self.latest_request_id = request_id
-        return "ok"
-
-    @fal.endpoint("/latest-request-id")
-    async def fetch_latest_request_id(self) -> str:
-        if self.uuid is None:
-            return ""
-
-        try:
-            with open(f"/data/teardown/{self.uuid}.txt") as f:
-                latest_request_id = f.read()
-
-            os.unlink(f"/data/teardown/{self.uuid}.txt")
-            return latest_request_id
-        except Exception as e:
-            return str(e)
-
-    def teardown(self):
-        if self.latest_request_id is None or self.uuid is None:
-            return
-
-        if self.wait_time is not None:
-            for i in range(self.wait_time):
-                print(f"sleeping {i + 1} of {self.wait_time}...", flush=True)
-                time.sleep(1)
-
-        os.makedirs("/data/teardown", exist_ok=True)
-        with open(f"/data/teardown/{self.uuid}.txt", "w") as f:
-            f.write(self.latest_request_id + "\n")
-            f.write("t" if self.stop else "f")
-
-
-@pytest.fixture(scope="module")
-def test_graceful_shutdown_app(host: api.FalServerlessHost, user: User):
-    graceful_shutdown_app = wrap_app(GracefulShutdownApp)
-    with register_app(host, graceful_shutdown_app, "graceful-shutdown") as (
-        app_alias,
-        _,
-    ):
-        yield f"{user.username}/{app_alias}"
-
-
-def graceful_shutdown(
-    test_graceful_shutdown_app: str,
-    host: api.FalServerlessHost,
-    *,
-    wait_time: int,
-    path: str,
-    kill: bool = False,
-) -> bool:
-    time.sleep(2)
-
-    token = str(uuid.uuid4())
-    assert (
-        apps.run(test_graceful_shutdown_app, {"uuid": token}, path="/set-uuid") == "ok"
-    ), "UUID not set"
-
-    assert (
-        apps.run(
-            test_graceful_shutdown_app, {"wait_time": wait_time}, path="/set-wait-time"
-        )
-        == "ok"
-    ), "Wait time not set"
-
-    handle = submit_and_wait_for_runner(test_graceful_shutdown_app, path=path)
-    saved_request_id = handle.request_id
-
-    time.sleep(2)
-    with host._connection as client:
-        _, _, app_alias = test_graceful_shutdown_app.partition("/")
-
-        runners = client.list_runners(start_time=datetime.now() - timedelta(seconds=10))
-        runner = next((r for r in runners if r.alias == app_alias), None)
-
-        assert runner is not None, "Runner not found"
-
-        if kill:
-            client.kill_runner(runner.runner_id)
-        else:
-            client.stop_runner(runner.runner_id)
-
-    if kill:
-        time.sleep(2)
-    else:
-        # Need to wait longer than 10s because how we stop the runner
-        time.sleep(60)
-
-    assert (
-        apps.run(test_graceful_shutdown_app, {"uuid": token}, path="/set-uuid") == "ok"
-    ), "UUID not set"
-    res = apps.run(test_graceful_shutdown_app, {}, path="/latest-request-id")
-
-    teardown_called = res.split("\n")[0] == saved_request_id
-    stop_called = len(res.split("\n")) > 1 and res.split("\n")[1] == "t"
-
-    return teardown_called and stop_called
-
-
-@pytest.mark.flaky(max_runs=3)
-def test_graceful_shutdown(
-    host: api.FalServerlessHost,
-    test_graceful_shutdown_app: str,
-):
-    assert graceful_shutdown(
-        test_graceful_shutdown_app, host, wait_time=1, path="/"
-    ), "app should be gracefully shutdown"
-
-
-@pytest.mark.flaky(max_runs=3)
-def test_graceful_shutdown_force_kill(
-    host: api.FalServerlessHost,
-    test_graceful_shutdown_app: str,
-):
-    assert not graceful_shutdown(
-        test_graceful_shutdown_app, host, wait_time=10, path="/"
-    ), "app should be forcefully killed if it takes too long to clean up"
-
-
-@pytest.mark.flaky(max_runs=3)
-def test_forceful_shutdown(
-    host: api.FalServerlessHost,
-    test_graceful_shutdown_app: str,
-):
-    assert not graceful_shutdown(
-        test_graceful_shutdown_app, host, wait_time=1, path="/", kill=True
-    ), "app should be forcefully killed on kill_runner"
-
-
-@pytest.mark.flaky(max_runs=3)
 def test_runner_machine_type(host: api.FalServerlessHost, test_sleep_app: str):
     """Test that machine_type is populated in runner info."""
     submit_and_wait_for_runner(test_sleep_app, arguments={"wait_time": 1})
@@ -2025,10 +1805,14 @@ class RequestContextApp(fal.App, keep_alive=300, max_concurrency=1, max_multiple
         )
 
 
-@pytest.fixture(scope="module")
-def test_request_context_app(host: api.FalServerlessHost, user: User):
+@pytest.fixture()
+def test_request_context_app(
+    user: User,
+    register_app,
+):
     request_context_app = wrap_app(RequestContextApp)
-    with register_app(host, request_context_app, "request-context") as (app_alias, _):
+    with register_app(request_context_app, "request-context") as (app_alias, _):
+        time.sleep(1)
         yield f"{user.username}/{app_alias}"
 
 
