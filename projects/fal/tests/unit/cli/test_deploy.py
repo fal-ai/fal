@@ -90,6 +90,10 @@ def mock_parse_pyproject_toml():
                 "team": "my-team",
                 "auth": "shared",
             },
+            "pyver-app": {
+                "ref": "src/pyver_app/inference.py::PyverApp",
+                "python_version": "3.11",
+            },
             "no-scale-app": {
                 "ref": "src/no_scale_app/inference.py::NoScaleApp",
                 "team": "my-team",
@@ -709,6 +713,22 @@ def test_get_app_data_from_toml_with_app_files(
         "app_files_context_dir": ".",
     }
     assert toml_data.options.environment == {}
+
+
+@patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+def test_get_app_data_from_toml_with_python_version(
+    mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml
+):
+    from fal.cli._utils import get_app_data_from_toml
+
+    mock_parse_toml.return_value = mock_parse_pyproject_toml
+
+    toml_data = get_app_data_from_toml("pyver-app")
+
+    project_root, _ = find_project_root(None)
+    assert toml_data.ref == f"{project_root / 'src/pyver_app/inference.py'}::PyverApp"
+    assert toml_data.options.environment == {"python_version": "3.11"}
 
 
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
