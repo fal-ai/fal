@@ -4,7 +4,7 @@ import isolate_proto
 
 
 def test_proto():
-    test_mod = isolate_proto.MachineRequirements("XL")
+    test_mod = isolate_proto.MachineRequirements(machine_type="XL")
     assert test_mod.machine_type == "XL"
 
 
