@@ -115,7 +115,6 @@ message HostedRun {
     // When omitted, the server applies a default based on the user model.
     repeated string data_mounts = 10;
     // Explicit allow-list of user secrets exposed as env vars.
-    // Absent => server default; present => expose exactly `names` (empty = none).
     optional SecretsConfig secrets = 11;
     // Run the resolved callable on the backend main thread instead of a thread pool.
     bool run_on_main_thread = 13;
@@ -328,7 +327,6 @@ message RegisterApplicationRequest {
     // When omitted, the server applies a default based on the user model
     repeated string data_mounts = 20;
     // Explicit allow-list of user secrets exposed as env vars.
-    // Absent => server default; present => expose exactly `names` (empty = none).
     optional SecretsConfig secrets = 22;
     // Run the resolved callable on the backend main thread instead of a thread pool.
     bool run_on_main_thread = 23;
