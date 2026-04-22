@@ -39,6 +39,7 @@ def _deploy(args):
         strategy=args.strategy,
         reset_scale=args.app_scale_settings,
         force_env_build=no_cache,
+        fetch_openapi=args.fetch_openapi,
         environment_name=args.env,
     )
     app_id = res.revision
@@ -206,6 +207,14 @@ def add_parser(main_subparsers, parents):
         help=(
             "[DEPRECATED: Use --no-cache instead] "
             "Ignore the environment build cache and force rebuild."
+        ),
+    )
+    parser.add_argument(
+        "--fetch-openapi",
+        action="store_true",
+        help=(
+            "Fetch OpenAPI from the runner during deployment instead of "
+            "building it locally."
         ),
     )
     add_env_argument(parser)

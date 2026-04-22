@@ -804,6 +804,7 @@ class FalServerlessConnection:
         skip_retry_conditions: list[RetryConditionLiteral] | None = None,
         environment_name: str | None = None,
         termination_grace_period_seconds: int | None = None,
+        fetch_openapi: bool = False,
     ) -> Iterator[RegisterApplicationResult]:
         wrapped_function = to_serialized_object(function, serialization_method)
         if machine_requirements:
@@ -891,6 +892,8 @@ class FalServerlessConnection:
             environment_name=environment_name,
             termination_grace_period_seconds=termination_grace_period_seconds,
         )
+        if fetch_openapi:
+            request.fetch_openapi = True
         for partial_result in self.stub.RegisterApplication(request):
             yield from_grpc(partial_result)
 
@@ -990,6 +993,7 @@ class FalServerlessConnection:
         application_name: str | None = None,
         auth_mode: Optional[AuthModeLiteral] = None,
         environment_name: str | None = None,
+        fetch_openapi: bool = False,
     ) -> Iterator[HostedRunResult[ResultT]]:
         wrapped_function = to_serialized_object(function, serialization_method)
         if machine_requirements:
@@ -1038,6 +1042,8 @@ class FalServerlessConnection:
             auth_mode=auth,
             environment_name=environment_name,
         )
+        if fetch_openapi:
+            request.fetch_openapi = True
         if setup_function:
             request.setup_func.MergeFrom(
                 to_serialized_object(setup_function, serialization_method)

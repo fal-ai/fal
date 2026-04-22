@@ -590,6 +590,7 @@ class FalServerlessHost(Host):
             "max_multiplexing",
             "setup_function",
             "metadata",
+            "fetch_openapi",
             "request_timeout",
             "startup_timeout",
             "private_logs",
@@ -681,6 +682,7 @@ class FalServerlessHost(Host):
         application_auth_mode: Optional[AuthModeLiteral] = None,
         source_code: Optional[str] = None,
         metadata: Optional[dict[str, Any]] = None,
+        fetch_openapi: bool = False,
         deployment_strategy: DeploymentStrategyLiteral,
         scale: bool = True,
         environment_name: Optional[str] = None,
@@ -741,8 +743,10 @@ class FalServerlessHost(Host):
         if metadata is None:
             metadata = {}
 
+        fetch_openapi = fetch_openapi or options.host.get("fetch_openapi", False)
+
         # TODO: let the user send more metadata than just openapi
-        if isinstance(func, ServeWrapper):
+        if isinstance(func, ServeWrapper) and not fetch_openapi:
             # Assigning in a separate property leaving a place for the user
             # to add more metadata in the future
             metadata["openapi"] = func.openapi()
@@ -764,6 +768,7 @@ class FalServerlessHost(Host):
             skip_retry_conditions=skip_retry_conditions,
             environment_name=environment_name,
             termination_grace_period_seconds=termination_grace_period_seconds,
+            fetch_openapi=fetch_openapi,
         ):
             for log in partial_result.logs:
                 self._log_printer.print(log)
@@ -805,6 +810,7 @@ class FalServerlessHost(Host):
         scheduler_options = options.host.get("_scheduler_options", None)
         exposed_port = options.get_exposed_port()
         setup_function = options.host.get("setup_function", None)
+        fetch_openapi = options.host.get("fetch_openapi", False)
         request_timeout = options.host.get("request_timeout")
         startup_timeout = options.host.get("startup_timeout")
         regions = options.host.get("regions")
@@ -845,6 +851,7 @@ class FalServerlessHost(Host):
             application_name=effective_app_name,
             auth_mode=effective_auth_mode,
             environment_name=self.environment_name,
+            fetch_openapi=fetch_openapi,
         ):
             result_handler(partial_result)
 

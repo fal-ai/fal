@@ -197,3 +197,16 @@ def test_load_function_from_preserves_app_defined_app_files_over_toml(tmp_path):
     assert wrapped_cls.app_files == ["class-files"]
     assert wrapped_cls.app_files_ignore == ["class-ignore"]
     assert wrapped_cls.app_files_context_dir == "class-context"
+
+
+def test_load_function_from_sets_fetch_openapi_host_option(tmp_path):
+    app_file = tmp_path / "app.py"
+    app_file.write_text(
+        "import fal\n" "\n" "@fal.function()\n" "def myfunc():\n" "    return 'ok'\n"
+    )
+
+    client = SyncServerlessClient(host="api.alpha.fal.ai")
+    host = client._create_host(local_file_path=str(app_file))
+
+    loaded = load_function_from(host, str(app_file), "myfunc", fetch_openapi=True)
+    assert loaded.function.options.host["fetch_openapi"] is True
