@@ -14,7 +14,7 @@ from typing import AsyncIterator, Iterator
 from unittest.mock import MagicMock, PropertyMock, patch
 
 import pytest
-from fastapi import WebSocket
+from fastapi import FastAPI, WebSocket
 from pydantic import BaseModel
 
 import fal
@@ -122,6 +122,70 @@ def test_run_forwards_regions_to_machine_requirements():
     assert result == "ok"
     _, call_kwargs = connection.run.call_args
     assert call_kwargs["machine_requirements"].valid_regions == ["us-east"]
+
+
+@pytest.mark.asyncio
+async def test_app_lifespan_warms_data_dirs_before_setup(
+    isolate_agent_env, monkeypatch: pytest.MonkeyPatch
+):
+    import fal.app as fal_app_module
+
+    calls: list[tuple[str, str | None]] = []
+
+    monkeypatch.setattr(
+        fal_app_module,
+        "warm_dir",
+        lambda directory: calls.append(("warm", directory)),
+    )
+
+    class WarmedApp(App):
+        data_dirs = ["/data/models", "/data/tokenizer"]
+
+        def setup(self):
+            calls.append(("setup", None))
+
+    app = WarmedApp()
+
+    async with app.lifespan(FastAPI()):
+        pass
+
+    assert calls == [
+        ("warm", "/data/models"),
+        ("warm", "/data/tokenizer"),
+        ("setup", None),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_app_lifespan_resolves_relative_data_dirs_from_data(
+    isolate_agent_env, monkeypatch: pytest.MonkeyPatch
+):
+    import fal.app as fal_app_module
+
+    calls: list[tuple[str, str | None]] = []
+
+    monkeypatch.setattr(
+        fal_app_module,
+        "warm_dir",
+        lambda directory: calls.append(("warm", str(directory))),
+    )
+
+    class WarmedApp(App):
+        data_dirs = ["models", "nested/tokenizer"]
+
+        def setup(self):
+            calls.append(("setup", None))
+
+    app = WarmedApp()
+
+    async with app.lifespan(FastAPI()):
+        pass
+
+    assert calls == [
+        ("warm", "/data/models"),
+        ("warm", "/data/nested/tokenizer"),
+        ("setup", None),
+    ]
 
 
 def test_wrap_app_allows_resolver_with_container_kind():
