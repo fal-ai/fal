@@ -758,8 +758,7 @@ class FalServerlessHost(Host):
             deployment_strategy=deployment_strategy,
             scale=scale,
             health_check_config=health_check_config,
-            # By default, logs are public
-            private_logs=options.host.get("private_logs", False),
+            private_logs=options.host.get("private_logs"),
             files=files,
             skip_retry_conditions=skip_retry_conditions,
             environment_name=environment_name,

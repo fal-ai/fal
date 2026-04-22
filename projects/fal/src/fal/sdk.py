@@ -799,7 +799,7 @@ class FalServerlessConnection:
         metadata: dict[str, Any] | None = None,
         deployment_strategy: DeploymentStrategyLiteral,
         scale: bool = True,
-        private_logs: bool = False,
+        private_logs: bool | None = None,
         files: list[File] | None = None,
         skip_retry_conditions: list[RetryConditionLiteral] | None = None,
         environment_name: str | None = None,
@@ -883,7 +883,6 @@ class FalServerlessConnection:
             metadata=struct_metadata,
             deployment_strategy=deployment_strategy_proto,
             scale=scale,
-            private_logs=private_logs,
             files=files,
             source_code=source_code,
             health_check_config=wrapped_health_check_config,
@@ -891,6 +890,8 @@ class FalServerlessConnection:
             environment_name=environment_name,
             termination_grace_period_seconds=termination_grace_period_seconds,
         )
+        if private_logs is not None:
+            request.private_logs = private_logs
         for partial_result in self.stub.RegisterApplication(request):
             yield from_grpc(partial_result)
 

@@ -124,6 +124,65 @@ def test_run_forwards_regions_to_machine_requirements():
     assert call_kwargs["machine_requirements"].valid_regions == ["us-east"]
 
 
+def test_register_leaves_private_logs_unset_by_default():
+    from fal.api.api import FalServerlessHost, Options
+    from fal.sdk import RegisterApplicationResult
+
+    host = FalServerlessHost()
+    options = Options()
+
+    connection = MagicMock()
+    connection.define_environment.return_value = object()
+    partial_result = RegisterApplicationResult()
+    partial_result.result = "ok"
+    connection.register.return_value = iter([partial_result])
+
+    with patch.object(
+        FalServerlessHost, "_connection", new_callable=PropertyMock
+    ) as mock_connection:
+        mock_connection.return_value = connection
+        result = host.register(
+            lambda: "ok",
+            options,
+            application_name="example-app",
+            deployment_strategy="recreate",
+        )
+
+    assert result == partial_result
+    _, call_kwargs = connection.register.call_args
+    assert call_kwargs["private_logs"] is None
+
+
+def test_register_forwards_explicit_private_logs_false():
+    from fal.api.api import FalServerlessHost, Options
+    from fal.sdk import RegisterApplicationResult
+
+    host = FalServerlessHost()
+    options = Options()
+    options.host["private_logs"] = False
+
+    connection = MagicMock()
+    connection.define_environment.return_value = object()
+    partial_result = RegisterApplicationResult()
+    partial_result.result = "ok"
+    connection.register.return_value = iter([partial_result])
+
+    with patch.object(
+        FalServerlessHost, "_connection", new_callable=PropertyMock
+    ) as mock_connection:
+        mock_connection.return_value = connection
+        result = host.register(
+            lambda: "ok",
+            options,
+            application_name="example-app",
+            deployment_strategy="recreate",
+        )
+
+    assert result == partial_result
+    _, call_kwargs = connection.register.call_args
+    assert call_kwargs["private_logs"] is False
+
+
 def test_wrap_app_allows_resolver_with_container_kind():
     from fal.app import wrap_app
 
