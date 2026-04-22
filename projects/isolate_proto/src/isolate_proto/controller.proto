@@ -66,10 +66,16 @@ message HostedMap {
     repeated EnvironmentDefinition environments = 1;
     // Machine requirements
     optional MachineRequirements machine_requirements = 2;
-    // Function to run.
-    SerializedObject function = 3;
+    oneof callable {
+        // Serialized callable to run.
+        SerializedObject function = 3;
+        // A Python entrypoint of the form "module:attr" resolved by the backend.
+        string entrypoint = 5;
+    }
     // Inputs to the function
     repeated SerializedObject inputs = 4;
+    // Run the resolved callable on the backend main thread instead of a thread pool.
+    bool run_on_main_thread = 6;
 }
 
 message File {
@@ -78,13 +84,21 @@ message File {
     string relative_path = 2;
 }
 
+message SecretsConfig {
+    repeated string names = 1;
+}
+
 message HostedRun {
     // Environment definitions.
     repeated EnvironmentDefinition environments = 1;
     // Machine requirements
     optional MachineRequirements machine_requirements = 2;
-    // Function to run.
-    SerializedObject function = 3;
+    oneof callable {
+        // Serialized callable to run.
+        SerializedObject function = 3;
+        // A Python entrypoint of the form "module:attr" resolved by the backend.
+        string entrypoint = 12;
+    }
     // Optional setup function to pass as the first argument to the function.
     optional SerializedObject setup_func = 4;
     // Optional files to be included
@@ -100,9 +114,11 @@ message HostedRun {
     // Persistent data mount paths (e.g. "/data", "/data/.cache").
     // When omitted, the server applies a default based on the user model.
     repeated string data_mounts = 10;
-    // Names of user secrets to expose to the app as environment variables.
-    // When omitted, the server applies a default based on the user model.
-    repeated string secrets = 11;
+    // Explicit allow-list of user secrets exposed as env vars.
+    // Absent => server default; present => expose exactly `names` (empty = none).
+    optional SecretsConfig secrets_config = 11;
+    // Run the resolved callable on the backend main thread instead of a thread pool.
+    bool run_on_main_thread = 13;
 }
 
 message CreateUserKeyRequest {
@@ -269,8 +285,12 @@ message RegisterApplicationRequest {
     repeated EnvironmentDefinition environments = 1;
     // Machine requirements
     optional MachineRequirements machine_requirements = 2;
-    // Function to run.
-    SerializedObject function = 3;
+    oneof callable {
+        // Serialized callable to register.
+        SerializedObject function = 3;
+        // A Python entrypoint of the form "module:attr" resolved by the backend.
+        string entrypoint = 21;
+    }
     // Optional setup function to pass as the first argument to the function.
     optional SerializedObject setup_func = 4;
     // Name of the application
@@ -307,9 +327,11 @@ message RegisterApplicationRequest {
     // Persistent data mount paths (e.g. "/data", "/data/.cache").
     // When omitted, the server applies a default based on the user model
     repeated string data_mounts = 20;
-    // Names of user secrets to expose to the app as environment variables.
-    // When omitted, the server applies a default based on the user model.
-    repeated string secrets = 21;
+    // Explicit allow-list of user secrets exposed as env vars.
+    // Absent => server default; present => expose exactly `names` (empty = none).
+    optional SecretsConfig secrets = 22;
+    // Run the resolved callable on the backend main thread instead of a thread pool.
+    bool run_on_main_thread = 23;
 }
 
 message RegisterApplicationResultType {
