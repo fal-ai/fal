@@ -577,6 +577,11 @@ class App(BaseServable):
         kind: Deployment kind. For internal use.
         image: Custom container image for the application. Use ContainerImage
             to specify a Dockerfile.
+        secrets: Names of user secrets to expose to the app as environment
+            variables. When omitted, the server applies the default behavior
+            (typically injecting all user secrets). Pass an explicit list to
+            opt in to only the secrets listed.
+            Example: `["OPENAI_API_KEY", "HF_TOKEN"]`
     """
 
     requirements: ClassVar[list[str] | list[list[str]]] = []  # type: ignore[assignment]
@@ -610,6 +615,7 @@ class App(BaseServable):
     local_file_path: ClassVar[Optional[str]] = None
     skip_retry_conditions: ClassVar[Optional[list[RetryConditionLiteral]]] = None
     termination_grace_period_seconds: ClassVar[Optional[int]] = None
+    secrets: ClassVar[Optional[list[str]]] = None
 
     isolate_channel: async_grpc.Channel | None = None
 
@@ -680,6 +686,9 @@ class App(BaseServable):
             cls.host_kwargs["termination_grace_period_seconds"] = (
                 cls.termination_grace_period_seconds
             )
+
+        if cls.secrets is not None:
+            cls.host_kwargs["secrets"] = cls.secrets
 
         cls.host_kwargs["health_check_config"] = cls.get_health_check_config()
 
