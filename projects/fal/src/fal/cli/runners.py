@@ -227,6 +227,11 @@ def _shell(args):
                 return
 
     exit_code = 1
+
+    def restore_tty() -> None:
+        if is_tty:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+
     try:
         for output in stub.ShellRunner(stream_inputs()):
             if output.HasField("exit_code"):
@@ -239,6 +244,7 @@ def _shell(args):
                 break
         exit_code = exit_code or 0
     except grpc.RpcError as exc:
+        restore_tty()
         if exc.code() == grpc.StatusCode.UNAVAILABLE:
             from fal.api.api import _format_unavailable_error
 
@@ -248,11 +254,11 @@ def _shell(args):
         else:
             args.console.print(f"\n[red]Connection error:[/] {exc.details()}")
     except Exception as exc:
+        restore_tty()
         args.console.print(f"\n[red]Error:[/] {exc}")
     finally:
         stop_flag = True
-        if is_tty:
-            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+        restore_tty()
 
     return exit_code
 
