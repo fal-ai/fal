@@ -799,12 +799,13 @@ class FalServerlessConnection:
         metadata: dict[str, Any] | None = None,
         deployment_strategy: DeploymentStrategyLiteral,
         scale: bool = True,
-        private_logs: bool = False,
+        private_logs: bool | None = None,
         files: list[File] | None = None,
         skip_retry_conditions: list[RetryConditionLiteral] | None = None,
         environment_name: str | None = None,
         termination_grace_period_seconds: int | None = None,
         secrets: list[str] | None = None,
+        data_mounts: list[str] | None = None,
     ) -> Iterator[RegisterApplicationResult]:
         wrapped_function = to_serialized_object(function, serialization_method)
         if machine_requirements:
@@ -884,7 +885,6 @@ class FalServerlessConnection:
             metadata=struct_metadata,
             deployment_strategy=deployment_strategy_proto,
             scale=scale,
-            private_logs=private_logs,
             files=files,
             source_code=source_code,
             health_check_config=wrapped_health_check_config,
@@ -896,7 +896,10 @@ class FalServerlessConnection:
                 if secrets is not None
                 else None
             ),
+            data_mounts=data_mounts or [],
         )
+        if private_logs is not None:
+            request.private_logs = private_logs
         for partial_result in self.stub.RegisterApplication(request):
             yield from_grpc(partial_result)
 
@@ -997,6 +1000,7 @@ class FalServerlessConnection:
         auth_mode: Optional[AuthModeLiteral] = None,
         environment_name: str | None = None,
         secrets: list[str] | None = None,
+        data_mounts: list[str] | None = None,
     ) -> Iterator[HostedRunResult[ResultT]]:
         wrapped_function = to_serialized_object(function, serialization_method)
         if machine_requirements:
@@ -1049,6 +1053,7 @@ class FalServerlessConnection:
                 if secrets is not None
                 else None
             ),
+            data_mounts=data_mounts or [],
         )
         if setup_function:
             request.setup_func.MergeFrom(

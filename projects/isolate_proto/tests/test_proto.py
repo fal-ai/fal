@@ -72,3 +72,20 @@ def test_callable_entrypoint_fields():
     )
     assert register_request_last_write_wins.WhichOneof("callable") == "entrypoint"
     assert register_request_last_write_wins.entrypoint == "pkg.mod:App.run"
+
+
+def test_register_application_private_logs_presence():
+    request_without_private_logs = isolate_proto.RegisterApplicationRequest()
+    assert request_without_private_logs.HasField("private_logs") is False
+
+    request_with_private_logs_false = isolate_proto.RegisterApplicationRequest(
+        private_logs=False
+    )
+    assert request_with_private_logs_false.HasField("private_logs") is True
+    assert request_with_private_logs_false.private_logs is False
+
+    request_with_private_logs_true = isolate_proto.RegisterApplicationRequest(
+        private_logs=True
+    )
+    assert request_with_private_logs_true.HasField("private_logs") is True
+    assert request_with_private_logs_true.private_logs is True

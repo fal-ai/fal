@@ -124,6 +124,67 @@ def test_run_forwards_regions_to_machine_requirements():
     assert call_kwargs["machine_requirements"].valid_regions == ["us-east"]
 
 
+def test_register_leaves_private_logs_unset_by_default():
+    from fal.api.api import FalServerlessHost, Options
+    from fal.sdk import RegisterApplicationResult, RegisterApplicationResultType
+
+    host = FalServerlessHost()
+    options = Options()
+
+    connection = MagicMock()
+    connection.define_environment.return_value = object()
+    partial_result = RegisterApplicationResult(
+        result=RegisterApplicationResultType(application_id="app-id")
+    )
+    connection.register.return_value = iter([partial_result])
+
+    with patch.object(
+        FalServerlessHost, "_connection", new_callable=PropertyMock
+    ) as mock_connection:
+        mock_connection.return_value = connection
+        result = host.register(
+            lambda: "ok",
+            options,
+            application_name="example-app",
+            deployment_strategy="recreate",
+        )
+
+    assert result == partial_result
+    _, call_kwargs = connection.register.call_args
+    assert call_kwargs["private_logs"] is None
+
+
+def test_register_forwards_explicit_private_logs_false():
+    from fal.api.api import FalServerlessHost, Options
+    from fal.sdk import RegisterApplicationResult, RegisterApplicationResultType
+
+    host = FalServerlessHost()
+    options = Options()
+    options.host["private_logs"] = False
+
+    connection = MagicMock()
+    connection.define_environment.return_value = object()
+    partial_result = RegisterApplicationResult(
+        result=RegisterApplicationResultType(application_id="app-id")
+    )
+    connection.register.return_value = iter([partial_result])
+
+    with patch.object(
+        FalServerlessHost, "_connection", new_callable=PropertyMock
+    ) as mock_connection:
+        mock_connection.return_value = connection
+        result = host.register(
+            lambda: "ok",
+            options,
+            application_name="example-app",
+            deployment_strategy="recreate",
+        )
+
+    assert result == partial_result
+    _, call_kwargs = connection.register.call_args
+    assert call_kwargs["private_logs"] is False
+
+
 def test_wrap_app_allows_resolver_with_container_kind():
     from fal.app import wrap_app
 
@@ -409,6 +470,99 @@ def test_app_classvars_propagate_to_host_kwargs():
     assert hk["kind"] == "container"
     assert isinstance(hk["image"], ContainerImage)
     assert hk["skip_retry_conditions"] == ["timeout", "connection_error"]
+
+
+def test_data_mounts_propagate_to_host_kwargs():
+    class MountsApp(App):
+        data_mounts = ["/data/.cache", "/data/my-app"]
+
+    assert MountsApp.host_kwargs["data_mounts"] == ["/data/.cache", "/data/my-app"]
+
+
+def test_data_mounts_not_in_host_kwargs_when_none():
+    class NoMountsApp(App):
+        pass
+
+    assert "data_mounts" not in NoMountsApp.host_kwargs
+
+
+def test_data_mounts_empty_list_propagates():
+    class EmptyMountsApp(App):
+        data_mounts = []
+
+    assert EmptyMountsApp.host_kwargs["data_mounts"] == []
+
+
+def test_data_mounts_propagate_through_wrap_app():
+    from fal.app import wrap_app
+
+    class MountsWrapApp(App):
+        data_mounts = ["/data"]
+
+        @endpoint("/")
+        def hello(self) -> str:
+            return "Hello, world!"
+
+    fn = wrap_app(MountsWrapApp)
+    assert fn.options.host.get("data_mounts") == ["/data"]
+
+
+def test_data_mounts_register_sends_to_connection():
+    from unittest.mock import PropertyMock
+
+    from fal.api.api import FalServerlessHost, Options
+
+    host = FalServerlessHost()
+    options = Options()
+    options.host["data_mounts"] = ["/data/.cache"]
+
+    connection = MagicMock()
+    connection.define_environment.return_value = object()
+    connection.register.return_value = iter([])
+
+    with patch.object(
+        FalServerlessHost, "_connection", new_callable=PropertyMock
+    ) as mock_connection:
+        mock_connection.return_value = connection
+        host.register(
+            func=lambda: "ok",
+            options=options,
+            deployment_strategy="recreate",
+        )
+
+    _, call_kwargs = connection.register.call_args
+    assert call_kwargs["data_mounts"] == ["/data/.cache"]
+
+
+def test_data_mounts_run_sends_to_connection():
+    from fal.api.api import FalServerlessHost, Options
+    from fal.sdk import HostedRunState
+
+    host = FalServerlessHost()
+    options = Options()
+    options.host["data_mounts"] = ["/data"]
+
+    connection = MagicMock()
+    connection.define_environment.return_value = object()
+    partial_result = MagicMock()
+    partial_result.status.state = HostedRunState.SUCCESS
+    partial_result.result = "ok"
+    connection.run.return_value = iter([partial_result])
+
+    with patch.object(
+        FalServerlessHost, "_connection", new_callable=PropertyMock
+    ) as mock_connection:
+        mock_connection.return_value = connection
+        host._run(
+            lambda: "ok",
+            options,
+            args=(),
+            kwargs={},
+            result_handler=lambda _: None,
+        )
+
+    _, call_kwargs = connection.run.call_args
+    assert call_kwargs["data_mounts"] == ["/data"]
 
 
 def test_secrets_propagate_to_host_kwargs():
