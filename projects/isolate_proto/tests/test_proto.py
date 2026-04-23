@@ -14,12 +14,29 @@ def test_callable_entrypoint_fields():
         definition=b"callable",
     )
 
+    hosted_map_without_run_on_main_thread = isolate_proto.HostedMap(
+        entrypoint="pkg.mod:func"
+    )
+    assert (
+        hosted_map_without_run_on_main_thread.HasField("run_on_main_thread") is False
+    )
+
+    hosted_map_with_run_on_main_thread_false = isolate_proto.HostedMap(
+        entrypoint="pkg.mod:func",
+        run_on_main_thread=False,
+    )
+    assert (
+        hosted_map_with_run_on_main_thread_false.HasField("run_on_main_thread") is True
+    )
+    assert hosted_map_with_run_on_main_thread_false.run_on_main_thread is False
+
     hosted_map = isolate_proto.HostedMap(
         entrypoint="pkg.mod:func",
         run_on_main_thread=True,
     )
     assert hosted_map.WhichOneof("callable") == "entrypoint"
     assert hosted_map.entrypoint == "pkg.mod:func"
+    assert hosted_map.HasField("run_on_main_thread") is True
     assert hosted_map.run_on_main_thread is True
 
     hosted_map_with_function = isolate_proto.HostedMap(function=serialized_function)
@@ -33,12 +50,29 @@ def test_callable_entrypoint_fields():
     assert hosted_map_last_write_wins.WhichOneof("callable") == "entrypoint"
     assert hosted_map_last_write_wins.entrypoint == "pkg.mod:func"
 
+    hosted_run_without_run_on_main_thread = isolate_proto.HostedRun(
+        entrypoint="pkg.mod:func"
+    )
+    assert (
+        hosted_run_without_run_on_main_thread.HasField("run_on_main_thread") is False
+    )
+
+    hosted_run_with_run_on_main_thread_false = isolate_proto.HostedRun(
+        entrypoint="pkg.mod:func",
+        run_on_main_thread=False,
+    )
+    assert (
+        hosted_run_with_run_on_main_thread_false.HasField("run_on_main_thread") is True
+    )
+    assert hosted_run_with_run_on_main_thread_false.run_on_main_thread is False
+
     hosted_run = isolate_proto.HostedRun(
         entrypoint="pkg.mod:func",
         run_on_main_thread=True,
     )
     assert hosted_run.WhichOneof("callable") == "entrypoint"
     assert hosted_run.entrypoint == "pkg.mod:func"
+    assert hosted_run.HasField("run_on_main_thread") is True
     assert hosted_run.run_on_main_thread is True
 
     hosted_run_with_function = isolate_proto.HostedRun(function=serialized_function)
@@ -52,12 +86,37 @@ def test_callable_entrypoint_fields():
     assert hosted_run_last_write_wins.WhichOneof("callable") == "entrypoint"
     assert hosted_run_last_write_wins.entrypoint == "pkg.mod:func"
 
+    register_request_without_run_on_main_thread = (
+        isolate_proto.RegisterApplicationRequest(entrypoint="pkg.mod:App.run")
+    )
+    assert (
+        register_request_without_run_on_main_thread.HasField("run_on_main_thread")
+        is False
+    )
+
+    register_request_with_run_on_main_thread_false = (
+        isolate_proto.RegisterApplicationRequest(
+            entrypoint="pkg.mod:App.run",
+            run_on_main_thread=False,
+        )
+    )
+    assert (
+        register_request_with_run_on_main_thread_false.HasField(
+            "run_on_main_thread"
+        )
+        is True
+    )
+    assert (
+        register_request_with_run_on_main_thread_false.run_on_main_thread is False
+    )
+
     register_request = isolate_proto.RegisterApplicationRequest(
         entrypoint="pkg.mod:App.run",
         run_on_main_thread=True,
     )
     assert register_request.WhichOneof("callable") == "entrypoint"
     assert register_request.entrypoint == "pkg.mod:App.run"
+    assert register_request.HasField("run_on_main_thread") is True
     assert register_request.run_on_main_thread is True
 
     register_request_with_function = isolate_proto.RegisterApplicationRequest(

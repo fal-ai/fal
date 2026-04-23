@@ -75,7 +75,7 @@ message HostedMap {
     // Inputs to the function
     repeated SerializedObject inputs = 4;
     // Run the resolved callable on the backend main thread instead of a thread pool.
-    bool run_on_main_thread = 6;
+    optional bool run_on_main_thread = 6;
 }
 
 message File {
@@ -117,7 +117,7 @@ message HostedRun {
     // Explicit allow-list of user secrets exposed as env vars.
     optional SecretsConfig secrets = 11;
     // Run the resolved callable on the backend main thread instead of a thread pool.
-    bool run_on_main_thread = 13;
+    optional bool run_on_main_thread = 13;
 }
 
 message CreateUserKeyRequest {
@@ -329,7 +329,7 @@ message RegisterApplicationRequest {
     // Explicit allow-list of user secrets exposed as env vars.
     optional SecretsConfig secrets = 22;
     // Run the resolved callable on the backend main thread instead of a thread pool.
-    bool run_on_main_thread = 23;
+    optional bool run_on_main_thread = 23;
 }
 
 message RegisterApplicationResultType {
