@@ -565,6 +565,97 @@ def test_data_mounts_run_sends_to_connection():
     assert call_kwargs["data_mounts"] == ["/data"]
 
 
+def test_secrets_propagate_to_host_kwargs():
+    class SecretsApp(App):
+        secrets = ["OPENAI_API_KEY", "HF_TOKEN"]
+
+    assert SecretsApp.host_kwargs["secrets"] == ["OPENAI_API_KEY", "HF_TOKEN"]
+
+
+def test_secrets_not_in_host_kwargs_when_none():
+    class NoSecretsApp(App):
+        pass
+
+    assert "secrets" not in NoSecretsApp.host_kwargs
+
+
+def test_secrets_empty_list_propagates():
+    class EmptySecretsApp(App):
+        secrets = []
+
+    assert EmptySecretsApp.host_kwargs["secrets"] == []
+
+
+def test_secrets_propagate_through_wrap_app():
+    from fal.app import wrap_app
+
+    class SecretsWrapApp(App):
+        secrets = ["OPENAI_API_KEY"]
+
+        @endpoint("/")
+        def hello(self) -> str:
+            return "Hello, world!"
+
+    fn = wrap_app(SecretsWrapApp)
+    assert fn.options.host.get("secrets") == ["OPENAI_API_KEY"]
+
+
+def test_secrets_register_sends_to_connection():
+    from fal.api.api import FalServerlessHost, Options
+
+    host = FalServerlessHost()
+    options = Options()
+    options.host["secrets"] = ["OPENAI_API_KEY"]
+
+    connection = MagicMock()
+    connection.define_environment.return_value = object()
+    connection.register.return_value = iter([])
+
+    with patch.object(
+        FalServerlessHost, "_connection", new_callable=PropertyMock
+    ) as mock_connection:
+        mock_connection.return_value = connection
+        host.register(
+            func=lambda: "ok",
+            options=options,
+            deployment_strategy="recreate",
+        )
+
+    _, call_kwargs = connection.register.call_args
+    assert call_kwargs["secrets"] == ["OPENAI_API_KEY"]
+
+
+def test_secrets_run_sends_to_connection():
+    from fal.api.api import FalServerlessHost, Options
+    from fal.sdk import HostedRunState
+
+    host = FalServerlessHost()
+    options = Options()
+    options.host["secrets"] = ["HF_TOKEN"]
+
+    connection = MagicMock()
+    connection.define_environment.return_value = object()
+    partial_result = MagicMock()
+    partial_result.status.state = HostedRunState.SUCCESS
+    partial_result.result = "ok"
+    connection.run.return_value = iter([partial_result])
+
+    with patch.object(
+        FalServerlessHost, "_connection", new_callable=PropertyMock
+    ) as mock_connection:
+        mock_connection.return_value = connection
+        host._run(
+            lambda: "ok",
+            options,
+            args=(),
+            kwargs={},
+            result_handler=lambda _: None,
+        )
+
+    _, call_kwargs = connection.run.call_args
+    assert call_kwargs["secrets"] == ["HF_TOKEN"]
+
+
 def test_app_files_classvars_propagate_to_host_kwargs():
     class VarsApp(App):
         request_timeout = 11
