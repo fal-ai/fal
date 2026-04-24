@@ -1,5 +1,5 @@
 from fal_client._version import __version__, version_tuple
-from fal_client._headers import set_fal_module
+from fal_client._headers import set_fal_ref
 from fal_client.client import (
     AsyncClient,
     AsyncRealtimeConnection,
@@ -64,7 +64,7 @@ __all__ = [
     "encode",
     "encode_file",
     "encode_image",
-    "set_fal_module",
+    "set_fal_ref",
 ]
 
 sync_client = SyncClient()

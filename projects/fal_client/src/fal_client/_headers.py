@@ -8,7 +8,7 @@ from httpx import Headers
 fal_module: Optional[Any] = None
 
 
-def set_fal_module(fal: Any):
+def set_fal_ref(fal: Any):
     global fal_module
     fal_module = fal
 
