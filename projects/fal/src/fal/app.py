@@ -511,7 +511,7 @@ class RequestContext:
     request_id: str | None
     endpoint: str | None
     lifecycle_preference: dict[str, str] | None
-    headers: fastapi.Header
+    headers: dict[str, str]
 
 
 class App(BaseServable):
@@ -933,7 +933,7 @@ class App(BaseServable):
                 request_id=request.headers.get(REQUEST_ID_KEY),
                 endpoint=request.headers.get(REQUEST_ENDPOINT_KEY),
                 lifecycle_preference=request_lifecycle_preference(request),
-                headers=request.headers,
+                headers=dict(request.headers),
             )
 
             token = self._current_request_context.set(context)
