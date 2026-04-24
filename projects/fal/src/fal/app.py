@@ -33,7 +33,7 @@ from fal.container import ContainerImage
 from fal.exceptions import FalServerlessException, RequestCancelledException
 from fal.logging import get_logger
 from fal.realtime import realtime  # noqa: F401
-from fal.ref import set_current_app
+from fal.ref import get_current_app, set_current_app
 from fal.sdk import (
     ApplicationHealthCheckConfig,
     AuthModeLiteral,
@@ -813,6 +813,13 @@ class App(BaseServable):
                 request_id=None, endpoint=None, lifecycle_preference=None, headers={}
             ),
         )
+
+        try:
+            import fal_client  # noqa: PLC0415
+
+            fal_client.set_get_current_app(get_current_app)
+        except ImportError:
+            pass
 
         # We want to not do any directory changes for container apps,
         # since we don't have explicit checks to see the kind of app
