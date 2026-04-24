@@ -901,6 +901,57 @@ def test_openapi_websocket_barebones_has_no_realtime_marker(isolate_agent_env):
     assert "post" not in spec["paths"]["/ws"]
 
 
+def test_websocket_endpoint_requires_websocket_annotation(isolate_agent_env):
+    class MissingWebSocketAnnotationApp(App):
+        @endpoint("/ws", is_websocket=True)
+        async def generate_ws(self, websocket) -> None:
+            return None
+
+    app = MissingWebSocketAnnotationApp()
+
+    with patch("fal.api.api.fastapi_logger") as mock_logger:
+        with pytest.raises(
+            ValueError,
+            match=(
+                r"Websocket endpoint '.*generate_ws' at '/ws' must declare "
+                r"a parameter annotated as fastapi\.WebSocket\."
+            ),
+        ) as exc_info:
+            app._build_app()
+
+    message = str(exc_info.value)
+    assert "Got signature (self, websocket)" in message
+    assert "async def generate_ws(self, websocket: WebSocket):" in message
+    mock_logger.error.assert_called_once_with(message)
+
+
+def test_websocket_endpoint_requires_async_handler(isolate_agent_env):
+    class SyncWebSocketApp(App):
+        @endpoint("/ws", is_websocket=True)
+        def generate_ws(self, websocket: WebSocket) -> None:
+            return None
+
+    app = SyncWebSocketApp()
+
+    with patch("fal.api.api.fastapi_logger") as mock_logger:
+        with pytest.raises(
+            ValueError,
+            match=(
+                r"Websocket endpoint '.*generate_ws' at '/ws' must be defined "
+                r"with async def\."
+            ),
+        ) as exc_info:
+            app._build_app()
+
+    message = str(exc_info.value)
+    assert "Got signature (self, websocket" in message
+    assert (
+        "For example: `async def generate_ws(self, websocket: WebSocket): ...`?"
+        in message
+    )
+    mock_logger.error.assert_called_once_with(message)
+
+
 def test_openapi_websocket_realtime_streaming_modes_marked(isolate_agent_env):
     app = RealtimeApp()
     spec = app.openapi()
