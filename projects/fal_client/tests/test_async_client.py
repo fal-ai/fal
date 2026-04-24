@@ -11,7 +11,7 @@ from PIL import Image
 async def client() -> fal_client.AsyncClient:
     client = fal_client.AsyncClient()
     try:
-        client._get_auth()
+        await client._auth
     except fal_client.auth.MissingCredentialsError:
         pytest.skip("No credentials found")
     return client
@@ -47,7 +47,9 @@ async def test_fal_client(client: fal_client.AsyncClient):
     assert isinstance(status, fal_client.Completed)
     assert status.logs is None
 
-    new_handle = client.get_handle("fal-ai/fast-sdxl/image-to-image", handle.request_id)
+    new_handle = await client.get_handle(
+        "fal-ai/fast-sdxl/image-to-image", handle.request_id
+    )
     assert new_handle == handle
 
     status_w_logs = await handle.status(with_logs=True)

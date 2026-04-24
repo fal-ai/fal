@@ -33,15 +33,18 @@ from typing import (
 from urllib.parse import urlencode
 import warnings
 
+import aiofiles
+import aiofiles.os
 import httpx
+from asyncstdlib import cached_property as async_cached_property
 from httpx_sse import aconnect_sse, connect_sse
 
 from fal_client.auth import (
     AuthCredentials,
     FAL_QUEUE_RUN_HOST,
     FAL_RUN_HOST,
-    MissingCredentialsError,
     fetch_auth_credentials,
+    fetch_auth_credentials_async,
 )
 from fal_client._version import __version__
 from fal_client._headers import (
@@ -439,8 +442,7 @@ class AsyncMultipartUpload:
             raise ValueError("Upload not initiated")
         return self._upload_id
 
-    @property
-    async def auth_headers(self) -> dict[str, str]:
+    async def get_auth_headers(self) -> dict[str, str]:
         token = await self._token_manager.get_token()
         return {
             "Authorization": f"{token.token_type} {token.token}",
@@ -452,9 +454,9 @@ class AsyncMultipartUpload:
     ):
         token = await self._token_manager.get_token()
         url = f"{token.base_upload_url}/files/upload/multipart"
-        headers = await self.auth_headers
         request_headers = {
-            **headers,
+            "Authorization": f"{token.token_type} {token.token}",
+            "User-Agent": USER_AGENT,
             "Accept": "application/json",
             "Content-Type": self.content_type,
             "X-Fal-File-Name": self.file_name,
@@ -472,7 +474,7 @@ class AsyncMultipartUpload:
 
     async def upload_part(self, part_number: int, data: bytes) -> None:
         url = f"{self.access_url}/multipart/{self.upload_id}/{part_number}"
-        headers = await self.auth_headers
+        headers = await self.get_auth_headers()
 
         response = await _async_request(
             self._client,
@@ -497,7 +499,7 @@ class AsyncMultipartUpload:
 
     async def complete(self) -> str:
         url = f"{self.access_url}/multipart/{self.upload_id}/complete"
-        headers = await self.auth_headers
+        headers = await self.get_auth_headers()
         await _async_maybe_retry_request(
             self._client,
             "POST",
@@ -536,19 +538,15 @@ class AsyncMultipartUpload:
             chunk = data[start : start + multipart.chunk_size]
             await multipart.upload_part(part_number, chunk)
 
-        tasks = [
-            asyncio.create_task(upload_part(part_number))
-            for part_number in range(1, parts + 1)
-        ]
-
-        # Process concurrent uploads with semaphore to limit concurrency
         sem = asyncio.Semaphore(multipart.max_concurrency)
 
-        async def bounded_upload(task):
+        async def bounded_upload(part_number: int) -> None:
             async with sem:
-                await task
+                await upload_part(part_number)
 
-        await asyncio.gather(*[bounded_upload(task) for task in tasks])
+        await asyncio.gather(
+            *(bounded_upload(part_number) for part_number in range(1, parts + 1))
+        )
         return await multipart.complete()
 
     @classmethod
@@ -564,7 +562,7 @@ class AsyncMultipartUpload:
         object_lifecycle_preference: LifecyclePreferencePayload | None = None,
     ) -> str:
         file_name = os.path.basename(file_path)
-        size = os.path.getsize(file_path)
+        size = await aiofiles.os.path.getsize(file_path)
         multipart = cls(
             file_name=file_name,
             client=client,
@@ -577,25 +575,21 @@ class AsyncMultipartUpload:
         parts = math.ceil(size / multipart.chunk_size)
 
         async def upload_part(part_number: int) -> None:
-            with open(file_path, "rb") as f:
+            async with aiofiles.open(file_path, "rb") as f:
                 start = (part_number - 1) * multipart.chunk_size
-                f.seek(start)
-                data = f.read(multipart.chunk_size)
+                await f.seek(start)
+                data = await f.read(multipart.chunk_size)
                 await multipart.upload_part(part_number, data)
 
-        tasks = [
-            asyncio.create_task(upload_part(part_number))
-            for part_number in range(1, parts + 1)
-        ]
-
-        # Process concurrent uploads with semaphore to limit concurrency
         sem = asyncio.Semaphore(multipart.max_concurrency)
 
-        async def bounded_upload(task):
+        async def bounded_upload(part_number: int) -> None:
             async with sem:
-                await task
+                await upload_part(part_number)
 
-        await asyncio.gather(*[bounded_upload(task) for task in tasks])
+        await asyncio.gather(
+            *(bounded_upload(part_number) for part_number in range(1, parts + 1))
+        )
         return await multipart.complete()
 
 
@@ -1448,14 +1442,11 @@ def _try_upload_with_fallback(
 
 
 async def _async_try_upload_with_fallback(
-    attempts: list[tuple[str, Callable[[], Any]]],
+    attempts: list[tuple[str, Callable[[], Awaitable[str]]]],
 ) -> str:
     for idx, (label, attempt) in enumerate(attempts):
         try:
-            result = attempt()
-            if asyncio.iscoroutine(result):
-                return await result
-            return result
+            return await attempt()
         except Exception as exc:
             if idx >= len(attempts) - 1:
                 raise
@@ -1639,35 +1630,22 @@ class AsyncRequestHandle(_BaseRequestHandle):
         _raise_for_status(response)
 
 
-@dataclass(frozen=True)
+# async_cached_property stores values on __dict__, so AsyncClient cannot be
+# frozen like SyncClient. Keep hash generation for backwards compatibility.
+@dataclass(unsafe_hash=True)
 class AsyncClient:
     key: str | None = field(default=None, repr=False)
     default_timeout: float = 120.0
 
-    @cached_property
-    def _auth(self) -> AuthCredentials:
-        if self.key is None:
-            return fetch_auth_credentials()
-        return AuthCredentials("Key", self.key)
+    @async_cached_property(asyncio.Lock)
+    async def _auth(self) -> AuthCredentials:
+        if self.key is not None:
+            return AuthCredentials("Key", self.key)
+        return await fetch_auth_credentials_async()
 
-    def _get_auth(self) -> AuthCredentials:
-        return self._auth
-
-    def _get_key(self) -> str:
-        auth = self._get_auth()
-        if auth.scheme.lower() != "key":
-            raise MissingCredentialsError(
-                "Key credentials are required for this operation. Set FAL_KEY or FAL_KEY_ID/FAL_KEY_SECRET."
-            )
-        return auth.token
-
-    @cached_property
-    def _token_manager(self) -> AsyncCDNTokenManager:
-        return AsyncCDNTokenManager(self._get_auth())
-
-    @cached_property
-    def _client(self) -> httpx.AsyncClient:
-        auth = self._get_auth()
+    @async_cached_property(asyncio.Lock)
+    async def _client(self) -> httpx.AsyncClient:
+        auth = await self._auth
         return httpx.AsyncClient(
             headers={
                 "Authorization": auth.header_value,
@@ -1676,15 +1654,17 @@ class AsyncClient:
             timeout=self.default_timeout,
         )
 
-    async def _get_cdn_client(self) -> httpx.AsyncClient:
-        token = await self._token_manager.get_token()
-        return httpx.AsyncClient(
-            headers={
-                "Authorization": f"{token.token_type} {token.token}",
-                "User-Agent": USER_AGENT,
-            },
+    @async_cached_property(asyncio.Lock)
+    async def _token_manager(self) -> AsyncCDNTokenManager:
+        return AsyncCDNTokenManager(await self._auth)
+
+    @asynccontextmanager
+    async def _cdn_client(self) -> AsyncIterator[httpx.AsyncClient]:
+        async with httpx.AsyncClient(
+            headers={"User-Agent": USER_AGENT},
             timeout=self.default_timeout,
-        )
+        ) as client:
+            yield client
 
     async def _get_realtime_token(
         self,
@@ -1692,12 +1672,13 @@ class AsyncClient:
         *,
         token_expiration: int = REALTIME_TOKEN_EXPIRATION_SECONDS,
     ) -> str:
+        client = await self._client
         payload = {
             "allowed_apps": [AppId.from_endpoint_id(application).alias],
             "token_expiration": token_expiration,
         }
         response = await _async_maybe_retry_request(
-            self._client,
+            client,
             "POST",
             f"{REST_URL}/tokens/",
             json=payload,
@@ -1725,6 +1706,7 @@ class AsyncClient:
                 waiting before processing starts. Does not apply once the application begins processing.
         """
 
+        client = await self._client
         url = RUN_URL_FORMAT + application
         if path:
             url += "/" + path.lstrip("/")
@@ -1741,7 +1723,7 @@ class AsyncClient:
         add_fal_app_context_headers(_headers)
 
         response = await _async_maybe_retry_request(
-            self._client,
+            client,
             "POST",
             url,
             json=arguments,
@@ -1775,6 +1757,7 @@ class AsyncClient:
                 routing). Does not apply once the application begins processing.
         """
 
+        client = await self._client
         url = QUEUE_URL_FORMAT + application
         if path:
             url += "/" + path.lstrip("/")
@@ -1797,7 +1780,7 @@ class AsyncClient:
         add_fal_app_context_headers(_headers)
 
         response = await _async_maybe_retry_request(
-            self._client,
+            client,
             "POST",
             url,
             json=arguments,
@@ -1813,7 +1796,7 @@ class AsyncClient:
             response_url=data["response_url"],
             status_url=data["status_url"],
             cancel_url=data["cancel_url"],
-            client=self._client,
+            client=client,
         )
 
     async def subscribe(
@@ -1896,21 +1879,23 @@ class AsyncClient:
                 request_id=request_id,
             ) from e
 
-    def get_handle(self, application: str, request_id: str) -> AsyncRequestHandle:
-        return AsyncRequestHandle.from_request_id(self._client, application, request_id)
+    async def get_handle(self, application: str, request_id: str) -> AsyncRequestHandle:
+        return AsyncRequestHandle.from_request_id(
+            await self._client, application, request_id
+        )
 
     async def status(
         self, application: str, request_id: str, *, with_logs: bool = False
     ) -> Status:
-        handle = self.get_handle(application, request_id)
+        handle = await self.get_handle(application, request_id)
         return await handle.status(with_logs=with_logs)
 
     async def result(self, application: str, request_id: str) -> AnyJSON:
-        handle = self.get_handle(application, request_id)
+        handle = await self.get_handle(application, request_id)
         return await handle.get()
 
     async def cancel(self, application: str, request_id: str) -> None:
-        handle = self.get_handle(application, request_id)
+        handle = await self.get_handle(application, request_id)
         await handle.cancel()
 
     async def stream(
@@ -1928,12 +1913,13 @@ class AsyncClient:
         The function will iterate over each event that is streamed from the server.
         """
 
+        client = await self._client
         url = RUN_URL_FORMAT + application
         if path:
             url += "/" + path.lstrip("/")
 
         async with aconnect_sse(
-            self._client,
+            client,
             "POST",
             url,
             json=arguments,
@@ -1961,7 +1947,7 @@ class AsyncClient:
         control uploaded object expiration and initial ACL settings.
         """
 
-        auth = self._get_auth()
+        token_manager = await self._token_manager
 
         if isinstance(data, str):
             data = data.encode("utf-8")
@@ -1974,38 +1960,48 @@ class AsyncClient:
         if len(data) > MULTIPART_THRESHOLD and repository_chain[0] == "fal_v3":
             if file_name is None:
                 file_name = "upload.bin"
-            client = await self._get_cdn_client()
-            return await AsyncMultipartUpload.save(
-                client=client,
-                token_manager=self._token_manager,
-                file_name=file_name,
-                data=data,
-                content_type=content_type,
-                object_lifecycle_preference=resolved_lifecycle,
-            )
+            async with self._cdn_client() as cdn_client:
+                return await AsyncMultipartUpload.save(
+                    client=cdn_client,
+                    token_manager=token_manager,
+                    file_name=file_name,
+                    data=data,
+                    content_type=content_type,
+                    object_lifecycle_preference=resolved_lifecycle,
+                )
 
         headers = {"Content-Type": content_type}
         if file_name is not None:
             headers["X-Fal-File-Name"] = file_name
         _object_lifecycle_headers(headers, resolved_lifecycle)
 
-        attempts: list[tuple[str, Callable[[], Any]]] = []
+        auth: AuthCredentials | None = None
+        client: httpx.AsyncClient | None = None
+
+        async def _v3_attempt() -> str:
+            cdn_token = await token_manager.get_token()
+            v3_headers = {
+                **headers,
+                "Authorization": f"{cdn_token.token_type} {cdn_token.token}",
+            }
+            async with self._cdn_client() as cdn_client:
+                return await _async_upload_v3(cdn_client, data=data, headers=v3_headers)
+
+        attempts: list[tuple[str, Callable[[], Awaitable[str]]]] = []
         for repo in repository_chain:
             if repo == "fal_v3":
-                client = await self._get_cdn_client()
-                attempts.append(
-                    (
-                        "fal_v3",
-                        partial(_async_upload_v3, client, data=data, headers=headers),
-                    )
-                )
+                attempts.append(("fal_v3", _v3_attempt))
             elif repo == "cdn":
+                if auth is None:
+                    auth = await self._auth
+                if client is None:
+                    client = await self._client
                 attempts.append(
                     (
                         "cdn",
                         partial(
                             _async_upload_cdn,
-                            self._client,
+                            client,
                             auth,
                             data=data,
                             content_type=content_type,
@@ -2015,12 +2011,16 @@ class AsyncClient:
                     )
                 )
             elif repo == "fal":
+                if auth is None:
+                    auth = await self._auth
+                if client is None:
+                    client = await self._client
                 attempts.append(
                     (
                         "fal",
                         partial(
                             _async_upload_via_storage,
-                            self._client,
+                            client,
                             auth,
                             data=data,
                             content_type=content_type,
@@ -2056,22 +2056,23 @@ class AsyncClient:
             repository, fallback_repository
         )
         if (
-            os.path.getsize(path) > MULTIPART_THRESHOLD
+            await aiofiles.os.path.getsize(path) > MULTIPART_THRESHOLD
             and repository_chain[0] == "fal_v3"
         ):
             resolved_lifecycle = _normalize_upload_lifecycle(lifecycle)
-            client = await self._get_cdn_client()
-            return await AsyncMultipartUpload.save_file(
-                file_path=str(path),
-                client=client,
-                token_manager=self._token_manager,
-                content_type=mime_type,
-                object_lifecycle_preference=resolved_lifecycle,
-            )
+            token_manager = await self._token_manager
+            async with self._cdn_client() as client:
+                return await AsyncMultipartUpload.save_file(
+                    file_path=str(path),
+                    client=client,
+                    token_manager=token_manager,
+                    content_type=mime_type,
+                    object_lifecycle_preference=resolved_lifecycle,
+                )
 
-        with open(path, "rb") as file:
+        async with aiofiles.open(path, "rb") as file:
             return await self.upload(
-                file.read(),
+                await file.read(),
                 mime_type,
                 file_name=os.path.basename(path),
                 repository=repository,
@@ -2125,7 +2126,7 @@ class AsyncClient:
                 application, token_expiration=token_expiration
             )
         else:
-            auth = self._get_auth()
+            auth = await self._auth
             headers = {"Authorization": auth.header_value, "User-Agent": USER_AGENT}
 
         url = _build_realtime_url(application, token, max_buffering, path=path)
@@ -2151,7 +2152,7 @@ class AsyncClient:
                 application, token_expiration=token_expiration
             )
         else:
-            auth = self._get_auth()
+            auth = await self._auth
             headers = {"Authorization": auth.header_value, "User-Agent": USER_AGENT}
 
         url = _build_runner_ws_url(
@@ -2175,20 +2176,9 @@ class SyncClient:
             return fetch_auth_credentials()
         return AuthCredentials("Key", self.key)
 
-    def _get_auth(self) -> AuthCredentials:
-        return self._auth
-
-    def _get_key(self) -> str:
-        auth = self._get_auth()
-        if auth.scheme.lower() != "key":
-            raise MissingCredentialsError(
-                "Key credentials are required for this operation. Set FAL_KEY or FAL_KEY_ID/FAL_KEY_SECRET."
-            )
-        return auth.token
-
     @cached_property
     def _client(self) -> httpx.Client:
-        auth = self._get_auth()
+        auth = self._auth
         return httpx.Client(
             headers={
                 "Authorization": auth.header_value,
@@ -2200,7 +2190,7 @@ class SyncClient:
 
     @cached_property
     def _token_manager(self) -> CDNTokenManager:
-        return CDNTokenManager(self._get_auth())
+        return CDNTokenManager(self._auth)
 
     @property
     def _executor(self) -> concurrent.futures.ThreadPoolExecutor:
@@ -2478,7 +2468,7 @@ class SyncClient:
         control uploaded object expiration and initial ACL settings.
         """
 
-        auth = self._get_auth()
+        auth = self._auth
 
         if isinstance(data, str):
             data = data.encode("utf-8")
@@ -2642,7 +2632,7 @@ class SyncClient:
                 application, token_expiration=token_expiration
             )
         else:
-            auth = self._get_auth()
+            auth = self._auth
             headers = {"Authorization": auth.header_value, "User-Agent": USER_AGENT}
 
         url = _build_realtime_url(application, token, max_buffering, path=path)
@@ -2668,7 +2658,7 @@ class SyncClient:
                 application, token_expiration=token_expiration
             )
         else:
-            auth = self._get_auth()
+            auth = self._auth
             headers = {"Authorization": auth.header_value, "User-Agent": USER_AGENT}
 
         url = _build_runner_ws_url(
