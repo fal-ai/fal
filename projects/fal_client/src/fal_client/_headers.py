@@ -4,12 +4,19 @@ from typing import Literal, Union, get_args, Optional, Any
 
 from httpx import Headers
 
-try:
-    from fal.ref import get_current_app
-except ImportError:
 
-    def get_current_app() -> Optional[Any]:
+fal_module: Optional[Any] = None
+
+
+def set_fal_module(fal: Any):
+    global fal_module
+    fal_module = fal
+
+
+def get_current_app() -> Optional[Any]:
+    if fal_module is None:
         return None
+    return fal_module.ref.get_current_app()
 
 
 def _current_fal_app_request() -> Optional[Any]:
