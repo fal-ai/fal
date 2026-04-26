@@ -818,7 +818,7 @@ class App(BaseServable):
             import fal_client  # noqa: PLC0415
 
             fal_client.set_get_current_app(get_current_app)
-        except ImportError:
+        except (ImportError, AttributeError):
             pass
 
         # We want to not do any directory changes for container apps,
