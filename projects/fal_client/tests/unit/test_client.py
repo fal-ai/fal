@@ -5,7 +5,7 @@ import time
 import json
 from contextlib import asynccontextmanager, contextmanager
 from typing import Dict, Optional
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, Mock, call, patch
 
 import httpx
 import msgpack
@@ -13,6 +13,7 @@ import pytest
 
 from fal_client.client import (
     AsyncClient,
+    AsyncMultipartUpload,
     AsyncRequestHandle,
     CDN_URL,
     Completed,
@@ -33,6 +34,21 @@ from fal_client.client import (
     _BaseRequestHandle,
     _raise_for_status,
 )
+
+
+def test_clients_remain_hashable():
+    assert isinstance(hash(AsyncClient(key="test-key")), int)
+    assert isinstance(hash(SyncClient(key="test-key")), int)
+
+
+@pytest.mark.asyncio
+async def test_async_client_get_handle_uses_async_client_cache():
+    client = AsyncClient(key="test-key")
+
+    handle = await client.get_handle("fal-ai/fast-sdxl", "request-id")
+
+    assert isinstance(handle, AsyncRequestHandle)
+    assert await client._client is handle.client
 
 
 @pytest.mark.parametrize(
@@ -262,11 +278,11 @@ def test_sync_client_subscribe_with_headers():
 def test_sync_upload_falls_back_to_cdn():
     with patch("fal_client.client._maybe_retry_request") as mock_request, patch(
         "fal_client.client.SyncClient._get_cdn_client"
-    ) as mock_cdn_client:
+    ) as mock_cdn_context:
         fallback_response = Mock()
         fallback_response.json.return_value = {"access_url": "https://fallback/file"}
         mock_request.side_effect = [Exception("boom"), fallback_response]
-        mock_cdn_client.return_value = Mock()
+        mock_cdn_context.return_value = Mock()
         settings = StorageSettings(expires_in=3600)
 
         client = SyncClient(key="test-key")
@@ -297,7 +313,7 @@ def test_sync_upload_falls_back_to_cdn():
 def test_sync_upload_falls_back_to_storage():
     with patch("fal_client.client._maybe_retry_request") as mock_request, patch(
         "fal_client.client.SyncClient._get_cdn_client"
-    ) as mock_cdn_client:
+    ) as mock_cdn_context:
         init_response = Mock()
         init_response.json.return_value = {
             "upload_url": "https://upload.example.com/put",
@@ -309,7 +325,7 @@ def test_sync_upload_falls_back_to_storage():
             init_response,
             Mock(),
         ]
-        mock_cdn_client.return_value = Mock()
+        mock_cdn_context.return_value = Mock()
         settings = StorageSettings(expires_in=3600)
 
         client = SyncClient(key="test-key")
@@ -403,11 +419,11 @@ def test_sync_upload_lifecycle_expires_in_is_normalized():
 def test_sync_upload_lifecycle_is_sent_to_fal_v3():
     with patch("fal_client.client._maybe_retry_request") as mock_request, patch(
         "fal_client.client.SyncClient._get_cdn_client"
-    ) as mock_cdn_client:
+    ) as mock_cdn_context:
         response = Mock()
         response.json.return_value = {"access_url": "https://v3-only/file"}
         mock_request.return_value = response
-        mock_cdn_client.return_value = Mock()
+        mock_cdn_context.return_value = Mock()
 
         client = SyncClient(key="test-key")
         url = client.upload(
@@ -685,20 +701,77 @@ async def test_async_client_run_with_headers():
 
 
 @pytest.mark.asyncio
+async def test_async_client_resolves_auth_when_no_key():
+    auth = Mock(header_value="Key resolved-auth", scheme="Key", token="resolved-auth")
+
+    with patch(
+        "fal_client.client.fetch_auth_credentials_async",
+        new_callable=AsyncMock,
+        return_value=auth,
+    ) as mock_fetch:
+        client = AsyncClient()
+        resolved = await client._auth
+
+    assert resolved is auth
+    mock_fetch.assert_awaited_once_with()
+
+
+@pytest.mark.asyncio
+async def test_async_client_run_reuses_async_auth_cache():
+    auth = Mock(header_value="Key resolved-auth", scheme="Key", token="resolved-auth")
+
+    with patch(
+        "fal_client.client.fetch_auth_credentials_async",
+        new_callable=AsyncMock,
+        return_value=auth,
+    ) as mock_fetch, patch(
+        "fal_client.client._async_maybe_retry_request", new_callable=AsyncMock
+    ) as mock_request:
+        mock_response = Mock()
+        mock_response.json.return_value = {"result": "success"}
+        mock_request.return_value = mock_response
+
+        client = AsyncClient()
+        first_result = await client.run("test-app", {"input": "first"})
+        second_result = await client.run("test-app", {"input": "second"})
+
+    assert first_result == {"result": "success"}
+    assert second_result == {"result": "success"}
+    mock_fetch.assert_awaited_once_with()
+    assert mock_request.await_count == 2
+
+
+class FakeAsyncTokenManager:
+    def __await__(self):
+        async def _return_self():
+            return self
+
+        return _return_self().__await__()
+
+    async def get_token(self):
+        return Mock(token_type="Bearer", token="cdn-token")
+
+
+@pytest.mark.asyncio
 async def test_async_upload_falls_back_to_cdn():
+    @asynccontextmanager
+    async def fake_cdn_client():
+        yield Mock()
+
     with patch(
         "fal_client.client._async_maybe_retry_request", new_callable=AsyncMock
     ) as mock_request, patch(
-        "fal_client.client.AsyncClient._get_cdn_client", new_callable=AsyncMock
-    ) as mock_cdn_client:
+        "fal_client.client.AsyncClient._cdn_client"
+    ) as mock_cdn_context:
         fallback_response = httpx.Response(
             status_code=200, json={"access_url": "https://fallback/file"}
         )
         mock_request.side_effect = [Exception("boom"), fallback_response]
-        mock_cdn_client.return_value = Mock()
+        mock_cdn_context.side_effect = lambda: fake_cdn_client()
         settings = StorageSettings(expires_in=3600)
 
         client = AsyncClient(key="test-key")
+        client.__dict__["_token_manager"] = FakeAsyncTokenManager()
         url = await client.upload(
             b"hello",
             content_type="text/plain",
@@ -725,11 +798,15 @@ async def test_async_upload_falls_back_to_cdn():
 
 @pytest.mark.asyncio
 async def test_async_upload_falls_back_to_storage():
+    @asynccontextmanager
+    async def fake_cdn_client():
+        yield Mock()
+
     with patch(
         "fal_client.client._async_maybe_retry_request", new_callable=AsyncMock
     ) as mock_request, patch(
-        "fal_client.client.AsyncClient._get_cdn_client", new_callable=AsyncMock
-    ) as mock_cdn_client:
+        "fal_client.client.AsyncClient._cdn_client"
+    ) as mock_cdn_context:
         init_response = httpx.Response(
             status_code=200,
             json={
@@ -743,10 +820,11 @@ async def test_async_upload_falls_back_to_storage():
             init_response,
             Mock(),
         ]
-        mock_cdn_client.return_value = Mock()
+        mock_cdn_context.side_effect = lambda: fake_cdn_client()
         settings = StorageSettings(expires_in=3600)
 
         client = AsyncClient(key="test-key")
+        client.__dict__["_token_manager"] = FakeAsyncTokenManager()
         url = await client.upload(
             b"hello",
             content_type="text/plain",
@@ -776,15 +854,16 @@ async def test_async_upload_falls_back_to_storage():
 async def test_async_upload_passes_lifecycle_to_multipart(monkeypatch):
     monkeypatch.setattr("fal_client.client.MULTIPART_THRESHOLD", 1)
     settings = StorageSettings(expires_in=3600)
+    cdn_client = AsyncMock()
+    cdn_client.__aenter__.return_value = Mock()
+    cdn_client.__aexit__.return_value = None
 
     with patch(
         "fal_client.client.AsyncMultipartUpload.save",
         new_callable=AsyncMock,
         return_value="https://file",
-    ) as mock_save, patch(
-        "fal_client.client.AsyncClient._get_cdn_client", new_callable=AsyncMock
-    ) as mock_cdn:
-        mock_cdn.return_value = Mock()
+    ) as mock_save, patch("fal_client.client.AsyncClient._cdn_client") as mock_cdn:
+        mock_cdn.return_value = cdn_client
         client = AsyncClient(key="test-key")
         url = await client.upload(
             b"hello",
@@ -800,6 +879,10 @@ async def test_async_upload_passes_lifecycle_to_multipart(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_async_upload_file_passes_lifecycle_to_multipart(tmp_path, monkeypatch):
+    @asynccontextmanager
+    async def fake_cdn_client():
+        yield Mock()
+
     monkeypatch.setattr("fal_client.client.MULTIPART_THRESHOLD", 1)
     file_path = tmp_path / "upload.txt"
     file_path.write_bytes(b"hello")
@@ -809,10 +892,8 @@ async def test_async_upload_file_passes_lifecycle_to_multipart(tmp_path, monkeyp
         "fal_client.client.AsyncMultipartUpload.save_file",
         new_callable=AsyncMock,
         return_value="https://file",
-    ) as mock_save, patch(
-        "fal_client.client.AsyncClient._get_cdn_client", new_callable=AsyncMock
-    ) as mock_cdn:
-        mock_cdn.return_value = Mock()
+    ) as mock_save, patch("fal_client.client.AsyncClient._cdn_client") as mock_cdn:
+        mock_cdn.return_value = fake_cdn_client()
         client = AsyncClient(key="test-key")
         url = await client.upload_file(file_path, lifecycle=settings)
 
@@ -823,19 +904,169 @@ async def test_async_upload_file_passes_lifecycle_to_multipart(tmp_path, monkeyp
 
 
 @pytest.mark.asyncio
+async def test_async_upload_file_uses_aiofiles_for_non_multipart_path(
+    tmp_path, monkeypatch
+):
+    class FakeAsyncFile:
+        def __init__(self, data: bytes) -> None:
+            self.read = AsyncMock(return_value=data)
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+    file_path = tmp_path / "upload.txt"
+    file_path.write_bytes(b"hello")
+    fake_file = FakeAsyncFile(b"hello")
+    monkeypatch.setattr("fal_client.client.MULTIPART_THRESHOLD", 1024)
+
+    with patch("fal_client.client.aiofiles.open", return_value=fake_file) as mock_open:
+        client = AsyncClient(key="test-key")
+        with patch(
+            "fal_client.client.AsyncClient.upload",
+            new_callable=AsyncMock,
+            return_value="https://file",
+        ) as mock_upload:
+            url = await client.upload_file(file_path)
+
+    assert url == "https://file"
+    mock_open.assert_called_once_with(file_path, "rb")
+    fake_file.read.assert_awaited_once_with()
+    assert mock_upload.await_count == 1
+    assert mock_upload.await_args.args == (b"hello", "text/plain")
+    assert mock_upload.await_args.kwargs == {
+        "file_name": "upload.txt",
+        "repository": None,
+        "fallback_repository": None,
+        "lifecycle": None,
+    }
+
+
+@pytest.mark.asyncio
+async def test_async_multipart_save_file_uses_aiofiles(tmp_path):
+    class FakeAsyncFile:
+        def __init__(self, data_by_offset: dict[int, bytes]) -> None:
+            self.offset: int | None = None
+            self.seek = AsyncMock(side_effect=self._seek)
+            self.read = AsyncMock(side_effect=lambda size: data_by_offset[self.offset])
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def _seek(self, offset: int) -> None:
+            self.offset = offset
+
+    file_path = tmp_path / "upload.txt"
+    file_path.write_bytes(b"abcd")
+    first_file = FakeAsyncFile({0: b"ab"})
+    second_file = FakeAsyncFile({2: b"cd"})
+
+    open_calls = {"count": 0}
+
+    def open_side_effect(*args, **kwargs):
+        open_calls["count"] += 1
+        return first_file if open_calls["count"] == 1 else second_file
+
+    with patch(
+        "fal_client.client.aiofiles.open",
+        side_effect=open_side_effect,
+    ) as mock_open, patch.object(
+        AsyncMultipartUpload,
+        "create",
+        new_callable=AsyncMock,
+    ) as mock_create, patch.object(
+        AsyncMultipartUpload,
+        "upload_part",
+        new_callable=AsyncMock,
+    ) as mock_upload_part, patch.object(
+        AsyncMultipartUpload,
+        "complete",
+        new_callable=AsyncMock,
+        return_value="https://file",
+    ) as mock_complete:
+        url = await AsyncMultipartUpload.save_file(
+            client=Mock(),
+            token_manager=Mock(),
+            file_path=file_path,
+            chunk_size=2,
+        )
+
+    assert url == "https://file"
+    mock_create.assert_awaited_once_with(object_lifecycle_preference=None)
+    assert mock_open.call_count == 2
+    first_file.seek.assert_awaited_once_with(0)
+    first_file.read.assert_awaited_once_with(2)
+    second_file.seek.assert_awaited_once_with(2)
+    second_file.read.assert_awaited_once_with(2)
+    mock_upload_part.assert_has_awaits([call(1, b"ab"), call(2, b"cd")], any_order=True)
+    mock_complete.assert_awaited_once_with()
+
+
+@pytest.mark.asyncio
+async def test_async_multipart_save_respects_max_concurrency():
+    active_uploads = 0
+    max_active_uploads = 0
+
+    async def upload_part(self, part_number: int, data: bytes) -> None:
+        nonlocal active_uploads, max_active_uploads
+        active_uploads += 1
+        max_active_uploads = max(max_active_uploads, active_uploads)
+        await asyncio.sleep(0)
+        active_uploads -= 1
+
+    with patch.object(
+        AsyncMultipartUpload,
+        "create",
+        new_callable=AsyncMock,
+    ) as mock_create, patch.object(
+        AsyncMultipartUpload,
+        "upload_part",
+        new=upload_part,
+    ), patch.object(
+        AsyncMultipartUpload,
+        "complete",
+        new_callable=AsyncMock,
+        return_value="https://file",
+    ) as mock_complete:
+        url = await AsyncMultipartUpload.save(
+            client=Mock(),
+            token_manager=Mock(),
+            file_name="upload.bin",
+            data=b"abcdef",
+            chunk_size=2,
+            max_concurrency=2,
+        )
+
+    assert url == "https://file"
+    mock_create.assert_awaited_once_with(object_lifecycle_preference=None)
+    mock_complete.assert_awaited_once_with()
+    assert max_active_uploads == 2
+
+
+@pytest.mark.asyncio
 async def test_async_upload_lifecycle_is_sent_to_fal_v3():
+    @asynccontextmanager
+    async def fake_cdn_client():
+        yield Mock()
+
     with patch(
         "fal_client.client._async_maybe_retry_request", new_callable=AsyncMock
     ) as mock_request, patch(
-        "fal_client.client.AsyncClient._get_cdn_client", new_callable=AsyncMock
-    ) as mock_cdn_client:
+        "fal_client.client.AsyncClient._cdn_client"
+    ) as mock_cdn_context:
         response = httpx.Response(
             status_code=200, json={"access_url": "https://v3-only/file"}
         )
         mock_request.return_value = response
-        mock_cdn_client.return_value = Mock()
+        mock_cdn_context.return_value = fake_cdn_client()
 
         client = AsyncClient(key="test-key")
+        client.__dict__["_token_manager"] = FakeAsyncTokenManager()
         url = await client.upload(
             b"hello",
             content_type="text/plain",

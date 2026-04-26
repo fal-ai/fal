@@ -17,6 +17,8 @@ readme = "README.md"
 authors = [{ name = "Features & Labels <support@fal.ai>" }]
 requires-python = ">=3.8"
 dependencies = [
+    "aiofiles>=24.1.0,<26",
+    "asyncstdlib>=3.12.5,<4",
     "httpx>=0.21.0,<1",
     "httpx-sse>=0.4.0,<0.5",
     "msgpack>=1.0.7,<2",

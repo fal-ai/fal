@@ -3,8 +3,14 @@ import json
 import time
 from pathlib import Path
 
+import pytest
 
-from fal_client.auth import AuthCredentials, fetch_auth_credentials
+
+from fal_client.auth import (
+    AuthCredentials,
+    fetch_auth_credentials,
+    fetch_auth_credentials_async,
+)
 
 
 def _make_jwt(expires_in_seconds: int) -> str:
@@ -76,6 +82,77 @@ def test_fetch_auth_credentials_refreshes_expired_token(monkeypatch, tmp_path, m
 
     assert auth == AuthCredentials("Bearer", new_access_token)
     httpx_post.assert_called_once()
+
+    saved = token_file.read_text().splitlines()
+    assert saved[0] == "new-refresh-token"
+    assert saved[1] == new_access_token
+
+
+@pytest.mark.asyncio
+async def test_fetch_auth_credentials_async_prefers_key(monkeypatch, tmp_path):
+    monkeypatch.setenv("FAL_HOME_DIR", str(tmp_path))
+    monkeypatch.setenv("FAL_KEY", "abc123")
+    monkeypatch.delenv("FAL_KEY_ID", raising=False)
+    monkeypatch.delenv("FAL_KEY_SECRET", raising=False)
+
+    auth = await fetch_auth_credentials_async()
+
+    assert auth == AuthCredentials("Key", "abc123")
+
+
+@pytest.mark.asyncio
+async def test_fetch_auth_credentials_async_uses_login_token_without_refresh(
+    monkeypatch, tmp_path, mocker
+):
+    monkeypatch.setenv("FAL_HOME_DIR", str(tmp_path))
+    monkeypatch.delenv("FAL_KEY", raising=False)
+    monkeypatch.delenv("FAL_KEY_ID", raising=False)
+    monkeypatch.delenv("FAL_KEY_SECRET", raising=False)
+
+    access_token = _make_jwt(expires_in_seconds=3600)
+    _write_auth_file(tmp_path, "refresh-token", access_token)
+
+    httpx_post = mocker.patch("fal_client.auth.httpx.AsyncClient.post")
+
+    auth = await fetch_auth_credentials_async()
+
+    assert auth == AuthCredentials("Bearer", access_token)
+    httpx_post.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_fetch_auth_credentials_async_refreshes_expired_token(
+    monkeypatch, tmp_path, mocker
+):
+    monkeypatch.setenv("FAL_HOME_DIR", str(tmp_path))
+    monkeypatch.delenv("FAL_KEY", raising=False)
+    monkeypatch.delenv("FAL_KEY_ID", raising=False)
+    monkeypatch.delenv("FAL_KEY_SECRET", raising=False)
+
+    expired_token = _make_jwt(expires_in_seconds=-3600)
+    token_file = _write_auth_file(tmp_path, "old-refresh-token", expired_token)
+
+    new_access_token = _make_jwt(expires_in_seconds=7200)
+    response = mocker.Mock()
+    response.status_code = 200
+    response.json.return_value = {
+        "access_token": new_access_token,
+        "refresh_token": "new-refresh-token",
+    }
+
+    async_client = mocker.Mock()
+    async_client.post = mocker.AsyncMock(return_value=response)
+    async_client.__aenter__ = mocker.AsyncMock(return_value=async_client)
+    async_client.__aexit__ = mocker.AsyncMock(return_value=None)
+    httpx_client = mocker.patch(
+        "fal_client.auth.httpx.AsyncClient", return_value=async_client
+    )
+
+    auth = await fetch_auth_credentials_async()
+
+    assert auth == AuthCredentials("Bearer", new_access_token)
+    httpx_client.assert_called_once()
+    async_client.post.assert_awaited_once()
 
     saved = token_file.read_text().splitlines()
     assert saved[0] == "new-refresh-token"
