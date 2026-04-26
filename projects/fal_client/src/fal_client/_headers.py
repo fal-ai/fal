@@ -1,15 +1,22 @@
 from __future__ import annotations
 
-from typing import Literal, Union, get_args, Optional, Any
+from typing import Literal, Union, get_args, Optional, Any, Callable
 
 from httpx import Headers
 
-try:
-    from fal.ref import get_current_app
-except ImportError:
 
-    def get_current_app() -> Optional[Any]:
+_get_current_app: Optional[Callable[[], Any]] = None
+
+
+def set_get_current_app(func: Callable[[], Any]):
+    global _get_current_app
+    _get_current_app = func
+
+
+def get_current_app() -> Optional[Any]:
+    if _get_current_app is None:
         return None
+    return _get_current_app()
 
 
 def _current_fal_app_request() -> Optional[Any]:

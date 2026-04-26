@@ -1,4 +1,5 @@
 from fal_client._version import __version__, version_tuple
+from fal_client._headers import set_get_current_app
 from fal_client.client import (
     AsyncClient,
     AsyncRealtimeConnection,
@@ -63,6 +64,7 @@ __all__ = [
     "encode",
     "encode_file",
     "encode_image",
+    "set_get_current_app",
 ]
 
 sync_client = SyncClient()
