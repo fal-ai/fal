@@ -46,6 +46,7 @@ from fal.toolkit.file.providers.fal import _LIFECYCLE_PREFERENCE
 REALTIME_APP_REQUIREMENTS = ["websockets", "msgpack"]
 REQUEST_ID_KEY = "x-fal-request-id"
 REQUEST_ENDPOINT_KEY = "x-fal-endpoint"
+CDN_TOKEN_KEY = "x-fal-cdn-token"
 DEFAULT_APP_FILES_IGNORE = [
     r"\.pyc$",
     r"__pycache__/",
@@ -939,7 +940,17 @@ class App(BaseServable):
             token = self._current_request_context.set(context)
             _LIFECYCLE_PREFERENCE.set(context.lifecycle_preference)
             try:
-                return await call_next(request)
+                initial_cdn_token = request.headers.get(CDN_TOKEN_KEY)
+                response: fastapi.responses.Response = await call_next(request)
+                new_cdn_token = context.headers.get(CDN_TOKEN_KEY)
+
+                # Forward the gateway's re-issued x-fal-cdn-token (extended
+                # with downstream request_ids from chained calls) back to the
+                # caller, so it can read artifacts produced deeper in the chain.
+                if new_cdn_token and new_cdn_token != initial_cdn_token:
+                    response.headers[CDN_TOKEN_KEY] = new_cdn_token
+
+                return response
             finally:
                 self._current_request_context.reset(token)
                 _LIFECYCLE_PREFERENCE.set(None)
