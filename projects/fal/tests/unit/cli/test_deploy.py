@@ -11,6 +11,7 @@ from fal.cli.deploy import (
     _build_deployment_check_summary,
     _deploy,
     _diff_table,
+    _is_truthy,
     _payload_requires_deploy_check,
     _render_auth_line,
     _render_deployment_check_summary,
@@ -905,6 +906,24 @@ def test_payload_requires_deploy_check_supports_nested_org_config():
     assert _payload_requires_deploy_check(payload) is True
 
 
+def test_is_truthy_supports_integer_flag_values():
+    assert _is_truthy(1) is True
+    assert _is_truthy(-1) is True
+    assert _is_truthy(0) is False
+
+
+def test_payload_requires_deploy_check_supports_integer_flags():
+    payload = SimpleNamespace(
+        additional_properties={
+            "org_config": {
+                "deploy_check": 1,
+            }
+        }
+    )
+
+    assert _payload_requires_deploy_check(payload) is True
+
+
 def test_build_deployment_check_summary_inherits_production_scale_without_reset_scale():
     summary = _build_deployment_check_summary(
         _prepared_deployment(reset_scale=False),
@@ -1094,3 +1113,35 @@ def test_deploy_with_check_prepares_and_executes(
     mock_prepare_deployment.assert_called_once()
     mock_execute_prepared_deployment.assert_called_once()
     mock_input.assert_called_once_with("Type 'confirm' to confirm deployment: ")
+
+
+@patch("fal.api.deploy.execute_prepared_deployment")
+@patch("fal.api.deploy.prepare_deployment")
+@patch("fal.cli.deploy._get_production_alias", return_value=None)
+@patch("sys.stdin.isatty", return_value=False)
+@patch("builtins.input")
+def test_deploy_with_check_and_yes_skips_prompt(
+    mock_input,
+    mock_isatty,
+    mock_get_production_alias,
+    mock_prepare_deployment,
+    mock_execute_prepared_deployment,
+):
+    mock_prepare_deployment.return_value = _prepared_deployment(reset_scale=False)
+    mock_execute_prepared_deployment.return_value = MagicMock(
+        revision="rev-checked",
+        app_name="my-app",
+        auth_mode="public",
+        urls={"playground": {}, "sync": {}, "async": {}},
+        log_url="https://fal.ai/logs/checked",
+    )
+
+    args = mock_args(app_ref=("src/my_app/inference.py", "MyApp"))
+    args.check = True
+    args.yes = True
+
+    _deploy(args)
+
+    mock_prepare_deployment.assert_called_once()
+    mock_execute_prepared_deployment.assert_called_once()
+    mock_input.assert_not_called()

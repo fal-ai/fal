@@ -144,7 +144,11 @@ def _deploy(args):
             force_env_build=no_cache,
         )
         _render_deployment_check_summary(args.console, summary)
-        _confirm_deployment(summary.app_name, deploy_check_source)
+        _confirm_deployment(
+            summary.app_name,
+            deploy_check_source,
+            assume_yes=args.yes,
+        )
         res = deploy_api.execute_prepared_deployment(prepared)
     else:
         res = client.deploy(
@@ -265,6 +269,9 @@ def _as_mapping(value: Any) -> dict[str, Any]:
 def _is_truthy(value: Any) -> bool:
     if isinstance(value, bool):
         return value
+
+    if isinstance(value, int):
+        return value != 0
 
     if isinstance(value, str):
         return value.strip().lower() not in {"", "0", "false", "no", "off"}
@@ -567,14 +574,19 @@ def _diff_table(
     return table
 
 
-def _confirm_deployment(app_name: str, source: DeployCheckSource) -> None:
-    if not sys.stdin.isatty():
-        if source == "flag":
-            raise RuntimeError("Deploy requires interactive confirmation.")
+def _confirm_deployment(
+    app_name: str,
+    source: DeployCheckSource,
+    *,
+    assume_yes: bool = False,
+) -> None:
+    if assume_yes:
+        return
 
+    if not sys.stdin.isatty():
         raise RuntimeError(
-            "Deploy check requires interactive confirmation. "
-            "Re-run with --yes to bypass env/admin-triggered confirmation."
+            f"Deploy confirmation for '{app_name}' requires interactive input. "
+            "Re-run with --yes to bypass the prompt."
         )
 
     confirmation = input("Type 'confirm' to confirm deployment: ")
@@ -740,12 +752,18 @@ def add_parser(main_subparsers, parents):
     parser.add_argument(
         "--check",
         action="store_true",
-        help="Show a pre-deployment summary and require confirmation.",
+        help=(
+            "Show a pre-deployment summary before deploying. "
+            "Prompts for confirmation unless --yes is also set."
+        ),
     )
     parser.add_argument(
         "--yes",
         action="store_true",
-        help="Skip env/admin-triggered deploy confirmation checks.",
+        help=(
+            "Skip interactive deploy confirmation prompts. "
+            "When combined with --check, the summary is still shown."
+        ),
     )
     parser.add_argument(
         "--no-cache",
