@@ -7,19 +7,17 @@ from typing import TYPE_CHECKING, Optional
 from fal.sdk import AuthModeLiteral, DeploymentStrategyLiteral
 
 if TYPE_CHECKING:
+    from openapi_fal_rest.client import Client
+
     from fal.cli._utils import AppData
     from fal.utils import LoadedFunction
 
     from .api import FalServerlessHost
     from .client import SyncServerlessClient
 
-
 import json
 from collections import namedtuple
 from typing import cast
-
-if TYPE_CHECKING:
-    from openapi_fal_rest.client import Client
 
 User = namedtuple("User", ["user_id", "username"])
 

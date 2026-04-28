@@ -5,7 +5,10 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 from fal.flags import bool_envvar
+from fal.logging import get_logger
 from fal.sdk import construct_alias
+
+logger = get_logger(__name__)
 
 if TYPE_CHECKING:
     from fal.api.client import SyncServerlessClient
@@ -136,6 +139,7 @@ def deploy_with_check(
     _confirm_deployment(
         summary.app_name,
         source,
+        console=args.console,
         assume_yes=args.yes,
     )
     return deploy_api.execute_prepared_deployment(prepared)
@@ -166,17 +170,33 @@ def _resolve_deploy_check_source(
 
 
 def _admin_requires_deploy_check(client: SyncServerlessClient) -> bool:
+    from http import HTTPStatus
+
+    import httpx
     import openapi_fal_rest.api.users.get_current_user as get_current_user
+    from openapi_fal_rest.errors import UnexpectedStatus
 
     try:
-        current_user = get_current_user.sync(client=client._create_rest_client())
-    except Exception:
+        response = get_current_user.sync_detailed(client=client._create_rest_client())
+    except (UnexpectedStatus, httpx.HTTPError, ValueError):
+        logger.warning("Failed to fetch deploy check admin policy", exc_info=True)
         return False
 
-    if current_user is None:
+    if response.status_code != HTTPStatus.OK:
+        logger.warning(
+            "Failed to fetch deploy check admin policy",
+            status_code=response.status_code,
+        )
         return False
 
-    return _payload_requires_deploy_check(current_user)
+    if response.parsed is None:
+        logger.warning(
+            "Failed to fetch deploy check admin policy",
+            reason="empty parsed payload",
+        )
+        return False
+
+    return _payload_requires_deploy_check(response.parsed)
 
 
 def _payload_requires_deploy_check(payload: Any) -> bool:
@@ -535,17 +555,20 @@ def _confirm_deployment(
     app_name: str,
     source: DeployCheckSource,
     *,
+    console,
     assume_yes: bool = False,
 ) -> None:
     if assume_yes:
         return
 
     if not sys.stdin.isatty():
-        raise RuntimeError(
+        console.print(
             f"Deploy confirmation for '{app_name}' requires interactive input. "
             "Re-run with --yes to bypass the prompt."
         )
+        raise SystemExit(1)
 
     confirmation = input("Type 'confirm' to confirm deployment: ")
     if confirmation.strip().lower() != "confirm":
-        raise RuntimeError("Deployment aborted.")
+        console.print("Deployment aborted.")
+        raise SystemExit(1)
