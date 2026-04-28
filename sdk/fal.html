@@ -211,12 +211,22 @@
 <li class="toctree-l4"><a class="reference internal" href="fal.api.html#fal.api.deploy.DeploymentResult.urls"><code class="docutils literal notranslate"><span class="pre">DeploymentResult.urls</span></code></a></li>
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="fal.api.html#fal.api.deploy.PreparedDeployment"><code class="docutils literal notranslate"><span class="pre">PreparedDeployment</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.api.html#fal.api.deploy.PreparedDeployment.app_data"><code class="docutils literal notranslate"><span class="pre">PreparedDeployment.app_data</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.api.html#fal.api.deploy.PreparedDeployment.display_name"><code class="docutils literal notranslate"><span class="pre">PreparedDeployment.display_name</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.api.html#fal.api.deploy.PreparedDeployment.environment_name"><code class="docutils literal notranslate"><span class="pre">PreparedDeployment.environment_name</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.api.html#fal.api.deploy.PreparedDeployment.host"><code class="docutils literal notranslate"><span class="pre">PreparedDeployment.host</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.api.html#fal.api.deploy.PreparedDeployment.loaded"><code class="docutils literal notranslate"><span class="pre">PreparedDeployment.loaded</span></code></a></li>
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="fal.api.html#fal.api.deploy.User"><code class="docutils literal notranslate"><span class="pre">User</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="fal.api.html#fal.api.deploy.User.user_id"><code class="docutils literal notranslate"><span class="pre">User.user_id</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.api.html#fal.api.deploy.User.username"><code class="docutils literal notranslate"><span class="pre">User.username</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="fal.api.html#fal.api.deploy.deploy"><code class="docutils literal notranslate"><span class="pre">deploy()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal.api.html#fal.api.deploy.execute_prepared_deployment"><code class="docutils literal notranslate"><span class="pre">execute_prepared_deployment()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal.api.html#fal.api.deploy.prepare_deployment"><code class="docutils literal notranslate"><span class="pre">prepare_deployment()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="fal.api.html#module-fal.api.environments">fal.api.environments module</a><ul>
@@ -392,6 +402,31 @@
 </li>
 <li class="toctree-l2"><a class="reference internal" href="fal.cli.html#module-fal.cli.deploy">fal.cli.deploy module</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="fal.cli.html#fal.cli.deploy.add_parser"><code class="docutils literal notranslate"><span class="pre">add_parser()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="fal.cli.html#module-fal.cli.deploy_check">fal.cli.deploy_check module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="fal.cli.html#fal.cli.deploy_check.DeploymentCheckSummary"><code class="docutils literal notranslate"><span class="pre">DeploymentCheckSummary</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.cli.html#fal.cli.deploy_check.DeploymentCheckSummary.app_name"><code class="docutils literal notranslate"><span class="pre">DeploymentCheckSummary.app_name</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.cli.html#fal.cli.deploy_check.DeploymentCheckSummary.current_auth_mode"><code class="docutils literal notranslate"><span class="pre">DeploymentCheckSummary.current_auth_mode</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.cli.html#fal.cli.deploy_check.DeploymentCheckSummary.current_revision"><code class="docutils literal notranslate"><span class="pre">DeploymentCheckSummary.current_revision</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.cli.html#fal.cli.deploy_check.DeploymentCheckSummary.display_name"><code class="docutils literal notranslate"><span class="pre">DeploymentCheckSummary.display_name</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.cli.html#fal.cli.deploy_check.DeploymentCheckSummary.effective_changes"><code class="docutils literal notranslate"><span class="pre">DeploymentCheckSummary.effective_changes</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.cli.html#fal.cli.deploy_check.DeploymentCheckSummary.effective_scale_values"><code class="docutils literal notranslate"><span class="pre">DeploymentCheckSummary.effective_scale_values</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.cli.html#fal.cli.deploy_check.DeploymentCheckSummary.environment_name"><code class="docutils literal notranslate"><span class="pre">DeploymentCheckSummary.environment_name</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.cli.html#fal.cli.deploy_check.DeploymentCheckSummary.force_env_build"><code class="docutils literal notranslate"><span class="pre">DeploymentCheckSummary.force_env_build</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.cli.html#fal.cli.deploy_check.DeploymentCheckSummary.next_auth_mode"><code class="docutils literal notranslate"><span class="pre">DeploymentCheckSummary.next_auth_mode</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.cli.html#fal.cli.deploy_check.DeploymentCheckSummary.source"><code class="docutils literal notranslate"><span class="pre">DeploymentCheckSummary.source</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.cli.html#fal.cli.deploy_check.DeploymentCheckSummary.strategy"><code class="docutils literal notranslate"><span class="pre">DeploymentCheckSummary.strategy</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.cli.html#fal.cli.deploy_check.DeploymentDiffRow"><code class="docutils literal notranslate"><span class="pre">DeploymentDiffRow</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.cli.html#fal.cli.deploy_check.DeploymentDiffRow.after_deploy"><code class="docutils literal notranslate"><span class="pre">DeploymentDiffRow.after_deploy</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.cli.html#fal.cli.deploy_check.DeploymentDiffRow.label"><code class="docutils literal notranslate"><span class="pre">DeploymentDiffRow.label</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.cli.html#fal.cli.deploy_check.DeploymentDiffRow.note"><code class="docutils literal notranslate"><span class="pre">DeploymentDiffRow.note</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.cli.html#fal.cli.deploy_check.DeploymentDiffRow.production"><code class="docutils literal notranslate"><span class="pre">DeploymentDiffRow.production</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.cli.html#fal.cli.deploy_check.deploy_with_check"><code class="docutils literal notranslate"><span class="pre">deploy_with_check()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="fal.cli.html#module-fal.cli.doctor">fal.cli.doctor module</a><ul>

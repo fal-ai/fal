@@ -60,6 +60,14 @@ fal.cli.deploy module
    :undoc-members:
    :show-inheritance:
 
+fal.cli.deploy\_check module
+----------------------------
+
+.. automodule:: fal.cli.deploy_check
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 fal.cli.doctor module
 ---------------------
 
