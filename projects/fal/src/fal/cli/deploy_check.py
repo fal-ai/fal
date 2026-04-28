@@ -17,7 +17,6 @@ if TYPE_CHECKING:
 
 DeployCheckSource = Literal["flag", "env", "admin"]
 
-# Mirrors the server-side scale inheritance contract.
 INHERITED_SCALE_FIELDS = (
     "keep_alive",
     "max_concurrency",
@@ -27,11 +26,6 @@ INHERITED_SCALE_FIELDS = (
     "scaling_delay",
     "request_timeout",
     "valid_regions",
-)
-CODE_CONTROLLED_SCALE_FIELDS = (
-    "machine_types",
-    "max_multiplexing",
-    "startup_timeout",
 )
 ALL_SCALE_FIELDS = (
     "machine_types",
@@ -179,19 +173,19 @@ def _admin_requires_deploy_check(client: SyncServerlessClient) -> bool:
     try:
         response = get_current_user.sync_detailed(client=client._create_rest_client())
     except (UnexpectedStatus, httpx.HTTPError, ValueError):
-        logger.warning("Failed to fetch deploy check admin policy", exc_info=True)
-        return False
+        logger.warning("Failed to fetch deploy check policy", exc_info=True)
+        return True
 
     if response.status_code != HTTPStatus.OK:
         logger.warning(
-            "Failed to fetch deploy check admin policy",
+            "Failed to fetch deploy check policy",
             status_code=response.status_code,
         )
         return False
 
     if response.parsed is None:
         logger.warning(
-            "Failed to fetch deploy check admin policy",
+            "Failed to fetch deploy check policy",
             reason="empty parsed payload",
         )
         return False
@@ -340,44 +334,23 @@ def _build_deployment_check_summary(
 
 def _desired_scale_config(prepared: PreparedDeployment) -> dict[str, Any]:
     host_options = prepared.loaded.function.options.host
-    return {
-        "machine_types": _normalize_machine_types(
-            host_options.get(
-                "machine_type", SERVER_DEFAULT_SCALE_VALUES["machine_types"]
-            )
-        ),
-        "keep_alive": host_options.get(
-            "keep_alive", SERVER_DEFAULT_SCALE_VALUES["keep_alive"]
-        ),
-        "max_concurrency": host_options.get(
-            "max_concurrency", SERVER_DEFAULT_SCALE_VALUES["max_concurrency"]
-        ),
-        "min_concurrency": host_options.get(
-            "min_concurrency", SERVER_DEFAULT_SCALE_VALUES["min_concurrency"]
-        ),
-        "concurrency_buffer": host_options.get(
-            "concurrency_buffer", SERVER_DEFAULT_SCALE_VALUES["concurrency_buffer"]
-        ),
-        "concurrency_buffer_perc": host_options.get(
-            "concurrency_buffer_perc",
-            SERVER_DEFAULT_SCALE_VALUES["concurrency_buffer_perc"],
-        ),
-        "scaling_delay": host_options.get(
-            "scaling_delay", SERVER_DEFAULT_SCALE_VALUES["scaling_delay"]
-        ),
-        "max_multiplexing": host_options.get(
-            "max_multiplexing", SERVER_DEFAULT_SCALE_VALUES["max_multiplexing"]
-        ),
-        "request_timeout": host_options.get(
-            "request_timeout", SERVER_DEFAULT_SCALE_VALUES["request_timeout"]
-        ),
-        "startup_timeout": host_options.get(
-            "startup_timeout", SERVER_DEFAULT_SCALE_VALUES["startup_timeout"]
-        ),
-        "valid_regions": _normalize_regions(
-            host_options.get("regions", SERVER_DEFAULT_SCALE_VALUES["valid_regions"])
-        ),
+    host_option_keys = {
+        "machine_types": "machine_type",
+        "valid_regions": "regions",
     }
+    normalizers = {
+        "machine_types": _normalize_machine_types,
+        "valid_regions": _normalize_regions,
+    }
+
+    desired_config: dict[str, Any] = {}
+    for field in ALL_SCALE_FIELDS:
+        host_option_key = host_option_keys.get(field, field)
+        value = host_options.get(host_option_key, SERVER_DEFAULT_SCALE_VALUES[field])
+        normalizer = normalizers.get(field)
+        desired_config[field] = normalizer(value) if normalizer else value
+
+    return desired_config
 
 
 def _production_scale_config(production_alias: AliasInfo) -> dict[str, Any]:
