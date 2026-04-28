@@ -77,8 +77,10 @@ def test_deploy_cli_env_overrides_fal_env_variable():
 
 @pytest.fixture(autouse=True)
 def disable_admin_deploy_check_lookup():
-    with patch("fal.cli.deploy_check._admin_requires_deploy_check", return_value=False):
-        yield
+    with patch(
+        "fal.cli.deploy_check._admin_requires_deploy_check", return_value=False
+    ) as mock_admin:
+        yield mock_admin
 
 
 @pytest.fixture
@@ -876,14 +878,15 @@ def _render_summary(summary) -> str:
     return console.export_text()
 
 
-@patch("fal.cli.deploy_check._admin_requires_deploy_check")
 @patch.dict("os.environ", {"FAL_DEPLOY_CHECK": "true"})
-def test_resolve_deploy_check_source_env_can_be_skipped_with_yes(mock_admin):
+def test_resolve_deploy_check_source_env_still_applies_with_yes(
+    disable_admin_deploy_check_lookup,
+):
     args = mock_args(app_ref=("src/my_app/inference.py", "MyApp"))
     args.yes = True
 
-    assert _resolve_deploy_check_source(args, MagicMock()) is None
-    mock_admin.assert_not_called()
+    assert _resolve_deploy_check_source(args, MagicMock()) == "env"
+    disable_admin_deploy_check_lookup.assert_not_called()
 
 
 @patch("fal.cli.deploy_check._admin_requires_deploy_check", return_value=True)
@@ -1142,6 +1145,42 @@ def test_deploy_with_check_and_yes_skips_prompt(
 
     _deploy(args)
 
+    mock_prepare_deployment.assert_called_once()
+    mock_execute_prepared_deployment.assert_called_once()
+    mock_input.assert_not_called()
+
+
+@patch.dict("os.environ", {"FAL_DEPLOY_CHECK": "true"})
+@patch("fal.api.deploy.execute_prepared_deployment")
+@patch("fal.api.deploy.prepare_deployment")
+@patch("fal.cli.deploy_check._get_production_alias", return_value=None)
+@patch("sys.stdin.isatty", return_value=False)
+@patch("builtins.input")
+def test_deploy_with_env_check_and_yes_renders_summary_without_prompt(
+    mock_input,
+    mock_isatty,
+    mock_get_production_alias,
+    mock_prepare_deployment,
+    mock_execute_prepared_deployment,
+):
+    mock_prepare_deployment.return_value = _prepared_deployment(reset_scale=False)
+    mock_execute_prepared_deployment.return_value = MagicMock(
+        revision="rev-checked",
+        app_name="my-app",
+        auth_mode="public",
+        urls={"playground": {}, "sync": {}, "async": {}},
+        log_url="https://fal.ai/logs/checked",
+    )
+
+    args = mock_args(app_ref=("src/my_app/inference.py", "MyApp"))
+    args.console = Console(record=True, width=120)
+    args.yes = True
+
+    _deploy(args)
+
+    rendered = args.console.export_text()
+    assert "Deployment Check: my-app" in rendered
+    assert "Target: my-app" in rendered
     mock_prepare_deployment.assert_called_once()
     mock_execute_prepared_deployment.assert_called_once()
     mock_input.assert_not_called()

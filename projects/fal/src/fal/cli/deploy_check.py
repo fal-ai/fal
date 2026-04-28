@@ -132,7 +132,6 @@ def deploy_with_check(
     _render_deployment_check_summary(args.console, summary)
     _confirm_deployment(
         summary.app_name,
-        source,
         console=args.console,
         assume_yes=args.yes,
     )
@@ -147,9 +146,6 @@ def _resolve_deploy_check_source(
 
     if getattr(args, "check", False):
         return "flag"
-
-    if getattr(args, "yes", False):
-        return None
 
     if bool_envvar("FAL_DEPLOY_CHECK"):
         return "env"
@@ -526,7 +522,6 @@ def _diff_table(
 
 def _confirm_deployment(
     app_name: str,
-    source: DeployCheckSource,
     *,
     console,
     assume_yes: bool = False,

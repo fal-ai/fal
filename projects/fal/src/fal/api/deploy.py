@@ -40,6 +40,19 @@ class PreparedDeployment:
     environment_name: str | None = None
 
 
+def _deployment_display_name(
+    display_name: str | None,
+    loaded: LoadedFunction,
+) -> str:
+    if display_name:
+        return display_name
+    if loaded.class_name:
+        return loaded.class_name
+
+    assert loaded.app_name
+    return loaded.app_name
+
+
 def _remove_http_and_port_from_url(url):
     # Remove http://
     if "http://" in url:
@@ -181,7 +194,7 @@ def _prepare_deployment_from_reference(
         host=host,
         loaded=loaded,
         app_data=app_data,
-        display_name=func_name or loaded.class_name or loaded.app_name or "",
+        display_name=_deployment_display_name(func_name, loaded),
         environment_name=environment_name,
     )
 
@@ -218,7 +231,7 @@ def _execute_loaded_deployment(
 
     from fal.console import console
 
-    resolved_display_name = display_name or loaded.class_name or loaded.app_name or ""
+    resolved_display_name = _deployment_display_name(display_name, loaded)
 
     # Show what app name will be used
     console.print(
