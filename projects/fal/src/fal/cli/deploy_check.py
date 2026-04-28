@@ -460,6 +460,7 @@ def _render_deployment_check_summary(console, summary: DeploymentCheckSummary) -
         f"[bold]Target:[/bold] {summary.app_name} "
         f"(env: {summary.environment_name or 'main'})"
     )
+    console.print(f"[bold]Triggered by:[/bold] {summary.source}")
     console.print(
         f"[bold]Current revision:[/bold] "
         f"{summary.current_revision or 'none (first deployment)'}"

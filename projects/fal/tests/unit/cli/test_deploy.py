@@ -1068,7 +1068,7 @@ def test_build_deployment_check_summary_handles_none_regions():
     assert effective_changes["Regions"].after_deploy == "any"
 
 
-def test_render_deployment_check_summary_removes_triggered_by_and_scale_behavior():
+def test_render_deployment_check_summary_includes_triggered_by():
     summary = _build_deployment_check_summary(
         _prepared_deployment(reset_scale=False),
         _production_alias(),
@@ -1078,7 +1078,7 @@ def test_render_deployment_check_summary_removes_triggered_by_and_scale_behavior
 
     rendered = _render_summary(summary)
 
-    assert "Triggered by:" not in rendered
+    assert "Triggered by: flag" in rendered
     assert "Scale behavior:" not in rendered
     assert "Code Values Not Applied" not in rendered
     assert "Code value will not apply without --reset-scale" in rendered
