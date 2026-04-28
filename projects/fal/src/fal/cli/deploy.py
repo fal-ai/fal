@@ -1,16 +1,16 @@
+from __future__ import annotations
+
 import argparse
 import json
 
 from fal.api.client import SyncServerlessClient
 
+from .deploy_check import _resolve_deploy_check_source, deploy_with_check
 from .parser import FalClientParser, RefAction, add_env_argument, get_output_parser
 
 
 def _deploy(args):
-    from ._utils import get_app_data_from_toml, is_app_name
-
-    team = args.team
-    app_ref = args.app_ref
+    team, app_ref = _resolve_team_and_app_ref(args)
 
     # Handle deprecated --force-env-build flag
     if args.force_env_build:
@@ -18,6 +18,38 @@ def _deploy(args):
             "[bold yellow]Warning:[/bold yellow] --force-env-build is deprecated, "
             "use --no-cache instead"
         )
+
+    no_cache = args.no_cache or args.force_env_build
+    client = SyncServerlessClient(host=args.host, team=team)
+
+    deploy_check_source = _resolve_deploy_check_source(args, client)
+    if deploy_check_source is not None:
+        res = deploy_with_check(
+            args,
+            client,
+            app_ref,
+            force_env_build=no_cache,
+            source=deploy_check_source,
+        )
+    else:
+        res = client.deploy(
+            app_ref,
+            app_name=args.app_name,
+            auth=args.auth,
+            strategy=args.strategy,
+            reset_scale=args.app_scale_settings,
+            force_env_build=no_cache,
+            environment_name=args.env,
+        )
+
+    _render_deploy_result(args, res)
+
+
+def _resolve_team_and_app_ref(args) -> tuple[str | None, tuple[str | None, str | None]]:
+    from ._utils import get_app_data_from_toml, is_app_name
+
+    team = args.team
+    app_ref = args.app_ref
 
     # If the app_ref is an app name, get team from pyproject.toml
     if app_ref and is_app_name(app_ref):
@@ -30,17 +62,10 @@ def _deploy(args):
             # If we can't find the app in pyproject.toml, team remains None
             pass
 
-    no_cache = args.no_cache or args.force_env_build
-    client = SyncServerlessClient(host=args.host, team=team)
-    res = client.deploy(
-        app_ref,
-        app_name=args.app_name,
-        auth=args.auth,
-        strategy=args.strategy,
-        reset_scale=args.app_scale_settings,
-        force_env_build=no_cache,
-        environment_name=args.env,
-    )
+    return team, app_ref
+
+
+def _render_deploy_result(args, res) -> None:
     app_id = res.revision
     resolved_app_name = res.app_name
 
@@ -194,6 +219,22 @@ def add_parser(main_subparsers, parents):
         action="store_true",
         dest="app_scale_settings",
         help="Use the application code for scale settings.",
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help=(
+            "Show a pre-deployment summary before deploying. "
+            "Prompts for confirmation unless --yes is also set."
+        ),
+    )
+    parser.add_argument(
+        "--yes",
+        action="store_true",
+        help=(
+            "Skip interactive deploy confirmation prompts. "
+            "When combined with --check, the summary is still shown."
+        ),
     )
     parser.add_argument(
         "--no-cache",

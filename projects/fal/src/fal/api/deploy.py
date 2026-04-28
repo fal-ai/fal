@@ -7,17 +7,17 @@ from typing import TYPE_CHECKING, Optional
 from fal.sdk import AuthModeLiteral, DeploymentStrategyLiteral
 
 if TYPE_CHECKING:
+    from openapi_fal_rest.client import Client
+
     from fal.cli._utils import AppData
+    from fal.utils import LoadedFunction
 
+    from .api import FalServerlessHost
     from .client import SyncServerlessClient
-
 
 import json
 from collections import namedtuple
-from typing import TYPE_CHECKING, Tuple, Union, cast
-
-if TYPE_CHECKING:
-    from openapi_fal_rest.client import Client
+from typing import cast
 
 User = namedtuple("User", ["user_id", "username"])
 
@@ -29,6 +29,28 @@ class DeploymentResult:
     urls: dict[str, dict[str, str]]
     log_url: str
     auth_mode: str
+
+
+@dataclass
+class PreparedDeployment:
+    host: FalServerlessHost
+    loaded: LoadedFunction
+    app_data: AppData
+    display_name: str
+    environment_name: str | None = None
+
+
+def _deployment_display_name(
+    display_name: str | None,
+    loaded: LoadedFunction,
+) -> str:
+    if display_name:
+        return display_name
+    if loaded.class_name:
+        return loaded.class_name
+
+    assert loaded.app_name
+    return loaded.app_name
 
 
 def _remove_http_and_port_from_url(url):
@@ -82,13 +104,59 @@ def _get_user(client: Client) -> User:
         raise FalServerlessError(f"Could not parse the user data: {e}")
 
 
-def _deploy_from_reference(
+def _resolve_deployment_reference(
+    app_ref: str | tuple[str | None, str | None] | None = None,
+    *,
+    app_name: str | None = None,
+    auth: AuthModeLiteral | None = None,
+    strategy: DeploymentStrategyLiteral = "rolling",
+    reset_scale: bool = False,
+) -> tuple[tuple[str | None, str | None], AppData]:
+    from fal.cli._utils import AppData, get_app_data_from_toml, is_app_name
+    from fal.cli.parser import RefAction
+
+    if isinstance(app_ref, tuple):
+        app_ref_tuple = app_ref
+    elif app_ref:
+        app_ref_tuple = RefAction.split_ref(app_ref)
+    else:
+        raise ValueError("Invalid app reference")
+
+    app_data = AppData(
+        auth=auth,
+        deployment_strategy=cast(DeploymentStrategyLiteral, strategy),
+        reset_scale=cast(bool, reset_scale),
+        name=app_name,
+    )
+
+    app_ref_candidate = cast(tuple[str, str | None], app_ref_tuple)
+    if is_app_name(app_ref_candidate):
+        if app_name or auth:
+            raise ValueError("Cannot use --app-name or --auth with app name reference.")
+
+        resolved_app_name, _unused_func_name = app_ref_candidate
+        assert resolved_app_name is not None
+
+        app_data = get_app_data_from_toml(resolved_app_name)
+        assert app_data.ref is not None
+        file_path, func_name = RefAction.split_ref(app_data.ref)
+        return (file_path, func_name), app_data
+
+    file_path, func_name = app_ref_tuple
+    if file_path is not None:
+        file_path = str(Path(file_path).absolute())
+
+    ref = f"{file_path}::{func_name}" if func_name else file_path
+    return (file_path, func_name), replace(app_data, ref=ref)
+
+
+def _prepare_deployment_from_reference(
     client: SyncServerlessClient,
-    app_ref: Tuple[Optional[Union[Path, str]], ...],
+    app_ref: tuple[str | Path | None, str | None],
     app_data: AppData,
     force_env_build: bool,
     environment_name: Optional[str] = None,
-) -> DeploymentResult:
+) -> PreparedDeployment:
     from fal.api import FalServerlessError
     from fal.utils import load_function_from
 
@@ -104,33 +172,71 @@ def _deploy_from_reference(
                 "Please specify the file path of the app you want to deploy."
             )
 
-        [file_path] = options
-        file_path = str(file_path)  # type: ignore
+        [resolved_file_path] = options
+        file_path = str(resolved_file_path)
 
+    local_file_path = str(file_path)
     host = client._create_host(
-        local_file_path=str(file_path),
+        local_file_path=local_file_path,
         environment_name=environment_name,
     )
     loaded = load_function_from(
         host,
-        file_path,  # type: ignore
-        func_name,  # type: ignore
+        local_file_path,
+        func_name,
         force_env_build=force_env_build,
         options=app_data.options,
         app_name=app_data.name,
         app_auth=app_data.auth,
     )
+
+    return PreparedDeployment(
+        host=host,
+        loaded=loaded,
+        app_data=app_data,
+        display_name=_deployment_display_name(func_name, loaded),
+        environment_name=environment_name,
+    )
+
+
+def _deploy_from_reference(
+    client: SyncServerlessClient,
+    app_ref: tuple[str | Path | None, str | None],
+    app_data: AppData,
+    force_env_build: bool,
+    environment_name: Optional[str] = None,
+) -> DeploymentResult:
+    prepared = _prepare_deployment_from_reference(
+        client,
+        app_ref,
+        app_data,
+        force_env_build=force_env_build,
+        environment_name=environment_name,
+    )
+    return execute_prepared_deployment(prepared)
+
+
+def _execute_loaded_deployment(
+    *,
+    host: FalServerlessHost,
+    loaded: LoadedFunction,
+    app_data: AppData,
+    display_name: str | None,
+    environment_name: str | None = None,
+) -> DeploymentResult:
+    from fal.api import FalServerlessError
+
     isolated_function = loaded.function
     strategy = app_data.deployment_strategy or "rolling"
 
-    # Get the actual function/class name that was loaded
-    display_name = func_name or loaded.class_name
-
-    # Show what app name will be used
     from fal.console import console
 
+    resolved_display_name = _deployment_display_name(display_name, loaded)
+
+    # Show what app name will be used
     console.print(
-        f"Deploying '{display_name}' as app '{loaded.app_name}'", style="bold"
+        f"Deploying '{resolved_display_name}' as app '{loaded.app_name}'",
+        style="bold",
     )
     console.print("")
 
@@ -179,6 +285,43 @@ def _deploy_from_reference(
     )
 
 
+def prepare_deployment(
+    client: SyncServerlessClient,
+    app_ref: str | tuple[str | None, str | None] | None = None,
+    *,
+    app_name: str | None = None,
+    auth: AuthModeLiteral | None = None,
+    strategy: DeploymentStrategyLiteral = "rolling",
+    reset_scale: bool = False,
+    force_env_build: bool = False,
+    environment_name: str | None = None,
+) -> PreparedDeployment:
+    resolved_app_ref, app_data = _resolve_deployment_reference(
+        app_ref,
+        app_name=app_name,
+        auth=auth,
+        strategy=strategy,
+        reset_scale=reset_scale,
+    )
+    return _prepare_deployment_from_reference(
+        client,
+        resolved_app_ref,
+        app_data,
+        force_env_build=force_env_build,
+        environment_name=environment_name,
+    )
+
+
+def execute_prepared_deployment(prepared: PreparedDeployment) -> DeploymentResult:
+    return _execute_loaded_deployment(
+        host=prepared.host,
+        loaded=prepared.loaded,
+        app_data=prepared.app_data,
+        display_name=prepared.display_name,
+        environment_name=prepared.environment_name,
+    )
+
+
 def deploy(
     client: SyncServerlessClient,
     app_ref: str | tuple[str, str] | None = None,
@@ -190,45 +333,16 @@ def deploy(
     force_env_build: bool = False,
     environment_name: str | None = None,
 ) -> DeploymentResult:
-    from fal.cli._utils import AppData, get_app_data_from_toml, is_app_name
-    from fal.cli.parser import RefAction
-
-    if isinstance(app_ref, tuple):
-        app_ref_tuple = app_ref
-    elif app_ref:
-        app_ref_tuple = RefAction.split_ref(app_ref)
-    else:
-        raise ValueError("Invalid app reference")
-
-    app_data = AppData(
+    resolved_app_ref, app_data = _resolve_deployment_reference(
+        app_ref,
+        app_name=app_name,
         auth=auth,
-        deployment_strategy=cast(DeploymentStrategyLiteral, strategy),
-        reset_scale=cast(bool, reset_scale),
-        name=app_name,
+        strategy=strategy,
+        reset_scale=reset_scale,
     )
-
-    # my-app
-    if is_app_name(app_ref_tuple):
-        # we do not allow --app-name and --auth to be used with app name
-        if app_name or auth:
-            raise ValueError("Cannot use --app-name or --auth with app name reference.")
-
-        app_name = app_ref_tuple[0]
-        app_data = get_app_data_from_toml(app_name)
-        app_ref = app_data.ref
-
-        file_path, func_name = RefAction.split_ref(app_ref)
-
-    # path/to/myfile.py::MyApp
-    else:
-        file_path, func_name = app_ref_tuple
-        file_path = str(Path(file_path).absolute())
-        ref = f"{file_path}::{func_name}" if func_name else file_path
-        app_data = replace(app_data, ref=ref)
-
     return _deploy_from_reference(
         client,
-        (file_path, func_name),
+        resolved_app_ref,
         app_data,
         force_env_build=force_env_build,
         environment_name=environment_name,
