@@ -7,9 +7,9 @@ from rich.console import Console
 
 from fal.api import Options
 from fal.cli._utils import AppData
-from fal.cli.deploy import (
+from fal.cli.deploy import _deploy
+from fal.cli.deploy_check import (
     _build_deployment_check_summary,
-    _deploy,
     _diff_table,
     _is_truthy,
     _payload_requires_deploy_check,
@@ -77,7 +77,7 @@ def test_deploy_cli_env_overrides_fal_env_variable():
 
 @pytest.fixture(autouse=True)
 def disable_admin_deploy_check_lookup():
-    with patch("fal.cli.deploy._admin_requires_deploy_check", return_value=False):
+    with patch("fal.cli.deploy_check._admin_requires_deploy_check", return_value=False):
         yield
 
 
@@ -876,7 +876,7 @@ def _render_summary(summary) -> str:
     return console.export_text()
 
 
-@patch("fal.cli.deploy._admin_requires_deploy_check")
+@patch("fal.cli.deploy_check._admin_requires_deploy_check")
 @patch.dict("os.environ", {"FAL_DEPLOY_CHECK": "true"})
 def test_resolve_deploy_check_source_env_can_be_skipped_with_yes(mock_admin):
     args = mock_args(app_ref=("src/my_app/inference.py", "MyApp"))
@@ -886,7 +886,7 @@ def test_resolve_deploy_check_source_env_can_be_skipped_with_yes(mock_admin):
     mock_admin.assert_not_called()
 
 
-@patch("fal.cli.deploy._admin_requires_deploy_check", return_value=True)
+@patch("fal.cli.deploy_check._admin_requires_deploy_check", return_value=True)
 def test_resolve_deploy_check_source_uses_admin_trigger(mock_admin):
     args = mock_args(app_ref=("src/my_app/inference.py", "MyApp"))
 
@@ -1086,7 +1086,7 @@ def test_render_deployment_check_summary_removes_triggered_by_and_scale_behavior
 
 @patch("fal.api.deploy.execute_prepared_deployment")
 @patch("fal.api.deploy.prepare_deployment")
-@patch("fal.cli.deploy._get_production_alias", return_value=None)
+@patch("fal.cli.deploy_check._get_production_alias", return_value=None)
 @patch("sys.stdin.isatty", return_value=True)
 @patch("builtins.input", return_value="ConFiRm")
 def test_deploy_with_check_prepares_and_executes(
@@ -1117,7 +1117,7 @@ def test_deploy_with_check_prepares_and_executes(
 
 @patch("fal.api.deploy.execute_prepared_deployment")
 @patch("fal.api.deploy.prepare_deployment")
-@patch("fal.cli.deploy._get_production_alias", return_value=None)
+@patch("fal.cli.deploy_check._get_production_alias", return_value=None)
 @patch("sys.stdin.isatty", return_value=False)
 @patch("builtins.input")
 def test_deploy_with_check_and_yes_skips_prompt(
