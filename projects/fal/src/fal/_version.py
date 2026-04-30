@@ -1,6 +1,7 @@
 import json
 import os
 import tempfile
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 try:
@@ -13,7 +14,7 @@ except ImportError:
 
 _PYPI_URL = "https://pypi.org/pypi/fal/json"
 _PYPI_CACHE_TTL = 60 * 60  # 1 hour
-_PYPI_CACHE_PATH = os.path.expanduser("~/.fal/cache/pypi.json")
+_PYPI_CACHE_PATH = str(Path.home() / ".fal" / "cache" / "pypi.json")
 _URLOPEN_TIMEOUT = 1
 
 
