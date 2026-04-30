@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Dict, Iterator, List, Optional
 
 SETTINGS_SECTION = "__internal__"
@@ -16,7 +17,7 @@ class Config:
     _profile: Optional[str]
     _editing: bool = False
 
-    DEFAULT_CONFIG_PATH = "~/.fal/config.toml"
+    DEFAULT_CONFIG_PATH = str(Path.home() / ".fal" / "config.toml")
 
     def __init__(
         self, *, validate_profile: bool = False, profile: Optional[str] = None
