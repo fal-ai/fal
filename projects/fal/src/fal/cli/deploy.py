@@ -10,6 +10,8 @@ from .parser import FalClientParser, RefAction, add_env_argument, get_output_par
 
 
 def _deploy(args):
+    from ._result_handlers import CliRegisterResultHandler
+
     team, app_ref = _resolve_team_and_app_ref(args)
 
     # Handle deprecated --force-env-build flag
@@ -21,18 +23,24 @@ def _deploy(args):
 
     no_cache = args.no_cache or args.force_env_build
     client = SyncServerlessClient(host=args.host, team=team)
+    result_handler = CliRegisterResultHandler(console=args.console)
 
     deploy_check_source = _resolve_deploy_check_source(args, client)
     if deploy_check_source is not None:
+        # The pre-deploy summary already shows the resolved app name.
         res = deploy_with_check(
             args,
             client,
             app_ref,
             force_env_build=no_cache,
             source=deploy_check_source,
+            result_handler=result_handler,
         )
     else:
-        res = client.deploy(
+        from fal.api import deploy as deploy_api
+
+        prepared = deploy_api.prepare_deployment(
+            client,
             app_ref,
             app_name=args.app_name,
             auth=args.auth,
@@ -40,6 +48,14 @@ def _deploy(args):
             reset_scale=args.app_scale_settings,
             force_env_build=no_cache,
             environment_name=args.env,
+        )
+        args.console.print(
+            f"Deploying '{prepared.display_name}' as app '{prepared.loaded.app_name}'",
+            style="bold",
+        )
+        args.console.print("")
+        res = deploy_api.execute_prepared_deployment(
+            prepared, result_handler=result_handler
         )
 
     _render_deploy_result(args, res)
