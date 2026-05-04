@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from fal.cli._utils import AppData
     from fal.utils import LoadedFunction
 
-    from .api import FalServerlessHost
+    from .api import FalServerlessHost, ResultHandler
     from .client import SyncServerlessClient
 
 import json
@@ -129,7 +129,7 @@ def _resolve_deployment_reference(
         name=app_name,
     )
 
-    app_ref_candidate = cast(tuple[str, str | None], app_ref_tuple)
+    app_ref_candidate = cast("tuple[str, str | None]", app_ref_tuple)
     if is_app_name(app_ref_candidate):
         if app_name or auth:
             raise ValueError("Cannot use --app-name or --auth with app name reference.")
@@ -205,6 +205,7 @@ def _deploy_from_reference(
     app_data: AppData,
     force_env_build: bool,
     environment_name: Optional[str] = None,
+    result_handler: ResultHandler | None = None,
 ) -> DeploymentResult:
     prepared = _prepare_deployment_from_reference(
         client,
@@ -213,7 +214,7 @@ def _deploy_from_reference(
         force_env_build=force_env_build,
         environment_name=environment_name,
     )
-    return execute_prepared_deployment(prepared)
+    return execute_prepared_deployment(prepared, result_handler=result_handler)
 
 
 def _execute_loaded_deployment(
@@ -223,22 +224,12 @@ def _execute_loaded_deployment(
     app_data: AppData,
     display_name: str | None,
     environment_name: str | None = None,
+    result_handler: ResultHandler | None = None,
 ) -> DeploymentResult:
     from fal.api import FalServerlessError
 
     isolated_function = loaded.function
     strategy = app_data.deployment_strategy or "rolling"
-
-    from fal.console import console
-
-    resolved_display_name = _deployment_display_name(display_name, loaded)
-
-    # Show what app name will be used
-    console.print(
-        f"Deploying '{resolved_display_name}' as app '{loaded.app_name}'",
-        style="bold",
-    )
-    console.print("")
 
     result = host.register(
         func=isolated_function.func,
@@ -250,6 +241,7 @@ def _execute_loaded_deployment(
         deployment_strategy=strategy,
         scale=app_data.reset_scale,
         environment_name=environment_name,
+        result_handler=result_handler,
     )
 
     if not result or not result.result:
@@ -312,13 +304,18 @@ def prepare_deployment(
     )
 
 
-def execute_prepared_deployment(prepared: PreparedDeployment) -> DeploymentResult:
+def execute_prepared_deployment(
+    prepared: PreparedDeployment,
+    *,
+    result_handler: ResultHandler | None = None,
+) -> DeploymentResult:
     return _execute_loaded_deployment(
         host=prepared.host,
         loaded=prepared.loaded,
         app_data=prepared.app_data,
         display_name=prepared.display_name,
         environment_name=prepared.environment_name,
+        result_handler=result_handler,
     )
 
 
@@ -332,6 +329,7 @@ def deploy(
     reset_scale: bool = False,
     force_env_build: bool = False,
     environment_name: str | None = None,
+    result_handler: ResultHandler | None = None,
 ) -> DeploymentResult:
     resolved_app_ref, app_data = _resolve_deployment_reference(
         app_ref,
@@ -346,4 +344,5 @@ def deploy(
         app_data,
         force_env_build=force_env_build,
         environment_name=environment_name,
+        result_handler=result_handler,
     )

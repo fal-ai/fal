@@ -158,9 +158,14 @@ def mock_args(
 
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
 @patch("fal.cli._utils.parse_pyproject_toml")
-@patch("fal.api.deploy._deploy_from_reference")
+@patch("fal.api.deploy.execute_prepared_deployment")
+@patch("fal.api.deploy._prepare_deployment_from_reference")
 def test_deploy_with_toml_success(
-    mock_deploy_ref, mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml
+    mock_prepare_ref,
+    mock_execute,
+    mock_parse_toml,
+    mock_find_toml,
+    mock_parse_pyproject_toml,
 ):
     # Mocking the parse_pyproject_toml function to return a predefined dict
     mock_parse_toml.return_value = mock_parse_pyproject_toml
@@ -172,8 +177,8 @@ def test_deploy_with_toml_success(
     project_root, _ = find_project_root(None)
 
     # Ensure the correct app is deployed
-    mock_deploy_ref.assert_called_once_with(
-        mock_deploy_ref.call_args[0][0],
+    mock_prepare_ref.assert_called_once_with(
+        mock_prepare_ref.call_args[0][0],
         (f"{project_root / 'src/my_app/inference.py'}", "MyApp"),
         AppData(
             ref=f"{project_root / 'src/my_app/inference.py'}::MyApp",
@@ -190,9 +195,14 @@ def test_deploy_with_toml_success(
 
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
 @patch("fal.cli._utils.parse_pyproject_toml")
-@patch("fal.api.deploy._deploy_from_reference")
+@patch("fal.api.deploy.execute_prepared_deployment")
+@patch("fal.api.deploy._prepare_deployment_from_reference")
 def test_deploy_with_toml_no_auth(
-    mock_deploy_ref, mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml
+    mock_prepare_ref,
+    mock_execute,
+    mock_parse_toml,
+    mock_find_toml,
+    mock_parse_pyproject_toml,
 ):
     # Mocking the parse_pyproject_toml function to return a predefined dict
     mock_parse_toml.return_value = mock_parse_pyproject_toml
@@ -204,8 +214,8 @@ def test_deploy_with_toml_no_auth(
     project_root, _ = find_project_root(None)
 
     # Since auth is not provided for "another-app", it should default to "private"
-    mock_deploy_ref.assert_called_once_with(
-        mock_deploy_ref.call_args[0][0],
+    mock_prepare_ref.assert_called_once_with(
+        mock_prepare_ref.call_args[0][0],
         (f"{project_root / 'src/another_app/inference.py'}", "AnotherApp"),
         AppData(
             ref=f"{project_root / 'src/another_app/inference.py'}::AnotherApp",
@@ -222,9 +232,14 @@ def test_deploy_with_toml_no_auth(
 
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
 @patch("fal.cli._utils.parse_pyproject_toml")
-@patch("fal.api.deploy._deploy_from_reference")
+@patch("fal.api.deploy.execute_prepared_deployment")
+@patch("fal.api.deploy._prepare_deployment_from_reference")
 def test_deploy_with_toml_overrides_applied(
-    mock_deploy_ref, mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml
+    mock_prepare_ref,
+    mock_execute,
+    mock_parse_toml,
+    mock_find_toml,
+    mock_parse_pyproject_toml,
 ):
     mock_parse_toml.return_value = mock_parse_pyproject_toml
 
@@ -233,8 +248,8 @@ def test_deploy_with_toml_overrides_applied(
     _deploy(args)
 
     project_root, _ = find_project_root(None)
-    mock_deploy_ref.assert_called_once_with(
-        mock_deploy_ref.call_args[0][0],
+    mock_prepare_ref.assert_called_once_with(
+        mock_prepare_ref.call_args[0][0],
         (f"{project_root / 'src/override_app/inference.py'}", "OverrideApp"),
         AppData(
             ref=f"{project_root / 'src/override_app/inference.py'}::OverrideApp",
@@ -255,9 +270,14 @@ def test_deploy_with_toml_overrides_applied(
 
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
 @patch("fal.cli._utils.parse_pyproject_toml")
-@patch("fal.api.deploy._deploy_from_reference")
+@patch("fal.api.deploy.execute_prepared_deployment")
+@patch("fal.api.deploy._prepare_deployment_from_reference")
 def test_deploy_with_toml_app_not_found(
-    mock_deploy_ref, mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml
+    mock_prepare_ref,
+    mock_execute,
+    mock_parse_toml,
+    mock_find_toml,
+    mock_parse_pyproject_toml,
 ):
     # Mocking the parse_pyproject_toml function to return a predefined dict
     mock_parse_toml.return_value = mock_parse_pyproject_toml
@@ -273,9 +293,10 @@ def test_deploy_with_toml_app_not_found(
 
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
 @patch("fal.cli._utils.parse_pyproject_toml")
-@patch("fal.api.deploy._deploy_from_reference")
+@patch("fal.api.deploy.execute_prepared_deployment")
+@patch("fal.api.deploy._prepare_deployment_from_reference")
 def test_deploy_with_toml_missing_ref_key(
-    mock_deploy_ref, mock_parse_toml, mock_find_toml
+    mock_prepare_ref, mock_execute, mock_parse_toml, mock_find_toml
 ):
     # Mocking a toml structure without a "ref" key for a certain app
     mock_parse_toml.return_value = {
@@ -297,9 +318,14 @@ def test_deploy_with_toml_missing_ref_key(
 
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
 @patch("fal.cli._utils.parse_pyproject_toml")
-@patch("fal.api.deploy._deploy_from_reference")
+@patch("fal.api.deploy.execute_prepared_deployment")
+@patch("fal.api.deploy._prepare_deployment_from_reference")
 def test_deploy_with_toml_extra_keys_in_toml(
-    mock_deploy_ref, mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml
+    mock_prepare_ref,
+    mock_execute,
+    mock_parse_toml,
+    mock_find_toml,
+    mock_parse_pyproject_toml,
 ):
     mock_parse_toml.return_value = mock_parse_pyproject_toml
 
@@ -342,9 +368,14 @@ def test_deploy_with_toml_only_app_name_is_provided(
 
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
 @patch("fal.cli._utils.parse_pyproject_toml")
-@patch("fal.api.deploy._deploy_from_reference")
+@patch("fal.api.deploy.execute_prepared_deployment")
+@patch("fal.api.deploy._prepare_deployment_from_reference")
 def test_deploy_with_toml_deployment_strategy(
-    mock_deploy_ref, mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml
+    mock_prepare_ref,
+    mock_execute,
+    mock_parse_toml,
+    mock_find_toml,
+    mock_parse_pyproject_toml,
 ):
     mock_parse_toml.return_value = mock_parse_pyproject_toml
 
@@ -354,8 +385,8 @@ def test_deploy_with_toml_deployment_strategy(
 
     project_root, _ = find_project_root(None)
 
-    mock_deploy_ref.assert_called_once_with(
-        mock_deploy_ref.call_args[0][0],
+    mock_prepare_ref.assert_called_once_with(
+        mock_prepare_ref.call_args[0][0],
         (f"{project_root / 'src/my_app/inference.py'}", "MyApp"),
         AppData(
             ref=f"{project_root / 'src/my_app/inference.py'}::MyApp",
@@ -372,9 +403,14 @@ def test_deploy_with_toml_deployment_strategy(
 
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
 @patch("fal.cli._utils.parse_pyproject_toml")
-@patch("fal.api.deploy._deploy_from_reference")
+@patch("fal.api.deploy.execute_prepared_deployment")
+@patch("fal.api.deploy._prepare_deployment_from_reference")
 def test_deploy_with_toml_default_deployment_strategy(
-    mock_deploy_ref, mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml
+    mock_prepare_ref,
+    mock_execute,
+    mock_parse_toml,
+    mock_find_toml,
+    mock_parse_pyproject_toml,
 ):
     mock_parse_toml.return_value = mock_parse_pyproject_toml
 
@@ -384,8 +420,8 @@ def test_deploy_with_toml_default_deployment_strategy(
 
     project_root, _ = find_project_root(None)
 
-    mock_deploy_ref.assert_called_once_with(
-        mock_deploy_ref.call_args[0][0],
+    mock_prepare_ref.assert_called_once_with(
+        mock_prepare_ref.call_args[0][0],
         (f"{project_root / 'src/another_app/inference.py'}", "AnotherApp"),
         AppData(
             ref=f"{project_root / 'src/another_app/inference.py'}::AnotherApp",
@@ -402,9 +438,14 @@ def test_deploy_with_toml_default_deployment_strategy(
 
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
 @patch("fal.cli._utils.parse_pyproject_toml")
-@patch("fal.api.deploy._deploy_from_reference")
+@patch("fal.api.deploy.execute_prepared_deployment")
+@patch("fal.api.deploy._prepare_deployment_from_reference")
 def test_deploy_with_cli_auth(
-    mock_deploy_ref, mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml
+    mock_prepare_ref,
+    mock_execute,
+    mock_parse_toml,
+    mock_find_toml,
+    mock_parse_pyproject_toml,
 ):
     mock_parse_toml.return_value = mock_parse_pyproject_toml
 
@@ -414,8 +455,8 @@ def test_deploy_with_cli_auth(
 
     project_root, _ = find_project_root(None)
 
-    mock_deploy_ref.assert_called_once_with(
-        mock_deploy_ref.call_args[0][0],
+    mock_prepare_ref.assert_called_once_with(
+        mock_prepare_ref.call_args[0][0],
         (f"{project_root / 'src/my_app/inference.py'}", "MyApp"),
         AppData(
             ref=f"{project_root / 'src/my_app/inference.py'}::MyApp",
@@ -432,9 +473,14 @@ def test_deploy_with_cli_auth(
 
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
 @patch("fal.cli._utils.parse_pyproject_toml")
-@patch("fal.api.deploy._deploy_from_reference")
+@patch("fal.api.deploy.execute_prepared_deployment")
+@patch("fal.api.deploy._prepare_deployment_from_reference")
 def test_deploy_with_cli_app_name(
-    mock_deploy_ref, mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml
+    mock_prepare_ref,
+    mock_execute,
+    mock_parse_toml,
+    mock_find_toml,
+    mock_parse_pyproject_toml,
 ):
     mock_parse_toml.return_value = mock_parse_pyproject_toml
 
@@ -447,8 +493,8 @@ def test_deploy_with_cli_app_name(
 
     project_root, _ = find_project_root(None)
 
-    mock_deploy_ref.assert_called_once_with(
-        mock_deploy_ref.call_args[0][0],
+    mock_prepare_ref.assert_called_once_with(
+        mock_prepare_ref.call_args[0][0],
         (f"{project_root / 'src/my_app/inference.py'}", "MyApp"),
         AppData(
             ref=f"{project_root / 'src/my_app/inference.py'}::MyApp",
@@ -465,9 +511,14 @@ def test_deploy_with_cli_app_name(
 
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
 @patch("fal.cli._utils.parse_pyproject_toml")
-@patch("fal.api.deploy._deploy_from_reference")
+@patch("fal.api.deploy.execute_prepared_deployment")
+@patch("fal.api.deploy._prepare_deployment_from_reference")
 def test_deploy_with_cli_deployment_strategy(
-    mock_deploy_ref, mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml
+    mock_prepare_ref,
+    mock_execute,
+    mock_parse_toml,
+    mock_find_toml,
+    mock_parse_pyproject_toml,
 ):
     mock_parse_toml.return_value = mock_parse_pyproject_toml
 
@@ -477,8 +528,8 @@ def test_deploy_with_cli_deployment_strategy(
 
     project_root, _ = find_project_root(None)
 
-    mock_deploy_ref.assert_called_once_with(
-        mock_deploy_ref.call_args[0][0],
+    mock_prepare_ref.assert_called_once_with(
+        mock_prepare_ref.call_args[0][0],
         (f"{project_root / 'src/my_app/inference.py'}", "MyApp"),
         AppData(
             ref=f"{project_root / 'src/my_app/inference.py'}::MyApp",
@@ -495,9 +546,14 @@ def test_deploy_with_cli_deployment_strategy(
 
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
 @patch("fal.cli._utils.parse_pyproject_toml")
-@patch("fal.api.deploy._deploy_from_reference")
+@patch("fal.api.deploy.execute_prepared_deployment")
+@patch("fal.api.deploy._prepare_deployment_from_reference")
 def test_deploy_with_cli_reset_scale(
-    mock_deploy_ref, mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml
+    mock_prepare_ref,
+    mock_execute,
+    mock_parse_toml,
+    mock_find_toml,
+    mock_parse_pyproject_toml,
 ):
     mock_parse_toml.return_value = mock_parse_pyproject_toml
 
@@ -507,8 +563,8 @@ def test_deploy_with_cli_reset_scale(
 
     project_root, _ = find_project_root(None)
 
-    mock_deploy_ref.assert_called_once_with(
-        mock_deploy_ref.call_args[0][0],
+    mock_prepare_ref.assert_called_once_with(
+        mock_prepare_ref.call_args[0][0],
         (f"{project_root / 'src/my_app/inference.py'}", "MyApp"),
         AppData(
             ref=f"{project_root / 'src/my_app/inference.py'}::MyApp",
@@ -525,9 +581,14 @@ def test_deploy_with_cli_reset_scale(
 
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
 @patch("fal.cli._utils.parse_pyproject_toml")
-@patch("fal.api.deploy._deploy_from_reference")
+@patch("fal.api.deploy.execute_prepared_deployment")
+@patch("fal.api.deploy._prepare_deployment_from_reference")
 def test_deploy_with_cli_scale(
-    mock_deploy_ref, mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml
+    mock_prepare_ref,
+    mock_execute,
+    mock_parse_toml,
+    mock_find_toml,
+    mock_parse_pyproject_toml,
 ):
     mock_parse_toml.return_value = mock_parse_pyproject_toml
 
@@ -537,8 +598,8 @@ def test_deploy_with_cli_scale(
 
     project_root, _ = find_project_root(None)
 
-    mock_deploy_ref.assert_called_once_with(
-        mock_deploy_ref.call_args[0][0],
+    mock_prepare_ref.assert_called_once_with(
+        mock_prepare_ref.call_args[0][0],
         (f"{project_root / 'src/my_app/inference.py'}", "MyApp"),
         AppData(
             ref=f"{project_root / 'src/my_app/inference.py'}::MyApp",
@@ -555,9 +616,14 @@ def test_deploy_with_cli_scale(
 
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
 @patch("fal.cli._utils.parse_pyproject_toml")
-@patch("fal.api.deploy._deploy_from_reference")
+@patch("fal.api.deploy.execute_prepared_deployment")
+@patch("fal.api.deploy._prepare_deployment_from_reference")
 def test_deploy_with_cli_no_cache(
-    mock_deploy_ref, mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml
+    mock_prepare_ref,
+    mock_execute,
+    mock_parse_toml,
+    mock_find_toml,
+    mock_parse_pyproject_toml,
 ):
     mock_parse_toml.return_value = mock_parse_pyproject_toml
 
@@ -567,8 +633,8 @@ def test_deploy_with_cli_no_cache(
 
     project_root, _ = find_project_root(None)
 
-    mock_deploy_ref.assert_called_once_with(
-        mock_deploy_ref.call_args[0][0],
+    mock_prepare_ref.assert_called_once_with(
+        mock_prepare_ref.call_args[0][0],
         (f"{project_root / 'src/my_app/inference.py'}", "MyApp"),
         AppData(
             ref=f"{project_root / 'src/my_app/inference.py'}::MyApp",
@@ -585,9 +651,13 @@ def test_deploy_with_cli_no_cache(
 
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
 @patch("fal.cli._utils.parse_pyproject_toml")
+@patch("fal.api.deploy.execute_prepared_deployment")
+@patch("fal.api.deploy.prepare_deployment")
 @patch("fal.cli.deploy.SyncServerlessClient")
 def test_deploy_with_team_from_toml(
     mock_client,
+    mock_prepare,
+    mock_execute,
     mock_parse_toml,
     mock_find_toml,
     mock_parse_pyproject_toml,
@@ -598,11 +668,6 @@ def test_deploy_with_team_from_toml(
     # Mock the client instance
     mock_client_instance = MagicMock()
     mock_client.return_value = mock_client_instance
-    mock_client_instance.deploy.return_value = MagicMock(
-        revision="rev-123",
-        app_name="team-app",
-        urls={"playground": {}, "sync": {}, "async": {}},
-    )
 
     args = mock_args(app_ref=("team-app", None))
     args.host = "my-host"
@@ -615,9 +680,13 @@ def test_deploy_with_team_from_toml(
 
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
 @patch("fal.cli._utils.parse_pyproject_toml")
+@patch("fal.api.deploy.execute_prepared_deployment")
+@patch("fal.api.deploy.prepare_deployment")
 @patch("fal.cli.deploy.SyncServerlessClient")
 def test_deploy_with_team_from_toml_cli_team_override(
     mock_client,
+    mock_prepare,
+    mock_execute,
     mock_parse_toml,
     mock_find_toml,
     mock_parse_pyproject_toml,
@@ -628,11 +697,6 @@ def test_deploy_with_team_from_toml_cli_team_override(
     # Mock the client instance
     mock_client_instance = MagicMock()
     mock_client.return_value = mock_client_instance
-    mock_client_instance.deploy.return_value = MagicMock(
-        revision="rev-123",
-        app_name="team-app",
-        urls={"playground": {}, "sync": {}, "async": {}},
-    )
 
     args = mock_args(app_ref=("team-app", None), team="my-cli-team")
     args.host = "my-host"
@@ -645,9 +709,13 @@ def test_deploy_with_team_from_toml_cli_team_override(
 
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
 @patch("fal.cli._utils.parse_pyproject_toml")
+@patch("fal.api.deploy.execute_prepared_deployment")
+@patch("fal.api.deploy.prepare_deployment")
 @patch("fal.cli.deploy.SyncServerlessClient")
 def test_deploy_without_team_in_toml(
     mock_client,
+    mock_prepare,
+    mock_execute,
     mock_parse_toml,
     mock_find_toml,
     mock_parse_pyproject_toml,
@@ -658,11 +726,6 @@ def test_deploy_without_team_in_toml(
     # Mock the client instance
     mock_client_instance = MagicMock()
     mock_client.return_value = mock_client_instance
-    mock_client_instance.deploy.return_value = MagicMock(
-        revision="rev-123",
-        app_name="my-app",
-        urls={"playground": {}, "sync": {}, "async": {}},
-    )
 
     args = mock_args(app_ref=("my-app", None))
     args.host = "my-host"
@@ -784,20 +847,17 @@ def test_get_app_data_from_toml_no_scale_warning_can_be_suppressed(
 
 
 @patch("fal.cli._utils.get_app_data_from_toml")
+@patch("fal.api.deploy.execute_prepared_deployment")
+@patch("fal.api.deploy.prepare_deployment")
 @patch("fal.cli.deploy.SyncServerlessClient")
-def test_deploy_team_lookup_uses_silent_toml_read(mock_client, mock_get_app_data):
+def test_deploy_team_lookup_uses_silent_toml_read(
+    mock_client, mock_prepare, mock_execute, mock_get_app_data
+):
     mock_get_app_data.return_value = AppData(team="my-team")
 
     # Mock the client instance
     mock_client_instance = MagicMock()
     mock_client.return_value = mock_client_instance
-    mock_client_instance.deploy.return_value = MagicMock(
-        revision="rev-123",
-        app_name="no-scale-app",
-        auth_mode="private",
-        urls={"playground": {}, "sync": {}, "async": {}},
-        log_url="https://fal.ai/logs/123",
-    )
 
     args = mock_args(app_ref=("no-scale-app", None))
     args.host = "my-host"

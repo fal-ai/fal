@@ -93,7 +93,7 @@ def test_app_regions_propagate_to_function_options():
 
 
 def test_run_forwards_regions_to_machine_requirements():
-    from fal.api.api import FalServerlessHost, Options
+    from fal.api.api import FalServerlessHost, Options, ResultHandler
     from fal.sdk import HostedRunState
 
     host = FalServerlessHost()
@@ -116,7 +116,7 @@ def test_run_forwards_regions_to_machine_requirements():
             options,
             args=(),
             kwargs={},
-            result_handler=lambda _: None,
+            result_handler=ResultHandler(),
         )
 
     assert result == "ok"
@@ -535,7 +535,7 @@ def test_data_mounts_register_sends_to_connection():
 
 
 def test_data_mounts_run_sends_to_connection():
-    from fal.api.api import FalServerlessHost, Options
+    from fal.api.api import FalServerlessHost, Options, ResultHandler
     from fal.sdk import HostedRunState
 
     host = FalServerlessHost()
@@ -558,7 +558,7 @@ def test_data_mounts_run_sends_to_connection():
             options,
             args=(),
             kwargs={},
-            result_handler=lambda _: None,
+            result_handler=ResultHandler(),
         )
 
     _, call_kwargs = connection.run.call_args
@@ -626,7 +626,7 @@ def test_secrets_register_sends_to_connection():
 
 
 def test_secrets_run_sends_to_connection():
-    from fal.api.api import FalServerlessHost, Options
+    from fal.api.api import FalServerlessHost, Options, ResultHandler
     from fal.sdk import HostedRunState
 
     host = FalServerlessHost()
@@ -649,7 +649,7 @@ def test_secrets_run_sends_to_connection():
             options,
             args=(),
             kwargs={},
-            result_handler=lambda _: None,
+            result_handler=ResultHandler(),
         )
 
     _, call_kwargs = connection.run.call_args

@@ -372,6 +372,9 @@ class SyncServerlessClient:
             auth: Authentication mode ("private" | "public").
             strategy: Deployment strategy ("recreate" | "rolling").
             reset_scale: If False, use previous scaling settings.
+            result_handler: Optional ``ResultHandler`` to observe streamed
+                build/deploy events. Defaults to the ``fal.api`` register
+                default (forwards logs to stdout).
 
         Example:
             # Auto-discover from pyproject.toml

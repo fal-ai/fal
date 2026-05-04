@@ -11,6 +11,7 @@ from fal.sdk import construct_alias
 logger = get_logger(__name__)
 
 if TYPE_CHECKING:
+    from fal.api.api import ResultHandler
     from fal.api.client import SyncServerlessClient
     from fal.api.deploy import DeploymentResult, PreparedDeployment
     from fal.sdk import AliasInfo
@@ -105,6 +106,7 @@ def deploy_with_check(
     *,
     force_env_build: bool,
     source: DeployCheckSource,
+    result_handler: ResultHandler | None = None,
 ) -> DeploymentResult:
     from fal.api import deploy as deploy_api
 
@@ -135,7 +137,9 @@ def deploy_with_check(
         console=args.console,
         assume_yes=args.yes,
     )
-    return deploy_api.execute_prepared_deployment(prepared)
+    return deploy_api.execute_prepared_deployment(
+        prepared, result_handler=result_handler
+    )
 
 
 def _resolve_deploy_check_source(

@@ -161,6 +161,127 @@ class SpawnInfo:
         return urlparse(self.url).path.strip("/")
 
 
+class ResultHandler:
+    """Base class for handling streamed partial results from run/spawn/register.
+
+    Subclass and override the on_* hooks; ``__call__`` dispatches a partial
+    result to the appropriate hook(s). The base class itself is a no-op, so
+    ``ResultHandler()`` is a valid silent handler.
+    """
+
+    def __call__(self, partial_result: Any) -> None:
+        for log in getattr(partial_result, "logs", None) or ():
+            self.on_log(log)
+        service_urls = getattr(partial_result, "service_urls", None)
+        if service_urls is not None:
+            self.on_service_urls(service_urls)
+
+    def on_log(self, log: Any) -> None:
+        """Called once per Log entry in a partial result."""
+
+    def on_service_urls(self, urls: Any) -> None:
+        """Called when a partial result carries service URLs."""
+
+
+class SpawnResultHandler(ResultHandler):
+    """Default handler for FalServerlessHost.spawn: populates a SpawnInfo from
+    streamed partial results.
+
+    The host always runs this (since the SpawnInfo it fills is spawn's return
+    value); a caller-supplied result_handler is composed on top of it.
+    """
+
+    def __init__(self, info: SpawnInfo) -> None:
+        self.info = info
+
+    def __call__(self, partial_result: Any) -> None:
+        # Stream handle is spawn-specific (callers use it for cancellation),
+        # so it lives here rather than on the base class.
+        stream = getattr(partial_result, "stream", None)
+        if stream is not None:
+            self.info.stream = stream
+        super().__call__(partial_result)
+
+    def on_log(self, log: Any) -> None:
+        if self.info._url is None and "And API access through" in log.message:
+            self.info.url = log.message.rsplit()[-1].replace("queue.", "")
+        self.info.logs.put(log)
+
+    def on_service_urls(self, urls: Any) -> None:
+        self.info.url = urls.run
+
+
+class RegisterResultHandler(ResultHandler):
+    """Default handler for FalServerlessHost.register: forwards logs to the printer."""
+
+    def __init__(self) -> None:
+        self.log_printer = IsolateLogPrinter(debug=flags.DEBUG)
+
+    def on_log(self, log: Any) -> None:
+        self.log_printer.print(log)
+
+
+class RunResultHandler(ResultHandler):
+    """Default handler for FalServerlessHost.run: prints the URL banner + logs."""
+
+    def __init__(
+        self,
+        *,
+        auth_mode: str,
+        endpoints: list[str],
+    ) -> None:
+        self.auth_mode = auth_mode
+        self.endpoints = endpoints
+        self.log_printer = IsolateLogPrinter(debug=flags.DEBUG)
+
+    def on_service_urls(self, urls: Any) -> None:
+        from rich.rule import Rule  # noqa: PLC0415
+        from rich.text import Text  # noqa: PLC0415
+
+        from fal.flags import URL_OUTPUT  # noqa: PLC0415
+
+        print("")
+
+        lines = Text()
+        AUTH_EXPLANATIONS = {
+            "public": "no authentication required",
+            "private": "only you/team can access",
+            "shared": "any authenticated user can access",
+        }
+        auth_desc = AUTH_EXPLANATIONS.get(self.auth_mode, self.auth_mode)
+        lines.append(f"▸ Auth: {self.auth_mode} ", style="bold")
+        lines.append(f"({auth_desc})\n\n", style="dim")
+
+        if URL_OUTPUT != "none":
+            lines.append("▸ Playground ", style="bold")
+            lines.append("(open in browser)\n", style="dim")
+            for endpoint in self.endpoints:
+                lines.append(f"  {urls.playground}{endpoint}\n", style="cyan")
+
+        if URL_OUTPUT == "all":
+            lines.append("\n")
+            lines.append("▸ API Endpoints ", style="bold")
+            lines.append("(use in code)\n", style="dim")
+            for endpoint in self.endpoints:
+                lines.append(f"  Sync   {urls.run}{endpoint}\n", style="cyan")
+                lines.append(f"  Async  {urls.queue}{endpoint}\n", style="cyan")
+
+        title = Text(f"Ephemeral App ({self.auth_mode})", style="bold")
+        subtitle = Text("Deleted when process exits", style="dim")
+        console.print(Rule(title, style="green"))
+        console.print(lines)
+        console.print(Rule(subtitle, style="green"))
+
+    def on_log(self, log: Any) -> None:
+        # Obsolete messages from before service_urls were added.
+        if (
+            "Access the playground at" in log.message
+            or "And API access through" in log.message
+        ):
+            return
+        self.log_printer.print(log)
+
+
 @dataclass
 class Host(Generic[ArgsT, ReturnT]):
     """The physical environment where the isolated code
@@ -265,6 +386,7 @@ class Host(Generic[ArgsT, ReturnT]):
         kwargs: dict[str, Any],
         application_name: str | None = None,
         application_auth_mode: AuthModeLiteral | None = None,
+        result_handler: ResultHandler | None = None,
     ) -> ReturnT:
         """Run the given function in the isolated environment."""
         raise NotImplementedError
@@ -277,6 +399,7 @@ class Host(Generic[ArgsT, ReturnT]):
         kwargs: dict[str, Any],
         application_name: str | None = None,
         application_auth_mode: AuthModeLiteral | None = None,
+        result_handler: ResultHandler | None = None,
     ) -> SpawnInfo:
         raise NotImplementedError
 
@@ -367,7 +490,6 @@ class LocalHost(Host):
     # The environment which provides the default set of
     # packages for isolate agent to run.
     _AGENT_ENVIRONMENT: BaseEnvironment = field(default_factory=_prepare_environment)
-    _log_printer = IsolateLogPrinter(debug=flags.DEBUG)
 
     def run(
         self,
@@ -377,6 +499,7 @@ class LocalHost(Host):
         kwargs: dict[str, Any],
         application_name: str | None = None,
         application_auth_mode: AuthModeLiteral | None = None,
+        result_handler: ResultHandler | None = None,
     ) -> ReturnT:
         import isolate  # noqa: PLC0415
         from isolate.backends.settings import DEFAULT_SETTINGS  # noqa: PLC0415
@@ -385,7 +508,7 @@ class LocalHost(Host):
         settings = replace(
             DEFAULT_SETTINGS,
             serialization_method="cloudpickle",
-            log_hook=self._log_printer.print,
+            log_hook=IsolateLogPrinter(debug=flags.DEBUG).print,
         )
         environment = isolate.prepare_environment(
             **options.environment,
@@ -614,10 +737,6 @@ class FalServerlessHost(Host):
 
     _lock: threading.Lock = field(default_factory=threading.Lock, init=False)
 
-    _log_printer: IsolateLogPrinter = field(
-        default_factory=lambda: IsolateLogPrinter(debug=flags.DEBUG), init=False
-    )
-
     _thread_pool: ThreadPoolExecutor = field(
         default_factory=ThreadPoolExecutor, init=False
     )
@@ -686,6 +805,7 @@ class FalServerlessHost(Host):
         deployment_strategy: DeploymentStrategyLiteral,
         scale: bool = True,
         environment_name: Optional[str] = None,
+        result_handler: ResultHandler | None = None,
     ) -> Optional[RegisterApplicationResult]:
         from isolate.backends.common import active_python  # noqa: PLC0415
 
@@ -751,6 +871,9 @@ class FalServerlessHost(Host):
             # to add more metadata in the future
             metadata["openapi"] = func.openapi()
 
+        if result_handler is None:
+            result_handler = RegisterResultHandler()
+
         for partial_result in self._connection.register(
             partial_func,
             environments,
@@ -770,8 +893,7 @@ class FalServerlessHost(Host):
             secrets=secrets,
             data_mounts=data_mounts,
         ):
-            for log in partial_result.logs:
-                self._log_printer.print(log)
+            result_handler(partial_result)
 
             if partial_result.result:
                 return partial_result
@@ -785,7 +907,7 @@ class FalServerlessHost(Host):
         options: Options,
         args: tuple[Any, ...],
         kwargs: dict[str, Any],
-        result_handler: Callable[..., None],
+        result_handler: ResultHandler,
         application_name: str | None = None,
         application_auth_mode: AuthModeLiteral | None = None,
     ) -> ReturnT:
@@ -883,69 +1005,15 @@ class FalServerlessHost(Host):
         kwargs: dict[str, Any],
         application_name: str | None = None,
         application_auth_mode: AuthModeLiteral | None = None,
+        result_handler: ResultHandler | None = None,
     ) -> ReturnT:
         effective_auth_mode = application_auth_mode or "public"
 
-        def result_handler(partial_result):
-            if service_urls := partial_result.service_urls:
-                from rich.rule import Rule  # noqa: PLC0415
-                from rich.text import Text  # noqa: PLC0415
-
-                from fal.flags import URL_OUTPUT  # noqa: PLC0415
-
-                print("")
-
-                # Build panel content with grouped sections
-                lines = Text()
-                endpoints = getattr(func, "_routes", ["/"])  # type: ignore[attr-defined]
-
-                AUTH_EXPLANATIONS = {
-                    "public": "no authentication required",
-                    "private": "only you/team can access",
-                    "shared": "any authenticated user can access",
-                }
-                auth_desc = AUTH_EXPLANATIONS.get(
-                    effective_auth_mode, effective_auth_mode
-                )
-                lines.append(f"▸ Auth: {effective_auth_mode} ", style="bold")
-                lines.append(f"({auth_desc})\n\n", style="dim")
-
-                # Playground section
-                if URL_OUTPUT != "none":
-                    lines.append("▸ Playground ", style="bold")
-                    lines.append("(open in browser)\n", style="dim")
-                    for endpoint in endpoints:
-                        lines.append(
-                            f"  {service_urls.playground}{endpoint}\n", style="cyan"
-                        )
-
-                # API Endpoints section
-                if URL_OUTPUT == "all":
-                    lines.append("\n")
-                    lines.append("▸ API Endpoints ", style="bold")
-                    lines.append("(use in code)\n", style="dim")
-                    for endpoint in endpoints:
-                        lines.append(
-                            f"  Sync   {service_urls.run}{endpoint}\n", style="cyan"
-                        )
-                        lines.append(
-                            f"  Async  {service_urls.queue}{endpoint}\n", style="cyan"
-                        )
-
-                title = Text(f"Ephemeral App ({effective_auth_mode})", style="bold")
-                subtitle = Text("Deleted when process exits", style="dim")
-                console.print(Rule(title, style="green"))
-                console.print(lines)
-                console.print(Rule(subtitle, style="green"))
-
-            for log in partial_result.logs:
-                if (
-                    "Access the playground at" in log.message
-                    or "And API access through" in log.message
-                ):
-                    # Obsolete messages from before service_urls were added.
-                    continue
-                self._log_printer.print(log)
+        if result_handler is None:
+            result_handler = RunResultHandler(
+                auth_mode=effective_auth_mode,
+                endpoints=getattr(func, "_routes", ["/"]),  # type: ignore[attr-defined]
+            )
 
         return self._run(
             func,
@@ -965,17 +1033,24 @@ class FalServerlessHost(Host):
         kwargs: dict[str, Any],
         application_name: str | None = None,
         application_auth_mode: AuthModeLiteral | None = None,
+        result_handler: ResultHandler | None = None,
     ) -> SpawnInfo:
         ret = SpawnInfo()
+        default_handler = SpawnResultHandler(ret)
 
-        def result_handler(partial_result):
-            ret.stream = partial_result.stream
-            if service_urls := partial_result.service_urls:
-                ret.url = service_urls.run
-            for log in partial_result.logs:
-                if ret._url is None and "And API access through" in log.message:
-                    ret.url = log.message.rsplit()[-1].replace("queue.", "")
-                ret.logs.put(log)
+        # SpawnInfo is the spawn() return value, so the default handler always
+        # runs. A caller-supplied result_handler is composed on top of it.
+        composed: Callable[[Any], None]
+        if result_handler is None:
+            composed = default_handler
+        else:
+            # Bind to a local so the closure below sees a non-None Callable
+            # (mypy can't narrow `result_handler` through the enclosing scope).
+            user_handler = result_handler
+
+            def composed(partial_result):
+                default_handler(partial_result)
+                user_handler(partial_result)
 
         self._thread_pool.submit(
             self._run,
@@ -983,7 +1058,7 @@ class FalServerlessHost(Host):
             options,
             args,
             kwargs,
-            result_handler=result_handler,
+            result_handler=composed,
             application_name=application_name,
             application_auth_mode=application_auth_mode,
         )
@@ -1972,40 +2047,9 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
         )
 
     def __call__(self, *args: ArgsT.args, **kwargs: ArgsT.kwargs) -> ReturnT:
-        try:
-            return self.host.run(
-                self.func,
-                self.options,
-                args=args,
-                kwargs=kwargs,
-                application_name=self.app_name,
-                application_auth_mode=self.app_auth,
-            )
-        except FalMissingDependencyError as e:
-            pairs = list(find_missing_dependencies(self.func, self.options.environment))
-            if not pairs:
-                raise e
-            else:
-                lines = []
-                for used_modules, references in pairs:
-                    lines.append(
-                        f"\t- {used_modules!r} "
-                        f"(accessed through {', '.join(map(repr, references))})"
-                    )
+        from .run import run as _run_with_handling  # noqa: PLC0415
 
-                function_name = self.func.__name__
-                raise FalServerlessError(
-                    f"Couldn't deserialize your function on the remote server. \n\n"
-                    f"[Hint] {function_name!r} function uses the following modules "
-                    "which weren't present in the environment definition:\n"
-                    + "\n".join(lines)
-                ) from None
-        except Exception as exc:
-            cause = exc.__cause__
-            if self.reraise and isinstance(exc, UserFunctionException) and cause:
-                # re-raise original exception without our wrappers
-                raise cause
-            raise
+        return _run_with_handling(self, args=args, kwargs=kwargs, reraise=self.reraise)
 
     def run_local(self, *args: ArgsT.args, **kwargs: ArgsT.kwargs) -> ReturnT:
         import asyncio  # noqa: PLC0415

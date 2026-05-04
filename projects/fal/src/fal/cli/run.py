@@ -64,12 +64,21 @@ def _run(args):
     isolated_function = loaded.function
     if args.machine_type is not None:
         isolated_function.options.host["machine_type"] = args.machine_type
-    # let our exc handlers handle UserFunctionException
-    isolated_function.reraise = False
-    if args.local:
-        isolated_function.run_local()
-    else:
-        isolated_function()
+
+    from fal.api.run import run as run_api
+
+    from ._result_handlers import CliRunResultHandler
+
+    run_api(
+        isolated_function,
+        local=args.local,
+        result_handler=CliRunResultHandler(
+            console=args.console,
+            auth_mode=loaded.app_auth or "public",
+            endpoints=loaded.endpoints,
+        ),
+        reraise=False,
+    )
 
 
 def add_parser(main_subparsers, parents):
