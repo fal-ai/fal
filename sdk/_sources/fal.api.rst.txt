@@ -52,6 +52,14 @@ fal.api.keys module
    :undoc-members:
    :show-inheritance:
 
+fal.api.run module
+------------------
+
+.. automodule:: fal.api.run
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 fal.api.runners module
 ----------------------
 
