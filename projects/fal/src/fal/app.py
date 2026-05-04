@@ -41,7 +41,7 @@ from fal.sdk import (
     RetryConditionLiteral,
 )
 from fal.toolkit.file import request_lifecycle_preference
-from fal.toolkit.file.file import parse_cdn_override
+from fal.toolkit.file.file import parse_upload_policy
 from fal.toolkit.file.providers.fal import _LIFECYCLE_PREFERENCE
 
 REALTIME_APP_REQUIREMENTS = ["websockets", "msgpack"]
@@ -513,8 +513,7 @@ class RequestContext:
     endpoint: str | None
     lifecycle_preference: dict[str, str] | None
     headers: fastapi.Header
-    cdn_override_urls: list[str] | None = None
-    cdn_override_lock: Any = None
+    upload_policy: dict | None = None
 
 
 class App(BaseServable):
@@ -909,7 +908,7 @@ class App(BaseServable):
                 return await call_next(request)
 
             try:
-                cdn_override_urls = parse_cdn_override(request.headers)
+                upload_policy = parse_upload_policy(request.headers)
             except Exception as exc:
                 from fastapi.responses import JSONResponse  # noqa: PLC0415
 
@@ -923,10 +922,7 @@ class App(BaseServable):
                 endpoint=request.headers.get(REQUEST_ENDPOINT_KEY),
                 lifecycle_preference=request_lifecycle_preference(request),
                 headers=request.headers,
-                cdn_override_urls=cdn_override_urls,
-                cdn_override_lock=(
-                    threading.Lock() if cdn_override_urls is not None else None
-                ),
+                upload_policy=upload_policy,
             )
 
             token = self._current_request_context.set(context)

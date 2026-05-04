@@ -1,17 +1,20 @@
 from __future__ import annotations
 
 import json
+import secrets
 import shutil
-import threading
 import traceback
+from concurrent.futures import ThreadPoolExecutor
 from functools import wraps
 from pathlib import Path
 from tempfile import NamedTemporaryFile, mkdtemp
+from threading import BoundedSemaphore
 from typing import Any, Callable, Optional
 from urllib.error import HTTPError
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import quote, urlparse
 from urllib.request import Request as URLRequest
 from urllib.request import urlopen
+from uuid import uuid4
 from zipfile import ZipFile
 
 import pydantic
@@ -69,8 +72,15 @@ get_builtin_repository.__module__ = "__main__"
 DEFAULT_REPOSITORY: FileRepository | RepositoryId = "fal_v3"
 FALLBACK_REPOSITORY: list[FileRepository | RepositoryId] = ["cdn", "fal"]
 OBJECT_LIFECYCLE_PREFERENCE_KEY = "x-fal-object-lifecycle-preference"
-CDN_OVERRIDE_KEY = "x-app-fal-cdn-override"
-CDN_OVERRIDE_PUT_TIMEOUT = 5 * 60
+UPLOAD_POLICY_KEY = "x-app-fal-upload-policy"
+UPLOAD_POLICY_POST_TIMEOUT = 5 * 60
+UPLOAD_POLICY_FILENAME_PLACEHOLDER = "${filename}"
+UPLOAD_POLICY_MAX_PENDING = 32
+UPLOAD_POLICY_EXECUTOR = ThreadPoolExecutor(
+    max_workers=8,
+    thread_name_prefix="fal-upload-policy",
+)
+UPLOAD_POLICY_PENDING = BoundedSemaphore(UPLOAD_POLICY_MAX_PENDING)
 
 
 @wraps(Field)
@@ -141,87 +151,194 @@ def _get_object_lifecycle_preference_from_context() -> dict[str, str] | None:
     return current_app.current_request.lifecycle_preference
 
 
-def parse_cdn_override(headers: Any) -> list[str] | None:
-    raw = headers.get(CDN_OVERRIDE_KEY)
+def parse_upload_policy(headers: Any) -> dict | None:
+    """Parse the X-App-Fal-Upload-Policy header.
+
+    Expected value: the JSON object returned by S3's generate_presigned_post(),
+    which has the shape::
+
+        {"url": "https://bucket.s3.<region>.amazonaws.com/",
+         "fields": {"key": "...", "policy": "...", "x-amz-signature": "...", ...}}
+
+    Returns the parsed policy dict, or None if the header is absent.
+    Raises FileUploadException on malformed input.
+    """
+    raw = headers.get(UPLOAD_POLICY_KEY)
     if raw is None:
         return None
 
     try:
-        urls = json.loads(raw)
+        policy = json.loads(raw)
     except Exception as exc:
         raise FileUploadException(
-            f"Invalid {CDN_OVERRIDE_KEY} header: not valid JSON ({exc})"
+            f"Invalid {UPLOAD_POLICY_KEY} header: not valid JSON ({exc})"
         )
 
-    if not isinstance(urls, list) or not all(isinstance(u, str) for u in urls):
+    if not isinstance(policy, dict):
         raise FileUploadException(
-            f"Invalid {CDN_OVERRIDE_KEY} header: expected a JSON array of strings"
+            f"Invalid {UPLOAD_POLICY_KEY} header: expected a JSON object"
         )
 
-    for u in urls:
-        scheme = urlparse(u).scheme.lower()
-        if scheme not in ("http", "https"):
-            raise FileUploadException(
-                f"Invalid {CDN_OVERRIDE_KEY} URL scheme {scheme!r}: must be a "
-                "presigned https:// URL (s3:// / gs:// URIs are not supported "
-                "because they require credentials)"
-            )
+    url = policy.get("url")
+    fields = policy.get("fields")
+    if not isinstance(url, str) or not isinstance(fields, dict):
+        raise FileUploadException(
+            f"Invalid {UPLOAD_POLICY_KEY} header: must contain string 'url' and "
+            "object 'fields'"
+        )
 
-    return urls
+    if not url.lower().startswith(("http://", "https://")):
+        raise FileUploadException(
+            f"Invalid {UPLOAD_POLICY_KEY} 'url': must start with http:// or https://"
+        )
+
+    return policy
 
 
-def _pop_cdn_override_url() -> str | None:
-    """Pop the next override URL from the current request context.
-
-    Returns None if no override is active for this request. Raises
-    FileUploadException if the override list was provided but is empty
-    (i.e. more uploads were attempted than URLs supplied).
-    """
+def _get_upload_policy() -> dict | None:
+    """Return the parsed upload policy for the current request, or None."""
     current_app = get_current_app()
     if current_app is None or current_app.current_request is None:
         return None
-
-    ctx = current_app.current_request
-    urls = getattr(ctx, "cdn_override_urls", None)
-    if urls is None:
-        return None
-
-    lock = getattr(ctx, "cdn_override_lock", None)
-    if lock is None:
-        lock = threading.Lock()
-
-    with lock:
-        if not urls:
-            raise FileUploadException(
-                f"{CDN_OVERRIDE_KEY} URL list exhausted; more uploads attempted "
-                "than URLs provided"
-            )
-        return urls.pop(0)
+    return getattr(current_app.current_request, "upload_policy", None)
 
 
-def _put_to_cdn_override(
-    url: str, data: bytes, content_type: str | None
-) -> str:
-    headers = {}
-    if content_type:
-        headers["Content-Type"] = content_type
+def _escape_multipart_header(value: str) -> str:
+    return (
+        value.replace("\\", "\\\\")
+        .replace('"', '\\"')
+        .replace("\r", "%0D")
+        .replace("\n", "%0A")
+    )
 
-    request = URLRequest(url, data=data, headers=headers, method="PUT")
+
+def _validate_multipart_header_value(name: str, value: str) -> None:
+    if "\r" in value or "\n" in value:
+        raise FileUploadException(f"Invalid multipart {name}: contains CR/LF")
+
+
+def _build_multipart_form(
+    fields: dict[str, str],
+    file_bytes: bytes,
+    file_name: str,
+    file_content_type: str,
+) -> tuple[bytes, str]:
+    """Build a multipart/form-data body matching S3's pre-signed POST contract.
+
+    Per S3 spec, the 'file' field MUST be last. All policy fields come first.
+    Returns (body_bytes, content_type_header).
+    """
+    boundary = f"----FalUploadBoundary{secrets.token_hex(16)}"
+    lines: list[bytes] = []
+
+    for name, value in fields.items():
+        lines.append(f"--{boundary}".encode())
+        escaped_name = _escape_multipart_header(str(name))
+        lines.append(f'Content-Disposition: form-data; name="{escaped_name}"'.encode())
+        lines.append(b"")
+        lines.append(str(value).encode())
+
+    lines.append(f"--{boundary}".encode())
+    escaped_file_name = _escape_multipart_header(file_name)
+    lines.append(
+        f'Content-Disposition: form-data; name="file"; '
+        f'filename="{escaped_file_name}"'.encode()
+    )
+    _validate_multipart_header_value("content type", file_content_type)
+    lines.append(f"Content-Type: {file_content_type}".encode())
+    lines.append(b"")
+    lines.append(file_bytes)
+
+    lines.append(f"--{boundary}--".encode())
+    lines.append(b"")
+
+    body = b"\r\n".join(lines)
+    return body, f"multipart/form-data; boundary={boundary}"
+
+
+def _build_upload_policy_request(
+    policy: dict,
+    file_name: str,
+    data: bytes,
+    content_type: str,
+) -> tuple[str, URLRequest]:
+    fields = dict(policy["fields"])
+    key_template = fields.get("key")
+    if (
+        not isinstance(key_template, str)
+        or UPLOAD_POLICY_FILENAME_PLACEHOLDER not in key_template
+    ):
+        raise FileUploadException(
+            f"Invalid {UPLOAD_POLICY_KEY} header: fields.key must contain "
+            f"{UPLOAD_POLICY_FILENAME_PLACEHOLDER!r}"
+        )
+
+    upload_file_name = f"{uuid4().hex}-{file_name}"
+    final_key = key_template.replace(
+        UPLOAD_POLICY_FILENAME_PLACEHOLDER, upload_file_name
+    )
+    fields["key"] = final_key
+    fields["Content-Type"] = content_type
+
+    body, content_type_header = _build_multipart_form(
+        fields, data, file_name, content_type
+    )
+
+    request = URLRequest(
+        policy["url"],
+        data=body,
+        headers={"Content-Type": content_type_header},
+        method="POST",
+    )
+    encoded_key = quote(final_key.lstrip("/"), safe="/~")
+    return f"{policy['url'].rstrip('/')}/{encoded_key}", request
+
+
+def _post_upload_policy_request(request: URLRequest) -> None:
     try:
-        with urlopen(request, timeout=CDN_OVERRIDE_PUT_TIMEOUT):
+        with urlopen(request, timeout=UPLOAD_POLICY_POST_TIMEOUT):
             pass
     except HTTPError as exc:
+        detail = ""
+        try:
+            detail = exc.read().decode("utf-8", errors="replace")[:500]
+        except Exception:
+            pass
         raise FileUploadException(
-            f"Failed to upload to {CDN_OVERRIDE_KEY} URL. "
-            f"Status {exc.code}: {exc.reason}"
+            f"Upload via {UPLOAD_POLICY_KEY} failed. "
+            f"Status {exc.code}: {exc.reason}. {detail}"
         )
     except Exception as exc:
-        raise FileUploadException(
-            f"Failed to upload to {CDN_OVERRIDE_KEY} URL: {exc}"
-        )
+        raise FileUploadException(f"Upload via {UPLOAD_POLICY_KEY} failed: {exc}")
 
-    parsed = urlparse(url)
-    return urlunparse(parsed._replace(query="", fragment=""))
+
+def _complete_upload_policy_request(future) -> None:
+    UPLOAD_POLICY_PENDING.release()
+    try:
+        future.result()
+    except Exception:
+        traceback.print_exc()
+
+
+def _reserve_upload_policy_slot() -> None:
+    if not UPLOAD_POLICY_PENDING.acquire(blocking=False):
+        raise FileUploadException(f"Too many pending {UPLOAD_POLICY_KEY} uploads")
+
+
+def _enqueue_upload_via_policy(
+    policy: dict, file_name: str, data: bytes, content_type: str
+) -> str:
+    try:
+        url, request = _build_upload_policy_request(
+            policy, file_name, data, content_type
+        )
+        future = UPLOAD_POLICY_EXECUTOR.submit(_post_upload_policy_request, request)
+    except Exception:
+        UPLOAD_POLICY_PENDING.release()
+        raise
+
+    future.add_done_callback(_complete_upload_policy_request)
+    return url
 
 
 class File(BaseModel):
@@ -318,9 +435,12 @@ class File(BaseModel):
 
         fdata = FileData(data, content_type, file_name)
 
-        override_url = _pop_cdn_override_url()
-        if override_url is not None:
-            url = _put_to_cdn_override(override_url, data, fdata.content_type)
+        upload_policy = _get_upload_policy()
+        if upload_policy is not None:
+            _reserve_upload_policy_slot()
+            url = _enqueue_upload_via_policy(
+                upload_policy, fdata.file_name, data, fdata.content_type
+            )
             return cls(
                 url=url,
                 content_type=fdata.content_type,
@@ -409,11 +529,18 @@ class File(BaseModel):
 
         content_type = content_type or "application/octet-stream"
 
-        override_url = _pop_cdn_override_url()
-        if override_url is not None:
-            with open(file_path, "rb") as f:
-                file_bytes = f.read()
-            url = _put_to_cdn_override(override_url, file_bytes, content_type)
+        upload_policy = _get_upload_policy()
+        if upload_policy is not None:
+            _reserve_upload_policy_slot()
+            try:
+                with open(file_path, "rb") as f:
+                    file_bytes = f.read()
+            except Exception:
+                UPLOAD_POLICY_PENDING.release()
+                raise
+            url = _enqueue_upload_via_policy(
+                upload_policy, file_path.name, file_bytes, content_type
+            )
             return cls(
                 url=url,
                 file_data=file_bytes,
