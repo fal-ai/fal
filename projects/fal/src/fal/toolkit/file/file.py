@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+import json
 import shutil
+import threading
 import traceback
 from functools import wraps
 from pathlib import Path
 from tempfile import NamedTemporaryFile, mkdtemp
 from typing import Any, Callable, Optional
-from urllib.parse import urlparse
+from urllib.error import HTTPError
+from urllib.parse import urlparse, urlunparse
+from urllib.request import Request as URLRequest
+from urllib.request import urlopen
 from zipfile import ZipFile
 
 import pydantic
@@ -24,6 +29,7 @@ from pydantic import BaseModel, Field
 
 from fal.compat import run_in_thread
 from fal.ref import get_current_app
+from fal.toolkit.exceptions import FileUploadException
 from fal.toolkit.file.providers.fal import (
     FalCDNFileRepository,
     FalFileRepository,
@@ -63,6 +69,8 @@ get_builtin_repository.__module__ = "__main__"
 DEFAULT_REPOSITORY: FileRepository | RepositoryId = "fal_v3"
 FALLBACK_REPOSITORY: list[FileRepository | RepositoryId] = ["cdn", "fal"]
 OBJECT_LIFECYCLE_PREFERENCE_KEY = "x-fal-object-lifecycle-preference"
+CDN_OVERRIDE_KEY = "x-app-fal-cdn-override"
+CDN_OVERRIDE_PUT_TIMEOUT = 5 * 60
 
 
 @wraps(Field)
@@ -131,6 +139,89 @@ def _get_object_lifecycle_preference_from_context() -> dict[str, str] | None:
     if current_app is None or current_app.current_request is None:
         return None
     return current_app.current_request.lifecycle_preference
+
+
+def parse_cdn_override(headers: Any) -> list[str] | None:
+    raw = headers.get(CDN_OVERRIDE_KEY)
+    if raw is None:
+        return None
+
+    try:
+        urls = json.loads(raw)
+    except Exception as exc:
+        raise FileUploadException(
+            f"Invalid {CDN_OVERRIDE_KEY} header: not valid JSON ({exc})"
+        )
+
+    if not isinstance(urls, list) or not all(isinstance(u, str) for u in urls):
+        raise FileUploadException(
+            f"Invalid {CDN_OVERRIDE_KEY} header: expected a JSON array of strings"
+        )
+
+    for u in urls:
+        scheme = urlparse(u).scheme.lower()
+        if scheme not in ("http", "https"):
+            raise FileUploadException(
+                f"Invalid {CDN_OVERRIDE_KEY} URL scheme {scheme!r}: must be a "
+                "presigned https:// URL (s3:// / gs:// URIs are not supported "
+                "because they require credentials)"
+            )
+
+    return urls
+
+
+def _pop_cdn_override_url() -> str | None:
+    """Pop the next override URL from the current request context.
+
+    Returns None if no override is active for this request. Raises
+    FileUploadException if the override list was provided but is empty
+    (i.e. more uploads were attempted than URLs supplied).
+    """
+    current_app = get_current_app()
+    if current_app is None or current_app.current_request is None:
+        return None
+
+    ctx = current_app.current_request
+    urls = getattr(ctx, "cdn_override_urls", None)
+    if urls is None:
+        return None
+
+    lock = getattr(ctx, "cdn_override_lock", None)
+    if lock is None:
+        lock = threading.Lock()
+
+    with lock:
+        if not urls:
+            raise FileUploadException(
+                f"{CDN_OVERRIDE_KEY} URL list exhausted; more uploads attempted "
+                "than URLs provided"
+            )
+        return urls.pop(0)
+
+
+def _put_to_cdn_override(
+    url: str, data: bytes, content_type: str | None
+) -> str:
+    headers = {}
+    if content_type:
+        headers["Content-Type"] = content_type
+
+    request = URLRequest(url, data=data, headers=headers, method="PUT")
+    try:
+        with urlopen(request, timeout=CDN_OVERRIDE_PUT_TIMEOUT):
+            pass
+    except HTTPError as exc:
+        raise FileUploadException(
+            f"Failed to upload to {CDN_OVERRIDE_KEY} URL. "
+            f"Status {exc.code}: {exc.reason}"
+        )
+    except Exception as exc:
+        raise FileUploadException(
+            f"Failed to upload to {CDN_OVERRIDE_KEY} URL: {exc}"
+        )
+
+    parsed = urlparse(url)
+    return urlunparse(parsed._replace(query="", fragment=""))
 
 
 class File(BaseModel):
@@ -227,6 +318,17 @@ class File(BaseModel):
 
         fdata = FileData(data, content_type, file_name)
 
+        override_url = _pop_cdn_override_url()
+        if override_url is not None:
+            url = _put_to_cdn_override(override_url, data, fdata.content_type)
+            return cls(
+                url=url,
+                content_type=fdata.content_type,
+                file_name=fdata.file_name,
+                file_size=len(data),
+                file_data=data,
+            )
+
         if request:
             object_lifecycle_preference = request_lifecycle_preference(request)
         else:
@@ -306,6 +408,19 @@ class File(BaseModel):
         fallback_save_kwargs = fallback_save_kwargs or {}
 
         content_type = content_type or "application/octet-stream"
+
+        override_url = _pop_cdn_override_url()
+        if override_url is not None:
+            with open(file_path, "rb") as f:
+                file_bytes = f.read()
+            url = _put_to_cdn_override(override_url, file_bytes, content_type)
+            return cls(
+                url=url,
+                file_data=file_bytes,
+                content_type=content_type,
+                file_name=file_path.name,
+                file_size=file_path.stat().st_size,
+            )
 
         if request:
             object_lifecycle_preference = request_lifecycle_preference(request)
