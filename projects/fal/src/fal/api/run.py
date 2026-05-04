@@ -42,7 +42,8 @@ def run(
     if local:
         return isolated_function.run_local(*args, **kwargs)
 
-    func = isolated_function.func
+    entrypoint = isolated_function.entrypoint
+    func = None if entrypoint else isolated_function.func
     options = isolated_function.options
     try:
         return isolated_function.host.run(
@@ -53,8 +54,11 @@ def run(
             application_name=isolated_function.app_name,
             application_auth_mode=isolated_function.app_auth,
             result_handler=result_handler,
+            entrypoint=entrypoint,
         )
     except FalMissingDependencyError as e:
+        # Pickle deserialization can't fail in entrypoint mode, so func is set.
+        assert func is not None
         pairs = list(find_missing_dependencies(func, options.environment))
         if not pairs:
             raise e

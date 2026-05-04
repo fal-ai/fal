@@ -232,7 +232,7 @@ def _execute_loaded_deployment(
     strategy = app_data.deployment_strategy or "rolling"
 
     result = host.register(
-        func=isolated_function.func,
+        func=None if isolated_function.entrypoint else isolated_function.func,
         options=isolated_function.options,
         application_name=loaded.app_name,
         application_auth_mode=loaded.app_auth,  # type: ignore
@@ -242,6 +242,7 @@ def _execute_loaded_deployment(
         scale=app_data.reset_scale,
         environment_name=environment_name,
         result_handler=result_handler,
+        entrypoint=isolated_function.entrypoint,
     )
 
     if not result or not result.result:
