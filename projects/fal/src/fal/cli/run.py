@@ -38,7 +38,10 @@ def _run(args):
             name=app_data.name,
         )
         team = team or app_data.team
-        file_path, func_name = RefAction.split_ref(app_data.ref)
+        if app_data.ref is not None:
+            file_path, func_name = RefAction.split_ref(app_data.ref)
+        else:
+            file_path, func_name = None, None
     else:
         file_path, func_name = func_ref
         # Turn relative path into absolute path for files
@@ -48,7 +51,10 @@ def _run(args):
 
     no_cache = args.no_cache or args.force_env_build
     client = SyncServerlessClient(host=args.host, team=team)
-    host = client._create_host(local_file_path=file_path, environment_name=args.env)
+    host = client._create_host(
+        local_file_path=file_path or "",
+        environment_name=args.env,
+    )
 
     loaded = load_function_from(
         host,
@@ -59,11 +65,26 @@ def _run(args):
         app_name=app_data.name,
         app_auth=app_data.auth,
         limit_max_requests=args.limit_max_requests,
+        python_entry_point=app_data.python_entry_point,
+        project_root=app_data.project_root,
     )
 
     isolated_function = loaded.function
     if args.machine_type is not None:
         isolated_function.options.host["machine_type"] = args.machine_type
+
+    if args.local and app_data.python_entry_point is not None:
+        # python_entry_point local runs resolve the user's symbol directly;
+        # the fal-generated helper (`<pkg>._fal_entrypoint`) only ships in the
+        # remote sdist and isn't on the dev's sys.path.
+        import importlib
+
+        module_name, _, attr = app_data.python_entry_point.partition(":")
+        target = importlib.import_module(module_name)
+        for part in attr.split("."):
+            target = getattr(target, part)
+        target.run_local()
+        return
 
     from fal.api.run import run as run_api
 
