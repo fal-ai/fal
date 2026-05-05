@@ -158,7 +158,7 @@ class Credentials:
         return {}
 
 
-@dataclass
+@dataclass(repr=False)
 class FalServerlessKeyCredentials(Credentials):
     key_id: str
     key_secret: str
@@ -172,6 +172,9 @@ class FalServerlessKeyCredentials(Credentials):
 
     def to_headers(self) -> dict[str, str]:
         return {"Authorization": f"Key {self.key_id}:{self.key_secret}"}
+
+    def __repr__(self) -> str:
+        return f"FalServerlessKeyCredentials(key_id={self.key_id!r}, key_secret='***')"
 
 
 @dataclass
