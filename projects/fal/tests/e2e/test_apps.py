@@ -1529,6 +1529,14 @@ def test_kill_runner(host: api.FalServerlessHost, test_sleep_app: str):
 
 
 def test_rollout_application(host: api.FalServerlessHost, test_sleep_app: str):
+    def wait_until(condition: Callable[[], bool], timeout: float, interval: float = 1.0):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if condition():
+                return
+            time.sleep(interval)
+        assert condition()
+
     handle = apps.submit(test_sleep_app, arguments={"wait_time": 30})
 
     while True:
@@ -1547,20 +1555,28 @@ def test_rollout_application(host: api.FalServerlessHost, test_sleep_app: str):
         runner_id_before = runners_before[0].runner_id
 
         client.rollout_application(app_alias, force=True)
+        runner_ids_after: set[str] = set()
 
-        time.sleep(15)
+        def runner_replaced() -> bool:
+            nonlocal runner_ids_after
+            runners_after = client.list_alias_runners(app_alias)
+            runner_ids_after = {r.runner_id for r in runners_after}
+            return runner_id_before not in runner_ids_after
 
-        runners_after = client.list_alias_runners(app_alias)
-        runner_ids_after = {r.runner_id for r in runners_after}
+        wait_until(runner_replaced, timeout=30)
 
         assert runner_id_before not in runner_ids_after
 
         client.rollout_application(app_alias, force=True)
+        runner_ids_final: set[str] = set()
 
-        time.sleep(3)
+        def rollout_completed() -> bool:
+            nonlocal runner_ids_final
+            runners_final = client.list_alias_runners(app_alias)
+            runner_ids_final = {r.runner_id for r in runners_final}
+            return not runner_ids_after.intersection(runner_ids_final)
 
-        runners_final = client.list_alias_runners(app_alias)
-        runner_ids_final = {r.runner_id for r in runners_final}
+        wait_until(rollout_completed, timeout=30)
 
         assert not runner_ids_after.intersection(runner_ids_final)
 
