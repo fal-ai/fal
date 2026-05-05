@@ -125,7 +125,7 @@ class RemoteCredentials(ServerCredentials):
         return grpc.ssl_channel_credentials()
 
 
-@dataclass
+@dataclass(repr=False)
 class _GRPCMetadata(grpc.AuthMetadataPlugin):
     """Key value metadata bundle for gRPC credentials"""
 
@@ -138,6 +138,9 @@ class _GRPCMetadata(grpc.AuthMetadataPlugin):
         callback: grpc.AuthMetadataPluginCallback,
     ) -> None:
         callback(((self._key, self._value),), None)
+
+    def __repr__(self) -> str:
+        return f"_GRPCMetadata(_key={self._key!r}, _value='***')"
 
 
 def get_default_server_credentials() -> ServerCredentials:
