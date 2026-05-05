@@ -98,12 +98,20 @@ def _caller_cdn_header(
             headers["X-Fal-Request-ID"] = request_id
 
 
-@dataclass
+@dataclass(repr=False)
 class FalV2Token:
     token: str
     token_type: str
     base_upload_url: str
     expires_at: datetime
+
+    def __repr__(self) -> str:
+        cls = type(self).__name__
+        return (
+            f"{cls}(token='***', token_type={self.token_type!r}, "
+            f"base_upload_url={self.base_upload_url!r}, "
+            f"expires_at={self.expires_at!r})"
+        )
 
     def is_expired(self, offset: timedelta | int | None = None) -> bool:
         """
