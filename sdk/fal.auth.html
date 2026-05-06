@@ -144,6 +144,9 @@ Never send one to another service.</p>
 <span class="sig-prename descclassname"><span class="pre">fal.auth.local.</span></span><span class="sig-name descname"><span class="pre">lock_token</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#fal.auth.local.lock_token" title="Link to this definition">¶</a></dt>
 <dd><p>Lock the access to the token file to avoid race conditions when running multiple
 scripts at the same time.</p>
+<p>Best-effort: if <cite>portalocker</cite> isn’t installed (e.g. on slim isolate
+agents that don’t ship fal’s optional deps) the lock degrades to a
+no-op rather than failing the import. Mirrors <cite>fal_client.auth</cite>.</p>
 </dd></dl>
 
 <dl class="py function">
@@ -169,6 +172,28 @@ scripts at the same time.</p>
 </section>
 <section id="module-fal.auth">
 <span id="module-contents"></span><h2>Module contents<a class="headerlink" href="#module-fal.auth" title="Link to this heading">¶</a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.auth.AuthCredentials">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.auth.</span></span><span class="sig-name descname"><span class="pre">AuthCredentials</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">scheme</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">token</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.auth.AuthCredentials" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Authorization header value, either a key or an auth0 bearer token.</p>
+<dl class="py property">
+<dt class="sig sig-object py" id="fal.auth.AuthCredentials.header_value">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">header_value</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#fal.auth.AuthCredentials.header_value" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.auth.AuthCredentials.scheme">
+<span class="sig-name descname"><span class="pre">scheme</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><a class="headerlink" href="#fal.auth.AuthCredentials.scheme" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.auth.AuthCredentials.token">
+<span class="sig-name descname"><span class="pre">token</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><a class="headerlink" href="#fal.auth.AuthCredentials.token" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
 <dl class="py class">
 <dt class="sig sig-object py" id="fal.auth.GoogleColabState">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.auth.</span></span><span class="sig-name descname"><span class="pre">GoogleColabState</span></span><a class="headerlink" href="#fal.auth.GoogleColabState" title="Link to this definition">¶</a></dt>
@@ -217,6 +242,21 @@ scripts at the same time.</p>
 <dd><dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.auth.fetch_auth_credentials">
+<span class="sig-prename descclassname"><span class="pre">fal.auth.</span></span><span class="sig-name descname"><span class="pre">fetch_auth_credentials</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#fal.auth.fetch_auth_credentials" title="Link to this definition">¶</a></dt>
+<dd><p>Return key credentials when available, otherwise an auth0 bearer token.</p>
+<p>Mirrors fal_client.auth.fetch_auth_credentials so toolkit code can
+authenticate with <cite>fal auth login</cite> tokens, not only FAL_KEY. Raises
+<cite>UnauthenticatedException</cite> when neither is available.</p>
+<p>Honors <cite>FAL_PROFILE</cite> (via <cite>key_credentials</cite> → <cite>Config</cite>).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference internal" href="#fal.auth.AuthCredentials" title="fal.auth.AuthCredentials"><code class="xref py py-class docutils literal notranslate"><span class="pre">AuthCredentials</span></code></a></span></p>
 </dd>
 </dl>
 </dd></dl>
