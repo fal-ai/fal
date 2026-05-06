@@ -20,6 +20,7 @@ VALID_REGIONS = {
 @dataclass(frozen=True)
 class AppData:
     ref: Optional[str] = None
+    python_entry_point: Optional[str] = None
     auth: Optional[AuthModeLiteral] = None
     deployment_strategy: Optional[DeploymentStrategyLiteral] = None
     reset_scale: bool = False
@@ -58,14 +59,30 @@ def get_app_data_from_toml(
     except KeyError:
         raise ValueError(f"App {app_name} not found in pyproject.toml")
 
-    try:
-        app_ref: str = app_data.pop("ref")
-    except KeyError:
-        raise ValueError(f"App {app_name} does not have a ref key in pyproject.toml")
-
-    # Convert the app_ref to a path relative to the project root
-    project_root, _ = find_project_root(None)
-    app_ref = str(project_root / app_ref)
+    python_entry_point: str | None = app_data.pop("python_entry_point", None)
+    if python_entry_point is not None:
+        if not isinstance(python_entry_point, str):
+            raise ValueError(
+                f"App {app_name} python_entry_point must be a string in pyproject.toml"
+            )
+        app_ref: str | None = app_data.pop("ref", None)
+        if app_ref is not None:
+            raise ValueError(
+                f"App {app_name} cannot have both ref "
+                "and python_entry_point keys in pyproject.toml"
+            )
+    else:
+        try:
+            app_ref = app_data.pop("ref")
+        except KeyError:
+            raise ValueError(
+                f"App {app_name} does not have a ref key in pyproject.toml"
+            )
+        if not isinstance(app_ref, str):
+            raise ValueError(f"App {app_name} ref must be a string in pyproject.toml")
+        # Convert the app_ref to a path relative to the project root
+        project_root, _ = find_project_root(None)
+        app_ref = str(project_root / app_ref)
 
     app_auth: Optional[AuthModeLiteral] = app_data.pop("auth", None)
     app_deployment_strategy: Optional[DeploymentStrategyLiteral] = app_data.pop(
@@ -148,6 +165,7 @@ def get_app_data_from_toml(
 
     return AppData(
         ref=app_ref,
+        python_entry_point=python_entry_point,
         auth=app_auth,
         deployment_strategy=app_deployment_strategy,
         reset_scale=app_reset_scale,

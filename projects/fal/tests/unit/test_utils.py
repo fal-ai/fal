@@ -1,10 +1,16 @@
+from unittest.mock import MagicMock
+
 import pytest
 
 import fal
 from fal.api import IsolatedFunction, Options
 from fal.api.api import merge_basic_config
 from fal.api.client import SyncServerlessClient
-from fal.utils import _find_target, load_function_from
+from fal.utils import (
+    _find_target,
+    _parse_python_entry_point,
+    load_function_from,
+)
 
 
 class DummyHost:
@@ -197,3 +203,119 @@ def test_load_function_from_preserves_app_defined_app_files_over_toml(tmp_path):
     assert wrapped_cls.app_files == ["class-files"]
     assert wrapped_cls.app_files_ignore == ["class-ignore"]
     assert wrapped_cls.app_files_context_dir == "class-context"
+
+
+def test_parse_python_entry_point():
+    module_name, symbol_name = _parse_python_entry_point("pkg.mod:MyApp")
+    assert module_name == "pkg.mod"
+    assert symbol_name == "MyApp"
+
+
+def test_parse_python_entry_point_invalid_format():
+    with pytest.raises(Exception) as exc:
+        _parse_python_entry_point("pkg.mod")
+    assert "python_entry_point must be in '<module>:<symbol>' format." in str(exc.value)
+
+
+def test_load_from_python_entry_point_is_passive():
+    """``load_function_from(python_entry_point=...)`` must not hit the worker;
+    metadata is fetched explicitly later via ``IsolatedFunction.fetch_metadata``.
+    """
+    from fal.utils import _load_from_python_entry_point
+
+    host = MagicMock(spec=["run"])  # no .run() attribute access expected
+    options = Options(environment={"requirements": ["fal", "torch"]})
+
+    loaded = _load_from_python_entry_point(
+        host,
+        "simple.app:SimpleApp",
+        options=options,
+    )
+
+    host.run.assert_not_called()
+    assert loaded.function.entrypoint == "simple.app:SimpleApp"
+    assert loaded.function.run_entrypoint == "simple.app:SimpleApp.run_local"
+    assert loaded.function.raw_func is None
+    assert loaded.function.options.gateway["exposed_port"] == 8080
+    assert loaded.function.options.environment["requirements"] == ["fal", "torch"]
+    assert loaded.function.endpoints == ["/"]
+    assert loaded.function.build_metadata() == {}
+
+
+def test_load_from_python_entry_point_keeps_pyproject_exposed_port():
+    from fal.utils import _load_from_python_entry_point
+
+    host = MagicMock(spec=["run"])
+    options = Options(gateway={"exposed_port": 9000})
+    loaded = _load_from_python_entry_point(
+        host,
+        "simple.app:SimpleApp",
+        options=options,
+    )
+
+    assert loaded.function.options.gateway["exposed_port"] == 9000
+
+
+def test_isolated_function_endpoints_from_metadata():
+    iso = IsolatedFunction(
+        host=DummyHost(),
+        entrypoint="pkg:Sym",
+    )
+    iso.options.host["metadata"] = {"openapi": {"paths": {"/predict": {}, "/info": {}}}}
+
+    assert sorted(iso.endpoints) == ["/info", "/predict"]
+
+
+def test_isolated_function_endpoints_fallback_to_routes():
+    func = lambda: None  # noqa: E731
+    func._routes = ["/custom"]  # type: ignore[attr-defined]
+    iso = IsolatedFunction(host=DummyHost(), raw_func=func, options=Options())
+
+    assert iso.endpoints == ["/custom"]
+
+
+def test_isolated_function_endpoints_default():
+    iso = IsolatedFunction(host=DummyHost(), entrypoint="pkg:Sym")
+    assert iso.endpoints == ["/"]
+
+
+def test_isolated_function_fetch_metadata_no_op_without_entrypoint():
+    iso = IsolatedFunction(
+        host=DummyHost(),
+        raw_func=lambda: None,
+        options=Options(),
+    )
+    iso.options.host["metadata"] = {"openapi": {"paths": {"/x": {}}}}
+
+    assert iso.fetch_metadata() == {"openapi": {"paths": {"/x": {}}}}
+
+
+def test_isolated_function_fetch_metadata_probes_worker():
+    host = MagicMock()
+    host.run.return_value = {"openapi": {"paths": {"/predict": {}}}}
+
+    iso = IsolatedFunction(host=host, entrypoint="pkg.mod:MyApp")
+    metadata = iso.fetch_metadata()
+
+    host.run.assert_called_once()
+    _, call_kwargs = host.run.call_args
+    assert call_kwargs["entrypoint"] == "pkg.mod:MyApp.build_metadata"
+    assert metadata == {"openapi": {"paths": {"/predict": {}}}}
+    assert iso.options.host["metadata"] == metadata
+    assert iso.endpoints == ["/predict"]
+
+
+def test_isolated_function_fetch_metadata_rejects_non_dict_payload():
+    from fal.api import FalServerlessError
+
+    host = MagicMock()
+    host.run.return_value = "not a dict"
+
+    iso = IsolatedFunction(host=host, entrypoint="pkg.mod:MyApp")
+    with pytest.raises(FalServerlessError, match="non-dict payload"):
+        iso.fetch_metadata()
+
+
+def test_isolated_function_requires_func_or_entrypoint():
+    with pytest.raises(Exception, match="raw_func or entrypoint"):
+        IsolatedFunction(host=DummyHost())

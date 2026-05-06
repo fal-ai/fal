@@ -123,6 +123,10 @@ def mock_parse_pyproject_toml():
                 "team": "my-team",
                 "no_scale": True,
             },
+            "entrypoint-app": {
+                "python_entry_point": "simple.app:SimpleApp",
+                "requirements": ["fal"],
+            },
         }
     }
 
@@ -187,6 +191,83 @@ def test_deploy_with_toml_success(
             reset_scale=False,
             team=None,
             name="my-app",
+        ),
+        force_env_build=False,
+        environment_name=None,
+    )
+
+
+@patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+@patch("fal.api.deploy.execute_prepared_deployment")
+@patch("fal.api.client.SyncServerlessClient._create_host")
+@patch("fal.utils.load_function_from")
+def test_deploy_python_entry_point_forwards_to_loader(
+    mock_load_function_from,
+    mock_create_host,
+    mock_execute,
+    mock_parse_toml,
+    mock_find_toml,
+    mock_parse_pyproject_toml,
+):
+    """End-to-end: deploying a python_entry_point app passes the entrypoint
+    through to ``load_function_from`` and skips the cwd ``*.py`` glob.
+    """
+    mock_parse_toml.return_value = mock_parse_pyproject_toml
+    mock_create_host.return_value = MagicMock()
+    loaded = MagicMock()
+    loaded.app_name = "entrypoint-app"
+    loaded.app_auth = "public"
+    loaded.class_name = "SimpleApp"
+    loaded.function = MagicMock(spec=["entrypoint"])
+    mock_load_function_from.return_value = loaded
+
+    args = mock_args(app_ref=("entrypoint-app", None))
+    _deploy(args)
+
+    mock_create_host.assert_called_once()
+    _, host_kwargs = mock_create_host.call_args
+    assert host_kwargs["local_file_path"] == ""
+
+    mock_load_function_from.assert_called_once()
+    _, call_kwargs = mock_load_function_from.call_args
+    assert call_kwargs["python_entry_point"] == "simple.app:SimpleApp"
+    assert call_kwargs["options"].environment["requirements"] == ["fal"]
+
+
+@patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+@patch("fal.api.deploy.execute_prepared_deployment")
+@patch("fal.api.deploy._prepare_deployment_from_reference")
+def test_deploy_with_toml_python_entry_point(
+    mock_prepare_ref,
+    mock_execute,
+    mock_parse_toml,
+    mock_find_toml,
+    mock_parse_pyproject_toml,
+):
+    """``fal deploy <app>`` with python_entry_point in pyproject.toml resolves
+    cleanly without crashing on the absent ``ref``.
+    """
+    mock_parse_toml.return_value = mock_parse_pyproject_toml
+    options = Options(environment={"requirements": ["fal"]})
+
+    args = mock_args(app_ref=("entrypoint-app", None))
+
+    _deploy(args)
+
+    mock_prepare_ref.assert_called_once_with(
+        mock_prepare_ref.call_args[0][0],
+        (None, None),
+        AppData(
+            ref=None,
+            python_entry_point="simple.app:SimpleApp",
+            auth=None,
+            deployment_strategy=None,
+            reset_scale=False,
+            team=None,
+            name="entrypoint-app",
+            options=options,
         ),
         force_env_build=False,
         environment_name=None,

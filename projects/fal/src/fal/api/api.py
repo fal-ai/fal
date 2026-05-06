@@ -384,26 +384,28 @@ class Host(Generic[ArgsT, ReturnT]):
 
     def run(
         self,
-        func: Callable[ArgsT, ReturnT],
+        func: Callable[ArgsT, ReturnT] | None,
         options: Options,
         args: tuple[Any, ...],
         kwargs: dict[str, Any],
         application_name: str | None = None,
         application_auth_mode: AuthModeLiteral | None = None,
         result_handler: ResultHandler | None = None,
+        entrypoint: str | None = None,
     ) -> ReturnT:
         """Run the given function in the isolated environment."""
         raise NotImplementedError
 
     def spawn(
         self,
-        func: Callable[ArgsT, ReturnT],
+        func: Callable[ArgsT, ReturnT] | None,
         options: Options,
         args: tuple[Any, ...],
         kwargs: dict[str, Any],
         application_name: str | None = None,
         application_auth_mode: AuthModeLiteral | None = None,
         result_handler: ResultHandler | None = None,
+        entrypoint: str | None = None,
     ) -> SpawnInfo:
         raise NotImplementedError
 
@@ -497,17 +499,23 @@ class LocalHost(Host):
 
     def run(
         self,
-        func: Callable[..., ReturnT],
+        func: Callable[..., ReturnT] | None,
         options: Options,
         args: tuple[Any, ...],
         kwargs: dict[str, Any],
         application_name: str | None = None,
         application_auth_mode: AuthModeLiteral | None = None,
         result_handler: ResultHandler | None = None,
+        entrypoint: str | None = None,
     ) -> ReturnT:
         import isolate  # noqa: PLC0415
         from isolate.backends.settings import DEFAULT_SETTINGS  # noqa: PLC0415
         from isolate.connections import PythonIPC  # noqa: PLC0415
+
+        if entrypoint is not None or func is None:
+            raise NotImplementedError(
+                "LocalHost does not support entrypoint-based execution."
+            )
 
         settings = replace(
             DEFAULT_SETTINGS,
@@ -799,7 +807,7 @@ class FalServerlessHost(Host):
     @_handle_grpc_error()
     def register(
         self,
-        func: Callable[ArgsT, ReturnT],
+        func: Callable[ArgsT, ReturnT] | None,
         options: Options,
         *,
         application_name: Optional[str] = None,
@@ -810,6 +818,7 @@ class FalServerlessHost(Host):
         scale: bool = True,
         environment_name: Optional[str] = None,
         result_handler: ResultHandler | None = None,
+        entrypoint: str | None = None,
     ) -> Optional[RegisterApplicationResult]:
         from isolate.backends.common import active_python  # noqa: PLC0415
 
@@ -864,7 +873,18 @@ class FalServerlessHost(Host):
 
         files = self.files_sync(FileSyncOptions.from_options(options))
 
-        partial_func = _prepare_partial_func(func)
+        if func is None and entrypoint is None:
+            raise FalServerlessError(
+                "register requires either a func or an entrypoint."
+            )
+        if func is not None and entrypoint is not None:
+            raise FalServerlessError(
+                "only one of a func or an entrypoint can be provided."
+            )
+
+        partial_func = None
+        if func is not None:
+            partial_func = _prepare_partial_func(func)
 
         if metadata is None:
             metadata = {}
@@ -896,6 +916,7 @@ class FalServerlessHost(Host):
             termination_grace_period_seconds=termination_grace_period_seconds,
             secrets=secrets,
             data_mounts=data_mounts,
+            entrypoint=entrypoint,
         ):
             result_handler(partial_result)
 
@@ -907,13 +928,14 @@ class FalServerlessHost(Host):
     @_handle_grpc_error()
     def _run(
         self,
-        func: Callable[..., ReturnT],
+        func: Callable[..., ReturnT] | None,
         options: Options,
         args: tuple[Any, ...],
         kwargs: dict[str, Any],
         result_handler: ResultHandler,
         application_name: str | None = None,
         application_auth_mode: AuthModeLiteral | None = None,
+        entrypoint: str | None = None,
     ) -> ReturnT:
         from isolate.backends.common import active_python  # noqa: PLC0415
 
@@ -965,8 +987,19 @@ class FalServerlessHost(Host):
         return_value = _UNSET
         # Allow isolate provided arguments (such as setup function) to take
         # precedence over the ones provided by the user.
-        partial_func = _prepare_partial_func(func, *args, **kwargs)
-        effective_app_name = application_name or getattr(func, "__name__", None)
+        if func is None and entrypoint is None:
+            raise FalServerlessError("_run requires either a func or an entrypoint.")
+        if func is not None and entrypoint is not None:
+            raise FalServerlessError(
+                "only one of a func or an entrypoint can be provided."
+            )
+
+        partial_func = None
+        if func is not None:
+            partial_func = _prepare_partial_func(func, *args, **kwargs)
+        effective_app_name = (
+            application_name or getattr(func, "__name__", None) or entrypoint
+        )
         effective_auth_mode = application_auth_mode or "public"
 
         for partial_result in self._connection.run(
@@ -980,6 +1013,7 @@ class FalServerlessHost(Host):
             environment_name=self.environment_name,
             secrets=secrets,
             data_mounts=data_mounts,
+            entrypoint=entrypoint,
         ):
             result_handler(partial_result)
 
@@ -1003,13 +1037,14 @@ class FalServerlessHost(Host):
 
     def run(
         self,
-        func: Callable[..., ReturnT],
+        func: Callable[..., ReturnT] | None,
         options: Options,
         args: tuple[Any, ...],
         kwargs: dict[str, Any],
         application_name: str | None = None,
         application_auth_mode: AuthModeLiteral | None = None,
         result_handler: ResultHandler | None = None,
+        entrypoint: str | None = None,
     ) -> ReturnT:
         effective_auth_mode = application_auth_mode or "public"
 
@@ -1027,17 +1062,19 @@ class FalServerlessHost(Host):
             result_handler=result_handler,
             application_name=application_name,
             application_auth_mode=application_auth_mode,
+            entrypoint=entrypoint,
         )
 
     def spawn(
         self,
-        func: Callable[..., ReturnT],
+        func: Callable[..., ReturnT] | None,
         options: Options,
         args: tuple[Any, ...],
         kwargs: dict[str, Any],
         application_name: str | None = None,
         application_auth_mode: AuthModeLiteral | None = None,
         result_handler: ResultHandler | None = None,
+        entrypoint: str | None = None,
     ) -> SpawnInfo:
         ret = SpawnInfo()
         default_handler = SpawnResultHandler(ret)
@@ -1065,6 +1102,7 @@ class FalServerlessHost(Host):
             result_handler=composed,
             application_name=application_name,
             application_auth_mode=application_auth_mode,
+            entrypoint=entrypoint,
         )
 
         return ret
@@ -2066,12 +2104,19 @@ class ServeWrapper(BaseServable):
 @dataclass
 class IsolatedFunction(Generic[ArgsT, ReturnT]):
     host: Host[ArgsT, ReturnT]
-    raw_func: Callable[ArgsT, ReturnT]
-    options: Options
+    raw_func: Callable[ArgsT, ReturnT] | None = None
+    options: Options = field(default_factory=Options)
     executor: ThreadPoolExecutor = field(default_factory=ThreadPoolExecutor)
     reraise: bool = True
     app_name: str | None = None
     app_auth: AuthModeLiteral | None = None
+    entrypoint: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.raw_func is None and self.entrypoint is None:
+            raise FalServerlessError(
+                "IsolatedFunction requires either raw_func or entrypoint."
+            )
 
     def __getstate__(self) -> dict[str, Any]:
         # Ensure that the executor is not pickled.
@@ -2083,6 +2128,23 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
         self.__dict__.update(state)
         if not hasattr(self, "executor"):
             self.executor = ThreadPoolExecutor()
+
+    @property
+    def run_entrypoint(self) -> str | None:
+        """gRPC entrypoint string for remote dispatch (``<symbol>.run_local``)."""
+        if self.entrypoint is None:
+            return None
+        return f"{self.entrypoint}.run_local"
+
+    @property
+    def metadata_entrypoint(self) -> str | None:
+        """gRPC entrypoint string for the metadata probe.
+
+        Resolves to ``<symbol>.build_metadata`` on the worker.
+        """
+        if self.entrypoint is None:
+            return None
+        return f"{self.entrypoint}.build_metadata"
 
     def submit(self, *args: ArgsT.args, **kwargs: ArgsT.kwargs):
         # TODO: This should probably live inside each host since they can
@@ -2097,6 +2159,7 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
             kwargs=kwargs,
             application_name=self.app_name,
             application_auth_mode=self.app_auth,
+            entrypoint=self.run_entrypoint,
         )
         return future
 
@@ -2108,6 +2171,7 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
             kwargs,
             application_name=self.app_name,
             application_auth_mode=self.app_auth,
+            entrypoint=self.run_entrypoint,
         )
 
     def __call__(self, *args: ArgsT.args, **kwargs: ArgsT.kwargs) -> ReturnT:
@@ -2118,13 +2182,58 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
     def build_metadata(self) -> dict[str, Any]:
         return self.options.host.get("metadata") or {}
 
+    def fetch_metadata(self) -> dict[str, Any]:
+        """Probe ``<entrypoint>.build_metadata`` on the worker and cache the
+        result into ``options.host["metadata"]``.
+
+        No-op when there's no ``entrypoint`` set — the regular flow already
+        populates metadata via ``wrap_app``/registration paths, and this
+        method just returns that cached value.
+        """
+        if self.metadata_entrypoint is None:
+            return self.build_metadata()
+
+        from fal.api import ResultHandler  # noqa: PLC0415
+
+        payload: object = self.host.run(
+            None,
+            self.options,
+            args=(),
+            kwargs={},
+            entrypoint=self.metadata_entrypoint,
+            result_handler=ResultHandler(),
+        )
+        if not isinstance(payload, dict):
+            raise FalServerlessError(
+                "fetch_metadata: entrypoint probe returned a non-dict payload."
+            )
+        self.options.host["metadata"] = payload
+        return payload
+
+    @property
+    def endpoints(self) -> list[str]:
+        """Endpoint paths for this function.
+
+        Derived from the openapi spec in ``build_metadata()`` when present;
+        falls back to ``raw_func._routes`` and finally ``["/"]``. In
+        entrypoint mode call ``fetch_metadata()`` first to populate the
+        openapi spec — without it the property returns ``["/"]``.
+        """
+        openapi = self.build_metadata().get("openapi") or {}
+        paths = openapi.get("paths")
+        if isinstance(paths, dict) and paths:
+            return list(paths.keys())
+        if self.raw_func is not None:
+            return getattr(self.raw_func, "_routes", ["/"])
+        return ["/"]
+
     def run_local(self, *args: ArgsT.args, **kwargs: ArgsT.kwargs) -> ReturnT:
         import asyncio  # noqa: PLC0415
         import inspect  # noqa: PLC0415
         import os  # noqa: PLC0415
         from typing import Awaitable, cast  # noqa: PLC0415
 
-        func = self.func
+        func = self._resolve_local_func()
         previous_isolate_env = os.environ.get("IS_ISOLATE_AGENT")
         os.environ["IS_ISOLATE_AGENT"] = "1"
         try:
@@ -2142,6 +2251,27 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
                 del os.environ["IS_ISOLATE_AGENT"]
             else:
                 os.environ["IS_ISOLATE_AGENT"] = previous_isolate_env
+
+    def _resolve_local_func(self) -> Callable[ArgsT, ReturnT]:
+        if self.entrypoint is not None and self.raw_func is None:
+            import importlib  # noqa: PLC0415
+
+            module_name, _, attr = self.entrypoint.partition(":")
+            target: Any = importlib.import_module(module_name)
+            for part in attr.split("."):
+                target = getattr(target, part)
+            try:
+                return target.run_local
+            except AttributeError:
+                raise FalServerlessError(
+                    f"{self.entrypoint!r} has no run_local method — "
+                    "is it a fal.App subclass or a fal.function?"
+                ) from None
+        if self.raw_func is None:
+            raise FalServerlessError(
+                "IsolatedFunction has no local callable to invoke."
+            )
+        return self.func  # type: ignore[return-value]
 
     @overload
     def on(
@@ -2180,7 +2310,9 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
         )
 
     @property
-    def func(self) -> Callable[ArgsT, ReturnT]:
+    def func(self) -> Callable[ArgsT, ReturnT] | None:
+        if self.raw_func is None:
+            return None
         serve_mode = self.options.gateway.get("serve")
         if serve_mode:
             # This type can be safely ignored because this case only happens when it

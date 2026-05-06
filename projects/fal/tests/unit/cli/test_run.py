@@ -100,6 +100,10 @@ def mock_parse_pyproject_toml():
                 "team": "my-team",
                 "auth": "shared",
             },
+            "entrypoint-app": {
+                "python_entry_point": "simple.app:SimpleApp",
+                "requirements": ["fal"],
+            },
         }
     }
 
@@ -131,7 +135,44 @@ def mock_args(
     args.env = None
     args.machine_type = machine_type
     args.limit_max_requests = limit_max_requests
+    args.local = False
     return args
+
+
+@patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+@patch("fal.api.client.SyncServerlessClient._create_host")
+@patch("fal.utils.load_function_from")
+def test_run_forwards_python_entry_point_to_loader(
+    mock_load_function_from,
+    mock_create_host,
+    mock_parse_toml,
+    mock_find_toml,
+    mock_parse_pyproject_toml,
+):
+    mock_parse_toml.return_value = mock_parse_pyproject_toml
+
+    host = mocked_fal_serverless_host("my-host")
+    mock_create_host.return_value = host
+
+    isolated_function = MagicMock()
+    isolated_function.options = MagicMock()
+    isolated_function.options.host = {}
+    loaded = MagicMock()
+    loaded.function = isolated_function
+    loaded.app_name = None
+    loaded.app_auth = None
+    mock_load_function_from.return_value = loaded
+
+    args = mock_args(func_ref=("entrypoint-app", None), host="my-host")
+
+    _run(args)
+
+    mock_create_host.assert_called_once_with(local_file_path="", environment_name=None)
+    mock_load_function_from.assert_called_once()
+    _, call_kwargs = mock_load_function_from.call_args
+    assert call_kwargs["python_entry_point"] == "simple.app:SimpleApp"
+    assert call_kwargs["options"].environment["requirements"] == ["fal"]
 
 
 @patch("fal.api.client.SyncServerlessClient._create_host")
