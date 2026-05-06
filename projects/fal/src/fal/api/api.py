@@ -2115,6 +2115,9 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
 
         return _run_with_handling(self, args=args, kwargs=kwargs, reraise=self.reraise)
 
+    def build_metadata(self) -> dict[str, Any]:
+        return self.options.host.get("metadata") or {}
+
     def run_local(self, *args: ArgsT.args, **kwargs: ArgsT.kwargs) -> ReturnT:
         import asyncio  # noqa: PLC0415
         import inspect  # noqa: PLC0415
