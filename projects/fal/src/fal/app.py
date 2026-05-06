@@ -158,11 +158,9 @@ def wrap_app(cls: type[App], **kwargs) -> IsolatedFunction:
     # we run the function on main thread so SIGTERM can be propagated to the app
     initialize_and_serve._run_on_main_thread = True  # type: ignore[attr-defined]
 
-    metadata = {}
+    metadata = cls.build_metadata()
+
     app = cls(_allow_init=True)
-
-    metadata["openapi"] = app.openapi()
-
     routes = app.collect_routes()
     initialize_and_serve._routes = sorted(r.path for r in routes.keys()) or ["/"]  # type: ignore[attr-defined]
     realtime_app = any(route.is_websocket for route in routes)
@@ -735,6 +733,10 @@ class App(BaseServable):
             for _, endpoint in inspect.getmembers(cls, inspect.isfunction)
             if (signature := getattr(endpoint, "route_signature", None))
         ]
+
+    @classmethod
+    def build_metadata(cls) -> dict[str, Any]:
+        return {"openapi": cls(_allow_init=True).openapi()}
 
     @classmethod
     def run_local(cls, *args, **kwargs):
