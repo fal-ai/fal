@@ -4,8 +4,6 @@ import os
 from contextlib import contextmanager
 from pathlib import Path
 
-import portalocker
-
 _DEFAULT_HOME_DIR = str(Path.home() / ".fal")
 _FAL_HOME_DIR = os.getenv("FAL_HOME_DIR", _DEFAULT_HOME_DIR)
 _TOKEN_FILE = "auth0_token"
@@ -76,7 +74,17 @@ def lock_token():
     """
     Lock the access to the token file to avoid race conditions when running multiple
     scripts at the same time.
+
+    Best-effort: if `portalocker` isn't installed (e.g. on slim isolate
+    agents that don't ship fal's optional deps) the lock degrades to a
+    no-op rather than failing the import. Mirrors `fal_client.auth`.
     """
+    try:
+        import portalocker  # noqa: PLC0415
+    except ImportError:
+        yield
+        return
+
     lock_file = _check_dir_exist() / _LOCK_FILE
     with portalocker.utils.TemporaryFileLock(
         str(lock_file),

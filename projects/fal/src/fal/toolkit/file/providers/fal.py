@@ -17,7 +17,8 @@ from urllib.request import Request, urlopen
 from urllib.response import addinfourl
 
 from fal._user_agent import USER_AGENT
-from fal.auth import key_credentials
+from fal.auth import AuthCredentials, fetch_auth_credentials
+from fal.exceptions.auth import UnauthenticatedException
 from fal.flags import REST_HOST
 from fal.ref import get_current_app
 from fal.toolkit.exceptions import FileUploadException
@@ -26,6 +27,14 @@ from fal.toolkit.utils.retry import retry
 
 _FAL_CDN = "https://fal.media"
 _FAL_CDN_V3 = "https://v3.fal.media"
+
+
+def _require_auth_credentials() -> AuthCredentials:
+    try:
+        return fetch_auth_credentials()
+    except UnauthenticatedException as exc:
+        raise FileUploadException(str(exc)) from exc
+
 
 DEFAULT_REQUEST_TIMEOUT = 10
 PUT_REQUEST_TIMEOUT = 5 * 60
@@ -165,13 +174,9 @@ class FalV2TokenManager:
             return self._token
 
     def _refresh_token(self) -> None:
-        key_creds = key_credentials()
-        if not key_creds:
-            raise FileUploadException("FAL_KEY must be set")
-
-        key_id, key_secret = key_creds
+        auth = _require_auth_credentials()
         headers = {
-            "Authorization": f"Key {key_id}:{key_secret}",
+            "Authorization": auth.header_value,
             "Accept": "application/json",
             "Content-Type": "application/json",
         }
@@ -265,13 +270,9 @@ class FalFileRepositoryBase(FileRepository):
     def _save(
         self, file: FileData, storage_type: str, headers: dict[str, str] | None = None
     ) -> str:
-        key_creds = key_credentials()
-        if not key_creds:
-            raise FileUploadException("FAL_KEY must be set")
-
-        key_id, key_secret = key_creds
+        auth = _require_auth_credentials()
         headers = {
-            "Authorization": f"Key {key_id}:{key_secret}",
+            "Authorization": auth.header_value,
             "Accept": "application/json",
             "Content-Type": "application/json",
             **(headers or {}),
@@ -356,13 +357,8 @@ class MultipartUploadGCS:
 
     @property
     def auth_headers(self) -> dict[str, str]:
-        fal_key = key_credentials()
-        if not fal_key:
-            raise FileUploadException("FAL_KEY must be set")
-
-        key_id, key_secret = fal_key
         return {
-            "Authorization": f"Key {key_id}:{key_secret}",
+            "Authorization": _require_auth_credentials().header_value,
         }
 
     def create(self, object_lifecycle_preference: dict[str, str] | None = None) -> None:
@@ -825,13 +821,8 @@ class MultipartUploadV3:
 
     @property
     def auth_headers(self) -> dict[str, str]:
-        fal_key = key_credentials()
-        if not fal_key:
-            raise FileUploadException("FAL_KEY must be set")
-
-        key_id, key_secret = fal_key
         headers = {
-            "Authorization": f"Key {key_id}:{key_secret}",
+            "Authorization": _require_auth_credentials().header_value,
             "User-Agent": USER_AGENT,
         }
         _caller_cdn_header(headers)
@@ -1336,13 +1327,8 @@ class FalCDNFileRepository(FileRepository):
 
     @property
     def auth_headers(self) -> dict[str, str]:
-        key_creds = key_credentials()
-        if not key_creds:
-            raise FileUploadException("FAL_KEY must be set")
-
-        key_id, key_secret = key_creds
         return {
-            "Authorization": f"Bearer {key_id}:{key_secret}",
+            "Authorization": f"Bearer {_require_auth_credentials().token}",
             "User-Agent": USER_AGENT,
         }
 
@@ -1351,13 +1337,8 @@ class FalCDNFileRepository(FileRepository):
 class FalFileRepositoryV3(FileRepository):
     @property
     def auth_headers(self) -> dict[str, str]:
-        fal_key = key_credentials()
-        if not fal_key:
-            raise FileUploadException("FAL_KEY must be set")
-
-        key_id, key_secret = fal_key
         headers = {
-            "Authorization": f"Key {key_id}:{key_secret}",
+            "Authorization": _require_auth_credentials().header_value,
             "User-Agent": USER_AGENT,
         }
         _caller_cdn_header(headers)

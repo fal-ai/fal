@@ -63,6 +63,38 @@ def get_colab_token() -> Optional[str]:
         return _colab_state.secret
 
 
+@dataclass(frozen=True, repr=False)
+class AuthCredentials:
+    """Authorization header value, either a key or an auth0 bearer token."""
+
+    scheme: str
+    token: str
+
+    @property
+    def header_value(self) -> str:
+        return f"{self.scheme} {self.token}"
+
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}(scheme={self.scheme!r}, token='***')"
+
+
+def fetch_auth_credentials() -> AuthCredentials:
+    """Return key credentials when available, otherwise an auth0 bearer token.
+
+    Mirrors fal_client.auth.fetch_auth_credentials so toolkit code can
+    authenticate with `fal auth login` tokens, not only FAL_KEY. Raises
+    `UnauthenticatedException` when neither is available.
+
+    Honors `FAL_PROFILE` (via `key_credentials` → `Config`).
+    """
+    key_creds = key_credentials()
+    if key_creds:
+        key_id, key_secret = key_creds
+        return AuthCredentials("Key", f"{key_id}:{key_secret}")
+
+    return AuthCredentials("Bearer", _fetch_access_token())
+
+
 def key_credentials(profile: str | None = None) -> tuple[str, str] | None:
     # Ignore key credentials when the user forces auth by user.
     if os.environ.get("FAL_FORCE_AUTH_BY_USER") == "1":

@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from fal.auth import AuthCredentials
 from fal.toolkit.file.providers import fal as providers
 from fal.toolkit.file.types import FileData
 
@@ -94,7 +95,9 @@ def test_multipart_create_includes_lifecycle_headers(
     else:
         patches.append(
             patch.object(
-                providers, "key_credentials", return_value=("key_id", "key_secret")
+                providers,
+                "fetch_auth_credentials",
+                return_value=AuthCredentials("Key", "key_id:key_secret"),
             )
         )
 

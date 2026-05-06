@@ -4,8 +4,6 @@ import functools
 import time
 import warnings
 
-import httpx
-
 from fal.console.ux import maybe_open_browser_tab
 from fal.exceptions import FalServerlessException
 
@@ -74,6 +72,8 @@ def login(console, connection: str | None = None, *, no_browser: bool = False) -
       2. Open browser to fal.ai/login/cli (handles verification + auth with connection)
       3. Poll for token
     """
+    import httpx  # noqa: PLC0415
+
     device_code_payload = {
         "audience": AUTH0_FAL_API_AUDIENCE_ID,
         "client_id": AUTH0_CLIENT_ID,
@@ -138,6 +138,8 @@ def login(console, connection: str | None = None, *, no_browser: bool = False) -
 
 
 def refresh(token: str) -> dict:
+    import httpx  # noqa: PLC0415
+
     token_payload = {
         "grant_type": "refresh_token",
         "client_id": AUTH0_CLIENT_ID,
@@ -158,6 +160,8 @@ def refresh(token: str) -> dict:
 
 
 def revoke(token: str, console, *, no_browser: bool = False):
+    import httpx  # noqa: PLC0415
+
     token_payload = {
         "client_id": AUTH0_CLIENT_ID,
         "token": token,
@@ -175,6 +179,8 @@ def revoke(token: str, console, *, no_browser: bool = False):
 
 
 def get_user_info(bearer_token: str) -> dict:
+    import httpx  # noqa: PLC0415
+
     userinfo_response = httpx.post(
         f"https://{AUTH0_DOMAIN}/userinfo",
         headers={"Authorization": bearer_token},
