@@ -237,7 +237,7 @@ def _execute_loaded_deployment(
         application_name=loaded.app_name,
         application_auth_mode=loaded.app_auth,  # type: ignore
         source_code=loaded.source_code,
-        metadata=isolated_function.options.host.get("metadata", {}),
+        metadata=isolated_function.build_metadata(),
         deployment_strategy=strategy,
         scale=app_data.reset_scale,
         environment_name=environment_name,
