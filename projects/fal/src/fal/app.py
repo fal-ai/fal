@@ -1031,6 +1031,192 @@ class App(BaseServable):
         raise NotImplementedError
 
 
+def wrap_managed_app(cls: type, **kwargs) -> IsolatedFunction:
+    include_modules_from(cls)
+
+    # openapi_url tells the backend where to fetch the OpenAPI spec from the
+    # running server after startup.  The fetch_openapi flag in the gRPC request
+    # (RegisterApplicationRequest.fetch_openapi, field 19) is set in sdk.py
+    # when this key is present in metadata.
+    metadata: dict[str, Any] = {"openapi_url": cls.openapi_url}
+
+    routes = ["/"]
+
+    def initialize_and_serve():
+        instance = cls()
+
+        if inspect.iscoroutinefunction(cls.serve):
+            if threading.current_thread() == threading.main_thread():
+                asyncio.run(instance.serve())
+            else:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(instance.serve())
+        else:
+            instance.serve()
+
+    initialize_and_serve._run_on_main_thread = True  # type: ignore[attr-defined]
+    initialize_and_serve._routes = routes  # type: ignore[attr-defined]
+
+    host_kwargs = dict(cls.host_kwargs)
+    kind = host_kwargs.pop("kind", "virtualenv")
+
+    wrapper = fal_function(
+        kind,
+        requirements=cls.requirements,
+        local_python_modules=cls.local_python_modules,
+        machine_type=cls.machine_type,
+        num_gpus=cls.num_gpus,
+        regions=cls.regions,
+        **host_kwargs,
+        **kwargs,
+        metadata=metadata,
+        exposed_port=cls.exposed_port,
+        serve=False,
+    )
+    fn = wrapper(initialize_and_serve)
+    fn.app_name = cls.app_name
+    fn.app_auth = cls.app_auth
+    return fn
+
+
+class ManagedApp:
+    """A fal app where the user fully controls the HTTP server.
+
+    Subclass this and implement ``serve()`` to start any ASGI/WSGI server on
+    ``exposed_port``.  fal will fetch the OpenAPI schema from ``openapi_url``
+    on that port at deploy time and register it as metadata automatically —
+    no need to write the OpenAPI dict by hand.
+
+    Example::
+
+        class MyApp(fal.ManagedApp):
+            image = ContainerImage.from_dockerfile_str(\"\"\"
+            FROM python:3.11-slim
+            RUN pip install fastapi uvicorn
+            \"\"\")
+            exposed_port = 8080
+            openapi_url = "/openapi.json"
+
+            def serve(self):
+                from fastapi import FastAPI
+                import uvicorn
+                app = FastAPI()
+
+                @app.post("/generate")
+                def generate(req: GenerateRequest) -> GenerateResponse: ...
+
+                uvicorn.run(app, host="0.0.0.0", port=self.exposed_port)
+    """
+
+    exposed_port: ClassVar[int] = 8080
+    openapi_url: ClassVar[str] = "/openapi.json"
+
+    requirements: ClassVar[list[str] | list[list[str]]] = []
+    local_python_modules: ClassVar[list[str]] = []
+    machine_type: ClassVar[str | list[str]] = "S"
+    num_gpus: ClassVar[int | None] = None
+    regions: ClassVar[Optional[list[str]]] = None
+    host_kwargs: ClassVar[dict[str, Any]] = {
+        "_scheduler": "nomad",
+        "_scheduler_options": {
+            "storage_region": "us-east",
+        },
+        "resolver": "uv",
+        "keep_alive": 60,
+    }
+    app_name: ClassVar[Optional[str]] = None
+    app_auth: ClassVar[Optional[AuthModeLiteral]] = None
+    image: ClassVar[Optional[ContainerImage]] = None
+    request_timeout: ClassVar[Optional[int]] = None
+    startup_timeout: ClassVar[Optional[int]] = None
+    min_concurrency: ClassVar[Optional[int]] = None
+    max_concurrency: ClassVar[Optional[int]] = None
+    concurrency_buffer: ClassVar[Optional[int]] = None
+    concurrency_buffer_perc: ClassVar[Optional[int]] = None
+    scaling_delay: ClassVar[Optional[int]] = None
+    max_multiplexing: ClassVar[Optional[int]] = None
+    skip_retry_conditions: ClassVar[Optional[list[RetryConditionLiteral]]] = None
+    termination_grace_period_seconds: ClassVar[Optional[int]] = None
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        app_name = kwargs.pop("name", None) or _to_fal_app_name(cls.__name__)
+
+        if "exposed_port" in kwargs:
+            cls.exposed_port = kwargs.pop("exposed_port")
+
+        if "openapi_url" in kwargs:
+            cls.openapi_url = kwargs.pop("openapi_url")
+
+        parent_settings = getattr(cls, "host_kwargs", {})
+        cls.host_kwargs = {**parent_settings, **kwargs}
+
+        for key in parent_settings.keys():
+            val = getattr(cls, key, None)
+            if val is not None:
+                cls.host_kwargs[key] = val
+
+        if cls.request_timeout is not None:
+            cls.host_kwargs["request_timeout"] = cls.request_timeout
+
+        if cls.startup_timeout is not None:
+            cls.host_kwargs["startup_timeout"] = cls.startup_timeout
+
+        if cls.min_concurrency is not None:
+            cls.host_kwargs["min_concurrency"] = cls.min_concurrency
+
+        if cls.max_concurrency is not None:
+            cls.host_kwargs["max_concurrency"] = cls.max_concurrency
+
+        if cls.concurrency_buffer is not None:
+            cls.host_kwargs["concurrency_buffer"] = cls.concurrency_buffer
+
+        if cls.concurrency_buffer_perc is not None:
+            cls.host_kwargs["concurrency_buffer_perc"] = cls.concurrency_buffer_perc
+
+        if cls.scaling_delay is not None:
+            cls.host_kwargs["scaling_delay"] = cls.scaling_delay
+
+        if cls.max_multiplexing is not None:
+            cls.host_kwargs["max_multiplexing"] = cls.max_multiplexing
+
+        if cls.skip_retry_conditions is not None:
+            cls.host_kwargs["skip_retry_conditions"] = cls.skip_retry_conditions
+
+        if cls.termination_grace_period_seconds is not None:
+            cls.host_kwargs["termination_grace_period_seconds"] = (
+                cls.termination_grace_period_seconds
+            )
+
+        if cls.image is not None:
+            cls.host_kwargs["image"] = cls.image
+            cls.host_kwargs["kind"] = "container"
+
+        cls.app_name = getattr(cls, "app_name", None) or app_name
+
+    def serve(self) -> None:
+        raise NotImplementedError(
+            "ManagedApp subclasses must implement serve(). "
+            "Start your HTTP server here on self.exposed_port."
+        )
+
+    @classmethod
+    def get_endpoints(cls) -> list[str]:
+        return ["/"]
+
+    @classmethod
+    def run_local(cls, *args: Any, **kwargs: Any):
+        from fal.app import wrap_managed_app  # noqa: PLC0415
+
+        return wrap_managed_app(cls).run_local(*args, **kwargs)
+
+    @classmethod
+    def spawn(cls) -> AppSpawnInfo:
+        from fal.app import wrap_managed_app  # noqa: PLC0415
+
+        return AppSpawnInfo(wrap_managed_app(cls).spawn())
+
+
 def endpoint(
     path: str,
     *,

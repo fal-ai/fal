@@ -7,7 +7,7 @@ from fal.api.api import merge_basic_config
 from fal.sdk import AuthModeLiteral
 
 if TYPE_CHECKING:
-    from fal import App
+    from fal import App, ManagedApp
 
     from .api import FalServerlessHost, IsolatedFunction, Options
 
@@ -46,17 +46,24 @@ def _find_target(
         if isinstance(target, type) and issubclass(target, fal.App):
             return target, target.app_name, target.app_auth, function_name
 
+        if isinstance(target, type) and issubclass(target, fal.ManagedApp):
+            return target, target.app_name, target.app_auth, function_name
+
         if isinstance(target, IsolatedFunction):
             return target, function_name, None, function_name
 
         raise FalServerlessError(
-            f"Function '{function_name}' is not a fal.App or a fal.function"
+            f"Function '{function_name}' is not a fal.App, fal.ManagedApp or a fal.function"
         )
 
     fal_apps = {
         obj_name: obj
         for obj_name, obj in module.items()
-        if isinstance(obj, type) and issubclass(obj, fal.App) and obj is not fal.App
+        if isinstance(obj, type)
+        and (
+            (issubclass(obj, fal.App) and obj is not fal.App)
+            or (issubclass(obj, fal.ManagedApp) and obj is not fal.ManagedApp)
+        )
     }
 
     if len(fal_apps) == 1:
@@ -130,7 +137,7 @@ def load_function_from(
     import sys
 
     import fal._serialization
-    from fal import App, wrap_app
+    from fal import App, ManagedApp, wrap_app
 
     from .api import FalServerlessError, IsolatedFunction
 
@@ -159,6 +166,15 @@ def load_function_from(
             force_env_build=force_env_build,
             limit_max_requests=limit_max_requests,
         )
+    elif isinstance(target, type) and issubclass(target, ManagedApp):
+        from fal.app import wrap_managed_app  # noqa: PLC0415
+
+        target = wrap_managed_app(
+            target,
+            host=host,
+            force_env_build=force_env_build,
+        )
+        endpoints = getattr(target.raw_func, "_routes", ["/"])
 
     if not isinstance(target, IsolatedFunction):
         raise FalServerlessError(
