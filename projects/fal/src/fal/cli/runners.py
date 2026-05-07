@@ -273,6 +273,31 @@ def _kill(args):
     client.runners.kill(args.id)
 
 
+def render_gpus(args, gpu_by_type: dict[str, int], total: int):
+    sorted_types = sorted(gpu_by_type.items(), key=lambda kv: -kv[1])
+    if args.output == "pretty":
+        from rich.table import Table
+
+        table = Table()
+        table.add_column("Type")
+        table.add_column("Count", justify="right")
+        for gpu_type, gpus in sorted_types:
+            table.add_row(gpu_type, str(gpus))
+        args.console.print(table)
+        args.console.print(f"Total: {total}")
+    elif args.output == "json":
+        result = {"gpus": dict(sorted_types), "total": total}
+        args.console.print(json.dumps(result))
+    else:
+        raise AssertionError(f"Invalid output format: {args.output}")
+
+
+def _gpus(args):
+    client = SyncServerlessClient(host=args.host, team=args.team)
+    usage = client.runners.gpus()
+    render_gpus(args, usage["gpus"], usage["total"])
+
+
 def _list_json(args, runners: list[RunnerInfo]):
     json_runners = [
         {
@@ -725,6 +750,17 @@ def _logs(args):
             printer.print(log)
 
 
+def _add_gpus_parser(subparsers, parents):
+    gpus_help = "Show GPU usage summary across runners."
+    parser = subparsers.add_parser(
+        "gpus",
+        description=gpus_help,
+        help=gpus_help,
+        parents=[*parents, get_output_parser()],
+    )
+    parser.set_defaults(func=_gpus)
+
+
 def _add_logs_parser(subparsers, parents):
     logs_help = "Show logs for a runner."
     parser = subparsers.add_parser(
@@ -836,6 +872,7 @@ def add_parser(main_subparsers, parents):
     _add_stop_parser(subparsers, parents)
     _add_kill_parser(subparsers, parents)
     _add_list_parser(subparsers, parents)
+    _add_gpus_parser(subparsers, parents)
     _add_logs_parser(subparsers, parents)
     _add_shell_parser(subparsers, parents)
     _add_exec_parser(subparsers, parents)

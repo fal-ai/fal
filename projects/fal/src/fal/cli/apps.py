@@ -477,6 +477,27 @@ def _add_runners_parser(subparsers, parents):
     parser.set_defaults(func=_runners)
 
 
+def _gpus(args):
+    client = SyncServerlessClient(host=args.host, team=args.team)
+    usage = client.apps.gpus(args.app_name)
+    runners.render_gpus(args, usage["gpus"], usage["total"])
+
+
+def _add_gpus_parser(subparsers, parents):
+    gpus_help = "Show GPU usage for an application."
+    parser = subparsers.add_parser(
+        "gpus",
+        description=gpus_help,
+        help=gpus_help,
+        parents=[*parents, get_output_parser()],
+    )
+    parser.add_argument(
+        "app_name",
+        help="Application name.",
+    )
+    parser.set_defaults(func=_gpus)
+
+
 def _delete(args):
     client = get_client(args.host, args.team)
     with client.connect() as connection:
@@ -548,5 +569,6 @@ def add_parser(main_subparsers, parents):
     _add_scale_parser(subparsers, parents)
     _add_rollout_parser(subparsers, parents)
     _add_runners_parser(subparsers, parents)
+    _add_gpus_parser(subparsers, parents)
     _add_delete_parser(subparsers, parents)
     _add_delete_rev_parser(subparsers, parents)

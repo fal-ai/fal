@@ -5,6 +5,8 @@ from typing import TYPE_CHECKING, List, Optional
 
 from fal.sdk import AliasInfo, FalServerlessClient, RunnerInfo
 
+from ._metrics import _get_metrics, _normalize_gpu_counts
+
 if TYPE_CHECKING:
     from .client import SyncServerlessClient
 
@@ -97,3 +99,31 @@ def rollout_app(
             force=force,
             environment_name=environment_name,
         )
+
+
+def app_gpus(client: SyncServerlessClient, app_name: str) -> dict:
+    """Get GPU usage for a single application.
+
+    Accepts either a bare name ("flux") or a namespaced one ("fal-ai/flux").
+    The metrics endpoint keys apps as "<namespace>/<name>", but the rest of
+    `fal apps` accepts bare names, so we match by basename for parity.
+
+    Returns {"gpus": {<type>: <count>, ...}, "total": <int>} where `total`
+    equals the sum of values in `gpus`. GPU type names are normalized to
+    short SKUs (e.g. "H100"); the metrics endpoint includes every machine
+    type with non-GPU plans at count 0, which we filter out.
+    """
+    data = _get_metrics(client)
+    apps = data.get("apps") or {}
+    target = app_name.rsplit("/", 1)[-1]
+    matches = [info for key, info in apps.items() if key.rsplit("/", 1)[-1] == target]
+    if not matches:
+        raise RuntimeError(f"Application {app_name!r} not found in metrics.")
+    if len(matches) > 1:
+        candidates = sorted(key for key in apps if key.rsplit("/", 1)[-1] == target)
+        raise RuntimeError(
+            f"Application name {app_name!r} is ambiguous; matches: "
+            f"{', '.join(candidates)}"
+        )
+    gpu_by_type = _normalize_gpu_counts(matches[0].get("gpu_count_by_type"))
+    return {"gpus": gpu_by_type, "total": sum(gpu_by_type.values())}

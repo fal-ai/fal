@@ -1,9 +1,13 @@
+import json
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from fal.cli.apps import (
     _delete,
     _delete_rev,
+    _gpus,
     _list,
     _list_rev,
     _rollout,
@@ -186,3 +190,57 @@ def test_delete_rev():
     args = parse_args(["apps", "delete-rev", "myrev"])
     assert args.func == _delete_rev
     assert args.app_rev == "myrev"
+
+
+_GPUS_PAYLOAD = {"gpus": {"H100": 8, "B200": 3, "L40": 5}, "total": 16}
+
+
+def test_apps_gpus_parser():
+    args = parse_args(["apps", "gpus", "myapp"])
+    assert args.func == _gpus
+    assert args.app_name == "myapp"
+
+
+def _mock_gpus_client(payload):
+    client = MagicMock()
+    client.apps.gpus.return_value = payload
+    return client
+
+
+@patch("fal.cli.apps.SyncServerlessClient")
+def test_apps_gpus_json(mock_client_cls):
+    mock_client_cls.return_value = _mock_gpus_client(_GPUS_PAYLOAD)
+    args = parse_args(["apps", "gpus", "fal-ai/flux", "--json"])
+    args.console = MagicMock()
+    args.func(args)
+
+    output = args.console.print.call_args[0][0]
+    result = json.loads(output)
+    assert result["total"] == 16
+    # Sorted by count desc by render_gpus
+    assert list(result["gpus"].items()) == [("H100", 8), ("L40", 5), ("B200", 3)]
+
+
+@patch("fal.cli.apps.SyncServerlessClient")
+def test_apps_gpus_pretty_runs(mock_client_cls):
+    mock_client_cls.return_value = _mock_gpus_client(_GPUS_PAYLOAD)
+    args = parse_args(["apps", "gpus", "fal-ai/flux"])
+    args.console = MagicMock()
+    args.func(args)
+
+    printed = " ".join(str(call.args[0]) for call in args.console.print.call_args_list)
+    assert "Total: 16" in printed
+
+
+@patch("fal.cli.apps.SyncServerlessClient")
+def test_apps_gpus_app_not_found(mock_client_cls):
+    client = MagicMock()
+    client.apps.gpus.side_effect = RuntimeError(
+        "Application 'fal-ai/missing' not found in metrics."
+    )
+    mock_client_cls.return_value = client
+    args = parse_args(["apps", "gpus", "fal-ai/missing"])
+    args.console = MagicMock()
+
+    with pytest.raises(RuntimeError, match="not found in metrics"):
+        args.func(args)
