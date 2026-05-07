@@ -1,6 +1,7 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Type, TypeVar, Union
+from typing import TYPE_CHECKING, Any, TypeVar, Union
 
-import attr
+from attrs import define as _attrs_define
+from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
@@ -14,7 +15,7 @@ if TYPE_CHECKING:
 T = TypeVar("T", bound="ComfyWorkflowSchema")
 
 
-@attr.s(auto_attribs=True)
+@_attrs_define
 class ComfyWorkflowSchema:
     """
     Attributes:
@@ -28,24 +29,24 @@ class ComfyWorkflowSchema:
     extra_data: Union[Unset, "ComfyWorkflowSchemaExtraData"] = UNSET
     fal_inputs_dev_info: Union[Unset, "ComfyWorkflowSchemaFalInputsDevInfo"] = UNSET
     fal_inputs: Union[Unset, "ComfyWorkflowSchemaFalInputs"] = UNSET
-    additional_properties: Dict[str, Any] = attr.ib(init=False, factory=dict)
+    additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         prompt = self.prompt.to_dict()
 
-        extra_data: Union[Unset, Dict[str, Any]] = UNSET
+        extra_data: Union[Unset, dict[str, Any]] = UNSET
         if not isinstance(self.extra_data, Unset):
             extra_data = self.extra_data.to_dict()
 
-        fal_inputs_dev_info: Union[Unset, Dict[str, Any]] = UNSET
+        fal_inputs_dev_info: Union[Unset, dict[str, Any]] = UNSET
         if not isinstance(self.fal_inputs_dev_info, Unset):
             fal_inputs_dev_info = self.fal_inputs_dev_info.to_dict()
 
-        fal_inputs: Union[Unset, Dict[str, Any]] = UNSET
+        fal_inputs: Union[Unset, dict[str, Any]] = UNSET
         if not isinstance(self.fal_inputs, Unset):
             fal_inputs = self.fal_inputs.to_dict()
 
-        field_dict: Dict[str, Any] = {}
+        field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
             {
@@ -62,7 +63,7 @@ class ComfyWorkflowSchema:
         return field_dict
 
     @classmethod
-    def from_dict(cls: Type[T], src_dict: Dict[str, Any]) -> T:
+    def from_dict(cls: type[T], src_dict: dict[str, Any]) -> T:
         from ..models.comfy_workflow_schema_extra_data import ComfyWorkflowSchemaExtraData
         from ..models.comfy_workflow_schema_fal_inputs import ComfyWorkflowSchemaFalInputs
         from ..models.comfy_workflow_schema_fal_inputs_dev_info import ComfyWorkflowSchemaFalInputsDevInfo
@@ -103,7 +104,7 @@ class ComfyWorkflowSchema:
         return comfy_workflow_schema
 
     @property
-    def additional_keys(self) -> List[str]:
+    def additional_keys(self) -> list[str]:
         return list(self.additional_properties.keys())
 
     def __getitem__(self, key: str) -> Any:

@@ -1,6 +1,9 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Type, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar, Union
 
-import attr
+from attrs import define as _attrs_define
+from attrs import field as _attrs_field
+
+from ..types import UNSET, Unset
 
 if TYPE_CHECKING:
     from ..models.workflow_contents import WorkflowContents
@@ -9,7 +12,7 @@ if TYPE_CHECKING:
 T = TypeVar("T", bound="TypedWorkflow")
 
 
-@attr.s(auto_attribs=True)
+@_attrs_define
 class TypedWorkflow:
     """
     Attributes:
@@ -17,22 +20,28 @@ class TypedWorkflow:
         title (str):
         contents (WorkflowContents):
         is_public (bool):
+        group_id (Union[Unset, str]):
     """
 
     name: str
     title: str
     contents: "WorkflowContents"
     is_public: bool
-    additional_properties: Dict[str, Any] = attr.ib(init=False, factory=dict)
+    group_id: Union[Unset, str] = UNSET
+    additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         name = self.name
+
         title = self.title
+
         contents = self.contents.to_dict()
 
         is_public = self.is_public
 
-        field_dict: Dict[str, Any] = {}
+        group_id = self.group_id
+
+        field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
             {
@@ -42,11 +51,13 @@ class TypedWorkflow:
                 "is_public": is_public,
             }
         )
+        if group_id is not UNSET:
+            field_dict["group_id"] = group_id
 
         return field_dict
 
     @classmethod
-    def from_dict(cls: Type[T], src_dict: Dict[str, Any]) -> T:
+    def from_dict(cls: type[T], src_dict: dict[str, Any]) -> T:
         from ..models.workflow_contents import WorkflowContents
 
         d = src_dict.copy()
@@ -58,18 +69,21 @@ class TypedWorkflow:
 
         is_public = d.pop("is_public")
 
+        group_id = d.pop("group_id", UNSET)
+
         typed_workflow = cls(
             name=name,
             title=title,
             contents=contents,
             is_public=is_public,
+            group_id=group_id,
         )
 
         typed_workflow.additional_properties = d
         return typed_workflow
 
     @property
-    def additional_keys(self) -> List[str]:
+    def additional_keys(self) -> list[str]:
         return list(self.additional_properties.keys())
 
     def __getitem__(self, key: str) -> Any:

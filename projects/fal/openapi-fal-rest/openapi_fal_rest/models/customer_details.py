@@ -1,108 +1,111 @@
-from typing import Any, Dict, List, Type, TypeVar, Union
+from typing import Any, TypeVar, Union
 
-import attr
+from attrs import define as _attrs_define
+from attrs import field as _attrs_field
 
 from ..models.lock_reason import LockReason
+from ..models.payment_verification_status import PaymentVerificationStatus
 from ..types import UNSET, Unset
 
 T = TypeVar("T", bound="CustomerDetails")
 
 
-@attr.s(auto_attribs=True)
+@_attrs_define
 class CustomerDetails:
     """
     Attributes:
         user_id (str):
-        soft_monthly_budget (Union[Unset, int]):
-        hard_monthly_budget (Union[Unset, int]):
-        lock_reason (Union[Unset, None, LockReason]): An enumeration.
-        is_paying (Union[Unset, bool]):
-        is_locked (Union[Unset, bool]):
-        is_eligible_for_extra_credits (Union[Unset, bool]):
+        hard_monthly_budget (int):
+        lock_reason (LockReason):
+        is_invoicing (Union[Unset, bool]):  Default: False.
+        is_locked (Union[Unset, bool]):  Default: False.
+        is_eligible_for_extra_credits (Union[Unset, bool]):  Default: False.
+        payment_verification_status (Union[Unset, PaymentVerificationStatus]):
     """
 
     user_id: str
-    soft_monthly_budget: Union[Unset, int] = UNSET
-    hard_monthly_budget: Union[Unset, int] = UNSET
-    lock_reason: Union[Unset, None, LockReason] = UNSET
-    is_paying: Union[Unset, bool] = False
+    hard_monthly_budget: int
+    lock_reason: LockReason
+    is_invoicing: Union[Unset, bool] = False
     is_locked: Union[Unset, bool] = False
     is_eligible_for_extra_credits: Union[Unset, bool] = False
-    additional_properties: Dict[str, Any] = attr.ib(init=False, factory=dict)
+    payment_verification_status: Union[Unset, PaymentVerificationStatus] = UNSET
+    additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         user_id = self.user_id
-        soft_monthly_budget = self.soft_monthly_budget
-        hard_monthly_budget = self.hard_monthly_budget
-        lock_reason: Union[Unset, None, str] = UNSET
-        if not isinstance(self.lock_reason, Unset):
-            lock_reason = self.lock_reason.value if self.lock_reason else None
 
-        is_paying = self.is_paying
+        hard_monthly_budget = self.hard_monthly_budget
+
+        lock_reason = self.lock_reason.value
+
+        is_invoicing = self.is_invoicing
+
         is_locked = self.is_locked
+
         is_eligible_for_extra_credits = self.is_eligible_for_extra_credits
 
-        field_dict: Dict[str, Any] = {}
+        payment_verification_status: Union[Unset, str] = UNSET
+        if not isinstance(self.payment_verification_status, Unset):
+            payment_verification_status = self.payment_verification_status.value
+
+        field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
             {
                 "user_id": user_id,
+                "hard_monthly_budget": hard_monthly_budget,
+                "lock_reason": lock_reason,
             }
         )
-        if soft_monthly_budget is not UNSET:
-            field_dict["soft_monthly_budget"] = soft_monthly_budget
-        if hard_monthly_budget is not UNSET:
-            field_dict["hard_monthly_budget"] = hard_monthly_budget
-        if lock_reason is not UNSET:
-            field_dict["lock_reason"] = lock_reason
-        if is_paying is not UNSET:
-            field_dict["is_paying"] = is_paying
+        if is_invoicing is not UNSET:
+            field_dict["is_invoicing"] = is_invoicing
         if is_locked is not UNSET:
             field_dict["is_locked"] = is_locked
         if is_eligible_for_extra_credits is not UNSET:
             field_dict["is_eligible_for_extra_credits"] = is_eligible_for_extra_credits
+        if payment_verification_status is not UNSET:
+            field_dict["payment_verification_status"] = payment_verification_status
 
         return field_dict
 
     @classmethod
-    def from_dict(cls: Type[T], src_dict: Dict[str, Any]) -> T:
+    def from_dict(cls: type[T], src_dict: dict[str, Any]) -> T:
         d = src_dict.copy()
         user_id = d.pop("user_id")
 
-        soft_monthly_budget = d.pop("soft_monthly_budget", UNSET)
+        hard_monthly_budget = d.pop("hard_monthly_budget")
 
-        hard_monthly_budget = d.pop("hard_monthly_budget", UNSET)
+        lock_reason = LockReason(d.pop("lock_reason"))
 
-        _lock_reason = d.pop("lock_reason", UNSET)
-        lock_reason: Union[Unset, None, LockReason]
-        if _lock_reason is None:
-            lock_reason = None
-        elif isinstance(_lock_reason, Unset):
-            lock_reason = UNSET
-        else:
-            lock_reason = LockReason(_lock_reason)
-
-        is_paying = d.pop("is_paying", UNSET)
+        is_invoicing = d.pop("is_invoicing", UNSET)
 
         is_locked = d.pop("is_locked", UNSET)
 
         is_eligible_for_extra_credits = d.pop("is_eligible_for_extra_credits", UNSET)
 
+        _payment_verification_status = d.pop("payment_verification_status", UNSET)
+        payment_verification_status: Union[Unset, PaymentVerificationStatus]
+        if isinstance(_payment_verification_status, Unset):
+            payment_verification_status = UNSET
+        else:
+            payment_verification_status = PaymentVerificationStatus(_payment_verification_status)
+
         customer_details = cls(
             user_id=user_id,
-            soft_monthly_budget=soft_monthly_budget,
             hard_monthly_budget=hard_monthly_budget,
             lock_reason=lock_reason,
-            is_paying=is_paying,
+            is_invoicing=is_invoicing,
             is_locked=is_locked,
             is_eligible_for_extra_credits=is_eligible_for_extra_credits,
+            payment_verification_status=payment_verification_status,
         )
 
         customer_details.additional_properties = d
         return customer_details
 
     @property
-    def additional_keys(self) -> List[str]:
+    def additional_keys(self) -> list[str]:
         return list(self.additional_properties.keys())
 
     def __getitem__(self, key: str) -> Any:

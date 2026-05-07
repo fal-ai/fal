@@ -1,6 +1,7 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Type, TypeVar, Union
+from typing import TYPE_CHECKING, Any, TypeVar, Union
 
-import attr
+from attrs import define as _attrs_define
+from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
@@ -14,7 +15,7 @@ if TYPE_CHECKING:
 T = TypeVar("T", bound="WorkflowContents")
 
 
-@attr.s(auto_attribs=True)
+@_attrs_define
 class WorkflowContents:
     """
     Attributes:
@@ -32,10 +33,11 @@ class WorkflowContents:
     schema: "WorkflowSchema"
     version: str
     metadata: Union[Unset, "WorkflowContentsMetadata"] = UNSET
-    additional_properties: Dict[str, Any] = attr.ib(init=False, factory=dict)
+    additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         name = self.name
+
         nodes = self.nodes.to_dict()
 
         output = self.output.to_dict()
@@ -43,11 +45,12 @@ class WorkflowContents:
         schema = self.schema.to_dict()
 
         version = self.version
-        metadata: Union[Unset, Dict[str, Any]] = UNSET
+
+        metadata: Union[Unset, dict[str, Any]] = UNSET
         if not isinstance(self.metadata, Unset):
             metadata = self.metadata.to_dict()
 
-        field_dict: Dict[str, Any] = {}
+        field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
             {
@@ -64,7 +67,7 @@ class WorkflowContents:
         return field_dict
 
     @classmethod
-    def from_dict(cls: Type[T], src_dict: Dict[str, Any]) -> T:
+    def from_dict(cls: type[T], src_dict: dict[str, Any]) -> T:
         from ..models.workflow_contents_metadata import WorkflowContentsMetadata
         from ..models.workflow_contents_nodes import WorkflowContentsNodes
         from ..models.workflow_contents_output import WorkflowContentsOutput
@@ -101,7 +104,7 @@ class WorkflowContents:
         return workflow_contents
 
     @property
-    def additional_keys(self) -> List[str]:
+    def additional_keys(self) -> list[str]:
         return list(self.additional_properties.keys())
 
     def __getitem__(self, key: str) -> Any:

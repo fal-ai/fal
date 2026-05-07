@@ -1,0 +1,41 @@
+from enum import Enum
+
+
+class UserNotificationSubcategory(str, Enum):
+    BILLING_ACCOUNT_LOCKED = "billing_account_locked"
+    BILLING_BUDGET_REACHED = "billing_budget_reached"
+    BILLING_BUDGET_WARNING = "billing_budget_warning"
+    BILLING_ORDER_CONFIRMATION = "billing_order_confirmation"
+    BILLING_PAYMENT_FAILED = "billing_payment_failed"
+    BILLING_PAYMENT_SUCCESSFUL = "billing_payment_successful"
+    BILLING_SPENDING_ALERT_TRIGGERED = "billing_spending_alert_triggered"
+    BILLING_SPENDING_ALERT_V2_TRIGGERED = "billing_spending_alert_v2_triggered"
+    COLLABORATION_TEAM_INVITE = "collaboration_team_invite"
+    COLLABORATION_TEAM_MEMBER_ADDED = "collaboration_team_member_added"
+    COLLABORATION_TEAM_MEMBER_REMOVED = "collaboration_team_member_removed"
+    MARKETING_NEWSLETTER = "marketing_newsletter"
+    MARKETING_PRODUCT_ANNOUNCEMENT = "marketing_product_announcement"
+    PLATFORM_ANNOUNCEMENT = "platform_announcement"
+    PLATFORM_APP_CREATED = "platform_app_created"
+    PLATFORM_APP_DELETED = "platform_app_deleted"
+    PLATFORM_APP_HTTP_5XX_ERRORS = "platform_app_http_5xx_errors"
+    PLATFORM_APP_MODIFIED = "platform_app_modified"
+    PLATFORM_APP_OOM = "platform_app_oom"
+    PLATFORM_APP_QUEUE_SIZE = "platform_app_queue_size"
+    PLATFORM_APP_STARTUP_FAILURE = "platform_app_startup_failure"
+    PLATFORM_APP_STARTUP_TIMEOUT = "platform_app_startup_timeout"
+    PLATFORM_COMPUTE_INSTANCE_CREATED = "platform_compute_instance_created"
+    PLATFORM_COMPUTE_INSTANCE_PROVISIONING_FAILED = "platform_compute_instance_provisioning_failed"
+    PLATFORM_COMPUTE_INSUFFICIENT_CAPACITY = "platform_compute_insufficient_capacity"
+    PLATFORM_CONCURRENT_REQUESTS_LIMIT_REACHED = "platform_concurrent_requests_limit_reached"
+    PLATFORM_ENDPOINT_ENTERPRISE_READY = "platform_endpoint_enterprise_ready"
+    PLATFORM_MAINTENANCE_COMPLETED = "platform_maintenance_completed"
+    PLATFORM_MAINTENANCE_SCHEDULED = "platform_maintenance_scheduled"
+    PLATFORM_MAINTENANCE_STARTED = "platform_maintenance_started"
+    PLATFORM_WELCOME_WITHOUT_CREDITS = "platform_welcome_without_credits"
+    PLATFORM_WELCOME_WITH_CREDITS = "platform_welcome_with_credits"
+    SECURITY_API_KEY_CREATED = "security_api_key_created"
+    SECURITY_API_KEY_REVOKED = "security_api_key_revoked"
+
+    def __str__(self) -> str:
+        return str(self.value)

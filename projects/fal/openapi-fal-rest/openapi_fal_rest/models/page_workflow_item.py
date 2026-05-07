@@ -1,8 +1,7 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Type, TypeVar, Union
+from typing import TYPE_CHECKING, Any, TypeVar
 
-import attr
-
-from ..types import UNSET, Unset
+from attrs import define as _attrs_define
+from attrs import field as _attrs_field
 
 if TYPE_CHECKING:
     from ..models.workflow_item import WorkflowItem
@@ -11,56 +10,54 @@ if TYPE_CHECKING:
 T = TypeVar("T", bound="PageWorkflowItem")
 
 
-@attr.s(auto_attribs=True)
+@_attrs_define
 class PageWorkflowItem:
     """
     Attributes:
-        items (List['WorkflowItem']):
-        total (Union[Unset, int]):
-        page (Union[Unset, int]):
-        size (Union[Unset, int]):
-        pages (Union[Unset, int]):
+        items (list['WorkflowItem']):
+        total (int):
+        page (int):
+        size (int):
+        pages (int):
     """
 
-    items: List["WorkflowItem"]
-    total: Union[Unset, int] = UNSET
-    page: Union[Unset, int] = UNSET
-    size: Union[Unset, int] = UNSET
-    pages: Union[Unset, int] = UNSET
-    additional_properties: Dict[str, Any] = attr.ib(init=False, factory=dict)
+    items: list["WorkflowItem"]
+    total: int
+    page: int
+    size: int
+    pages: int
+    additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         items = []
         for items_item_data in self.items:
             items_item = items_item_data.to_dict()
-
             items.append(items_item)
 
         total = self.total
+
         page = self.page
+
         size = self.size
+
         pages = self.pages
 
-        field_dict: Dict[str, Any] = {}
+        field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
             {
                 "items": items,
+                "total": total,
+                "page": page,
+                "size": size,
+                "pages": pages,
             }
         )
-        if total is not UNSET:
-            field_dict["total"] = total
-        if page is not UNSET:
-            field_dict["page"] = page
-        if size is not UNSET:
-            field_dict["size"] = size
-        if pages is not UNSET:
-            field_dict["pages"] = pages
 
         return field_dict
 
     @classmethod
-    def from_dict(cls: Type[T], src_dict: Dict[str, Any]) -> T:
+    def from_dict(cls: type[T], src_dict: dict[str, Any]) -> T:
         from ..models.workflow_item import WorkflowItem
 
         d = src_dict.copy()
@@ -71,13 +68,13 @@ class PageWorkflowItem:
 
             items.append(items_item)
 
-        total = d.pop("total", UNSET)
+        total = d.pop("total")
 
-        page = d.pop("page", UNSET)
+        page = d.pop("page")
 
-        size = d.pop("size", UNSET)
+        size = d.pop("size")
 
-        pages = d.pop("pages", UNSET)
+        pages = d.pop("pages")
 
         page_workflow_item = cls(
             items=items,
@@ -91,7 +88,7 @@ class PageWorkflowItem:
         return page_workflow_item
 
     @property
-    def additional_keys(self) -> List[str]:
+    def additional_keys(self) -> list[str]:
         return list(self.additional_properties.keys())
 
     def __getitem__(self, key: str) -> Any:

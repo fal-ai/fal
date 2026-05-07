@@ -1,0 +1,14 @@
+from enum import Enum
+
+
+class BatchItemStatus(str, Enum):
+    CREATED = "CREATED"
+    FAILED = "FAILED"
+    FAILED_INVALID_EMAIL = "FAILED_INVALID_EMAIL"
+    PLANNED = "PLANNED"
+    SKIPPED_CURRENT_MEMBER = "SKIPPED_CURRENT_MEMBER"
+    SKIPPED_DUPLICATE_IN_REQUEST = "SKIPPED_DUPLICATE_IN_REQUEST"
+    SKIPPED_PENDING_INVITE_EXISTS = "SKIPPED_PENDING_INVITE_EXISTS"
+
+    def __str__(self) -> str:
+        return str(self.value)

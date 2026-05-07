@@ -1,0 +1,13 @@
+from enum import Enum
+
+
+class ValidationResultCode(str, Enum):
+    ACCOUNT_TYPE_MISMATCH = "ACCOUNT_TYPE_MISMATCH"
+    ENDPOINT_ACCESS_CONTROLS_MISMATCH = "ENDPOINT_ACCESS_CONTROLS_MISMATCH"
+    NESTED_ORG_FOUND = "NESTED_ORG_FOUND"
+    NO_ADMINS_FOUND = "NO_ADMINS_FOUND"
+    NO_TEAMS_FOUND = "NO_TEAMS_FOUND"
+    PERSONAL_USER_AS_ORG = "PERSONAL_USER_AS_ORG"
+
+    def __str__(self) -> str:
+        return str(self.value)

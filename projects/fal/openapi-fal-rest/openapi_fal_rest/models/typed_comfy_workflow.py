@@ -1,6 +1,7 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Type, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
-import attr
+from attrs import define as _attrs_define
+from attrs import field as _attrs_field
 
 if TYPE_CHECKING:
     from ..models.comfy_workflow_schema import ComfyWorkflowSchema
@@ -9,7 +10,7 @@ if TYPE_CHECKING:
 T = TypeVar("T", bound="TypedComfyWorkflow")
 
 
-@attr.s(auto_attribs=True)
+@_attrs_define
 class TypedComfyWorkflow:
     """
     Attributes:
@@ -23,16 +24,18 @@ class TypedComfyWorkflow:
     workflow: "ComfyWorkflowSchema"
     is_public: bool
     name: str
-    additional_properties: Dict[str, Any] = attr.ib(init=False, factory=dict)
+    additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         title = self.title
+
         workflow = self.workflow.to_dict()
 
         is_public = self.is_public
+
         name = self.name
 
-        field_dict: Dict[str, Any] = {}
+        field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
             {
@@ -46,7 +49,7 @@ class TypedComfyWorkflow:
         return field_dict
 
     @classmethod
-    def from_dict(cls: Type[T], src_dict: Dict[str, Any]) -> T:
+    def from_dict(cls: type[T], src_dict: dict[str, Any]) -> T:
         from ..models.comfy_workflow_schema import ComfyWorkflowSchema
 
         d = src_dict.copy()
@@ -69,7 +72,7 @@ class TypedComfyWorkflow:
         return typed_comfy_workflow
 
     @property
-    def additional_keys(self) -> List[str]:
+    def additional_keys(self) -> list[str]:
         return list(self.additional_properties.keys())
 
     def __getitem__(self, key: str) -> Any:

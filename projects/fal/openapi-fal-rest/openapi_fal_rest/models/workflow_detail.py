@@ -1,8 +1,11 @@
 import datetime
-from typing import TYPE_CHECKING, Any, Dict, List, Type, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar, Union
 
-import attr
+from attrs import define as _attrs_define
+from attrs import field as _attrs_field
 from dateutil.parser import isoparse
+
+from ..types import UNSET, Unset
 
 if TYPE_CHECKING:
     from ..models.workflow_detail_contents import WorkflowDetailContents
@@ -11,7 +14,7 @@ if TYPE_CHECKING:
 T = TypeVar("T", bound="WorkflowDetail")
 
 
-@attr.s(auto_attribs=True)
+@_attrs_define
 class WorkflowDetail:
     """
     Attributes:
@@ -22,6 +25,7 @@ class WorkflowDetail:
         user_id (str):
         user_nickname (str):
         created_at (datetime.datetime):
+        group_id (Union[Unset, str]):
     """
 
     name: str
@@ -31,19 +35,27 @@ class WorkflowDetail:
     user_id: str
     user_nickname: str
     created_at: datetime.datetime
-    additional_properties: Dict[str, Any] = attr.ib(init=False, factory=dict)
+    group_id: Union[Unset, str] = UNSET
+    additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         name = self.name
+
         title = self.title
+
         contents = self.contents.to_dict()
 
         is_public = self.is_public
+
         user_id = self.user_id
+
         user_nickname = self.user_nickname
+
         created_at = self.created_at.isoformat()
 
-        field_dict: Dict[str, Any] = {}
+        group_id = self.group_id
+
+        field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
             {
@@ -56,11 +68,13 @@ class WorkflowDetail:
                 "created_at": created_at,
             }
         )
+        if group_id is not UNSET:
+            field_dict["group_id"] = group_id
 
         return field_dict
 
     @classmethod
-    def from_dict(cls: Type[T], src_dict: Dict[str, Any]) -> T:
+    def from_dict(cls: type[T], src_dict: dict[str, Any]) -> T:
         from ..models.workflow_detail_contents import WorkflowDetailContents
 
         d = src_dict.copy()
@@ -78,6 +92,8 @@ class WorkflowDetail:
 
         created_at = isoparse(d.pop("created_at"))
 
+        group_id = d.pop("group_id", UNSET)
+
         workflow_detail = cls(
             name=name,
             title=title,
@@ -86,13 +102,14 @@ class WorkflowDetail:
             user_id=user_id,
             user_nickname=user_nickname,
             created_at=created_at,
+            group_id=group_id,
         )
 
         workflow_detail.additional_properties = d
         return workflow_detail
 
     @property
-    def additional_keys(self) -> List[str]:
+    def additional_keys(self) -> list[str]:
         return list(self.additional_properties.keys())
 
     def __getitem__(self, key: str) -> Any:

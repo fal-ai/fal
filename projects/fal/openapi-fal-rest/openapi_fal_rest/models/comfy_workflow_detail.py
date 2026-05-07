@@ -1,8 +1,11 @@
 import datetime
-from typing import TYPE_CHECKING, Any, Dict, List, Type, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar, Union, cast
 
-import attr
+from attrs import define as _attrs_define
+from attrs import field as _attrs_field
 from dateutil.parser import isoparse
+
+from ..types import UNSET, Unset
 
 if TYPE_CHECKING:
     from ..models.comfy_workflow_schema import ComfyWorkflowSchema
@@ -11,7 +14,7 @@ if TYPE_CHECKING:
 T = TypeVar("T", bound="ComfyWorkflowDetail")
 
 
-@attr.s(auto_attribs=True)
+@_attrs_define
 class ComfyWorkflowDetail:
     """
     Attributes:
@@ -22,6 +25,9 @@ class ComfyWorkflowDetail:
         title (str):
         name (str):
         user_nickname (str):
+        tags (list[str]):
+        thumbnail_url (Union[Unset, str]):
+        description (Union[Unset, str]):
     """
 
     created_at: datetime.datetime
@@ -31,20 +37,33 @@ class ComfyWorkflowDetail:
     title: str
     name: str
     user_nickname: str
-    additional_properties: Dict[str, Any] = attr.ib(init=False, factory=dict)
+    tags: list[str]
+    thumbnail_url: Union[Unset, str] = UNSET
+    description: Union[Unset, str] = UNSET
+    additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         created_at = self.created_at.isoformat()
 
         user_id = self.user_id
+
         workflow = self.workflow.to_dict()
 
         is_public = self.is_public
+
         title = self.title
+
         name = self.name
+
         user_nickname = self.user_nickname
 
-        field_dict: Dict[str, Any] = {}
+        tags = self.tags
+
+        thumbnail_url = self.thumbnail_url
+
+        description = self.description
+
+        field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
             {
@@ -55,13 +74,18 @@ class ComfyWorkflowDetail:
                 "title": title,
                 "name": name,
                 "user_nickname": user_nickname,
+                "tags": tags,
             }
         )
+        if thumbnail_url is not UNSET:
+            field_dict["thumbnail_url"] = thumbnail_url
+        if description is not UNSET:
+            field_dict["description"] = description
 
         return field_dict
 
     @classmethod
-    def from_dict(cls: Type[T], src_dict: Dict[str, Any]) -> T:
+    def from_dict(cls: type[T], src_dict: dict[str, Any]) -> T:
         from ..models.comfy_workflow_schema import ComfyWorkflowSchema
 
         d = src_dict.copy()
@@ -79,6 +103,12 @@ class ComfyWorkflowDetail:
 
         user_nickname = d.pop("user_nickname")
 
+        tags = cast(list[str], d.pop("tags"))
+
+        thumbnail_url = d.pop("thumbnail_url", UNSET)
+
+        description = d.pop("description", UNSET)
+
         comfy_workflow_detail = cls(
             created_at=created_at,
             user_id=user_id,
@@ -87,13 +117,16 @@ class ComfyWorkflowDetail:
             title=title,
             name=name,
             user_nickname=user_nickname,
+            tags=tags,
+            thumbnail_url=thumbnail_url,
+            description=description,
         )
 
         comfy_workflow_detail.additional_properties = d
         return comfy_workflow_detail
 
     @property
-    def additional_keys(self) -> List[str]:
+    def additional_keys(self) -> list[str]:
         return list(self.additional_properties.keys())
 
     def __getitem__(self, key: str) -> Any:

@@ -1,27 +1,25 @@
-from io import BytesIO
-from typing import Any, Dict, List, Type, TypeVar
+from typing import Any, TypeVar
 
-import attr
-
-from ..types import File
+from attrs import define as _attrs_define
+from attrs import field as _attrs_field
 
 T = TypeVar("T", bound="BodyUploadLocalFile")
 
 
-@attr.s(auto_attribs=True)
+@_attrs_define
 class BodyUploadLocalFile:
     """
     Attributes:
-        file_upload (File):
+        file_upload (str):
     """
 
-    file_upload: File
-    additional_properties: Dict[str, Any] = attr.ib(init=False, factory=dict)
+    file_upload: str
+    additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
-        file_upload = self.file_upload.to_tuple()
+    def to_dict(self) -> dict[str, Any]:
+        file_upload = self.file_upload
 
-        field_dict: Dict[str, Any] = {}
+        field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
             {
@@ -31,13 +29,13 @@ class BodyUploadLocalFile:
 
         return field_dict
 
-    def to_multipart(self) -> Dict[str, Any]:
-        file_upload = self.file_upload.to_tuple()
+    def to_multipart(self) -> dict[str, Any]:
+        file_upload = (None, str(self.file_upload).encode(), "text/plain")
 
-        field_dict: Dict[str, Any] = {}
-        field_dict.update(
-            {key: (None, str(value).encode(), "text/plain") for key, value in self.additional_properties.items()}
-        )
+        field_dict: dict[str, Any] = {}
+        for prop_name, prop in self.additional_properties.items():
+            field_dict[prop_name] = (None, str(prop).encode(), "text/plain")
+
         field_dict.update(
             {
                 "file_upload": file_upload,
@@ -47,9 +45,9 @@ class BodyUploadLocalFile:
         return field_dict
 
     @classmethod
-    def from_dict(cls: Type[T], src_dict: Dict[str, Any]) -> T:
+    def from_dict(cls: type[T], src_dict: dict[str, Any]) -> T:
         d = src_dict.copy()
-        file_upload = File(payload=BytesIO(d.pop("file_upload")))
+        file_upload = d.pop("file_upload")
 
         body_upload_local_file = cls(
             file_upload=file_upload,
@@ -59,7 +57,7 @@ class BodyUploadLocalFile:
         return body_upload_local_file
 
     @property
-    def additional_keys(self) -> List[str]:
+    def additional_keys(self) -> list[str]:
         return list(self.additional_properties.keys())
 
     def __getitem__(self, key: str) -> Any:

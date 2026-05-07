@@ -1,0 +1,198 @@
+from http import HTTPStatus
+from typing import Any, Optional, Union
+
+import httpx
+
+from ... import errors
+from ...client import AuthenticatedClient, Client
+from ...models.body_admin_update_team_auth_provider import BodyAdminUpdateTeamAuthProvider
+from ...models.http_validation_error import HTTPValidationError
+from ...models.team_action_result import TeamActionResult
+from ...types import Response
+
+
+def _get_kwargs(
+    org_user_str: str,
+    *,
+    body: BodyAdminUpdateTeamAuthProvider,
+) -> dict[str, Any]:
+    headers: dict[str, Any] = {}
+
+    _kwargs: dict[str, Any] = {
+        "method": "post",
+        "url": f"/admin/organizations/{org_user_str}/actions/update-team-auth-provider",
+    }
+
+    _body = body.to_dict()
+
+    _kwargs["json"] = _body
+    headers["Content-Type"] = "application/json"
+
+    _kwargs["headers"] = headers
+    return _kwargs
+
+
+def _parse_response(
+    *, client: Union[AuthenticatedClient, Client], response: httpx.Response
+) -> Optional[Union[HTTPValidationError, TeamActionResult]]:
+    if response.status_code == 200:
+        response_200 = TeamActionResult.from_dict(response.json())
+
+        return response_200
+    if response.status_code == 422:
+        response_422 = HTTPValidationError.from_dict(response.json())
+
+        return response_422
+    if client.raise_on_unexpected_status:
+        raise errors.UnexpectedStatus(response.status_code, response.content)
+    else:
+        return None
+
+
+def _build_response(
+    *, client: Union[AuthenticatedClient, Client], response: httpx.Response
+) -> Response[Union[HTTPValidationError, TeamActionResult]]:
+    return Response(
+        status_code=HTTPStatus(response.status_code),
+        content=response.content,
+        headers=response.headers,
+        parsed=_parse_response(client=client, response=response),
+    )
+
+
+def sync_detailed(
+    org_user_str: str,
+    *,
+    client: Union[AuthenticatedClient, Client],
+    body: BodyAdminUpdateTeamAuthProvider,
+) -> Response[Union[HTTPValidationError, TeamActionResult]]:
+    """Update Team Auth Provider
+
+     Update a team's auto_control_auth_provider (SSO connection ID).
+
+    Provide a value to set, or null to clear.
+    Supports lookup by user_id or nickname.
+
+    Args:
+        org_user_str (str):
+        body (BodyAdminUpdateTeamAuthProvider):
+
+    Raises:
+        errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
+        httpx.TimeoutException: If the request takes longer than Client.timeout.
+
+    Returns:
+        Response[Union[HTTPValidationError, TeamActionResult]]
+    """
+
+    kwargs = _get_kwargs(
+        org_user_str=org_user_str,
+        body=body,
+    )
+
+    response = client.get_httpx_client().request(
+        **kwargs,
+    )
+
+    return _build_response(client=client, response=response)
+
+
+def sync(
+    org_user_str: str,
+    *,
+    client: Union[AuthenticatedClient, Client],
+    body: BodyAdminUpdateTeamAuthProvider,
+) -> Optional[Union[HTTPValidationError, TeamActionResult]]:
+    """Update Team Auth Provider
+
+     Update a team's auto_control_auth_provider (SSO connection ID).
+
+    Provide a value to set, or null to clear.
+    Supports lookup by user_id or nickname.
+
+    Args:
+        org_user_str (str):
+        body (BodyAdminUpdateTeamAuthProvider):
+
+    Raises:
+        errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
+        httpx.TimeoutException: If the request takes longer than Client.timeout.
+
+    Returns:
+        Union[HTTPValidationError, TeamActionResult]
+    """
+
+    return sync_detailed(
+        org_user_str=org_user_str,
+        client=client,
+        body=body,
+    ).parsed
+
+
+async def asyncio_detailed(
+    org_user_str: str,
+    *,
+    client: Union[AuthenticatedClient, Client],
+    body: BodyAdminUpdateTeamAuthProvider,
+) -> Response[Union[HTTPValidationError, TeamActionResult]]:
+    """Update Team Auth Provider
+
+     Update a team's auto_control_auth_provider (SSO connection ID).
+
+    Provide a value to set, or null to clear.
+    Supports lookup by user_id or nickname.
+
+    Args:
+        org_user_str (str):
+        body (BodyAdminUpdateTeamAuthProvider):
+
+    Raises:
+        errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
+        httpx.TimeoutException: If the request takes longer than Client.timeout.
+
+    Returns:
+        Response[Union[HTTPValidationError, TeamActionResult]]
+    """
+
+    kwargs = _get_kwargs(
+        org_user_str=org_user_str,
+        body=body,
+    )
+
+    response = await client.get_async_httpx_client().request(**kwargs)
+
+    return _build_response(client=client, response=response)
+
+
+async def asyncio(
+    org_user_str: str,
+    *,
+    client: Union[AuthenticatedClient, Client],
+    body: BodyAdminUpdateTeamAuthProvider,
+) -> Optional[Union[HTTPValidationError, TeamActionResult]]:
+    """Update Team Auth Provider
+
+     Update a team's auto_control_auth_provider (SSO connection ID).
+
+    Provide a value to set, or null to clear.
+    Supports lookup by user_id or nickname.
+
+    Args:
+        org_user_str (str):
+        body (BodyAdminUpdateTeamAuthProvider):
+
+    Raises:
+        errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
+        httpx.TimeoutException: If the request takes longer than Client.timeout.
+
+    Returns:
+        Union[HTTPValidationError, TeamActionResult]
+    """
+
+    return (
+        await asyncio_detailed(
+            org_user_str=org_user_str,
+            client=client,
+            body=body,
+        )
+    ).parsed

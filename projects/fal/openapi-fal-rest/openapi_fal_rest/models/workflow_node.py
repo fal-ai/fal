@@ -1,37 +1,39 @@
-from typing import Any, Dict, List, Type, TypeVar, cast
+from typing import Any, TypeVar, cast
 
-import attr
+from attrs import define as _attrs_define
+from attrs import field as _attrs_field
 
 from ..models.workflow_node_type import WorkflowNodeType
 
 T = TypeVar("T", bound="WorkflowNode")
 
 
-@attr.s(auto_attribs=True)
+@_attrs_define
 class WorkflowNode:
     """
     Attributes:
-        type (WorkflowNodeType):
+        type_ (WorkflowNodeType):
         id (str):
-        depends (List[str]):
+        depends (list[str]):
     """
 
-    type: WorkflowNodeType
+    type_: WorkflowNodeType
     id: str
-    depends: List[str]
-    additional_properties: Dict[str, Any] = attr.ib(init=False, factory=dict)
+    depends: list[str]
+    additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
-        type = self.type.value
+    def to_dict(self) -> dict[str, Any]:
+        type_ = self.type_.value
 
         id = self.id
+
         depends = self.depends
 
-        field_dict: Dict[str, Any] = {}
+        field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
             {
-                "type": type,
+                "type": type_,
                 "id": id,
                 "depends": depends,
             }
@@ -40,16 +42,16 @@ class WorkflowNode:
         return field_dict
 
     @classmethod
-    def from_dict(cls: Type[T], src_dict: Dict[str, Any]) -> T:
+    def from_dict(cls: type[T], src_dict: dict[str, Any]) -> T:
         d = src_dict.copy()
-        type = WorkflowNodeType(d.pop("type"))
+        type_ = WorkflowNodeType(d.pop("type"))
 
         id = d.pop("id")
 
-        depends = cast(List[str], d.pop("depends"))
+        depends = cast(list[str], d.pop("depends"))
 
         workflow_node = cls(
-            type=type,
+            type_=type_,
             id=id,
             depends=depends,
         )
@@ -58,7 +60,7 @@ class WorkflowNode:
         return workflow_node
 
     @property
-    def additional_keys(self) -> List[str]:
+    def additional_keys(self) -> list[str]:
         return list(self.additional_properties.keys())
 
     def __getitem__(self, key: str) -> Any:

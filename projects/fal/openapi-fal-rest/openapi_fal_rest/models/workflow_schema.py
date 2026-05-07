@@ -1,6 +1,7 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Type, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
-import attr
+from attrs import define as _attrs_define
+from attrs import field as _attrs_field
 
 if TYPE_CHECKING:
     from ..models.workflow_schema_input import WorkflowSchemaInput
@@ -10,7 +11,7 @@ if TYPE_CHECKING:
 T = TypeVar("T", bound="WorkflowSchema")
 
 
-@attr.s(auto_attribs=True)
+@_attrs_define
 class WorkflowSchema:
     """
     Attributes:
@@ -20,14 +21,14 @@ class WorkflowSchema:
 
     input_: "WorkflowSchemaInput"
     output: "WorkflowSchemaOutput"
-    additional_properties: Dict[str, Any] = attr.ib(init=False, factory=dict)
+    additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         input_ = self.input_.to_dict()
 
         output = self.output.to_dict()
 
-        field_dict: Dict[str, Any] = {}
+        field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
             {
@@ -39,7 +40,7 @@ class WorkflowSchema:
         return field_dict
 
     @classmethod
-    def from_dict(cls: Type[T], src_dict: Dict[str, Any]) -> T:
+    def from_dict(cls: type[T], src_dict: dict[str, Any]) -> T:
         from ..models.workflow_schema_input import WorkflowSchemaInput
         from ..models.workflow_schema_output import WorkflowSchemaOutput
 
@@ -57,7 +58,7 @@ class WorkflowSchema:
         return workflow_schema
 
     @property
-    def additional_keys(self) -> List[str]:
+    def additional_keys(self) -> list[str]:
         return list(self.additional_properties.keys())
 
     def __getitem__(self, key: str) -> Any:

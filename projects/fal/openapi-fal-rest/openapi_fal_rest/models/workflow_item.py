@@ -1,7 +1,8 @@
 import datetime
-from typing import Any, Dict, List, Type, TypeVar, Union
+from typing import Any, TypeVar, Union, cast
 
-import attr
+from attrs import define as _attrs_define
+from attrs import field as _attrs_field
 from dateutil.parser import isoparse
 
 from ..types import UNSET, Unset
@@ -9,7 +10,7 @@ from ..types import UNSET, Unset
 T = TypeVar("T", bound="WorkflowItem")
 
 
-@attr.s(auto_attribs=True)
+@_attrs_define
 class WorkflowItem:
     """
     Attributes:
@@ -18,7 +19,11 @@ class WorkflowItem:
         user_id (str):
         user_nickname (str):
         created_at (datetime.datetime):
+        tags (list[str]):
+        endpoints (list[str]):
         thumbnail_url (Union[Unset, str]):
+        description (Union[Unset, str]):
+        group_id (Union[Unset, str]):
     """
 
     name: str
@@ -26,19 +31,35 @@ class WorkflowItem:
     user_id: str
     user_nickname: str
     created_at: datetime.datetime
+    tags: list[str]
+    endpoints: list[str]
     thumbnail_url: Union[Unset, str] = UNSET
-    additional_properties: Dict[str, Any] = attr.ib(init=False, factory=dict)
+    description: Union[Unset, str] = UNSET
+    group_id: Union[Unset, str] = UNSET
+    additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         name = self.name
+
         title = self.title
+
         user_id = self.user_id
+
         user_nickname = self.user_nickname
+
         created_at = self.created_at.isoformat()
+
+        tags = self.tags
+
+        endpoints = self.endpoints
 
         thumbnail_url = self.thumbnail_url
 
-        field_dict: Dict[str, Any] = {}
+        description = self.description
+
+        group_id = self.group_id
+
+        field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
             {
@@ -47,15 +68,21 @@ class WorkflowItem:
                 "user_id": user_id,
                 "user_nickname": user_nickname,
                 "created_at": created_at,
+                "tags": tags,
+                "endpoints": endpoints,
             }
         )
         if thumbnail_url is not UNSET:
             field_dict["thumbnail_url"] = thumbnail_url
+        if description is not UNSET:
+            field_dict["description"] = description
+        if group_id is not UNSET:
+            field_dict["group_id"] = group_id
 
         return field_dict
 
     @classmethod
-    def from_dict(cls: Type[T], src_dict: Dict[str, Any]) -> T:
+    def from_dict(cls: type[T], src_dict: dict[str, Any]) -> T:
         d = src_dict.copy()
         name = d.pop("name")
 
@@ -67,7 +94,15 @@ class WorkflowItem:
 
         created_at = isoparse(d.pop("created_at"))
 
+        tags = cast(list[str], d.pop("tags"))
+
+        endpoints = cast(list[str], d.pop("endpoints"))
+
         thumbnail_url = d.pop("thumbnail_url", UNSET)
+
+        description = d.pop("description", UNSET)
+
+        group_id = d.pop("group_id", UNSET)
 
         workflow_item = cls(
             name=name,
@@ -75,14 +110,18 @@ class WorkflowItem:
             user_id=user_id,
             user_nickname=user_nickname,
             created_at=created_at,
+            tags=tags,
+            endpoints=endpoints,
             thumbnail_url=thumbnail_url,
+            description=description,
+            group_id=group_id,
         )
 
         workflow_item.additional_properties = d
         return workflow_item
 
     @property
-    def additional_keys(self) -> List[str]:
+    def additional_keys(self) -> list[str]:
         return list(self.additional_properties.keys())
 
     def __getitem__(self, key: str) -> Any:

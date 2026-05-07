@@ -1,10 +1,10 @@
 from http import HTTPStatus
-from typing import Any, Dict, Optional, Union
+from typing import Any, Optional, Union
 
 import httpx
 
 from ... import errors
-from ...client import Client
+from ...client import AuthenticatedClient, Client
 from ...models.http_validation_error import HTTPValidationError
 from ...models.page_workflow_item import PageWorkflowItem
 from ...types import UNSET, Response, Unset
@@ -12,41 +12,34 @@ from ...types import UNSET, Response, Unset
 
 def _get_kwargs(
     *,
-    client: Client,
-    page: Union[Unset, None, int] = 1,
-    size: Union[Unset, None, int] = 50,
-) -> Dict[str, Any]:
-    url = "{}/workflows/".format(client.base_url)
+    page: Union[Unset, int] = 1,
+    size: Union[Unset, int] = 50,
+) -> dict[str, Any]:
+    params: dict[str, Any] = {}
 
-    headers: Dict[str, str] = client.get_headers()
-    cookies: Dict[str, Any] = client.get_cookies()
-
-    params: Dict[str, Any] = {}
     params["page"] = page
 
     params["size"] = size
 
     params = {k: v for k, v in params.items() if v is not UNSET and v is not None}
 
-    return {
+    _kwargs: dict[str, Any] = {
         "method": "get",
-        "url": url,
-        "headers": headers,
-        "cookies": cookies,
-        "timeout": client.get_timeout(),
-        "follow_redirects": client.follow_redirects,
+        "url": "/workflows/",
         "params": params,
     }
 
+    return _kwargs
+
 
 def _parse_response(
-    *, client: Client, response: httpx.Response
+    *, client: Union[AuthenticatedClient, Client], response: httpx.Response
 ) -> Optional[Union[HTTPValidationError, PageWorkflowItem]]:
-    if response.status_code == HTTPStatus.OK:
+    if response.status_code == 200:
         response_200 = PageWorkflowItem.from_dict(response.json())
 
         return response_200
-    if response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY:
+    if response.status_code == 422:
         response_422 = HTTPValidationError.from_dict(response.json())
 
         return response_422
@@ -57,7 +50,7 @@ def _parse_response(
 
 
 def _build_response(
-    *, client: Client, response: httpx.Response
+    *, client: Union[AuthenticatedClient, Client], response: httpx.Response
 ) -> Response[Union[HTTPValidationError, PageWorkflowItem]]:
     return Response(
         status_code=HTTPStatus(response.status_code),
@@ -69,15 +62,15 @@ def _build_response(
 
 def sync_detailed(
     *,
-    client: Client,
-    page: Union[Unset, None, int] = 1,
-    size: Union[Unset, None, int] = 50,
+    client: Union[AuthenticatedClient, Client],
+    page: Union[Unset, int] = 1,
+    size: Union[Unset, int] = 50,
 ) -> Response[Union[HTTPValidationError, PageWorkflowItem]]:
     """Get User Workflows
 
     Args:
-        page (Union[Unset, None, int]):  Default: 1.
-        size (Union[Unset, None, int]):  Default: 50.
+        page (Union[Unset, int]): Page number Default: 1.
+        size (Union[Unset, int]): Page size Default: 50.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -88,13 +81,11 @@ def sync_detailed(
     """
 
     kwargs = _get_kwargs(
-        client=client,
         page=page,
         size=size,
     )
 
-    response = httpx.request(
-        verify=client.verify_ssl,
+    response = client.get_httpx_client().request(
         **kwargs,
     )
 
@@ -103,15 +94,15 @@ def sync_detailed(
 
 def sync(
     *,
-    client: Client,
-    page: Union[Unset, None, int] = 1,
-    size: Union[Unset, None, int] = 50,
+    client: Union[AuthenticatedClient, Client],
+    page: Union[Unset, int] = 1,
+    size: Union[Unset, int] = 50,
 ) -> Optional[Union[HTTPValidationError, PageWorkflowItem]]:
     """Get User Workflows
 
     Args:
-        page (Union[Unset, None, int]):  Default: 1.
-        size (Union[Unset, None, int]):  Default: 50.
+        page (Union[Unset, int]): Page number Default: 1.
+        size (Union[Unset, int]): Page size Default: 50.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -130,15 +121,15 @@ def sync(
 
 async def asyncio_detailed(
     *,
-    client: Client,
-    page: Union[Unset, None, int] = 1,
-    size: Union[Unset, None, int] = 50,
+    client: Union[AuthenticatedClient, Client],
+    page: Union[Unset, int] = 1,
+    size: Union[Unset, int] = 50,
 ) -> Response[Union[HTTPValidationError, PageWorkflowItem]]:
     """Get User Workflows
 
     Args:
-        page (Union[Unset, None, int]):  Default: 1.
-        size (Union[Unset, None, int]):  Default: 50.
+        page (Union[Unset, int]): Page number Default: 1.
+        size (Union[Unset, int]): Page size Default: 50.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -149,28 +140,26 @@ async def asyncio_detailed(
     """
 
     kwargs = _get_kwargs(
-        client=client,
         page=page,
         size=size,
     )
 
-    async with httpx.AsyncClient(verify=client.verify_ssl) as _client:
-        response = await _client.request(**kwargs)
+    response = await client.get_async_httpx_client().request(**kwargs)
 
     return _build_response(client=client, response=response)
 
 
 async def asyncio(
     *,
-    client: Client,
-    page: Union[Unset, None, int] = 1,
-    size: Union[Unset, None, int] = 50,
+    client: Union[AuthenticatedClient, Client],
+    page: Union[Unset, int] = 1,
+    size: Union[Unset, int] = 50,
 ) -> Optional[Union[HTTPValidationError, PageWorkflowItem]]:
     """Get User Workflows
 
     Args:
-        page (Union[Unset, None, int]):  Default: 1.
-        size (Union[Unset, None, int]):  Default: 50.
+        page (Union[Unset, int]): Page number Default: 1.
+        size (Union[Unset, int]): Page size Default: 50.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.

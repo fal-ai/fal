@@ -1,6 +1,7 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Type, TypeVar, Union
+from typing import TYPE_CHECKING, Any, TypeVar, Union
 
-import attr
+from attrs import define as _attrs_define
+from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
@@ -11,7 +12,7 @@ if TYPE_CHECKING:
 T = TypeVar("T", bound="TypedComfyWorkflowUpdate")
 
 
-@attr.s(auto_attribs=True)
+@_attrs_define
 class TypedComfyWorkflowUpdate:
     """
     Attributes:
@@ -25,18 +26,20 @@ class TypedComfyWorkflowUpdate:
     workflow: Union[Unset, "ComfyWorkflowSchema"] = UNSET
     is_public: Union[Unset, bool] = UNSET
     name: Union[Unset, str] = UNSET
-    additional_properties: Dict[str, Any] = attr.ib(init=False, factory=dict)
+    additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         title = self.title
-        workflow: Union[Unset, Dict[str, Any]] = UNSET
+
+        workflow: Union[Unset, dict[str, Any]] = UNSET
         if not isinstance(self.workflow, Unset):
             workflow = self.workflow.to_dict()
 
         is_public = self.is_public
+
         name = self.name
 
-        field_dict: Dict[str, Any] = {}
+        field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update({})
         if title is not UNSET:
@@ -51,7 +54,7 @@ class TypedComfyWorkflowUpdate:
         return field_dict
 
     @classmethod
-    def from_dict(cls: Type[T], src_dict: Dict[str, Any]) -> T:
+    def from_dict(cls: type[T], src_dict: dict[str, Any]) -> T:
         from ..models.comfy_workflow_schema import ComfyWorkflowSchema
 
         d = src_dict.copy()
@@ -79,7 +82,7 @@ class TypedComfyWorkflowUpdate:
         return typed_comfy_workflow_update
 
     @property
-    def additional_keys(self) -> List[str]:
+    def additional_keys(self) -> list[str]:
         return list(self.additional_properties.keys())
 
     def __getitem__(self, key: str) -> Any:

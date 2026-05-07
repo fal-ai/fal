@@ -1,13 +1,14 @@
 import datetime
-from typing import Any, Dict, List, Type, TypeVar
+from typing import Any, TypeVar
 
-import attr
+from attrs import define as _attrs_define
+from attrs import field as _attrs_field
 from dateutil.parser import isoparse
 
 T = TypeVar("T", bound="ComfyWorkflowItem")
 
 
-@attr.s(auto_attribs=True)
+@_attrs_define
 class ComfyWorkflowItem:
     """
     Attributes:
@@ -23,17 +24,20 @@ class ComfyWorkflowItem:
     user_id: str
     created_at: datetime.datetime
     user_nickname: str
-    additional_properties: Dict[str, Any] = attr.ib(init=False, factory=dict)
+    additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         name = self.name
+
         title = self.title
+
         user_id = self.user_id
+
         created_at = self.created_at.isoformat()
 
         user_nickname = self.user_nickname
 
-        field_dict: Dict[str, Any] = {}
+        field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
             {
@@ -48,7 +52,7 @@ class ComfyWorkflowItem:
         return field_dict
 
     @classmethod
-    def from_dict(cls: Type[T], src_dict: Dict[str, Any]) -> T:
+    def from_dict(cls: type[T], src_dict: dict[str, Any]) -> T:
         d = src_dict.copy()
         name = d.pop("name")
 
@@ -72,7 +76,7 @@ class ComfyWorkflowItem:
         return comfy_workflow_item
 
     @property
-    def additional_keys(self) -> List[str]:
+    def additional_keys(self) -> list[str]:
         return list(self.additional_properties.keys())
 
     def __getitem__(self, key: str) -> Any:
