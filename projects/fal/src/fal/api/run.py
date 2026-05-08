@@ -53,8 +53,14 @@ def run(
             application_name=isolated_function.app_name,
             application_auth_mode=isolated_function.app_auth,
             result_handler=result_handler,
+            entrypoint=isolated_function.run_entrypoint,
         )
     except FalMissingDependencyError as e:
+        if func is None:
+            # Entrypoint mode never serializes a callable on the client side,
+            # so there is nothing to inspect for missing-deps hints — just
+            # propagate the original error.
+            raise
         pairs = list(find_missing_dependencies(func, options.environment))
         if not pairs:
             raise e

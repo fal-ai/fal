@@ -38,7 +38,10 @@ def _run(args):
             name=app_data.name,
         )
         team = team or app_data.team
-        file_path, func_name = RefAction.split_ref(app_data.ref)
+        if app_data.ref is not None:
+            file_path, func_name = RefAction.split_ref(app_data.ref)
+        else:
+            file_path, func_name = None, None
     else:
         file_path, func_name = func_ref
         # Turn relative path into absolute path for files
@@ -48,7 +51,10 @@ def _run(args):
 
     no_cache = args.no_cache or args.force_env_build
     client = SyncServerlessClient(host=args.host, team=team)
-    host = client._create_host(local_file_path=file_path, environment_name=args.env)
+    host = client._create_host(
+        local_file_path=file_path or "",
+        environment_name=args.env,
+    )
 
     loaded = load_function_from(
         host,
@@ -59,11 +65,17 @@ def _run(args):
         app_name=app_data.name,
         app_auth=app_data.auth,
         limit_max_requests=args.limit_max_requests,
+        python_entry_point=app_data.python_entry_point,
     )
 
     isolated_function = loaded.function
     if args.machine_type is not None:
         isolated_function.options.host["machine_type"] = args.machine_type
+
+    if not args.local:
+        # Endpoints/openapi for the result handler aren't available locally
+        # in entrypoint mode; this fetches them from the worker.
+        isolated_function.fetch_metadata()
 
     from fal.api.run import run as run_api
 
@@ -75,7 +87,7 @@ def _run(args):
         result_handler=CliRunResultHandler(
             console=args.console,
             auth_mode=loaded.app_auth or "public",
-            endpoints=loaded.endpoints,
+            endpoints=isolated_function.endpoints,
         ),
         reraise=False,
     )

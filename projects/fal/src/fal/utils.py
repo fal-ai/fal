@@ -15,7 +15,6 @@ if TYPE_CHECKING:
 @dataclass
 class LoadedFunction:
     function: IsolatedFunction
-    endpoints: list[str]
     app_name: str | None
     app_auth: AuthModeLiteral | None
     source_code: str | None
@@ -116,7 +115,7 @@ def _apply_toml_app_file_options(
 
 def load_function_from(
     host: FalServerlessHost,
-    file_path: str,
+    file_path: str | None,
     function_name: str | None = None,
     *,
     force_env_build: bool = False,
@@ -124,6 +123,7 @@ def load_function_from(
     app_name: str | None = None,
     app_auth: AuthModeLiteral | None = None,
     limit_max_requests: int | None = None,
+    python_entry_point: str | None = None,
 ) -> LoadedFunction:
     import os
     import runpy
@@ -133,6 +133,18 @@ def load_function_from(
     from fal import App, wrap_app
 
     from .api import FalServerlessError, IsolatedFunction
+
+    if python_entry_point is not None:
+        return _load_from_python_entry_point(
+            host,
+            python_entry_point,
+            options=options,
+            app_name=app_name,
+            app_auth=app_auth,
+        )
+
+    if file_path is None:
+        raise FalServerlessError("App ref must resolve to a file path.")
 
     sys.path.append(os.getcwd())
     module = runpy.run_path(file_path)
@@ -149,10 +161,8 @@ def load_function_from(
     with open(file_path) as f:
         source_code = f.read()
 
-    endpoints = ["/"]
     if isinstance(target, type) and issubclass(target, App):
         _apply_toml_app_file_options(target, options)
-        endpoints = target.get_endpoints() or ["/"]
         target = wrap_app(
             target,
             host=host,
@@ -175,11 +185,63 @@ def load_function_from(
     target.app_auth = app_auth
     return LoadedFunction(
         target,
-        endpoints,
         app_name=app_name,
         app_auth=app_auth,
         source_code=source_code,
         class_name=class_name,
+    )
+
+
+def _parse_python_entry_point(python_entry_point: str) -> tuple[str, str]:
+    from fal.api import FalServerlessError
+
+    if ":" not in python_entry_point:
+        raise FalServerlessError(
+            "python_entry_point must be in '<module>:<symbol>' format."
+        )
+    module_name, symbol_name = python_entry_point.split(":", 1)
+    if not module_name or not symbol_name:
+        raise FalServerlessError(
+            "python_entry_point must be in '<module>:<symbol>' format."
+        )
+    return module_name, symbol_name
+
+
+def _load_from_python_entry_point(
+    host: FalServerlessHost,
+    python_entry_point: str,
+    *,
+    options: Optional[Options] = None,
+    app_name: str | None = None,
+    app_auth: AuthModeLiteral | None = None,
+) -> LoadedFunction:
+    from copy import deepcopy
+
+    from fal.api import IsolatedFunction
+    from fal.api import Options as ApiOptions
+
+    # Validate the format up-front; the return value is unused but the call
+    # raises FalServerlessError on a malformed entrypoint string so we fail
+    # fast instead of leaking an obscure error at dispatch time.
+    _parse_python_entry_point(python_entry_point)
+
+    merged_options = deepcopy(options) if options is not None else ApiOptions()
+    merged_options.gateway.setdefault("exposed_port", 8080)
+
+    isolated_function: IsolatedFunction = IsolatedFunction(
+        host=host,
+        options=merged_options,
+        app_name=app_name,
+        app_auth=app_auth,
+        entrypoint=python_entry_point,
+    )
+
+    return LoadedFunction(
+        isolated_function,
+        app_name=app_name,
+        app_auth=app_auth,
+        source_code=None,
+        class_name=python_entry_point,
     )
 
 

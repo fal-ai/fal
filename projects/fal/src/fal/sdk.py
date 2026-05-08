@@ -793,7 +793,7 @@ class FalServerlessConnection:
 
     def register(
         self,
-        function: Callable[..., ResultT],
+        function: Callable[..., ResultT] | None,
         environments: list[isolate_proto.EnvironmentDefinition],
         application_name: str | None = None,
         auth_mode: Optional[AuthModeLiteral] = None,
@@ -812,8 +812,18 @@ class FalServerlessConnection:
         termination_grace_period_seconds: int | None = None,
         secrets: list[str] | None = None,
         data_mounts: list[str] | None = None,
+        entrypoint: str | None = None,
     ) -> Iterator[RegisterApplicationResult]:
-        wrapped_function = to_serialized_object(function, serialization_method)
+        if function is None and entrypoint is None:
+            raise ValueError("either function or entrypoint must be provided.")
+        if function is not None and entrypoint is not None:
+            raise ValueError("only one of function or entrypoint can be provided.")
+
+        wrapped_function = (
+            to_serialized_object(function, serialization_method)
+            if function is not None
+            else None
+        )
         if machine_requirements:
             wrapped_requirements = isolate_proto.MachineRequirements(
                 # NOTE: backwards compatibility with old API
@@ -883,7 +893,6 @@ class FalServerlessConnection:
         )
 
         request = isolate_proto.RegisterApplicationRequest(
-            function=wrapped_function,
             environments=environments,
             machine_requirements=wrapped_requirements,
             application_name=full_application_name,
@@ -904,6 +913,11 @@ class FalServerlessConnection:
             ),
             data_mounts=data_mounts or [],
         )
+        if entrypoint is not None:
+            request.entrypoint = entrypoint
+        else:
+            assert wrapped_function is not None  # validated at the top
+            request.function.MergeFrom(wrapped_function)
         if private_logs is not None:
             request.private_logs = private_logs
         for partial_result in self.stub.RegisterApplication(request):
@@ -995,7 +1009,7 @@ class FalServerlessConnection:
 
     def run(
         self,
-        function: Callable[..., ResultT],
+        function: Callable[..., ResultT] | None,
         environments: list[isolate_proto.EnvironmentDefinition],
         *,
         serialization_method: str = _DEFAULT_SERIALIZATION_METHOD,
@@ -1007,8 +1021,18 @@ class FalServerlessConnection:
         environment_name: str | None = None,
         secrets: list[str] | None = None,
         data_mounts: list[str] | None = None,
+        entrypoint: str | None = None,
     ) -> Iterator[HostedRunResult[ResultT]]:
-        wrapped_function = to_serialized_object(function, serialization_method)
+        if function is None and entrypoint is None:
+            raise ValueError("either function or entrypoint must be provided.")
+        if function is not None and entrypoint is not None:
+            raise ValueError("only one of function or entrypoint can be provided.")
+
+        wrapped_function = (
+            to_serialized_object(function, serialization_method)
+            if function is not None
+            else None
+        )
         if machine_requirements:
             wrapped_requirements = isolate_proto.MachineRequirements(
                 # NOTE: backwards compatibility with old API
@@ -1047,7 +1071,6 @@ class FalServerlessConnection:
             else None
         )
         request = isolate_proto.HostedRun(
-            function=wrapped_function,
             environments=environments,
             machine_requirements=wrapped_requirements,
             files=files,
@@ -1061,6 +1084,11 @@ class FalServerlessConnection:
             ),
             data_mounts=data_mounts or [],
         )
+        if entrypoint is not None:
+            request.entrypoint = entrypoint
+        else:
+            assert wrapped_function is not None  # validated at the top
+            request.function.MergeFrom(wrapped_function)
         if setup_function:
             request.setup_func.MergeFrom(
                 to_serialized_object(setup_function, serialization_method)

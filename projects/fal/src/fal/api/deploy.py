@@ -138,6 +138,8 @@ def _resolve_deployment_reference(
         assert resolved_app_name is not None
 
         app_data = get_app_data_from_toml(resolved_app_name)
+        if app_data.python_entry_point is not None:
+            return (None, None), app_data
         assert app_data.ref is not None
         file_path, func_name = RefAction.split_ref(app_data.ref)
         return (file_path, func_name), app_data
@@ -161,7 +163,7 @@ def _prepare_deployment_from_reference(
     from fal.utils import load_function_from
 
     file_path, func_name = app_ref
-    if file_path is None:
+    if app_data.python_entry_point is None and file_path is None:
         # Try to find a python file in the current directory
         options = list(Path(".").glob("*.py"))
         if len(options) == 0:
@@ -175,19 +177,20 @@ def _prepare_deployment_from_reference(
         [resolved_file_path] = options
         file_path = str(resolved_file_path)
 
-    local_file_path = str(file_path)
+    local_file_path = str(file_path) if file_path is not None else ""
     host = client._create_host(
         local_file_path=local_file_path,
         environment_name=environment_name,
     )
     loaded = load_function_from(
         host,
-        local_file_path,
+        local_file_path or None,
         func_name,
         force_env_build=force_env_build,
         options=app_data.options,
         app_name=app_data.name,
         app_auth=app_data.auth,
+        python_entry_point=app_data.python_entry_point,
     )
 
     return PreparedDeployment(
@@ -231,6 +234,8 @@ def _execute_loaded_deployment(
     isolated_function = loaded.function
     strategy = app_data.deployment_strategy or "rolling"
 
+    isolated_function.fetch_metadata()
+
     result = host.register(
         func=isolated_function.func,
         options=isolated_function.options,
@@ -242,6 +247,7 @@ def _execute_loaded_deployment(
         scale=app_data.reset_scale,
         environment_name=environment_name,
         result_handler=result_handler,
+        entrypoint=isolated_function.run_entrypoint,
     )
 
     if not result or not result.result:
@@ -262,7 +268,7 @@ def _execute_loaded_deployment(
         "sync": {},
         "async": {},
     }
-    for endpoint in loaded.endpoints:
+    for endpoint in isolated_function.endpoints:
         urls["playground"][endpoint] = f"{result.service_urls.playground}{endpoint}"
         urls["sync"][endpoint] = f"{result.service_urls.run}{endpoint}"
         urls["async"][endpoint] = f"{result.service_urls.queue}{endpoint}"
