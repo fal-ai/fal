@@ -774,6 +774,24 @@ value); a caller-supplied result_handler is composed on top of it.</p>
 <section id="module-fal.api.apps">
 <span id="fal-api-apps-module"></span><h2>fal.api.apps module<a class="headerlink" href="#module-fal.api.apps" title="Link to this heading">¶</a></h2>
 <dl class="py function">
+<dt class="sig sig-object py" id="fal.api.apps.app_gpus">
+<span class="sig-prename descclassname"><span class="pre">fal.api.apps.</span></span><span class="sig-name descname"><span class="pre">app_gpus</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">client</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">app_name</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.apps.app_gpus" title="Link to this definition">¶</a></dt>
+<dd><p>Get GPU usage for a single application.</p>
+<p>Accepts either a bare name (“flux”) or a namespaced one (“fal-ai/flux”).
+The metrics endpoint keys apps as “&lt;namespace&gt;/&lt;name&gt;”, but the rest of
+<cite>fal apps</cite> accepts bare names, so we match by basename for parity.</p>
+<p>Returns {“gpus”: {&lt;type&gt;: &lt;count&gt;, …}, “total”: &lt;int&gt;} where <cite>total</cite>
+equals the sum of values in <cite>gpus</cite>. GPU type names are normalized to
+short SKUs (e.g. “H100”); the metrics endpoint includes every machine
+type with non-GPU plans at count 0, which we filter out.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="fal.api.apps.apps_runners">
 <span class="sig-prename descclassname"><span class="pre">fal.api.apps.</span></span><span class="sig-name descname"><span class="pre">apps_runners</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">client</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">app_name</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">since</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">state</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">environment_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.apps.apps_runners" title="Link to this definition">¶</a></dt>
 <dd><dl class="field-list simple">
@@ -828,6 +846,23 @@ value); a caller-supplied result_handler is composed on top of it.</p>
 <p>client = SyncServerlessClient()
 apps = client.apps.list()
 client.apps.scale(“my-app”, max_concurrency=10)</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.client.AppsNamespace.gpus">
+<span class="sig-name descname"><span class="pre">gpus</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">app_name</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.client.AppsNamespace.gpus" title="Link to this definition">¶</a></dt>
+<dd><p>Get GPU usage for a single application.</p>
+<p>Corresponds to <cite>fal apps gpus &lt;app&gt;</cite>. Returns
+<code class="docutils literal notranslate"><span class="pre">{&quot;gpus&quot;:</span> <span class="pre">{&lt;type&gt;:</span> <span class="pre">&lt;count&gt;,</span> <span class="pre">...},</span> <span class="pre">&quot;total&quot;:</span> <span class="pre">&lt;int&gt;}</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></span></p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<p>usage = client.apps.gpus(“fal-ai/flux”)
+print(usage[“total”])  # e.g. 21
+print(usage[“gpus”])   # e.g. {“B200”: 21}</p>
+</dd></dl>
+
 <dl class="py method">
 <dt class="sig sig-object py" id="fal.api.client.AppsNamespace.list">
 <span class="sig-name descname"><span class="pre">list</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filter</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">environment_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.client.AppsNamespace.list" title="Link to this definition">¶</a></dt>
@@ -993,6 +1028,23 @@ key_id, key_secret = client.keys.create(scope=”admin”)</p>
 <p>client = SyncServerlessClient()
 runners = client.runners.list()
 client.runners.stop(“runner-id”)</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.client.RunnersNamespace.gpus">
+<span class="sig-name descname"><span class="pre">gpus</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.client.RunnersNamespace.gpus" title="Link to this definition">¶</a></dt>
+<dd><p>Get team-wide GPU usage summary.</p>
+<p>Corresponds to <cite>fal runners gpus</cite>. Returns
+<code class="docutils literal notranslate"><span class="pre">{&quot;gpus&quot;:</span> <span class="pre">{&lt;type&gt;:</span> <span class="pre">&lt;count&gt;,</span> <span class="pre">...},</span> <span class="pre">&quot;total&quot;:</span> <span class="pre">&lt;int&gt;}</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></span></p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<p>usage = client.runners.gpus()
+print(usage[“total”])  # e.g. 1120
+print(usage[“gpus”])   # e.g. {“H100”: 394, “B200”: 353, …}</p>
+</dd></dl>
+
 <dl class="py method">
 <dt class="sig sig-object py" id="fal.api.client.RunnersNamespace.kill">
 <span class="sig-name descname"><span class="pre">kill</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">runner_id</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.client.RunnersNamespace.kill" title="Link to this definition">¶</a></dt>
@@ -1422,6 +1474,21 @@ the environment definition.</p></li>
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="fal.api.runners.runners_gpus">
+<span class="sig-prename descclassname"><span class="pre">fal.api.runners.</span></span><span class="sig-name descname"><span class="pre">runners_gpus</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">client</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.runners.runners_gpus" title="Link to this definition">¶</a></dt>
+<dd><p>Get team-wide GPU usage summary.</p>
+<p>Returns {“gpus”: {&lt;type&gt;: &lt;count&gt;, …}, “total”: &lt;int&gt;} where <cite>total</cite>
+equals the sum of values in <cite>gpus</cite>. GPU type names are normalized to
+short SKUs (e.g. “H100”); the metrics endpoint includes every machine
+type with non-GPU plans at count 0, which we filter out.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="fal.api.runners.stop_runner">
 <span class="sig-prename descclassname"><span class="pre">fal.api.runners.</span></span><span class="sig-name descname"><span class="pre">stop_runner</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">client</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">runner_id</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">replace_first</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.runners.stop_runner" title="Link to this definition">¶</a></dt>
 <dd><dl class="field-list simple">
@@ -1479,6 +1546,23 @@ the environment definition.</p></li>
 <p>client = SyncServerlessClient()
 apps = client.apps.list()
 client.apps.scale(“my-app”, max_concurrency=10)</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.AppsNamespace.gpus">
+<span class="sig-name descname"><span class="pre">gpus</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">app_name</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.AppsNamespace.gpus" title="Link to this definition">¶</a></dt>
+<dd><p>Get GPU usage for a single application.</p>
+<p>Corresponds to <cite>fal apps gpus &lt;app&gt;</cite>. Returns
+<code class="docutils literal notranslate"><span class="pre">{&quot;gpus&quot;:</span> <span class="pre">{&lt;type&gt;:</span> <span class="pre">&lt;count&gt;,</span> <span class="pre">...},</span> <span class="pre">&quot;total&quot;:</span> <span class="pre">&lt;int&gt;}</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></span></p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<p>usage = client.apps.gpus(“fal-ai/flux”)
+print(usage[“total”])  # e.g. 21
+print(usage[“gpus”])   # e.g. {“B200”: 21}</p>
+</dd></dl>
+
 <dl class="py method">
 <dt class="sig sig-object py" id="fal.api.AppsNamespace.list">
 <span class="sig-name descname"><span class="pre">list</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filter</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">environment_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.AppsNamespace.list" title="Link to this definition">¶</a></dt>
@@ -1644,6 +1728,23 @@ key_id, key_secret = client.keys.create(scope=”admin”)</p>
 <p>client = SyncServerlessClient()
 runners = client.runners.list()
 client.runners.stop(“runner-id”)</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.api.RunnersNamespace.gpus">
+<span class="sig-name descname"><span class="pre">gpus</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.RunnersNamespace.gpus" title="Link to this definition">¶</a></dt>
+<dd><p>Get team-wide GPU usage summary.</p>
+<p>Corresponds to <cite>fal runners gpus</cite>. Returns
+<code class="docutils literal notranslate"><span class="pre">{&quot;gpus&quot;:</span> <span class="pre">{&lt;type&gt;:</span> <span class="pre">&lt;count&gt;,</span> <span class="pre">...},</span> <span class="pre">&quot;total&quot;:</span> <span class="pre">&lt;int&gt;}</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></span></p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<p>usage = client.runners.gpus()
+print(usage[“total”])  # e.g. 1120
+print(usage[“gpus”])   # e.g. {“H100”: 394, “B200”: 353, …}</p>
+</dd></dl>
+
 <dl class="py method">
 <dt class="sig sig-object py" id="fal.api.RunnersNamespace.kill">
 <span class="sig-name descname"><span class="pre">kill</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">runner_id</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.api.RunnersNamespace.kill" title="Link to this definition">¶</a></dt>
