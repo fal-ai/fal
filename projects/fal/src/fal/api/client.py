@@ -158,6 +158,19 @@ class AppsNamespace:
             self.client, app_name, force=force, environment_name=environment_name
         )
 
+    def gpus(self, app_name: str) -> dict:
+        """Get GPU usage for a single application.
+
+        Corresponds to `fal apps gpus <app>`. Returns
+        ``{"gpus": {<type>: <count>, ...}, "total": <int>}``.
+
+        Example:
+            usage = client.apps.gpus("fal-ai/flux")
+            print(usage["total"])  # e.g. 21
+            print(usage["gpus"])   # e.g. {"B200": 21}
+        """
+        return apps_api.app_gpus(self.client, app_name)
+
 
 class RunnersNamespace:
     """Namespace for runner management operations.
@@ -209,6 +222,19 @@ class RunnersNamespace:
             runner_id: The ID of the runner to kill.
         """
         return runners_api.kill_runner(self.client, runner_id)
+
+    def gpus(self) -> dict:
+        """Get team-wide GPU usage summary.
+
+        Corresponds to `fal runners gpus`. Returns
+        ``{"gpus": {<type>: <count>, ...}, "total": <int>}``.
+
+        Example:
+            usage = client.runners.gpus()
+            print(usage["total"])  # e.g. 1120
+            print(usage["gpus"])   # e.g. {"H100": 394, "B200": 353, ...}
+        """
+        return runners_api.runners_gpus(self.client)
 
 
 class KeysNamespace:
