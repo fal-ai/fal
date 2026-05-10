@@ -102,6 +102,7 @@ def mock_parse_pyproject_toml():
             },
             "entrypoint-app": {
                 "python_entry_point": "simple.app:SimpleApp",
+                "python_version": "3.12",
                 "requirements": ["fal"],
             },
         }
@@ -172,6 +173,7 @@ def test_run_forwards_python_entry_point_to_loader(
     mock_load_function_from.assert_called_once()
     _, call_kwargs = mock_load_function_from.call_args
     assert call_kwargs["python_entry_point"] == "simple.app:SimpleApp"
+    assert call_kwargs["options"].environment["python_version"] == "3.12"
     assert call_kwargs["options"].environment["requirements"] == ["fal"]
 
 
