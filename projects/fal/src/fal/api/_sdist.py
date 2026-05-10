@@ -18,6 +18,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 from pathlib import Path
 from typing import Any, Callable, List, Optional, Tuple, Union
 
@@ -50,7 +51,10 @@ _LOCAL_PATH_RE = re.compile(r"^\.(\[[^\]]+\])?$")
 # in practice — ``python -m build`` is non-deterministic (file mtimes inside
 # the tarball drift between back-to-back builds), so a content-hash cache
 # misses on every call.
-_SDIST_URL_CACHE: dict = {}
+_SDIST_URL_CACHE: dict[str, tuple[str, str]] = {}
+# Guards the check-and-set in ``_resolve_sdist_url`` so two concurrent
+# dispatches with the same project root don't both build+upload.
+_SDIST_URL_CACHE_LOCK = threading.Lock()
 
 Requirements = Union[List[str], List[List[str]]]
 
@@ -124,26 +128,31 @@ def _resolve_sdist_url(
             on_progress(event, payload)
 
     cache_key = str(project_root.resolve())
-    cached = _SDIST_URL_CACHE.get(cache_key)
-    if cached is not None:
-        package_name, url = cached
-        _emit("upload_finished", url=url, sdist_size=0, cached=True)
+
+    # Hold the lock for the entire check-build-upload-populate sequence so a
+    # concurrent dispatch with the same project root waits and re-uses the
+    # populated entry instead of running its own build + upload in parallel.
+    with _SDIST_URL_CACHE_LOCK:
+        cached = _SDIST_URL_CACHE.get(cache_key)
+        if cached is not None:
+            package_name, url = cached
+            _emit("upload_finished", url=url, sdist_size=0, cached=True)
+            return package_name, url
+
+        package_name = _read_package_name(project_root)
+        _emit("build_started", package_name=package_name, project_root=project_root)
+        sdist = _build_sdist(project_root)
+        try:
+            sdist_size = sdist.stat().st_size
+            _emit("build_finished", sdist_path=sdist, sdist_size=sdist_size)
+
+            _emit("upload_started", sdist_path=sdist, sdist_size=sdist_size)
+            url = _upload_sdist(sdist)
+            _SDIST_URL_CACHE[cache_key] = (package_name, url)
+            _emit("upload_finished", url=url, sdist_size=sdist_size, cached=False)
+        finally:
+            shutil.rmtree(sdist.parent, ignore_errors=True)
         return package_name, url
-
-    package_name = _read_package_name(project_root)
-    _emit("build_started", package_name=package_name, project_root=project_root)
-    sdist = _build_sdist(project_root)
-    try:
-        sdist_size = sdist.stat().st_size
-        _emit("build_finished", sdist_path=sdist, sdist_size=sdist_size)
-
-        _emit("upload_started", sdist_path=sdist, sdist_size=sdist_size)
-        url = _upload_sdist(sdist)
-        _SDIST_URL_CACHE[cache_key] = (package_name, url)
-        _emit("upload_finished", url=url, sdist_size=sdist_size, cached=False)
-    finally:
-        shutil.rmtree(sdist.parent, ignore_errors=True)
-    return package_name, url
 
 
 def _read_package_name(project_root: Path) -> str:
@@ -170,40 +179,48 @@ def _build_sdist(project_root: Path) -> Path:
     Output streams live to stdout/stderr so the user sees what's happening
     between the section rules drawn by the caller. We don't capture it —
     the failure message tells them to look at the live output above.
+
+    The temp ``outdir`` is owned by the caller on success (it cleans up
+    after consuming the sdist). On any failure — expected (build error,
+    missing artefact) or unexpected (``KeyboardInterrupt``, OS errors) —
+    we delete it here before re-raising so it never leaks.
     """
     outdir = Path(tempfile.mkdtemp(prefix="fal-sdist-"))
     try:
-        result = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "build",
-                "--sdist",
-                "--outdir",
-                str(outdir),
-                str(project_root),
-            ],
-            check=False,
-        )
-    except FileNotFoundError as e:
-        shutil.rmtree(outdir, ignore_errors=True)
-        raise RuntimeError(f"Could not invoke `{sys.executable} -m build`: {e}") from e
+        try:
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "build",
+                    "--sdist",
+                    "--outdir",
+                    str(outdir),
+                    str(project_root),
+                ],
+                check=False,
+            )
+        except FileNotFoundError as e:
+            raise RuntimeError(
+                f"Could not invoke `{sys.executable} -m build`: {e}"
+            ) from e
 
-    if result.returncode != 0:
-        shutil.rmtree(outdir, ignore_errors=True)
-        raise RuntimeError(
-            f"sdist build for {project_root} failed (exit "
-            f"{result.returncode}). See output above. If `python -m build` "
-            "is not installed, run `pip install build`."
-        )
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"sdist build for {project_root} failed (exit "
+                f"{result.returncode}). See output above. If `python -m build` "
+                "is not installed, run `pip install build`."
+            )
 
-    candidates = sorted(outdir.glob("*.tar.gz"))
-    if not candidates:
+        candidates = sorted(outdir.glob("*.tar.gz"))
+        if not candidates:
+            raise RuntimeError(
+                f"sdist build for {project_root} produced no .tar.gz artefact "
+                f"in {outdir}"
+            )
+    except BaseException:
         shutil.rmtree(outdir, ignore_errors=True)
-        raise RuntimeError(
-            f"sdist build for {project_root} produced no .tar.gz artefact "
-            f"in {outdir}"
-        )
+        raise
     return candidates[-1]
 
 
