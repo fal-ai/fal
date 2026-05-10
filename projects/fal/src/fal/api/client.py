@@ -440,11 +440,16 @@ class SyncServerlessClient:
         return get_credentials(team=self.team, key=self.api_key, profile=self.profile)
 
     def _create_host(
-        self, *, local_file_path: str = "", environment_name: str | None = None
+        self,
+        *,
+        local_file_path: str = "",
+        local_project_root: str = "",
+        environment_name: str | None = None,
     ) -> FalServerlessHost:
         return FalServerlessHost(
             self._grpc_host,
             local_file_path=local_file_path,
+            local_project_root=local_project_root,
             credentials=self._credentials,
             environment_name=environment_name,
         )

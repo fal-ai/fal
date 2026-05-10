@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Optional
 
 from fal.api import Options
@@ -27,6 +28,11 @@ class AppData:
     team: Optional[str] = None
     name: Optional[str] = None
     options: Options = field(default_factory=Options)
+    # Directory of the pyproject.toml this app was loaded from. Used by
+    # ``FalServerlessHost`` to materialize ``.``/``.[extras]`` requirements
+    # into uploaded sdists. ``None`` when the app wasn't loaded from a
+    # pyproject (e.g. file::func ref directly).
+    local_project_root: Optional[str] = None
 
 
 def get_client(host: str, team: str | None = None):
@@ -179,6 +185,7 @@ def get_app_data_from_toml(
         team=app_team,
         name=app_name_value,
         options=options,
+        local_project_root=str(Path(toml_path).parent),
     )
 
 
