@@ -125,6 +125,7 @@ def mock_parse_pyproject_toml():
             },
             "entrypoint-app": {
                 "python_entry_point": "simple.app:SimpleApp",
+                "python_version": "3.12",
                 "requirements": ["fal"],
             },
         }
@@ -232,6 +233,7 @@ def test_deploy_python_entry_point_forwards_to_loader(
     mock_load_function_from.assert_called_once()
     _, call_kwargs = mock_load_function_from.call_args
     assert call_kwargs["python_entry_point"] == "simple.app:SimpleApp"
+    assert call_kwargs["options"].environment["python_version"] == "3.12"
     assert call_kwargs["options"].environment["requirements"] == ["fal"]
 
 
@@ -250,7 +252,7 @@ def test_deploy_with_toml_python_entry_point(
     cleanly without crashing on the absent ``ref``.
     """
     mock_parse_toml.return_value = mock_parse_pyproject_toml
-    options = Options(environment={"requirements": ["fal"]})
+    options = Options(environment={"requirements": ["fal"], "python_version": "3.12"})
 
     args = mock_args(app_ref=("entrypoint-app", None))
 
@@ -861,6 +863,51 @@ def test_get_app_data_from_toml_without_team(
     assert toml_data.name == "my-app"
     assert toml_data.options.host == {}
     assert toml_data.options.environment == {}
+
+
+@patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+def test_get_app_data_from_toml_with_python_version(mock_parse_toml, mock_find_toml):
+    from fal.cli._utils import get_app_data_from_toml
+
+    mock_parse_toml.return_value = {
+        "apps": {
+            "python-version-app": {
+                "ref": "src/my_app/inference.py::MyApp",
+                "python_version": "3.12",
+            }
+        }
+    }
+
+    toml_data = get_app_data_from_toml("python-version-app")
+
+    assert toml_data.options.environment == {"python_version": "3.12"}
+
+
+@patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+def test_get_app_data_from_toml_rejects_non_string_python_version(
+    mock_parse_toml, mock_find_toml
+):
+    from fal.cli._utils import get_app_data_from_toml
+
+    mock_parse_toml.return_value = {
+        "apps": {
+            "python-version-app": {
+                "ref": "src/my_app/inference.py::MyApp",
+                "python_version": 3.12,
+            }
+        }
+    }
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "App python-version-app python_version must be a string "
+            "in pyproject.toml"
+        ),
+    ):
+        get_app_data_from_toml("python-version-app")
 
 
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")

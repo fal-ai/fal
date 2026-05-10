@@ -96,6 +96,11 @@ def get_app_data_from_toml(
     requirements = app_data.pop("requirements", None)
     if requirements is not None:
         _validate_requirements(requirements)
+    python_version = app_data.pop("python_version", None)
+    if python_version is not None and not isinstance(python_version, str):
+        raise ValueError(
+            f"App {app_name} python_version must be a string in pyproject.toml"
+        )
     options = Options()
     min_concurrency = app_data.pop("min_concurrency", None)
     max_concurrency = app_data.pop("max_concurrency", None)
@@ -149,6 +154,8 @@ def get_app_data_from_toml(
         options.host["app_files_context_dir"] = app_files_context_dir
     if requirements is not None:
         options.environment["requirements"] = requirements
+    if python_version is not None:
+        options.environment["python_version"] = python_version
 
     app_reset_scale: bool
     if "no_scale" in app_data:
