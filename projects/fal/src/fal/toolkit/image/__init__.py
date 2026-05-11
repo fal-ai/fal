@@ -5,11 +5,11 @@ from functools import lru_cache
 from typing import TYPE_CHECKING
 
 from fal.toolkit.utils.download_utils import TEMP_HEADERS
-from fal.toolkit.utils.ssrf import ssrf_safe_get
+from fal.toolkit.utils.ssrf import SSRFSizeExceededError, ssrf_safe_get
 
 from .image import *  # noqa: F403
 
-MAX_IMAGE_DOWNLOAD_SIZE = 100 * 1024 * 1024
+MAX_IMAGE_DOWNLOAD_SIZE = 50 * 1024 * 1024
 
 if TYPE_CHECKING:
     # suffix so we don't clash with PILImage from .image
@@ -68,6 +68,8 @@ def read_image_from_url(
             max_size=MAX_IMAGE_DOWNLOAD_SIZE,
         )
         image_pil = Image.open(io.BytesIO(response.content))
+    except SSRFSizeExceededError:
+        raise HTTPException(413, f"Image from url is too large: {url}") from None
     except Exception:
         import traceback
 

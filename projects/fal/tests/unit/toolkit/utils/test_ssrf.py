@@ -207,14 +207,56 @@ def test_download_file_python_preserves_existing_file_on_http_failure(tmp_path) 
     assert target_path.read_bytes() == b"existing"
 
 
+def test_ssrf_safe_get_to_file_preserves_existing_file_on_http_failure(
+    tmp_path,
+) -> None:
+    target_path = tmp_path / "safe.txt"
+    target_path.write_bytes(b"existing")
+
+    class FakeResponse:
+        status = 200
+
+        def __init__(self) -> None:
+            self._chunks = [b"abc", b"def", b""]
+
+        def getheaders(self) -> list[tuple[str, str]]:
+            return [("content-length", "6")]
+
+        def read(self, _chunk_size: int) -> bytes:
+            return self._chunks.pop(0)
+
+    class FakeConnection:
+        def request(self, *_args: Any, **_kwargs: Any) -> None:
+            pass
+
+        def getresponse(self) -> FakeResponse:
+            return FakeResponse()
+
+        def close(self) -> None:
+            pass
+
+    with patch.object(ssrf, "_socket_getaddrinfo", return_value=_addrinfo("8.8.8.8")):
+        with patch.object(ssrf, "_open_connection", return_value=FakeConnection()):
+            with pytest.raises(ssrf.SSRFSizeExceededError):
+                ssrf.ssrf_safe_get_to_file(
+                    "https://example.com/file",
+                    target_path,
+                    max_size=4,
+                )
+
+    assert target_path.read_bytes() == b"existing"
+
+
 def test_read_image_from_url_applies_download_limit() -> None:
     def fake_get(url: str, **kwargs: Any) -> ssrf.SafeResponse:
         assert kwargs["max_size"] == image_toolkit.MAX_IMAGE_DOWNLOAD_SIZE
         raise ssrf.SSRFSizeExceededError("too large")
 
     with patch.object(image_toolkit, "ssrf_safe_get", fake_get):
-        with pytest.raises(HTTPException):
+        with pytest.raises(HTTPException) as exc_info:
             read_image_from_url("https://attacker.example/image.png")
+
+    assert exc_info.value.status_code == 413
 
 
 def test_download_file_blocks_redirect_to_private_ip(tmp_path) -> None:

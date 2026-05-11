@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import contextlib
 import http.client
 import ipaddress
 import os
 import socket
 import ssl
+import tempfile
 import urllib.parse
 from dataclasses import dataclass
 from typing import Any
@@ -321,18 +323,33 @@ def _request_one_hop_to_file(
             raise SSRFHTTPStatusError(response.status)
 
         bytes_written = 0
-        with open(target_path, "wb") as file:
-            while True:
-                chunk = response.read(chunk_size)
-                if not chunk:
-                    break
+        temp_file_path = ""
+        target_dir = os.path.dirname(target_path) or "."
+        target_basename = os.path.basename(target_path)
+        try:
+            with tempfile.NamedTemporaryFile(
+                delete=False,
+                dir=target_dir,
+                prefix=f".{target_basename}.tmp.",
+            ) as file:
+                temp_file_path = file.name
+                while True:
+                    chunk = response.read(chunk_size)
+                    if not chunk:
+                        break
 
-                file.write(chunk)
-                bytes_written += len(chunk)
-                if max_size is not None and bytes_written > max_size:
-                    raise SSRFSizeExceededError(
-                        f"File body exceeded {max_size} bytes during download"
-                    )
+                    file.write(chunk)
+                    bytes_written += len(chunk)
+                    if max_size is not None and bytes_written > max_size:
+                        raise SSRFSizeExceededError(
+                            f"File body exceeded {max_size} bytes during download"
+                        )
+
+            os.replace(temp_file_path, target_path)
+        finally:
+            if temp_file_path:
+                with contextlib.suppress(FileNotFoundError):
+                    os.unlink(temp_file_path)
 
         return SafeResponse(response.status, response_headers)
     finally:
