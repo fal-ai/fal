@@ -9,7 +9,6 @@ import urllib.parse
 from dataclasses import dataclass
 from typing import Any
 
-
 DEFAULT_ALLOWED_SCHEMES: frozenset[str] = frozenset({"http", "https"})
 DEFAULT_MAX_REDIRECT_HOPS = 5
 

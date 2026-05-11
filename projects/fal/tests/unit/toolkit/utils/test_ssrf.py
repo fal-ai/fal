@@ -11,7 +11,6 @@ from fal.toolkit.image import read_image_from_url
 from fal.toolkit.utils import ssrf
 from fal.toolkit.utils.download_utils import DownloadError, download_file
 
-
 _stream_calls: list[dict[str, Any]] = []
 _stream_responses: list[ssrf.SafeResponse] = []
 
