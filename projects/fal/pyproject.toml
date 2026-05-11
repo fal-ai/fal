@@ -64,6 +64,9 @@ dependencies = [
     "tomli-w>=1,<2",
     "fsspec",
     "tblib<3.2.0",
+    # Used by ``fal.api._sdist`` to package a local project (``.`` /
+    # ``.[extras]`` requirements) for upload to the worker.
+    "build>=1.0,<2",
 ]
 
 [project.optional-dependencies]

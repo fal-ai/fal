@@ -210,8 +210,7 @@ def _build_sdist(project_root: Path) -> Path:
         if result.returncode != 0:
             raise RuntimeError(
                 f"sdist build for {project_root} failed (exit "
-                f"{result.returncode}). See output above. If `python -m build` "
-                "is not installed, run `pip install build`."
+                f"{result.returncode}). See output above."
             )
 
         candidates = sorted(outdir.glob("*.tar.gz"))
