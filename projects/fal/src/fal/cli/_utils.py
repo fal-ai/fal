@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import contextlib
 import copy
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
@@ -13,6 +15,90 @@ if TYPE_CHECKING:
     from rich.console import Console
 
     from fal.api import IsolatedFunction
+
+
+class _IndentedStream:
+    """File-like wrapper that prepends ``prefix`` to every line written.
+
+    Tracks whether the next byte starts a new line across writes so a
+    handler that produces a line in multiple ``write()`` calls still
+    only gets one prefix per visible line.
+    """
+
+    def __init__(self, underlying: Any, prefix: str) -> None:
+        self._underlying = underlying
+        self._prefix = prefix
+        self._at_line_start = True
+
+    def write(self, s: str) -> int:
+        if not s:
+            return 0
+        parts = s.split("\n")
+        out: list[str] = []
+        for i, part in enumerate(parts):
+            if i > 0:
+                out.append("\n")
+                self._at_line_start = True
+            if part:
+                if self._at_line_start:
+                    out.append(self._prefix)
+                    self._at_line_start = False
+                out.append(part)
+        self._underlying.write("".join(out))
+        return len(s)
+
+    def flush(self) -> None:
+        self._underlying.flush()
+
+    def isatty(self) -> bool:
+        check = getattr(self._underlying, "isatty", None)
+        return bool(check()) if callable(check) else False
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._underlying, name)
+
+
+@contextlib.contextmanager
+def _indented_console_output(prefix: str = "  "):
+    """Indent ``sys.stdout``/``sys.stderr`` and the ``fal.console`` module
+    global console for the duration of the block, so streamed worker
+    output reads as nested content under an enclosing section header.
+
+    ``IsolateLogPrinter`` writes phase headers through
+    ``from fal.console import console`` (lazy local rebind, so swapping
+    the module attribute is enough) and writes log messages through raw
+    ``print()`` / ``sys.stdout`` / ``sys.stderr``. Wrapping all three
+    covers every code path it can take.
+    """
+    from rich.console import Console  # noqa: PLC0415
+
+    import fal.console as _fc  # noqa: PLC0415
+
+    original_console = _fc.console
+    indented_stdout = _IndentedStream(sys.stdout, prefix)
+    indented_stderr = _IndentedStream(sys.stderr, prefix)
+    # Narrow the inner console so Rule() and any width-aware renderable
+    # render at (terminal_width - prefix) — once we add the prefix the
+    # total line width matches the outer console again.
+    indented_console = Console(
+        file=indented_stdout,
+        force_terminal=True,
+        width=max(1, original_console.size.width - len(prefix)),
+    )
+
+    saved_stdout = sys.stdout
+    saved_stderr = sys.stderr
+    try:
+        # _IndentedStream is a duck-typed file proxy, not a TextIO subclass —
+        # cast through Any for both replacement and restoration.
+        sys.stdout = indented_stdout  # type: ignore[assignment]
+        sys.stderr = indented_stderr  # type: ignore[assignment]
+        _fc.console = indented_console
+        yield
+    finally:
+        sys.stdout = saved_stdout
+        sys.stderr = saved_stderr
+        _fc.console = original_console
 
 
 def fetch_metadata_with_banner(
@@ -48,9 +134,10 @@ def fetch_metadata_with_banner(
 
     console.print("Building metadata...", style="bold")
     console.print(Rule(style="dim"))
-    isolated_function.fetch_metadata(
-        result_handler=CliRegisterResultHandler(console=console)
-    )
+    with _indented_console_output():
+        isolated_function.fetch_metadata(
+            result_handler=CliRegisterResultHandler(console=console)
+        )
     console.print(Rule(style="dim"))
     console.print(f"{CHECK_ICON} Metadata build complete", style="bold green")
     console.print("")
