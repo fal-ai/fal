@@ -237,11 +237,7 @@ def _validate_str_list(field_name: str, value: Any) -> None:
 _IMAGE_PASSTHROUGH_KEYS = (
     "build_args",
     "registries",
-    "builder",
-    "compression",
-    "force_compression",
     "secrets",
-    "dockerignore",
 )
 
 
@@ -254,64 +250,29 @@ def _build_container_image_from_toml(
     image_config = dict(image_config)
 
     dockerfile_path = image_config.pop("dockerfile", None)
-    dockerfile_str = image_config.pop("dockerfile_str", None)
-
-    if dockerfile_path is None and dockerfile_str is None:
+    if dockerfile_path is None:
         raise ValueError(
-            f"App {app_name} image must specify either 'dockerfile' (path) "
-            "or 'dockerfile_str' in pyproject.toml"
+            f"App {app_name} image must specify 'dockerfile' (path) in pyproject.toml"
         )
-    if dockerfile_path is not None and dockerfile_str is not None:
+    if not isinstance(dockerfile_path, str):
         raise ValueError(
-            f"App {app_name} image cannot specify both 'dockerfile' and "
-            "'dockerfile_str' in pyproject.toml"
+            f"App {app_name} image.dockerfile must be a string in pyproject.toml"
         )
 
-    if dockerfile_path is not None:
-        if not isinstance(dockerfile_path, str):
-            raise ValueError(
-                f"App {app_name} image.dockerfile must be a string in pyproject.toml"
-            )
-        resolved_path = Path(dockerfile_path)
-        if not resolved_path.is_absolute():
-            resolved_path = project_root / resolved_path
-        with open(resolved_path) as f:
-            dockerfile_str = f.read()
-    elif not isinstance(dockerfile_str, str):
-        raise ValueError(
-            f"App {app_name} image.dockerfile_str must be a string in pyproject.toml"
-        )
+    resolved_path = Path(dockerfile_path)
+    if not resolved_path.is_absolute():
+        resolved_path = project_root / resolved_path
+    with open(resolved_path) as f:
+        dockerfile_str = f.read()
 
-    kwargs: dict[str, Any] = {"dockerfile_str": dockerfile_str}
+    kwargs: dict[str, Any] = {
+        "dockerfile_str": dockerfile_str,
+        "context_dir": project_root,
+    }
 
     for key in _IMAGE_PASSTHROUGH_KEYS:
         if key in image_config:
             kwargs[key] = image_config.pop(key)
-
-    context_dir = image_config.pop("context_dir", None)
-    if context_dir is not None:
-        if not isinstance(context_dir, str):
-            raise ValueError(
-                f"App {app_name} image.context_dir must be a string in pyproject.toml"
-            )
-        context_path = Path(context_dir)
-        if not context_path.is_absolute():
-            context_path = project_root / context_path
-        kwargs["context_dir"] = context_path
-    else:
-        kwargs["context_dir"] = project_root
-
-    dockerignore_path = image_config.pop("dockerignore_path", None)
-    if dockerignore_path is not None:
-        if not isinstance(dockerignore_path, str):
-            raise ValueError(
-                f"App {app_name} image.dockerignore_path must be a string "
-                "in pyproject.toml"
-            )
-        dockerignore_resolved = Path(dockerignore_path)
-        if not dockerignore_resolved.is_absolute():
-            dockerignore_resolved = project_root / dockerignore_resolved
-        kwargs["dockerignore_path"] = dockerignore_resolved
 
     if image_config:
         raise ValueError(
