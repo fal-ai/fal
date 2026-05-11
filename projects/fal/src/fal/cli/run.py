@@ -53,6 +53,7 @@ def _run(args):
     client = SyncServerlessClient(host=args.host, team=team)
     host = client._create_host(
         local_file_path=file_path or "",
+        local_project_root=app_data.local_project_root or "",
         environment_name=args.env,
     )
 

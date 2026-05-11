@@ -744,6 +744,7 @@ class FalServerlessHost(Host):
 
     url: str = FAL_SERVERLESS_DEFAULT_URL
     local_file_path: str = ""
+    local_project_root: str = ""
     credentials: Credentials = field(default_factory=get_credentials)
     environment_name: Optional[str] = None
 
@@ -768,6 +769,63 @@ class FalServerlessHost(Host):
         with self._lock:
             client = FalServerlessClient(self.url, self.credentials)
             return client.connect()
+
+    def _materialize_local_requirements(
+        self, environment_options: dict[str, Any]
+    ) -> None:
+        """Rewrite ``.``/``.[extras]`` in ``environment_options['requirements']``
+        to point at an uploaded sdist of ``self.local_project_root``.
+
+        Mutates ``environment_options`` in place. No-op when there's no
+        project root or no local-path requirement to rewrite — keeps the
+        dispatch hot path quiet for users who don't use this feature.
+        """
+        if not self.local_project_root:
+            return
+        requirements = environment_options.get("requirements")
+        if not requirements:
+            return
+        from rich.rule import Rule  # noqa: PLC0415
+
+        from fal.api._sdist import (  # noqa: PLC0415
+            has_local_path,
+            materialize_local_paths,
+        )
+        from fal.console import console  # noqa: PLC0415
+        from fal.console.icons import CHECK_ICON  # noqa: PLC0415
+
+        if not has_local_path(requirements):
+            return
+
+        # Render in the same shape as the remote BUILDER phase
+        # (``Building environment...`` → rule → live logs → rule →
+        # ``✓ Build complete``) so the local sdist build feels like a
+        # natural sibling phase rather than out-of-band CLI chatter.
+        def _on_progress(event: str, payload: dict[str, Any]) -> None:
+            if event == "build_started":
+                console.print(
+                    f"Packaging local project [cyan]{payload['package_name']}[/]...",
+                    style="bold",
+                )
+                console.print(Rule(style="dim"))
+            elif event == "upload_started":
+                size_kb = payload["sdist_size"] / 1024
+                console.print(
+                    f"Uploading {payload['sdist_path'].name} ({size_kb:.1f} KB)..."
+                )
+            elif event == "upload_finished" and not payload["cached"]:
+                console.print(Rule(style="dim"))
+                console.print(f"{CHECK_ICON} Project packaged", style="bold green")
+                console.print("")
+            # ``build_finished`` has no host-side rendering: the live
+            # ``python -m build`` output between the rules already tells the
+            # user the build is done. Cached ``upload_finished`` is also
+            # silent — the user saw the original packaging output once;
+            # repeating it on every dispatch is noise.
+
+        environment_options["requirements"] = materialize_local_paths(
+            requirements, self.local_project_root, on_progress=_on_progress
+        )
 
     def files_sync(self, options: FileSyncOptions) -> list[File]:
         """Sync files to the server."""
@@ -824,6 +882,7 @@ class FalServerlessHost(Host):
 
         environment_options = options.environment.copy()
         environment_options.setdefault("python_version", active_python())
+        self._materialize_local_requirements(environment_options)
         environments = [self._connection.define_environment(**environment_options)]
 
         machine_type: list[str] | str = options.host.get(
@@ -941,6 +1000,7 @@ class FalServerlessHost(Host):
 
         environment_options = options.environment.copy()
         environment_options.setdefault("python_version", active_python())
+        self._materialize_local_requirements(environment_options)
         environments = [self._connection.define_environment(**environment_options)]
 
         machine_type: list[str] | str = options.host.get(
