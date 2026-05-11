@@ -1,8 +1,11 @@
 from __future__ import annotations
 
-import urllib.request
+import io
 from functools import lru_cache
 from typing import TYPE_CHECKING
+
+from fal.toolkit.utils.download_utils import TEMP_HEADERS
+from fal.toolkit.utils.ssrf import ssrf_safe_get
 
 from .image import *  # noqa: F403
 
@@ -55,17 +58,9 @@ def read_image_from_url(
     from fastapi import HTTPException
     from PIL import Image
 
-    TEMP_HEADERS = {
-        "User-Agent": (
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.8; rv:21.0) "
-            "Gecko/20100101 Firefox/21.0"
-        ),
-    }
-
     try:
-        request = urllib.request.Request(url, headers=TEMP_HEADERS)
-        response = urllib.request.urlopen(request, timeout=30)
-        image_pil = Image.open(response)
+        response = ssrf_safe_get(url, headers=TEMP_HEADERS, timeout=30)
+        image_pil = Image.open(io.BytesIO(response.content))
     except Exception:
         import traceback
 

@@ -13,6 +13,14 @@ from tempfile import NamedTemporaryFile, TemporaryDirectory
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
+from fal.toolkit.utils.ssrf import (
+    SafeResponse,
+    SSRFError,
+    SSRFHTTPStatusError,
+    SSRFSizeExceededError,
+    ssrf_safe_get_to_file,
+)
+
 FAL_PERSISTENT_DIR = PurePath("/data")
 FAL_REPOSITORY_DIR = FAL_PERSISTENT_DIR / ".fal" / "repos"
 FAL_MODEL_WEIGHTS_DIR = FAL_PERSISTENT_DIR / ".fal" / "model_weights"
@@ -43,6 +51,38 @@ def _hash_url(url: str) -> str:
     return hashlib.sha256(url.encode("utf-8")).hexdigest()
 
 
+def _headers(request_headers: dict[str, str] | None = None) -> dict[str, str]:
+    return {**TEMP_HEADERS, **(request_headers or {})}
+
+
+def _filename_from_response(url: str, response: SafeResponse) -> str:
+    content_disposition = response.headers.get("content-disposition", "")
+    if "filename=" in content_disposition:
+        for raw_part in content_disposition.split(";"):
+            part = raw_part.strip()
+            if part.lower().startswith("filename="):
+                filename = part.split("=", 1)[1].strip().strip('"').strip("'")
+                filename = Path(filename).name
+                if filename:
+                    return filename
+
+    parsed_url = urlparse(url)
+    return Path(parsed_url.path).name or _hash_url(url)
+
+
+def _content_length_from_response(response: SafeResponse) -> int:
+    try:
+        return int(response.headers.get("content-length", -1))
+    except ValueError:
+        return -1
+
+
+def _raise_if_incomplete_download(response: SafeResponse, target_path: Path) -> None:
+    expected_size = _content_length_from_response(response)
+    if expected_size >= 0 and target_path.stat().st_size < expected_size:
+        raise DownloadError("Received less data than expected from the server.")
+
+
 def _get_remote_file_properties(
     url: str,
     request_headers: dict[str, str] | None = None,
@@ -71,8 +111,7 @@ def _get_remote_file_properties(
     Returns:
         A tuple containing the file name and the content length of the remote file.
     """
-    headers = {**TEMP_HEADERS, **(request_headers or {})}
-    request = Request(url, headers=headers)
+    request = Request(url, headers=_headers(request_headers))
 
     with urlopen(request, timeout=30) as response:
         file_name = response.headers.get_filename()
@@ -129,6 +168,7 @@ def download_file(
     force: bool = False,
     request_headers: dict[str, str] | None = None,
     filesize_limit: int | None = None,
+    allow_internal_hosts: bool = False,
 ) -> Path:
     """Downloads a file from the specified URL to the target directory.
 
@@ -166,23 +206,50 @@ def download_file(
         DownloadError: If an error occurs during the download process.
     """
     ONE_MB = 1024**2
+    parsed_url = urlparse(url)
 
-    try:
-        file_name, expected_filesize = _get_remote_file_properties(url, request_headers)
-    except Exception as e:
-        print(f"Got error: {e}")
-        raise DownloadError(f"Failed to get remote file properties for {url}") from e
+    if parsed_url.scheme == "data":
+        try:
+            file_name, expected_filesize = _get_remote_file_properties(
+                url, request_headers
+            )
+        except Exception as e:
+            print(f"Got error: {e}")
+            raise DownloadError(
+                f"Failed to get remote file properties for {url}"
+            ) from e
 
-    expected_filesize_mb = expected_filesize / ONE_MB
+        expected_filesize_mb = expected_filesize / ONE_MB
 
-    if filesize_limit is not None and expected_filesize_mb > filesize_limit:
-        raise DownloadError(
-            f"""File to be downloaded is of size {expected_filesize_mb},
-                which is over the limit of {filesize_limit}"""
-        )
+        if filesize_limit is not None and expected_filesize_mb > filesize_limit:
+            raise DownloadError(
+                f"""File to be downloaded is of size {expected_filesize_mb},
+                    which is over the limit of {filesize_limit}"""
+            )
 
-    if "/" in file_name:
-        raise ValueError(f"File name '{file_name}' cannot contain a slash.")
+        target_dir_path = Path(target_dir)
+        if not target_dir_path.is_absolute():
+            target_dir_path = Path(FAL_PERSISTENT_DIR / target_dir_path)  # type: ignore[assignment]
+
+        target_path = target_dir_path.resolve() / file_name
+        if target_path.exists() and not force:
+            return target_path
+
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            _download_file_python(
+                url=url,
+                target_path=target_path,
+                request_headers=request_headers,
+                filesize_limit=filesize_limit,
+                allow_internal_hosts=allow_internal_hosts,
+            )
+        except Exception as e:
+            msg = f"Failed to download {url} to {target_path}"
+            target_path.unlink(missing_ok=True)
+            raise DownloadError(msg) from e
+
+        return target_path
 
     target_dir_path = Path(target_dir)
 
@@ -190,36 +257,51 @@ def download_file(
     if not target_dir_path.is_absolute():
         target_dir_path = Path(FAL_PERSISTENT_DIR / target_dir_path)  # type: ignore[assignment]
 
-    target_path = target_dir_path.resolve() / file_name
+    target_dir_path = target_dir_path.resolve()
+    target_dir_path.mkdir(parents=True, exist_ok=True)
 
-    if (
-        target_path.exists()
-        and _file_content_length_matches(url, target_path, request_headers)
-        and not force
-    ):
-        return target_path
-
-    if force:
-        print(f"File already exists. Forcing download of {url} to {target_path}")
-    else:
-        print(f"Downloading {url} to {target_path}")
-
-    # Make sure the directory exists
-    target_path.parent.mkdir(parents=True, exist_ok=True)
+    with NamedTemporaryFile(
+        delete=False,
+        dir=target_dir_path,
+        prefix=".fal_download.tmp.",
+    ) as temp_file:
+        temp_file_path = Path(temp_file.name)
 
     try:
-        _download_file_python(
-            url=url,
-            target_path=target_path,
-            request_headers=request_headers,
-            filesize_limit=filesize_limit,
+        response = ssrf_safe_get_to_file(
+            url,
+            temp_file_path,
+            headers=_headers(request_headers),
+            max_size=filesize_limit * ONE_MB if filesize_limit is not None else None,
+            allow_internal_hosts=allow_internal_hosts,
         )
+        _raise_if_incomplete_download(response, temp_file_path)
+        file_name = _filename_from_response(url, response)
+        expected_filesize = _content_length_from_response(response)
+        target_path = target_dir_path / file_name
+
+        if force:
+            print(f"File already exists. Forcing download of {url} to {target_path}")
+        elif (
+            target_path.exists()
+            and expected_filesize >= 0
+            and target_path.stat().st_size == expected_filesize
+        ):
+            return target_path
+        else:
+            print(f"Downloading {url} to {target_path}")
+
+        os.replace(temp_file_path, target_path)
+    except (SSRFError, SSRFSizeExceededError) as e:
+        raise DownloadError(str(e)) from e
+    except SSRFHTTPStatusError as e:
+        raise DownloadError(
+            f"Failed to download file from {url}. Status code: {e.status_code}."
+        ) from e
     except Exception as e:
-        msg = f"Failed to download {url} to {target_path}"
-
-        target_path.unlink(missing_ok=True)
-
-        raise DownloadError(msg) from e
+        raise DownloadError(f"Failed to download {url} to {target_dir_path}") from e
+    finally:
+        temp_file_path.unlink(missing_ok=True)
 
     return target_path
 
@@ -229,6 +311,7 @@ def _download_file_python(
     target_path: Path | str,
     request_headers: dict[str, str] | None = None,
     filesize_limit: int | None = None,
+    allow_internal_hosts: bool = False,
 ) -> Path:
     """Download a file from a given URL and save it to a specified path using a
     Python interface.
@@ -244,6 +327,28 @@ def _download_file_python(
     Returns:
         The path where the downloaded file has been saved.
     """
+    ONE_MB = 1024**2
+
+    if urlparse(url).scheme in {"http", "https"}:
+        try:
+            response = ssrf_safe_get_to_file(
+                url,
+                target_path,
+                headers=_headers(request_headers),
+                max_size=filesize_limit * ONE_MB
+                if filesize_limit is not None
+                else None,
+                allow_internal_hosts=allow_internal_hosts,
+            )
+            _raise_if_incomplete_download(response, Path(target_path))
+        except (SSRFError, SSRFSizeExceededError) as e:
+            raise DownloadError(str(e)) from e
+        except SSRFHTTPStatusError as e:
+            raise DownloadError(
+                f"Failed to download file from {url}. Status code: {e.status_code}."
+            ) from e
+        return Path(target_path)
+
     basename = os.path.basename(target_path)
     # NOTE: using the same directory to avoid potential copies across temp fs and target
     # fs, and also to be able to atomically rename a downloaded file into place.
@@ -317,8 +422,7 @@ def _stream_url_data_to_file(
     """
     ONE_MB = 1024**2
 
-    headers = {**TEMP_HEADERS, **(request_headers or {})}
-    request = Request(url, headers=headers)
+    request = Request(url, headers=_headers(request_headers))
 
     received_size = 0
     total_size = 0
