@@ -305,6 +305,20 @@ def test_isolated_function_fetch_metadata_probes_worker():
     assert iso.endpoints == ["/predict"]
 
 
+def test_isolated_function_fetch_metadata_forwards_result_handler():
+    from fal.api import ResultHandler
+
+    host = MagicMock()
+    host.run.return_value = {"openapi": {"paths": {}}}
+
+    iso = IsolatedFunction(host=host, entrypoint="pkg.mod:MyApp")
+    custom_handler = ResultHandler()
+    iso.fetch_metadata(result_handler=custom_handler)
+
+    _, call_kwargs = host.run.call_args
+    assert call_kwargs["result_handler"] is custom_handler
+
+
 def test_isolated_function_fetch_metadata_is_idempotent():
     host = MagicMock()
     host.run.return_value = {"openapi": {"paths": {"/predict": {}}}}

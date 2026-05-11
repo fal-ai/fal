@@ -2242,7 +2242,11 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
     def build_metadata(self) -> dict[str, Any]:
         return self.options.host.get("metadata") or {}
 
-    def fetch_metadata(self) -> dict[str, Any]:
+    def fetch_metadata(
+        self,
+        *,
+        result_handler: ResultHandler | None = None,
+    ) -> dict[str, Any]:
         """Probe ``<entrypoint>.build_metadata`` on the worker and cache the
         result into ``options.host["metadata"]``.
 
@@ -2250,6 +2254,10 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
         ``wrap_app``/registration flow populated it, or because a previous
         ``fetch_metadata()`` call did), returns the cached value without a
         second round-trip.
+
+        ``result_handler`` is forwarded to the worker run so callers (the CLI)
+        can surface the env-build / runtime-setup / user-source logs that
+        stream while the worker is computing the metadata.
         """
         if self.metadata_entrypoint is None:
             return self.build_metadata()
@@ -2258,15 +2266,15 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
         if cached:
             return cached
 
-        from fal.api import ResultHandler  # noqa: PLC0415
-
         payload: object = self.host.run(
             None,
             self.options,
             args=(),
             kwargs={},
             entrypoint=self.metadata_entrypoint,
-            result_handler=ResultHandler(),
+            result_handler=result_handler
+            if result_handler is not None
+            else ResultHandler(),
         )
         if not isinstance(payload, dict):
             raise FalServerlessError(
