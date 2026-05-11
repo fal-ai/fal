@@ -14,6 +14,10 @@ from typing import Any
 DEFAULT_ALLOWED_SCHEMES: frozenset[str] = frozenset({"http", "https"})
 DEFAULT_MAX_REDIRECT_HOPS = 5
 
+_BODY_CONTENT = "content"
+_BODY_HEADERS = "headers"
+_BODY_FILE = "file"
+_REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
 _CROSS_ORIGIN_STRIPPED_HEADERS: frozenset[str] = frozenset(
     {"authorization", "cookie", "proxy-authorization"}
 )
@@ -265,6 +269,44 @@ def _read_response_content(
     return b"".join(chunks)
 
 
+def _stream_response_to_file(
+    response: http.client.HTTPResponse,
+    target_path: str,
+    max_size: int | None,
+    *,
+    chunk_size: int,
+) -> None:
+    bytes_written = 0
+    temp_file_path = ""
+    target_dir = os.path.dirname(target_path) or "."
+    target_basename = os.path.basename(target_path)
+
+    try:
+        with tempfile.NamedTemporaryFile(
+            delete=False,
+            dir=target_dir,
+            prefix=f".{target_basename}.tmp.",
+        ) as file:
+            temp_file_path = file.name
+            while True:
+                chunk = response.read(chunk_size)
+                if not chunk:
+                    break
+
+                file.write(chunk)
+                bytes_written += len(chunk)
+                if max_size is not None and bytes_written > max_size:
+                    raise SSRFSizeExceededError(
+                        f"File body exceeded {max_size} bytes during download"
+                    )
+
+        os.replace(temp_file_path, target_path)
+    finally:
+        if temp_file_path:
+            with contextlib.suppress(FileNotFoundError):
+                os.unlink(temp_file_path)
+
+
 def _request_one_hop(
     parsed,
     *,
@@ -272,43 +314,9 @@ def _request_one_hop(
     timeout: float,
     headers: dict[str, str],
     max_size: int | None,
-) -> SafeResponse:
-    connection = _open_connection(parsed, target_ip, timeout=timeout)
-    try:
-        connection.request("GET", _path_and_query(parsed), headers=headers)
-        response = connection.getresponse()
-        response_headers = _headers_from_response(response)
-        content = _read_response_content(response, max_size)
-        return SafeResponse(response.status, response_headers, content)
-    finally:
-        connection.close()
-
-
-def _request_one_hop_headers(
-    parsed,
-    *,
-    target_ip: str | None,
-    timeout: float,
-    headers: dict[str, str],
-) -> SafeResponse:
-    connection = _open_connection(parsed, target_ip, timeout=timeout)
-    try:
-        connection.request("GET", _path_and_query(parsed), headers=headers)
-        response = connection.getresponse()
-        return SafeResponse(response.status, _headers_from_response(response))
-    finally:
-        connection.close()
-
-
-def _request_one_hop_to_file(
-    parsed,
-    target_path: str,
-    *,
-    target_ip: str | None,
-    timeout: float,
-    headers: dict[str, str],
-    max_size: int | None,
-    chunk_size: int,
+    body_mode: str,
+    target_path: str | None = None,
+    chunk_size: int = 64 * 1024,
 ) -> SafeResponse:
     connection = _open_connection(parsed, target_ip, timeout=timeout)
     try:
@@ -316,57 +324,75 @@ def _request_one_hop_to_file(
         response = connection.getresponse()
         response_headers = _headers_from_response(response)
 
-        if response.status in (301, 302, 303, 307, 308):
+        if response.status in _REDIRECT_STATUSES:
             return SafeResponse(response.status, response_headers)
 
         if response.status >= 400:
             raise SSRFHTTPStatusError(response.status)
 
-        bytes_written = 0
-        temp_file_path = ""
-        target_dir = os.path.dirname(target_path) or "."
-        target_basename = os.path.basename(target_path)
-        try:
-            with tempfile.NamedTemporaryFile(
-                delete=False,
-                dir=target_dir,
-                prefix=f".{target_basename}.tmp.",
-            ) as file:
-                temp_file_path = file.name
-                while True:
-                    chunk = response.read(chunk_size)
-                    if not chunk:
-                        break
+        if body_mode == _BODY_HEADERS:
+            return SafeResponse(response.status, response_headers)
 
-                    file.write(chunk)
-                    bytes_written += len(chunk)
-                    if max_size is not None and bytes_written > max_size:
-                        raise SSRFSizeExceededError(
-                            f"File body exceeded {max_size} bytes during download"
-                        )
+        if body_mode == _BODY_FILE:
+            if target_path is None:
+                raise SSRFError("File download target path is required")
+            _stream_response_to_file(
+                response,
+                target_path,
+                max_size,
+                chunk_size=chunk_size,
+            )
+            return SafeResponse(response.status, response_headers)
 
-            os.replace(temp_file_path, target_path)
-        finally:
-            if temp_file_path:
-                with contextlib.suppress(FileNotFoundError):
-                    os.unlink(temp_file_path)
-
-        return SafeResponse(response.status, response_headers)
+        return SafeResponse(
+            response.status,
+            response_headers,
+            _read_response_content(response, max_size, chunk_size=chunk_size),
+        )
     finally:
         connection.close()
 
 
-def _request_validated_ips(
-    request_fn,
+def _request_resolved_url(
     parsed,
-    validated_ips: list[str],
-    *args,
-    **kwargs,
+    *,
+    timeout: float,
+    headers: dict[str, str],
+    max_size: int | None,
+    body_mode: str,
+    target_path: str | None,
+    chunk_size: int,
+    allow_internal_hosts: bool,
 ) -> SafeResponse:
+    hostname = parsed.hostname
+    if not hostname:
+        raise SSRFError("URL has no hostname")
+
+    if allow_internal_hosts:
+        return _request_one_hop(
+            parsed,
+            target_ip=None,
+            timeout=timeout,
+            headers=headers,
+            max_size=max_size,
+            body_mode=body_mode,
+            target_path=target_path,
+            chunk_size=chunk_size,
+        )
+
     last_error: OSError | None = None
-    for ip in validated_ips:
+    for ip in resolve_and_validate_host(hostname, parsed.port):
         try:
-            return request_fn(parsed, *args, target_ip=ip, **kwargs)
+            return _request_one_hop(
+                parsed,
+                target_ip=ip,
+                timeout=timeout,
+                headers=headers,
+                max_size=max_size,
+                body_mode=body_mode,
+                target_path=target_path,
+                chunk_size=chunk_size,
+            )
         except OSError as exc:
             last_error = exc
 
@@ -377,8 +403,56 @@ def _redirect_target(current_url: str, location: str) -> str:
     return urllib.parse.urljoin(current_url, location)
 
 
-def _url_to_string(parsed) -> str:
-    return urllib.parse.urlunsplit(parsed)
+def _safe_request(
+    url: str,
+    *,
+    timeout: float,
+    max_size: int | None,
+    max_hops: int,
+    headers: dict[str, str] | None,
+    allow_internal_hosts: bool,
+    allowed_schemes: frozenset[str],
+    body_mode: str,
+    target_path: str | None = None,
+    chunk_size: int = 64 * 1024,
+) -> SafeResponse:
+    current_url = url
+    initial_parsed = _parse_url(current_url)
+    _validate_scheme(initial_parsed, allowed_schemes)
+    initial_origin = _origin_tuple(initial_parsed)
+    safe_headers = dict(headers) if headers else {}
+
+    for _ in range(max_hops + 1):
+        current_parsed = _parse_url(current_url)
+        _validate_scheme(current_parsed, allowed_schemes)
+
+        safe_headers = _strip_sensitive_headers_for_cross_origin(
+            safe_headers, initial_origin, current_parsed
+        )
+        request_headers = merge_headers_for_pinned_request(
+            safe_headers, {"Host": _build_host_authority(current_parsed)}
+        )
+
+        response = _request_resolved_url(
+            current_parsed,
+            timeout=timeout,
+            headers=request_headers,
+            max_size=max_size,
+            body_mode=body_mode,
+            target_path=target_path,
+            chunk_size=chunk_size,
+            allow_internal_hosts=allow_internal_hosts,
+        )
+
+        if response.status_code not in _REDIRECT_STATUSES:
+            return response
+
+        location = response.headers.get("location")
+        if not location:
+            raise SSRFError("Redirect response missing Location header")
+        current_url = _redirect_target(current_url, location)
+
+    raise SSRFError("Too many redirects")
 
 
 def ssrf_safe_get(
@@ -391,58 +465,16 @@ def ssrf_safe_get(
     allow_internal_hosts: bool = False,
     allowed_schemes: frozenset[str] = DEFAULT_ALLOWED_SCHEMES,
 ) -> SafeResponse:
-    current_url = url
-    current_parsed = _parse_url(current_url)
-    initial_origin = _origin_tuple(current_parsed)
-    safe_headers = dict(headers) if headers else {}
-
-    for _ in range(max_hops + 1):
-        current_parsed = _parse_url(current_url)
-        _validate_scheme(current_parsed, allowed_schemes)
-
-        hostname = current_parsed.hostname
-        if not hostname:
-            raise SSRFError("URL has no hostname")
-
-        safe_headers = _strip_sensitive_headers_for_cross_origin(
-            safe_headers, initial_origin, current_parsed
-        )
-        request_headers = merge_headers_for_pinned_request(
-            safe_headers, {"Host": _build_host_authority(current_parsed)}
-        )
-
-        if allow_internal_hosts:
-            response = _request_one_hop(
-                current_parsed,
-                target_ip=None,
-                timeout=timeout,
-                headers=request_headers,
-                max_size=max_size,
-            )
-        else:
-            validated_ips = resolve_and_validate_host(hostname, current_parsed.port)
-            response = _request_validated_ips(
-                _request_one_hop,
-                current_parsed,
-                validated_ips,
-                timeout=timeout,
-                headers=request_headers,
-                max_size=max_size,
-            )
-
-        if response.status_code in (301, 302, 303, 307, 308):
-            location = response.headers.get("location")
-            if not location:
-                raise SSRFError("Redirect response missing Location header")
-            current_url = _redirect_target(current_url, location)
-            continue
-
-        if response.status_code >= 400:
-            raise SSRFHTTPStatusError(response.status_code)
-
-        return response
-
-    raise SSRFError("Too many redirects")
+    return _safe_request(
+        url,
+        timeout=timeout,
+        max_size=max_size,
+        max_hops=max_hops,
+        headers=headers,
+        allow_internal_hosts=allow_internal_hosts,
+        allowed_schemes=allowed_schemes,
+        body_mode=_BODY_CONTENT,
+    )
 
 
 def ssrf_safe_get_headers(
@@ -454,56 +486,16 @@ def ssrf_safe_get_headers(
     allow_internal_hosts: bool = False,
     allowed_schemes: frozenset[str] = DEFAULT_ALLOWED_SCHEMES,
 ) -> SafeResponse:
-    current_url = url
-    current_parsed = _parse_url(current_url)
-    initial_origin = _origin_tuple(current_parsed)
-    safe_headers = dict(headers) if headers else {}
-
-    for _ in range(max_hops + 1):
-        current_parsed = _parse_url(current_url)
-        _validate_scheme(current_parsed, allowed_schemes)
-
-        hostname = current_parsed.hostname
-        if not hostname:
-            raise SSRFError("URL has no hostname")
-
-        safe_headers = _strip_sensitive_headers_for_cross_origin(
-            safe_headers, initial_origin, current_parsed
-        )
-        request_headers = merge_headers_for_pinned_request(
-            safe_headers, {"Host": _build_host_authority(current_parsed)}
-        )
-
-        if allow_internal_hosts:
-            response = _request_one_hop_headers(
-                current_parsed,
-                target_ip=None,
-                timeout=timeout,
-                headers=request_headers,
-            )
-        else:
-            validated_ips = resolve_and_validate_host(hostname, current_parsed.port)
-            response = _request_validated_ips(
-                _request_one_hop_headers,
-                current_parsed,
-                validated_ips,
-                timeout=timeout,
-                headers=request_headers,
-            )
-
-        if response.status_code in (301, 302, 303, 307, 308):
-            location = response.headers.get("location")
-            if not location:
-                raise SSRFError("Redirect response missing Location header")
-            current_url = _redirect_target(current_url, location)
-            continue
-
-        if response.status_code >= 400:
-            raise SSRFHTTPStatusError(response.status_code)
-
-        return response
-
-    raise SSRFError("Too many redirects")
+    return _safe_request(
+        url,
+        timeout=timeout,
+        max_size=None,
+        max_hops=max_hops,
+        headers=headers,
+        allow_internal_hosts=allow_internal_hosts,
+        allowed_schemes=allowed_schemes,
+        body_mode=_BODY_HEADERS,
+    )
 
 
 def ssrf_safe_get_to_file(
@@ -518,57 +510,15 @@ def ssrf_safe_get_to_file(
     allowed_schemes: frozenset[str] = DEFAULT_ALLOWED_SCHEMES,
     chunk_size: int = 64 * 1024,
 ) -> SafeResponse:
-    current_url = url
-    current_parsed = _parse_url(current_url)
-    initial_origin = _origin_tuple(current_parsed)
-    safe_headers = dict(headers) if headers else {}
-    target_path_str = os.fspath(target_path)
-
-    for _ in range(max_hops + 1):
-        current_parsed = _parse_url(current_url)
-        _validate_scheme(current_parsed, allowed_schemes)
-
-        hostname = current_parsed.hostname
-        if not hostname:
-            raise SSRFError("URL has no hostname")
-
-        safe_headers = _strip_sensitive_headers_for_cross_origin(
-            safe_headers, initial_origin, current_parsed
-        )
-        request_headers = merge_headers_for_pinned_request(
-            safe_headers, {"Host": _build_host_authority(current_parsed)}
-        )
-
-        if allow_internal_hosts:
-            response = _request_one_hop_to_file(
-                current_parsed,
-                target_path_str,
-                target_ip=None,
-                timeout=timeout,
-                headers=request_headers,
-                max_size=max_size,
-                chunk_size=chunk_size,
-            )
-        else:
-            validated_ips = resolve_and_validate_host(hostname, current_parsed.port)
-            response = _request_validated_ips(
-                _request_one_hop_to_file,
-                current_parsed,
-                validated_ips,
-                target_path_str,
-                timeout=timeout,
-                headers=request_headers,
-                max_size=max_size,
-                chunk_size=chunk_size,
-            )
-
-        if response.status_code in (301, 302, 303, 307, 308):
-            location = response.headers.get("location")
-            if not location:
-                raise SSRFError("Redirect response missing Location header")
-            current_url = _redirect_target(current_url, location)
-            continue
-
-        return response
-
-    raise SSRFError("Too many redirects")
+    return _safe_request(
+        url,
+        timeout=timeout,
+        max_size=max_size,
+        max_hops=max_hops,
+        headers=headers,
+        allow_internal_hosts=allow_internal_hosts,
+        allowed_schemes=allowed_schemes,
+        body_mode=_BODY_FILE,
+        target_path=os.fspath(target_path),
+        chunk_size=chunk_size,
+    )

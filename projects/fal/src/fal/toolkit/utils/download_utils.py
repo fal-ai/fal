@@ -149,35 +149,6 @@ def _get_safe_remote_file_properties(
     )
 
 
-def _file_content_length_matches(
-    url: str, file_path: Path, request_headers: dict[str, str] | None = None
-) -> bool:
-    """Check if the local file's content length matches the expected remote
-    file's content length.
-
-    This function compares the content length of a local file to the expected content
-    length of a remote file, which is determined by sending an HTTP request to the
-    remote URL. If the content lengths match, the function returns `True`, indicating
-    that the local file's content matches the expected remote content. If the content
-    lengths do not match or information about the content length is unavailable, the
-    function returns `False`.
-
-    Args:
-        url: The URL of the remote file.
-        file_path: The local path to the file being compared.
-        request_headers: A dictionary containing additional headers to be included in
-            the HTTP request.
-
-    Returns:
-        bool: `True` if the local file's content length matches the remote file's
-            content length, `False` otherwise.
-    """
-    local_file_content_length = file_path.stat().st_size
-    remote_file_content_length = _get_remote_file_properties(url, request_headers)[1]
-
-    return local_file_content_length == remote_file_content_length
-
-
 def download_file(
     url: str,
     target_dir: str | Path,
@@ -317,24 +288,15 @@ def download_file(
     else:
         print(f"Downloading {url} to {target_path}")
 
-    with NamedTemporaryFile(
-        delete=False,
-        dir=target_dir_path,
-        prefix=".fal_download.tmp.",
-    ) as temp_file:
-        temp_file_path = Path(temp_file.name)
-
     try:
         response = ssrf_safe_get_to_file(
             url,
-            temp_file_path,
+            target_path,
             headers=_headers(request_headers),
             max_size=filesize_limit * ONE_MB if filesize_limit is not None else None,
             allow_internal_hosts=allow_internal_hosts,
         )
-        _raise_if_incomplete_download(response, temp_file_path)
-
-        os.replace(temp_file_path, target_path)
+        _raise_if_incomplete_download(response, target_path)
     except (SSRFError, SSRFSizeExceededError) as e:
         raise DownloadError(str(e)) from e
     except SSRFHTTPStatusError as e:
@@ -343,8 +305,6 @@ def download_file(
         ) from e
     except Exception as e:
         raise DownloadError(f"Failed to download {url} to {target_dir_path}") from e
-    finally:
-        temp_file_path.unlink(missing_ok=True)
 
     return target_path
 
@@ -374,31 +334,18 @@ def _download_file_python(
 
     if urlparse(url).scheme in {"http", "https"}:
         target_path = Path(target_path)
-        basename = os.path.basename(target_path)
-        temp_dir = target_path.parent if str(target_path.parent) else Path(".")
 
         try:
-            with NamedTemporaryFile(
-                delete=False,
-                dir=temp_dir,
-                prefix=f"{basename}.tmp",
-            ) as temp_file:
-                temp_file_path = Path(temp_file.name)
-
-            try:
-                response = ssrf_safe_get_to_file(
-                    url,
-                    temp_file_path,
-                    headers=_headers(request_headers),
-                    max_size=filesize_limit * ONE_MB
-                    if filesize_limit is not None
-                    else None,
-                    allow_internal_hosts=allow_internal_hosts,
-                )
-                _raise_if_incomplete_download(response, temp_file_path)
-                os.replace(temp_file_path, target_path)
-            finally:
-                temp_file_path.unlink(missing_ok=True)
+            response = ssrf_safe_get_to_file(
+                url,
+                target_path,
+                headers=_headers(request_headers),
+                max_size=filesize_limit * ONE_MB
+                if filesize_limit is not None
+                else None,
+                allow_internal_hosts=allow_internal_hosts,
+            )
+            _raise_if_incomplete_download(response, target_path)
         except (SSRFError, SSRFSizeExceededError) as e:
             raise DownloadError(str(e)) from e
         except SSRFHTTPStatusError as e:
