@@ -5,6 +5,7 @@ import json
 
 from fal.api.client import SyncServerlessClient
 
+from ._utils import fetch_metadata_with_banner
 from .deploy_check import _resolve_deploy_check_source, deploy_with_check
 from .parser import FalClientParser, RefAction, add_env_argument, get_output_parser
 
@@ -54,6 +55,7 @@ def _deploy(args):
             style="bold",
         )
         args.console.print("")
+        fetch_metadata_with_banner(args.console, prepared.loaded.function)
         res = deploy_api.execute_prepared_deployment(
             prepared, result_handler=result_handler
         )

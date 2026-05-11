@@ -221,7 +221,10 @@ def test_deploy_python_entry_point_forwards_to_loader(
     loaded.app_name = "entrypoint-app"
     loaded.app_auth = "public"
     loaded.class_name = "SimpleApp"
-    loaded.function = MagicMock(spec=["entrypoint"])
+    loaded.function = MagicMock(
+        spec=["entrypoint", "metadata_entrypoint", "build_metadata", "fetch_metadata"]
+    )
+    loaded.function.metadata_entrypoint = None
     mock_load_function_from.return_value = loaded
 
     args = mock_args(app_ref=("entrypoint-app", None))
@@ -1030,7 +1033,10 @@ def _prepared_deployment(
                         "regions": ["us-east"],
                     },
                     environment={},
-                )
+                ),
+                metadata_entrypoint=None,
+                build_metadata=lambda: {},
+                fetch_metadata=lambda: {},
             ),
         ),
         display_name="MyApp",

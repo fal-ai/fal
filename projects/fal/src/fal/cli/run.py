@@ -2,7 +2,12 @@ import argparse
 from dataclasses import replace
 from pathlib import Path
 
-from ._utils import AppData, get_app_data_from_toml, is_app_name
+from ._utils import (
+    AppData,
+    fetch_metadata_with_banner,
+    get_app_data_from_toml,
+    is_app_name,
+)
 from .parser import FalClientParser, RefAction, add_env_argument
 
 
@@ -76,7 +81,7 @@ def _run(args):
     if not args.local:
         # Endpoints/openapi for the result handler aren't available locally
         # in entrypoint mode; this fetches them from the worker.
-        isolated_function.fetch_metadata()
+        fetch_metadata_with_banner(args.console, isolated_function)
 
     from fal.api.run import run as run_api
 

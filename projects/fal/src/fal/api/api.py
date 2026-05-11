@@ -2246,12 +2246,17 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
         """Probe ``<entrypoint>.build_metadata`` on the worker and cache the
         result into ``options.host["metadata"]``.
 
-        No-op when there's no ``entrypoint`` set — the regular flow already
-        populates metadata via ``wrap_app``/registration paths, and this
-        method just returns that cached value.
+        Idempotent: if metadata is already cached (either because the regular
+        ``wrap_app``/registration flow populated it, or because a previous
+        ``fetch_metadata()`` call did), returns the cached value without a
+        second round-trip.
         """
         if self.metadata_entrypoint is None:
             return self.build_metadata()
+
+        cached = self.build_metadata()
+        if cached:
+            return cached
 
         from fal.api import ResultHandler  # noqa: PLC0415
 

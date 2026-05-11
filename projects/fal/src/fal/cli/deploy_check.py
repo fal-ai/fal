@@ -110,6 +110,8 @@ def deploy_with_check(
 ) -> DeploymentResult:
     from fal.api import deploy as deploy_api
 
+    from ._utils import fetch_metadata_with_banner
+
     prepared = deploy_api.prepare_deployment(
         client,
         app_ref,
@@ -137,6 +139,7 @@ def deploy_with_check(
         console=args.console,
         assume_yes=args.yes,
     )
+    fetch_metadata_with_banner(args.console, prepared.loaded.function)
     return deploy_api.execute_prepared_deployment(
         prepared, result_handler=result_handler
     )

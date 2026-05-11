@@ -3,11 +3,46 @@ from __future__ import annotations
 import copy
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from fal.api import Options
 from fal.project import find_project_root, find_pyproject_toml, parse_pyproject_toml
 from fal.sdk import AuthModeLiteral, DeploymentStrategyLiteral
+
+if TYPE_CHECKING:
+    from rich.console import Console
+
+    from fal.api import IsolatedFunction
+
+
+def fetch_metadata_with_banner(
+    console: Console,
+    isolated_function: IsolatedFunction,
+) -> None:
+    """Run ``isolated_function.fetch_metadata()`` with a ``Building
+    metadata...`` / ``✓ Metadata build complete`` section banner consistent
+    with the rest of the CLI (``Building environment...`` / ``Build
+    complete``, ``Packaging local project X...`` / ``Project packaged``).
+
+    The banner is only shown when an actual remote round-trip is needed
+    (entrypoint mode and no cached metadata yet). In every other case
+    this is a free no-op.
+    """
+    needs_remote_probe = (
+        isolated_function.metadata_entrypoint is not None
+        and not isolated_function.build_metadata()
+    )
+    if not needs_remote_probe:
+        isolated_function.fetch_metadata()
+        return
+
+    from fal.console.icons import CHECK_ICON  # noqa: PLC0415
+
+    console.print("Building metadata...", style="bold")
+    isolated_function.fetch_metadata()
+    console.print(f"{CHECK_ICON} Metadata build complete", style="bold green")
+    console.print("")
+
 
 VALID_REGIONS = {
     "us-west",

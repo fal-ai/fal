@@ -305,6 +305,18 @@ def test_isolated_function_fetch_metadata_probes_worker():
     assert iso.endpoints == ["/predict"]
 
 
+def test_isolated_function_fetch_metadata_is_idempotent():
+    host = MagicMock()
+    host.run.return_value = {"openapi": {"paths": {"/predict": {}}}}
+
+    iso = IsolatedFunction(host=host, entrypoint="pkg.mod:MyApp")
+    first = iso.fetch_metadata()
+    second = iso.fetch_metadata()
+
+    host.run.assert_called_once()
+    assert first == second == {"openapi": {"paths": {"/predict": {}}}}
+
+
 def test_isolated_function_fetch_metadata_rejects_non_dict_payload():
     from fal.api import FalServerlessError
 
