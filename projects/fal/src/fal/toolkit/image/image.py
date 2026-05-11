@@ -188,7 +188,9 @@ class Image(File):
             fallback_save_kwargs=fallback_save_kwargs,
         )
 
-    def to_pil(self, mode: str = "RGB") -> PILImage.Image:
+    def to_pil(
+        self, mode: str = "RGB", allow_internal_hosts: bool = False
+    ) -> PILImage.Image:
         try:
             from PIL import Image as PILImage
             from PIL import ImageOps
@@ -199,7 +201,11 @@ class Image(File):
         with NamedTemporaryFile() as temp_file:
             temp_file_path = temp_file.name
 
-            _download_file_python(self.url, temp_file_path)
+            _download_file_python(
+                self.url,
+                temp_file_path,
+                allow_internal_hosts=allow_internal_hosts,
+            )
 
             img = PILImage.open(temp_file_path).convert(mode)
             img = ImageOps.exif_transpose(img)

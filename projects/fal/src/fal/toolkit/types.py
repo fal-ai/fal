@@ -26,14 +26,24 @@ HTTP_URL_REGEX = (
 
 class DownloadFileMixin:
     @contextmanager
-    def as_temp_file(self) -> Generator[Path, None, None]:
+    def as_temp_file(
+        self,
+        allow_internal_hosts: bool = False,
+    ) -> Generator[Path, None, None]:
         with tempfile.TemporaryDirectory() as temp_dir:
-            yield download_file(str(self), temp_dir)
+            yield download_file(
+                str(self),
+                temp_dir,
+                allow_internal_hosts=allow_internal_hosts,
+            )
 
 
 class DownloadImageMixin:
-    def to_pil(self):
-        return read_image_from_url(str(self))
+    def to_pil(self, allow_internal_hosts: bool = False):
+        return read_image_from_url(
+            str(self),
+            allow_internal_hosts=allow_internal_hosts,
+        )
 
 
 class DataUri(DownloadFileMixin, str):

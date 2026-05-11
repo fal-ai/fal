@@ -463,7 +463,10 @@ def _mark_used_dir(dir: Path):
 
 
 def download_model_weights(
-    url: str, force: bool = False, request_headers: dict[str, str] | None = None
+    url: str,
+    force: bool = False,
+    request_headers: dict[str, str] | None = None,
+    allow_internal_hosts: bool = False,
 ) -> Path:
     """Downloads model weights from the specified URL and saves them to a
     predefined directory.
@@ -483,6 +486,8 @@ def download_model_weights(
             the remote file. Defaults to `False`.
         request_headers: A dictionary containing additional headers to be included in
             the HTTP request. Defaults to `None`.
+        allow_internal_hosts: If `True`, HTTP(S) downloads can resolve to internal
+            hosts. Defaults to `False`.
 
     Returns:
         A Path object representing the full path to the downloaded model weights.
@@ -514,6 +519,7 @@ def download_model_weights(
         target_dir=weights_dir,
         force=force,
         request_headers=request_headers,
+        allow_internal_hosts=allow_internal_hosts,
     )
 
     _mark_used_dir(weights_dir)
