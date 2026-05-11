@@ -54,8 +54,12 @@ _LOCAL_PATH_RE = re.compile(r"^\.(\[[^\]]+\])?$")
 # the tarball drift between back-to-back builds), so a content-hash cache
 # misses on every call.
 _SDIST_URL_CACHE: dict[str, tuple[str, str]] = {}
-# Guards the check-and-set in ``_resolve_sdist_url`` so two concurrent
-# dispatches with the same project root don't both build+upload.
+# Global lock serializing the build+upload sequence across the whole
+# process. A finer per-root lock would let independent projects build
+# in parallel, but the realistic concurrent shape today is at most one
+# project per ``fal run``/``fal deploy`` invocation, so a single lock
+# keeps the implementation simple. The trade-off: two threads packaging
+# *different* roots in the same process will serialize.
 _SDIST_URL_CACHE_LOCK = threading.Lock()
 
 Requirements = Union[List[str], List[List[str]]]
@@ -131,9 +135,10 @@ def _resolve_sdist_url(
 
     cache_key = str(project_root.resolve())
 
-    # Hold the lock for the entire check-build-upload-populate sequence so a
-    # concurrent dispatch with the same project root waits and re-uses the
-    # populated entry instead of running its own build + upload in parallel.
+    # Hold the lock for the entire check-build-upload-populate sequence so
+    # a concurrent dispatch waits and re-uses the populated entry instead
+    # of running its own build + upload in parallel. See the comment on
+    # ``_SDIST_URL_CACHE_LOCK`` for the cross-root serialization caveat.
     with _SDIST_URL_CACHE_LOCK:
         cached = _SDIST_URL_CACHE.get(cache_key)
         if cached is not None:

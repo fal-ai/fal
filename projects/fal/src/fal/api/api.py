@@ -817,8 +817,11 @@ class FalServerlessHost(Host):
                 console.print(Rule(style="dim"))
                 console.print(f"{CHECK_ICON} Project packaged", style="bold green")
                 console.print("")
-            # Cached path is silent — the user already saw the original
-            # packaging output; repeating it on every dispatch is noise.
+            # ``build_finished`` has no host-side rendering: the live
+            # ``python -m build`` output between the rules already tells the
+            # user the build is done. Cached ``upload_finished`` is also
+            # silent — the user saw the original packaging output once;
+            # repeating it on every dispatch is noise.
 
         environment_options["requirements"] = materialize_local_paths(
             requirements, self.local_project_root, on_progress=_on_progress
