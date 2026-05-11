@@ -59,6 +59,9 @@ service IsolateController {
     rpc CreateEnvironment (CreateEnvironmentRequest) returns (CreateEnvironmentResponse) {}
     // Delete an environment
     rpc DeleteEnvironment (DeleteEnvironmentRequest) returns (DeleteEnvironmentResponse) {}
+    // Build (or warm the cache for) an environment without running anything in it.
+    // Streams build logs and terminal status; reuses the same caches as Run/RegisterApplication.
+    rpc BuildEnvironment (BuildEnvironmentRequest) returns (stream BuildEnvironmentResult) {}
 }
 
 message HostedMap {
@@ -118,6 +121,40 @@ message HostedRun {
     optional SecretsConfig secrets = 11;
     // Run the resolved callable on the backend main thread instead of a thread pool.
     optional bool run_on_main_thread = 13;
+    // When false, skip the environment build step and rely on an already-built
+    // (cached) environment. Unset/true preserves legacy behavior of building inline.
+    optional bool build_environment = 14;
+    // Optional identifier of a pre-built environment (as returned by BuildEnvironment).
+    // When set, the server may use the referenced environment directly. If both
+    // `environments` and `env_id` are provided, the server validates they agree.
+    optional string env_id = 15;
+}
+
+message BuildEnvironmentRequest {
+    // Environment definitions.
+    repeated EnvironmentDefinition environments = 1;
+    // Machine requirements (used to select a builder, scheduler options, etc.).
+    optional MachineRequirements machine_requirements = 2;
+    // Optional files to be included in the build context.
+    repeated File files = 3;
+    // Environment for the build (defaults to "main").
+    optional string environment_name = 4;
+    // Optional application name to namespace cache/labels with.
+    optional string application_name = 5;
+    // Explicit allow-list of user secrets exposed during the build.
+    optional SecretsConfig secrets = 6;
+}
+
+message BuildEnvironmentResult {
+    // Stable identifier of the environment definition (content hash of the
+    // EnvironmentDefinition; same as `environment.key` server-side). Set on every
+    // streamed message. Future Run / RegisterApplication revisions may accept
+    // this in place of a full EnvironmentDefinition to reference a pre-built env.
+    string env_id = 1;
+    // The status of the build (set on the terminal message).
+    optional HostedRunStatus status = 2;
+    // The most recent logs from the build.
+    repeated Log logs = 3;
 }
 
 message CreateUserKeyRequest {
@@ -186,6 +223,11 @@ message HostedRunResult {
 
     // Service URLs for the run
     optional ServiceURLs service_urls = 5;
+
+    // Identifier of the environment that was used for this run, set by the server.
+    // Same content hash as BuildEnvironmentResult.env_id. Older servers may leave
+    // this unset.
+    optional string env_id = 6;
 }
 
 message InteractiveRunRequest {
@@ -330,6 +372,13 @@ message RegisterApplicationRequest {
     optional SecretsConfig secrets = 22;
     // Run the resolved callable on the backend main thread instead of a thread pool.
     optional bool run_on_main_thread = 23;
+    // When false, skip the environment build step and rely on an already-built
+    // (cached) environment. Unset/true preserves legacy behavior of building inline.
+    optional bool build_environment = 24;
+    // Optional identifier of a pre-built environment (as returned by BuildEnvironment).
+    // When set, the server may use the referenced environment directly. If both
+    // `environments` and `env_id` are provided, the server validates they agree.
+    optional string env_id = 25;
 }
 
 message RegisterApplicationResultType {
@@ -340,6 +389,10 @@ message RegisterApplicationResult {
     repeated Log logs = 1;
     optional RegisterApplicationResultType result = 2;
     optional ServiceURLs service_urls = 3;
+    // Identifier of the environment that was used for this registration, set by the
+    // server. Same content hash as BuildEnvironmentResult.env_id. Older servers may
+    // leave this unset.
+    optional string env_id = 4;
 }
 
 message UpdateApplicationRequest {

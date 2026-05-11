@@ -172,6 +172,8 @@ class HostedRun(google.protobuf.message.Message):
     DATA_MOUNTS_FIELD_NUMBER: builtins.int
     SECRETS_FIELD_NUMBER: builtins.int
     RUN_ON_MAIN_THREAD_FIELD_NUMBER: builtins.int
+    BUILD_ENVIRONMENT_FIELD_NUMBER: builtins.int
+    ENV_ID_FIELD_NUMBER: builtins.int
     @property
     def environments(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[server_pb2.EnvironmentDefinition]:
         """Environment definitions."""
@@ -207,6 +209,15 @@ class HostedRun(google.protobuf.message.Message):
         """Explicit allow-list of user secrets exposed as env vars."""
     run_on_main_thread: builtins.bool
     """Run the resolved callable on the backend main thread instead of a thread pool."""
+    build_environment: builtins.bool
+    """When false, skip the environment build step and rely on an already-built
+    (cached) environment. Unset/true preserves legacy behavior of building inline.
+    """
+    env_id: builtins.str
+    """Optional identifier of a pre-built environment (as returned by BuildEnvironment).
+    When set, the server may use the referenced environment directly. If both
+    `environments` and `env_id` are provided, the server validates they agree.
+    """
     def __init__(
         self,
         *,
@@ -223,13 +234,19 @@ class HostedRun(google.protobuf.message.Message):
         data_mounts: collections.abc.Iterable[builtins.str] | None = ...,
         secrets: global___SecretsConfig | None = ...,
         run_on_main_thread: builtins.bool | None = ...,
+        build_environment: builtins.bool | None = ...,
+        env_id: builtins.str | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing_extensions.Literal["_application_name", b"_application_name", "_auth_mode", b"_auth_mode", "_environment_name", b"_environment_name", "_fetch_openapi", b"_fetch_openapi", "_machine_requirements", b"_machine_requirements", "_run_on_main_thread", b"_run_on_main_thread", "_secrets", b"_secrets", "_setup_func", b"_setup_func", "application_name", b"application_name", "auth_mode", b"auth_mode", "callable", b"callable", "entrypoint", b"entrypoint", "environment_name", b"environment_name", "fetch_openapi", b"fetch_openapi", "function", b"function", "machine_requirements", b"machine_requirements", "run_on_main_thread", b"run_on_main_thread", "secrets", b"secrets", "setup_func", b"setup_func"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing_extensions.Literal["_application_name", b"_application_name", "_auth_mode", b"_auth_mode", "_environment_name", b"_environment_name", "_fetch_openapi", b"_fetch_openapi", "_machine_requirements", b"_machine_requirements", "_run_on_main_thread", b"_run_on_main_thread", "_secrets", b"_secrets", "_setup_func", b"_setup_func", "application_name", b"application_name", "auth_mode", b"auth_mode", "callable", b"callable", "data_mounts", b"data_mounts", "entrypoint", b"entrypoint", "environment_name", b"environment_name", "environments", b"environments", "fetch_openapi", b"fetch_openapi", "files", b"files", "function", b"function", "machine_requirements", b"machine_requirements", "run_on_main_thread", b"run_on_main_thread", "secrets", b"secrets", "setup_func", b"setup_func"]) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["_application_name", b"_application_name", "_auth_mode", b"_auth_mode", "_build_environment", b"_build_environment", "_env_id", b"_env_id", "_environment_name", b"_environment_name", "_fetch_openapi", b"_fetch_openapi", "_machine_requirements", b"_machine_requirements", "_run_on_main_thread", b"_run_on_main_thread", "_secrets", b"_secrets", "_setup_func", b"_setup_func", "application_name", b"application_name", "auth_mode", b"auth_mode", "build_environment", b"build_environment", "callable", b"callable", "entrypoint", b"entrypoint", "env_id", b"env_id", "environment_name", b"environment_name", "fetch_openapi", b"fetch_openapi", "function", b"function", "machine_requirements", b"machine_requirements", "run_on_main_thread", b"run_on_main_thread", "secrets", b"secrets", "setup_func", b"setup_func"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["_application_name", b"_application_name", "_auth_mode", b"_auth_mode", "_build_environment", b"_build_environment", "_env_id", b"_env_id", "_environment_name", b"_environment_name", "_fetch_openapi", b"_fetch_openapi", "_machine_requirements", b"_machine_requirements", "_run_on_main_thread", b"_run_on_main_thread", "_secrets", b"_secrets", "_setup_func", b"_setup_func", "application_name", b"application_name", "auth_mode", b"auth_mode", "build_environment", b"build_environment", "callable", b"callable", "data_mounts", b"data_mounts", "entrypoint", b"entrypoint", "env_id", b"env_id", "environment_name", b"environment_name", "environments", b"environments", "fetch_openapi", b"fetch_openapi", "files", b"files", "function", b"function", "machine_requirements", b"machine_requirements", "run_on_main_thread", b"run_on_main_thread", "secrets", b"secrets", "setup_func", b"setup_func"]) -> None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_application_name", b"_application_name"]) -> typing_extensions.Literal["application_name"] | None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_auth_mode", b"_auth_mode"]) -> typing_extensions.Literal["auth_mode"] | None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_build_environment", b"_build_environment"]) -> typing_extensions.Literal["build_environment"] | None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_env_id", b"_env_id"]) -> typing_extensions.Literal["env_id"] | None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_environment_name", b"_environment_name"]) -> typing_extensions.Literal["environment_name"] | None: ...
     @typing.overload
@@ -246,6 +263,87 @@ class HostedRun(google.protobuf.message.Message):
     def WhichOneof(self, oneof_group: typing_extensions.Literal["callable", b"callable"]) -> typing_extensions.Literal["function", "entrypoint"] | None: ...
 
 global___HostedRun = HostedRun
+
+@typing_extensions.final
+class BuildEnvironmentRequest(google.protobuf.message.Message):
+    DESCRIPTOR: google.protobuf.descriptor.Descriptor
+
+    ENVIRONMENTS_FIELD_NUMBER: builtins.int
+    MACHINE_REQUIREMENTS_FIELD_NUMBER: builtins.int
+    FILES_FIELD_NUMBER: builtins.int
+    ENVIRONMENT_NAME_FIELD_NUMBER: builtins.int
+    APPLICATION_NAME_FIELD_NUMBER: builtins.int
+    SECRETS_FIELD_NUMBER: builtins.int
+    @property
+    def environments(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[server_pb2.EnvironmentDefinition]:
+        """Environment definitions."""
+    @property
+    def machine_requirements(self) -> global___MachineRequirements:
+        """Machine requirements (used to select a builder, scheduler options, etc.)."""
+    @property
+    def files(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[global___File]:
+        """Optional files to be included in the build context."""
+    environment_name: builtins.str
+    """Environment for the build (defaults to "main")."""
+    application_name: builtins.str
+    """Optional application name to namespace cache/labels with."""
+    @property
+    def secrets(self) -> global___SecretsConfig:
+        """Explicit allow-list of user secrets exposed during the build."""
+    def __init__(
+        self,
+        *,
+        environments: collections.abc.Iterable[server_pb2.EnvironmentDefinition] | None = ...,
+        machine_requirements: global___MachineRequirements | None = ...,
+        files: collections.abc.Iterable[global___File] | None = ...,
+        environment_name: builtins.str | None = ...,
+        application_name: builtins.str | None = ...,
+        secrets: global___SecretsConfig | None = ...,
+    ) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["_application_name", b"_application_name", "_environment_name", b"_environment_name", "_machine_requirements", b"_machine_requirements", "_secrets", b"_secrets", "application_name", b"application_name", "environment_name", b"environment_name", "machine_requirements", b"machine_requirements", "secrets", b"secrets"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["_application_name", b"_application_name", "_environment_name", b"_environment_name", "_machine_requirements", b"_machine_requirements", "_secrets", b"_secrets", "application_name", b"application_name", "environment_name", b"environment_name", "environments", b"environments", "files", b"files", "machine_requirements", b"machine_requirements", "secrets", b"secrets"]) -> None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_application_name", b"_application_name"]) -> typing_extensions.Literal["application_name"] | None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_environment_name", b"_environment_name"]) -> typing_extensions.Literal["environment_name"] | None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_machine_requirements", b"_machine_requirements"]) -> typing_extensions.Literal["machine_requirements"] | None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_secrets", b"_secrets"]) -> typing_extensions.Literal["secrets"] | None: ...
+
+global___BuildEnvironmentRequest = BuildEnvironmentRequest
+
+@typing_extensions.final
+class BuildEnvironmentResult(google.protobuf.message.Message):
+    DESCRIPTOR: google.protobuf.descriptor.Descriptor
+
+    ENV_ID_FIELD_NUMBER: builtins.int
+    STATUS_FIELD_NUMBER: builtins.int
+    LOGS_FIELD_NUMBER: builtins.int
+    env_id: builtins.str
+    """Stable identifier of the environment definition (content hash of the
+    EnvironmentDefinition; same as `environment.key` server-side). Set on every
+    streamed message. Future Run / RegisterApplication revisions may accept
+    this in place of a full EnvironmentDefinition to reference a pre-built env.
+    """
+    @property
+    def status(self) -> global___HostedRunStatus:
+        """The status of the build (set on the terminal message)."""
+    @property
+    def logs(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[common_pb2.Log]:
+        """The most recent logs from the build."""
+    def __init__(
+        self,
+        *,
+        env_id: builtins.str = ...,
+        status: global___HostedRunStatus | None = ...,
+        logs: collections.abc.Iterable[common_pb2.Log] | None = ...,
+    ) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["_status", b"_status", "status", b"status"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["_status", b"_status", "env_id", b"env_id", "logs", b"logs", "status", b"status"]) -> None: ...
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_status", b"_status"]) -> typing_extensions.Literal["status"] | None: ...
+
+global___BuildEnvironmentResult = BuildEnvironmentResult
 
 @typing_extensions.final
 class CreateUserKeyRequest(google.protobuf.message.Message):
@@ -417,6 +515,7 @@ class HostedRunResult(google.protobuf.message.Message):
     LOGS_FIELD_NUMBER: builtins.int
     RETURN_VALUE_FIELD_NUMBER: builtins.int
     SERVICE_URLS_FIELD_NUMBER: builtins.int
+    ENV_ID_FIELD_NUMBER: builtins.int
     run_id: builtins.str
     """Unique run id / token."""
     @property
@@ -435,6 +534,11 @@ class HostedRunResult(google.protobuf.message.Message):
     @property
     def service_urls(self) -> global___ServiceURLs:
         """Service URLs for the run"""
+    env_id: builtins.str
+    """Identifier of the environment that was used for this run, set by the server.
+    Same content hash as BuildEnvironmentResult.env_id. Older servers may leave
+    this unset.
+    """
     def __init__(
         self,
         *,
@@ -443,9 +547,12 @@ class HostedRunResult(google.protobuf.message.Message):
         logs: collections.abc.Iterable[common_pb2.Log] | None = ...,
         return_value: common_pb2.SerializedObject | None = ...,
         service_urls: global___ServiceURLs | None = ...,
+        env_id: builtins.str | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing_extensions.Literal["_return_value", b"_return_value", "_service_urls", b"_service_urls", "_status", b"_status", "return_value", b"return_value", "service_urls", b"service_urls", "status", b"status"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing_extensions.Literal["_return_value", b"_return_value", "_service_urls", b"_service_urls", "_status", b"_status", "logs", b"logs", "return_value", b"return_value", "run_id", b"run_id", "service_urls", b"service_urls", "status", b"status"]) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["_env_id", b"_env_id", "_return_value", b"_return_value", "_service_urls", b"_service_urls", "_status", b"_status", "env_id", b"env_id", "return_value", b"return_value", "service_urls", b"service_urls", "status", b"status"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["_env_id", b"_env_id", "_return_value", b"_return_value", "_service_urls", b"_service_urls", "_status", b"_status", "env_id", b"env_id", "logs", b"logs", "return_value", b"return_value", "run_id", b"run_id", "service_urls", b"service_urls", "status", b"status"]) -> None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_env_id", b"_env_id"]) -> typing_extensions.Literal["env_id"] | None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_return_value", b"_return_value"]) -> typing_extensions.Literal["return_value"] | None: ...
     @typing.overload
@@ -713,6 +820,8 @@ class RegisterApplicationRequest(google.protobuf.message.Message):
     DATA_MOUNTS_FIELD_NUMBER: builtins.int
     SECRETS_FIELD_NUMBER: builtins.int
     RUN_ON_MAIN_THREAD_FIELD_NUMBER: builtins.int
+    BUILD_ENVIRONMENT_FIELD_NUMBER: builtins.int
+    ENV_ID_FIELD_NUMBER: builtins.int
     @property
     def environments(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[server_pb2.EnvironmentDefinition]:
         """Environment definitions."""
@@ -773,6 +882,15 @@ class RegisterApplicationRequest(google.protobuf.message.Message):
         """Explicit allow-list of user secrets exposed as env vars."""
     run_on_main_thread: builtins.bool
     """Run the resolved callable on the backend main thread instead of a thread pool."""
+    build_environment: builtins.bool
+    """When false, skip the environment build step and rely on an already-built
+    (cached) environment. Unset/true preserves legacy behavior of building inline.
+    """
+    env_id: builtins.str
+    """Optional identifier of a pre-built environment (as returned by BuildEnvironment).
+    When set, the server may use the referenced environment directly. If both
+    `environments` and `env_id` are provided, the server validates they agree.
+    """
     def __init__(
         self,
         *,
@@ -799,15 +917,21 @@ class RegisterApplicationRequest(google.protobuf.message.Message):
         data_mounts: collections.abc.Iterable[builtins.str] | None = ...,
         secrets: global___SecretsConfig | None = ...,
         run_on_main_thread: builtins.bool | None = ...,
+        build_environment: builtins.bool | None = ...,
+        env_id: builtins.str | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing_extensions.Literal["_application_name", b"_application_name", "_auth_mode", b"_auth_mode", "_deployment_strategy", b"_deployment_strategy", "_environment_name", b"_environment_name", "_fetch_openapi", b"_fetch_openapi", "_health_check_config", b"_health_check_config", "_health_check_path", b"_health_check_path", "_machine_requirements", b"_machine_requirements", "_max_concurrency", b"_max_concurrency", "_metadata", b"_metadata", "_private_logs", b"_private_logs", "_run_on_main_thread", b"_run_on_main_thread", "_scale", b"_scale", "_secrets", b"_secrets", "_setup_func", b"_setup_func", "_source_code", b"_source_code", "_termination_grace_period_seconds", b"_termination_grace_period_seconds", "application_name", b"application_name", "auth_mode", b"auth_mode", "callable", b"callable", "deployment_strategy", b"deployment_strategy", "entrypoint", b"entrypoint", "environment_name", b"environment_name", "fetch_openapi", b"fetch_openapi", "function", b"function", "health_check_config", b"health_check_config", "health_check_path", b"health_check_path", "machine_requirements", b"machine_requirements", "max_concurrency", b"max_concurrency", "metadata", b"metadata", "private_logs", b"private_logs", "run_on_main_thread", b"run_on_main_thread", "scale", b"scale", "secrets", b"secrets", "setup_func", b"setup_func", "source_code", b"source_code", "termination_grace_period_seconds", b"termination_grace_period_seconds"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing_extensions.Literal["_application_name", b"_application_name", "_auth_mode", b"_auth_mode", "_deployment_strategy", b"_deployment_strategy", "_environment_name", b"_environment_name", "_fetch_openapi", b"_fetch_openapi", "_health_check_config", b"_health_check_config", "_health_check_path", b"_health_check_path", "_machine_requirements", b"_machine_requirements", "_max_concurrency", b"_max_concurrency", "_metadata", b"_metadata", "_private_logs", b"_private_logs", "_run_on_main_thread", b"_run_on_main_thread", "_scale", b"_scale", "_secrets", b"_secrets", "_setup_func", b"_setup_func", "_source_code", b"_source_code", "_termination_grace_period_seconds", b"_termination_grace_period_seconds", "application_name", b"application_name", "auth_mode", b"auth_mode", "callable", b"callable", "data_mounts", b"data_mounts", "deployment_strategy", b"deployment_strategy", "entrypoint", b"entrypoint", "environment_name", b"environment_name", "environments", b"environments", "fetch_openapi", b"fetch_openapi", "files", b"files", "function", b"function", "health_check_config", b"health_check_config", "health_check_path", b"health_check_path", "machine_requirements", b"machine_requirements", "max_concurrency", b"max_concurrency", "metadata", b"metadata", "private_logs", b"private_logs", "run_on_main_thread", b"run_on_main_thread", "scale", b"scale", "secrets", b"secrets", "setup_func", b"setup_func", "skip_retry_conditions", b"skip_retry_conditions", "source_code", b"source_code", "termination_grace_period_seconds", b"termination_grace_period_seconds"]) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["_application_name", b"_application_name", "_auth_mode", b"_auth_mode", "_build_environment", b"_build_environment", "_deployment_strategy", b"_deployment_strategy", "_env_id", b"_env_id", "_environment_name", b"_environment_name", "_fetch_openapi", b"_fetch_openapi", "_health_check_config", b"_health_check_config", "_health_check_path", b"_health_check_path", "_machine_requirements", b"_machine_requirements", "_max_concurrency", b"_max_concurrency", "_metadata", b"_metadata", "_private_logs", b"_private_logs", "_run_on_main_thread", b"_run_on_main_thread", "_scale", b"_scale", "_secrets", b"_secrets", "_setup_func", b"_setup_func", "_source_code", b"_source_code", "_termination_grace_period_seconds", b"_termination_grace_period_seconds", "application_name", b"application_name", "auth_mode", b"auth_mode", "build_environment", b"build_environment", "callable", b"callable", "deployment_strategy", b"deployment_strategy", "entrypoint", b"entrypoint", "env_id", b"env_id", "environment_name", b"environment_name", "fetch_openapi", b"fetch_openapi", "function", b"function", "health_check_config", b"health_check_config", "health_check_path", b"health_check_path", "machine_requirements", b"machine_requirements", "max_concurrency", b"max_concurrency", "metadata", b"metadata", "private_logs", b"private_logs", "run_on_main_thread", b"run_on_main_thread", "scale", b"scale", "secrets", b"secrets", "setup_func", b"setup_func", "source_code", b"source_code", "termination_grace_period_seconds", b"termination_grace_period_seconds"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["_application_name", b"_application_name", "_auth_mode", b"_auth_mode", "_build_environment", b"_build_environment", "_deployment_strategy", b"_deployment_strategy", "_env_id", b"_env_id", "_environment_name", b"_environment_name", "_fetch_openapi", b"_fetch_openapi", "_health_check_config", b"_health_check_config", "_health_check_path", b"_health_check_path", "_machine_requirements", b"_machine_requirements", "_max_concurrency", b"_max_concurrency", "_metadata", b"_metadata", "_private_logs", b"_private_logs", "_run_on_main_thread", b"_run_on_main_thread", "_scale", b"_scale", "_secrets", b"_secrets", "_setup_func", b"_setup_func", "_source_code", b"_source_code", "_termination_grace_period_seconds", b"_termination_grace_period_seconds", "application_name", b"application_name", "auth_mode", b"auth_mode", "build_environment", b"build_environment", "callable", b"callable", "data_mounts", b"data_mounts", "deployment_strategy", b"deployment_strategy", "entrypoint", b"entrypoint", "env_id", b"env_id", "environment_name", b"environment_name", "environments", b"environments", "fetch_openapi", b"fetch_openapi", "files", b"files", "function", b"function", "health_check_config", b"health_check_config", "health_check_path", b"health_check_path", "machine_requirements", b"machine_requirements", "max_concurrency", b"max_concurrency", "metadata", b"metadata", "private_logs", b"private_logs", "run_on_main_thread", b"run_on_main_thread", "scale", b"scale", "secrets", b"secrets", "setup_func", b"setup_func", "skip_retry_conditions", b"skip_retry_conditions", "source_code", b"source_code", "termination_grace_period_seconds", b"termination_grace_period_seconds"]) -> None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_application_name", b"_application_name"]) -> typing_extensions.Literal["application_name"] | None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_auth_mode", b"_auth_mode"]) -> typing_extensions.Literal["auth_mode"] | None: ...
     @typing.overload
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_build_environment", b"_build_environment"]) -> typing_extensions.Literal["build_environment"] | None: ...
+    @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_deployment_strategy", b"_deployment_strategy"]) -> typing_extensions.Literal["deployment_strategy"] | None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_env_id", b"_env_id"]) -> typing_extensions.Literal["env_id"] | None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_environment_name", b"_environment_name"]) -> typing_extensions.Literal["environment_name"] | None: ...
     @typing.overload
@@ -863,21 +987,30 @@ class RegisterApplicationResult(google.protobuf.message.Message):
     LOGS_FIELD_NUMBER: builtins.int
     RESULT_FIELD_NUMBER: builtins.int
     SERVICE_URLS_FIELD_NUMBER: builtins.int
+    ENV_ID_FIELD_NUMBER: builtins.int
     @property
     def logs(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[common_pb2.Log]: ...
     @property
     def result(self) -> global___RegisterApplicationResultType: ...
     @property
     def service_urls(self) -> global___ServiceURLs: ...
+    env_id: builtins.str
+    """Identifier of the environment that was used for this registration, set by the
+    server. Same content hash as BuildEnvironmentResult.env_id. Older servers may
+    leave this unset.
+    """
     def __init__(
         self,
         *,
         logs: collections.abc.Iterable[common_pb2.Log] | None = ...,
         result: global___RegisterApplicationResultType | None = ...,
         service_urls: global___ServiceURLs | None = ...,
+        env_id: builtins.str | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing_extensions.Literal["_result", b"_result", "_service_urls", b"_service_urls", "result", b"result", "service_urls", b"service_urls"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing_extensions.Literal["_result", b"_result", "_service_urls", b"_service_urls", "logs", b"logs", "result", b"result", "service_urls", b"service_urls"]) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["_env_id", b"_env_id", "_result", b"_result", "_service_urls", b"_service_urls", "env_id", b"env_id", "result", b"result", "service_urls", b"service_urls"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["_env_id", b"_env_id", "_result", b"_result", "_service_urls", b"_service_urls", "env_id", b"env_id", "logs", b"logs", "result", b"result", "service_urls", b"service_urls"]) -> None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_env_id", b"_env_id"]) -> typing_extensions.Literal["env_id"] | None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_result", b"_result"]) -> typing_extensions.Literal["result"] | None: ...
     @typing.overload
