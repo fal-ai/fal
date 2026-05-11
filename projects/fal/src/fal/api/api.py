@@ -811,7 +811,7 @@ class FalServerlessHost(Host):
             elif event == "upload_started":
                 size_kb = payload["sdist_size"] / 1024
                 console.print(
-                    f"Uploading {payload['sdist_path'].name} " f"({size_kb:.1f} KB)..."
+                    f"Uploading {payload['sdist_path'].name} ({size_kb:.1f} KB)..."
                 )
             elif event == "upload_finished" and not payload["cached"]:
                 console.print(Rule(style="dim"))

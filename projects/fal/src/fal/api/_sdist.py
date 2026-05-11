@@ -218,16 +218,20 @@ def _build_sdist(project_root: Path) -> Path:
                 f"{result.returncode}). See output above."
             )
 
-        candidates = sorted(outdir.glob("*.tar.gz"))
-        if not candidates:
+        # The outdir is a fresh ``mkdtemp`` and ``python -m build --sdist``
+        # writes exactly one artefact into it. Refuse to guess if that
+        # invariant is ever violated.
+        candidates = list(outdir.glob("*.tar.gz"))
+        if len(candidates) != 1:
             raise RuntimeError(
-                f"sdist build for {project_root} produced no .tar.gz artefact "
-                f"in {outdir}"
+                f"sdist build for {project_root} produced "
+                f"{len(candidates)} .tar.gz artefact(s) in {outdir}, "
+                "expected exactly one."
             )
     except BaseException:
         shutil.rmtree(outdir, ignore_errors=True)
         raise
-    return candidates[-1]
+    return candidates[0]
 
 
 def _upload_sdist(sdist_path: Path) -> str:

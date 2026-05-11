@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -205,3 +206,49 @@ def test_read_package_name_missing_name(tmp_path):
     pyproject.write_text('[project]\nversion = "0.1.0"\n')
     with pytest.raises(RuntimeError, match=r"\[project\].name"):
         _sdist._read_package_name(tmp_path)
+
+
+def test_build_sdist_nonzero_exit_raises_and_cleans_up(tmp_path):
+    """A failed ``python -m build`` raises and removes the temp outdir."""
+    created_dirs: list = []
+
+    real_mkdtemp = _sdist.tempfile.mkdtemp
+
+    def _tracking_mkdtemp(*args, **kwargs):
+        d = real_mkdtemp(*args, **kwargs)
+        created_dirs.append(d)
+        return d
+
+    fake_result = type("R", (), {"returncode": 1})()
+    with patch.object(
+        _sdist.tempfile, "mkdtemp", side_effect=_tracking_mkdtemp
+    ), patch.object(_sdist.subprocess, "run", return_value=fake_result):
+        with pytest.raises(RuntimeError, match=r"sdist build .* failed"):
+            _sdist._build_sdist(tmp_path)
+
+    assert created_dirs, "mkdtemp was not invoked"
+    for d in created_dirs:
+        assert not Path(d).exists(), f"temp dir {d} leaked after failure"
+
+
+def test_build_sdist_missing_artefact_raises_and_cleans_up(tmp_path):
+    """A successful exit with no .tar.gz still raises and cleans up."""
+    created_dirs: list = []
+
+    real_mkdtemp = _sdist.tempfile.mkdtemp
+
+    def _tracking_mkdtemp(*args, **kwargs):
+        d = real_mkdtemp(*args, **kwargs)
+        created_dirs.append(d)
+        return d
+
+    fake_result = type("R", (), {"returncode": 0})()
+    with patch.object(
+        _sdist.tempfile, "mkdtemp", side_effect=_tracking_mkdtemp
+    ), patch.object(_sdist.subprocess, "run", return_value=fake_result):
+        with pytest.raises(RuntimeError, match="expected exactly one"):
+            _sdist._build_sdist(tmp_path)
+
+    assert created_dirs
+    for d in created_dirs:
+        assert not Path(d).exists(), f"temp dir {d} leaked after failure"
