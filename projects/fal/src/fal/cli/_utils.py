@@ -36,13 +36,17 @@ def fetch_metadata_with_banner(
         isolated_function.fetch_metadata()
         return
 
+    from rich.rule import Rule  # noqa: PLC0415
+
     from fal.cli._result_handlers import CliRegisterResultHandler  # noqa: PLC0415
     from fal.console.icons import CHECK_ICON  # noqa: PLC0415
 
     console.print("Building metadata...", style="bold")
+    console.print(Rule(style="dim"))
     isolated_function.fetch_metadata(
         result_handler=CliRegisterResultHandler(console=console)
     )
+    console.print(Rule(style="dim"))
     console.print(f"{CHECK_ICON} Metadata build complete", style="bold green")
     console.print("")
 
