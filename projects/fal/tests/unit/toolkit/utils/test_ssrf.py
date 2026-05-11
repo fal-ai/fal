@@ -190,6 +190,17 @@ def test_ssrf_safe_get_headers_blocks_disallowed_scheme() -> None:
         ssrf.ssrf_safe_get_headers("file:///etc/passwd")
 
 
+def test_ssrf_safe_get_headers_rejects_non_success_status() -> None:
+    _request_responses.append(ssrf.SafeResponse(304, headers={}))
+
+    with patch.object(ssrf, "_socket_getaddrinfo", return_value=_addrinfo("8.8.8.8")):
+        with patch.object(ssrf, "_request_one_hop", _fake_request_one_hop):
+            with pytest.raises(ssrf.SSRFHTTPStatusError) as exc_info:
+                ssrf.ssrf_safe_get_headers("https://example.com/file")
+
+    assert exc_info.value.status_code == 304
+
+
 def test_ssrf_safe_get_headers_limits_redirect_hops() -> None:
     _request_responses.extend(
         [
@@ -306,6 +317,29 @@ def test_read_image_from_url_applies_download_limit() -> None:
             read_image_from_url("https://attacker.example/image.png")
 
     assert exc_info.value.status_code == 413
+
+
+def test_read_image_from_url_preserves_data_uri() -> None:
+    image = read_image_from_url(
+        "data:image/png;base64,"
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk"
+        "+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+        convert_to_rgb=False,
+    )
+
+    assert image.size == (1, 1)
+
+
+def test_filename_from_response_parses_rfc5987_filename() -> None:
+    response = ssrf.SafeResponse(
+        200,
+        headers={"content-disposition": "attachment; filename*=UTF-8''safe%20name.txt"},
+    )
+
+    assert (
+        download_utils._filename_from_response("https://example.com/file", response)
+        == "safe name.txt"
+    )
 
 
 def test_download_file_blocks_redirect_to_private_ip(tmp_path) -> None:

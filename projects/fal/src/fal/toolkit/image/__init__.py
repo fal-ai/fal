@@ -3,6 +3,8 @@ from __future__ import annotations
 import io
 from functools import lru_cache
 from typing import TYPE_CHECKING
+from urllib.parse import urlparse
+from urllib.request import urlopen
 
 from fal.toolkit.utils.download_utils import TEMP_HEADERS
 from fal.toolkit.utils.ssrf import SSRFSizeExceededError, ssrf_safe_get
@@ -61,13 +63,20 @@ def read_image_from_url(
     from PIL import Image
 
     try:
-        response = ssrf_safe_get(
-            url,
-            headers=TEMP_HEADERS,
-            timeout=30,
-            max_size=MAX_IMAGE_DOWNLOAD_SIZE,
-        )
-        image_pil = Image.open(io.BytesIO(response.content))
+        if urlparse(url).scheme == "data":
+            with urlopen(url, timeout=30) as response:
+                content = response.read(MAX_IMAGE_DOWNLOAD_SIZE + 1)
+            if len(content) > MAX_IMAGE_DOWNLOAD_SIZE:
+                raise SSRFSizeExceededError("Image body exceeded size limit")
+        else:
+            response = ssrf_safe_get(
+                url,
+                headers=TEMP_HEADERS,
+                timeout=30,
+                max_size=MAX_IMAGE_DOWNLOAD_SIZE,
+            )
+            content = response.content
+        image_pil = Image.open(io.BytesIO(content))
     except SSRFSizeExceededError:
         raise HTTPException(413, f"Image from url is too large: {url}") from None
     except Exception:

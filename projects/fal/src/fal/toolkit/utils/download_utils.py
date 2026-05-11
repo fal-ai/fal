@@ -8,6 +8,7 @@ import subprocess
 import sys
 import time
 from contextlib import suppress
+from email.message import Message
 from pathlib import Path, PurePath
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 from urllib.parse import urlparse
@@ -58,14 +59,12 @@ def _headers(request_headers: dict[str, str] | None = None) -> dict[str, str]:
 
 def _filename_from_response(url: str, response: SafeResponse) -> str:
     content_disposition = response.headers.get("content-disposition", "")
-    if "filename=" in content_disposition:
-        for raw_part in content_disposition.split(";"):
-            part = raw_part.strip()
-            if part.lower().startswith("filename="):
-                filename = part.split("=", 1)[1].strip().strip('"').strip("'")
-                filename = Path(filename).name
-                if filename:
-                    return filename
+    if content_disposition:
+        message = Message()
+        message["content-disposition"] = content_disposition
+        filename = message.get_filename()
+        if filename:
+            return Path(filename).name
 
     parsed_url = urlparse(url)
     return Path(parsed_url.path).name or _hash_url(url)

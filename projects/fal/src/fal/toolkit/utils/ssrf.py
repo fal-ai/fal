@@ -327,7 +327,7 @@ def _request_one_hop(
         if response.status in _REDIRECT_STATUSES:
             return SafeResponse(response.status, response_headers)
 
-        if response.status >= 400:
+        if response.status < 200 or response.status >= 300:
             raise SSRFHTTPStatusError(response.status)
 
         if body_mode == _BODY_HEADERS:
@@ -445,6 +445,8 @@ def _safe_request(
         )
 
         if response.status_code not in _REDIRECT_STATUSES:
+            if response.status_code < 200 or response.status_code >= 300:
+                raise SSRFHTTPStatusError(response.status_code)
             return response
 
         location = response.headers.get("location")
