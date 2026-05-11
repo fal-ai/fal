@@ -18,6 +18,7 @@ from fal.toolkit.utils.ssrf import (
     SSRFError,
     SSRFHTTPStatusError,
     SSRFSizeExceededError,
+    ssrf_safe_get_headers,
     ssrf_safe_get_to_file,
 )
 
@@ -130,6 +131,22 @@ def _get_remote_file_properties(
     file_name = Path(file_name).name
 
     return file_name, content_length
+
+
+def _get_safe_remote_file_properties(
+    url: str,
+    request_headers: dict[str, str] | None = None,
+    *,
+    allow_internal_hosts: bool = False,
+) -> tuple[str, int]:
+    response = ssrf_safe_get_headers(
+        url,
+        headers=_headers(request_headers),
+        allow_internal_hosts=allow_internal_hosts,
+    )
+    return _filename_from_response(url, response), _content_length_from_response(
+        response
+    )
 
 
 def _file_content_length_matches(
@@ -260,6 +277,46 @@ def download_file(
     target_dir_path = target_dir_path.resolve()
     target_dir_path.mkdir(parents=True, exist_ok=True)
 
+    try:
+        file_name, expected_filesize = _get_safe_remote_file_properties(
+            url,
+            request_headers,
+            allow_internal_hosts=allow_internal_hosts,
+        )
+    except (SSRFError, SSRFSizeExceededError) as e:
+        raise DownloadError(str(e)) from e
+    except SSRFHTTPStatusError as e:
+        raise DownloadError(
+            f"Failed to get remote file properties for {url}. "
+            f"Status code: {e.status_code}."
+        ) from e
+    except Exception as e:
+        print(f"Got error: {e}")
+        raise DownloadError(f"Failed to get remote file properties for {url}") from e
+
+    expected_filesize_mb = expected_filesize / ONE_MB
+
+    if filesize_limit is not None and expected_filesize_mb > filesize_limit:
+        raise DownloadError(
+            f"""File to be downloaded is of size {expected_filesize_mb},
+                which is over the limit of {filesize_limit}"""
+        )
+
+    target_path = target_dir_path / file_name
+
+    if (
+        target_path.exists()
+        and expected_filesize >= 0
+        and target_path.stat().st_size == expected_filesize
+        and not force
+    ):
+        return target_path
+
+    if force:
+        print(f"File already exists. Forcing download of {url} to {target_path}")
+    else:
+        print(f"Downloading {url} to {target_path}")
+
     with NamedTemporaryFile(
         delete=False,
         dir=target_dir_path,
@@ -276,20 +333,6 @@ def download_file(
             allow_internal_hosts=allow_internal_hosts,
         )
         _raise_if_incomplete_download(response, temp_file_path)
-        file_name = _filename_from_response(url, response)
-        expected_filesize = _content_length_from_response(response)
-        target_path = target_dir_path / file_name
-
-        if force:
-            print(f"File already exists. Forcing download of {url} to {target_path}")
-        elif (
-            target_path.exists()
-            and expected_filesize >= 0
-            and target_path.stat().st_size == expected_filesize
-        ):
-            return target_path
-        else:
-            print(f"Downloading {url} to {target_path}")
 
         os.replace(temp_file_path, target_path)
     except (SSRFError, SSRFSizeExceededError) as e:
@@ -330,24 +373,39 @@ def _download_file_python(
     ONE_MB = 1024**2
 
     if urlparse(url).scheme in {"http", "https"}:
+        target_path = Path(target_path)
+        basename = os.path.basename(target_path)
+        temp_dir = target_path.parent if str(target_path.parent) else Path(".")
+
         try:
-            response = ssrf_safe_get_to_file(
-                url,
-                target_path,
-                headers=_headers(request_headers),
-                max_size=filesize_limit * ONE_MB
-                if filesize_limit is not None
-                else None,
-                allow_internal_hosts=allow_internal_hosts,
-            )
-            _raise_if_incomplete_download(response, Path(target_path))
+            with NamedTemporaryFile(
+                delete=False,
+                dir=temp_dir,
+                prefix=f"{basename}.tmp",
+            ) as temp_file:
+                temp_file_path = Path(temp_file.name)
+
+            try:
+                response = ssrf_safe_get_to_file(
+                    url,
+                    temp_file_path,
+                    headers=_headers(request_headers),
+                    max_size=filesize_limit * ONE_MB
+                    if filesize_limit is not None
+                    else None,
+                    allow_internal_hosts=allow_internal_hosts,
+                )
+                _raise_if_incomplete_download(response, temp_file_path)
+                os.replace(temp_file_path, target_path)
+            finally:
+                temp_file_path.unlink(missing_ok=True)
         except (SSRFError, SSRFSizeExceededError) as e:
             raise DownloadError(str(e)) from e
         except SSRFHTTPStatusError as e:
             raise DownloadError(
                 f"Failed to download file from {url}. Status code: {e.status_code}."
             ) from e
-        return Path(target_path)
+        return target_path
 
     basename = os.path.basename(target_path)
     # NOTE: using the same directory to avoid potential copies across temp fs and target

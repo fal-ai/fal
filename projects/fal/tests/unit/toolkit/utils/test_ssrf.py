@@ -7,10 +7,18 @@ from unittest.mock import patch
 import pytest
 from fastapi import HTTPException
 
+import fal.toolkit.image as image_toolkit
+import fal.toolkit.utils.download_utils as download_utils
 from fal.toolkit.image import read_image_from_url
 from fal.toolkit.utils import ssrf
-from fal.toolkit.utils.download_utils import DownloadError, download_file
+from fal.toolkit.utils.download_utils import (
+    DownloadError,
+    _download_file_python,
+    download_file,
+)
 
+_header_calls: list[dict[str, Any]] = []
+_header_responses: list[ssrf.SafeResponse] = []
 _stream_calls: list[dict[str, Any]] = []
 _stream_responses: list[ssrf.SafeResponse] = []
 
@@ -21,8 +29,29 @@ def _addrinfo(*ips: str, family: int = socket.AF_INET) -> list[Any]:
 
 @pytest.fixture(autouse=True)
 def reset_client() -> None:
+    read_image_from_url.cache_clear()
+    _header_calls.clear()
+    _header_responses.clear()
     _stream_calls.clear()
     _stream_responses.clear()
+
+
+def _fake_one_hop_headers(
+    parsed,
+    *,
+    target_ip: str | None,
+    timeout: float,
+    headers: dict[str, str],
+) -> ssrf.SafeResponse:
+    _header_calls.append(
+        {
+            "parsed": parsed,
+            "target_ip": target_ip,
+            "timeout": timeout,
+            "headers": headers,
+        }
+    )
+    return _header_responses.pop(0)
 
 
 def _fake_stream_one_hop_to_file(
@@ -73,28 +102,123 @@ def test_non_routable_ips_are_rejected(ip: str) -> None:
 
 
 def test_download_file_uses_validated_pinned_ip(tmp_path) -> None:
+    _header_responses.append(
+        ssrf.SafeResponse(
+            200,
+            headers={
+                "content-disposition": 'attachment; filename="safe.txt"',
+                "content-length": "5",
+            },
+        )
+    )
     _stream_responses.append(
         ssrf.SafeResponse(
             200,
-            headers={"content-disposition": 'attachment; filename="safe.txt"'},
+            headers={
+                "content-disposition": 'attachment; filename="safe.txt"',
+                "content-length": "5",
+            },
         )
     )
 
     with patch.object(ssrf, "_socket_getaddrinfo", return_value=_addrinfo("8.8.8.8")):
-        with patch.object(
-            ssrf, "_request_one_hop_to_file", _fake_stream_one_hop_to_file
-        ):
-            path = download_file("https://example.com/file", tmp_path)
+        with patch.object(ssrf, "_request_one_hop_headers", _fake_one_hop_headers):
+            with patch.object(
+                ssrf, "_request_one_hop_to_file", _fake_stream_one_hop_to_file
+            ):
+                path = download_file("https://example.com/file", tmp_path)
 
     assert path == tmp_path / "safe.txt"
     assert path.read_bytes() == b"hello"
 
+    assert _header_calls[0]["target_ip"] == "8.8.8.8"
     assert _stream_calls[0]["target_ip"] == "8.8.8.8"
     assert _stream_calls[0]["headers"]["Host"] == "example.com"
 
 
+def test_download_file_returns_cached_file_before_streaming(tmp_path) -> None:
+    cached_path = tmp_path / "safe.txt"
+    cached_path.write_bytes(b"hello")
+    _header_responses.append(
+        ssrf.SafeResponse(
+            200,
+            headers={
+                "content-disposition": 'attachment; filename="safe.txt"',
+                "content-length": "5",
+            },
+        )
+    )
+
+    with patch.object(ssrf, "_socket_getaddrinfo", return_value=_addrinfo("8.8.8.8")):
+        with patch.object(ssrf, "_request_one_hop_headers", _fake_one_hop_headers):
+            path = download_file("https://example.com/file", tmp_path)
+
+    assert path == cached_path
+    assert _header_calls
+    assert not _stream_calls
+
+
+def test_ssrf_safe_get_headers_tries_later_validated_ips() -> None:
+    _header_responses.append(ssrf.SafeResponse(200, headers={"content-length": "0"}))
+
+    def fake_request(
+        parsed,
+        *,
+        target_ip: str | None,
+        timeout: float,
+        headers: dict[str, str],
+    ) -> ssrf.SafeResponse:
+        if target_ip == "2001:4860:4860::8888":
+            raise OSError("network unreachable")
+        return _fake_one_hop_headers(
+            parsed,
+            target_ip=target_ip,
+            timeout=timeout,
+            headers=headers,
+        )
+
+    with patch.object(
+        ssrf,
+        "_socket_getaddrinfo",
+        return_value=[
+            *_addrinfo("2001:4860:4860::8888", family=socket.AF_INET6),
+            *_addrinfo("8.8.8.8"),
+        ],
+    ):
+        with patch.object(ssrf, "_request_one_hop_headers", fake_request):
+            response = ssrf.ssrf_safe_get_headers("https://example.com/file")
+
+    assert response.status_code == 200
+    assert _header_calls[0]["target_ip"] == "8.8.8.8"
+
+
+def test_download_file_python_preserves_existing_file_on_http_failure(tmp_path) -> None:
+    target_path = tmp_path / "safe.txt"
+    target_path.write_bytes(b"existing")
+
+    with patch.object(
+        download_utils,
+        "ssrf_safe_get_to_file",
+        side_effect=ssrf.SSRFSizeExceededError("too large"),
+    ):
+        with pytest.raises(DownloadError, match="too large"):
+            _download_file_python("https://example.com/file", target_path)
+
+    assert target_path.read_bytes() == b"existing"
+
+
+def test_read_image_from_url_applies_download_limit() -> None:
+    def fake_get(url: str, **kwargs: Any) -> ssrf.SafeResponse:
+        assert kwargs["max_size"] == image_toolkit.MAX_IMAGE_DOWNLOAD_SIZE
+        raise ssrf.SSRFSizeExceededError("too large")
+
+    with patch.object(image_toolkit, "ssrf_safe_get", fake_get):
+        with pytest.raises(HTTPException):
+            read_image_from_url("https://attacker.example/image.png")
+
+
 def test_download_file_blocks_redirect_to_private_ip(tmp_path) -> None:
-    _stream_responses.append(
+    _header_responses.append(
         ssrf.SafeResponse(302, headers={"location": "http://internal.example/secrets"})
     )
     resolutions = {
@@ -106,13 +230,12 @@ def test_download_file_blocks_redirect_to_private_ip(tmp_path) -> None:
         return resolutions[host]
 
     with patch.object(ssrf, "_socket_getaddrinfo", side_effect=fake_getaddrinfo):
-        with patch.object(
-            ssrf, "_request_one_hop_to_file", _fake_stream_one_hop_to_file
-        ):
+        with patch.object(ssrf, "_request_one_hop_headers", _fake_one_hop_headers):
             with pytest.raises(DownloadError, match="non-routable"):
                 download_file("https://evil.example/file", tmp_path)
 
-    assert len(_stream_calls) == 1
+    assert len(_header_calls) == 1
+    assert not _stream_calls
 
 
 def test_read_image_from_url_blocks_private_resolution() -> None:
@@ -120,4 +243,4 @@ def test_read_image_from_url_blocks_private_resolution() -> None:
         ssrf, "_socket_getaddrinfo", return_value=_addrinfo("169.254.169.254")
     ):
         with pytest.raises(HTTPException):
-            read_image_from_url("https://attacker.example/image.png")
+            read_image_from_url("https://attacker.example/private.png")

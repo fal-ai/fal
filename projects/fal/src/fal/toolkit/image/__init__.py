@@ -9,6 +9,8 @@ from fal.toolkit.utils.ssrf import ssrf_safe_get
 
 from .image import *  # noqa: F403
 
+MAX_IMAGE_DOWNLOAD_SIZE = 100 * 1024 * 1024
+
 if TYPE_CHECKING:
     # suffix so we don't clash with PILImage from .image
     from PIL.Image import Image as PILImage2
@@ -59,7 +61,12 @@ def read_image_from_url(
     from PIL import Image
 
     try:
-        response = ssrf_safe_get(url, headers=TEMP_HEADERS, timeout=30)
+        response = ssrf_safe_get(
+            url,
+            headers=TEMP_HEADERS,
+            timeout=30,
+            max_size=MAX_IMAGE_DOWNLOAD_SIZE,
+        )
         image_pil = Image.open(io.BytesIO(response.content))
     except Exception:
         import traceback

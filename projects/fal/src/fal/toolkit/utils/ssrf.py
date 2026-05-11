@@ -33,6 +33,10 @@ class SSRFSizeExceededError(SSRFError):
     pass
 
 
+class SSRFConnectionError(SSRFError):
+    pass
+
+
 @dataclass
 class SafeResponse:
     status_code: int
@@ -278,6 +282,22 @@ def _request_one_hop(
         connection.close()
 
 
+def _request_one_hop_headers(
+    parsed,
+    *,
+    target_ip: str | None,
+    timeout: float,
+    headers: dict[str, str],
+) -> SafeResponse:
+    connection = _open_connection(parsed, target_ip, timeout=timeout)
+    try:
+        connection.request("GET", _path_and_query(parsed), headers=headers)
+        response = connection.getresponse()
+        return SafeResponse(response.status, _headers_from_response(response))
+    finally:
+        connection.close()
+
+
 def _request_one_hop_to_file(
     parsed,
     target_path: str,
@@ -317,6 +337,23 @@ def _request_one_hop_to_file(
         return SafeResponse(response.status, response_headers)
     finally:
         connection.close()
+
+
+def _request_validated_ips(
+    request_fn,
+    parsed,
+    validated_ips: list[str],
+    *args,
+    **kwargs,
+) -> SafeResponse:
+    last_error: OSError | None = None
+    for ip in validated_ips:
+        try:
+            return request_fn(parsed, *args, target_ip=ip, **kwargs)
+        except OSError as exc:
+            last_error = exc
+
+    raise SSRFConnectionError("All validated addresses failed") from last_error
 
 
 def _redirect_target(current_url: str, location: str) -> str:
@@ -367,12 +404,74 @@ def ssrf_safe_get(
             )
         else:
             validated_ips = resolve_and_validate_host(hostname, current_parsed.port)
-            response = _request_one_hop(
+            response = _request_validated_ips(
+                _request_one_hop,
                 current_parsed,
-                target_ip=validated_ips[0],
+                validated_ips,
                 timeout=timeout,
                 headers=request_headers,
                 max_size=max_size,
+            )
+
+        if response.status_code in (301, 302, 303, 307, 308):
+            location = response.headers.get("location")
+            if not location:
+                raise SSRFError("Redirect response missing Location header")
+            current_url = _redirect_target(current_url, location)
+            continue
+
+        if response.status_code >= 400:
+            raise SSRFHTTPStatusError(response.status_code)
+
+        return response
+
+    raise SSRFError("Too many redirects")
+
+
+def ssrf_safe_get_headers(
+    url: str,
+    *,
+    timeout: float = 30.0,
+    max_hops: int = DEFAULT_MAX_REDIRECT_HOPS,
+    headers: dict[str, str] | None = None,
+    allow_internal_hosts: bool = False,
+    allowed_schemes: frozenset[str] = DEFAULT_ALLOWED_SCHEMES,
+) -> SafeResponse:
+    current_url = url
+    current_parsed = _parse_url(current_url)
+    initial_origin = _origin_tuple(current_parsed)
+    safe_headers = dict(headers) if headers else {}
+
+    for _ in range(max_hops + 1):
+        current_parsed = _parse_url(current_url)
+        _validate_scheme(current_parsed, allowed_schemes)
+
+        hostname = current_parsed.hostname
+        if not hostname:
+            raise SSRFError("URL has no hostname")
+
+        safe_headers = _strip_sensitive_headers_for_cross_origin(
+            safe_headers, initial_origin, current_parsed
+        )
+        request_headers = merge_headers_for_pinned_request(
+            safe_headers, {"Host": _build_host_authority(current_parsed)}
+        )
+
+        if allow_internal_hosts:
+            response = _request_one_hop_headers(
+                current_parsed,
+                target_ip=None,
+                timeout=timeout,
+                headers=request_headers,
+            )
+        else:
+            validated_ips = resolve_and_validate_host(hostname, current_parsed.port)
+            response = _request_validated_ips(
+                _request_one_hop_headers,
+                current_parsed,
+                validated_ips,
+                timeout=timeout,
+                headers=request_headers,
             )
 
         if response.status_code in (301, 302, 303, 307, 308):
@@ -435,10 +534,11 @@ def ssrf_safe_get_to_file(
             )
         else:
             validated_ips = resolve_and_validate_host(hostname, current_parsed.port)
-            response = _request_one_hop_to_file(
+            response = _request_validated_ips(
+                _request_one_hop_to_file,
                 current_parsed,
+                validated_ips,
                 target_path_str,
-                target_ip=validated_ips[0],
                 timeout=timeout,
                 headers=request_headers,
                 max_size=max_size,
