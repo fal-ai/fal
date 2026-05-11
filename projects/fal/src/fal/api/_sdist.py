@@ -31,8 +31,10 @@ from fal.project import _load_toml
 #   "build_started"  -> {"package_name": str, "project_root": Path}
 #   "build_finished" -> {"sdist_path": Path, "sdist_size": int}
 #   "upload_started" -> {"sdist_path": Path, "sdist_size": int}
-#   "upload_finished"-> {"url": str, "sdist_size": int, "cached": bool}
+#   "upload_finished"-> {"url": str, "cached": bool, "sdist_size": int | None}
 #
+# Only the upload_finished event fires on a cache hit; in that case
+# ``cached`` is True and ``sdist_size`` is None (no upload happened).
 # Callers are free to ignore unknown events. Keeping the contract loose so
 # we can add phases later without breaking integrations.
 ProgressCallback = Callable[[str, dict], None]
@@ -79,10 +81,10 @@ def materialize_local_paths(
 ) -> Requirements:
     """Rewrite ``.``/``.[extras]`` entries to ``<package> @ <url>``.
 
-    Builds an sdist of ``project_root`` once per content hash and uploads it
-    to the fal CDN via ``fal.toolkit.File.from_path``. Subsequent calls with
-    the same content reuse the cached URL. No-op when no local-path entry is
-    present.
+    Builds an sdist of ``project_root`` once per project root per process and
+    uploads it to the fal CDN via ``fal.toolkit.File.from_path``; subsequent
+    calls within the same process reuse the cached URL. No-op when no
+    local-path entry is present.
 
     Preserves the input shape (flat list vs layered list-of-lists).
 
@@ -136,7 +138,7 @@ def _resolve_sdist_url(
         cached = _SDIST_URL_CACHE.get(cache_key)
         if cached is not None:
             package_name, url = cached
-            _emit("upload_finished", url=url, sdist_size=0, cached=True)
+            _emit("upload_finished", url=url, cached=True, sdist_size=None)
             return package_name, url
 
         package_name = _read_package_name(project_root)
