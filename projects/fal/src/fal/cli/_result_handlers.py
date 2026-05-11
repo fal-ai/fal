@@ -29,7 +29,7 @@ class CliRunResultHandler(ResultHandler):
         self.console = console
         self.auth_mode = auth_mode
         self.endpoints = endpoints
-        self.log_printer = IsolateLogPrinter(debug=flags.DEBUG)
+        self.log_printer = IsolateLogPrinter(debug=flags.DEBUG, console=console)
 
     def on_service_urls(self, urls: Any) -> None:
         from rich.rule import Rule  # noqa: PLC0415
@@ -84,7 +84,7 @@ class CliRegisterResultHandler(ResultHandler):
 
     def __init__(self, *, console: Console) -> None:
         self.console = console
-        self.log_printer = IsolateLogPrinter(debug=flags.DEBUG)
+        self.log_printer = IsolateLogPrinter(debug=flags.DEBUG, console=console)
 
     def on_log(self, log: Any) -> None:
         self.log_printer.print(log)

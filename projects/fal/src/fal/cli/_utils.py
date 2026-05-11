@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import contextlib
 import copy
-import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
@@ -58,47 +56,19 @@ class _IndentedStream:
         return getattr(self._underlying, name)
 
 
-@contextlib.contextmanager
-def _indented_console_output(prefix: str = "  "):
-    """Indent ``sys.stdout``/``sys.stderr`` and the ``fal.console`` module
-    global console for the duration of the block, so streamed worker
-    output reads as nested content under an enclosing section header.
+def _indented_console(parent: Console, prefix: str = "  ") -> Console:
+    """Build a rich Console that prefixes every output line with
+    ``prefix``. Width is narrowed by the prefix length so width-aware
+    renderables (e.g. ``Rule``) still align flush with the parent."""
+    import sys  # noqa: PLC0415
 
-    ``IsolateLogPrinter`` writes phase headers through
-    ``from fal.console import console`` (lazy local rebind, so swapping
-    the module attribute is enough) and writes log messages through raw
-    ``print()`` / ``sys.stdout`` / ``sys.stderr``. Wrapping all three
-    covers every code path it can take.
-    """
     from rich.console import Console  # noqa: PLC0415
 
-    import fal.console as _fc  # noqa: PLC0415
-
-    original_console = _fc.console
-    indented_stdout = _IndentedStream(sys.stdout, prefix)
-    indented_stderr = _IndentedStream(sys.stderr, prefix)
-    # Narrow the inner console so Rule() and any width-aware renderable
-    # render at (terminal_width - prefix) — once we add the prefix the
-    # total line width matches the outer console again.
-    indented_console = Console(
-        file=indented_stdout,
+    return Console(
+        file=_IndentedStream(sys.stdout, prefix),
         force_terminal=True,
-        width=max(1, original_console.size.width - len(prefix)),
+        width=max(1, parent.size.width - len(prefix)),
     )
-
-    saved_stdout = sys.stdout
-    saved_stderr = sys.stderr
-    try:
-        # _IndentedStream is a duck-typed file proxy, not a TextIO subclass —
-        # cast through Any for both replacement and restoration.
-        sys.stdout = indented_stdout  # type: ignore[assignment]
-        sys.stderr = indented_stderr  # type: ignore[assignment]
-        _fc.console = indented_console
-        yield
-    finally:
-        sys.stdout = saved_stdout
-        sys.stderr = saved_stderr
-        _fc.console = original_console
 
 
 def fetch_metadata_with_banner(
@@ -134,10 +104,9 @@ def fetch_metadata_with_banner(
 
     console.print("Building metadata...", style="bold")
     console.print(Rule(style="dim"))
-    with _indented_console_output():
-        isolated_function.fetch_metadata(
-            result_handler=CliMetadataProbeResultHandler(console=console)
-        )
+    isolated_function.fetch_metadata(
+        result_handler=CliMetadataProbeResultHandler(console=_indented_console(console))
+    )
     console.print(Rule(style="dim"))
     console.print(f"{CHECK_ICON} Metadata build complete", style="bold green")
     console.print("")

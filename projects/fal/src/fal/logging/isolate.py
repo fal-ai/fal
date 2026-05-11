@@ -11,26 +11,64 @@ from .style import LEVEL_STYLES
 
 if TYPE_CHECKING:
     from isolate.logs import Log, LogSource
+    from rich.console import Console
 
 _renderer = ConsoleRenderer(level_styles=LEVEL_STYLES)
 
 
 class IsolateLogPrinter:
+    """Print streamed isolate logs with phase-header transitions.
+
+    When ``console`` is omitted, phase headers go through the
+    ``fal.console`` module-level console and raw log messages go
+    through ``sys.stdout``/``sys.stderr`` (preserving the source's
+    stdout/stderr split). When a ``console`` is provided, all output
+    is routed through it — useful for callers (e.g. the CLI's
+    metadata-probe phase) that wrap output with an indented or otherwise
+    decorated console so the whole stream stays inside the wrap.
+    """
+
     debug: bool
 
-    def __init__(self, debug: bool = False) -> None:
+    def __init__(
+        self,
+        debug: bool = False,
+        *,
+        console: Console | None = None,
+    ) -> None:
         self.debug = debug
         self._current_source: LogSource | None = None
+        self._console_override = console
+
+    def _resolve_console(self) -> Console:
+        if self._console_override is not None:
+            return self._console_override
+        from fal.console import console as _global_console
+
+        return _global_console
+
+    def _emit_message(self, message: str, *, stderr: bool = False) -> None:
+        if self._console_override is None:
+            stream = sys.stderr if stderr else sys.stdout
+            print(message, file=stream)
+            return
+        # Write to the console's underlying file so any wrapper around
+        # it (e.g. an indented stream) sees the bytes — but skip rich's
+        # rendering pipeline since the structlog renderer already baked
+        # in ANSI escapes for the destination terminal.
+        self._console_override.file.write(message + "\n")
+        self._console_override.file.flush()
 
     def _maybe_print_header(self, source: LogSource):
         from isolate.logs import LogSource
         from rich.rule import Rule
 
-        from fal.console import console
         from fal.console.icons import CHECK_ICON
 
         if source == self._current_source:
             return
+
+        console = self._resolve_console()
 
         # Print build completion when transitioning out of BUILDER phase
         if self._current_source == LogSource.BUILDER:
@@ -62,8 +100,10 @@ class IsolateLogPrinter:
         self._maybe_print_header(log.source)
 
         if log.source == LogSource.USER:
-            stream = sys.stderr if log.level == LogLevel.STDERR else sys.stdout
-            print(log.message, file=stream)
+            self._emit_message(
+                log.message,
+                stderr=log.level == LogLevel.STDERR,
+            )
             return
 
         level = str(log.level)
@@ -88,4 +128,4 @@ class IsolateLogPrinter:
 
         # Use structlog processors to get consistent output with local logs
         message = _renderer.__call__(logger={}, name=level, event_dict=event)
-        print(message)
+        self._emit_message(message)
