@@ -88,3 +88,21 @@ class CliRegisterResultHandler(ResultHandler):
 
     def on_log(self, log: Any) -> None:
         self.log_printer.print(log)
+
+
+class CliMetadataProbeResultHandler(CliRegisterResultHandler):
+    """Streams worker logs for ``IsolatedFunction.fetch_metadata()``.
+
+    Same as ``CliRegisterResultHandler`` but drops the legacy ``Access
+    the playground at`` / ``And API access through`` lines — those
+    advertise an ephemeral runner URL that's torn down as soon as the
+    metadata probe returns, so showing them just confuses users.
+    """
+
+    def on_log(self, log: Any) -> None:
+        if (
+            "Access the playground at" in log.message
+            or "And API access through" in log.message
+        ):
+            return
+        super().on_log(log)

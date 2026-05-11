@@ -124,7 +124,7 @@ def fetch_metadata_with_banner(
 
     from rich.rule import Rule  # noqa: PLC0415
 
-    from fal.cli._result_handlers import CliRegisterResultHandler  # noqa: PLC0415
+    from fal.cli._result_handlers import CliMetadataProbeResultHandler  # noqa: PLC0415
     from fal.console.icons import CHECK_ICON  # noqa: PLC0415
 
     # Run sdist build/upload eagerly so its `Packaging local project...`
@@ -136,7 +136,7 @@ def fetch_metadata_with_banner(
     console.print(Rule(style="dim"))
     with _indented_console_output():
         isolated_function.fetch_metadata(
-            result_handler=CliRegisterResultHandler(console=console)
+            result_handler=CliMetadataProbeResultHandler(console=console)
         )
     console.print(Rule(style="dim"))
     console.print(f"{CHECK_ICON} Metadata build complete", style="bold green")
