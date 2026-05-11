@@ -827,6 +827,20 @@ class FalServerlessHost(Host):
             requirements, self.local_project_root, on_progress=_on_progress
         )
 
+    def prepare_requirements(self, options: Options) -> None:
+        """Trigger local-path requirement materialization (sdist build +
+        upload) eagerly, so the noisy ``Packaging local project...``
+        output doesn't appear nested inside a later phase's rule frame
+        (e.g. ``IsolatedFunction.fetch_metadata()``).
+
+        The sdist URL cache is process-wide, so the subsequent dispatch
+        re-materializes silently. Pass a copy of the env options so the
+        in-place rewrite here doesn't escape — the real ``_run`` call
+        below will redo the rewrite (silently, from cache) on its own
+        copy when it actually dispatches.
+        """
+        self._materialize_local_requirements(options.environment.copy())
+
     def files_sync(self, options: FileSyncOptions) -> list[File]:
         """Sync files to the server."""
         # Auto-exclude the app file, it gets serialized separately
@@ -2241,6 +2255,20 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
 
     def build_metadata(self) -> dict[str, Any]:
         return self.options.host.get("metadata") or {}
+
+    def prepare_requirements(self) -> None:
+        """Trigger local-path requirement materialization eagerly so the
+        ``Packaging local project...`` output stands on its own instead
+        of being nested inside a later phase like ``fetch_metadata()``.
+
+        No-op on hosts that don't support the rewrite (e.g. ``LocalHost``).
+        Safe to call multiple times — the underlying sdist URL cache
+        keeps subsequent calls silent.
+        """
+        prepare = getattr(self.host, "prepare_requirements", None)
+        if prepare is None:
+            return
+        prepare(self.options)
 
     def fetch_metadata(
         self,

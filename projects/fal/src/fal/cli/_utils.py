@@ -41,6 +41,11 @@ def fetch_metadata_with_banner(
     from fal.cli._result_handlers import CliRegisterResultHandler  # noqa: PLC0415
     from fal.console.icons import CHECK_ICON  # noqa: PLC0415
 
+    # Run sdist build/upload eagerly so its `Packaging local project...`
+    # section sits at top level instead of getting nested inside the
+    # metadata phase's rule frame below.
+    isolated_function.prepare_requirements()
+
     console.print("Building metadata...", style="bold")
     console.print(Rule(style="dim"))
     isolated_function.fetch_metadata(
