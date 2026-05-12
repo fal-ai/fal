@@ -10,6 +10,7 @@ from fastapi import HTTPException
 import fal.toolkit.image as image_toolkit
 import fal.toolkit.utils.download_utils as download_utils
 from fal.toolkit.image import read_image_from_url
+from fal.toolkit.image.image import Image as FalImage
 from fal.toolkit.utils import ssrf
 from fal.toolkit.utils.download_utils import (
     DownloadError,
@@ -443,6 +444,18 @@ def test_read_image_from_url_preserves_data_uri() -> None:
     )
 
     assert image.size == (1, 1)
+
+
+def test_image_to_pil_preserves_data_uri() -> None:
+    image = FalImage(
+        url=(
+            "data:image/png;base64,"
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk"
+            "+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+        )
+    )
+
+    assert image.to_pil().size == (1, 1)
 
 
 def test_download_file_redownloads_truncated_data_uri_cache(tmp_path) -> None:

@@ -4,6 +4,7 @@ import io
 from functools import wraps
 from tempfile import NamedTemporaryFile
 from typing import TYPE_CHECKING, Literal, Optional, Union
+from urllib.parse import urlparse
 
 from fastapi import Request
 from pydantic import BaseModel, Field
@@ -15,7 +16,7 @@ from fal.toolkit.file.file import (
     File,
 )
 from fal.toolkit.file.types import FileRepository, RepositoryId
-from fal.toolkit.utils.download_utils import TEMP_HEADERS
+from fal.toolkit.utils.download_utils import TEMP_HEADERS, _download_file_python
 from fal.toolkit.utils.ssrf import ssrf_safe_get_to_file
 
 if TYPE_CHECKING:
@@ -200,11 +201,14 @@ class Image(File):
         with NamedTemporaryFile() as temp_file:
             temp_file_path = temp_file.name
 
-            ssrf_safe_get_to_file(
-                self.url,
-                temp_file_path,
-                headers=TEMP_HEADERS,
-            )
+            if urlparse(self.url).scheme == "data":
+                _download_file_python(self.url, temp_file_path)
+            else:
+                ssrf_safe_get_to_file(
+                    self.url,
+                    temp_file_path,
+                    headers=TEMP_HEADERS,
+                )
 
             img = PILImage.open(temp_file_path).convert(mode)
             img = ImageOps.exif_transpose(img)
