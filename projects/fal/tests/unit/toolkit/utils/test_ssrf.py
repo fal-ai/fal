@@ -256,6 +256,42 @@ def test_ssrf_safe_get_headers_strips_sensitive_cross_origin_headers() -> None:
     assert _request_calls[1]["headers"]["Host"] == "other.example"
 
 
+def test_ssrf_safe_get_headers_restores_sensitive_headers_after_return_redirect() -> (
+    None
+):
+    _request_responses.extend(
+        [
+            ssrf.SafeResponse(302, headers={"location": "https://other.example/file"}),
+            ssrf.SafeResponse(302, headers={"location": "https://first.example/final"}),
+            ssrf.SafeResponse(200, headers={"content-length": "0"}),
+        ]
+    )
+    resolutions = {
+        "first.example": _addrinfo("8.8.8.8"),
+        "other.example": _addrinfo("8.8.4.4"),
+    }
+
+    def fake_getaddrinfo(host: str, *_args: Any, **_kwargs: Any) -> list[Any]:
+        return resolutions[host]
+
+    with patch.object(ssrf, "_socket_getaddrinfo", side_effect=fake_getaddrinfo):
+        with patch.object(ssrf, "_request_one_hop", _fake_request_one_hop):
+            response = ssrf.ssrf_safe_get_headers(
+                "https://first.example/file",
+                headers={
+                    "Authorization": "token",
+                    "Cookie": "session=value",
+                    "X-Trace": "keep",
+                },
+            )
+
+    assert response.status_code == 200
+    assert _request_calls[0]["headers"]["Authorization"] == "token"
+    assert _request_calls[1]["headers"].get("Authorization") is None
+    assert _request_calls[2]["headers"]["Authorization"] == "token"
+    assert _request_calls[2]["headers"]["Cookie"] == "session=value"
+
+
 def test_download_file_python_preserves_existing_file_on_http_failure(tmp_path) -> None:
     target_path = tmp_path / "safe.txt"
     target_path.write_bytes(b"existing")
@@ -267,6 +303,42 @@ def test_download_file_python_preserves_existing_file_on_http_failure(tmp_path) 
     ):
         with pytest.raises(DownloadError, match="too large"):
             _download_file_python("https://example.com/file", target_path)
+
+    assert target_path.read_bytes() == b"existing"
+
+
+def test_ssrf_safe_get_to_file_preserves_existing_file_on_short_http_body(
+    tmp_path,
+) -> None:
+    target_path = tmp_path / "safe.txt"
+    target_path.write_bytes(b"existing")
+
+    class FakeResponse:
+        status = 200
+
+        def __init__(self) -> None:
+            self._chunks = [b"short", b""]
+
+        def getheaders(self) -> list[tuple[str, str]]:
+            return [("content-length", "10")]
+
+        def read(self, _chunk_size: int) -> bytes:
+            return self._chunks.pop(0)
+
+    class FakeConnection:
+        def request(self, *_args: Any, **_kwargs: Any) -> None:
+            pass
+
+        def getresponse(self) -> FakeResponse:
+            return FakeResponse()
+
+        def close(self) -> None:
+            pass
+
+    with patch.object(ssrf, "_socket_getaddrinfo", return_value=_addrinfo("8.8.8.8")):
+        with patch.object(ssrf, "_open_connection", return_value=FakeConnection()):
+            with pytest.raises(ssrf.SSRFConnectionError):
+                ssrf.ssrf_safe_get_to_file("https://example.com/file", target_path)
 
     assert target_path.read_bytes() == b"existing"
 

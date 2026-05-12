@@ -188,6 +188,15 @@ def _headers_from_response(response: http.client.HTTPResponse) -> dict[str, str]
     return {key.lower(): value for key, value in response.getheaders()}
 
 
+def _content_length_from_headers(headers: dict[str, str]) -> int | None:
+    try:
+        content_length = int(headers.get("content-length", -1))
+    except ValueError:
+        return None
+
+    return content_length if content_length >= 0 else None
+
+
 class _PinnedHTTPSConnection(http.client.HTTPSConnection):
     def __init__(
         self,
@@ -286,6 +295,7 @@ def _stream_response_to_file(
     target_path: str,
     max_size: int | None,
     *,
+    expected_size: int | None,
     chunk_size: int,
 ) -> None:
     bytes_written = 0
@@ -311,6 +321,11 @@ def _stream_response_to_file(
                     raise SSRFSizeExceededError(
                         f"File body exceeded {max_size} bytes during download"
                     )
+
+        if expected_size is not None and bytes_written < expected_size:
+            raise SSRFConnectionError(
+                "Received less data than expected from the server."
+            )
 
         os.replace(temp_file_path, target_path)
     finally:
@@ -352,6 +367,7 @@ def _request_one_hop(
                 response,
                 target_path,
                 max_size,
+                expected_size=_content_length_from_headers(response_headers),
                 chunk_size=chunk_size,
             )
             return SafeResponse(response.status, response_headers)
@@ -438,11 +454,11 @@ def _safe_request(
         current_parsed = _parse_url(current_url)
         _validate_scheme(current_parsed, allowed_schemes)
 
-        safe_headers = _strip_sensitive_headers_for_cross_origin(
+        hop_headers = _strip_sensitive_headers_for_cross_origin(
             safe_headers, initial_origin, current_parsed
         )
         request_headers = merge_headers_for_pinned_request(
-            safe_headers, {"Host": _build_host_authority(current_parsed)}
+            hop_headers, {"Host": _build_host_authority(current_parsed)}
         )
 
         response = _request_resolved_url(
