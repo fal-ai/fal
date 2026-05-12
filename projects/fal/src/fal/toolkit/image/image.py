@@ -15,7 +15,8 @@ from fal.toolkit.file.file import (
     File,
 )
 from fal.toolkit.file.types import FileRepository, RepositoryId
-from fal.toolkit.utils.download_utils import _download_file_python
+from fal.toolkit.utils.download_utils import TEMP_HEADERS
+from fal.toolkit.utils.ssrf import ssrf_safe_get_to_file
 
 if TYPE_CHECKING:
     from PIL import Image as PILImage
@@ -199,9 +200,10 @@ class Image(File):
         with NamedTemporaryFile() as temp_file:
             temp_file_path = temp_file.name
 
-            _download_file_python(
+            ssrf_safe_get_to_file(
                 self.url,
                 temp_file_path,
+                headers=TEMP_HEADERS,
             )
 
             img = PILImage.open(temp_file_path).convert(mode)

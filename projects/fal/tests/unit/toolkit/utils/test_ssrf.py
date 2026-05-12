@@ -13,7 +13,6 @@ from fal.toolkit.image import read_image_from_url
 from fal.toolkit.utils import ssrf
 from fal.toolkit.utils.download_utils import (
     DownloadError,
-    _download_file_python,
     download_file,
 )
 
@@ -345,21 +344,6 @@ def test_ssrf_safe_get_headers_restores_sensitive_headers_after_return_redirect(
     assert _request_calls[1]["headers"].get("Authorization") is None
     assert _request_calls[2]["headers"]["Authorization"] == "token"
     assert _request_calls[2]["headers"]["Cookie"] == "session=value"
-
-
-def test_download_file_python_preserves_existing_file_on_http_failure(tmp_path) -> None:
-    target_path = tmp_path / "safe.txt"
-    target_path.write_bytes(b"existing")
-
-    with patch.object(
-        download_utils,
-        "ssrf_safe_get_to_file",
-        side_effect=ssrf.SSRFSizeExceededError("too large"),
-    ):
-        with pytest.raises(DownloadError, match="too large"):
-            _download_file_python("https://example.com/file", target_path)
-
-    assert target_path.read_bytes() == b"existing"
 
 
 def test_ssrf_safe_get_to_file_preserves_existing_file_on_short_http_body(

@@ -278,8 +278,7 @@ def _download_file_python(
     request_headers: dict[str, str] | None = None,
     filesize_limit: int | None = None,
 ) -> Path:
-    """Download a file from a given URL and save it to a specified path using a
-    Python interface.
+    """Download a non-HTTP URL and save it to a specified path.
 
     Args:
         url: The URL of the file to be downloaded.
@@ -293,50 +292,50 @@ def _download_file_python(
         The path where the downloaded file has been saved.
     """
     ONE_MB = 1024**2
-
     if urlparse(url).scheme in {"http", "https"}:
-        target_path = Path(target_path)
+        raise DownloadError("HTTP(S) downloads must use ssrf_safe_get_to_file")
 
-        try:
-            ssrf_safe_get_to_file(
-                url,
-                target_path,
-                headers=_headers(request_headers),
-                max_size=filesize_limit * ONE_MB
-                if filesize_limit is not None
-                else None,
-            )
-        except (SSRFError, SSRFSizeExceededError) as e:
-            raise DownloadError(str(e)) from e
-        except SSRFHTTPStatusError as e:
-            raise DownloadError(
-                f"Failed to download file from {url}. Status code: {e.status_code}."
-            ) from e
-        return target_path
+    target_path = Path(target_path)
+    limit_bytes = filesize_limit * ONE_MB if filesize_limit is not None else None
+    basename = target_path.name
 
-    basename = os.path.basename(target_path)
     # NOTE: using the same directory to avoid potential copies across temp fs and target
     # fs, and also to be able to atomically rename a downloaded file into place.
     with NamedTemporaryFile(
         delete=False,
-        dir=os.path.dirname(target_path),
+        dir=target_path.parent,
         prefix=f"{basename}.tmp",
     ) as temp_file:
+        temp_path = Path(temp_file.name)
         try:
-            file_path = temp_file.name
+            request = Request(url, headers=_headers(request_headers))
+            received_size = 0
+            total_size = 0
 
-            for progress, total_size in _stream_url_data_to_file(
-                url,
-                temp_file.name,
-                request_headers=request_headers,
-                filesize_limit=filesize_limit,
-            ):
-                if total_size:
-                    progress_msg = f"Downloading {url} ... {progress:.2%}"
-                else:
-                    progress_msg = f"Downloading {url} ... {progress:.2f} MB"
+            with urlopen(request, timeout=30) as response:
+                total_size = int(response.headers.get("content-length", total_size))
+                while data := response.read(64 * ONE_MB):
+                    temp_file.write(data)
 
-                print(progress_msg, end="\r\n")
+                    received_size = temp_file.tell()
+                    if limit_bytes is not None and received_size > limit_bytes:
+                        raise DownloadError(
+                            f"""Attempted to download more data {received_size}
+                                than the set limit of {limit_bytes}"""
+                        )
+
+                    if total_size:
+                        progress_msg = (
+                            f"Downloading {url} ... {received_size / total_size:.2%}"
+                        )
+                    else:
+                        progress_msg = (
+                            f"Downloading {url} ... {received_size / ONE_MB:.2f} MB"
+                        )
+                    print(progress_msg, end="\r\n")
+
+            if total_size and received_size < total_size:
+                raise DownloadError("Received less data than expected from the server.")
 
             # NOTE: Atomically renaming the file into place when the file is downloaded
             # completely.
@@ -344,75 +343,12 @@ def _download_file_python(
             # Since the file used is temporary, in a case of an interruption, the
             # downloaded content will be lost. So, it is safe to redownload the file in
             # such cases.
-            os.rename(file_path, target_path)
+            os.replace(temp_path, target_path)
 
         finally:
-            Path(temp_file.name).unlink(missing_ok=True)
+            temp_path.unlink(missing_ok=True)
 
-    return Path(target_path)
-
-
-def _stream_url_data_to_file(
-    url: str,
-    file_path: str,
-    chunk_size_in_mb: int = 64,
-    request_headers: dict[str, str] | None = None,
-    filesize_limit: int | None = None,
-):
-    """Download data from a URL and stream it to a file.
-
-    Note:
-        - This function sets a User-Agent header to mimic a web browser to
-            prevent issues with some websites.
-        - It downloads the file in chunks to save memory and ensures the file
-            is only moved when the download is complete.
-
-    Args:
-        request: The Request object representing the URL to download from.
-        file_path: The path to the file where the downloaded data will be saved.
-        chunk_size_in_mb: The size of each download chunk in megabytes.
-            Defaults to 64.
-        request_headers: A dictionary containing additional headers to be included in
-            the HTTP request. Defaults to `None`.
-        filesize_limit: An integer specifying how many megabytes can be
-            downloaded at maximum. Defaults to `None`.
-
-    Yields:
-        A tuple containing two elements:
-        - float: The progress of the download as a percentage (0.0 to 1.0) if
-            the total size is known. Else, equals to the downloaded size in MB.
-        - int: The total size of the downloaded content in bytes. If the total
-            size is not known (e.g., the server doesn't provide a
-            'content-length' header), the second element is 0.
-    """
-    ONE_MB = 1024**2
-
-    request = Request(url, headers=_headers(request_headers))
-
-    received_size = 0
-    total_size = 0
-
-    with urlopen(request, timeout=30) as response, open(file_path, "wb") as f_stream:
-        total_size = int(response.headers.get("content-length", total_size))
-        while data := response.read(chunk_size_in_mb * ONE_MB):
-            f_stream.write(data)
-
-            received_size = f_stream.tell()
-            if filesize_limit is not None and received_size > filesize_limit:
-                raise DownloadError(
-                    f"""Attempted to download more data {received_size}
-                        than the set limit of {filesize_limit}"""
-                )
-
-            if total_size:
-                progress = received_size / total_size
-            else:
-                progress = received_size / ONE_MB
-            yield progress, total_size
-
-    # Check if received size matches the expected total size
-    if total_size and received_size < total_size:
-        raise DownloadError("Received less data than expected from the server.")
+    return target_path
 
 
 def _mark_used_dir(dir: Path):
