@@ -30,6 +30,7 @@ _CROSS_ORIGIN_STRIPPED_HEADERS: frozenset[str] = frozenset(
 )
 _DEFAULT_PORTS = {"http": 80, "https": 443}
 _CGNAT_NETWORK = ipaddress.ip_network("100.64.0.0/10")
+_NAT64_WELL_KNOWN_PREFIX = ipaddress.ip_network("64:ff9b::/96")
 _PROXY_ENV_VARS = ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy")
 
 
@@ -82,6 +83,13 @@ def _warn_if_proxy_configured() -> None:
     )
 
 
+def _embedded_nat64_ipv4(ip: ipaddress.IPv6Address) -> ipaddress.IPv4Address | None:
+    if ip not in _NAT64_WELL_KNOWN_PREFIX:
+        return None
+
+    return ipaddress.IPv4Address(ip.packed[-4:])
+
+
 def is_globally_routable_ip(ip_str: str) -> bool:
     try:
         ip = ipaddress.ip_address(ip_str)
@@ -91,6 +99,10 @@ def is_globally_routable_ip(ip_str: str) -> bool:
     if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
         ip = ip.ipv4_mapped
     elif isinstance(ip, ipaddress.IPv6Address):
+        nat64_ipv4 = _embedded_nat64_ipv4(ip)
+        if nat64_ipv4 is not None:
+            return is_globally_routable_ip(str(nat64_ipv4))
+
         transition_addresses = []
         if ip.sixtofour is not None:
             transition_addresses.append(ip.sixtofour)
@@ -416,7 +428,7 @@ def _request_resolved_url(
     if not hostname:
         raise SSRFError("URL has no hostname")
 
-    last_error: OSError | None = None
+    last_error: Exception | None = None
     for ip in resolve_and_validate_host(hostname, parsed.port):
         try:
             return _request_one_hop(
@@ -429,7 +441,7 @@ def _request_resolved_url(
                 target_path=target_path,
                 chunk_size=chunk_size,
             )
-        except OSError as exc:
+        except (OSError, SSRFConnectionError) as exc:
             last_error = exc
 
     raise SSRFConnectionError("All validated addresses failed") from last_error

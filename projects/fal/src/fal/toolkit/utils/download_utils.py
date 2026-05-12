@@ -209,7 +209,12 @@ def download_file(
             target_dir_path = Path(FAL_PERSISTENT_DIR / target_dir_path)  # type: ignore[assignment]
 
         target_path = target_dir_path.resolve() / file_name
-        if target_path.exists() and not force:
+        if (
+            target_path.exists()
+            and expected_filesize >= 0
+            and target_path.stat().st_size == expected_filesize
+            and not force
+        ):
             return target_path
 
         target_path.parent.mkdir(parents=True, exist_ok=True)

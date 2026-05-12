@@ -85,10 +85,17 @@ def _fake_request_one_hop(
         "2002:0a00:0001::",
         "2001:0000:4136:e378:8000:63bf:f5ff:fffe",
         "2001:0000:0a00:0001:8000:63bf:c000:02d2",
+        "64:ff9b::10.0.0.1",
+        "64:ff9b::100.64.0.1",
+        "64:ff9b::169.254.169.254",
     ],
 )
 def test_non_routable_ips_are_rejected(ip: str) -> None:
     assert not ssrf.is_globally_routable_ip(ip)
+
+
+def test_public_nat64_addresses_are_allowed() -> None:
+    assert ssrf.is_globally_routable_ip("64:ff9b::8.8.8.8")
 
 
 def test_download_file_uses_validated_pinned_ip(tmp_path) -> None:
@@ -187,6 +194,50 @@ def test_ssrf_safe_get_headers_tries_later_validated_ips() -> None:
 
     assert response.status_code == 200
     assert _request_calls[0]["target_ip"] == "8.8.8.8"
+
+
+def test_ssrf_safe_get_to_file_retries_later_ips_after_short_body(tmp_path) -> None:
+    target_path = tmp_path / "safe.txt"
+    _request_responses.append(ssrf.SafeResponse(200, headers={"content-length": "5"}))
+
+    def fake_request(
+        parsed,
+        *,
+        target_ip: str | None,
+        timeout: float,
+        headers: dict[str, str],
+        max_size: int | None,
+        body_mode: str,
+        target_path: str | None = None,
+        chunk_size: int = 64 * 1024,
+    ) -> ssrf.SafeResponse:
+        if target_ip == "8.8.8.8":
+            raise ssrf.SSRFConnectionError("short body")
+        return _fake_request_one_hop(
+            parsed,
+            target_ip=target_ip,
+            timeout=timeout,
+            headers=headers,
+            max_size=max_size,
+            body_mode=body_mode,
+            target_path=target_path,
+            chunk_size=chunk_size,
+        )
+
+    with patch.object(
+        ssrf,
+        "_socket_getaddrinfo",
+        return_value=_addrinfo("8.8.8.8", "1.1.1.1"),
+    ):
+        with patch.object(ssrf, "_request_one_hop", fake_request):
+            response = ssrf.ssrf_safe_get_to_file(
+                "https://example.com/file",
+                target_path,
+            )
+
+    assert response.status_code == 200
+    assert _request_calls[0]["target_ip"] == "1.1.1.1"
+    assert target_path.read_bytes() == b"hello"
 
 
 def test_ssrf_safe_get_headers_warns_when_proxy_env_is_configured(monkeypatch) -> None:
@@ -416,6 +467,17 @@ def test_read_image_from_url_preserves_data_uri() -> None:
     )
 
     assert image.size == (1, 1)
+
+
+def test_download_file_redownloads_truncated_data_uri_cache(tmp_path) -> None:
+    url = "data:text/plain;base64,aGVsbG8="
+    target_path = tmp_path / download_utils._hash_url(url)
+    target_path.write_bytes(b"bad")
+
+    path = download_file(url, tmp_path)
+
+    assert path == target_path
+    assert path.read_bytes() == b"hello"
 
 
 def test_filename_from_response_parses_rfc5987_filename() -> None:
