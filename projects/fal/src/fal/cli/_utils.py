@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from fal.api import Options
+from fal.container import ContainerImage
 from fal.project import find_project_root, find_pyproject_toml, parse_pyproject_toml
 from fal.sdk import AuthModeLiteral, DeploymentStrategyLiteral
 
@@ -121,6 +122,8 @@ def get_app_data_from_toml(
     app_files_ignore = app_data.pop("app_files_ignore", None)
     app_files_context_dir = app_data.pop("app_files_context_dir", None)
 
+    image_config = app_data.pop("image", None)
+
     if regions is not None:
         _validate_regions(regions)
     if app_files is not None:
@@ -133,6 +136,8 @@ def get_app_data_from_toml(
         raise ValueError(
             "app_files_context_dir is only supported when app_files is provided."
         )
+    if image_config is not None and app_files:
+        raise ValueError("app_files is not supported for container apps.")
 
     if min_concurrency is not None:
         options.host["min_concurrency"] = min_concurrency
@@ -162,6 +167,12 @@ def get_app_data_from_toml(
         options.environment["requirements"] = requirements
     if python_version is not None:
         options.environment["python_version"] = python_version
+    if image_config is not None:
+        container_image = _build_container_image_from_toml(
+            app_name, image_config, Path(toml_path).parent
+        )
+        options.environment["kind"] = "container"
+        options.environment["image"] = container_image.to_dict()
 
     app_reset_scale: bool
     if "no_scale" in app_data:
@@ -221,3 +232,54 @@ def _validate_requirements(requirements: Any) -> None:
 def _validate_str_list(field_name: str, value: Any) -> None:
     if not (isinstance(value, list) and all(isinstance(item, str) for item in value)):
         raise ValueError(f"{field_name} must be a list of strings.")
+
+
+_IMAGE_PASSTHROUGH_KEYS = (
+    "build_args",
+    "registries",
+    "secrets",
+)
+
+
+def _build_container_image_from_toml(
+    app_name: str, image_config: Any, project_root: Path
+) -> ContainerImage:
+    if not isinstance(image_config, dict):
+        raise ValueError(f"App {app_name} image must be a table in pyproject.toml")
+
+    image_config = dict(image_config)
+
+    dockerfile_path = image_config.pop("dockerfile", None)
+    if dockerfile_path is None:
+        raise ValueError(
+            f"App {app_name} image must specify 'dockerfile' (path) in pyproject.toml"
+        )
+    if not isinstance(dockerfile_path, str):
+        raise ValueError(
+            f"App {app_name} image.dockerfile must be a string in pyproject.toml"
+        )
+
+    resolved_path = Path(dockerfile_path)
+    if not resolved_path.is_absolute():
+        resolved_path = project_root / resolved_path
+    try:
+        with open(resolved_path) as f:
+            dockerfile_str = f.read()
+    except FileNotFoundError:
+        raise ValueError(f"App {app_name} image.dockerfile not found: {resolved_path}")
+
+    kwargs: dict[str, Any] = {
+        "dockerfile_str": dockerfile_str,
+        "context_dir": project_root,
+    }
+
+    for key in _IMAGE_PASSTHROUGH_KEYS:
+        if key in image_config:
+            kwargs[key] = image_config.pop(key)
+
+    if image_config:
+        raise ValueError(
+            f"Found unexpected keys in app {app_name} image: {image_config}"
+        )
+
+    return ContainerImage(**kwargs)

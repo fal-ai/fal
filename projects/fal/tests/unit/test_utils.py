@@ -205,6 +205,37 @@ def test_load_function_from_preserves_app_defined_app_files_over_toml(tmp_path):
     assert wrapped_cls.app_files_context_dir == "class-context"
 
 
+def test_load_function_from_rejects_class_app_files_with_toml_image(tmp_path):
+    from fal.api import FalServerlessError
+
+    app_file = tmp_path / "app.py"
+    app_file.write_text(
+        "import fal\n"
+        "\n"
+        "class MyApp(fal.App):\n"
+        "    app_files = ['class-files']\n"
+        "\n"
+        "    @fal.endpoint('/')\n"
+        "    def run(self):\n"
+        "        return {'ok': True}\n"
+    )
+
+    client = SyncServerlessClient(host="api.alpha.fal.ai")
+    host = client._create_host(local_file_path=str(app_file))
+    options = Options(
+        environment={
+            "kind": "container",
+            "image": {"dockerfile_str": "FROM python:3.12-slim\n"},
+        }
+    )
+
+    with pytest.raises(
+        FalServerlessError,
+        match="app_files is not supported for container apps.",
+    ):
+        load_function_from(host, str(app_file), "MyApp", options=options)
+
+
 def test_parse_python_entry_point():
     module_name, symbol_name = _parse_python_entry_point("pkg.mod:MyApp")
     assert module_name == "pkg.mod"
