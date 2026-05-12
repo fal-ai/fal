@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import http.client
 import socket
 from typing import Any
 from unittest.mock import patch
@@ -232,6 +233,45 @@ def test_ssrf_safe_get_to_file_retries_later_ips_after_short_body(tmp_path) -> N
     assert target_path.read_bytes() == b"hello"
 
 
+def test_ssrf_safe_get_retries_later_ips_after_incomplete_read() -> None:
+    _request_responses.append(ssrf.SafeResponse(200, headers={"content-length": "5"}))
+
+    def fake_request(
+        parsed,
+        *,
+        target_ip: str | None,
+        timeout: float,
+        headers: dict[str, str],
+        max_size: int | None,
+        body_mode: str,
+        target_path: str | None = None,
+        chunk_size: int = 64 * 1024,
+    ) -> ssrf.SafeResponse:
+        if target_ip == "8.8.8.8":
+            raise http.client.IncompleteRead(b"partial")
+        return _fake_request_one_hop(
+            parsed,
+            target_ip=target_ip,
+            timeout=timeout,
+            headers=headers,
+            max_size=max_size,
+            body_mode=body_mode,
+            target_path=target_path,
+            chunk_size=chunk_size,
+        )
+
+    with patch.object(
+        ssrf,
+        "_socket_getaddrinfo",
+        return_value=_addrinfo("8.8.8.8", "1.1.1.1"),
+    ):
+        with patch.object(ssrf, "_request_one_hop", fake_request):
+            response = ssrf.ssrf_safe_get("https://example.com/file")
+
+    assert response.status_code == 200
+    assert _request_calls[0]["target_ip"] == "1.1.1.1"
+
+
 def test_ssrf_safe_get_headers_warns_when_proxy_env_is_configured(monkeypatch) -> None:
     monkeypatch.setenv("HTTPS_PROXY", "http://proxy.example:8080")
     _request_responses.append(ssrf.SafeResponse(200, headers={"content-length": "0"}))
@@ -383,6 +423,35 @@ def test_ssrf_safe_get_to_file_preserves_existing_file_on_short_http_body(
     assert target_path.read_bytes() == b"existing"
 
 
+def test_ssrf_safe_get_rejects_short_buffered_body() -> None:
+    class FakeResponse:
+        status = 200
+
+        def __init__(self) -> None:
+            self._chunks = [b"short", b""]
+
+        def getheaders(self) -> list[tuple[str, str]]:
+            return [("content-length", "10")]
+
+        def read(self, _chunk_size: int) -> bytes:
+            return self._chunks.pop(0)
+
+    class FakeConnection:
+        def request(self, *_args: Any, **_kwargs: Any) -> None:
+            pass
+
+        def getresponse(self) -> FakeResponse:
+            return FakeResponse()
+
+        def close(self) -> None:
+            pass
+
+    with patch.object(ssrf, "_socket_getaddrinfo", return_value=_addrinfo("8.8.8.8")):
+        with patch.object(ssrf, "_open_connection", return_value=FakeConnection()):
+            with pytest.raises(ssrf.SSRFConnectionError):
+                ssrf.ssrf_safe_get("https://example.com/file")
+
+
 def test_ssrf_safe_get_to_file_preserves_existing_file_on_http_failure(
     tmp_path,
 ) -> None:
@@ -400,6 +469,43 @@ def test_ssrf_safe_get_to_file_preserves_existing_file_on_http_failure(
 
         def read(self, _chunk_size: int) -> bytes:
             return self._chunks.pop(0)
+
+    class FakeConnection:
+        def request(self, *_args: Any, **_kwargs: Any) -> None:
+            pass
+
+        def getresponse(self) -> FakeResponse:
+            return FakeResponse()
+
+        def close(self) -> None:
+            pass
+
+    with patch.object(ssrf, "_socket_getaddrinfo", return_value=_addrinfo("8.8.8.8")):
+        with patch.object(ssrf, "_open_connection", return_value=FakeConnection()):
+            with pytest.raises(ssrf.SSRFSizeExceededError):
+                ssrf.ssrf_safe_get_to_file(
+                    "https://example.com/file",
+                    target_path,
+                    max_size=4,
+                )
+
+    assert target_path.read_bytes() == b"existing"
+
+
+def test_ssrf_safe_get_to_file_rejects_declared_oversized_body_before_streaming(
+    tmp_path,
+) -> None:
+    target_path = tmp_path / "safe.txt"
+    target_path.write_bytes(b"existing")
+
+    class FakeResponse:
+        status = 200
+
+        def getheaders(self) -> list[tuple[str, str]]:
+            return [("content-length", "10")]
+
+        def read(self, _chunk_size: int) -> bytes:
+            raise AssertionError("body should not be read")
 
     class FakeConnection:
         def request(self, *_args: Any, **_kwargs: Any) -> None:

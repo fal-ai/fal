@@ -230,6 +230,20 @@ def _content_length_from_headers(headers: dict[str, str]) -> int | None:
     return content_length if content_length >= 0 else None
 
 
+def _raise_if_declared_size_exceeds_limit(
+    headers: dict[str, str],
+    max_size: int | None,
+) -> None:
+    if max_size is None:
+        return
+
+    content_length = _content_length_from_headers(headers)
+    if content_length is not None and content_length > max_size:
+        raise SSRFSizeExceededError(
+            f"File body exceeded {max_size} bytes before download"
+        )
+
+
 class _PinnedHTTPSConnection(http.client.HTTPSConnection):
     def __init__(
         self,
@@ -303,22 +317,31 @@ def _read_response_content(
     response: http.client.HTTPResponse,
     max_size: int | None,
     *,
+    expected_size: int | None,
     chunk_size: int = 64 * 1024,
 ) -> bytes:
     chunks: list[bytes] = []
     bytes_read = 0
 
-    while True:
-        chunk = response.read(chunk_size)
-        if not chunk:
-            break
+    try:
+        while True:
+            chunk = response.read(chunk_size)
+            if not chunk:
+                break
 
-        bytes_read += len(chunk)
-        if max_size is not None and bytes_read > max_size:
-            raise SSRFSizeExceededError(
-                f"File body exceeded {max_size} bytes during download"
-            )
-        chunks.append(chunk)
+            bytes_read += len(chunk)
+            if max_size is not None and bytes_read > max_size:
+                raise SSRFSizeExceededError(
+                    f"File body exceeded {max_size} bytes during download"
+                )
+            chunks.append(chunk)
+    except http.client.IncompleteRead as exc:
+        raise SSRFConnectionError(
+            "Received less data than expected from the server."
+        ) from exc
+
+    if expected_size is not None and bytes_read < expected_size:
+        raise SSRFConnectionError("Received less data than expected from the server.")
 
     return b"".join(chunks)
 
@@ -342,18 +365,23 @@ def _stream_response_to_file(
             dir=target_dir,
             prefix=f".{target_basename}.tmp.",
         ) as file:
-            temp_file_path = file.name
-            while True:
-                chunk = response.read(chunk_size)
-                if not chunk:
-                    break
+            try:
+                temp_file_path = file.name
+                while True:
+                    chunk = response.read(chunk_size)
+                    if not chunk:
+                        break
 
-                file.write(chunk)
-                bytes_written += len(chunk)
-                if max_size is not None and bytes_written > max_size:
-                    raise SSRFSizeExceededError(
-                        f"File body exceeded {max_size} bytes during download"
-                    )
+                    file.write(chunk)
+                    bytes_written += len(chunk)
+                    if max_size is not None and bytes_written > max_size:
+                        raise SSRFSizeExceededError(
+                            f"File body exceeded {max_size} bytes during download"
+                        )
+            except http.client.IncompleteRead as exc:
+                raise SSRFConnectionError(
+                    "Received less data than expected from the server."
+                ) from exc
 
         if expected_size is not None and bytes_written < expected_size:
             raise SSRFConnectionError(
@@ -393,6 +421,9 @@ def _request_one_hop(
         if body_mode == _BODY_HEADERS:
             return SafeResponse(response.status, response_headers)
 
+        _raise_if_declared_size_exceeds_limit(response_headers, max_size)
+        expected_size = _content_length_from_headers(response_headers)
+
         if body_mode == _BODY_FILE:
             if target_path is None:
                 raise SSRFError("File download target path is required")
@@ -400,7 +431,7 @@ def _request_one_hop(
                 response,
                 target_path,
                 max_size,
-                expected_size=_content_length_from_headers(response_headers),
+                expected_size=expected_size,
                 chunk_size=chunk_size,
             )
             return SafeResponse(response.status, response_headers)
@@ -408,7 +439,12 @@ def _request_one_hop(
         return SafeResponse(
             response.status,
             response_headers,
-            _read_response_content(response, max_size, chunk_size=chunk_size),
+            _read_response_content(
+                response,
+                max_size,
+                expected_size=expected_size,
+                chunk_size=chunk_size,
+            ),
         )
     finally:
         connection.close()
@@ -441,7 +477,7 @@ def _request_resolved_url(
                 target_path=target_path,
                 chunk_size=chunk_size,
             )
-        except (OSError, SSRFConnectionError) as exc:
+        except (OSError, SSRFConnectionError, http.client.IncompleteRead) as exc:
             last_error = exc
 
     raise SSRFConnectionError("All validated addresses failed") from last_error
