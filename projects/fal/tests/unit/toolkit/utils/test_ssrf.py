@@ -108,15 +108,6 @@ def test_download_file_uses_validated_pinned_ip(tmp_path) -> None:
             },
         )
     )
-    _request_responses.append(
-        ssrf.SafeResponse(
-            200,
-            headers={
-                "content-disposition": 'attachment; filename="safe.txt"',
-                "content-length": "5",
-            },
-        )
-    )
 
     with patch.object(ssrf, "_socket_getaddrinfo", return_value=_addrinfo("8.8.8.8")):
         with patch.object(ssrf, "_request_one_hop", _fake_request_one_hop):
@@ -125,14 +116,15 @@ def test_download_file_uses_validated_pinned_ip(tmp_path) -> None:
     assert path == tmp_path / "safe.txt"
     assert path.read_bytes() == b"hello"
 
-    assert _request_calls[0]["body_mode"] == ssrf._BODY_HEADERS
+    assert len(_request_calls) == 1
+    assert _request_calls[0]["body_mode"] == ssrf._BODY_FILE
     assert _request_calls[0]["target_ip"] == "8.8.8.8"
-    assert _request_calls[1]["body_mode"] == ssrf._BODY_FILE
-    assert _request_calls[1]["target_ip"] == "8.8.8.8"
-    assert _request_calls[1]["headers"]["Host"] == "example.com"
+    assert _request_calls[0]["headers"]["Host"] == "example.com"
 
 
-def test_download_file_returns_cached_file_before_streaming(tmp_path) -> None:
+def test_download_file_keeps_matching_cached_file_after_single_request(
+    tmp_path,
+) -> None:
     cached_path = tmp_path / "safe.txt"
     cached_path.write_bytes(b"hello")
     _request_responses.append(
@@ -151,7 +143,7 @@ def test_download_file_returns_cached_file_before_streaming(tmp_path) -> None:
 
     assert path == cached_path
     assert len(_request_calls) == 1
-    assert _request_calls[0]["body_mode"] == ssrf._BODY_HEADERS
+    assert _request_calls[0]["body_mode"] == ssrf._BODY_FILE
 
 
 def test_ssrf_safe_get_headers_tries_later_validated_ips() -> None:
@@ -510,7 +502,7 @@ def test_download_file_blocks_redirect_to_private_ip(tmp_path) -> None:
                 download_file("https://evil.example/file", tmp_path)
 
     assert len(_request_calls) == 1
-    assert _request_calls[0]["body_mode"] == ssrf._BODY_HEADERS
+    assert _request_calls[0]["body_mode"] == ssrf._BODY_FILE
 
 
 def test_read_image_from_url_blocks_private_resolution() -> None:

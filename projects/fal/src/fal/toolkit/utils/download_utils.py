@@ -19,7 +19,6 @@ from fal.toolkit.utils.ssrf import (
     SSRFError,
     SSRFHTTPStatusError,
     SSRFSizeExceededError,
-    ssrf_safe_get_headers,
     ssrf_safe_get_to_file,
 )
 
@@ -126,19 +125,6 @@ def _get_remote_file_properties(
     return file_name, content_length
 
 
-def _get_safe_remote_file_properties(
-    url: str,
-    request_headers: dict[str, str] | None = None,
-) -> tuple[str, int]:
-    response = ssrf_safe_get_headers(
-        url,
-        headers=_headers(request_headers),
-    )
-    return _filename_from_response(url, response), _content_length_from_response(
-        response
-    )
-
-
 def download_file(
     url: str,
     target_dir: str | Path,
@@ -152,10 +138,8 @@ def download_file(
     The function downloads the file from the given URL and saves it in the specified
     target directory, provided it is below the given filesize limit.
 
-    It also checks whether the local file already exists and whether its content length
-    matches the expected content length from the remote file. If the local file already
-    exists and its content length matches the expected content length from the remote
-    file, the existing file is returned without re-downloading it.
+    If the downloaded response resolves to an existing local file whose content length
+    matches the downloaded file, the existing file is kept.
 
     If the file needs to be downloaded or if an existing file's content length does not
     match the expected length, the function proceeds to download and save the file. It
@@ -167,8 +151,7 @@ def download_file(
         target_dir: The directory where the downloaded file will be saved. If it's not
             an absolute path, it's treated as a relative directory to "/data".
         force: If `True`, the file is downloaded even if it already exists locally and
-            its content length matches the expected content length from the remote file.
-            Defaults to `False`.
+            its content length matches the downloaded response. Defaults to `False`.
         request_headers: A dictionary containing additional headers to be included in
             the HTTP request. Defaults to `None`.
         filesize_limit: An integer specifying the maximum downloadable size,
@@ -241,59 +224,49 @@ def download_file(
     target_dir_path = target_dir_path.resolve()
     target_dir_path.mkdir(parents=True, exist_ok=True)
 
-    try:
-        file_name, expected_filesize = _get_safe_remote_file_properties(
-            url,
-            request_headers,
-        )
-    except (SSRFError, SSRFSizeExceededError) as e:
-        raise DownloadError(str(e)) from e
-    except SSRFHTTPStatusError as e:
-        raise DownloadError(
-            f"Failed to get remote file properties for {url}. "
-            f"Status code: {e.status_code}."
-        ) from e
-    except Exception as e:
-        print(f"Got error: {e}")
-        raise DownloadError(f"Failed to get remote file properties for {url}") from e
-
-    expected_filesize_mb = expected_filesize / ONE_MB
-
-    if filesize_limit is not None and expected_filesize_mb > filesize_limit:
-        raise DownloadError(
-            f"""File to be downloaded is of size {expected_filesize_mb},
-                which is over the limit of {filesize_limit}"""
-        )
-
-    target_path = target_dir_path / file_name
-
-    if (
-        target_path.exists()
-        and expected_filesize >= 0
-        and target_path.stat().st_size == expected_filesize
-        and not force
-    ):
-        return target_path
-
-    if force:
-        print(f"File already exists. Forcing download of {url} to {target_path}")
-    else:
-        print(f"Downloading {url} to {target_path}")
+    with NamedTemporaryFile(
+        delete=False,
+        dir=target_dir_path,
+        prefix=".fal_download.tmp.",
+    ) as temp_file:
+        temp_path = Path(temp_file.name)
 
     try:
-        ssrf_safe_get_to_file(
+        response = ssrf_safe_get_to_file(
             url,
-            target_path,
+            temp_path,
             headers=_headers(request_headers),
             max_size=filesize_limit * ONE_MB if filesize_limit is not None else None,
         )
+        file_name = _filename_from_response(url, response)
+        expected_filesize = _content_length_from_response(response)
+        target_path = target_dir_path / file_name
+
+        if (
+            target_path.exists()
+            and expected_filesize >= 0
+            and target_path.stat().st_size == expected_filesize
+            and not force
+        ):
+            temp_path.unlink(missing_ok=True)
+            return target_path
+
+        if force:
+            print(f"File already exists. Forcing download of {url} to {target_path}")
+        else:
+            print(f"Downloading {url} to {target_path}")
+
+        os.replace(temp_path, target_path)
     except (SSRFError, SSRFSizeExceededError) as e:
+        temp_path.unlink(missing_ok=True)
         raise DownloadError(str(e)) from e
     except SSRFHTTPStatusError as e:
+        temp_path.unlink(missing_ok=True)
         raise DownloadError(
             f"Failed to download file from {url}. Status code: {e.status_code}."
         ) from e
     except Exception as e:
+        temp_path.unlink(missing_ok=True)
         raise DownloadError(f"Failed to download {url} to {target_dir_path}") from e
 
     return target_path
