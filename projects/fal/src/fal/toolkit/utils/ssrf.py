@@ -1,3 +1,9 @@
+"""SSRF-safe HTTP(S) download helpers.
+
+This client connects directly to validated target IPs and does not honor
+HTTP_PROXY or HTTPS_PROXY environment variables.
+"""
+
 from __future__ import annotations
 
 import contextlib
@@ -8,6 +14,7 @@ import socket
 import ssl
 import tempfile
 import urllib.parse
+import warnings
 from dataclasses import dataclass
 from typing import Any
 
@@ -23,6 +30,7 @@ _CROSS_ORIGIN_STRIPPED_HEADERS: frozenset[str] = frozenset(
 )
 _DEFAULT_PORTS = {"http": 80, "https": 443}
 _CGNAT_NETWORK = ipaddress.ip_network("100.64.0.0/10")
+_PROXY_ENV_VARS = ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy")
 
 
 class SSRFError(Exception):
@@ -59,6 +67,19 @@ def _socket_getaddrinfo(
     flags: int = 0,
 ) -> list[Any]:
     return socket.getaddrinfo(host, port, family, type, proto, flags)
+
+
+def _warn_if_proxy_configured() -> None:
+    configured_proxy_vars = [var for var in _PROXY_ENV_VARS if os.environ.get(var)]
+    if not configured_proxy_vars:
+        return
+
+    warnings.warn(
+        "HTTP_PROXY/HTTPS_PROXY settings are not honored by the SSRF-safe "
+        "download client.",
+        RuntimeWarning,
+        stacklevel=3,
+    )
 
 
 def is_globally_routable_ip(ip_str: str) -> bool:
@@ -444,6 +465,8 @@ def _safe_request(
     target_path: str | None = None,
     chunk_size: int = 64 * 1024,
 ) -> SafeResponse:
+    _warn_if_proxy_configured()
+
     current_url = url
     initial_parsed = _parse_url(current_url)
     _validate_scheme(initial_parsed, allowed_schemes)

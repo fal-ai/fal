@@ -77,12 +77,6 @@ def _content_length_from_response(response: SafeResponse) -> int:
         return -1
 
 
-def _raise_if_incomplete_download(response: SafeResponse, target_path: Path) -> None:
-    expected_size = _content_length_from_response(response)
-    if expected_size >= 0 and target_path.stat().st_size < expected_size:
-        raise DownloadError("Received less data than expected from the server.")
-
-
 def _get_remote_file_properties(
     url: str,
     request_headers: dict[str, str] | None = None,
@@ -288,14 +282,13 @@ def download_file(
         print(f"Downloading {url} to {target_path}")
 
     try:
-        response = ssrf_safe_get_to_file(
+        ssrf_safe_get_to_file(
             url,
             target_path,
             headers=_headers(request_headers),
             max_size=filesize_limit * ONE_MB if filesize_limit is not None else None,
             allow_internal_hosts=allow_internal_hosts,
         )
-        _raise_if_incomplete_download(response, target_path)
     except (SSRFError, SSRFSizeExceededError) as e:
         raise DownloadError(str(e)) from e
     except SSRFHTTPStatusError as e:
@@ -335,7 +328,7 @@ def _download_file_python(
         target_path = Path(target_path)
 
         try:
-            response = ssrf_safe_get_to_file(
+            ssrf_safe_get_to_file(
                 url,
                 target_path,
                 headers=_headers(request_headers),
@@ -344,7 +337,6 @@ def _download_file_python(
                 else None,
                 allow_internal_hosts=allow_internal_hosts,
             )
-            _raise_if_incomplete_download(response, target_path)
         except (SSRFError, SSRFSizeExceededError) as e:
             raise DownloadError(str(e)) from e
         except SSRFHTTPStatusError as e:
