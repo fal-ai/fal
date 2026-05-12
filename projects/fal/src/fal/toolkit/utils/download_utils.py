@@ -66,6 +66,9 @@ def _filename_from_response(url: str, response: SafeResponse) -> str:
             return Path(filename).name
 
     parsed_url = urlparse(url)
+    if parsed_url.scheme == "data":
+        return _hash_url(url)
+
     return Path(parsed_url.path).name or _hash_url(url)
 
 
@@ -74,55 +77,6 @@ def _content_length_from_response(response: SafeResponse) -> int:
         return int(response.headers.get("content-length", -1))
     except ValueError:
         return -1
-
-
-def _get_remote_file_properties(
-    url: str,
-    request_headers: dict[str, str] | None = None,
-) -> tuple[str, int]:
-    """Retrieves the file name and content length of a remote file.
-
-    This function sends an HTTP request to the remote URL and retrieves the
-    "Content-Disposition" header and the "Content-Length" header from the response.
-    The "Content-Disposition" header contains the file name of the remote file, while
-    the "Content-Length" header contains the expected content length of the remote
-    file.
-
-    If the "Content-Disposition" header is not available, the function attempts to
-    extract the file name from the URL's path component. If the URL does not contain a
-    path component, the function generates a hashed value of the URL using SHA-256 and
-    uses it as the file name.
-
-    If the "Content-Length" header is not available, the function returns -1 as the
-    content length.
-
-    Args:
-        url: The URL of the remote file.
-        request_headers: A dictionary containing additional headers to be included in
-            the HTTP request.
-
-    Returns:
-        A tuple containing the file name and the content length of the remote file.
-    """
-    request = Request(url, headers=_headers(request_headers))
-
-    with urlopen(request, timeout=30) as response:
-        file_name = response.headers.get_filename()
-        content_length = int(response.headers.get("Content-Length", -1))
-
-    if not file_name:
-        parsed_url = urlparse(url)
-
-        if parsed_url.scheme == "data":
-            file_name = _hash_url(url)
-        else:
-            url_path = parsed_url.path
-            file_name = Path(url_path).name or _hash_url(url)
-
-    # file name can still contain a forward slash if the server returns a relative path
-    file_name = Path(file_name).name
-
-    return file_name, content_length
 
 
 def download_file(
@@ -162,58 +116,10 @@ def download_file(
         A Path object representing the full path to the downloaded file.
 
     Raises:
-        ValueError: If the provided `file_name` contains a forward slash ('/').
         DownloadError: If an error occurs during the download process.
     """
     ONE_MB = 1024**2
     parsed_url = urlparse(url)
-
-    if parsed_url.scheme == "data":
-        try:
-            file_name, expected_filesize = _get_remote_file_properties(
-                url, request_headers
-            )
-        except Exception as e:
-            print(f"Got error: {e}")
-            raise DownloadError(
-                f"Failed to get remote file properties for {url}"
-            ) from e
-
-        expected_filesize_mb = expected_filesize / ONE_MB
-
-        if filesize_limit is not None and expected_filesize_mb > filesize_limit:
-            raise DownloadError(
-                f"""File to be downloaded is of size {expected_filesize_mb},
-                    which is over the limit of {filesize_limit}"""
-            )
-
-        target_dir_path = Path(target_dir)
-        if not target_dir_path.is_absolute():
-            target_dir_path = Path(FAL_PERSISTENT_DIR / target_dir_path)  # type: ignore[assignment]
-
-        target_path = target_dir_path.resolve() / file_name
-        if (
-            target_path.exists()
-            and expected_filesize >= 0
-            and target_path.stat().st_size == expected_filesize
-            and not force
-        ):
-            return target_path
-
-        target_path.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            _download_file_python(
-                url=url,
-                target_path=target_path,
-                request_headers=request_headers,
-                filesize_limit=filesize_limit,
-            )
-        except Exception as e:
-            msg = f"Failed to download {url} to {target_path}"
-            target_path.unlink(missing_ok=True)
-            raise DownloadError(msg) from e
-
-        return target_path
 
     target_dir_path = Path(target_dir)
 
@@ -232,12 +138,27 @@ def download_file(
         temp_path = Path(temp_file.name)
 
     try:
-        response = ssrf_safe_get_to_file(
-            url,
-            temp_path,
-            headers=_headers(request_headers),
-            max_size=filesize_limit * ONE_MB if filesize_limit is not None else None,
-        )
+        if parsed_url.scheme == "data":
+            _download_file_python(
+                url=url,
+                target_path=temp_path,
+                request_headers=request_headers,
+                filesize_limit=filesize_limit,
+            )
+            response = SafeResponse(
+                200,
+                headers={"content-length": str(temp_path.stat().st_size)},
+            )
+        else:
+            response = ssrf_safe_get_to_file(
+                url,
+                temp_path,
+                headers=_headers(request_headers),
+                max_size=filesize_limit * ONE_MB
+                if filesize_limit is not None
+                else None,
+            )
+
         file_name = _filename_from_response(url, response)
         expected_filesize = _content_length_from_response(response)
         target_path = target_dir_path / file_name
