@@ -69,6 +69,18 @@ def is_globally_routable_ip(ip_str: str) -> bool:
 
     if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
         ip = ip.ipv4_mapped
+    elif isinstance(ip, ipaddress.IPv6Address):
+        transition_addresses = []
+        if ip.sixtofour is not None:
+            transition_addresses.append(ip.sixtofour)
+        if ip.teredo is not None:
+            transition_addresses.extend(ip.teredo)
+
+        if any(
+            not is_globally_routable_ip(str(embedded_ip))
+            for embedded_ip in transition_addresses
+        ):
+            return False
 
     if (
         ip.is_private

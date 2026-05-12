@@ -81,6 +81,10 @@ def _fake_request_one_hop(
         "::1",
         "fe80::1",
         "::ffff:169.254.169.254",
+        "2002:7f00:0001::",
+        "2002:0a00:0001::",
+        "2001:0000:4136:e378:8000:63bf:f5ff:fffe",
+        "2001:0000:0a00:0001:8000:63bf:c000:02d2",
     ],
 )
 def test_non_routable_ips_are_rejected(ip: str) -> None:
