@@ -411,23 +411,10 @@ def _request_resolved_url(
     body_mode: str,
     target_path: str | None,
     chunk_size: int,
-    allow_internal_hosts: bool,
 ) -> SafeResponse:
     hostname = parsed.hostname
     if not hostname:
         raise SSRFError("URL has no hostname")
-
-    if allow_internal_hosts:
-        return _request_one_hop(
-            parsed,
-            target_ip=None,
-            timeout=timeout,
-            headers=headers,
-            max_size=max_size,
-            body_mode=body_mode,
-            target_path=target_path,
-            chunk_size=chunk_size,
-        )
 
     last_error: OSError | None = None
     for ip in resolve_and_validate_host(hostname, parsed.port):
@@ -459,7 +446,6 @@ def _safe_request(
     max_size: int | None,
     max_hops: int,
     headers: dict[str, str] | None,
-    allow_internal_hosts: bool,
     allowed_schemes: frozenset[str],
     body_mode: str,
     target_path: str | None = None,
@@ -492,7 +478,6 @@ def _safe_request(
             body_mode=body_mode,
             target_path=target_path,
             chunk_size=chunk_size,
-            allow_internal_hosts=allow_internal_hosts,
         )
 
         if response.status_code not in _REDIRECT_STATUSES:
@@ -515,7 +500,6 @@ def ssrf_safe_get(
     max_size: int | None = None,
     max_hops: int = DEFAULT_MAX_REDIRECT_HOPS,
     headers: dict[str, str] | None = None,
-    allow_internal_hosts: bool = False,
     allowed_schemes: frozenset[str] = DEFAULT_ALLOWED_SCHEMES,
 ) -> SafeResponse:
     return _safe_request(
@@ -524,7 +508,6 @@ def ssrf_safe_get(
         max_size=max_size,
         max_hops=max_hops,
         headers=headers,
-        allow_internal_hosts=allow_internal_hosts,
         allowed_schemes=allowed_schemes,
         body_mode=_BODY_CONTENT,
     )
@@ -536,7 +519,6 @@ def ssrf_safe_get_headers(
     timeout: float = 30.0,
     max_hops: int = DEFAULT_MAX_REDIRECT_HOPS,
     headers: dict[str, str] | None = None,
-    allow_internal_hosts: bool = False,
     allowed_schemes: frozenset[str] = DEFAULT_ALLOWED_SCHEMES,
 ) -> SafeResponse:
     return _safe_request(
@@ -545,7 +527,6 @@ def ssrf_safe_get_headers(
         max_size=None,
         max_hops=max_hops,
         headers=headers,
-        allow_internal_hosts=allow_internal_hosts,
         allowed_schemes=allowed_schemes,
         body_mode=_BODY_HEADERS,
     )
@@ -559,7 +540,6 @@ def ssrf_safe_get_to_file(
     max_size: int | None = None,
     max_hops: int = DEFAULT_MAX_REDIRECT_HOPS,
     headers: dict[str, str] | None = None,
-    allow_internal_hosts: bool = False,
     allowed_schemes: frozenset[str] = DEFAULT_ALLOWED_SCHEMES,
     chunk_size: int = 64 * 1024,
 ) -> SafeResponse:
@@ -569,7 +549,6 @@ def ssrf_safe_get_to_file(
         max_size=max_size,
         max_hops=max_hops,
         headers=headers,
-        allow_internal_hosts=allow_internal_hosts,
         allowed_schemes=allowed_schemes,
         body_mode=_BODY_FILE,
         target_path=os.fspath(target_path),

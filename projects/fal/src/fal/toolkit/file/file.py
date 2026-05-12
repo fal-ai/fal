@@ -380,7 +380,6 @@ class File(BaseModel):
         self,
         path: str | Path,
         overwrite: bool = False,
-        allow_internal_hosts: bool = False,
     ) -> Path:
         file_path = Path(path).resolve()
 
@@ -390,7 +389,6 @@ class File(BaseModel):
         downloaded_path = download_file(
             self.url,
             target_dir=file_path.parent,
-            allow_internal_hosts=allow_internal_hosts,
         )
         downloaded_path.rename(file_path)
 
@@ -400,9 +398,8 @@ class File(BaseModel):
         self,
         path: str | Path,
         overwrite: bool = False,
-        allow_internal_hosts: bool = False,
     ) -> Path:
-        return await run_in_thread(self.save, path, overwrite, allow_internal_hosts)
+        return await run_in_thread(self.save, path, overwrite)
 
 
 class CompressedFile(File):

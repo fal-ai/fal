@@ -60,7 +60,6 @@ def read_image_from_url(
     url: str,
     convert_to_rgb: bool = True,
     fix_orientation: bool = True,
-    allow_internal_hosts: bool = False,
 ):
     from fastapi import HTTPException
     from PIL import Image
@@ -77,7 +76,6 @@ def read_image_from_url(
                 headers=TEMP_HEADERS,
                 timeout=30,
                 max_size=MAX_IMAGE_DOWNLOAD_SIZE,
-                allow_internal_hosts=allow_internal_hosts,
             )
             content = response.content
         image_pil = Image.open(io.BytesIO(content))

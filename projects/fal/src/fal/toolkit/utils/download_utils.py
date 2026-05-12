@@ -129,13 +129,10 @@ def _get_remote_file_properties(
 def _get_safe_remote_file_properties(
     url: str,
     request_headers: dict[str, str] | None = None,
-    *,
-    allow_internal_hosts: bool = False,
 ) -> tuple[str, int]:
     response = ssrf_safe_get_headers(
         url,
         headers=_headers(request_headers),
-        allow_internal_hosts=allow_internal_hosts,
     )
     return _filename_from_response(url, response), _content_length_from_response(
         response
@@ -149,7 +146,6 @@ def download_file(
     force: bool = False,
     request_headers: dict[str, str] | None = None,
     filesize_limit: int | None = None,
-    allow_internal_hosts: bool = False,
 ) -> Path:
     """Downloads a file from the specified URL to the target directory.
 
@@ -223,7 +219,6 @@ def download_file(
                 target_path=target_path,
                 request_headers=request_headers,
                 filesize_limit=filesize_limit,
-                allow_internal_hosts=allow_internal_hosts,
             )
         except Exception as e:
             msg = f"Failed to download {url} to {target_path}"
@@ -245,7 +240,6 @@ def download_file(
         file_name, expected_filesize = _get_safe_remote_file_properties(
             url,
             request_headers,
-            allow_internal_hosts=allow_internal_hosts,
         )
     except (SSRFError, SSRFSizeExceededError) as e:
         raise DownloadError(str(e)) from e
@@ -287,7 +281,6 @@ def download_file(
             target_path,
             headers=_headers(request_headers),
             max_size=filesize_limit * ONE_MB if filesize_limit is not None else None,
-            allow_internal_hosts=allow_internal_hosts,
         )
     except (SSRFError, SSRFSizeExceededError) as e:
         raise DownloadError(str(e)) from e
@@ -306,7 +299,6 @@ def _download_file_python(
     target_path: Path | str,
     request_headers: dict[str, str] | None = None,
     filesize_limit: int | None = None,
-    allow_internal_hosts: bool = False,
 ) -> Path:
     """Download a file from a given URL and save it to a specified path using a
     Python interface.
@@ -335,7 +327,6 @@ def _download_file_python(
                 max_size=filesize_limit * ONE_MB
                 if filesize_limit is not None
                 else None,
-                allow_internal_hosts=allow_internal_hosts,
             )
         except (SSRFError, SSRFSizeExceededError) as e:
             raise DownloadError(str(e)) from e
@@ -458,7 +449,6 @@ def download_model_weights(
     url: str,
     force: bool = False,
     request_headers: dict[str, str] | None = None,
-    allow_internal_hosts: bool = False,
 ) -> Path:
     """Downloads model weights from the specified URL and saves them to a
     predefined directory.
@@ -478,8 +468,6 @@ def download_model_weights(
             the remote file. Defaults to `False`.
         request_headers: A dictionary containing additional headers to be included in
             the HTTP request. Defaults to `None`.
-        allow_internal_hosts: If `True`, HTTP(S) downloads can resolve to internal
-            hosts. Defaults to `False`.
 
     Returns:
         A Path object representing the full path to the downloaded model weights.
@@ -511,7 +499,6 @@ def download_model_weights(
         target_dir=weights_dir,
         force=force,
         request_headers=request_headers,
-        allow_internal_hosts=allow_internal_hosts,
     )
 
     _mark_used_dir(weights_dir)

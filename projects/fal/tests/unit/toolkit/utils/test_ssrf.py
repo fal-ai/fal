@@ -201,24 +201,6 @@ def test_ssrf_safe_get_headers_warns_when_proxy_env_is_configured(monkeypatch) -
     assert response.status_code == 200
 
 
-def test_ssrf_safe_get_headers_allows_internal_hosts_when_trusted() -> None:
-    _request_responses.append(ssrf.SafeResponse(200, headers={"content-length": "0"}))
-
-    with patch.object(
-        ssrf,
-        "_socket_getaddrinfo",
-        side_effect=AssertionError("DNS validation should be skipped"),
-    ):
-        with patch.object(ssrf, "_request_one_hop", _fake_request_one_hop):
-            response = ssrf.ssrf_safe_get_headers(
-                "https://internal.example/file",
-                allow_internal_hosts=True,
-            )
-
-    assert response.status_code == 200
-    assert _request_calls[0]["target_ip"] is None
-
-
 def test_ssrf_safe_get_headers_blocks_disallowed_scheme() -> None:
     with pytest.raises(ssrf.SSRFError, match="scheme"):
         ssrf.ssrf_safe_get_headers("file:///etc/passwd")
