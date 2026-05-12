@@ -1078,6 +1078,53 @@ def test_get_app_data_from_toml_rejects_image_with_app_files(
         get_app_data_from_toml("container-app")
 
 
+@patch("fal.cli._utils.find_pyproject_toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+def test_get_app_data_from_toml_allows_image_with_empty_app_files(
+    mock_parse_toml, mock_find_toml, tmp_path
+):
+    from fal.cli._utils import get_app_data_from_toml
+
+    (tmp_path / "Dockerfile").write_text("FROM python:3.12-slim\n")
+    mock_find_toml.return_value = str(tmp_path / "pyproject.toml")
+    mock_parse_toml.return_value = {
+        "apps": {
+            "container-app": {
+                "ref": "src/my_app/inference.py::MyApp",
+                "image": {"dockerfile": "Dockerfile"},
+                "app_files": [],
+            }
+        }
+    }
+
+    toml_data = get_app_data_from_toml("container-app")
+    assert toml_data.options.environment["kind"] == "container"
+
+
+@patch("fal.cli._utils.find_pyproject_toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+def test_get_app_data_from_toml_rejects_missing_dockerfile(
+    mock_parse_toml, mock_find_toml, tmp_path
+):
+    from fal.cli._utils import get_app_data_from_toml
+
+    mock_find_toml.return_value = str(tmp_path / "pyproject.toml")
+    mock_parse_toml.return_value = {
+        "apps": {
+            "container-app": {
+                "ref": "src/my_app/inference.py::MyApp",
+                "image": {"dockerfile": "missing.Dockerfile"},
+            }
+        }
+    }
+
+    with pytest.raises(
+        ValueError,
+        match=r"App container-app image.dockerfile not found:",
+    ):
+        get_app_data_from_toml("container-app")
+
+
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
 @patch("fal.cli._utils.parse_pyproject_toml")
 def test_get_app_data_from_toml_no_scale_warning_can_be_suppressed(

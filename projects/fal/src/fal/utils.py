@@ -162,6 +162,16 @@ def load_function_from(
         source_code = f.read()
 
     if isinstance(target, type) and issubclass(target, App):
+        # ``App.__init_subclass__`` enforces ``image``/``app_files`` exclusivity
+        # at class-definition time, but ``image`` can also arrive from
+        # pyproject.toml — in which case the class never saw it. Re-check here
+        # so class-level ``app_files`` can't sneak through with a TOML image.
+        if (
+            options is not None
+            and options.environment.get("kind") == "container"
+            and target.app_files
+        ):
+            raise FalServerlessError("app_files is not supported for container apps.")
         _apply_toml_app_file_options(target, options)
         target = wrap_app(
             target,

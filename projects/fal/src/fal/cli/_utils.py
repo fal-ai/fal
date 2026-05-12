@@ -136,7 +136,7 @@ def get_app_data_from_toml(
         raise ValueError(
             "app_files_context_dir is only supported when app_files is provided."
         )
-    if image_config is not None and app_files is not None:
+    if image_config is not None and app_files:
         raise ValueError("app_files is not supported for container apps.")
 
     if min_concurrency is not None:
@@ -262,8 +262,11 @@ def _build_container_image_from_toml(
     resolved_path = Path(dockerfile_path)
     if not resolved_path.is_absolute():
         resolved_path = project_root / resolved_path
-    with open(resolved_path) as f:
-        dockerfile_str = f.read()
+    try:
+        with open(resolved_path) as f:
+            dockerfile_str = f.read()
+    except FileNotFoundError:
+        raise ValueError(f"App {app_name} image.dockerfile not found: {resolved_path}")
 
     kwargs: dict[str, Any] = {
         "dockerfile_str": dockerfile_str,
