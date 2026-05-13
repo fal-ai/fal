@@ -129,6 +129,7 @@ def download_file(
 
     target_dir_path = target_dir_path.resolve()
     target_dir_path.mkdir(parents=True, exist_ok=True)
+    target_path: Path | None = None
 
     with NamedTemporaryFile(
         delete=False,
@@ -139,6 +140,7 @@ def download_file(
 
     try:
         if parsed_url.scheme == "data":
+            target_path = target_dir_path / _hash_url(url)
             _download_file_python(
                 url=url,
                 target_path=temp_path,
@@ -178,17 +180,27 @@ def download_file(
             print(f"Downloading {url} to {target_path}")
 
         os.replace(temp_path, target_path)
-    except (SSRFError, SSRFSizeExceededError) as e:
-        temp_path.unlink(missing_ok=True)
-        raise DownloadError(str(e)) from e
     except SSRFHTTPStatusError as e:
         temp_path.unlink(missing_ok=True)
-        raise DownloadError(
-            f"Failed to download file from {url}. Status code: {e.status_code}."
-        ) from e
+        raise DownloadError(f"Failed to get remote file properties for {url}") from e
+    except SSRFSizeExceededError as e:
+        temp_path.unlink(missing_ok=True)
+        if e.declared_size is not None:
+            expected_filesize_mb = e.declared_size / ONE_MB
+            raise DownloadError(
+                f"""File to be downloaded is of size {expected_filesize_mb},
+                    which is over the limit of {filesize_limit}"""
+            ) from e
+
+        error_target = target_path or target_dir_path
+        raise DownloadError(f"Failed to download {url} to {error_target}") from e
+    except SSRFError as e:
+        temp_path.unlink(missing_ok=True)
+        raise DownloadError(str(e)) from e
     except Exception as e:
         temp_path.unlink(missing_ok=True)
-        raise DownloadError(f"Failed to download {url} to {target_dir_path}") from e
+        error_target = target_path or target_dir_path
+        raise DownloadError(f"Failed to download {url} to {error_target}") from e
 
     return target_path
 

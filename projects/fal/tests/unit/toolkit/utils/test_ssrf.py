@@ -147,6 +147,40 @@ def test_download_file_keeps_matching_cached_file_after_single_request(
     assert _request_calls[0]["body_mode"] == ssrf._BODY_FILE
 
 
+def test_download_file_preserves_metadata_error_for_http_status(
+    tmp_path,
+) -> None:
+    _request_responses.append(ssrf.SafeResponse(404, headers={}))
+
+    with patch.object(ssrf, "_socket_getaddrinfo", return_value=_addrinfo("8.8.8.8")):
+        with patch.object(ssrf, "_request_one_hop", _fake_request_one_hop):
+            with pytest.raises(
+                DownloadError,
+                match="Failed to get remote file properties for https://example.com/missing",
+            ):
+                download_file("https://example.com/missing", tmp_path)
+
+
+def test_download_file_preserves_declared_size_limit_error(tmp_path) -> None:
+    def fake_get_to_file(*_args: Any, **_kwargs: Any) -> ssrf.SafeResponse:
+        raise ssrf.SSRFSizeExceededError(
+            "too large",
+            declared_size=2 * 1024 * 1024,
+            max_size=1024 * 1024,
+        )
+
+    with patch.object(download_utils, "ssrf_safe_get_to_file", fake_get_to_file):
+        with pytest.raises(
+            DownloadError,
+            match="File to be downloaded is of size 2.0",
+        ):
+            download_file(
+                "https://example.com/large",
+                tmp_path,
+                filesize_limit=1,
+            )
+
+
 def test_ssrf_safe_get_headers_tries_later_validated_ips() -> None:
     _request_responses.append(ssrf.SafeResponse(200, headers={"content-length": "0"}))
 
@@ -538,7 +572,7 @@ def test_read_image_from_url_applies_download_limit() -> None:
         with pytest.raises(HTTPException) as exc_info:
             read_image_from_url("https://attacker.example/image.png")
 
-    assert exc_info.value.status_code == 413
+    assert exc_info.value.status_code == 422
 
 
 def test_read_image_from_url_preserves_data_uri() -> None:

@@ -79,8 +79,6 @@ def read_image_from_url(
             )
             content = response.content
         image_pil = Image.open(io.BytesIO(content))
-    except SSRFSizeExceededError:
-        raise HTTPException(413, f"Image from url is too large: {url}") from None
     except Exception:
         import traceback
 

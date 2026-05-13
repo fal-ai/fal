@@ -45,7 +45,16 @@ class SSRFHTTPStatusError(SSRFError):
 
 
 class SSRFSizeExceededError(SSRFError):
-    pass
+    def __init__(
+        self,
+        message: str = "",
+        *,
+        declared_size: int | None = None,
+        max_size: int | None = None,
+    ):
+        self.declared_size = declared_size
+        self.max_size = max_size
+        super().__init__(message)
 
 
 class SSRFConnectionError(SSRFError):
@@ -240,7 +249,9 @@ def _raise_if_declared_size_exceeds_limit(
     content_length = _content_length_from_headers(headers)
     if content_length is not None and content_length > max_size:
         raise SSRFSizeExceededError(
-            f"File body exceeded {max_size} bytes before download"
+            f"File body exceeded {max_size} bytes before download",
+            declared_size=content_length,
+            max_size=max_size,
         )
 
 
