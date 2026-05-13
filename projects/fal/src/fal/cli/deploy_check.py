@@ -107,6 +107,7 @@ def deploy_with_check(
     force_env_build: bool,
     source: DeployCheckSource,
     result_handler: ResultHandler | None = None,
+    build_result_handler: ResultHandler | None = None,
 ) -> DeploymentResult:
     from fal.api import deploy as deploy_api
 
@@ -138,7 +139,9 @@ def deploy_with_check(
         assume_yes=args.yes,
     )
     return deploy_api.execute_prepared_deployment(
-        prepared, result_handler=result_handler
+        prepared,
+        result_handler=result_handler,
+        build_result_handler=build_result_handler,
     )
 
 
@@ -456,10 +459,10 @@ def _render_environment_build_cache_line(force_env_build: bool):
 
 
 def _render_deployment_check_summary(console, summary: DeploymentCheckSummary) -> None:
-    from rich.rule import Rule
+    from fal.console.rules import print_rule
 
     console.print("")
-    console.print(Rule(f"Deployment Check: {summary.app_name}", style="yellow"))
+    print_rule(console, f"Deployment Check: {summary.app_name}", style="yellow")
     console.print(
         f"[bold]Target:[/bold] {summary.app_name} "
         f"(env: {summary.environment_name or 'main'})"
@@ -492,7 +495,7 @@ def _render_deployment_check_summary(console, summary: DeploymentCheckSummary) -
             )
         )
 
-    console.print(Rule("", style="yellow"))
+    print_rule(console, "", style="yellow")
 
 
 def _diff_table(

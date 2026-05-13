@@ -10,7 +10,10 @@ from .parser import FalClientParser, RefAction, add_env_argument, get_output_par
 
 
 def _deploy(args):
-    from ._result_handlers import CliRegisterResultHandler
+    from ._result_handlers import (
+        CliBuildEnvironmentResultHandler,
+        CliRegisterResultHandler,
+    )
 
     team, app_ref = _resolve_team_and_app_ref(args)
 
@@ -24,6 +27,7 @@ def _deploy(args):
     no_cache = args.no_cache or args.force_env_build
     client = SyncServerlessClient(host=args.host, team=team)
     result_handler = CliRegisterResultHandler(console=args.console)
+    build_result_handler = CliBuildEnvironmentResultHandler(console=args.console)
 
     deploy_check_source = _resolve_deploy_check_source(args, client)
     if deploy_check_source is not None:
@@ -35,6 +39,7 @@ def _deploy(args):
             force_env_build=no_cache,
             source=deploy_check_source,
             result_handler=result_handler,
+            build_result_handler=build_result_handler,
         )
     else:
         from fal.api import deploy as deploy_api
@@ -55,7 +60,9 @@ def _deploy(args):
         )
         args.console.print("")
         res = deploy_api.execute_prepared_deployment(
-            prepared, result_handler=result_handler
+            prepared,
+            result_handler=result_handler,
+            build_result_handler=build_result_handler,
         )
 
     _render_deploy_result(args, res)
@@ -90,14 +97,16 @@ def _render_deploy_result(args, res) -> None:
             json.dumps({"revision": app_id, "app_name": resolved_app_name})
         )
     elif args.output == "pretty":
-        from rich.rule import Rule
         from rich.text import Text
 
-        from fal.console.icons import CHECK_ICON
+        from fal.console.icons import get_check_icon, get_section_icon
+        from fal.console.rules import print_rule
         from fal.flags import URL_OUTPUT
 
+        check_icon = get_check_icon(args.console)
+        section_icon = get_section_icon(args.console)
         args.console.print(
-            f"{CHECK_ICON} Deployed successfully",
+            f"{check_icon} Deployed successfully",
             style="bold green",
         )
         args.console.print("")
@@ -112,12 +121,12 @@ def _render_deploy_result(args, res) -> None:
             "shared": "any authenticated user can access",
         }
         auth_desc = AUTH_EXPLANATIONS.get(res.auth_mode, res.auth_mode)
-        lines.append(f"▸ Auth: {res.auth_mode} ", style="bold")
+        lines.append(f"{section_icon} Auth: {res.auth_mode} ", style="bold")
         lines.append(f"({auth_desc})\n\n", style="dim")
 
         # Playground section
         if URL_OUTPUT != "none":
-            lines.append("▸ Playground ", style="bold")
+            lines.append(f"{section_icon} Playground ", style="bold")
             lines.append("(open in browser)\n", style="dim")
             for url in res.urls.get("playground", {}).values():
                 lines.append(f"  {url}\n", style="cyan")
@@ -125,7 +134,7 @@ def _render_deploy_result(args, res) -> None:
         # API Endpoints section
         if URL_OUTPUT == "all":
             lines.append("\n")
-            lines.append("▸ API Endpoints ", style="bold")
+            lines.append(f"{section_icon} API Endpoints ", style="bold")
             lines.append("(use in code)\n", style="dim")
             sync_urls = list(res.urls.get("sync", {}).values())
             async_urls = list(res.urls.get("async", {}).values())
@@ -135,13 +144,13 @@ def _render_deploy_result(args, res) -> None:
 
             # Logs section
             lines.append("\n")
-            lines.append("▸ Logs\n", style="bold")
+            lines.append(f"{section_icon} Logs\n", style="bold")
             lines.append(f"  {res.log_url}", style="cyan")
 
         title = Text(resolved_app_name, style="bold")
-        args.console.print(Rule(title, style="green"))
+        print_rule(args.console, title, style="green")
         args.console.print(lines)
-        args.console.print(Rule("", style="green"))
+        print_rule(args.console, "", style="green")
 
         # Reminder about scaling parameter inheritance
         if not args.app_scale_settings:

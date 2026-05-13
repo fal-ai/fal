@@ -80,11 +80,15 @@ def _add_create_parser(subparsers, parents):
 
 def _delete(args):
     if not args.yes:
+        from fal.console.icons import get_bullet_icon
+
+        bullet_icon = get_bullet_icon(args.console)
+
         args.console.print(
             f"[bold yellow]Warning:[/bold yellow] Deleting environment "
             f"'{args.name}' will permanently delete:\n"
-            "  • All secrets in this environment\n"
-            "  • All apps deployed to this environment\n"
+            f"  {bullet_icon} All secrets in this environment\n"
+            f"  {bullet_icon} All apps deployed to this environment\n"
         )
         confirmation = input(
             f"Type the environment name '{args.name}' to confirm deletion: "

@@ -13,7 +13,7 @@ from rich.tree import Tree
 import fal.flags as flags
 from fal._user_agent import USER_AGENT
 from fal.console import console
-from fal.console.icons import CROSS_ICON
+from fal.console.icons import get_cross_icon
 from fal.exceptions import (
     AppFileUploadException,
     FalServerlessException,
@@ -29,6 +29,7 @@ if TYPE_CHECKING:
 
 FILE_SIZE_LIMIT = 1024 * 1024 * 1024  # 1GB
 DEFAULT_CONCURRENCY_UPLOADS = 10
+WINDOWS_PATHS = os.name == "nt"
 
 
 @dataclass
@@ -81,6 +82,8 @@ def print_path_tree(file_paths):
 
 
 def sanitize_relative_path(rel_path: str, original_path: Path) -> str:
+    if WINDOWS_PATHS:
+        rel_path = rel_path.replace("\\", "/")
     pure_path = PurePosixPath(rel_path)
 
     # Block files that are absolute or contain parent directory references
@@ -262,7 +265,9 @@ class FileSync:
             data = response.json()
             return data
         except Exception as e:
-            console.print(f"{CROSS_ICON} Failed to check hashes on server: {e}")
+            console.print(
+                f"{get_cross_icon(console)} Failed to check hashes on server: {e}"
+            )
 
             return hashes
 

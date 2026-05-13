@@ -2,13 +2,22 @@ import argparse
 from dataclasses import replace
 from pathlib import Path
 
-from ._utils import AppData, get_app_data_from_toml, is_app_name
+from ._utils import AppData, _validate_port, get_app_data_from_toml, is_app_name
 from .parser import FalClientParser, RefAction, add_env_argument
 
 
 def _run(args):
     from fal.api.client import SyncServerlessClient
     from fal.utils import load_function_from
+
+    exposed_port = args.exposed_port
+    exposed_metrics_port = args.exposed_metrics_port
+    if not args.local and (
+        exposed_port is not None or exposed_metrics_port is not None
+    ):
+        raise ValueError(
+            "--exposed-port and --exposed-metrics-port can only be used with --local."
+        )
 
     # Handle deprecated --force-env-build flag
     if args.force_env_build:
@@ -74,9 +83,19 @@ def _run(args):
         isolated_function.options.host["machine_type"] = args.machine_type
 
     if not args.local:
+        # Explicit build phase so the CLI gets a clean "build → run" split
+        # instead of inferring it from the log stream's source field.
+        from ._result_handlers import CliBuildEnvironmentResultHandler
+
+        host.build_environment(
+            isolated_function.options,
+            application_name=loaded.app_name,
+            environment_name=args.env,
+            result_handler=CliBuildEnvironmentResultHandler(console=args.console),
+        )
         # Endpoints/openapi for the result handler aren't available locally
         # in entrypoint mode; this fetches them from the worker.
-        isolated_function.fetch_metadata()
+        isolated_function.fetch_metadata(build_environment=False)
 
     from fal.api.run import run as run_api
 
@@ -85,12 +104,15 @@ def _run(args):
     run_api(
         isolated_function,
         local=args.local,
+        exposed_port=exposed_port,
+        exposed_metrics_port=exposed_metrics_port,
         result_handler=CliRunResultHandler(
             console=args.console,
             auth_mode=loaded.app_auth or "public",
             endpoints=isolated_function.endpoints,
         ),
         reraise=False,
+        build_environment=None if args.local else False,
     )
 
 
@@ -101,6 +123,18 @@ def add_parser(main_subparsers, parents):
         if option not in ALIAS_AUTH_MODES:
             raise argparse.ArgumentTypeError(f"{option} is not a auth option")
         return option
+
+    def valid_port_option(option):
+        try:
+            port = int(option)
+        except ValueError:
+            raise argparse.ArgumentTypeError(f"{option} is not a valid port") from None
+
+        try:
+            _validate_port("port", port)
+        except ValueError as exc:
+            raise argparse.ArgumentTypeError(str(exc)) from None
+        return port
 
     run_help = "Run fal function."
     epilog = "Examples:\n  fal run path/to/myfile.py::myfunc\n  fal run my-app\n"
@@ -147,6 +181,18 @@ def add_parser(main_subparsers, parents):
         "--local",
         action="store_true",
         help="Run locally without serverless.",
+    )
+    parser.add_argument(
+        "--exposed-port",
+        type=valid_port_option,
+        metavar="PORT",
+        help="Port for the --local app server (default: 8080).",
+    )
+    parser.add_argument(
+        "--exposed-metrics-port",
+        type=valid_port_option,
+        metavar="PORT",
+        help="Port for the --local metrics server (default: 9090).",
     )
     parser.add_argument(
         "--machine-type",

@@ -235,6 +235,43 @@ def test_wrap_app_limit_max_requests_propagates_to_serve(
     assert called_limit_max_requests == 1
 
 
+def test_wrap_app_exposed_ports_propagate_to_serve(
+    isolate_agent_env, monkeypatch: pytest.MonkeyPatch
+):
+    from fal import ref
+    from fal.api.run import run as run_api
+    from fal.app import wrap_app
+
+    class LocalPortApp(App):
+        @endpoint("/")
+        def hello(self) -> str:
+            return "Hello, world!"
+
+    called_port: int | None = None
+    called_metrics_port: int | None = None
+
+    async def fake_serve(
+        self,
+        *,
+        limit_max_requests: int | None = None,
+        port: int = 8080,
+        metrics_port: int = 9090,
+    ):
+        nonlocal called_port, called_metrics_port
+        called_port = port
+        called_metrics_port = metrics_port
+
+    monkeypatch.setattr(LocalPortApp, "serve", fake_serve)
+    monkeypatch.setattr(ref, "current_app", None)
+
+    fn = wrap_app(LocalPortApp)
+    fn.options.gateway["exposed_port"] = 3000
+    run_api(fn, local=True, exposed_metrics_port=3001)
+
+    assert called_port == 3000
+    assert called_metrics_port == 3001
+
+
 def test_wrap_app_raises_for_virtualenv_only_keys_with_conda_kind():
     from fal.app import wrap_app
 
@@ -565,6 +602,117 @@ def test_data_mounts_run_sends_to_connection():
     assert call_kwargs["data_mounts"] == ["/data"]
 
 
+def test_build_environment_raises_on_internal_failure():
+    from fal.api.api import FalServerlessHost, InternalFalServerlessError, Options
+    from fal.sdk import BuildEnvironmentResult, HostedRunState, HostedRunStatus
+
+    host = FalServerlessHost()
+    connection = MagicMock()
+    connection.define_environment.return_value = object()
+    connection.build_environment.return_value = iter(
+        [
+            BuildEnvironmentResult(
+                status=HostedRunStatus(HostedRunState.INTERNAL_FAILURE)
+            )
+        ]
+    )
+
+    with patch.object(
+        FalServerlessHost, "_connection", new_callable=PropertyMock
+    ) as mock_connection:
+        mock_connection.return_value = connection
+        with pytest.raises(InternalFalServerlessError, match="building"):
+            host.build_environment(Options())
+
+
+def test_build_environment_raises_when_stream_ends_without_terminal_status():
+    from fal.api.api import FalServerlessHost, InternalFalServerlessError, Options
+    from fal.sdk import BuildEnvironmentResult, HostedRunState, HostedRunStatus
+
+    host = FalServerlessHost()
+    connection = MagicMock()
+    connection.define_environment.return_value = object()
+    connection.build_environment.return_value = iter(
+        [
+            BuildEnvironmentResult(),
+            BuildEnvironmentResult(status=HostedRunStatus(HostedRunState.IN_PROGRESS)),
+        ]
+    )
+
+    with patch.object(
+        FalServerlessHost, "_connection", new_callable=PropertyMock
+    ) as mock_connection:
+        mock_connection.return_value = connection
+        with pytest.raises(InternalFalServerlessError, match="terminal status"):
+            host.build_environment(Options())
+
+
+def test_build_environment_raises_readable_error_on_unknown_state():
+    from fal.api.api import FalServerlessHost, Options
+
+    host = FalServerlessHost()
+    connection = MagicMock()
+    connection.define_environment.return_value = object()
+    partial_result = MagicMock()
+    partial_result.logs = []
+    partial_result.service_urls = None
+    partial_result.status.state = "WEIRD"
+    connection.build_environment.return_value = iter([partial_result])
+
+    with patch.object(
+        FalServerlessHost, "_connection", new_callable=PropertyMock
+    ) as mock_connection:
+        mock_connection.return_value = connection
+        with pytest.raises(NotImplementedError, match="Unknown state: WEIRD"):
+            host.build_environment(Options())
+
+
+def test_run_raises_readable_error_on_unknown_state():
+    from fal.api.api import FalServerlessHost, Options, ResultHandler
+
+    host = FalServerlessHost()
+    connection = MagicMock()
+    connection.define_environment.return_value = object()
+    partial_result = MagicMock()
+    partial_result.logs = []
+    partial_result.service_urls = None
+    partial_result.status.state = "WEIRD"
+    connection.run.return_value = iter([partial_result])
+
+    with patch.object(
+        FalServerlessHost, "_connection", new_callable=PropertyMock
+    ) as mock_connection:
+        mock_connection.return_value = connection
+        with pytest.raises(NotImplementedError, match="Unknown state: WEIRD"):
+            host._run(
+                lambda: "ok",
+                Options(),
+                args=(),
+                kwargs={},
+                result_handler=ResultHandler(),
+            )
+
+
+def test_fetch_metadata_preserves_application_name():
+    from fal.api.api import IsolatedFunction, Options
+
+    host = MagicMock()
+    host.run.return_value = {}
+    isolated_function = IsolatedFunction(
+        host=host,
+        options=Options(),
+        app_name="my-app",
+        entrypoint="simple.app:SimpleApp",
+    )
+
+    isolated_function.fetch_metadata(build_environment=False)
+
+    _, call_kwargs = host.run.call_args
+    assert call_kwargs["application_name"] == "my-app"
+    assert call_kwargs["entrypoint"] == "simple.app:SimpleApp.build_metadata"
+    assert call_kwargs["build_environment"] is False
+
+
 def test_secrets_propagate_to_host_kwargs():
     class SecretsApp(App):
         secrets = ["OPENAI_API_KEY", "HF_TOKEN"]
@@ -682,6 +830,326 @@ def test_app_files_classvars_propagate_to_host_kwargs():
     assert hk["concurrency_buffer_perc"] == 50
     assert hk["scaling_delay"] == 33
     assert hk["max_multiplexing"] == 7
+
+
+def test_app_files_runtime_path_uses_relative_app_directory(tmp_path):
+    from fal.app_files import get_app_files_relative_path
+
+    app_file = tmp_path / "src" / "app.py"
+    app_file.parent.mkdir()
+    app_file.write_text("# app\n")
+
+    assert get_app_files_relative_path(str(app_file), str(tmp_path)) == "src"
+    assert get_app_files_relative_path(str(app_file), ".") == "."
+
+
+def test_plain_function_app_files_configures_runtime_path_before_run(tmp_path):
+    from fal.api.api import FalServerlessHost, Options, ResultHandler
+    from fal.sdk import HostedRunState
+
+    app_file = tmp_path / "app.py"
+    app_file.write_text("# app\n")
+
+    host = FalServerlessHost(local_file_path=str(app_file))
+    options = Options(
+        host={"app_files": ["assets"], "app_files_context_dir": "."},
+    )
+
+    captured = {}
+
+    def user_func(*args, **kwargs):
+        return args, kwargs
+
+    connection = MagicMock()
+    connection.define_environment.return_value = object()
+    partial_result = MagicMock()
+    partial_result.status.state = HostedRunState.SUCCESS
+    partial_result.result = "remote-ok"
+
+    def fake_run(partial_func, *args, **kwargs):
+        captured["partial_func"] = partial_func
+        return iter([partial_result])
+
+    connection.run.side_effect = fake_run
+
+    with ExitStack() as stack:
+        stack.enter_context(
+            patch.object(FalServerlessHost, "files_sync", return_value=[])
+        )
+        mock_connection = stack.enter_context(
+            patch.object(FalServerlessHost, "_connection", new_callable=PropertyMock)
+        )
+        mock_connection.return_value = connection
+        result = host._run(
+            user_func,
+            options,
+            args=("bound",),
+            kwargs={"from_client": True},
+            result_handler=ResultHandler(),
+        )
+
+    assert result == "remote-ok"
+
+    with patch("fal.api.api.include_app_files_path") as include_app_files_path:
+        assert captured["partial_func"]("remote", from_worker=True) == (
+            ("remote", "bound"),
+            {"from_worker": True, "from_client": True},
+        )
+
+    include_app_files_path.assert_called_once_with(".")
+
+
+def test_plain_function_container_config_includes_cwd_on_sys_path(monkeypatch):
+    from fal.api.api import FalServerlessHost, Options, ResultHandler
+    from fal.sdk import HostedRunState
+
+    host = FalServerlessHost()
+    options = Options(environment={"kind": "container"})
+    captured = {}
+
+    connection = MagicMock()
+    connection.define_environment.return_value = object()
+    partial_result = MagicMock()
+    partial_result.status.state = HostedRunState.SUCCESS
+    partial_result.result = "remote-ok"
+
+    def fake_run(partial_func, *args, **kwargs):
+        captured["partial_func"] = partial_func
+        return iter([partial_result])
+
+    connection.run.side_effect = fake_run
+
+    with ExitStack() as stack:
+        stack.enter_context(
+            patch.object(FalServerlessHost, "files_sync", return_value=[])
+        )
+        mock_connection = stack.enter_context(
+            patch.object(FalServerlessHost, "_connection", new_callable=PropertyMock)
+        )
+        mock_connection.return_value = connection
+        result = host._run(
+            lambda: "ok",
+            options,
+            args=(),
+            kwargs={},
+            result_handler=ResultHandler(),
+        )
+
+    assert result == "remote-ok"
+
+    monkeypatch.setattr(sys, "path", [path for path in sys.path if path != ""])
+
+    assert captured["partial_func"]() == "ok"
+    assert sys.path[0] == ""
+
+
+def test_plain_function_app_files_configures_runtime_path_before_setup_function(
+    tmp_path,
+):
+    from fal.api.api import FalServerlessHost, Options, ResultHandler
+    from fal.sdk import HostedRunState
+
+    app_file = tmp_path / "app.py"
+    app_file.write_text("# app\n")
+
+    host = FalServerlessHost(local_file_path=str(app_file))
+    options = Options(
+        host={
+            "app_files": ["assets"],
+            "app_files_context_dir": ".",
+            "setup_function": lambda: "setup-ok",
+        },
+    )
+    captured = {}
+
+    connection = MagicMock()
+    connection.define_environment.return_value = object()
+    partial_result = MagicMock()
+    partial_result.status.state = HostedRunState.SUCCESS
+    partial_result.result = "remote-ok"
+
+    def fake_run(partial_func, *args, **kwargs):
+        captured["setup_function"] = kwargs["setup_function"]
+        return iter([partial_result])
+
+    connection.run.side_effect = fake_run
+
+    with ExitStack() as stack:
+        stack.enter_context(
+            patch.object(FalServerlessHost, "files_sync", return_value=[])
+        )
+        mock_connection = stack.enter_context(
+            patch.object(FalServerlessHost, "_connection", new_callable=PropertyMock)
+        )
+        mock_connection.return_value = connection
+        result = host._run(
+            lambda: "ok",
+            options,
+            args=(),
+            kwargs={},
+            result_handler=ResultHandler(),
+        )
+
+    assert result == "remote-ok"
+
+    with patch("fal.api.api.include_app_files_path") as include_app_files_path:
+        assert captured["setup_function"]() == "setup-ok"
+
+    include_app_files_path.assert_called_once_with(".")
+
+
+def test_plain_function_app_files_configures_runtime_path_before_register(tmp_path):
+    from fal.api.api import FalServerlessHost, Options
+    from fal.sdk import RegisterApplicationResult, RegisterApplicationResultType
+
+    app_file = tmp_path / "app.py"
+    app_file.write_text("# app\n")
+
+    host = FalServerlessHost(local_file_path=str(app_file))
+    options = Options(
+        host={"app_files": ["assets"], "app_files_context_dir": "."},
+    )
+    captured = {}
+
+    connection = MagicMock()
+    connection.define_environment.return_value = object()
+    partial_result = RegisterApplicationResult(
+        result=RegisterApplicationResultType(application_id="app-id")
+    )
+
+    def fake_register(partial_func, *args, **kwargs):
+        captured["partial_func"] = partial_func
+        return iter([partial_result])
+
+    connection.register.side_effect = fake_register
+
+    with ExitStack() as stack:
+        stack.enter_context(
+            patch.object(FalServerlessHost, "files_sync", return_value=[])
+        )
+        mock_connection = stack.enter_context(
+            patch.object(FalServerlessHost, "_connection", new_callable=PropertyMock)
+        )
+        mock_connection.return_value = connection
+        result = host.register(
+            lambda: "ok",
+            options,
+            application_name="example-app",
+            deployment_strategy="recreate",
+        )
+
+    assert result == partial_result
+
+    with patch("fal.api.api.include_app_files_path") as include_app_files_path:
+        assert captured["partial_func"]() == "ok"
+
+    include_app_files_path.assert_called_once_with(".")
+
+
+def test_app_files_configures_runtime_path_before_wrapped_app_serves(
+    tmp_path,
+    monkeypatch,
+):
+    import asyncio
+
+    from fal.api.api import FalServerlessHost, ResultHandler
+    from fal.app import wrap_app
+    from fal.sdk import HostedRunState
+
+    monkeypatch.setenv("IS_ISOLATE_AGENT", "1")
+    app_file = tmp_path / "app.py"
+    app_file.write_text("# app\n")
+
+    class AppFilesApp(App):
+        app_files = ["assets"]
+        app_files_context_dir = "."
+
+        @endpoint("/")
+        def hello(self) -> str:
+            return "ok"
+
+    async def fake_serve(self, **kwargs):
+        return "served"
+
+    monkeypatch.setattr(AppFilesApp, "serve", fake_serve)
+
+    host = FalServerlessHost(local_file_path=str(app_file))
+    fn = wrap_app(AppFilesApp, host=host)
+    captured = {}
+
+    connection = MagicMock()
+    connection.define_environment.return_value = object()
+    partial_result = MagicMock()
+    partial_result.status.state = HostedRunState.SUCCESS
+    partial_result.result = "remote-ok"
+
+    def fake_run(partial_func, *args, **kwargs):
+        captured["partial_func"] = partial_func
+        return iter([partial_result])
+
+    connection.run.side_effect = fake_run
+
+    with ExitStack() as stack:
+        stack.enter_context(
+            patch.object(FalServerlessHost, "files_sync", return_value=[])
+        )
+        mock_connection = stack.enter_context(
+            patch.object(FalServerlessHost, "_connection", new_callable=PropertyMock)
+        )
+        mock_connection.return_value = connection
+        result = host._run(
+            fn.func,
+            fn.options,
+            args=(),
+            kwargs={},
+            result_handler=ResultHandler(),
+        )
+
+    assert result == "remote-ok"
+
+    with patch("fal.api.api.include_app_files_path") as include_app_files_path, patch(
+        "fal.app.set_current_app"
+    ):
+        assert asyncio.run(captured["partial_func"]()) == "served"
+
+    include_app_files_path.assert_called_once_with(".")
+
+
+def test_files_sync_auto_excludes_app_file_with_posix_relative_path(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+):
+    from fal.api.api import FalServerlessHost
+    from fal.file_sync import FileSyncOptions
+
+    captured = {}
+
+    class FakeFileSync:
+        def __init__(self, local_file_path, credentials=None):
+            pass
+
+        def sync_files(self, paths, *, files_ignore, files_context_dir):
+            captured["files_ignore"] = files_ignore
+            captured["files_context_dir"] = files_context_dir
+            return [], []
+
+    monkeypatch.setattr("fal.api.api.FileSync", FakeFileSync)
+
+    app_file = tmp_path / "src" / "app" / "main.py"
+    app_file.parent.mkdir(parents=True)
+    app_file.write_text("# app\n")
+
+    host = FalServerlessHost(local_file_path=str(app_file))
+    options = FileSyncOptions(
+        files_list=["src"],
+        files_ignore=[],
+        files_context_dir=str(tmp_path),
+    )
+
+    host.files_sync(options)
+
+    assert captured["files_context_dir"] == str(tmp_path)
+    assert captured["files_ignore"][0].pattern == r"^src/app/main\.py$"
+    assert captured["files_ignore"][0].search("src/app/main.py")
 
 
 def test_app_kwargs_merge_into_host_kwargs_and_override_defaults():
@@ -1042,6 +1510,55 @@ def test_openapi_does_not_duplicate_ws_paths_on_multiple_calls(isolate_agent_env
 
 
 @pytest.mark.asyncio
+async def test_serve_binds_app_and_metrics_to_custom_ports(
+    isolate_agent_env, monkeypatch: pytest.MonkeyPatch
+):
+    import prometheus_client
+
+    from fal.api import api
+
+    configs = []
+
+    class FakeGauge:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def labels(self, *args, **kwargs):
+            return self
+
+        def set(self, value):
+            pass
+
+    class FakeServer:
+        def __init__(self, config):
+            self.config = config
+            configs.append(config)
+
+        def set_handle_exit(self, handle_exit):
+            self._handle_exit = handle_exit
+
+        async def serve(self) -> None:
+            return None
+
+    monkeypatch.setattr(api, "FalServer", FakeServer)
+    monkeypatch.setattr(api.uvicorn, "Server", FakeServer)
+    monkeypatch.setattr(prometheus_client, "Gauge", FakeGauge)
+
+    class CustomPortApp(App):
+        @endpoint("/")
+        def run(self):
+            return {"status": "ok"}
+
+    app = CustomPortApp()
+    await app.serve(port=3000, metrics_port=3001)
+
+    assert configs[0].host == "0.0.0.0"
+    assert configs[0].port == 3000
+    assert configs[1].host == "0.0.0.0"
+    assert configs[1].port == 3001
+
+
+@pytest.mark.asyncio
 async def test_serve_exits_with_exception_on_setup_failure(
     isolate_agent_env, monkeypatch: pytest.MonkeyPatch
 ):
@@ -1092,6 +1609,7 @@ def _find_free_port():
         return s.getsockname()[1]
 
 
+@pytest.mark.skipif(os.name == "nt", reason="SIGTERM graceful shutdown is POSIX-only")
 def test_app_lifecycle_callbacks_are_called():
     """SIGTERM triggers handle_exit, then teardown runs during shutdown."""
     port = _find_free_port()

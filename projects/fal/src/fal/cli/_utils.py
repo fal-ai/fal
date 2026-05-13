@@ -117,10 +117,13 @@ def get_app_data_from_toml(
     scaling_delay = app_data.pop("scaling_delay", None)
     request_timeout = app_data.pop("request_timeout", None)
     startup_timeout = app_data.pop("startup_timeout", None)
+    machine_type = app_data.pop("machine_type", None)
+    num_gpus = app_data.pop("num_gpus", None)
     regions = app_data.pop("regions", None)
     app_files = app_data.pop("app_files", None)
     app_files_ignore = app_data.pop("app_files_ignore", None)
     app_files_context_dir = app_data.pop("app_files_context_dir", None)
+    exposed_port = app_data.pop("exposed_port", None)
 
     image_config = app_data.pop("image", None)
 
@@ -136,6 +139,12 @@ def get_app_data_from_toml(
         raise ValueError(
             "app_files_context_dir is only supported when app_files is provided."
         )
+    if app_files_context_dir:
+        context_path = Path(app_files_context_dir)
+        if not context_path.is_absolute():
+            app_files_context_dir = str(Path(toml_path).parent / context_path)
+    if exposed_port is not None:
+        _validate_port("exposed_port", exposed_port)
     if image_config is not None and app_files:
         raise ValueError("app_files is not supported for container apps.")
 
@@ -155,6 +164,10 @@ def get_app_data_from_toml(
         options.host["request_timeout"] = request_timeout
     if startup_timeout is not None:
         options.host["startup_timeout"] = startup_timeout
+    if machine_type is not None:
+        options.host["machine_type"] = machine_type
+    if num_gpus is not None:
+        options.host["num_gpus"] = num_gpus
     if regions is not None:
         options.host["regions"] = regions
     if app_files is not None:
@@ -163,6 +176,8 @@ def get_app_data_from_toml(
         options.host["app_files_ignore"] = app_files_ignore
     if app_files_context_dir is not None:
         options.host["app_files_context_dir"] = app_files_context_dir
+    if exposed_port is not None:
+        options.gateway["exposed_port"] = exposed_port
     if requirements is not None:
         options.environment["requirements"] = requirements
     if python_version is not None:
@@ -232,6 +247,13 @@ def _validate_requirements(requirements: Any) -> None:
 def _validate_str_list(field_name: str, value: Any) -> None:
     if not (isinstance(value, list) and all(isinstance(item, str) for item in value)):
         raise ValueError(f"{field_name} must be a list of strings.")
+
+
+def _validate_port(field_name: str, value: Any) -> None:
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise ValueError(f"{field_name} must be an integer.")
+    if value < 0 or value > 65535:
+        raise ValueError(f"{field_name} must be between 0 and 65535.")
 
 
 _IMAGE_PASSTHROUGH_KEYS = (

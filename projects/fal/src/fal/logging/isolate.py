@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING
 from structlog.dev import ConsoleRenderer
 from structlog.typing import EventDict
 
+from fal.console.encoding import make_terminal_safe
+
 from .style import LEVEL_STYLES
 
 if TYPE_CHECKING:
@@ -24,24 +26,26 @@ class IsolateLogPrinter:
 
     def _maybe_print_header(self, source: LogSource):
         from isolate.logs import LogSource
-        from rich.rule import Rule
 
         from fal.console import console
-        from fal.console.icons import CHECK_ICON
+        from fal.console.icons import get_check_icon
+        from fal.console.rules import print_rule
 
         if source == self._current_source:
             return
 
         # Print build completion when transitioning out of BUILDER phase
         if self._current_source == LogSource.BUILDER:
-            console.print(Rule(style="dim"))
-            console.print(f"{CHECK_ICON} Build complete", style="bold green")
+            print_rule(console, style="dim")
+            console.print(
+                f"{get_check_icon(console)} Build complete", style="bold green"
+            )
             console.print("")
 
         # Print phase header when entering a new phase
         if source == LogSource.BUILDER:
             console.print("Building environment...", style="bold")
-            console.print(Rule(style="dim"))
+            print_rule(console, style="dim")
         elif source == LogSource.BRIDGE:
             console.print("Setting up runtime...", style="bold")
         elif source == LogSource.USER:
@@ -63,7 +67,7 @@ class IsolateLogPrinter:
 
         if log.source == LogSource.USER:
             stream = sys.stderr if log.level == LogLevel.STDERR else sys.stdout
-            print(log.message, file=stream)
+            print(make_terminal_safe(log.message, stream), file=stream)
             return
 
         level = str(log.level)
@@ -88,4 +92,4 @@ class IsolateLogPrinter:
 
         # Use structlog processors to get consistent output with local logs
         message = _renderer.__call__(logger={}, name=level, event_dict=event)
-        print(message)
+        print(make_terminal_safe(message, sys.stdout))

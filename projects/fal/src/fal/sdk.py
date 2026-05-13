@@ -410,6 +410,12 @@ class RegisterApplicationResultType:
 
 
 @dataclass
+class BuildEnvironmentResult:
+    status: HostedRunStatus | None = None
+    logs: list[Log] = field(default_factory=list)
+
+
+@dataclass
 class UserKeyInfo:
     key_id: str
     created_at: datetime
@@ -582,6 +588,16 @@ def _from_grpc_register_application_result(
         service_urls=from_grpc(message.service_urls)
         if message.HasField("service_urls")
         else None,
+    )
+
+
+@from_grpc.register(isolate_proto.BuildEnvironmentResult)
+def _from_grpc_build_environment_result(
+    message: isolate_proto.BuildEnvironmentResult,
+) -> BuildEnvironmentResult:
+    return BuildEnvironmentResult(
+        status=from_grpc(message.status) if message.HasField("status") else None,
+        logs=[from_grpc(log) for log in message.logs],
     )
 
 
@@ -813,6 +829,7 @@ class FalServerlessConnection:
         secrets: list[str] | None = None,
         data_mounts: list[str] | None = None,
         entrypoint: str | None = None,
+        build_environment: bool | None = None,
     ) -> Iterator[RegisterApplicationResult]:
         if function is None and entrypoint is None:
             raise ValueError("either function or entrypoint must be provided.")
@@ -920,6 +937,8 @@ class FalServerlessConnection:
             request.function.MergeFrom(wrapped_function)
         if private_logs is not None:
             request.private_logs = private_logs
+        if build_environment is not None:
+            request.build_environment = build_environment
         for partial_result in self.stub.RegisterApplication(request):
             yield from_grpc(partial_result)
 
@@ -1022,6 +1041,7 @@ class FalServerlessConnection:
         secrets: list[str] | None = None,
         data_mounts: list[str] | None = None,
         entrypoint: str | None = None,
+        build_environment: bool | None = None,
     ) -> Iterator[HostedRunResult[ResultT]]:
         if function is None and entrypoint is None:
             raise ValueError("either function or entrypoint must be provided.")
@@ -1093,11 +1113,68 @@ class FalServerlessConnection:
             request.setup_func.MergeFrom(
                 to_serialized_object(setup_function, serialization_method)
             )
+        if build_environment is not None:
+            request.build_environment = build_environment
         stream = self.stub.Run(request)
         for partial_result in stream:
             res = from_grpc(partial_result)
             res.stream = stream
             yield res
+
+    def build_environment(
+        self,
+        environments: list[isolate_proto.EnvironmentDefinition],
+        *,
+        machine_requirements: MachineRequirements | None = None,
+        files: list[File] | None = None,
+        application_name: str | None = None,
+        environment_name: str | None = None,
+        secrets: list[str] | None = None,
+    ) -> Iterator[BuildEnvironmentResult]:
+        """Pre-build an environment without dispatching a run.
+
+        Pair with `Run` / `RegisterApplication` calls that set
+        `build_environment=False` to split a long env build from the
+        run/register path.
+        """
+        if machine_requirements:
+            wrapped_requirements = isolate_proto.MachineRequirements(
+                machine_type=machine_requirements.machine_types[0],
+                machine_types=machine_requirements.machine_types,
+                num_gpus=machine_requirements.num_gpus,
+                base_image=machine_requirements.base_image,
+                scheduler=machine_requirements.scheduler,
+                scheduler_options=to_struct(
+                    machine_requirements.scheduler_options or {}
+                ),
+                valid_regions=machine_requirements.valid_regions,
+            )
+        else:
+            wrapped_requirements = None
+        if files:
+            files = [
+                isolate_proto.File(hash=file.hash, relative_path=file.relative_path)
+                for file in files
+            ]
+        full_application_name = (
+            construct_alias(application_name, environment_name)
+            if application_name
+            else None
+        )
+        request = isolate_proto.BuildEnvironmentRequest(
+            environments=environments,
+            machine_requirements=wrapped_requirements,
+            files=files,
+            application_name=full_application_name,
+            environment_name=environment_name,
+            secrets=(
+                isolate_proto.SecretsConfig(names=secrets)
+                if secrets is not None
+                else None
+            ),
+        )
+        for partial_result in self.stub.BuildEnvironment(request):
+            yield from_grpc(partial_result)
 
     def create_alias(
         self,

@@ -19,14 +19,18 @@ def run(
     args: tuple[Any, ...] = (),
     kwargs: dict[str, Any] | None = None,
     local: bool = False,
+    exposed_port: int | None = None,
+    exposed_metrics_port: int | None = None,
     result_handler: ResultHandler | None = None,
     reraise: bool = True,
+    build_environment: bool | None = None,
 ) -> Any:
     """Run an ``IsolatedFunction`` locally or on its host with friendly errors.
 
-    When ``local=True``, defers to ``isolated_function.run_local`` (which
-    invokes the function in the current Python process). ``result_handler``
-    has no effect in that mode.
+    When ``local=True``, invokes the function in the current Python process.
+    ``exposed_port`` and ``exposed_metrics_port`` configure the local app
+    server ports for ``fal.App`` and ``serve=True`` runs. ``result_handler``
+    has no effect in local mode.
 
     Otherwise the call is dispatched through ``host.run`` and:
 
@@ -40,7 +44,12 @@ def run(
         kwargs = {}
 
     if local:
-        return isolated_function.run_local(*args, **kwargs)
+        return isolated_function._run_local(
+            args=args,
+            kwargs=kwargs,
+            exposed_port=exposed_port,
+            exposed_metrics_port=exposed_metrics_port,
+        )
 
     func = isolated_function.func
     options = isolated_function.options
@@ -54,6 +63,7 @@ def run(
             application_auth_mode=isolated_function.app_auth,
             result_handler=result_handler,
             entrypoint=isolated_function.run_entrypoint,
+            build_environment=build_environment,
         )
     except FalMissingDependencyError as e:
         if func is None:

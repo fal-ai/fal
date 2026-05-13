@@ -1,6 +1,12 @@
 from unittest.mock import patch
 
-from fal.auth.local import load_preference, save_preference
+from fal.auth.local import (
+    delete_token,
+    load_preference,
+    load_token,
+    save_preference,
+    save_token,
+)
 
 
 def test_save_and_load_preference(tmp_path):
@@ -31,3 +37,22 @@ def test_load_preference_returns_none_for_empty_file(tmp_path):
     with patch("fal.auth.local._FAL_HOME_DIR", str(tmp_path)):
         (tmp_path / "test_key").write_text("   \n")
         assert load_preference("test_key") is None
+
+
+def test_save_and_load_refresh_token(tmp_path):
+    with patch("fal.auth.local._FAL_HOME_DIR", str(tmp_path)):
+        save_token("refresh-token")
+        assert load_token() == ("refresh-token", None)
+
+
+def test_save_and_load_refresh_and_access_token(tmp_path):
+    with patch("fal.auth.local._FAL_HOME_DIR", str(tmp_path)):
+        save_token("refresh-token", "access-token")
+        assert load_token() == ("refresh-token", "access-token")
+
+
+def test_delete_token_removes_token_file(tmp_path):
+    with patch("fal.auth.local._FAL_HOME_DIR", str(tmp_path)):
+        save_token("refresh-token", "access-token")
+        delete_token()
+        assert load_token() == (None, None)

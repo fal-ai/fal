@@ -390,7 +390,7 @@ class File(BaseModel):
             self.url,
             target_dir=file_path.parent,
         )
-        downloaded_path.rename(file_path)
+        downloaded_path.replace(file_path)
 
         return file_path
 

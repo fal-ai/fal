@@ -1,14 +1,11 @@
 from __future__ import annotations
 
 import argparse
-import fcntl
 import json
 import os
 import signal
 import struct
 import sys
-import termios
-import tty
 from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -27,6 +24,7 @@ from rich.console import Console
 from structlog.typing import EventDict
 
 from fal.api.client import SyncServerlessClient
+from fal.console.encoding import make_terminal_safe
 from fal.sdk import ReplaceState, RunnerInfo, RunnerState
 
 from .parser import FalClientParser, SinceAction, get_output_parser
@@ -127,6 +125,9 @@ def runners_requests_table(runners: list[RunnerInfo]):
 
 def _get_tty_size():
     """Get current terminal dimensions."""
+    import fcntl
+    import termios
+
     try:
         h, w = struct.unpack("HH", fcntl.ioctl(0, termios.TIOCGWINSZ, b"\0" * 4))[:2]
         return h, w
@@ -158,6 +159,12 @@ def _shell(args):
         command = None
         interactive = True
 
+    if interactive and os.name == "nt":
+        args.console.print(
+            "[red]Error:[/] Interactive runner shell is not supported on Windows."
+        )
+        return 1
+
     is_tty = interactive and sys.stdin.isatty()
     fd = sys.stdin.fileno() if interactive else -1
 
@@ -166,6 +173,9 @@ def _shell(args):
     stop_flag = False
 
     if is_tty:
+        import termios
+        import tty
+
         old_settings = termios.tcgetattr(fd)
         tty.setraw(fd)
 
@@ -668,7 +678,10 @@ class LogPrinter:
         return self._renderer(logger={}, name=event["level"], event_dict=event)
 
     def print(self, log: dict) -> None:
-        self._console.print(self._render_log(log), highlight=False)
+        self._console.print(
+            make_terminal_safe(self._render_log(log), self._console.file),
+            highlight=False,
+        )
 
 
 DEFAULT_STREAM_SINCE = timedelta(minutes=1)

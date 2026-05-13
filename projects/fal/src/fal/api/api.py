@@ -50,6 +50,7 @@ from typing_extensions import Concatenate, ParamSpec
 
 import fal.flags as flags
 from fal._serialization import include_module, include_modules_from, patch_pickle
+from fal.app_files import get_app_files_relative_path, include_app_files_path
 from fal.console import console
 from fal.container import ContainerImage
 from fal.exceptions import (
@@ -239,11 +240,13 @@ class RunResultHandler(ResultHandler):
         self.log_printer = IsolateLogPrinter(debug=flags.DEBUG)
 
     def on_service_urls(self, urls: Any) -> None:
-        from rich.rule import Rule  # noqa: PLC0415
         from rich.text import Text  # noqa: PLC0415
 
+        from fal.console.icons import get_section_icon  # noqa: PLC0415
+        from fal.console.rules import print_rule  # noqa: PLC0415
         from fal.flags import URL_OUTPUT  # noqa: PLC0415
 
+        section_icon = get_section_icon(console)
         print("")
 
         lines = Text()
@@ -253,18 +256,18 @@ class RunResultHandler(ResultHandler):
             "shared": "any authenticated user can access",
         }
         auth_desc = AUTH_EXPLANATIONS.get(self.auth_mode, self.auth_mode)
-        lines.append(f"▸ Auth: {self.auth_mode} ", style="bold")
+        lines.append(f"{section_icon} Auth: {self.auth_mode} ", style="bold")
         lines.append(f"({auth_desc})\n\n", style="dim")
 
         if URL_OUTPUT != "none":
-            lines.append("▸ Playground ", style="bold")
+            lines.append(f"{section_icon} Playground ", style="bold")
             lines.append("(open in browser)\n", style="dim")
             for endpoint in self.endpoints:
                 lines.append(f"  {urls.playground}{endpoint}\n", style="cyan")
 
         if URL_OUTPUT == "all":
             lines.append("\n")
-            lines.append("▸ API Endpoints ", style="bold")
+            lines.append(f"{section_icon} API Endpoints ", style="bold")
             lines.append("(use in code)\n", style="dim")
             for endpoint in self.endpoints:
                 lines.append(f"  Sync   {urls.run}{endpoint}\n", style="cyan")
@@ -272,9 +275,9 @@ class RunResultHandler(ResultHandler):
 
         title = Text(f"Ephemeral App ({self.auth_mode})", style="bold")
         subtitle = Text("Deleted when process exits", style="dim")
-        console.print(Rule(title, style="green"))
+        print_rule(console, title, style="green")
         console.print(lines)
-        console.print(Rule(subtitle, style="green"))
+        print_rule(console, subtitle, style="green")
 
     def on_log(self, log: Any) -> None:
         # Obsolete messages from before service_urls were added.
@@ -392,8 +395,20 @@ class Host(Generic[ArgsT, ReturnT]):
         application_auth_mode: AuthModeLiteral | None = None,
         result_handler: ResultHandler | None = None,
         entrypoint: str | None = None,
+        build_environment: bool | None = None,
     ) -> ReturnT:
         """Run the given function in the isolated environment."""
+        raise NotImplementedError
+
+    def build_environment(
+        self,
+        options: Options,
+        *,
+        application_name: str | None = None,
+        environment_name: str | None = None,
+        result_handler: ResultHandler | None = None,
+    ) -> None:
+        """Pre-build the given function environment when supported by the host."""
         raise NotImplementedError
 
     def spawn(
@@ -450,17 +465,61 @@ class UserFunctionException(FalServerlessException):
     pass
 
 
+@dataclass(frozen=True)
+class FunctionRuntimeConfig:
+    app_files_relative_path: str | None = None
+    include_cwd_in_sys_path: bool = False
+
+
+def _runtime_config_from_options(
+    options: Options, local_file_path: str | None
+) -> FunctionRuntimeConfig | None:
+    app_files_relative_path = None
+    if options.host.get("app_files"):
+        # Hosts created outside the CLI/deploy loaders may not have an app file
+        # path. In that case, keep app_files relative to the current directory.
+        app_files_relative_path = get_app_files_relative_path(
+            local_file_path or os.getcwd(),
+            options.host.get("app_files_context_dir"),
+        )
+
+    include_cwd_in_sys_path = options.environment.get("kind") == "container"
+    if app_files_relative_path is None and not include_cwd_in_sys_path:
+        return None
+
+    return FunctionRuntimeConfig(
+        app_files_relative_path=app_files_relative_path,
+        include_cwd_in_sys_path=include_cwd_in_sys_path,
+    )
+
+
+def _apply_runtime_config(runtime_config: FunctionRuntimeConfig | None) -> None:
+    if runtime_config is None:
+        return
+
+    if runtime_config.include_cwd_in_sys_path and "" not in sys.path:
+        # isolate's runpy.run_path() overrides sys.path[0], so container working
+        # directories need to be restored explicitly for local imports.
+        sys.path.insert(0, "")
+
+    if runtime_config.app_files_relative_path is not None:
+        include_app_files_path(runtime_config.app_files_relative_path)
+
+
 def _prepare_partial_func(
-    func: Callable[ArgsT, ReturnT],
-    *args: ArgsT.args,
-    **kwargs: ArgsT.kwargs,
-) -> Callable[ArgsT, ReturnT]:
+    func: Callable[..., ReturnT],
+    args: tuple[Any, ...] = (),
+    kwargs: dict[str, Any] | None = None,
+    runtime_config: FunctionRuntimeConfig | None = None,
+) -> Callable[..., ReturnT]:
     """Prepare the given function for execution on isolate workers."""
+    bound_kwargs = kwargs or {}
 
     @wraps(func)
-    def wrapper(*remote_args: ArgsT.args, **remote_kwargs: ArgsT.kwargs) -> ReturnT:
+    def wrapper(*remote_args: Any, **remote_kwargs: Any) -> ReturnT:
         try:
-            result = func(*remote_args, *args, **remote_kwargs, **kwargs)
+            _apply_runtime_config(runtime_config)
+            result = func(*remote_args, *args, **remote_kwargs, **bound_kwargs)
         except FalServerlessException:
             raise
         except Exception as exc:
@@ -507,7 +566,10 @@ class LocalHost(Host):
         application_auth_mode: AuthModeLiteral | None = None,
         result_handler: ResultHandler | None = None,
         entrypoint: str | None = None,
+        build_environment: bool | None = None,
     ) -> ReturnT:
+        # `build_environment` is a serverless concept; LocalHost ignores it.
+        del build_environment
         import isolate  # noqa: PLC0415
         from isolate.backends.settings import DEFAULT_SETTINGS  # noqa: PLC0415
         from isolate.connections import PythonIPC  # noqa: PLC0415
@@ -531,7 +593,13 @@ class LocalHost(Host):
             environment.create(),
             extra_inheritance_paths=[self._AGENT_ENVIRONMENT.create()],
         ) as connection:
-            executable = _prepare_partial_func(func, *args, **kwargs)
+            runtime_config = _runtime_config_from_options(options, None)
+            executable = _prepare_partial_func(
+                func,
+                args=args,
+                kwargs=kwargs,
+                runtime_config=runtime_config,
+            )
             return connection.run(executable)
 
 
@@ -754,6 +822,9 @@ class FalServerlessHost(Host):
         default_factory=ThreadPoolExecutor, init=False
     )
 
+    def _runtime_config(self, options: Options) -> FunctionRuntimeConfig | None:
+        return _runtime_config_from_options(options, self.local_file_path)
+
     def __getstate__(self) -> dict[str, Any]:
         state = self.__dict__.copy()
         state["_thread_pool"] = None
@@ -785,17 +856,19 @@ class FalServerlessHost(Host):
         requirements = environment_options.get("requirements")
         if not requirements:
             return
-        from rich.rule import Rule  # noqa: PLC0415
 
         from fal.api._sdist import (  # noqa: PLC0415
             has_local_path,
             materialize_local_paths,
         )
         from fal.console import console  # noqa: PLC0415
-        from fal.console.icons import CHECK_ICON  # noqa: PLC0415
+        from fal.console.icons import get_check_icon  # noqa: PLC0415
+        from fal.console.rules import print_rule  # noqa: PLC0415
 
         if not has_local_path(requirements):
             return
+
+        check_icon = get_check_icon(console)
 
         # Render in the same shape as the remote BUILDER phase
         # (``Building environment...`` → rule → live logs → rule →
@@ -807,15 +880,15 @@ class FalServerlessHost(Host):
                     f"Packaging local project [cyan]{payload['package_name']}[/]...",
                     style="bold",
                 )
-                console.print(Rule(style="dim"))
+                print_rule(console, style="dim")
             elif event == "upload_started":
                 size_kb = payload["sdist_size"] / 1024
                 console.print(
                     f"Uploading {payload['sdist_path'].name} ({size_kb:.1f} KB)..."
                 )
             elif event == "upload_finished" and not payload["cached"]:
-                console.print(Rule(style="dim"))
-                console.print(f"{CHECK_ICON} Project packaged", style="bold green")
+                print_rule(console, style="dim")
+                console.print(f"{check_icon} Project packaged", style="bold green")
                 console.print("")
             # ``build_finished`` has no host-side rendering: the live
             # ``python -m build`` output between the rules already tells the
@@ -836,8 +909,11 @@ class FalServerlessHost(Host):
 
             context = Path(options.files_context_dir or ".").resolve()
             app_file = Path(self.local_file_path).resolve()
-            if app_file.is_relative_to(context):
-                rel_path = str(app_file.relative_to(context))
+            try:
+                rel_path = app_file.relative_to(context).as_posix()
+            except ValueError:
+                pass
+            else:
                 options.files_ignore.append(re.compile(f"^{re.escape(rel_path)}$"))
 
         res = []
@@ -877,6 +953,7 @@ class FalServerlessHost(Host):
         environment_name: Optional[str] = None,
         result_handler: ResultHandler | None = None,
         entrypoint: str | None = None,
+        build_environment: bool | None = None,
     ) -> Optional[RegisterApplicationResult]:
         from isolate.backends.common import active_python  # noqa: PLC0415
 
@@ -941,9 +1018,10 @@ class FalServerlessHost(Host):
                 "only one of a func or an entrypoint can be provided."
             )
 
+        runtime_config = self._runtime_config(options)
         partial_func = None
         if func is not None:
-            partial_func = _prepare_partial_func(func)
+            partial_func = _prepare_partial_func(func, runtime_config=runtime_config)
 
         if metadata is None:
             metadata = {}
@@ -976,6 +1054,7 @@ class FalServerlessHost(Host):
             secrets=secrets,
             data_mounts=data_mounts,
             entrypoint=entrypoint,
+            build_environment=build_environment,
         ):
             result_handler(partial_result)
 
@@ -995,6 +1074,7 @@ class FalServerlessHost(Host):
         application_name: str | None = None,
         application_auth_mode: AuthModeLiteral | None = None,
         entrypoint: str | None = None,
+        build_environment: bool | None = None,
     ) -> ReturnT:
         from isolate.backends.common import active_python  # noqa: PLC0415
 
@@ -1017,7 +1097,12 @@ class FalServerlessHost(Host):
         scheduler = options.host.get("_scheduler", None)
         scheduler_options = options.host.get("_scheduler_options", None)
         exposed_port = options.get_exposed_port()
+        runtime_config = self._runtime_config(options)
         setup_function = options.host.get("setup_function", None)
+        if setup_function is not None and runtime_config is not None:
+            setup_function = _prepare_partial_func(
+                setup_function, runtime_config=runtime_config
+            )
         request_timeout = options.host.get("request_timeout")
         startup_timeout = options.host.get("startup_timeout")
         regions = options.host.get("regions")
@@ -1056,7 +1141,12 @@ class FalServerlessHost(Host):
 
         partial_func = None
         if func is not None:
-            partial_func = _prepare_partial_func(func, *args, **kwargs)
+            partial_func = _prepare_partial_func(
+                func,
+                args=args,
+                kwargs=kwargs,
+                runtime_config=runtime_config,
+            )
         effective_app_name = (
             application_name or getattr(func, "__name__", None) or entrypoint
         )
@@ -1074,6 +1164,7 @@ class FalServerlessHost(Host):
             secrets=secrets,
             data_mounts=data_mounts,
             entrypoint=entrypoint,
+            build_environment=build_environment,
         ):
             result_handler(partial_result)
 
@@ -1086,7 +1177,7 @@ class FalServerlessHost(Host):
                 elif state is HostedRunState.SUCCESS:
                     return_value = partial_result.result
                 else:
-                    raise NotImplementedError("Unknown state: ", state)
+                    raise NotImplementedError(f"Unknown state: {state}")
 
         if return_value is _UNSET:
             raise InternalFalServerlessError(
@@ -1105,6 +1196,7 @@ class FalServerlessHost(Host):
         application_auth_mode: AuthModeLiteral | None = None,
         result_handler: ResultHandler | None = None,
         entrypoint: str | None = None,
+        build_environment: bool | None = None,
     ) -> ReturnT:
         effective_auth_mode = application_auth_mode or "public"
 
@@ -1123,6 +1215,76 @@ class FalServerlessHost(Host):
             application_name=application_name,
             application_auth_mode=application_auth_mode,
             entrypoint=entrypoint,
+            build_environment=build_environment,
+        )
+
+    @_handle_grpc_error()
+    def build_environment(
+        self,
+        options: Options,
+        *,
+        application_name: str | None = None,
+        environment_name: str | None = None,
+        result_handler: ResultHandler | None = None,
+    ) -> None:
+        """Pre-build the environment defined by ``options`` so that a follow-up
+        ``register`` / ``run`` / ``fetch_metadata`` with ``build_environment=False``
+        hits the cache.
+
+        Streams build logs through ``result_handler`` (defaults to a no-op
+        handler if not provided).
+        """
+        from isolate.backends.common import active_python  # noqa: PLC0415
+
+        environment_options = options.environment.copy()
+        environment_options.setdefault("python_version", active_python())
+        self._materialize_local_requirements(environment_options)
+        environments = [self._connection.define_environment(**environment_options)]
+
+        machine_type: list[str] | str = options.host.get(
+            "machine_type", FAL_SERVERLESS_DEFAULT_MACHINE_TYPE
+        )
+        base_image = options.host.get("_base_image", None)
+        scheduler = options.host.get("_scheduler", None)
+        scheduler_options = options.host.get("_scheduler_options", None)
+        regions = options.host.get("regions")
+        secrets = options.host.get("secrets")
+        machine_requirements = MachineRequirements(
+            machine_types=machine_type,  # type: ignore
+            num_gpus=options.host.get("num_gpus"),
+            base_image=base_image,
+            scheduler=scheduler,
+            scheduler_options=scheduler_options,
+            valid_regions=regions,
+        )
+
+        files = self.files_sync(FileSyncOptions.from_options(options))
+
+        if result_handler is None:
+            result_handler = ResultHandler()
+
+        for partial_result in self._connection.build_environment(
+            environments,
+            machine_requirements=machine_requirements,
+            files=files,
+            application_name=application_name,
+            environment_name=environment_name,
+            secrets=secrets,
+        ):
+            result_handler(partial_result)
+            status = partial_result.status
+            if status is None or status.state is HostedRunState.IN_PROGRESS:
+                continue
+            if status.state is HostedRunState.SUCCESS:
+                return
+            if status.state is HostedRunState.INTERNAL_FAILURE:
+                raise InternalFalServerlessError(
+                    "An internal failure occurred while building the environment."
+                )
+            raise NotImplementedError(f"Unknown state: {status.state}")
+
+        raise InternalFalServerlessError(
+            "The build environment stream ended without a terminal status."
         )
 
     def spawn(
@@ -1204,10 +1366,13 @@ class Options:
             pip_requirements.extend(requirements)
 
     def get_exposed_port(self) -> int | None:
-        if self.gateway.get("serve"):
+        exposed_port = self.gateway.get("exposed_port")
+        if exposed_port is not None:
+            return exposed_port
+        elif self.gateway.get("serve"):
             return _SERVE_PORT
         else:
-            return self.gateway.get("exposed_port")
+            return None
 
 
 _SERVE_PORT = 8080
@@ -2152,13 +2317,25 @@ class ServeWrapper(BaseServable):
             RouteSignature("/"): self._func,
         }
 
-    async def __call__(self, *args, **kwargs) -> None:
+    async def __call__(
+        self,
+        *args,
+        exposed_port: int | None = None,
+        exposed_metrics_port: int | None = None,
+        **kwargs,
+    ) -> None:
         if len(args) != 0 or len(kwargs) != 0:
             print(
                 f"[warning] {self._func.__name__} function is served with no arguments."
             )
 
-        await self.serve()
+        serve_kwargs: dict[str, Any] = {}
+        if exposed_port is not None:
+            serve_kwargs["port"] = exposed_port
+        if exposed_metrics_port is not None:
+            serve_kwargs["metrics_port"] = exposed_metrics_port
+
+        await self.serve(**serve_kwargs)
 
 
 @dataclass
@@ -2171,6 +2348,7 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
     app_name: str | None = None
     app_auth: AuthModeLiteral | None = None
     entrypoint: str | None = None
+    _entrypoint_exposed_port_defaulted: bool = False
 
     def __post_init__(self) -> None:
         if self.raw_func is None and self.entrypoint is None:
@@ -2188,6 +2366,8 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
         self.__dict__.update(state)
         if not hasattr(self, "executor"):
             self.executor = ThreadPoolExecutor()
+        if not hasattr(self, "_entrypoint_exposed_port_defaulted"):
+            self._entrypoint_exposed_port_defaulted = False
 
     @property
     def run_entrypoint(self) -> str | None:
@@ -2242,13 +2422,19 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
     def build_metadata(self) -> dict[str, Any]:
         return self.options.host.get("metadata") or {}
 
-    def fetch_metadata(self) -> dict[str, Any]:
+    def fetch_metadata(
+        self, *, build_environment: bool | None = None
+    ) -> dict[str, Any]:
         """Probe ``<entrypoint>.build_metadata`` on the worker and cache the
         result into ``options.host["metadata"]``.
 
         No-op when there's no ``entrypoint`` set — the regular flow already
         populates metadata via ``wrap_app``/registration paths, and this
         method just returns that cached value.
+
+        Pass ``build_environment=False`` to skip the inline env build inside
+        the metadata probe (e.g. when the caller has already pre-built the env
+        via ``Host.build_environment``).
         """
         if self.metadata_entrypoint is None:
             return self.build_metadata()
@@ -2260,8 +2446,10 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
             self.options,
             args=(),
             kwargs={},
+            application_name=self.app_name,
             entrypoint=self.metadata_entrypoint,
             result_handler=ResultHandler(),
+            build_environment=build_environment,
         )
         if not isinstance(payload, dict):
             raise FalServerlessError(
@@ -2288,16 +2476,69 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
         return ["/"]
 
     def run_local(self, *args: ArgsT.args, **kwargs: ArgsT.kwargs) -> ReturnT:
+        call_kwargs = dict(kwargs)
+        exposed_port: int | None = None
+        exposed_metrics_port: int | None = None
+        if self._supports_local_serve_options():
+            exposed_port = cast(Optional[int], call_kwargs.pop("exposed_port", None))
+            exposed_metrics_port = cast(
+                Optional[int], call_kwargs.pop("exposed_metrics_port", None)
+            )
+        return self._run_local(
+            args=args,
+            kwargs=call_kwargs,
+            exposed_port=exposed_port,
+            exposed_metrics_port=exposed_metrics_port,
+        )
+
+    def _run_local(
+        self,
+        *,
+        args: tuple[Any, ...] = (),
+        kwargs: dict[str, Any] | None = None,
+        exposed_port: int | None = None,
+        exposed_metrics_port: int | None = None,
+    ) -> ReturnT:
         import asyncio  # noqa: PLC0415
         import inspect  # noqa: PLC0415
         import os  # noqa: PLC0415
         from typing import Awaitable, cast  # noqa: PLC0415
 
+        if kwargs is None:
+            kwargs = {}
+
         func = self._resolve_local_func()
+        call_kwargs = dict(kwargs)
+        local_serve_options_target = self._local_serve_options_target()
+        supports_local_serve_options = local_serve_options_target is not None
+        local_serve_options_requested = (
+            exposed_port is not None or exposed_metrics_port is not None
+        )
+        if local_serve_options_requested and not supports_local_serve_options:
+            raise FalServerlessError(
+                "Local exposed port options are only supported when running "
+                "a fal.App or serve=True function locally."
+            )
+
+        if supports_local_serve_options:
+            entrypoint_target_keeps_own_port = (
+                self.raw_func is None
+                and isinstance(local_serve_options_target, IsolatedFunction)
+                and self._entrypoint_exposed_port_defaulted
+            )
+            effective_exposed_port = exposed_port
+            if effective_exposed_port is None and not entrypoint_target_keeps_own_port:
+                effective_exposed_port = self.options.get_exposed_port()
+            if effective_exposed_port is not None:
+                call_kwargs["exposed_port"] = effective_exposed_port
+            if exposed_metrics_port is not None:
+                call_kwargs["exposed_metrics_port"] = exposed_metrics_port
+
         previous_isolate_env = os.environ.get("IS_ISOLATE_AGENT")
         os.environ["IS_ISOLATE_AGENT"] = "1"
         try:
-            result = func(*args, **kwargs)
+            self._apply_runtime_config()
+            result = func(*args, **call_kwargs)
             if inspect.isawaitable(result):
                 awaited = cast(Awaitable[ReturnT], result)
 
@@ -2312,19 +2553,37 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
             else:
                 os.environ["IS_ISOLATE_AGENT"] = previous_isolate_env
 
+    def _local_runtime_config(self) -> FunctionRuntimeConfig | None:
+        return _runtime_config_from_options(
+            self.options,
+            getattr(self.host, "local_file_path", None),
+        )
+
+    def _apply_runtime_config(self) -> None:
+        _apply_runtime_config(self._local_runtime_config())
+
+    def _resolve_entrypoint_target(self) -> Any:
+        if self.entrypoint is None:
+            raise FalServerlessError(
+                "IsolatedFunction has no local callable to invoke."
+            )
+
+        import importlib  # noqa: PLC0415
+
+        module_name, _, attr = self.entrypoint.partition(":")
+        target: Any = importlib.import_module(module_name)
+        for part in attr.split("."):
+            target = getattr(target, part)
+        return target
+
     def _resolve_local_func(self) -> Callable[ArgsT, ReturnT]:
         if self.entrypoint is not None and self.raw_func is None:
-            import importlib  # noqa: PLC0415
-
-            module_name, _, attr = self.entrypoint.partition(":")
-            target: Any = importlib.import_module(module_name)
-            for part in attr.split("."):
-                target = getattr(target, part)
+            target = self._resolve_entrypoint_target()
             try:
                 return target.run_local
             except AttributeError:
                 raise FalServerlessError(
-                    f"{self.entrypoint!r} has no run_local method — "
+                    f"{self.entrypoint!r} has no run_local method - "
                     "is it a fal.App subclass or a fal.function?"
                 ) from None
         if self.raw_func is None:
@@ -2332,6 +2591,32 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
                 "IsolatedFunction has no local callable to invoke."
             )
         return self.func  # type: ignore[return-value]
+
+    def _local_serve_options_target(self) -> Any | None:
+        if self.raw_func is not None:
+            if getattr(
+                self.raw_func, "_fal_local_app", False
+            ) or self.options.gateway.get("serve"):
+                return self
+            return None
+        if self.entrypoint is None:
+            return None
+
+        from fal.app import App  # noqa: PLC0415
+
+        target = self._resolve_entrypoint_target()
+        if isinstance(target, type) and issubclass(target, App):
+            return target
+        if (
+            isinstance(target, IsolatedFunction)
+            and target.raw_func is not None
+            and target._supports_local_serve_options()
+        ):
+            return target
+        return None
+
+    def _supports_local_serve_options(self) -> bool:
+        return self._local_serve_options_target() is not None
 
     @overload
     def on(

@@ -10,7 +10,6 @@ import threading
 import time
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, Callable, ClassVar, Optional
 
 import fastapi
@@ -137,26 +136,33 @@ def wrap_app(cls: type[App], **kwargs) -> IsolatedFunction:
     include_modules_from(cls)
     limit_max_requests = kwargs.pop("limit_max_requests", None)
 
-    host = kwargs.get("host", None)
-    if host:
-        cls.local_file_path = host.local_file_path
-
-    def initialize_and_serve():
+    def initialize_and_serve(
+        *,
+        exposed_port: int | None = None,
+        exposed_metrics_port: int | None = None,
+    ):
         import threading  # noqa: PLC0415
 
         app = cls()
         set_current_app(app)
 
+        serve_kwargs: dict[str, Any] = {"limit_max_requests": limit_max_requests}
+        if exposed_port is not None:
+            serve_kwargs["port"] = exposed_port
+        if exposed_metrics_port is not None:
+            serve_kwargs["metrics_port"] = exposed_metrics_port
+
         if threading.current_thread() == threading.main_thread():
-            return app.serve(limit_max_requests=limit_max_requests)
+            return app.serve(**serve_kwargs)
         else:
             asyncio.set_event_loop(asyncio.new_event_loop())
-            asyncio.run(app.serve(limit_max_requests=limit_max_requests))
+            asyncio.run(app.serve(**serve_kwargs))
 
     # if the function is not marked with _run_on_main_thread, it runs on a thread pool
     # however in thread pool, the function cannot receive SIGTERM
     # we run the function on main thread so SIGTERM can be propagated to the app
     initialize_and_serve._run_on_main_thread = True  # type: ignore[attr-defined]
+    initialize_and_serve._fal_local_app = True  # type: ignore[attr-defined]
 
     metadata = cls.build_metadata()
 
@@ -448,63 +454,6 @@ def _print_python_packages() -> None:
     print("[debug] Python packages installed:", ", ".join(packages))
 
 
-def _include_app_files_path(
-    local_file_path: str | None, app_files_context_dir: str | None
-):
-    base_cloud_dir = Path("/app")
-    if local_file_path is None:
-        return
-
-    # In case of container apps, the /app directory is not created by default
-    # so we need to check if it exists before proceeding
-    if not base_cloud_dir.exists():
-        return
-
-    base_path = Path(local_file_path).resolve()
-    if base_path.is_dir():
-        original_script_dir = base_path
-    else:
-        original_script_dir = base_path.parent
-
-    if app_files_context_dir:
-        context_path = Path(app_files_context_dir)
-        if context_path.is_absolute():
-            final_script_dir = context_path.resolve()
-        else:
-            final_script_dir = (original_script_dir / context_path).resolve()
-
-        # relative path between the original script dir
-        # and where the app_files_context_dir is targetting
-        relative_path = os.path.relpath(original_script_dir, final_script_dir)
-        # cloud final_path based on the `/app` base dir,
-        final_path = base_cloud_dir / Path(relative_path)
-    else:
-        # if no app_files_context_dir is provided, the base directory is the root
-        final_path = base_cloud_dir
-
-    # Create the final path if it doesn't exist
-    # This is for cases when fal app is not in root
-    # and its parent directory is not in app_files
-    # Which means that the relative path to app won't be created by default
-    final_path.mkdir(parents=True, exist_ok=True)
-
-    # Add local files deployment path to sys.path so imports
-    # work correctly in the isolate agent
-    # Append the final path to sys.path first so that the
-    # relative directory is resolved first in case of conflicts
-    sys.path.append(str(final_path))
-
-    # Add the base cloud dir path to sys.path so that
-    # the app can access the files in the top level directory
-    # This is for cases when fal app is not in root,
-    # and user wants to access the files without using relative imports
-    sys.path.append(str(base_cloud_dir))
-
-    # Change the current working directory to the path of the app
-    # so that the app can access the files in the current directory
-    os.chdir(str(final_path))
-
-
 @dataclass
 class RequestContext:
     request_id: str | None
@@ -739,11 +688,22 @@ class App(BaseServable):
         return {"openapi": cls(_allow_init=True).openapi()}
 
     @classmethod
-    def run_local(cls, *args, **kwargs):
+    def run_local(
+        cls,
+        *args,
+        exposed_port: int | None = None,
+        exposed_metrics_port: int | None = None,
+        **kwargs,
+    ):
         # import wrap_app explicitly to avoid reference to wrap_app during pickling
         from fal.app import wrap_app  # noqa: PLC0415
 
-        return wrap_app(cls).run_local(*args, **kwargs)
+        return wrap_app(cls)._run_local(
+            args=args,
+            kwargs=kwargs,
+            exposed_port=exposed_port,
+            exposed_metrics_port=exposed_metrics_port,
+        )
 
     @classmethod
     def spawn(cls) -> AppSpawnInfo:
@@ -804,9 +764,6 @@ class App(BaseServable):
     async def lifespan(self, app: fastapi.FastAPI):
         os.environ["FAL_RUNNER_STATE"] = "SETUP"
 
-        # Configure sys.path based on deployment type:
-        # - app_files: files synced to /app
-        # - container: files baked into image
         # HACK: Import at runtime to avoid weird error during deserialization
         import contextvars  # noqa: PLC0415
 
@@ -824,18 +781,6 @@ class App(BaseServable):
         except (ImportError, AttributeError):
             pass
 
-        # We want to not do any directory changes for container apps,
-        # since we don't have explicit checks to see the kind of app
-        # We check for app_files here and check kind and app_files earlier
-        # to ensure that container apps don't have app_files
-        if self.app_files:
-            # For app_files deployments (always use /app)
-            _include_app_files_path(self.local_file_path, self.app_files_context_dir)
-        elif self.image is not None:
-            # For containers, add the working directory to sys.path
-            # isolate's runpy.run_path() overrides sys.path[0],
-            # so the working directory is never added to sys.path
-            sys.path.insert(0, "")
         _print_python_packages()
         setup_started_at = time.perf_counter()
         await _call_any_fn(self.setup)

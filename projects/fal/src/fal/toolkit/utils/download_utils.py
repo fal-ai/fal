@@ -10,7 +10,7 @@ import time
 from contextlib import suppress
 from email.message import Message
 from pathlib import Path, PurePath
-from tempfile import NamedTemporaryFile, TemporaryDirectory
+from tempfile import TemporaryDirectory, mkstemp
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
@@ -148,12 +148,9 @@ def download_file(
     target_dir_path.mkdir(parents=True, exist_ok=True)
     target_path: Path | None = None
 
-    with NamedTemporaryFile(
-        delete=False,
-        dir=target_dir_path,
-        prefix=".fal_download.tmp.",
-    ) as temp_file:
-        temp_path = Path(temp_file.name)
+    fd, temp_file_path = mkstemp(dir=target_dir_path, prefix=".fal_download.tmp.")
+    os.close(fd)
+    temp_path = Path(temp_file_path)
 
     try:
         if parsed_url.scheme == "data":
@@ -245,52 +242,50 @@ def _download_file_python(
 
     # NOTE: using the same directory to avoid potential copies across temp fs and target
     # fs, and also to be able to atomically rename a downloaded file into place.
-    with NamedTemporaryFile(
-        delete=False,
-        dir=target_path.parent,
-        prefix=f"{basename}.tmp",
-    ) as temp_file:
-        temp_path = Path(temp_file.name)
-        try:
-            request = Request(url, headers=_headers(request_headers))
-            received_size = 0
-            total_size = 0
+    fd, temp_file_path = mkstemp(dir=target_path.parent, prefix=f"{basename}.tmp")
+    os.close(fd)
+    temp_path = Path(temp_file_path)
+    try:
+        request = Request(url, headers=_headers(request_headers))
+        received_size = 0
+        total_size = 0
 
-            with urlopen(request, timeout=30) as response:
-                total_size = int(response.headers.get("content-length", total_size))
-                while data := response.read(64 * ONE_MB):
-                    temp_file.write(data)
+        with urlopen(request, timeout=30) as response, open(
+            temp_path, "wb"
+        ) as temp_file:
+            total_size = int(response.headers.get("content-length", total_size))
+            while data := response.read(64 * ONE_MB):
+                temp_file.write(data)
 
-                    received_size = temp_file.tell()
-                    if limit_bytes is not None and received_size > limit_bytes:
-                        raise DownloadError(
-                            f"""Attempted to download more data {received_size}
-                                than the set limit of {limit_bytes}"""
-                        )
+                received_size = temp_file.tell()
+                if limit_bytes is not None and received_size > limit_bytes:
+                    raise DownloadError(
+                        f"""Attempted to download more data {received_size}
+                            than the set limit of {limit_bytes}"""
+                    )
 
-                    if total_size:
-                        progress_msg = (
-                            f"Downloading {url} ... {received_size / total_size:.2%}"
-                        )
-                    else:
-                        progress_msg = (
-                            f"Downloading {url} ... {received_size / ONE_MB:.2f} MB"
-                        )
-                    print(progress_msg, end="\r\n")
+                if total_size:
+                    progress_msg = (
+                        f"Downloading {url} ... {received_size / total_size:.2%}"
+                    )
+                else:
+                    progress_msg = (
+                        f"Downloading {url} ... {received_size / ONE_MB:.2f} MB"
+                    )
+                print(progress_msg, end="\r\n")
 
-            if total_size and received_size < total_size:
-                raise DownloadError("Received less data than expected from the server.")
+        if total_size and received_size < total_size:
+            raise DownloadError("Received less data than expected from the server.")
 
-            # NOTE: Atomically renaming the file into place when the file is downloaded
-            # completely.
-            #
-            # Since the file used is temporary, in a case of an interruption, the
-            # downloaded content will be lost. So, it is safe to redownload the file in
-            # such cases.
-            os.replace(temp_path, target_path)
+        # NOTE: Atomically replacing the file when the download is complete.
+        #
+        # Since the file used is temporary, in a case of an interruption, the
+        # downloaded content will be lost. So, it is safe to redownload the file in
+        # such cases.
+        os.replace(temp_path, target_path)
 
-        finally:
-            temp_path.unlink(missing_ok=True)
+    finally:
+        temp_path.unlink(missing_ok=True)
 
     return target_path
 

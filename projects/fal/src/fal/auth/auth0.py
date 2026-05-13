@@ -194,9 +194,14 @@ def get_user_info(bearer_token: str) -> dict:
 
 @functools.lru_cache
 def build_jwk_client():
+    import ssl  # noqa: PLC0415
+
+    import certifi  # noqa: PLC0415
     from jwt import PyJWKClient
 
-    return PyJWKClient(AUTH0_JWKS_URL, cache_keys=True)
+    ssl_context = ssl.create_default_context()
+    ssl_context.load_verify_locations(cafile=certifi.where())
+    return PyJWKClient(AUTH0_JWKS_URL, cache_keys=True, ssl_context=ssl_context)
 
 
 def validate_id_token(token: str):

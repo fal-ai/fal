@@ -27,12 +27,13 @@ permissions:
 
 jobs:
   integration:
-    name: integration (py ${{ matrix.python }}, ${{ matrix.deps }})
-    runs-on: ubuntu-latest
+    name: integration (${{ matrix.os }}, py ${{ matrix.python }}, ${{ matrix.deps }})
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest]
         deps: ["pydantic==1.10.18", "pydantic==2.13.3"]
         python: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
         exclude:
@@ -50,6 +51,10 @@ jobs:
             python: "3.13"
           - deps: "pydantic==1.10.18"
             python: "3.14"
+        include:
+          - os: windows-2022
+            deps: "pydantic==2.13.3"
+            python: "3.12"
     steps:
       - uses: actions/checkout@v4
         with:

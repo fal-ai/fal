@@ -623,12 +623,13 @@ class TestToDict:
 
     def test_includes_all_fields(self):
         """Should include all fields in dict."""
+        context_dir = Path("/path/to/context")
         img = ContainerImage(
             dockerfile_str="FROM python:3.11",
             build_args={"VERSION": "1.0"},
             builder="depot",
             compression="zstd",
-            context_dir=Path("/path/to/context"),
+            context_dir=context_dir,
         )
         d = img.to_dict()
 
@@ -636,7 +637,7 @@ class TestToDict:
         assert d["build_args"] == {"VERSION": "1.0"}
         assert d["builder"] == "depot"
         assert d["compression"] == "zstd"
-        assert d["docker_context_dir"] == "/path/to/context"
+        assert d["docker_context_dir"] == str(context_dir)
 
     def test_default_values_in_dict(self):
         """Should include default values in dict."""
