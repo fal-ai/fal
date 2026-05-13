@@ -1204,10 +1204,13 @@ class Options:
             pip_requirements.extend(requirements)
 
     def get_exposed_port(self) -> int | None:
-        if self.gateway.get("serve"):
+        exposed_port = self.gateway.get("exposed_port")
+        if exposed_port is not None:
+            return exposed_port
+        elif self.gateway.get("serve"):
             return _SERVE_PORT
         else:
-            return self.gateway.get("exposed_port")
+            return None
 
 
 _SERVE_PORT = 8080
@@ -2152,13 +2155,25 @@ class ServeWrapper(BaseServable):
             RouteSignature("/"): self._func,
         }
 
-    async def __call__(self, *args, **kwargs) -> None:
+    async def __call__(
+        self,
+        *args,
+        exposed_port: int | None = None,
+        exposed_metrics_port: int | None = None,
+        **kwargs,
+    ) -> None:
         if len(args) != 0 or len(kwargs) != 0:
             print(
                 f"[warning] {self._func.__name__} function is served with no arguments."
             )
 
-        await self.serve()
+        serve_kwargs: dict[str, Any] = {}
+        if exposed_port is not None:
+            serve_kwargs["port"] = exposed_port
+        if exposed_metrics_port is not None:
+            serve_kwargs["metrics_port"] = exposed_metrics_port
+
+        await self.serve(**serve_kwargs)
 
 
 @dataclass
@@ -2288,16 +2303,51 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
         return ["/"]
 
     def run_local(self, *args: ArgsT.args, **kwargs: ArgsT.kwargs) -> ReturnT:
+        return self._run_local(args=args, kwargs=kwargs)
+
+    def _run_local(
+        self,
+        *,
+        args: tuple[Any, ...] = (),
+        kwargs: dict[str, Any] | None = None,
+        exposed_port: int | None = None,
+        exposed_metrics_port: int | None = None,
+    ) -> ReturnT:
         import asyncio  # noqa: PLC0415
         import inspect  # noqa: PLC0415
         import os  # noqa: PLC0415
         from typing import Awaitable, cast  # noqa: PLC0415
 
+        if kwargs is None:
+            kwargs = {}
+
         func = self._resolve_local_func()
+        call_kwargs = dict(kwargs)
+        supports_local_serve_options = self._supports_local_serve_options()
+        local_serve_options_requested = (
+            exposed_port is not None or exposed_metrics_port is not None
+        )
+        if local_serve_options_requested and not supports_local_serve_options:
+            raise FalServerlessError(
+                "Local exposed port options are only supported when running "
+                "a fal.App or serve=True function locally."
+            )
+
+        if supports_local_serve_options:
+            effective_exposed_port = (
+                exposed_port
+                if exposed_port is not None
+                else self.options.get_exposed_port()
+            )
+            if effective_exposed_port is not None:
+                call_kwargs["exposed_port"] = effective_exposed_port
+            if exposed_metrics_port is not None:
+                call_kwargs["exposed_metrics_port"] = exposed_metrics_port
+
         previous_isolate_env = os.environ.get("IS_ISOLATE_AGENT")
         os.environ["IS_ISOLATE_AGENT"] = "1"
         try:
-            result = func(*args, **kwargs)
+            result = func(*args, **call_kwargs)
             if inspect.isawaitable(result):
                 awaited = cast(Awaitable[ReturnT], result)
 
@@ -2312,14 +2362,23 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
             else:
                 os.environ["IS_ISOLATE_AGENT"] = previous_isolate_env
 
+    def _resolve_entrypoint_target(self) -> Any:
+        if self.entrypoint is None:
+            raise FalServerlessError(
+                "IsolatedFunction has no local callable to invoke."
+            )
+
+        import importlib  # noqa: PLC0415
+
+        module_name, _, attr = self.entrypoint.partition(":")
+        target: Any = importlib.import_module(module_name)
+        for part in attr.split("."):
+            target = getattr(target, part)
+        return target
+
     def _resolve_local_func(self) -> Callable[ArgsT, ReturnT]:
         if self.entrypoint is not None and self.raw_func is None:
-            import importlib  # noqa: PLC0415
-
-            module_name, _, attr = self.entrypoint.partition(":")
-            target: Any = importlib.import_module(module_name)
-            for part in attr.split("."):
-                target = getattr(target, part)
+            target = self._resolve_entrypoint_target()
             try:
                 return target.run_local
             except AttributeError:
@@ -2332,6 +2391,20 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
                 "IsolatedFunction has no local callable to invoke."
             )
         return self.func  # type: ignore[return-value]
+
+    def _supports_local_serve_options(self) -> bool:
+        if self.raw_func is not None:
+            return bool(
+                getattr(self.raw_func, "_fal_local_app", False)
+                or self.options.gateway.get("serve")
+            )
+        if self.entrypoint is None:
+            return False
+
+        from fal.app import App  # noqa: PLC0415
+
+        target = self._resolve_entrypoint_target()
+        return isinstance(target, type) and issubclass(target, App)
 
     @overload
     def on(

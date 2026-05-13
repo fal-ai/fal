@@ -141,22 +141,33 @@ def wrap_app(cls: type[App], **kwargs) -> IsolatedFunction:
     if host:
         cls.local_file_path = host.local_file_path
 
-    def initialize_and_serve():
+    def initialize_and_serve(
+        *,
+        exposed_port: int | None = None,
+        exposed_metrics_port: int | None = None,
+    ):
         import threading  # noqa: PLC0415
 
         app = cls()
         set_current_app(app)
 
+        serve_kwargs: dict[str, Any] = {"limit_max_requests": limit_max_requests}
+        if exposed_port is not None:
+            serve_kwargs["port"] = exposed_port
+        if exposed_metrics_port is not None:
+            serve_kwargs["metrics_port"] = exposed_metrics_port
+
         if threading.current_thread() == threading.main_thread():
-            return app.serve(limit_max_requests=limit_max_requests)
+            return app.serve(**serve_kwargs)
         else:
             asyncio.set_event_loop(asyncio.new_event_loop())
-            asyncio.run(app.serve(limit_max_requests=limit_max_requests))
+            asyncio.run(app.serve(**serve_kwargs))
 
     # if the function is not marked with _run_on_main_thread, it runs on a thread pool
     # however in thread pool, the function cannot receive SIGTERM
     # we run the function on main thread so SIGTERM can be propagated to the app
     initialize_and_serve._run_on_main_thread = True  # type: ignore[attr-defined]
+    initialize_and_serve._fal_local_app = True  # type: ignore[attr-defined]
 
     metadata = cls.build_metadata()
 
@@ -739,11 +750,22 @@ class App(BaseServable):
         return {"openapi": cls(_allow_init=True).openapi()}
 
     @classmethod
-    def run_local(cls, *args, **kwargs):
+    def run_local(
+        cls,
+        *args,
+        exposed_port: int | None = None,
+        exposed_metrics_port: int | None = None,
+        **kwargs,
+    ):
         # import wrap_app explicitly to avoid reference to wrap_app during pickling
         from fal.app import wrap_app  # noqa: PLC0415
 
-        return wrap_app(cls).run_local(*args, **kwargs)
+        return wrap_app(cls)._run_local(
+            args=args,
+            kwargs=kwargs,
+            exposed_port=exposed_port,
+            exposed_metrics_port=exposed_metrics_port,
+        )
 
     @classmethod
     def spawn(cls) -> AppSpawnInfo:

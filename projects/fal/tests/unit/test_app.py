@@ -235,6 +235,43 @@ def test_wrap_app_limit_max_requests_propagates_to_serve(
     assert called_limit_max_requests == 1
 
 
+def test_wrap_app_exposed_ports_propagate_to_serve(
+    isolate_agent_env, monkeypatch: pytest.MonkeyPatch
+):
+    from fal import ref
+    from fal.api.run import run as run_api
+    from fal.app import wrap_app
+
+    class LocalPortApp(App):
+        @endpoint("/")
+        def hello(self) -> str:
+            return "Hello, world!"
+
+    called_port: int | None = None
+    called_metrics_port: int | None = None
+
+    async def fake_serve(
+        self,
+        *,
+        limit_max_requests: int | None = None,
+        port: int = 8080,
+        metrics_port: int = 9090,
+    ):
+        nonlocal called_port, called_metrics_port
+        called_port = port
+        called_metrics_port = metrics_port
+
+    monkeypatch.setattr(LocalPortApp, "serve", fake_serve)
+    monkeypatch.setattr(ref, "current_app", None)
+
+    fn = wrap_app(LocalPortApp)
+    fn.options.gateway["exposed_port"] = 3000
+    run_api(fn, local=True, exposed_metrics_port=3001)
+
+    assert called_port == 3000
+    assert called_metrics_port == 3001
+
+
 def test_wrap_app_raises_for_virtualenv_only_keys_with_conda_kind():
     from fal.app import wrap_app
 
@@ -1039,6 +1076,55 @@ def test_openapi_does_not_duplicate_ws_paths_on_multiple_calls(isolate_agent_env
     ]
     assert [p for p in first["x-fal-order-paths"] if p != "/health"] == expected_order
     assert [p for p in second["x-fal-order-paths"] if p != "/health"] == expected_order
+
+
+@pytest.mark.asyncio
+async def test_serve_binds_app_and_metrics_to_custom_ports(
+    isolate_agent_env, monkeypatch: pytest.MonkeyPatch
+):
+    import prometheus_client
+
+    from fal.api import api
+
+    configs = []
+
+    class FakeGauge:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def labels(self, *args, **kwargs):
+            return self
+
+        def set(self, value):
+            pass
+
+    class FakeServer:
+        def __init__(self, config):
+            self.config = config
+            configs.append(config)
+
+        def set_handle_exit(self, handle_exit):
+            self._handle_exit = handle_exit
+
+        async def serve(self) -> None:
+            return None
+
+    monkeypatch.setattr(api, "FalServer", FakeServer)
+    monkeypatch.setattr(api.uvicorn, "Server", FakeServer)
+    monkeypatch.setattr(prometheus_client, "Gauge", FakeGauge)
+
+    class CustomPortApp(App):
+        @endpoint("/")
+        def run(self):
+            return {"status": "ok"}
+
+    app = CustomPortApp()
+    await app.serve(port=3000, metrics_port=3001)
+
+    assert configs[0].host == "0.0.0.0"
+    assert configs[0].port == 3000
+    assert configs[1].host == "0.0.0.0"
+    assert configs[1].port == 3001
 
 
 @pytest.mark.asyncio
