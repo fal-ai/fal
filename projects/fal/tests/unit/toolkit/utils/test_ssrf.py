@@ -167,7 +167,7 @@ def test_download_file_preserves_declared_size_limit_error(tmp_path) -> None:
         kwargs["on_response_headers"]({"content-length": str(2 * 1024 * 1024)})
         raise AssertionError("body should not be streamed")
 
-    with patch.object(download_utils, "ssrf_safe_get_to_file", fake_get_to_file):
+    with patch.object(download_utils, "_ssrf_safe_get_to_file", fake_get_to_file):
         with pytest.raises(
             DownloadError,
             match="File to be downloaded is of size 2.0",

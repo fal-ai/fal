@@ -592,6 +592,29 @@ def ssrf_safe_get_to_file(
     headers: dict[str, str] | None = None,
     allowed_schemes: frozenset[str] = DEFAULT_ALLOWED_SCHEMES,
     chunk_size: int = 64 * 1024,
+) -> SafeResponse:
+    return _ssrf_safe_get_to_file(
+        url,
+        target_path,
+        timeout=timeout,
+        max_size=max_size,
+        max_hops=max_hops,
+        headers=headers,
+        allowed_schemes=allowed_schemes,
+        chunk_size=chunk_size,
+    )
+
+
+def _ssrf_safe_get_to_file(
+    url: str,
+    target_path: os.PathLike[str] | str,
+    *,
+    timeout: float = 30.0,
+    max_size: int | None = None,
+    max_hops: int = DEFAULT_MAX_REDIRECT_HOPS,
+    headers: dict[str, str] | None = None,
+    allowed_schemes: frozenset[str] = DEFAULT_ALLOWED_SCHEMES,
+    chunk_size: int = 64 * 1024,
     on_response_headers: Callable[[dict[str, str]], None] | None = None,
 ) -> SafeResponse:
     return _safe_request(

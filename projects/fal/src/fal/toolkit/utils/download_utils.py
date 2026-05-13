@@ -18,7 +18,7 @@ from fal.toolkit.utils.ssrf import (
     SafeResponse,
     SSRFError,
     SSRFHTTPStatusError,
-    ssrf_safe_get_to_file,
+    _ssrf_safe_get_to_file,
 )
 
 FAL_PERSISTENT_DIR = PurePath("/data")
@@ -169,7 +169,7 @@ def download_file(
                 headers={"content-length": str(temp_path.stat().st_size)},
             )
         else:
-            response = ssrf_safe_get_to_file(
+            response = _ssrf_safe_get_to_file(
                 url,
                 temp_path,
                 headers=_headers(request_headers),
