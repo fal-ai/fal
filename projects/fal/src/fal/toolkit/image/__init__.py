@@ -7,7 +7,7 @@ from urllib.parse import urlparse
 from urllib.request import urlopen
 
 from fal.toolkit.utils.download_utils import TEMP_HEADERS
-from fal.toolkit.utils.ssrf import SSRFSizeExceededError, ssrf_safe_get
+from fal.toolkit.utils.ssrf import ssrf_safe_get
 
 from .image import *  # noqa: F403
 
@@ -69,7 +69,7 @@ def read_image_from_url(
             with urlopen(url, timeout=30) as response:
                 content = response.read(MAX_IMAGE_DOWNLOAD_SIZE + 1)
             if len(content) > MAX_IMAGE_DOWNLOAD_SIZE:
-                raise SSRFSizeExceededError("Image body exceeded size limit")
+                raise ValueError("Image body exceeded size limit")
         else:
             response = ssrf_safe_get(
                 url,

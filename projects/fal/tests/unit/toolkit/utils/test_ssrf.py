@@ -43,6 +43,7 @@ def _fake_request_one_hop(
     body_mode: str,
     target_path: str | None = None,
     chunk_size: int = 64 * 1024,
+    on_response_headers: Any = None,
 ) -> ssrf.SafeResponse:
     _request_calls.append(
         {
@@ -162,12 +163,9 @@ def test_download_file_preserves_metadata_error_for_http_status(
 
 
 def test_download_file_preserves_declared_size_limit_error(tmp_path) -> None:
-    def fake_get_to_file(*_args: Any, **_kwargs: Any) -> ssrf.SafeResponse:
-        raise ssrf.SSRFSizeExceededError(
-            "too large",
-            declared_size=2 * 1024 * 1024,
-            max_size=1024 * 1024,
-        )
+    def fake_get_to_file(*_args: Any, **kwargs: Any) -> ssrf.SafeResponse:
+        kwargs["on_response_headers"]({"content-length": str(2 * 1024 * 1024)})
+        raise AssertionError("body should not be streamed")
 
     with patch.object(download_utils, "ssrf_safe_get_to_file", fake_get_to_file):
         with pytest.raises(
@@ -194,6 +192,7 @@ def test_ssrf_safe_get_headers_tries_later_validated_ips() -> None:
         body_mode: str,
         target_path: str | None = None,
         chunk_size: int = 64 * 1024,
+        on_response_headers: Any = None,
     ) -> ssrf.SafeResponse:
         if target_ip == "2001:4860:4860::8888":
             raise OSError("network unreachable")
@@ -237,6 +236,7 @@ def test_ssrf_safe_get_to_file_retries_later_ips_after_short_body(tmp_path) -> N
         body_mode: str,
         target_path: str | None = None,
         chunk_size: int = 64 * 1024,
+        on_response_headers: Any = None,
     ) -> ssrf.SafeResponse:
         if target_ip == "8.8.8.8":
             raise ssrf.SSRFConnectionError("short body")
@@ -280,6 +280,7 @@ def test_ssrf_safe_get_retries_later_ips_after_incomplete_read() -> None:
         body_mode: str,
         target_path: str | None = None,
         chunk_size: int = 64 * 1024,
+        on_response_headers: Any = None,
     ) -> ssrf.SafeResponse:
         if target_ip == "8.8.8.8":
             raise http.client.IncompleteRead(b"partial")
@@ -516,7 +517,7 @@ def test_ssrf_safe_get_to_file_preserves_existing_file_on_http_failure(
 
     with patch.object(ssrf, "_socket_getaddrinfo", return_value=_addrinfo("8.8.8.8")):
         with patch.object(ssrf, "_open_connection", return_value=FakeConnection()):
-            with pytest.raises(ssrf.SSRFSizeExceededError):
+            with pytest.raises(ssrf.SSRFError):
                 ssrf.ssrf_safe_get_to_file(
                     "https://example.com/file",
                     target_path,
@@ -553,7 +554,7 @@ def test_ssrf_safe_get_to_file_rejects_declared_oversized_body_before_streaming(
 
     with patch.object(ssrf, "_socket_getaddrinfo", return_value=_addrinfo("8.8.8.8")):
         with patch.object(ssrf, "_open_connection", return_value=FakeConnection()):
-            with pytest.raises(ssrf.SSRFSizeExceededError):
+            with pytest.raises(ssrf.SSRFError):
                 ssrf.ssrf_safe_get_to_file(
                     "https://example.com/file",
                     target_path,
@@ -566,7 +567,7 @@ def test_ssrf_safe_get_to_file_rejects_declared_oversized_body_before_streaming(
 def test_read_image_from_url_applies_download_limit() -> None:
     def fake_get(url: str, **kwargs: Any) -> ssrf.SafeResponse:
         assert kwargs["max_size"] == image_toolkit.MAX_IMAGE_DOWNLOAD_SIZE
-        raise ssrf.SSRFSizeExceededError("too large")
+        raise ssrf.SSRFError("too large")
 
     with patch.object(image_toolkit, "ssrf_safe_get", fake_get):
         with pytest.raises(HTTPException) as exc_info:

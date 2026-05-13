@@ -18,7 +18,6 @@ from fal.toolkit.utils.ssrf import (
     SafeResponse,
     SSRFError,
     SSRFHTTPStatusError,
-    SSRFSizeExceededError,
     ssrf_safe_get_to_file,
 )
 
@@ -79,6 +78,13 @@ def _content_length_from_response(response: SafeResponse) -> int:
         return -1
 
 
+def _content_length_from_headers(headers: dict[str, str]) -> int:
+    try:
+        return int(headers.get("content-length", -1))
+    except ValueError:
+        return -1
+
+
 def download_file(
     url: str,
     target_dir: str | Path,
@@ -120,6 +126,17 @@ def download_file(
     """
     ONE_MB = 1024**2
     parsed_url = urlparse(url)
+    limit_bytes = filesize_limit * ONE_MB if filesize_limit is not None else None
+
+    def raise_if_declared_size_exceeds_limit(headers: dict[str, str]) -> None:
+        expected_filesize = _content_length_from_headers(headers)
+        expected_filesize_mb = expected_filesize / ONE_MB
+
+        if filesize_limit is not None and expected_filesize_mb > filesize_limit:
+            raise DownloadError(
+                f"""File to be downloaded is of size {expected_filesize_mb},
+                    which is over the limit of {filesize_limit}"""
+            )
 
     target_dir_path = Path(target_dir)
 
@@ -156,9 +173,8 @@ def download_file(
                 url,
                 temp_path,
                 headers=_headers(request_headers),
-                max_size=filesize_limit * ONE_MB
-                if filesize_limit is not None
-                else None,
+                max_size=limit_bytes,
+                on_response_headers=raise_if_declared_size_exceeds_limit,
             )
 
         file_name = _filename_from_response(url, response)
@@ -180,22 +196,17 @@ def download_file(
             print(f"Downloading {url} to {target_path}")
 
         os.replace(temp_path, target_path)
+    except DownloadError:
+        temp_path.unlink(missing_ok=True)
+        raise
     except SSRFHTTPStatusError as e:
         temp_path.unlink(missing_ok=True)
         raise DownloadError(f"Failed to get remote file properties for {url}") from e
-    except SSRFSizeExceededError as e:
-        temp_path.unlink(missing_ok=True)
-        if e.declared_size is not None:
-            expected_filesize_mb = e.declared_size / ONE_MB
-            raise DownloadError(
-                f"""File to be downloaded is of size {expected_filesize_mb},
-                    which is over the limit of {filesize_limit}"""
-            ) from e
-
-        error_target = target_path or target_dir_path
-        raise DownloadError(f"Failed to download {url} to {error_target}") from e
     except SSRFError as e:
         temp_path.unlink(missing_ok=True)
+        if str(e).startswith("File body exceeded"):
+            error_target = target_path or target_dir_path
+            raise DownloadError(f"Failed to download {url} to {error_target}") from e
         raise DownloadError(str(e)) from e
     except Exception as e:
         temp_path.unlink(missing_ok=True)

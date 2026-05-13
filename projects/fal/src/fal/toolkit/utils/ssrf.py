@@ -16,7 +16,7 @@ import tempfile
 import urllib.parse
 import warnings
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
 
 DEFAULT_ALLOWED_SCHEMES: frozenset[str] = frozenset({"http", "https"})
 DEFAULT_MAX_REDIRECT_HOPS = 5
@@ -42,19 +42,6 @@ class SSRFHTTPStatusError(SSRFError):
     def __init__(self, status_code: int):
         self.status_code = status_code
         super().__init__(f"HTTP request failed with status code {status_code}")
-
-
-class SSRFSizeExceededError(SSRFError):
-    def __init__(
-        self,
-        message: str = "",
-        *,
-        declared_size: int | None = None,
-        max_size: int | None = None,
-    ):
-        self.declared_size = declared_size
-        self.max_size = max_size
-        super().__init__(message)
 
 
 class SSRFConnectionError(SSRFError):
@@ -248,11 +235,7 @@ def _raise_if_declared_size_exceeds_limit(
 
     content_length = _content_length_from_headers(headers)
     if content_length is not None and content_length > max_size:
-        raise SSRFSizeExceededError(
-            f"File body exceeded {max_size} bytes before download",
-            declared_size=content_length,
-            max_size=max_size,
-        )
+        raise SSRFError(f"File body exceeded {max_size} bytes before download")
 
 
 class _PinnedHTTPSConnection(http.client.HTTPSConnection):
@@ -342,9 +325,7 @@ def _read_response_content(
 
             bytes_read += len(chunk)
             if max_size is not None and bytes_read > max_size:
-                raise SSRFSizeExceededError(
-                    f"File body exceeded {max_size} bytes during download"
-                )
+                raise SSRFError(f"File body exceeded {max_size} bytes during download")
             chunks.append(chunk)
     except http.client.IncompleteRead as exc:
         raise SSRFConnectionError(
@@ -386,7 +367,7 @@ def _stream_response_to_file(
                     file.write(chunk)
                     bytes_written += len(chunk)
                     if max_size is not None and bytes_written > max_size:
-                        raise SSRFSizeExceededError(
+                        raise SSRFError(
                             f"File body exceeded {max_size} bytes during download"
                         )
             except http.client.IncompleteRead as exc:
@@ -416,6 +397,7 @@ def _request_one_hop(
     body_mode: str,
     target_path: str | None = None,
     chunk_size: int = 64 * 1024,
+    on_response_headers: Callable[[dict[str, str]], None] | None = None,
 ) -> SafeResponse:
     connection = _open_connection(parsed, target_ip, timeout=timeout)
     try:
@@ -431,6 +413,9 @@ def _request_one_hop(
 
         if body_mode == _BODY_HEADERS:
             return SafeResponse(response.status, response_headers)
+
+        if on_response_headers is not None:
+            on_response_headers(response_headers)
 
         _raise_if_declared_size_exceeds_limit(response_headers, max_size)
         expected_size = _content_length_from_headers(response_headers)
@@ -470,6 +455,7 @@ def _request_resolved_url(
     body_mode: str,
     target_path: str | None,
     chunk_size: int,
+    on_response_headers: Callable[[dict[str, str]], None] | None,
 ) -> SafeResponse:
     hostname = parsed.hostname
     if not hostname:
@@ -487,6 +473,7 @@ def _request_resolved_url(
                 body_mode=body_mode,
                 target_path=target_path,
                 chunk_size=chunk_size,
+                on_response_headers=on_response_headers,
             )
         except (OSError, SSRFConnectionError, http.client.IncompleteRead) as exc:
             last_error = exc
@@ -509,6 +496,7 @@ def _safe_request(
     body_mode: str,
     target_path: str | None = None,
     chunk_size: int = 64 * 1024,
+    on_response_headers: Callable[[dict[str, str]], None] | None = None,
 ) -> SafeResponse:
     _warn_if_proxy_configured()
 
@@ -537,6 +525,7 @@ def _safe_request(
             body_mode=body_mode,
             target_path=target_path,
             chunk_size=chunk_size,
+            on_response_headers=on_response_headers,
         )
 
         if response.status_code not in _REDIRECT_STATUSES:
@@ -569,6 +558,7 @@ def ssrf_safe_get(
         headers=headers,
         allowed_schemes=allowed_schemes,
         body_mode=_BODY_CONTENT,
+        on_response_headers=None,
     )
 
 
@@ -588,6 +578,7 @@ def ssrf_safe_get_headers(
         headers=headers,
         allowed_schemes=allowed_schemes,
         body_mode=_BODY_HEADERS,
+        on_response_headers=None,
     )
 
 
@@ -601,6 +592,7 @@ def ssrf_safe_get_to_file(
     headers: dict[str, str] | None = None,
     allowed_schemes: frozenset[str] = DEFAULT_ALLOWED_SCHEMES,
     chunk_size: int = 64 * 1024,
+    on_response_headers: Callable[[dict[str, str]], None] | None = None,
 ) -> SafeResponse:
     return _safe_request(
         url,
@@ -612,4 +604,5 @@ def ssrf_safe_get_to_file(
         body_mode=_BODY_FILE,
         target_path=os.fspath(target_path),
         chunk_size=chunk_size,
+        on_response_headers=on_response_headers,
     )
