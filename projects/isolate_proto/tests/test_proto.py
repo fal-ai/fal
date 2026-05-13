@@ -133,6 +133,78 @@ def test_callable_entrypoint_fields():
     assert register_request_last_write_wins.entrypoint == "pkg.mod:App.run"
 
 
+def test_build_environment_field_presence():
+    hosted_run = isolate_proto.HostedRun(entrypoint="pkg.mod:func")
+    assert hosted_run.HasField("build_environment") is False
+
+    hosted_run_skip = isolate_proto.HostedRun(
+        entrypoint="pkg.mod:func", build_environment=False
+    )
+    assert hosted_run_skip.HasField("build_environment") is True
+    assert hosted_run_skip.build_environment is False
+
+    register = isolate_proto.RegisterApplicationRequest()
+    assert register.HasField("build_environment") is False
+
+    register_skip = isolate_proto.RegisterApplicationRequest(build_environment=False)
+    assert register_skip.HasField("build_environment") is True
+    assert register_skip.build_environment is False
+
+
+def test_env_id_field_presence_on_run_and_register():
+    hosted_run = isolate_proto.HostedRun(entrypoint="pkg.mod:func")
+    assert hosted_run.HasField("env_id") is False
+
+    hosted_run_with_env = isolate_proto.HostedRun(
+        entrypoint="pkg.mod:func", env_id="abc123"
+    )
+    assert hosted_run_with_env.HasField("env_id") is True
+    assert hosted_run_with_env.env_id == "abc123"
+
+    register = isolate_proto.RegisterApplicationRequest()
+    assert register.HasField("env_id") is False
+
+    register_with_env = isolate_proto.RegisterApplicationRequest(env_id="abc123")
+    assert register_with_env.HasField("env_id") is True
+    assert register_with_env.env_id == "abc123"
+
+    run_result = isolate_proto.HostedRunResult(run_id="r1")
+    assert run_result.HasField("env_id") is False
+    run_result_with_env = isolate_proto.HostedRunResult(run_id="r1", env_id="abc123")
+    assert run_result_with_env.env_id == "abc123"
+
+    register_result = isolate_proto.RegisterApplicationResult()
+    assert register_result.HasField("env_id") is False
+    register_result_with_env = isolate_proto.RegisterApplicationResult(env_id="abc123")
+    assert register_result_with_env.env_id == "abc123"
+
+
+def test_build_environment_request_construction():
+    request = isolate_proto.BuildEnvironmentRequest(
+        environment_name="main",
+        application_name="my-app",
+    )
+    assert request.environment_name == "main"
+    assert request.application_name == "my-app"
+
+
+def test_build_environment_result_construction():
+    result = isolate_proto.BuildEnvironmentResult()
+    assert result.HasField("status") is False
+    assert result.env_id == ""
+    assert list(result.logs) == []
+
+    result_with_status = isolate_proto.BuildEnvironmentResult(
+        status=isolate_proto.HostedRunStatus(
+            state=isolate_proto.RunState.SUCCESS,
+        ),
+        env_id="abc123",
+    )
+    assert result_with_status.HasField("status") is True
+    assert result_with_status.status.state == isolate_proto.RunState.SUCCESS
+    assert result_with_status.env_id == "abc123"
+
+
 def test_register_application_private_logs_presence():
     request_without_private_logs = isolate_proto.RegisterApplicationRequest()
     assert request_without_private_logs.HasField("private_logs") is False

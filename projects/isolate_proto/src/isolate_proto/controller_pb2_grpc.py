@@ -159,6 +159,11 @@ class IsolateControllerStub(object):
                 request_serializer=controller__pb2.DeleteEnvironmentRequest.SerializeToString,
                 response_deserializer=controller__pb2.DeleteEnvironmentResponse.FromString,
                 _registered_method=True)
+        self.BuildEnvironment = channel.unary_stream(
+                '/controller.IsolateController/BuildEnvironment',
+                request_serializer=controller__pb2.BuildEnvironmentRequest.SerializeToString,
+                response_deserializer=controller__pb2.BuildEnvironmentResult.FromString,
+                _registered_method=True)
 
 
 class IsolateControllerServicer(object):
@@ -335,6 +340,14 @@ class IsolateControllerServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def BuildEnvironment(self, request, context):
+        """Build (or warm the cache for) an environment without running anything in it.
+        Streams build logs and terminal status; reuses the same caches as Run/RegisterApplication.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_IsolateControllerServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -457,6 +470,11 @@ def add_IsolateControllerServicer_to_server(servicer, server):
                     servicer.DeleteEnvironment,
                     request_deserializer=controller__pb2.DeleteEnvironmentRequest.FromString,
                     response_serializer=controller__pb2.DeleteEnvironmentResponse.SerializeToString,
+            ),
+            'BuildEnvironment': grpc.unary_stream_rpc_method_handler(
+                    servicer.BuildEnvironment,
+                    request_deserializer=controller__pb2.BuildEnvironmentRequest.FromString,
+                    response_serializer=controller__pb2.BuildEnvironmentResult.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -1107,6 +1125,33 @@ class IsolateController(object):
             '/controller.IsolateController/DeleteEnvironment',
             controller__pb2.DeleteEnvironmentRequest.SerializeToString,
             controller__pb2.DeleteEnvironmentResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def BuildEnvironment(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_stream(
+            request,
+            target,
+            '/controller.IsolateController/BuildEnvironment',
+            controller__pb2.BuildEnvironmentRequest.SerializeToString,
+            controller__pb2.BuildEnvironmentResult.FromString,
             options,
             channel_credentials,
             insecure,
