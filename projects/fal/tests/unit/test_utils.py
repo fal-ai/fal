@@ -169,6 +169,26 @@ def test_load_function_from_applies_toml_app_files_for_fal_app(tmp_path):
     assert wrapped_cls.app_files_context_dir == "."
 
 
+def test_load_function_from_applies_toml_exposed_port_for_fal_app(tmp_path):
+    app_file = tmp_path / "app.py"
+    app_file.write_text(
+        "import fal\n"
+        "\n"
+        "class MyApp(fal.App):\n"
+        "    @fal.endpoint('/')\n"
+        "    def run(self):\n"
+        "        return {'ok': True}\n"
+    )
+
+    client = SyncServerlessClient(host="api.alpha.fal.ai")
+    host = client._create_host(local_file_path=str(app_file))
+    options = Options(gateway={"exposed_port": 9000})
+
+    loaded = load_function_from(host, str(app_file), "MyApp", options=options)
+
+    assert loaded.function.options.gateway["exposed_port"] == 9000
+
+
 def test_load_function_from_preserves_app_defined_app_files_over_toml(tmp_path):
     app_file = tmp_path / "app.py"
     app_file.write_text(

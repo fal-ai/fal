@@ -2186,6 +2186,7 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
     app_name: str | None = None
     app_auth: AuthModeLiteral | None = None
     entrypoint: str | None = None
+    _entrypoint_exposed_port_defaulted: bool = False
 
     def __post_init__(self) -> None:
         if self.raw_func is None and self.entrypoint is None:
@@ -2203,6 +2204,8 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
         self.__dict__.update(state)
         if not hasattr(self, "executor"):
             self.executor = ThreadPoolExecutor()
+        if not hasattr(self, "_entrypoint_exposed_port_defaulted"):
+            self._entrypoint_exposed_port_defaulted = False
 
     @property
     def run_entrypoint(self) -> str | None:
@@ -2351,7 +2354,7 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
             entrypoint_target_keeps_own_port = (
                 self.raw_func is None
                 and isinstance(local_serve_options_target, IsolatedFunction)
-                and self.options.gateway.get("exposed_port") == _SERVE_PORT
+                and self._entrypoint_exposed_port_defaulted
             )
             effective_exposed_port = exposed_port
             if effective_exposed_port is None and not entrypoint_target_keeps_own_port:

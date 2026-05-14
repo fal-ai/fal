@@ -161,6 +161,7 @@ def load_function_from(
     with open(file_path) as f:
         source_code = f.read()
 
+    wrapped_app = False
     if isinstance(target, type) and issubclass(target, App):
         # ``App.__init_subclass__`` enforces ``image``/``app_files`` exclusivity
         # at class-definition time, but ``image`` can also arrive from
@@ -179,6 +180,7 @@ def load_function_from(
             force_env_build=force_env_build,
             limit_max_requests=limit_max_requests,
         )
+        wrapped_app = True
 
     if not isinstance(target, IsolatedFunction):
         raise FalServerlessError(
@@ -186,6 +188,8 @@ def load_function_from(
         )
     if options is not None:
         _merge_options(target.options, options)
+        if wrapped_app and options.gateway.get("exposed_port") is not None:
+            target.options.gateway["exposed_port"] = options.gateway["exposed_port"]
 
     # Override the host so CLI-provided context (e.g. team) is applied.
     # For @fal.function, the host was set at import time without CLI context.
@@ -236,6 +240,7 @@ def _load_from_python_entry_point(
     _parse_python_entry_point(python_entry_point)
 
     merged_options = deepcopy(options) if options is not None else ApiOptions()
+    exposed_port_defaulted = "exposed_port" not in merged_options.gateway
     merged_options.gateway.setdefault("exposed_port", 8080)
     # The entry-point path bypasses Host.parse_options (which is where ``kind``
     # would normally be defaulted for ``@fal.function``/``wrap_app``), so set
@@ -249,6 +254,7 @@ def _load_from_python_entry_point(
         app_name=app_name,
         app_auth=app_auth,
         entrypoint=python_entry_point,
+        _entrypoint_exposed_port_defaulted=exposed_port_defaulted,
     )
 
     return LoadedFunction(
