@@ -2303,7 +2303,20 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
         return ["/"]
 
     def run_local(self, *args: ArgsT.args, **kwargs: ArgsT.kwargs) -> ReturnT:
-        return self._run_local(args=args, kwargs=kwargs)
+        call_kwargs = dict(kwargs)
+        exposed_port: int | None = None
+        exposed_metrics_port: int | None = None
+        if self._supports_local_serve_options():
+            exposed_port = cast(Optional[int], call_kwargs.pop("exposed_port", None))
+            exposed_metrics_port = cast(
+                Optional[int], call_kwargs.pop("exposed_metrics_port", None)
+            )
+        return self._run_local(
+            args=args,
+            kwargs=call_kwargs,
+            exposed_port=exposed_port,
+            exposed_metrics_port=exposed_metrics_port,
+        )
 
     def _run_local(
         self,
@@ -2323,7 +2336,8 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
 
         func = self._resolve_local_func()
         call_kwargs = dict(kwargs)
-        supports_local_serve_options = self._supports_local_serve_options()
+        local_serve_options_target = self._local_serve_options_target()
+        supports_local_serve_options = local_serve_options_target is not None
         local_serve_options_requested = (
             exposed_port is not None or exposed_metrics_port is not None
         )
@@ -2334,11 +2348,14 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
             )
 
         if supports_local_serve_options:
-            effective_exposed_port = (
-                exposed_port
-                if exposed_port is not None
-                else self.options.get_exposed_port()
+            entrypoint_target_keeps_own_port = (
+                self.raw_func is None
+                and isinstance(local_serve_options_target, IsolatedFunction)
+                and self.options.gateway.get("exposed_port") == _SERVE_PORT
             )
+            effective_exposed_port = exposed_port
+            if effective_exposed_port is None and not entrypoint_target_keeps_own_port:
+                effective_exposed_port = self.options.get_exposed_port()
             if effective_exposed_port is not None:
                 call_kwargs["exposed_port"] = effective_exposed_port
             if exposed_metrics_port is not None:
@@ -2392,19 +2409,31 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
             )
         return self.func  # type: ignore[return-value]
 
-    def _supports_local_serve_options(self) -> bool:
+    def _local_serve_options_target(self) -> Any | None:
         if self.raw_func is not None:
-            return bool(
-                getattr(self.raw_func, "_fal_local_app", False)
-                or self.options.gateway.get("serve")
-            )
+            if getattr(
+                self.raw_func, "_fal_local_app", False
+            ) or self.options.gateway.get("serve"):
+                return self
+            return None
         if self.entrypoint is None:
-            return False
+            return None
 
         from fal.app import App  # noqa: PLC0415
 
         target = self._resolve_entrypoint_target()
-        return isinstance(target, type) and issubclass(target, App)
+        if isinstance(target, type) and issubclass(target, App):
+            return target
+        if (
+            isinstance(target, IsolatedFunction)
+            and target.raw_func is not None
+            and target._supports_local_serve_options()
+        ):
+            return target
+        return None
+
+    def _supports_local_serve_options(self) -> bool:
+        return self._local_serve_options_target() is not None
 
     @overload
     def on(

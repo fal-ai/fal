@@ -145,6 +145,94 @@ def test_run_local_forwards_exposed_ports_to_served_function(monkeypatch):
     assert called_metrics_port == 3001
 
 
+def test_run_local_forwards_exposed_ports_to_entrypoint_served_function(monkeypatch):
+    from fal.api.api import ServeWrapper
+
+    called_port: int | None = None
+    called_metrics_port: int | None = None
+
+    async def fake_serve(
+        self,
+        *,
+        port: int = 8080,
+        metrics_port: int = 9090,
+    ):
+        nonlocal called_port, called_metrics_port
+        called_port = port
+        called_metrics_port = metrics_port
+
+    monkeypatch.setattr(ServeWrapper, "serve", fake_serve)
+
+    served_function = IsolatedFunction(
+        host=_FakeHost(),
+        raw_func=lambda: "local",
+        options=Options(gateway={"serve": True}),
+    )
+    fake_module = MagicMock()
+    fake_module.served_function = served_function
+
+    import importlib
+
+    def fake_import_module(name):
+        assert name == "user_module"
+        return fake_module
+
+    monkeypatch.setattr(importlib, "import_module", fake_import_module)
+
+    iso = IsolatedFunction(
+        host=_FakeHost(),
+        options=Options(gateway={"exposed_port": 8080}),
+        entrypoint="user_module:served_function",
+    )
+
+    run_api(iso, local=True, exposed_port=3000, exposed_metrics_port=3001)
+
+    assert called_port == 3000
+    assert called_metrics_port == 3001
+
+
+def test_run_local_entrypoint_served_function_keeps_configured_port(monkeypatch):
+    from fal.api.api import ServeWrapper
+
+    called_ports: list[int] = []
+
+    async def fake_serve(
+        self,
+        *,
+        port: int = 8080,
+        metrics_port: int = 9090,
+    ):
+        called_ports.append(port)
+
+    monkeypatch.setattr(ServeWrapper, "serve", fake_serve)
+
+    served_function = IsolatedFunction(
+        host=_FakeHost(),
+        raw_func=lambda: "local",
+        options=Options(gateway={"serve": True, "exposed_port": 9000}),
+    )
+    fake_module = MagicMock()
+    fake_module.served_function = served_function
+
+    import importlib
+
+    def fake_import_module(name):
+        assert name == "user_module"
+        return fake_module
+
+    monkeypatch.setattr(importlib, "import_module", fake_import_module)
+
+    iso = IsolatedFunction(
+        host=_FakeHost(),
+        options=Options(gateway={"exposed_port": 8080}),
+        entrypoint="user_module:served_function",
+    )
+
+    run_api(iso, local=True)
+
+    assert called_ports == [9000]
+
+
 def test_run_local_exposed_port_override_does_not_mutate_options(monkeypatch):
     from fal.api.api import ServeWrapper
 
