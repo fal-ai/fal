@@ -15,6 +15,8 @@ def test_run():
     assert args.func_ref == ("/my/path.py", "myfunc")
     assert args.machine_type is None
     assert args.limit_max_requests is None
+    assert args.exposed_port is None
+    assert args.exposed_metrics_port is None
 
 
 def test_run_with_env():
@@ -49,6 +51,25 @@ def test_run_with_limit_max_requests():
     assert args.func == _run
     assert args.func_ref == ("/my/path.py", "myfunc")
     assert args.limit_max_requests == 1
+
+
+def test_run_with_exposed_port_options():
+    args = parse_args(
+        [
+            "run",
+            "/my/path.py::myfunc",
+            "--local",
+            "--exposed-port",
+            "3000",
+            "--exposed-metrics-port",
+            "3001",
+        ]
+    )
+    assert args.func == _run
+    assert args.func_ref == ("/my/path.py", "myfunc")
+    assert args.local is True
+    assert args.exposed_port == 3000
+    assert args.exposed_metrics_port == 3001
 
 
 @patch("fal.api.client.SyncServerlessClient._create_host")
@@ -105,6 +126,7 @@ def mock_parse_pyproject_toml():
                 "python_entry_point": "simple.app:SimpleApp",
                 "python_version": "3.12",
                 "requirements": ["fal"],
+                "exposed_port": 9000,
             },
         }
     }
@@ -124,6 +146,9 @@ def mock_args(
     auth: Optional[str] = "public",
     machine_type: Optional[str] = None,
     limit_max_requests: Optional[int] = None,
+    local: bool = False,
+    exposed_port: Optional[int] = None,
+    exposed_metrics_port: Optional[int] = None,
 ):
     args = MagicMock()
     args.host = host
@@ -137,7 +162,9 @@ def mock_args(
     args.env = None
     args.machine_type = machine_type
     args.limit_max_requests = limit_max_requests
-    args.local = False
+    args.local = local
+    args.exposed_port = exposed_port
+    args.exposed_metrics_port = exposed_metrics_port
     return args
 
 
@@ -180,6 +207,7 @@ def test_run_forwards_python_entry_point_to_loader(
     assert call_kwargs["python_entry_point"] == "simple.app:SimpleApp"
     assert call_kwargs["options"].environment["python_version"] == "3.12"
     assert call_kwargs["options"].environment["requirements"] == ["fal"]
+    assert call_kwargs["options"].gateway["exposed_port"] == 9000
 
 
 @patch("fal.api.client.SyncServerlessClient._create_host")
@@ -207,6 +235,61 @@ def test_run_forwards_limit_max_requests_to_load_function_from(
 
     _, call_kwargs = mock_load_function_from.call_args
     assert call_kwargs["limit_max_requests"] == 1
+
+
+@patch("fal.api.run.run")
+@patch("fal.api.client.SyncServerlessClient._create_host")
+@patch("fal.utils.load_function_from")
+def test_run_forwards_exposed_port_options_to_run_api(
+    mock_load_function_from,
+    mock_create_host,
+    mock_run_api,
+):
+    host = mocked_fal_serverless_host("my-host")
+    mock_create_host.return_value = host
+
+    isolated_function = MagicMock()
+    loaded = MagicMock()
+    loaded.function = isolated_function
+    loaded.app_name = None
+    loaded.app_auth = "private"
+    mock_load_function_from.return_value = loaded
+
+    args = mock_args(
+        func_ref=("/my/path.py", "myfunc"),
+        host="my-host",
+        local=True,
+        exposed_port=3000,
+        exposed_metrics_port=3001,
+    )
+
+    _run(args)
+
+    _, call_kwargs = mock_run_api.call_args
+    assert call_kwargs["local"] is True
+    assert call_kwargs["exposed_port"] == 3000
+    assert call_kwargs["exposed_metrics_port"] == 3001
+
+
+@patch("fal.api.client.SyncServerlessClient._create_host")
+@patch("fal.utils.load_function_from")
+def test_run_rejects_exposed_port_options_without_local(
+    mock_load_function_from, mock_create_host
+):
+    args = mock_args(
+        func_ref=("/my/path.py", "myfunc"),
+        host="my-host",
+        exposed_port=3000,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="--exposed-port and --exposed-metrics-port can only be used with --local",
+    ):
+        _run(args)
+
+    mock_create_host.assert_not_called()
+    mock_load_function_from.assert_not_called()
 
 
 @patch("fal.api.client.SyncServerlessClient._create_host")
