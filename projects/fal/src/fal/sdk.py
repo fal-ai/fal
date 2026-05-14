@@ -906,8 +906,6 @@ class FalServerlessConnection:
         )
         if private_logs is not None:
             request.private_logs = private_logs
-        if metadata and metadata.get("openapi_url"):
-            request.fetch_openapi = True
         for partial_result in self.stub.RegisterApplication(request):
             yield from_grpc(partial_result)
 

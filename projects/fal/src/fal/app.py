@@ -1031,32 +1031,196 @@ class App(BaseServable):
         raise NotImplementedError
 
 
+def _make_managed_app_post_spawn(openapi_url: str) -> Callable[[Any], None]:
+    """Build a callback that, when invoked with a `service_urls` payload, polls
+    the running runner's `openapi_url` in a daemon thread and prints the
+    discovered routes to the CLI.
+
+    Used as a post-spawn hook so the user gets endpoint visibility for
+    ManagedApps where the schema couldn't be extracted locally (e.g., subprocess
+    servers like sglang).  Polls for up to 10 minutes to accommodate slow model
+    loading.
+    """
+
+    def _post_spawn(service_urls: Any) -> None:
+        base_url = getattr(service_urls, "run", None)
+        if not base_url:
+            return
+        threading.Thread(
+            target=_poll_and_announce_managed_app_openapi,
+            args=(base_url, openapi_url),
+            daemon=True,
+        ).start()
+
+    return _post_spawn
+
+
+def _poll_and_announce_managed_app_openapi(base_url: str, openapi_url: str) -> None:
+    try:
+        import httpx  # noqa: PLC0415
+    except ImportError:
+        return
+
+    poll_url = f"{base_url.rstrip('/')}{openapi_url}"
+    deadline = time.monotonic() + 600.0  # tolerate slow startups (e.g. sglang model load)
+
+    while time.monotonic() < deadline:
+        try:
+            resp = httpx.get(poll_url, timeout=10.0)
+            if resp.is_success:
+                try:
+                    schema = resp.json()
+                except Exception:
+                    return
+                _print_managed_app_endpoints(base_url, schema)
+                return
+        except Exception:
+            pass
+        time.sleep(5.0)
+
+
+def _print_managed_app_endpoints(base_url: str, schema: dict[str, Any]) -> None:
+    paths = sorted(schema.get("paths", {}).keys())
+    if not paths:
+        return
+
+    from rich.console import Console  # noqa: PLC0415
+    from rich.text import Text  # noqa: PLC0415
+
+    console = Console(stderr=True)
+    body = Text()
+    body.append("\n▸ Discovered endpoints ", style="bold")
+    body.append(f"({len(paths)} from {base_url.rstrip('/')})\n", style="dim")
+    for p in paths:
+        body.append(f"  {base_url.rstrip('/')}{p}\n", style="cyan")
+    console.print(body)
+
+
+class _CaptureAndStop(BaseException):
+    """Internal: signals that we've captured the FastAPI app from serve()."""
+
+
+def _extract_openapi(cls: type) -> dict[str, Any] | None:
+    """Run cls.serve() with a patched uvicorn.run that captures the FastAPI app
+    and aborts before any port binding.
+
+    No server starts, no port is held, no event loop is created. We only need
+    the user to have built their FastAPI/Starlette app by the time uvicorn.run
+    is reached — the same kind of cheap construction that `App.openapi()` does
+    via `@fal.endpoint` decorators in the existing branch.
+
+    Returns None if uvicorn isn't importable locally, or if the user's serve()
+    fails before uvicorn.run is called (e.g., container-only deps missing) —
+    in that case the caller falls back to deferred metadata.
+    """
+    try:
+        import uvicorn  # noqa: PLC0415
+    except ImportError:
+        return None
+
+    try:
+        instance = cls()
+    except Exception:
+        return None
+
+    captured: list[Any] = []
+    original_run = uvicorn.run
+
+    def _capturing_run(app: Any, *args: Any, **kwargs: Any) -> None:
+        captured.append(app)
+        raise _CaptureAndStop()
+
+    uvicorn.run = _capturing_run  # type: ignore[assignment]
+    try:
+        if inspect.iscoroutinefunction(cls.serve):
+            loop = asyncio.new_event_loop()
+            try:
+                loop.run_until_complete(instance.serve())
+            except _CaptureAndStop:
+                pass
+            finally:
+                loop.close()
+        else:
+            try:
+                instance.serve()
+            except _CaptureAndStop:
+                pass
+    except Exception:
+        return None
+    finally:
+        uvicorn.run = original_run  # type: ignore[assignment]
+
+    if not captured:
+        return None
+
+    app = captured[0]
+    try:
+        return app.openapi()  # FastAPI / Starlette
+    except Exception:
+        return None
+
+
 def wrap_managed_app(cls: type, **kwargs) -> IsolatedFunction:
     include_modules_from(cls)
 
-    # openapi_url tells the backend where to fetch the OpenAPI spec from the
-    # running server after startup.  The fetch_openapi flag in the gRPC request
-    # (RegisterApplicationRequest.fetch_openapi, field 19) is set in sdk.py
-    # when this key is present in metadata.
-    metadata: dict[str, Any] = {"openapi_url": cls.openapi_url}
+    host = kwargs.get("host", None)
+    if host:
+        cls.local_file_path = host.local_file_path
 
-    routes = ["/"]
+    # Try to extract the OpenAPI spec without starting a server. If local deps
+    # are missing (e.g., container-only image), gracefully fall back to
+    # deferred metadata via openapi_url so the backend can fetch it post-startup.
+    metadata: dict[str, Any] = {"openapi_url": cls.openapi_url}
+    schema = _extract_openapi(cls)
+    if schema:
+        metadata["openapi"] = schema
 
     def initialize_and_serve():
-        instance = cls()
+        import os  # noqa: PLC0415
+        import runpy  # noqa: PLC0415
 
-        if inspect.iscoroutinefunction(cls.serve):
-            if threading.current_thread() == threading.main_thread():
-                asyncio.run(instance.serve())
-            else:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                loop.run_until_complete(instance.serve())
+        # Re-execute the user's source file in the real container environment
+        # so module-level code runs and the real class (with all deps) is used.
+        app_dir = "/app"
+        if app_dir not in sys.path:
+            sys.path.insert(0, app_dir)
+
+        src_name = os.path.basename(getattr(cls, "local_file_path", "") or "")
+        remote_src = os.path.join(app_dir, src_name) if src_name else None
+        if remote_src and os.path.exists(remote_src):
+            ns = runpy.run_path(remote_src, run_name="__main__")
+            real_cls = ns.get(cls.__name__)
+            cls_to_run = real_cls if isinstance(real_cls, type) else cls
         else:
-            instance.serve()
+            cls_to_run = cls
 
+        instance = cls_to_run()
+
+        async def _serve_async():
+            if inspect.iscoroutinefunction(cls_to_run.serve):
+                await instance.serve()
+            else:
+                # Run sync serve() in an executor thread so that calls like
+                # uvicorn.run() (which creates its own event loop internally)
+                # don't conflict with the agent's already-running event loop.
+                await asyncio.get_event_loop().run_in_executor(None, instance.serve)
+
+        if threading.current_thread() == threading.main_thread():
+            return _serve_async()
+        else:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(_serve_async())
+
+    routes = sorted(schema.get("paths", {}).keys()) if schema else []
     initialize_and_serve._run_on_main_thread = True  # type: ignore[attr-defined]
-    initialize_and_serve._routes = routes  # type: ignore[attr-defined]
+    initialize_and_serve._routes = routes or ["/"]  # type: ignore[attr-defined]
+    # If we couldn't extract the schema locally, hook a post-spawn poller so the
+    # user gets endpoint visibility once the runner is up.
+    if not schema:
+        initialize_and_serve._post_spawn = _make_managed_app_post_spawn(  # type: ignore[attr-defined]
+            cls.openapi_url
+        )
 
     host_kwargs = dict(cls.host_kwargs)
     kind = host_kwargs.pop("kind", "virtualenv")
@@ -1138,6 +1302,7 @@ class ManagedApp:
     max_multiplexing: ClassVar[Optional[int]] = None
     skip_retry_conditions: ClassVar[Optional[list[RetryConditionLiteral]]] = None
     termination_grace_period_seconds: ClassVar[Optional[int]] = None
+    local_file_path: ClassVar[Optional[str]] = None
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         app_name = kwargs.pop("name", None) or _to_fal_app_name(cls.__name__)

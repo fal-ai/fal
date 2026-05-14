@@ -187,6 +187,30 @@ class ResultHandler:
         """Called when a partial result carries service URLs."""
 
 
+class _PostSpawnHandler(ResultHandler):
+    """Wraps another handler and fires a one-shot callback the first time
+    service_urls arrive.  Used by `host.run` to attach a function-level
+    `_post_spawn` hook (e.g. ManagedApp's openapi poller) without modifying
+    the underlying handler."""
+
+    def __init__(self, inner: ResultHandler, callback: Callable[[Any], None]) -> None:
+        self._inner = inner
+        self._callback: Callable[[Any], None] | None = callback
+
+    def __call__(self, partial_result: Any) -> None:
+        self._inner(partial_result)
+        if self._callback is None:
+            return
+        service_urls = getattr(partial_result, "service_urls", None)
+        if service_urls is None:
+            return
+        callback, self._callback = self._callback, None  # one-shot
+        try:
+            callback(service_urls)
+        except Exception:
+            pass
+
+
 class SpawnResultHandler(ResultHandler):
     """Default handler for FalServerlessHost.spawn: populates a SpawnInfo from
     streamed partial results.
@@ -1018,6 +1042,10 @@ class FalServerlessHost(Host):
                 auth_mode=effective_auth_mode,
                 endpoints=getattr(func, "_routes", ["/"]),  # type: ignore[attr-defined]
             )
+
+        post_spawn = getattr(func, "_post_spawn", None)
+        if callable(post_spawn):
+            result_handler = _PostSpawnHandler(result_handler, post_spawn)
 
         return self._run(
             func,
