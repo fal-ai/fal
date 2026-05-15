@@ -37,6 +37,51 @@ def test_deploy_with_env():
     assert args.env == "dev"
 
 
+def test_execute_prepared_deployment_reuses_result_handler_for_build_by_default():
+    from fal.api.deploy import PreparedDeployment, execute_prepared_deployment
+    from fal.sdk import (
+        RegisterApplicationResult,
+        RegisterApplicationResultType,
+        ServiceURLs,
+    )
+
+    host = MagicMock()
+    isolated_function = MagicMock()
+    isolated_function.options = Options()
+    isolated_function.func = lambda: None
+    isolated_function.run_entrypoint = None
+    isolated_function.endpoints = ["/"]
+    isolated_function.build_metadata.return_value = {}
+
+    host.register.return_value = RegisterApplicationResult(
+        result=RegisterApplicationResultType(application_id="app-id"),
+        service_urls=ServiceURLs(
+            playground="https://playground.example",
+            run="https://run.example",
+            queue="https://queue.example",
+            ws="wss://ws.example",
+            log="https://log.example",
+        ),
+    )
+    prepared = PreparedDeployment(
+        host=host,
+        loaded=SimpleNamespace(
+            function=isolated_function,
+            app_name="my-app",
+            app_auth="public",
+            source_code=None,
+        ),
+        app_data=AppData(deployment_strategy="rolling"),
+        display_name="MyApp",
+    )
+
+    result_handler = MagicMock()
+    execute_prepared_deployment(prepared, result_handler=result_handler)
+
+    _, build_kwargs = host.build_environment.call_args
+    assert build_kwargs["result_handler"] is result_handler
+
+
 def test_deploy_with_env_and_other_options():
     args = parse_args(
         [

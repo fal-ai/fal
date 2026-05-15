@@ -23,6 +23,7 @@ def run(
     exposed_metrics_port: int | None = None,
     result_handler: ResultHandler | None = None,
     reraise: bool = True,
+    build_environment: bool | None = None,
 ) -> Any:
     """Run an ``IsolatedFunction`` locally or on its host with friendly errors.
 
@@ -62,6 +63,7 @@ def run(
             application_auth_mode=isolated_function.app_auth,
             result_handler=result_handler,
             entrypoint=isolated_function.run_entrypoint,
+            build_environment=build_environment,
         )
     except FalMissingDependencyError as e:
         if func is None:
