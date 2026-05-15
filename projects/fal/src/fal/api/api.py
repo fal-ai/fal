@@ -836,8 +836,11 @@ class FalServerlessHost(Host):
 
             context = Path(options.files_context_dir or ".").resolve()
             app_file = Path(self.local_file_path).resolve()
-            if app_file.is_relative_to(context):
-                rel_path = str(app_file.relative_to(context))
+            try:
+                rel_path = app_file.relative_to(context).as_posix()
+            except ValueError:
+                pass
+            else:
                 options.files_ignore.append(re.compile(f"^{re.escape(rel_path)}$"))
 
         res = []

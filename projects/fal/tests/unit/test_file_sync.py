@@ -141,6 +141,26 @@ def test_normalize_path_relative_to_base(temp_dir):
     assert rel_path == "config.txt"
 
 
+def test_sanitize_relative_path_normalizes_windows_separators(monkeypatch):
+    monkeypatch.setattr(file_sync_mod, "WINDOWS_PATHS", True)
+
+    assert (
+        file_sync_mod.sanitize_relative_path(
+            r"config\config.json", Path("config/config.json")
+        )
+        == "config/config.json"
+    )
+
+
+def test_sanitize_relative_path_preserves_posix_backslashes(monkeypatch):
+    monkeypatch.setattr(file_sync_mod, "WINDOWS_PATHS", False)
+
+    assert (
+        file_sync_mod.sanitize_relative_path(r"data\2026.txt", Path(r"data\2026.txt"))
+        == r"data\2026.txt"
+    )
+
+
 def test_collect_files_single_file(temp_dir):
     """Test collecting a single file"""
     app_file = Path(temp_dir) / "app.py"

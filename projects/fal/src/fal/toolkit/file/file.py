@@ -383,7 +383,7 @@ class File(BaseModel):
             raise FileExistsError(f"File {file_path} already exists")
 
         downloaded_path = download_file(self.url, target_dir=file_path.parent)
-        downloaded_path.rename(file_path)
+        downloaded_path.replace(file_path)
 
         return file_path
 

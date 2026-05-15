@@ -78,3 +78,16 @@ def test_gpus_propagates_api_error(mock_client_cls):
 
     with pytest.raises(RuntimeError, match="Failed to fetch metrics"):
         args.func(args)
+
+
+@patch("fal.cli.runners.SyncServerlessClient")
+def test_interactive_shell_errors_on_windows(_mock_client_cls):
+    args = parse_args(["runners", "shell", "runner-id"])
+    args.console = MagicMock()
+
+    with patch("fal.cli.runners.os.name", "nt"):
+        assert args.func(args) == 1
+
+    args.console.print.assert_called_once_with(
+        "[red]Error:[/] Interactive runner shell is not supported on Windows."
+    )
