@@ -1,14 +1,11 @@
 from __future__ import annotations
 
 import argparse
-import fcntl
 import json
 import os
 import signal
 import struct
 import sys
-import termios
-import tty
 from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -127,6 +124,9 @@ def runners_requests_table(runners: list[RunnerInfo]):
 
 def _get_tty_size():
     """Get current terminal dimensions."""
+    import fcntl
+    import termios
+
     try:
         h, w = struct.unpack("HH", fcntl.ioctl(0, termios.TIOCGWINSZ, b"\0" * 4))[:2]
         return h, w
@@ -158,6 +158,12 @@ def _shell(args):
         command = None
         interactive = True
 
+    if interactive and os.name == "nt":
+        args.console.print(
+            "[red]Error:[/] Interactive runner shell is not supported on Windows."
+        )
+        return 1
+
     is_tty = interactive and sys.stdin.isatty()
     fd = sys.stdin.fileno() if interactive else -1
 
@@ -166,6 +172,9 @@ def _shell(args):
     stop_flag = False
 
     if is_tty:
+        import termios
+        import tty
+
         old_settings = termios.tcgetattr(fd)
         tty.setraw(fd)
 
