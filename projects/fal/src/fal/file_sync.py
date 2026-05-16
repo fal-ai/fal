@@ -29,6 +29,7 @@ if TYPE_CHECKING:
 
 FILE_SIZE_LIMIT = 1024 * 1024 * 1024  # 1GB
 DEFAULT_CONCURRENCY_UPLOADS = 10
+WINDOWS_PATHS = os.name == "nt"
 
 
 @dataclass
@@ -81,6 +82,8 @@ def print_path_tree(file_paths):
 
 
 def sanitize_relative_path(rel_path: str, original_path: Path) -> str:
+    if WINDOWS_PATHS:
+        rel_path = rel_path.replace("\\", "/")
     pure_path = PurePosixPath(rel_path)
 
     # Block files that are absolute or contain parent directory references

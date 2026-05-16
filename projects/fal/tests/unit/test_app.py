@@ -721,6 +721,43 @@ def test_app_files_classvars_propagate_to_host_kwargs():
     assert hk["max_multiplexing"] == 7
 
 
+def test_files_sync_auto_excludes_app_file_with_posix_relative_path(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+):
+    from fal.api.api import FalServerlessHost
+    from fal.file_sync import FileSyncOptions
+
+    captured = {}
+
+    class FakeFileSync:
+        def __init__(self, local_file_path, credentials=None):
+            pass
+
+        def sync_files(self, paths, *, files_ignore, files_context_dir):
+            captured["files_ignore"] = files_ignore
+            captured["files_context_dir"] = files_context_dir
+            return [], []
+
+    monkeypatch.setattr("fal.api.api.FileSync", FakeFileSync)
+
+    app_file = tmp_path / "src" / "app" / "main.py"
+    app_file.parent.mkdir(parents=True)
+    app_file.write_text("# app\n")
+
+    host = FalServerlessHost(local_file_path=str(app_file))
+    options = FileSyncOptions(
+        files_list=["src"],
+        files_ignore=[],
+        files_context_dir=str(tmp_path),
+    )
+
+    host.files_sync(options)
+
+    assert captured["files_context_dir"] == str(tmp_path)
+    assert captured["files_ignore"][0].pattern == r"^src/app/main\.py$"
+    assert captured["files_ignore"][0].search("src/app/main.py")
+
+
 def test_app_kwargs_merge_into_host_kwargs_and_override_defaults():
     class KwargsApp(App, keep_alive=123, resolver="pip", _scheduler="nomad"):
         pass
@@ -1178,6 +1215,7 @@ def _find_free_port():
         return s.getsockname()[1]
 
 
+@pytest.mark.skipif(os.name == "nt", reason="SIGTERM graceful shutdown is POSIX-only")
 def test_app_lifecycle_callbacks_are_called():
     """SIGTERM triggers handle_exit, then teardown runs during shutdown."""
     port = _find_free_port()

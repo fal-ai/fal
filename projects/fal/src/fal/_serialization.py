@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import pickle
-from typing import Any, Callable
+from typing import Any, Callable, ForwardRef
 
 import cloudpickle
 
@@ -49,6 +49,50 @@ def include_modules_from(obj: Any) -> None:
 
 def _register(cls: Any, func: Callable) -> None:
     cloudpickle.Pickler.dispatch[cls] = func
+
+
+def _make_forward_ref(
+    arg: str,
+    module: str | None,
+    owner: Any,
+    is_argument: bool,
+    is_class: bool,
+) -> ForwardRef:
+    forward_ref: Any = ForwardRef
+    try:
+        return forward_ref(
+            arg,
+            module=module,
+            owner=owner,
+            is_argument=is_argument,
+            is_class=is_class,
+        )
+    except TypeError:
+        try:
+            return forward_ref(
+                arg,
+                module=module,
+                is_argument=is_argument,
+                is_class=is_class,
+            )
+        except TypeError:
+            return forward_ref(arg, is_argument=is_argument)
+
+
+def _patch_forward_ref_serialization() -> None:
+    def pickle_forward_ref(ref: ForwardRef) -> tuple[Callable, tuple]:
+        return (
+            _make_forward_ref,
+            (
+                ref.__forward_arg__,
+                getattr(ref, "__forward_module__", None),
+                getattr(ref, "__owner__", None),
+                ref.__forward_is_argument__,
+                getattr(ref, "__forward_is_class__", False),
+            ),
+        )
+
+    _register(ForwardRef, pickle_forward_ref)
 
 
 def _patch_pydantic_field_serialization() -> None:
@@ -263,6 +307,7 @@ def _patch_exceptions() -> None:
 
 
 def patch_pickle() -> None:
+    _patch_forward_ref_serialization()
     _patch_pydantic_field_serialization()
     _patch_pydantic_model_serialization()
     _patch_lru_cache()

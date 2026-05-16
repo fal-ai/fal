@@ -9,7 +9,7 @@ import sys
 import time
 from contextlib import suppress
 from pathlib import Path, PurePath
-from tempfile import NamedTemporaryFile, TemporaryDirectory
+from tempfile import TemporaryDirectory, mkstemp
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
@@ -244,42 +244,38 @@ def _download_file_python(
     Returns:
         The path where the downloaded file has been saved.
     """
-    basename = os.path.basename(target_path)
+    target_path = Path(target_path)
+    basename = target_path.name
     # NOTE: using the same directory to avoid potential copies across temp fs and target
     # fs, and also to be able to atomically rename a downloaded file into place.
-    with NamedTemporaryFile(
-        delete=False,
-        dir=os.path.dirname(target_path),
-        prefix=f"{basename}.tmp",
-    ) as temp_file:
-        try:
-            file_path = temp_file.name
+    fd, file_path = mkstemp(dir=target_path.parent, prefix=f"{basename}.tmp")
+    os.close(fd)
 
-            for progress, total_size in _stream_url_data_to_file(
-                url,
-                temp_file.name,
-                request_headers=request_headers,
-                filesize_limit=filesize_limit,
-            ):
-                if total_size:
-                    progress_msg = f"Downloading {url} ... {progress:.2%}"
-                else:
-                    progress_msg = f"Downloading {url} ... {progress:.2f} MB"
+    try:
+        for progress, total_size in _stream_url_data_to_file(
+            url,
+            file_path,
+            request_headers=request_headers,
+            filesize_limit=filesize_limit,
+        ):
+            if total_size:
+                progress_msg = f"Downloading {url} ... {progress:.2%}"
+            else:
+                progress_msg = f"Downloading {url} ... {progress:.2f} MB"
 
-                print(progress_msg, end="\r\n")
+            print(progress_msg, end="\r\n")
 
-            # NOTE: Atomically renaming the file into place when the file is downloaded
-            # completely.
-            #
-            # Since the file used is temporary, in a case of an interruption, the
-            # downloaded content will be lost. So, it is safe to redownload the file in
-            # such cases.
-            os.rename(file_path, target_path)
+        # NOTE: Atomically replacing the file when the download is complete.
+        #
+        # Since the file used is temporary, in a case of an interruption, the
+        # downloaded content will be lost. So, it is safe to redownload the file in
+        # such cases.
+        os.replace(file_path, target_path)
 
-        finally:
-            Path(temp_file.name).unlink(missing_ok=True)
+    finally:
+        Path(file_path).unlink(missing_ok=True)
 
-    return Path(target_path)
+    return target_path
 
 
 def _stream_url_data_to_file(
