@@ -45,29 +45,33 @@ def queue_run(model_id: str, params: dict):
 
     import fal.apps
     from fal.console.icons import (  # noqa: PLC0415
-        STATUS_DONE_ICON,
-        STATUS_PROGRESS_ICON,
-        STATUS_QUEUED_ICON,
+        get_status_done_icon,
+        get_status_progress_icon,
+        get_status_queued_icon,
     )
 
     handle = fal.apps.submit(model_id, params)  # type: ignore
     logs = []  # type: ignore
+    target_console = rich.get_console()
+    status_queued_icon = get_status_queued_icon(target_console)
+    status_progress_icon = get_status_progress_icon(target_console)
+    status_done_icon = get_status_done_icon(target_console)
 
     try:
-        with Live(auto_refresh=False) as live:
+        with Live(auto_refresh=False, console=target_console) as live:
             for event in handle.iter_events(logs=True):
                 if isinstance(event, fal.apps.Queued):
                     status = Text(
-                        f"{STATUS_QUEUED_ICON} Queued (position: {event.position})",
+                        f"{status_queued_icon} Queued (position: {event.position})",
                         style="yellow",
                     )
                 elif isinstance(event, fal.apps.InProgress):
-                    status = Text(f"{STATUS_PROGRESS_ICON} In Progress", style="blue")
+                    status = Text(f"{status_progress_icon} In Progress", style="blue")
                     if event.logs:
                         logs.extend(log.get("message", str(log)) for log in event.logs)
                         logs = logs[-10:]  # Keep only last 10 logs
                 else:
-                    status = Text(f"{STATUS_DONE_ICON} Done", style="green")
+                    status = Text(f"{status_done_icon} Done", style="green")
 
                 request_id = handle.request_id
                 status_panel = Panel(

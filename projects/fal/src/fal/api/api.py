@@ -241,10 +241,11 @@ class RunResultHandler(ResultHandler):
     def on_service_urls(self, urls: Any) -> None:
         from rich.text import Text  # noqa: PLC0415
 
-        from fal.console.icons import SECTION_ICON  # noqa: PLC0415
+        from fal.console.icons import get_section_icon  # noqa: PLC0415
         from fal.console.rules import print_rule  # noqa: PLC0415
         from fal.flags import URL_OUTPUT  # noqa: PLC0415
 
+        section_icon = get_section_icon(console)
         print("")
 
         lines = Text()
@@ -254,18 +255,18 @@ class RunResultHandler(ResultHandler):
             "shared": "any authenticated user can access",
         }
         auth_desc = AUTH_EXPLANATIONS.get(self.auth_mode, self.auth_mode)
-        lines.append(f"{SECTION_ICON} Auth: {self.auth_mode} ", style="bold")
+        lines.append(f"{section_icon} Auth: {self.auth_mode} ", style="bold")
         lines.append(f"({auth_desc})\n\n", style="dim")
 
         if URL_OUTPUT != "none":
-            lines.append(f"{SECTION_ICON} Playground ", style="bold")
+            lines.append(f"{section_icon} Playground ", style="bold")
             lines.append("(open in browser)\n", style="dim")
             for endpoint in self.endpoints:
                 lines.append(f"  {urls.playground}{endpoint}\n", style="cyan")
 
         if URL_OUTPUT == "all":
             lines.append("\n")
-            lines.append(f"{SECTION_ICON} API Endpoints ", style="bold")
+            lines.append(f"{section_icon} API Endpoints ", style="bold")
             lines.append("(use in code)\n", style="dim")
             for endpoint in self.endpoints:
                 lines.append(f"  Sync   {urls.run}{endpoint}\n", style="cyan")
@@ -792,11 +793,13 @@ class FalServerlessHost(Host):
             materialize_local_paths,
         )
         from fal.console import console  # noqa: PLC0415
-        from fal.console.icons import CHECK_ICON  # noqa: PLC0415
+        from fal.console.icons import get_check_icon  # noqa: PLC0415
         from fal.console.rules import print_rule  # noqa: PLC0415
 
         if not has_local_path(requirements):
             return
+
+        check_icon = get_check_icon(console)
 
         # Render in the same shape as the remote BUILDER phase
         # (``Building environment...`` → rule → live logs → rule →
@@ -816,7 +819,7 @@ class FalServerlessHost(Host):
                 )
             elif event == "upload_finished" and not payload["cached"]:
                 print_rule(console, style="dim")
-                console.print(f"{CHECK_ICON} Project packaged", style="bold green")
+                console.print(f"{check_icon} Project packaged", style="bold green")
                 console.print("")
             # ``build_finished`` has no host-side rendering: the live
             # ``python -m build`` output between the rules already tells the

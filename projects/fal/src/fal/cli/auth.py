@@ -93,9 +93,11 @@ def _prompt_connection(args) -> str:
 def _login(args):
     from fal.auth import UserAccess, login
     from fal.config import Config
-    from fal.console.icons import CHECK_ICON, CROSS_ICON
+    from fal.console.icons import get_check_icon, get_cross_icon
     from fal.exceptions import FalServerlessException
 
+    check_icon = get_check_icon(args.console)
+    cross_icon = get_cross_icon(args.console)
     if args.connection:
         connection = args.connection.strip()
         _save_last_connection(connection)
@@ -104,9 +106,9 @@ def _login(args):
 
     try:
         login(args.console, connection=connection, no_browser=args.no_browser)
-        args.console.print(f"{CHECK_ICON} Authenticated successfully, welcome!")
+        args.console.print(f"{check_icon} Authenticated successfully, welcome!")
     except FalServerlessException as e:
-        args.console.print(f"{CROSS_ICON} {e}")
+        args.console.print(f"{cross_icon} {e}")
         return
 
     current_team = Config().get_internal("team")
@@ -120,14 +122,16 @@ def _login(args):
 
 def _logout(args):
     from fal.auth import logout
-    from fal.console.icons import CHECK_ICON, CROSS_ICON
+    from fal.console.icons import get_check_icon, get_cross_icon
     from fal.exceptions import FalServerlessException
 
+    check_icon = get_check_icon(args.console)
+    cross_icon = get_cross_icon(args.console)
     try:
         logout(args.console, no_browser=args.no_browser)
-        args.console.print(f"{CHECK_ICON} Logged out of [cyan bold]fal[/]. Bye!")
+        args.console.print(f"{check_icon} Logged out of [cyan bold]fal[/]. Bye!")
     except FalServerlessException as e:
-        args.console.print(f"{CROSS_ICON} {e}")
+        args.console.print(f"{cross_icon} {e}")
         return
 
     _unset_account(args)

@@ -92,12 +92,14 @@ def _render_deploy_result(args, res) -> None:
     elif args.output == "pretty":
         from rich.text import Text
 
-        from fal.console.icons import CHECK_ICON, SECTION_ICON
+        from fal.console.icons import get_check_icon, get_section_icon
         from fal.console.rules import print_rule
         from fal.flags import URL_OUTPUT
 
+        check_icon = get_check_icon(args.console)
+        section_icon = get_section_icon(args.console)
         args.console.print(
-            f"{CHECK_ICON} Deployed successfully",
+            f"{check_icon} Deployed successfully",
             style="bold green",
         )
         args.console.print("")
@@ -112,12 +114,12 @@ def _render_deploy_result(args, res) -> None:
             "shared": "any authenticated user can access",
         }
         auth_desc = AUTH_EXPLANATIONS.get(res.auth_mode, res.auth_mode)
-        lines.append(f"{SECTION_ICON} Auth: {res.auth_mode} ", style="bold")
+        lines.append(f"{section_icon} Auth: {res.auth_mode} ", style="bold")
         lines.append(f"({auth_desc})\n\n", style="dim")
 
         # Playground section
         if URL_OUTPUT != "none":
-            lines.append(f"{SECTION_ICON} Playground ", style="bold")
+            lines.append(f"{section_icon} Playground ", style="bold")
             lines.append("(open in browser)\n", style="dim")
             for url in res.urls.get("playground", {}).values():
                 lines.append(f"  {url}\n", style="cyan")
@@ -125,7 +127,7 @@ def _render_deploy_result(args, res) -> None:
         # API Endpoints section
         if URL_OUTPUT == "all":
             lines.append("\n")
-            lines.append(f"{SECTION_ICON} API Endpoints ", style="bold")
+            lines.append(f"{section_icon} API Endpoints ", style="bold")
             lines.append("(use in code)\n", style="dim")
             sync_urls = list(res.urls.get("sync", {}).values())
             async_urls = list(res.urls.get("async", {}).values())
@@ -135,7 +137,7 @@ def _render_deploy_result(args, res) -> None:
 
             # Logs section
             lines.append("\n")
-            lines.append(f"{SECTION_ICON} Logs\n", style="bold")
+            lines.append(f"{section_icon} Logs\n", style="bold")
             lines.append(f"  {res.log_url}", style="cyan")
 
         title = Text(resolved_app_name, style="bold")

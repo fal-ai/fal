@@ -4,7 +4,7 @@ import rich
 
 from fal._version import __version__
 from fal.console import console
-from fal.console.icons import CROSS_ICON
+from fal.console.icons import get_cross_icon
 
 from . import (
     api,
@@ -78,7 +78,7 @@ def parse_args(argv=None):
 
 
 def _print_error(msg):
-    console.print(f"{CROSS_ICON} {msg}")
+    console.print(f"{get_cross_icon(console)} {msg}")
 
 
 def _check_latest_version():

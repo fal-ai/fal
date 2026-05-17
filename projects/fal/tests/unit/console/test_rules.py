@@ -12,6 +12,7 @@ def test_print_rule_renders_with_cp1252_output():
             "from fal.console import console",
             "from fal.console.rules import print_rule",
             'print_rule(console, Text("Title"), style="dim")',
+            'print_rule(console, Text("app[v2]"), style="dim")',
             'print_rule(console, style="dim")',
         ]
     )
@@ -28,4 +29,5 @@ def test_print_rule_renders_with_cp1252_output():
 
     assert result.returncode == 0, result.stderr.decode(errors="replace")
     assert b"Title" in result.stdout
+    assert b"app[v2]" in result.stdout
     assert b"-" in result.stdout

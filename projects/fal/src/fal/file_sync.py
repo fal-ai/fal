@@ -13,7 +13,7 @@ from rich.tree import Tree
 import fal.flags as flags
 from fal._user_agent import USER_AGENT
 from fal.console import console
-from fal.console.icons import CROSS_ICON
+from fal.console.icons import get_cross_icon
 from fal.exceptions import (
     AppFileUploadException,
     FalServerlessException,
@@ -265,7 +265,9 @@ class FileSync:
             data = response.json()
             return data
         except Exception as e:
-            console.print(f"{CROSS_ICON} Failed to check hashes on server: {e}")
+            console.print(
+                f"{get_cross_icon(console)} Failed to check hashes on server: {e}"
+            )
 
             return hashes
 

@@ -26,7 +26,7 @@ class IsolateLogPrinter:
         from isolate.logs import LogSource
 
         from fal.console import console
-        from fal.console.icons import CHECK_ICON
+        from fal.console.icons import get_check_icon
         from fal.console.rules import print_rule
 
         if source == self._current_source:
@@ -35,7 +35,9 @@ class IsolateLogPrinter:
         # Print build completion when transitioning out of BUILDER phase
         if self._current_source == LogSource.BUILDER:
             print_rule(console, style="dim")
-            console.print(f"{CHECK_ICON} Build complete", style="bold green")
+            console.print(
+                f"{get_check_icon(console)} Build complete", style="bold green"
+            )
             console.print("")
 
         # Print phase header when entering a new phase

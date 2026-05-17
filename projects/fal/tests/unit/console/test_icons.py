@@ -5,8 +5,9 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
-from fal.console.icons import _select_icon
+from fal.console.icons import _select_icon, get_check_icon, get_section_icon
 
 
 def test_select_icon_uses_ascii_fallback():
@@ -17,12 +18,21 @@ def test_select_icon_uses_unicode_when_supported():
     assert _select_icon("unicode", "ascii", ascii_only=False) == "unicode"
 
 
-def test_cross_icon_renders_with_cp1252_output():
+def test_select_icon_uses_target_console_when_ascii_only_not_provided():
+    target_console = SimpleNamespace(options=SimpleNamespace(ascii_only=True))
+
+    assert _select_icon("unicode", "ascii", target_console=target_console) == "ascii"
+    assert get_check_icon(target_console) == "[bold green]+[/]"
+    assert get_section_icon(target_console) == ">"
+
+
+def test_icons_render_with_cp1252_output():
     script = "\n".join(
         [
             "from fal.console import console",
             "from fal.console.icons import (",
             "    BULLET_ICON,",
+            "    CHECK_ICON,",
             "    CROSS_ICON,",
             "    SECTION_ICON,",
             "    STATUS_DONE_ICON,",
@@ -32,6 +42,7 @@ def test_cross_icon_renders_with_cp1252_output():
             "    WORKFLOW_LOADED_ICON,",
             ")",
             'console.print(f"{BULLET_ICON} item")',
+            'console.print(f"{CHECK_ICON} ok")',
             'console.print(f"{CROSS_ICON} bad")',
             'console.print(f"{SECTION_ICON} section")',
             'console.print(f"{STATUS_QUEUED_ICON} queued")',
@@ -54,6 +65,7 @@ def test_cross_icon_renders_with_cp1252_output():
 
     assert result.returncode == 0, result.stderr.decode(errors="replace")
     assert b"- item" in result.stdout
+    assert b"+ ok" in result.stdout
     assert b"x bad" in result.stdout
     assert b"> section" in result.stdout
     assert b"... queued" in result.stdout

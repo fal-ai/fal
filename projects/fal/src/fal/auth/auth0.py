@@ -199,7 +199,8 @@ def build_jwk_client():
     import certifi  # noqa: PLC0415
     from jwt import PyJWKClient
 
-    ssl_context = ssl.create_default_context(cafile=certifi.where())
+    ssl_context = ssl.create_default_context()
+    ssl_context.load_verify_locations(cafile=certifi.where())
     return PyJWKClient(AUTH0_JWKS_URL, cache_keys=True, ssl_context=ssl_context)
 
 
