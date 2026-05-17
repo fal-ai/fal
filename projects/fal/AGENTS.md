@@ -54,6 +54,23 @@ If credentials are unavailable, run unit tests only and state that clearly.
 serialized/runtime-critical files. If that hook fails, refactor to module-level imports
 or follow existing patterns in the touched module.
 
+## Windows compatibility
+
+For CLI/runtime changes, keep Windows support in mind:
+
+- Avoid POSIX-only modules and assumptions (`fcntl`, `termios`, `tty`, `/` paths,
+  executable bits, symlinks) unless the code has a clear Windows fallback or
+  graceful error.
+- Use cross-platform file/path APIs (`pathlib`, `os.replace`, structured path
+  handling) instead of string path manipulation.
+- Console output must work on non-UTF Windows terminals. Use `fal.console.icons`
+  and `fal.console.rules.print_rule` instead of hardcoded Unicode glyphs or raw
+  Rich rules in CLI output.
+- Add focused unit tests for Windows-sensitive behavior. For console output,
+  include cp1252/non-UTF checks when adding status glyphs or Rich renderables.
+- Do not narrow Windows CI test scope unless explicitly discussed; Windows should
+  run the full relevant unit suite.
+
 ## Test placement hints
 
 - CLI changes: add/adjust tests under `projects/fal/tests/unit/cli/`

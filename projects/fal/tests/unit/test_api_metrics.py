@@ -52,7 +52,7 @@ def test_normalize_gpu_name(raw, expected):
         # Generic model fallback (requires 2+ digits after the letter)
         ("Tesla V100", "V100"),
         # Truncation fallback for unmatched names longer than 8 chars
-        ("Unknown123Foo", "Unknown…"),
+        ("Unknown123Foo", "Unkno..."),
     ],
 )
 def test_shorten_gpu_name(raw, expected):

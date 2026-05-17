@@ -411,6 +411,11 @@ def create_workflow(
 def main() -> None:
     import cli_nested_json
 
+    from fal.console.icons import (  # noqa: PLC0415
+        get_workflow_complete_icon,
+        get_workflow_loaded_icon,
+    )
+
     parser = ArgumentParser()
     parser.add_argument("workflow_file", type=str)
     args, input_params = parser.parse_known_args()
@@ -422,8 +427,11 @@ def main() -> None:
         [part.split("=") for part in input_params]
     )
     console = rich.get_console()
+    workflow_loaded_icon = get_workflow_loaded_icon(console)
+    workflow_complete_icon = get_workflow_complete_icon(console)
     console.print(
-        f"🤧 Loaded {workflow.name!r} with {len(workflow.nodes)} nodes!",
+        f"{workflow_loaded_icon} Loaded {workflow.name!r} "
+        f"with {len(workflow.nodes)} nodes!",
         style="bold magenta",
     )
 
@@ -485,7 +493,7 @@ def main() -> None:
                 context.vars[node_id] = node.execute(context)
 
         console.print(
-            "🎉 Execution complete!",
+            f"{workflow_complete_icon} Execution complete!",
             style="bold green",
         )
         output = context.hydrate(workflow.output)

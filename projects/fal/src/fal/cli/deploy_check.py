@@ -456,10 +456,10 @@ def _render_environment_build_cache_line(force_env_build: bool):
 
 
 def _render_deployment_check_summary(console, summary: DeploymentCheckSummary) -> None:
-    from rich.rule import Rule
+    from fal.console.rules import print_rule
 
     console.print("")
-    console.print(Rule(f"Deployment Check: {summary.app_name}", style="yellow"))
+    print_rule(console, f"Deployment Check: {summary.app_name}", style="yellow")
     console.print(
         f"[bold]Target:[/bold] {summary.app_name} "
         f"(env: {summary.environment_name or 'main'})"
@@ -492,7 +492,7 @@ def _render_deployment_check_summary(console, summary: DeploymentCheckSummary) -
             )
         )
 
-    console.print(Rule("", style="yellow"))
+    print_rule(console, "", style="yellow")
 
 
 def _diff_table(

@@ -32,11 +32,13 @@ class CliRunResultHandler(ResultHandler):
         self.log_printer = IsolateLogPrinter(debug=flags.DEBUG)
 
     def on_service_urls(self, urls: Any) -> None:
-        from rich.rule import Rule  # noqa: PLC0415
         from rich.text import Text  # noqa: PLC0415
 
+        from fal.console.icons import get_section_icon  # noqa: PLC0415
+        from fal.console.rules import print_rule  # noqa: PLC0415
         from fal.flags import URL_OUTPUT  # noqa: PLC0415
 
+        section_icon = get_section_icon(self.console)
         self.console.print("")
 
         lines = Text()
@@ -46,18 +48,18 @@ class CliRunResultHandler(ResultHandler):
             "shared": "any authenticated user can access",
         }
         auth_desc = AUTH_EXPLANATIONS.get(self.auth_mode, self.auth_mode)
-        lines.append(f"▸ Auth: {self.auth_mode} ", style="bold")
+        lines.append(f"{section_icon} Auth: {self.auth_mode} ", style="bold")
         lines.append(f"({auth_desc})\n\n", style="dim")
 
         if URL_OUTPUT != "none":
-            lines.append("▸ Playground ", style="bold")
+            lines.append(f"{section_icon} Playground ", style="bold")
             lines.append("(open in browser)\n", style="dim")
             for endpoint in self.endpoints:
                 lines.append(f"  {urls.playground}{endpoint}\n", style="cyan")
 
         if URL_OUTPUT == "all":
             lines.append("\n")
-            lines.append("▸ API Endpoints ", style="bold")
+            lines.append(f"{section_icon} API Endpoints ", style="bold")
             lines.append("(use in code)\n", style="dim")
             for endpoint in self.endpoints:
                 lines.append(f"  Sync   {urls.run}{endpoint}\n", style="cyan")
@@ -65,9 +67,9 @@ class CliRunResultHandler(ResultHandler):
 
         title = Text(f"Ephemeral App ({self.auth_mode})", style="bold")
         subtitle = Text("Deleted when process exits", style="dim")
-        self.console.print(Rule(title, style="green"))
+        print_rule(self.console, title, style="green")
         self.console.print(lines)
-        self.console.print(Rule(subtitle, style="green"))
+        print_rule(self.console, subtitle, style="green")
 
     def on_log(self, log: Any) -> None:
         # Obsolete messages from before service_urls were added.
