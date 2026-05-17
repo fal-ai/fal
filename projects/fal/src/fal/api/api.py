@@ -2407,7 +2407,7 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
                 return target.run_local
             except AttributeError:
                 raise FalServerlessError(
-                    f"{self.entrypoint!r} has no run_local method — "
+                    f"{self.entrypoint!r} has no run_local method - "
                     "is it a fal.App subclass or a fal.function?"
                 ) from None
         if self.raw_func is None:

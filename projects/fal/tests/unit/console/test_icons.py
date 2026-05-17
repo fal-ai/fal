@@ -1,25 +1,12 @@
 from __future__ import annotations
 
-import io
+import ast
 import os
 import subprocess
 import sys
-import tokenize
 from pathlib import Path
 
 from fal.console.icons import _select_icon
-
-PROBLEMATIC_CONSOLE_GLYPHS = {
-    "\u2022": "BULLET_ICON",
-    "\u25b8": "SECTION_ICON",
-    "\u2713": "CHECK_ICON",
-    "\u2718": "CROSS_ICON",
-    "\u23f3": "STATUS_QUEUED_ICON",
-    "\U0001f504": "STATUS_PROGRESS_ICON",
-    "\u2705": "STATUS_DONE_ICON",
-    "\U0001f927": "WORKFLOW_LOADED_ICON",
-    "\U0001f389": "WORKFLOW_COMPLETE_ICON",
-}
 
 
 def test_select_icon_uses_ascii_fallback():
@@ -76,7 +63,7 @@ def test_cross_icon_renders_with_cp1252_output():
     assert b"+ complete" in result.stdout
 
 
-def test_console_output_uses_icon_fallbacks_for_problematic_glyphs():
+def test_runtime_strings_are_ascii_outside_icon_table():
     source_root = Path(__file__).resolve().parents[3] / "src" / "fal"
     allowed_files = {Path("console/icons.py")}
     offenders = []
@@ -87,12 +74,35 @@ def test_console_output_uses_icon_fallbacks_for_problematic_glyphs():
             continue
 
         text = path.read_text(encoding="utf-8")
-        tokens = tokenize.generate_tokens(io.StringIO(text).readline)
-        for token in tokens:
-            if token.type != tokenize.STRING:
+        tree = ast.parse(text)
+        docstring_nodes = _docstring_nodes(tree)
+        for node in ast.walk(tree):
+            if not (
+                isinstance(node, ast.Constant)
+                and isinstance(node.value, str)
+                and id(node) not in docstring_nodes
+            ):
                 continue
-            for glyph, fallback_name in PROBLEMATIC_CONSOLE_GLYPHS.items():
-                if glyph in token.string:
-                    offenders.append(f"{rel_path}:{token.start[0]} use {fallback_name}")
+            if any(ord(char) > 127 for char in node.value):
+                offenders.append(f"{rel_path}:{node.lineno} {node.value!a}")
 
     assert not offenders, "\n".join(offenders)
+
+
+def _docstring_nodes(tree: ast.AST) -> set[int]:
+    node_ids = set()
+    for node in ast.walk(tree):
+        if not isinstance(
+            node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+        ):
+            continue
+        if not node.body:
+            continue
+        first = node.body[0]
+        if (
+            isinstance(first, ast.Expr)
+            and isinstance(first.value, ast.Constant)
+            and isinstance(first.value.value, str)
+        ):
+            node_ids.add(id(first.value))
+    return node_ids

@@ -59,7 +59,7 @@ def _shorten_gpu_name(name: str) -> str:
     m = _MI_RE.search(name)
     if m:
         return m.group(1)
-    return f"{name[:7]}…" if len(name) > 8 else name
+    return f"{name[:7]}..." if len(name) > 8 else name
 
 
 def _normalize_gpu_name(name: str) -> str:
