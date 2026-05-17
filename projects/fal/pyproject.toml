@@ -33,6 +33,7 @@ dependencies = [
     "opentelemetry-sdk>=1.15.0,<2",
     "grpc-interceptor>=0.15.0,<1",
     "colorama>=0.4.6,<1",
+    "certifi",
     "portalocker>=2.7.0,<3",
     "rich>=13.3.2,<15",
     "rich_argparse",

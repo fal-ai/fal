@@ -1,7 +1,7 @@
 from unittest.mock import MagicMock, call, patch
 from urllib.parse import unquote
 
-from fal.auth.auth0 import _build_device_login_url, login
+from fal.auth.auth0 import _build_device_login_url, build_jwk_client, login
 
 
 def test_build_device_login_url():
@@ -16,6 +16,27 @@ def test_build_device_login_url():
     assert "/api/auth/cli/session-seed" in decoded
     assert "connection=github" in decoded
     assert "user_code=ABCD-EFGH" in decoded
+
+
+def test_build_jwk_client_uses_certifi_ssl_context():
+    build_jwk_client.cache_clear()
+
+    try:
+        with patch("certifi.where", return_value="certifi.pem"), patch(
+            "ssl.create_default_context"
+        ) as create_default_context, patch("jwt.PyJWKClient") as py_jwk_client:
+            ssl_context = create_default_context.return_value
+
+            build_jwk_client()
+
+        create_default_context.assert_called_once_with(cafile="certifi.pem")
+        py_jwk_client.assert_called_once_with(
+            "https://auth.fal.ai/.well-known/jwks.json",
+            cache_keys=True,
+            ssl_context=ssl_context,
+        )
+    finally:
+        build_jwk_client.cache_clear()
 
 
 def test_login_with_connection_completes_device_flow():

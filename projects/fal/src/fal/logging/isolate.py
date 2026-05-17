@@ -24,24 +24,24 @@ class IsolateLogPrinter:
 
     def _maybe_print_header(self, source: LogSource):
         from isolate.logs import LogSource
-        from rich.rule import Rule
 
         from fal.console import console
         from fal.console.icons import CHECK_ICON
+        from fal.console.rules import print_rule
 
         if source == self._current_source:
             return
 
         # Print build completion when transitioning out of BUILDER phase
         if self._current_source == LogSource.BUILDER:
-            console.print(Rule(style="dim"))
+            print_rule(console, style="dim")
             console.print(f"{CHECK_ICON} Build complete", style="bold green")
             console.print("")
 
         # Print phase header when entering a new phase
         if source == LogSource.BUILDER:
             console.print("Building environment...", style="bold")
-            console.print(Rule(style="dim"))
+            print_rule(console, style="dim")
         elif source == LogSource.BRIDGE:
             console.print("Setting up runtime...", style="bold")
         elif source == LogSource.USER:

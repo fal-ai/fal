@@ -1,4 +1,20 @@
 from __future__ import annotations
 
-CHECK_ICON = "[bold green]\u2713[/]"
-CROSS_ICON = "[bold red]\u2718[/]"
+from fal.console import console
+
+
+def _select_icon(
+    unicode_icon: str,
+    ascii_icon: str,
+    *,
+    ascii_only: bool | None = None,
+) -> str:
+    if ascii_only is None:
+        ascii_only = console.options.ascii_only
+
+    return ascii_icon if ascii_only else unicode_icon
+
+
+CHECK_ICON = _select_icon("[bold green]\u2713[/]", "[bold green]+[/]")
+CROSS_ICON = _select_icon("[bold red]\u2718[/]", "[bold red]x[/]")
+SECTION_ICON = _select_icon("\u25b8", ">")

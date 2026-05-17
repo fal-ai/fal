@@ -239,9 +239,10 @@ class RunResultHandler(ResultHandler):
         self.log_printer = IsolateLogPrinter(debug=flags.DEBUG)
 
     def on_service_urls(self, urls: Any) -> None:
-        from rich.rule import Rule  # noqa: PLC0415
         from rich.text import Text  # noqa: PLC0415
 
+        from fal.console.icons import SECTION_ICON  # noqa: PLC0415
+        from fal.console.rules import print_rule  # noqa: PLC0415
         from fal.flags import URL_OUTPUT  # noqa: PLC0415
 
         print("")
@@ -253,18 +254,18 @@ class RunResultHandler(ResultHandler):
             "shared": "any authenticated user can access",
         }
         auth_desc = AUTH_EXPLANATIONS.get(self.auth_mode, self.auth_mode)
-        lines.append(f"▸ Auth: {self.auth_mode} ", style="bold")
+        lines.append(f"{SECTION_ICON} Auth: {self.auth_mode} ", style="bold")
         lines.append(f"({auth_desc})\n\n", style="dim")
 
         if URL_OUTPUT != "none":
-            lines.append("▸ Playground ", style="bold")
+            lines.append(f"{SECTION_ICON} Playground ", style="bold")
             lines.append("(open in browser)\n", style="dim")
             for endpoint in self.endpoints:
                 lines.append(f"  {urls.playground}{endpoint}\n", style="cyan")
 
         if URL_OUTPUT == "all":
             lines.append("\n")
-            lines.append("▸ API Endpoints ", style="bold")
+            lines.append(f"{SECTION_ICON} API Endpoints ", style="bold")
             lines.append("(use in code)\n", style="dim")
             for endpoint in self.endpoints:
                 lines.append(f"  Sync   {urls.run}{endpoint}\n", style="cyan")
@@ -272,9 +273,9 @@ class RunResultHandler(ResultHandler):
 
         title = Text(f"Ephemeral App ({self.auth_mode})", style="bold")
         subtitle = Text("Deleted when process exits", style="dim")
-        console.print(Rule(title, style="green"))
+        print_rule(console, title, style="green")
         console.print(lines)
-        console.print(Rule(subtitle, style="green"))
+        print_rule(console, subtitle, style="green")
 
     def on_log(self, log: Any) -> None:
         # Obsolete messages from before service_urls were added.
@@ -785,7 +786,6 @@ class FalServerlessHost(Host):
         requirements = environment_options.get("requirements")
         if not requirements:
             return
-        from rich.rule import Rule  # noqa: PLC0415
 
         from fal.api._sdist import (  # noqa: PLC0415
             has_local_path,
@@ -793,6 +793,7 @@ class FalServerlessHost(Host):
         )
         from fal.console import console  # noqa: PLC0415
         from fal.console.icons import CHECK_ICON  # noqa: PLC0415
+        from fal.console.rules import print_rule  # noqa: PLC0415
 
         if not has_local_path(requirements):
             return
@@ -807,14 +808,14 @@ class FalServerlessHost(Host):
                     f"Packaging local project [cyan]{payload['package_name']}[/]...",
                     style="bold",
                 )
-                console.print(Rule(style="dim"))
+                print_rule(console, style="dim")
             elif event == "upload_started":
                 size_kb = payload["sdist_size"] / 1024
                 console.print(
                     f"Uploading {payload['sdist_path'].name} ({size_kb:.1f} KB)..."
                 )
             elif event == "upload_finished" and not payload["cached"]:
-                console.print(Rule(style="dim"))
+                print_rule(console, style="dim")
                 console.print(f"{CHECK_ICON} Project packaged", style="bold green")
                 console.print("")
             # ``build_finished`` has no host-side rendering: the live
