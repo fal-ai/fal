@@ -7,7 +7,7 @@ if TYPE_CHECKING:
 
 
 def print_rule(console: Console, title: Any = "", *, style: str = "") -> None:
-    if not console.options.ascii_only:
+    if console.options.ascii_only is not True:
         from rich.rule import Rule
 
         console.print(Rule(title, style=style))
