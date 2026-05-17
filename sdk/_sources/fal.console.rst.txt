@@ -12,6 +12,14 @@ fal.console.icons module
    :undoc-members:
    :show-inheritance:
 
+fal.console.rules module
+------------------------
+
+.. automodule:: fal.console.rules
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 fal.console.ux module
 ---------------------
 
