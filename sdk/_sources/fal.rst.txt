@@ -27,6 +27,14 @@ fal.app module
    :undoc-members:
    :show-inheritance:
 
+fal.app\_files module
+---------------------
+
+.. automodule:: fal.app_files
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 fal.apps module
 ---------------
 

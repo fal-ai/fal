@@ -82,6 +82,11 @@
 <li class="toctree-l4"><a class="reference internal" href="fal.api.html#fal.api.api.FalServerlessHost.url"><code class="docutils literal notranslate"><span class="pre">FalServerlessHost.url</span></code></a></li>
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="fal.api.html#fal.api.api.FunctionRuntimeConfig"><code class="docutils literal notranslate"><span class="pre">FunctionRuntimeConfig</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.api.html#fal.api.api.FunctionRuntimeConfig.app_files_relative_path"><code class="docutils literal notranslate"><span class="pre">FunctionRuntimeConfig.app_files_relative_path</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.api.html#fal.api.api.FunctionRuntimeConfig.include_cwd_in_sys_path"><code class="docutils literal notranslate"><span class="pre">FunctionRuntimeConfig.include_cwd_in_sys_path</span></code></a></li>
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="fal.api.html#fal.api.api.Host"><code class="docutils literal notranslate"><span class="pre">Host</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="fal.api.html#fal.api.api.Host.parse_key"><code class="docutils literal notranslate"><span class="pre">Host.parse_key()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.api.html#fal.api.api.Host.parse_options"><code class="docutils literal notranslate"><span class="pre">Host.parse_options()</span></code></a></li>
@@ -1530,6 +1535,29 @@ based on the user model.</p>
 <dd><dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference internal" href="fal.api.html#fal.api.api.IsolatedFunction" title="fal.api.api.IsolatedFunction"><code class="xref py py-class docutils literal notranslate"><span class="pre">IsolatedFunction</span></code></a></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+<section id="module-fal.app_files">
+<span id="fal-app-files-module"></span><h2>fal.app_files module<a class="headerlink" href="#module-fal.app_files" title="Link to this heading">¶</a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.app_files.get_app_files_relative_path">
+<span class="sig-prename descclassname"><span class="pre">fal.app_files.</span></span><span class="sig-name descname"><span class="pre">get_app_files_relative_path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">local_file_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">app_files_context_dir</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.app_files.get_app_files_relative_path" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code> | <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.app_files.include_app_files_path">
+<span class="sig-prename descclassname"><span class="pre">fal.app_files.</span></span><span class="sig-name descname"><span class="pre">include_app_files_path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">app_files_relative_path</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.app_files.include_app_files_path" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
 </dd>
 </dl>
 </dd></dl>
