@@ -137,7 +137,7 @@ def get_app_data_from_toml(
         raise ValueError(
             "app_files_context_dir is only supported when app_files is provided."
         )
-    if app_files_context_dir is not None:
+    if app_files_context_dir:
         context_path = Path(app_files_context_dir)
         if not context_path.is_absolute():
             app_files_context_dir = str(Path(toml_path).parent / context_path)
