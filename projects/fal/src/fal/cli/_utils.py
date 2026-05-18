@@ -137,6 +137,10 @@ def get_app_data_from_toml(
         raise ValueError(
             "app_files_context_dir is only supported when app_files is provided."
         )
+    if app_files_context_dir is not None:
+        context_path = Path(app_files_context_dir)
+        if not context_path.is_absolute():
+            app_files_context_dir = str(Path(toml_path).parent / context_path)
     if exposed_port is not None:
         _validate_port("exposed_port", exposed_port)
     if image_config is not None and app_files:
