@@ -939,6 +939,52 @@ def test_get_app_data_from_toml_with_app_files(
     assert toml_data.options.environment == {}
 
 
+@patch("fal.cli._utils.find_pyproject_toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+def test_get_app_data_from_toml_resolves_app_files_context_dir_from_pyproject(
+    mock_parse_toml, mock_find_toml, tmp_path
+):
+    from fal.cli._utils import get_app_data_from_toml
+
+    mock_find_toml.return_value = str(tmp_path / "pyproject.toml")
+    mock_parse_toml.return_value = {
+        "apps": {
+            "app-with-files": {
+                "ref": "src/app.py::App",
+                "app_files": ["assets"],
+                "app_files_context_dir": ".",
+            }
+        }
+    }
+
+    toml_data = get_app_data_from_toml("app-with-files")
+
+    assert toml_data.options.host["app_files_context_dir"] == str(tmp_path)
+
+
+@patch("fal.cli._utils.find_pyproject_toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+def test_get_app_data_from_toml_preserves_empty_app_files_context_dir(
+    mock_parse_toml, mock_find_toml, tmp_path
+):
+    from fal.cli._utils import get_app_data_from_toml
+
+    mock_find_toml.return_value = str(tmp_path / "pyproject.toml")
+    mock_parse_toml.return_value = {
+        "apps": {
+            "app-with-files": {
+                "ref": "src/app.py::App",
+                "app_files": ["assets"],
+                "app_files_context_dir": "",
+            }
+        }
+    }
+
+    toml_data = get_app_data_from_toml("app-with-files")
+
+    assert toml_data.options.host["app_files_context_dir"] == ""
+
+
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
 @patch("fal.cli._utils.parse_pyproject_toml")
 def test_get_app_data_from_toml_rejects_app_files_context_dir_without_app_files(
