@@ -124,6 +124,15 @@ def test_run_forwards_regions_to_machine_requirements():
     assert call_kwargs["machine_requirements"].valid_regions == ["us-east"]
 
 
+def test_function_accepts_openapi_endpoint():
+    @fal.function(openapi_endpoint="/v1/openapi.json")
+    def serve_app():
+        pass
+
+    assert serve_app.options.host["openapi_endpoint"] == "/v1/openapi.json"
+    assert serve_app.options.get_openapi_fetch_port() == 8080
+
+
 def test_register_leaves_private_logs_unset_by_default():
     from fal.api.api import FalServerlessHost, Options
     from fal.sdk import RegisterApplicationResult, RegisterApplicationResultType

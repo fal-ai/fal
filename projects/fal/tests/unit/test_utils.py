@@ -4,7 +4,7 @@ import pytest
 
 import fal
 from fal.api import IsolatedFunction, Options
-from fal.api.api import merge_basic_config
+from fal.api.api import SpawnInfo, merge_basic_config
 from fal.api.client import SyncServerlessClient
 from fal.utils import (
     _find_target,
@@ -365,6 +365,118 @@ def test_isolated_function_fetch_metadata_rejects_non_dict_payload():
     iso = IsolatedFunction(host=host, entrypoint="pkg.mod:MyApp")
     with pytest.raises(FalServerlessError, match="non-dict payload"):
         iso.fetch_metadata()
+
+
+@pytest.mark.parametrize(
+    ("gateway", "expected_port"),
+    [
+        ({}, 8080),
+        ({"exposed_port": 9000}, 9000),
+    ],
+)
+def test_isolated_function_fetch_metadata_fetches_openapi_endpoint(
+    monkeypatch, gateway, expected_port
+):
+    openapi = {"openapi": "3.1.0", "paths": {"/predict": {}}}
+    host = MagicMock()
+    host.credentials.to_headers.return_value = {"Authorization": "Key test"}
+    info = SpawnInfo()
+    info.url = "https://run.example/user/app"
+    info.stream = MagicMock()
+    host.spawn.return_value = info
+
+    requests = []
+
+    class FakeClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return None
+
+        def get(self, url, *, headers, timeout):
+            requests.append((url, headers, timeout))
+            response = MagicMock()
+            response.is_success = True
+            response.json.return_value = openapi
+            return response
+
+    monkeypatch.setattr("httpx.Client", FakeClient)
+
+    def serve_app():
+        pass
+
+    iso = IsolatedFunction(
+        host=host,
+        raw_func=serve_app,
+        options=Options(
+            host={"openapi_endpoint": "/openapi.json", "startup_timeout": 22},
+            gateway=gateway,
+        ),
+    )
+
+    metadata = iso.fetch_metadata()
+
+    host.spawn.assert_called_once()
+    call_args, call_kwargs = host.spawn.call_args
+    assert call_args[0] is serve_app
+    assert call_args[1] is not iso.options
+    assert call_args[1].gateway["exposed_port"] == expected_port
+    if gateway:
+        assert iso.options.gateway["exposed_port"] == expected_port
+    else:
+        assert "exposed_port" not in iso.options.gateway
+    assert call_kwargs["entrypoint"] is None
+    assert len(requests) == 1
+    url, headers, timeout = requests[0]
+    assert url == "https://run.example/user/app/openapi.json"
+    assert headers == {"Authorization": "Key test"}
+    assert 0 < timeout <= 22
+    info.stream.cancel.assert_called_once()
+    assert metadata == {"openapi": openapi}
+    assert iso.options.host["metadata"] == metadata
+    assert iso.endpoints == ["/predict"]
+
+
+def test_isolated_function_fetch_metadata_fetches_openapi_for_entrypoint(monkeypatch):
+    host = MagicMock()
+    host.credentials.to_headers.return_value = {}
+    info = SpawnInfo()
+    info.url = "https://run.example/user/entrypoint-app"
+    info.stream = MagicMock()
+    host.spawn.return_value = info
+
+    class FakeClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return None
+
+        def get(self, url, *, headers, timeout):
+            response = MagicMock()
+            response.is_success = True
+            response.json.return_value = {"openapi": {"paths": {"/custom": {}}}}
+            return response
+
+    monkeypatch.setattr("httpx.Client", FakeClient)
+
+    iso = IsolatedFunction(
+        host=host,
+        entrypoint="pkg.mod:server",
+        options=Options(
+            host={
+                "openapi_endpoint": "/v1/openapi.json",
+            }
+        ),
+    )
+
+    metadata = iso.fetch_metadata()
+
+    host.spawn.assert_called_once()
+    _, call_kwargs = host.spawn.call_args
+    assert call_kwargs["entrypoint"] == "pkg.mod:server.run_local"
+    assert metadata == {"openapi": {"paths": {"/custom": {}}}}
 
 
 def test_isolated_function_requires_func_or_entrypoint():

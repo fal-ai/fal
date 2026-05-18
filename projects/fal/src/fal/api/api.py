@@ -778,6 +778,7 @@ class FalServerlessHost(Host):
             "max_multiplexing",
             "setup_function",
             "metadata",
+            "openapi_endpoint",
             "request_timeout",
             "startup_timeout",
             "private_logs",
@@ -1225,7 +1226,7 @@ class FalServerlessHost(Host):
                 default_handler(partial_result)
                 user_handler(partial_result)
 
-        self._thread_pool.submit(
+        ret.future = self._thread_pool.submit(
             self._run,
             func,
             options,
@@ -1284,8 +1285,17 @@ class Options:
         else:
             return None
 
+    def get_openapi_fetch_port(self) -> int:
+        exposed_port = self.gateway.get("exposed_port")
+        if exposed_port is not None:
+            return exposed_port
+        return _SERVE_PORT
+
 
 _SERVE_PORT = 8080
+_DEFAULT_OPENAPI_FETCH_TIMEOUT = 600
+_OPENAPI_FETCH_INTERVAL = 0.5
+_OPENAPI_FETCH_REQUEST_TIMEOUT = 30.0
 
 # Overload @function to help users identify the correct signature.
 # NOTE: This is both in sync with host options and with environment configs from
@@ -1345,6 +1355,7 @@ def function(
     local_python_modules: list[str] | None = None,
     # FalServerlessHost options
     metadata: dict[str, Any] | None = None,
+    openapi_endpoint: str | None = None,
     machine_type: str | list[str] = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
     regions: list[str] | None = None,
     num_gpus: int | None = None,
@@ -1379,6 +1390,7 @@ def function(
     local_python_modules: list[str] | None = None,
     # FalServerlessHost options
     metadata: dict[str, Any] | None = None,
+    openapi_endpoint: str | None = None,
     machine_type: str | list[str] = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
     regions: list[str] | None = None,
     num_gpus: int | None = None,
@@ -1465,6 +1477,7 @@ def function(
     local_python_modules: list[str] | None = None,
     # FalServerlessHost options
     metadata: dict[str, Any] | None = None,
+    openapi_endpoint: str | None = None,
     machine_type: str | list[str] = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
     regions: list[str] | None = None,
     num_gpus: int | None = None,
@@ -1504,6 +1517,7 @@ def function(
     local_python_modules: list[str] | None = None,
     # FalServerlessHost options
     metadata: dict[str, Any] | None = None,
+    openapi_endpoint: str | None = None,
     machine_type: str | list[str] = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
     regions: list[str] | None = None,
     num_gpus: int | None = None,
@@ -1537,6 +1551,7 @@ def function(
     local_python_modules: list[str] | None = None,
     # FalServerlessHost options
     metadata: dict[str, Any] | None = None,
+    openapi_endpoint: str | None = None,
     machine_type: str | list[str] = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
     regions: list[str] | None = None,
     num_gpus: int | None = None,
@@ -1570,6 +1585,7 @@ def function(
     local_python_modules: list[str] | None = None,
     # FalServerlessHost options
     metadata: dict[str, Any] | None = None,
+    openapi_endpoint: str | None = None,
     machine_type: str | list[str] = FAL_SERVERLESS_DEFAULT_MACHINE_TYPE,
     regions: list[str] | None = None,
     num_gpus: int | None = None,
@@ -1621,6 +1637,13 @@ def function(  # type: ignore
 
     if kind == "container" and config.get("app_files"):
         raise ValueError("app_files is not supported for container apps.")
+
+    if "openapi_endpoint" in config and config["openapi_endpoint"] is not None:
+        openapi_endpoint = config["openapi_endpoint"]
+        if not isinstance(openapi_endpoint, str) or not openapi_endpoint.startswith(
+            "/"
+        ):
+            raise ValueError("openapi_endpoint must be a path starting with '/'.")
 
     if config.get("force_env_build") is not None:
         force_env_build = config.pop("force_env_build")
@@ -2329,17 +2352,197 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
 
         return _run_with_handling(self, args=args, kwargs=kwargs, reraise=self.reraise)
 
+    def _has_openapi_endpoint(self) -> bool:
+        return self.options.host.get("openapi_endpoint") is not None
+
+    def _openapi_endpoint(self) -> str:
+        endpoint = self.options.host.get("openapi_endpoint")
+        if endpoint is None:
+            raise FalServerlessError(
+                "openapi_endpoint must be configured to fetch OpenAPI metadata."
+            )
+        if not isinstance(endpoint, str) or not endpoint.startswith("/"):
+            raise FalServerlessError(
+                "openapi_endpoint must be a path starting with '/'."
+            )
+        return endpoint
+
+    def _metadata_from_openapi_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
+        metadata = dict(self.build_metadata())
+        if isinstance(payload.get("openapi"), dict):
+            metadata.update(payload)
+        else:
+            metadata["openapi"] = payload
+        return metadata
+
+    def _openapi_metadata_options(self) -> Options:
+        options = replace(
+            self.options,
+            host=self.options.host.copy(),
+            environment=self.options.environment.copy(),
+            gateway=self.options.gateway.copy(),
+        )
+        options.gateway["exposed_port"] = self.options.get_openapi_fetch_port()
+        return options
+
+    def _openapi_fetch_timeout(self) -> float:
+        timeout = self.options.host.get("startup_timeout")
+        if timeout is None:
+            return float(_DEFAULT_OPENAPI_FETCH_TIMEOUT)
+        if not isinstance(timeout, (int, float)) or timeout <= 0:
+            raise FalServerlessError("startup_timeout must be a positive number.")
+        return float(timeout)
+
+    def _openapi_fetch_headers(self) -> dict[str, str]:
+        credentials = getattr(self.host, "credentials", None)
+        if credentials is None:
+            credentials = get_credentials()
+        return cast(dict[str, str], credentials.to_headers())
+
+    def _wait_for_spawn_url(
+        self,
+        info: SpawnInfo,
+        deadline: float,
+        timeout: float,
+    ) -> str:
+        import time  # noqa: PLC0415
+
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+
+            if info._url_ready.wait(min(_OPENAPI_FETCH_INTERVAL, remaining)):
+                if info.url is not None:
+                    return info.url
+                break
+
+            if info.future is not None and info.future.done():
+                exc = info.future.exception()
+                if exc is not None:
+                    raise FalServerlessError(
+                        "fetch_metadata: OpenAPI runner failed before exposing a URL."
+                    ) from exc
+                raise FalServerlessError(
+                    "fetch_metadata: OpenAPI runner exited before exposing a URL."
+                )
+
+        raise FalServerlessError(
+            f"fetch_metadata: OpenAPI runner did not expose a URL within {timeout:g}s."
+        )
+
+    def _fetch_openapi_payload_from_url(
+        self,
+        base_url: str,
+        endpoint: str,
+        deadline: float,
+        timeout: float,
+    ) -> dict[str, Any]:
+        import time  # noqa: PLC0415
+
+        import httpx  # noqa: PLC0415
+
+        url = base_url.rstrip("/") + endpoint
+        headers = self._openapi_fetch_headers()
+        attempts = 0
+        last_error = "no request attempted"
+
+        with httpx.Client() as client:
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+
+                attempts += 1
+                try:
+                    response = client.get(
+                        url,
+                        headers=headers,
+                        timeout=min(_OPENAPI_FETCH_REQUEST_TIMEOUT, remaining),
+                    )
+                except httpx.TimeoutException:
+                    last_error = (
+                        "request timed out after "
+                        f"{min(_OPENAPI_FETCH_REQUEST_TIMEOUT, remaining):g}s"
+                    )
+                except httpx.TransportError as exc:
+                    last_error = f"network error: {exc}"
+                else:
+                    if response.is_success:
+                        try:
+                            payload = response.json()
+                        except ValueError as exc:
+                            raise FalServerlessError(
+                                "fetch_metadata: OpenAPI endpoint returned "
+                                "invalid JSON."
+                            ) from exc
+                        if not isinstance(payload, dict):
+                            raise FalServerlessError(
+                                "fetch_metadata: OpenAPI endpoint returned "
+                                "a non-dict payload."
+                            )
+                        return payload
+
+                    last_error = f"HTTP {response.status_code}: {response.text[:500]}"
+                    if response.status_code not in {404, 500, 502, 503, 504}:
+                        raise FalServerlessError(
+                            f"fetch_metadata: OpenAPI endpoint returned {last_error}"
+                        )
+
+                time.sleep(min(_OPENAPI_FETCH_INTERVAL, remaining))
+
+        raise FalServerlessError(
+            "fetch_metadata: OpenAPI endpoint was not ready after "
+            f"{timeout:g}s and {attempts} attempts. Last error: {last_error}"
+        )
+
+    def _fetch_openapi_metadata(self) -> dict[str, Any]:
+        import time  # noqa: PLC0415
+
+        endpoint = self._openapi_endpoint()
+        timeout = self._openapi_fetch_timeout()
+        deadline = time.monotonic() + timeout
+        info = self.host.spawn(
+            self.func,
+            self._openapi_metadata_options(),
+            args=(),
+            kwargs={},
+            application_name=self.app_name,
+            application_auth_mode=self.app_auth,
+            entrypoint=self.run_entrypoint,
+        )
+        try:
+            url = self._wait_for_spawn_url(info, deadline, timeout)
+            payload = self._fetch_openapi_payload_from_url(
+                url,
+                endpoint,
+                deadline,
+                timeout,
+            )
+        finally:
+            if info.stream is not None:
+                with suppress(Exception):
+                    info.stream.cancel()
+
+        metadata = self._metadata_from_openapi_payload(payload)
+        self.options.host["metadata"] = metadata
+        return metadata
+
     def build_metadata(self) -> dict[str, Any]:
         return self.options.host.get("metadata") or {}
 
     def fetch_metadata(self) -> dict[str, Any]:
-        """Probe ``<entrypoint>.build_metadata`` on the worker and cache the
-        result into ``options.host["metadata"]``.
+        """Fetch metadata on the worker and cache it into
+        ``options.host["metadata"]``.
 
-        No-op when there's no ``entrypoint`` set — the regular flow already
-        populates metadata via ``wrap_app``/registration paths, and this
-        method just returns that cached value.
+        With ``openapi_endpoint`` configured this starts a regular function/app
+        runner and polls that OpenAPI endpoint until ``startup_timeout``.
+        Entry-point apps without that option keep using the cheaper
+        ``<entrypoint>.build_metadata`` probe.
         """
+        if self._has_openapi_endpoint():
+            return self._fetch_openapi_metadata()
+
         if self.metadata_entrypoint is None:
             return self.build_metadata()
 

@@ -122,6 +122,7 @@ def get_app_data_from_toml(
     app_files_ignore = app_data.pop("app_files_ignore", None)
     app_files_context_dir = app_data.pop("app_files_context_dir", None)
     exposed_port = app_data.pop("exposed_port", None)
+    openapi_endpoint = app_data.pop("openapi_endpoint", None)
 
     image_config = app_data.pop("image", None)
 
@@ -143,6 +144,11 @@ def get_app_data_from_toml(
             app_files_context_dir = str(Path(toml_path).parent / context_path)
     if exposed_port is not None:
         _validate_port("exposed_port", exposed_port)
+    if openapi_endpoint is not None:
+        if not isinstance(openapi_endpoint, str) or not openapi_endpoint.startswith(
+            "/"
+        ):
+            raise ValueError("openapi_endpoint must be a path starting with '/'.")
     if image_config is not None and app_files:
         raise ValueError("app_files is not supported for container apps.")
 
@@ -170,6 +176,8 @@ def get_app_data_from_toml(
         options.host["app_files_ignore"] = app_files_ignore
     if app_files_context_dir is not None:
         options.host["app_files_context_dir"] = app_files_context_dir
+    if openapi_endpoint is not None:
+        options.host["openapi_endpoint"] = openapi_endpoint
     if exposed_port is not None:
         options.gateway["exposed_port"] = exposed_port
     if requirements is not None:

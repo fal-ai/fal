@@ -128,6 +128,11 @@ def mock_parse_pyproject_toml():
                 "python_version": "3.12",
                 "requirements": ["fal"],
             },
+            "openapi-app": {
+                "ref": "src/openapi_app/inference.py::serve_app",
+                "openapi_endpoint": "/v1/openapi.json",
+                "exposed_port": 9000,
+            },
         }
     }
 
@@ -869,6 +874,25 @@ def test_get_app_data_from_toml_without_team(
     assert toml_data.name == "my-app"
     assert toml_data.options.host == {}
     assert toml_data.options.environment == {}
+
+
+@patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+def test_get_app_data_from_toml_with_openapi_endpoint(
+    mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml
+):
+    from fal.cli._utils import get_app_data_from_toml
+
+    mock_parse_toml.return_value = mock_parse_pyproject_toml
+
+    toml_data = get_app_data_from_toml("openapi-app")
+
+    project_root, _ = find_project_root(None)
+    assert (
+        toml_data.ref == f"{project_root / 'src/openapi_app/inference.py'}::serve_app"
+    )
+    assert toml_data.options.host["openapi_endpoint"] == "/v1/openapi.json"
+    assert toml_data.options.gateway["exposed_port"] == 9000
 
 
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
