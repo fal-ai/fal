@@ -210,6 +210,7 @@ def _deploy_from_reference(
     force_env_build: bool,
     environment_name: Optional[str] = None,
     result_handler: ResultHandler | None = None,
+    build_result_handler: ResultHandler | None = None,
 ) -> DeploymentResult:
     prepared = _prepare_deployment_from_reference(
         client,
@@ -218,7 +219,11 @@ def _deploy_from_reference(
         force_env_build=force_env_build,
         environment_name=environment_name,
     )
-    return execute_prepared_deployment(prepared, result_handler=result_handler)
+    return execute_prepared_deployment(
+        prepared,
+        result_handler=result_handler,
+        build_result_handler=build_result_handler,
+    )
 
 
 def _execute_loaded_deployment(
@@ -229,13 +234,28 @@ def _execute_loaded_deployment(
     display_name: str | None,
     environment_name: str | None = None,
     result_handler: ResultHandler | None = None,
+    build_result_handler: ResultHandler | None = None,
 ) -> DeploymentResult:
     from fal.api import FalServerlessError
 
     isolated_function = loaded.function
     strategy = app_data.deployment_strategy or "rolling"
+    build_result_handler = (
+        result_handler if build_result_handler is None else build_result_handler
+    )
 
-    isolated_function.fetch_metadata()
+    # Explicit build phase so the CLI / caller gets a clean "build → deploy"
+    # split instead of inferring it from the log stream's source field.
+    # Downstream steps then assert `build_environment=False` to skip re-doing
+    # the build in their own RPC.
+    host.build_environment(
+        isolated_function.options,
+        application_name=loaded.app_name,
+        environment_name=environment_name,
+        result_handler=build_result_handler,
+    )
+
+    isolated_function.fetch_metadata(build_environment=False)
 
     result = host.register(
         func=isolated_function.func,
@@ -249,6 +269,7 @@ def _execute_loaded_deployment(
         environment_name=environment_name,
         result_handler=result_handler,
         entrypoint=isolated_function.run_entrypoint,
+        build_environment=False,
     )
 
     if not result or not result.result:
@@ -315,6 +336,7 @@ def execute_prepared_deployment(
     prepared: PreparedDeployment,
     *,
     result_handler: ResultHandler | None = None,
+    build_result_handler: ResultHandler | None = None,
 ) -> DeploymentResult:
     return _execute_loaded_deployment(
         host=prepared.host,
@@ -323,6 +345,7 @@ def execute_prepared_deployment(
         display_name=prepared.display_name,
         environment_name=prepared.environment_name,
         result_handler=result_handler,
+        build_result_handler=build_result_handler,
     )
 
 
@@ -337,6 +360,7 @@ def deploy(
     force_env_build: bool = False,
     environment_name: str | None = None,
     result_handler: ResultHandler | None = None,
+    build_result_handler: ResultHandler | None = None,
 ) -> DeploymentResult:
     resolved_app_ref, app_data = _resolve_deployment_reference(
         app_ref,
@@ -352,4 +376,5 @@ def deploy(
         force_env_build=force_env_build,
         environment_name=environment_name,
         result_handler=result_handler,
+        build_result_handler=build_result_handler,
     )

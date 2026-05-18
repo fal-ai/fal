@@ -83,9 +83,19 @@ def _run(args):
         isolated_function.options.host["machine_type"] = args.machine_type
 
     if not args.local:
+        # Explicit build phase so the CLI gets a clean "build → run" split
+        # instead of inferring it from the log stream's source field.
+        from ._result_handlers import CliBuildEnvironmentResultHandler
+
+        host.build_environment(
+            isolated_function.options,
+            application_name=loaded.app_name,
+            environment_name=args.env,
+            result_handler=CliBuildEnvironmentResultHandler(console=args.console),
+        )
         # Endpoints/openapi for the result handler aren't available locally
         # in entrypoint mode; this fetches them from the worker.
-        isolated_function.fetch_metadata()
+        isolated_function.fetch_metadata(build_environment=False)
 
     from fal.api.run import run as run_api
 
@@ -102,6 +112,7 @@ def _run(args):
             endpoints=isolated_function.endpoints,
         ),
         reraise=False,
+        build_environment=None if args.local else False,
     )
 
 

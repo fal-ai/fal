@@ -72,11 +72,19 @@ class CliRunResultHandler(ResultHandler):
         print_rule(self.console, subtitle, style="green")
 
     def on_log(self, log: Any) -> None:
+        from isolate.logs import LogSource  # noqa: PLC0415
+
         # Obsolete messages from before service_urls were added.
         if (
             "Access the playground at" in log.message
             or "And API access through" in log.message
         ):
+            return
+        # The CLI orchestrates an explicit BuildEnvironment RPC before Run,
+        # so any BUILDER-source log that arrives here is either a cache-hit
+        # confirmation or a redundant rebuild we don't want to re-frame as
+        # its own "Building environment..." phase.
+        if log.source == LogSource.BUILDER:
             return
         self.log_printer.print(log)
 
@@ -89,4 +97,67 @@ class CliRegisterResultHandler(ResultHandler):
         self.log_printer = IsolateLogPrinter(debug=flags.DEBUG)
 
     def on_log(self, log: Any) -> None:
+        from isolate.logs import LogSource  # noqa: PLC0415
+
+        # Build phase is rendered by CliBuildEnvironmentResultHandler in the
+        # explicit pre-build step; the cache-hit confirmation the server
+        # streams here would be a redundant second header.
+        if log.source == LogSource.BUILDER:
+            return
+        self.log_printer.print(log)
+
+
+class CliBuildEnvironmentResultHandler(ResultHandler):
+    """Renders the build phase as a top-level CLI step, surrounded by a
+    ``Building environment...`` header and a ``✓ Build complete`` footer.
+
+    Used to drive an explicit ``BuildEnvironment`` RPC before
+    ``Run`` / ``RegisterApplication`` so the CLI doesn't have to infer the
+    build phase from the log stream's source field.
+    """
+
+    def __init__(self, *, console: Console) -> None:
+        from isolate.logs import LogSource  # noqa: PLC0415
+
+        self.console = console
+        self.log_printer = IsolateLogPrinter(debug=flags.DEBUG)
+        # IsolateLogPrinter tracks the current phase in _current_source. The CLI
+        # renders the build-phase header / footer itself, so keep the printer in
+        # BUILDER mode to avoid its own "Building environment..." transition.
+        self.log_printer._current_source = LogSource.BUILDER
+        self._header_printed = False
+
+    def __call__(self, partial_result: Any) -> None:
+        from fal.sdk import HostedRunState  # noqa: PLC0415
+
+        super().__call__(partial_result)
+        status = getattr(partial_result, "status", None)
+        if status is not None and status.state is HostedRunState.SUCCESS:
+            self._print_footer()
+
+    def _print_header_once(self) -> None:
+        if self._header_printed:
+            return
+
+        from fal.console.rules import print_rule  # noqa: PLC0415
+
+        self.console.print("Building environment...", style="bold")
+        print_rule(self.console, style="dim")
+        self._header_printed = True
+
+    def _print_footer(self) -> None:
+        from fal.console.icons import CHECK_ICON  # noqa: PLC0415
+        from fal.console.rules import print_rule  # noqa: PLC0415
+
+        if not self._header_printed:
+            self.console.print(f"{CHECK_ICON} Build complete", style="bold green")
+            self.console.print("")
+            return
+
+        print_rule(self.console, style="dim")
+        self.console.print(f"{CHECK_ICON} Build complete", style="bold green")
+        self.console.print("")
+
+    def on_log(self, log: Any) -> None:
+        self._print_header_once()
         self.log_printer.print(log)

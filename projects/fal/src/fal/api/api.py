@@ -395,8 +395,20 @@ class Host(Generic[ArgsT, ReturnT]):
         application_auth_mode: AuthModeLiteral | None = None,
         result_handler: ResultHandler | None = None,
         entrypoint: str | None = None,
+        build_environment: bool | None = None,
     ) -> ReturnT:
         """Run the given function in the isolated environment."""
+        raise NotImplementedError
+
+    def build_environment(
+        self,
+        options: Options,
+        *,
+        application_name: str | None = None,
+        environment_name: str | None = None,
+        result_handler: ResultHandler | None = None,
+    ) -> None:
+        """Pre-build the given function environment when supported by the host."""
         raise NotImplementedError
 
     def spawn(
@@ -554,7 +566,10 @@ class LocalHost(Host):
         application_auth_mode: AuthModeLiteral | None = None,
         result_handler: ResultHandler | None = None,
         entrypoint: str | None = None,
+        build_environment: bool | None = None,
     ) -> ReturnT:
+        # `build_environment` is a serverless concept; LocalHost ignores it.
+        del build_environment
         import isolate  # noqa: PLC0415
         from isolate.backends.settings import DEFAULT_SETTINGS  # noqa: PLC0415
         from isolate.connections import PythonIPC  # noqa: PLC0415
@@ -938,6 +953,7 @@ class FalServerlessHost(Host):
         environment_name: Optional[str] = None,
         result_handler: ResultHandler | None = None,
         entrypoint: str | None = None,
+        build_environment: bool | None = None,
     ) -> Optional[RegisterApplicationResult]:
         from isolate.backends.common import active_python  # noqa: PLC0415
 
@@ -1038,6 +1054,7 @@ class FalServerlessHost(Host):
             secrets=secrets,
             data_mounts=data_mounts,
             entrypoint=entrypoint,
+            build_environment=build_environment,
         ):
             result_handler(partial_result)
 
@@ -1057,6 +1074,7 @@ class FalServerlessHost(Host):
         application_name: str | None = None,
         application_auth_mode: AuthModeLiteral | None = None,
         entrypoint: str | None = None,
+        build_environment: bool | None = None,
     ) -> ReturnT:
         from isolate.backends.common import active_python  # noqa: PLC0415
 
@@ -1146,6 +1164,7 @@ class FalServerlessHost(Host):
             secrets=secrets,
             data_mounts=data_mounts,
             entrypoint=entrypoint,
+            build_environment=build_environment,
         ):
             result_handler(partial_result)
 
@@ -1158,7 +1177,7 @@ class FalServerlessHost(Host):
                 elif state is HostedRunState.SUCCESS:
                     return_value = partial_result.result
                 else:
-                    raise NotImplementedError("Unknown state: ", state)
+                    raise NotImplementedError(f"Unknown state: {state}")
 
         if return_value is _UNSET:
             raise InternalFalServerlessError(
@@ -1177,6 +1196,7 @@ class FalServerlessHost(Host):
         application_auth_mode: AuthModeLiteral | None = None,
         result_handler: ResultHandler | None = None,
         entrypoint: str | None = None,
+        build_environment: bool | None = None,
     ) -> ReturnT:
         effective_auth_mode = application_auth_mode or "public"
 
@@ -1195,6 +1215,76 @@ class FalServerlessHost(Host):
             application_name=application_name,
             application_auth_mode=application_auth_mode,
             entrypoint=entrypoint,
+            build_environment=build_environment,
+        )
+
+    @_handle_grpc_error()
+    def build_environment(
+        self,
+        options: Options,
+        *,
+        application_name: str | None = None,
+        environment_name: str | None = None,
+        result_handler: ResultHandler | None = None,
+    ) -> None:
+        """Pre-build the environment defined by ``options`` so that a follow-up
+        ``register`` / ``run`` / ``fetch_metadata`` with ``build_environment=False``
+        hits the cache.
+
+        Streams build logs through ``result_handler`` (defaults to a no-op
+        handler if not provided).
+        """
+        from isolate.backends.common import active_python  # noqa: PLC0415
+
+        environment_options = options.environment.copy()
+        environment_options.setdefault("python_version", active_python())
+        self._materialize_local_requirements(environment_options)
+        environments = [self._connection.define_environment(**environment_options)]
+
+        machine_type: list[str] | str = options.host.get(
+            "machine_type", FAL_SERVERLESS_DEFAULT_MACHINE_TYPE
+        )
+        base_image = options.host.get("_base_image", None)
+        scheduler = options.host.get("_scheduler", None)
+        scheduler_options = options.host.get("_scheduler_options", None)
+        regions = options.host.get("regions")
+        secrets = options.host.get("secrets")
+        machine_requirements = MachineRequirements(
+            machine_types=machine_type,  # type: ignore
+            num_gpus=options.host.get("num_gpus"),
+            base_image=base_image,
+            scheduler=scheduler,
+            scheduler_options=scheduler_options,
+            valid_regions=regions,
+        )
+
+        files = self.files_sync(FileSyncOptions.from_options(options))
+
+        if result_handler is None:
+            result_handler = ResultHandler()
+
+        for partial_result in self._connection.build_environment(
+            environments,
+            machine_requirements=machine_requirements,
+            files=files,
+            application_name=application_name,
+            environment_name=environment_name,
+            secrets=secrets,
+        ):
+            result_handler(partial_result)
+            status = partial_result.status
+            if status is None or status.state is HostedRunState.IN_PROGRESS:
+                continue
+            if status.state is HostedRunState.SUCCESS:
+                return
+            if status.state is HostedRunState.INTERNAL_FAILURE:
+                raise InternalFalServerlessError(
+                    "An internal failure occurred while building the environment."
+                )
+            raise NotImplementedError(f"Unknown state: {status.state}")
+
+        raise InternalFalServerlessError(
+            "The build environment stream ended without a terminal status."
         )
 
     def spawn(
@@ -2332,13 +2422,19 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
     def build_metadata(self) -> dict[str, Any]:
         return self.options.host.get("metadata") or {}
 
-    def fetch_metadata(self) -> dict[str, Any]:
+    def fetch_metadata(
+        self, *, build_environment: bool | None = None
+    ) -> dict[str, Any]:
         """Probe ``<entrypoint>.build_metadata`` on the worker and cache the
         result into ``options.host["metadata"]``.
 
         No-op when there's no ``entrypoint`` set — the regular flow already
         populates metadata via ``wrap_app``/registration paths, and this
         method just returns that cached value.
+
+        Pass ``build_environment=False`` to skip the inline env build inside
+        the metadata probe (e.g. when the caller has already pre-built the env
+        via ``Host.build_environment``).
         """
         if self.metadata_entrypoint is None:
             return self.build_metadata()
@@ -2350,8 +2446,10 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
             self.options,
             args=(),
             kwargs={},
+            application_name=self.app_name,
             entrypoint=self.metadata_entrypoint,
             result_handler=ResultHandler(),
+            build_environment=build_environment,
         )
         if not isinstance(payload, dict):
             raise FalServerlessError(

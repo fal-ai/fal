@@ -107,6 +107,7 @@ def deploy_with_check(
     force_env_build: bool,
     source: DeployCheckSource,
     result_handler: ResultHandler | None = None,
+    build_result_handler: ResultHandler | None = None,
 ) -> DeploymentResult:
     from fal.api import deploy as deploy_api
 
@@ -138,7 +139,9 @@ def deploy_with_check(
         assume_yes=args.yes,
     )
     return deploy_api.execute_prepared_deployment(
-        prepared, result_handler=result_handler
+        prepared,
+        result_handler=result_handler,
+        build_result_handler=build_result_handler,
     )
 
 

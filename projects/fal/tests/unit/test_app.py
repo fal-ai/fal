@@ -602,6 +602,117 @@ def test_data_mounts_run_sends_to_connection():
     assert call_kwargs["data_mounts"] == ["/data"]
 
 
+def test_build_environment_raises_on_internal_failure():
+    from fal.api.api import FalServerlessHost, InternalFalServerlessError, Options
+    from fal.sdk import BuildEnvironmentResult, HostedRunState, HostedRunStatus
+
+    host = FalServerlessHost()
+    connection = MagicMock()
+    connection.define_environment.return_value = object()
+    connection.build_environment.return_value = iter(
+        [
+            BuildEnvironmentResult(
+                status=HostedRunStatus(HostedRunState.INTERNAL_FAILURE)
+            )
+        ]
+    )
+
+    with patch.object(
+        FalServerlessHost, "_connection", new_callable=PropertyMock
+    ) as mock_connection:
+        mock_connection.return_value = connection
+        with pytest.raises(InternalFalServerlessError, match="building"):
+            host.build_environment(Options())
+
+
+def test_build_environment_raises_when_stream_ends_without_terminal_status():
+    from fal.api.api import FalServerlessHost, InternalFalServerlessError, Options
+    from fal.sdk import BuildEnvironmentResult, HostedRunState, HostedRunStatus
+
+    host = FalServerlessHost()
+    connection = MagicMock()
+    connection.define_environment.return_value = object()
+    connection.build_environment.return_value = iter(
+        [
+            BuildEnvironmentResult(),
+            BuildEnvironmentResult(status=HostedRunStatus(HostedRunState.IN_PROGRESS)),
+        ]
+    )
+
+    with patch.object(
+        FalServerlessHost, "_connection", new_callable=PropertyMock
+    ) as mock_connection:
+        mock_connection.return_value = connection
+        with pytest.raises(InternalFalServerlessError, match="terminal status"):
+            host.build_environment(Options())
+
+
+def test_build_environment_raises_readable_error_on_unknown_state():
+    from fal.api.api import FalServerlessHost, Options
+
+    host = FalServerlessHost()
+    connection = MagicMock()
+    connection.define_environment.return_value = object()
+    partial_result = MagicMock()
+    partial_result.logs = []
+    partial_result.service_urls = None
+    partial_result.status.state = "WEIRD"
+    connection.build_environment.return_value = iter([partial_result])
+
+    with patch.object(
+        FalServerlessHost, "_connection", new_callable=PropertyMock
+    ) as mock_connection:
+        mock_connection.return_value = connection
+        with pytest.raises(NotImplementedError, match="Unknown state: WEIRD"):
+            host.build_environment(Options())
+
+
+def test_run_raises_readable_error_on_unknown_state():
+    from fal.api.api import FalServerlessHost, Options, ResultHandler
+
+    host = FalServerlessHost()
+    connection = MagicMock()
+    connection.define_environment.return_value = object()
+    partial_result = MagicMock()
+    partial_result.logs = []
+    partial_result.service_urls = None
+    partial_result.status.state = "WEIRD"
+    connection.run.return_value = iter([partial_result])
+
+    with patch.object(
+        FalServerlessHost, "_connection", new_callable=PropertyMock
+    ) as mock_connection:
+        mock_connection.return_value = connection
+        with pytest.raises(NotImplementedError, match="Unknown state: WEIRD"):
+            host._run(
+                lambda: "ok",
+                Options(),
+                args=(),
+                kwargs={},
+                result_handler=ResultHandler(),
+            )
+
+
+def test_fetch_metadata_preserves_application_name():
+    from fal.api.api import IsolatedFunction, Options
+
+    host = MagicMock()
+    host.run.return_value = {}
+    isolated_function = IsolatedFunction(
+        host=host,
+        options=Options(),
+        app_name="my-app",
+        entrypoint="simple.app:SimpleApp",
+    )
+
+    isolated_function.fetch_metadata(build_environment=False)
+
+    _, call_kwargs = host.run.call_args
+    assert call_kwargs["application_name"] == "my-app"
+    assert call_kwargs["entrypoint"] == "simple.app:SimpleApp.build_metadata"
+    assert call_kwargs["build_environment"] is False
+
+
 def test_secrets_propagate_to_host_kwargs():
     class SecretsApp(App):
         secrets = ["OPENAI_API_KEY", "HF_TOKEN"]

@@ -10,7 +10,10 @@ from .parser import FalClientParser, RefAction, add_env_argument, get_output_par
 
 
 def _deploy(args):
-    from ._result_handlers import CliRegisterResultHandler
+    from ._result_handlers import (
+        CliBuildEnvironmentResultHandler,
+        CliRegisterResultHandler,
+    )
 
     team, app_ref = _resolve_team_and_app_ref(args)
 
@@ -24,6 +27,7 @@ def _deploy(args):
     no_cache = args.no_cache or args.force_env_build
     client = SyncServerlessClient(host=args.host, team=team)
     result_handler = CliRegisterResultHandler(console=args.console)
+    build_result_handler = CliBuildEnvironmentResultHandler(console=args.console)
 
     deploy_check_source = _resolve_deploy_check_source(args, client)
     if deploy_check_source is not None:
@@ -35,6 +39,7 @@ def _deploy(args):
             force_env_build=no_cache,
             source=deploy_check_source,
             result_handler=result_handler,
+            build_result_handler=build_result_handler,
         )
     else:
         from fal.api import deploy as deploy_api
@@ -55,7 +60,9 @@ def _deploy(args):
         )
         args.console.print("")
         res = deploy_api.execute_prepared_deployment(
-            prepared, result_handler=result_handler
+            prepared,
+            result_handler=result_handler,
+            build_result_handler=build_result_handler,
         )
 
     _render_deploy_result(args, res)
