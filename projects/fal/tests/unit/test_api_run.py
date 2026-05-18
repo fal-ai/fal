@@ -1,4 +1,5 @@
-from unittest.mock import MagicMock
+import sys
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -56,6 +57,39 @@ def test_run_local_without_entrypoint_uses_raw_func():
         (1,),
         {"x": 2},
     )
+
+
+def test_run_local_with_app_files_configures_runtime_path(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    def run():
+        return "local"
+
+    iso = IsolatedFunction(
+        host=_FakeHost(),
+        raw_func=run,
+        options=Options(
+            host={"app_files": ["assets"], "app_files_context_dir": "."},
+        ),
+    )
+
+    with patch("fal.api.api.include_app_files_path") as include_app_files_path:
+        assert run_api(iso, local=True) == "local"
+
+    include_app_files_path.assert_called_once_with(".")
+
+
+def test_run_local_container_config_includes_cwd_on_sys_path(monkeypatch):
+    monkeypatch.setattr(sys, "path", [path for path in sys.path if path != ""])
+
+    iso = IsolatedFunction(
+        host=_FakeHost(),
+        raw_func=lambda: "local",
+        options=Options(environment={"kind": "container"}),
+    )
+
+    assert run_api(iso, local=True) == "local"
+    assert sys.path[0] == ""
 
 
 def test_run_local_forwards_exposed_ports_to_entrypoint_app(monkeypatch):
