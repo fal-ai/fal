@@ -5,7 +5,6 @@ import copy
 import json
 import re
 import shutil
-import sys
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -117,11 +116,23 @@ def get_app_data_from_toml(
     requirements = app_data.pop("requirements", None)
     if requirements is not None:
         _validate_requirements(requirements)
-    python_version = app_data.pop("python_version", None)
-    if python_version is not None and not isinstance(python_version, str):
+    configured_python_version = app_data.pop("python_version", None)
+    if configured_python_version is not None and not isinstance(
+        configured_python_version, str
+    ):
         raise ValueError(
             f"App {app_name} python_version must be a string in pyproject.toml"
         )
+    python_version: str | None
+    if generated_docker_entrypoint:
+        if configured_python_version is not None:
+            raise ValueError(
+                f"App {app_name} python_version is managed automatically for "
+                "image-only deployments."
+            )
+        python_version = _GENERATED_DOCKER_PYTHON_VERSION
+    else:
+        python_version = configured_python_version
     options = Options()
     min_concurrency = app_data.pop("min_concurrency", None)
     max_concurrency = app_data.pop("max_concurrency", None)
@@ -280,6 +291,7 @@ _IMAGE_PASSTHROUGH_KEYS = (
 
 
 _GENERATED_DOCKER_ENTRYPOINT = "fal_entrypoint:fal_entry_point"
+_GENERATED_DOCKER_PYTHON_VERSION = "3.12"
 _PYTHON_BUILD_STANDALONE_RELEASE = "20260510"
 _PYTHON_BUILD_STANDALONE_ARCHIVES = {
     "3.10": (
@@ -519,7 +531,7 @@ def _append_generated_entrypoint_copy(
 
 def _python_runtime_archive(python_version: str | None) -> tuple[str, str]:
     if python_version is None:
-        normalized_version = f"{sys.version_info.major}.{sys.version_info.minor}"
+        normalized_version = _GENERATED_DOCKER_PYTHON_VERSION
     else:
         match = re.match(r"^(\d+\.\d+)(?:\.\d+)?$", python_version)
         if match is None:

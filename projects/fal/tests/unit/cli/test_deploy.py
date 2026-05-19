@@ -1161,7 +1161,6 @@ def test_get_app_data_from_toml_with_image_only_generated_entrypoint(
             "container-app": {
                 "auth": "public",
                 "machine_type": "GPU-H100",
-                "python_version": "3.12",
                 "exposed_port": 8000,
                 "image": {
                     "dockerfile": "Dockerfile",
@@ -1186,6 +1185,7 @@ def test_get_app_data_from_toml_with_image_only_generated_entrypoint(
     assert toml_data.auth == "public"
     assert toml_data.options.host["machine_type"] == "GPU-H100"
     assert toml_data.options.gateway["exposed_port"] == 8000
+    assert toml_data.options.environment["python_version"] == "3.12"
     assert toml_data.options.environment["kind"] == "container"
     assert dockerfile_str.startswith(dockerfile)
     assert "python-build-standalone/releases/download/20260510/" in dockerfile_str
@@ -1211,6 +1211,37 @@ def test_get_app_data_from_toml_with_image_only_generated_entrypoint(
     assert '_ENTRYPOINT = ["python", "/app/server.py"]' in generated_source
     assert '_CMD = ["--host", "0.0.0.0", "--port", "8000"]' in generated_source
     assert "subprocess.Popen" in generated_source
+
+
+@patch("fal.cli._utils.find_pyproject_toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+def test_get_app_data_from_toml_rejects_image_only_python_version(
+    mock_parse_toml, mock_find_toml, tmp_path
+):
+    from fal.cli._utils import get_app_data_from_toml
+
+    (tmp_path / "Dockerfile").write_text("FROM debian:bookworm-slim\n")
+    mock_find_toml.return_value = str(tmp_path / "pyproject.toml")
+    mock_parse_toml.return_value = {
+        "apps": {
+            "container-app": {
+                "python_version": "3.12",
+                "image": {
+                    "dockerfile": "Dockerfile",
+                    "entrypoint": ["/app/server"],
+                },
+            }
+        }
+    }
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "App container-app python_version is managed automatically for "
+            "image-only deployments."
+        ),
+    ):
+        get_app_data_from_toml("container-app")
 
 
 @patch("fal.cli._utils.find_pyproject_toml")
