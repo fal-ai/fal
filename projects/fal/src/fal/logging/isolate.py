@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING
 from structlog.dev import ConsoleRenderer
 from structlog.typing import EventDict
 
+from fal.console.encoding import make_terminal_safe
+
 from .style import LEVEL_STYLES
 
 if TYPE_CHECKING:
@@ -65,7 +67,7 @@ class IsolateLogPrinter:
 
         if log.source == LogSource.USER:
             stream = sys.stderr if log.level == LogLevel.STDERR else sys.stdout
-            print(log.message, file=stream)
+            print(make_terminal_safe(log.message, stream), file=stream)
             return
 
         level = str(log.level)
@@ -90,4 +92,4 @@ class IsolateLogPrinter:
 
         # Use structlog processors to get consistent output with local logs
         message = _renderer.__call__(logger={}, name=level, event_dict=event)
-        print(message)
+        print(make_terminal_safe(message, sys.stdout))
