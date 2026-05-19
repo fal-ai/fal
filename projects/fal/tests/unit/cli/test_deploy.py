@@ -143,6 +143,7 @@ def mock_parse_pyproject_toml():
                 "auth": "private",
                 "requirements": ["numpy==1.26.4"],
                 "machine_type": "GPU-H100",
+                "num_gpus": 2,
                 "min_concurrency": 2,
                 "regions": ["us-east"],
             },
@@ -394,6 +395,7 @@ def test_deploy_with_toml_overrides_applied(
                 host={
                     "min_concurrency": 2,
                     "machine_type": "GPU-H100",
+                    "num_gpus": 2,
                     "regions": ["us-east"],
                 },
                 environment={"requirements": ["numpy==1.26.4"]},
@@ -952,6 +954,20 @@ def test_get_app_data_from_toml_with_machine_type(
     toml_data = get_app_data_from_toml("override-app")
 
     assert toml_data.options.host["machine_type"] == "GPU-H100"
+
+
+@patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+def test_get_app_data_from_toml_with_num_gpus(
+    mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml
+):
+    from fal.cli._utils import get_app_data_from_toml
+
+    mock_parse_toml.return_value = mock_parse_pyproject_toml
+
+    toml_data = get_app_data_from_toml("override-app")
+
+    assert toml_data.options.host["num_gpus"] == 2
 
 
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")

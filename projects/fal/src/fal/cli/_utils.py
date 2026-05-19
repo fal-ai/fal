@@ -118,6 +118,7 @@ def get_app_data_from_toml(
     request_timeout = app_data.pop("request_timeout", None)
     startup_timeout = app_data.pop("startup_timeout", None)
     machine_type = app_data.pop("machine_type", None)
+    num_gpus = app_data.pop("num_gpus", None)
     regions = app_data.pop("regions", None)
     app_files = app_data.pop("app_files", None)
     app_files_ignore = app_data.pop("app_files_ignore", None)
@@ -165,6 +166,8 @@ def get_app_data_from_toml(
         options.host["startup_timeout"] = startup_timeout
     if machine_type is not None:
         options.host["machine_type"] = machine_type
+    if num_gpus is not None:
+        options.host["num_gpus"] = num_gpus
     if regions is not None:
         options.host["regions"] = regions
     if app_files is not None:

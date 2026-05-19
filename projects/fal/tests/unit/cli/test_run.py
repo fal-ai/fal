@@ -111,6 +111,7 @@ def mock_parse_pyproject_toml():
                 "auth": "private",
                 "requirements": ["numpy==1.26.4"],
                 "machine_type": "GPU-H100",
+                "num_gpus": 2,
                 "min_concurrency": 2,
                 "regions": ["us-east"],
             },
@@ -394,6 +395,7 @@ def test_run_with_toml_cli_name_override(
     assert call_kwargs["app_auth"] == "public"
     assert call_kwargs["options"].environment["requirements"] == ["numpy==1.26.4"]
     assert call_kwargs["options"].host["machine_type"] == "GPU-H100"
+    assert call_kwargs["options"].host["num_gpus"] == 2
     assert call_kwargs["options"].host["min_concurrency"] == 2
     assert call_kwargs["options"].host["regions"] == ["us-east"]
 
@@ -433,6 +435,7 @@ def test_run_with_toml_overrides_applied(
     assert call_kwargs["app_auth"] == "public"
     assert call_kwargs["options"].environment["requirements"] == ["numpy==1.26.4"]
     assert call_kwargs["options"].host["machine_type"] == "GPU-H100"
+    assert call_kwargs["options"].host["num_gpus"] == 2
     assert call_kwargs["options"].host["min_concurrency"] == 2
     assert call_kwargs["options"].host["regions"] == ["us-east"]
 
