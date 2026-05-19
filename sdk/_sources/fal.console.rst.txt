@@ -4,6 +4,14 @@ fal.console package
 Submodules
 ----------
 
+fal.console.encoding module
+---------------------------
+
+.. automodule:: fal.console.encoding
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 fal.console.icons module
 ------------------------
 
