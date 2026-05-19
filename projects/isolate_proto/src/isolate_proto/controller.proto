@@ -128,6 +128,8 @@ message HostedRun {
     // When set, the server may use the referenced environment directly. If both
     // `environments` and `env_id` are provided, the server validates they agree.
     optional string env_id = 15;
+    // Optional OpenAPI config for ephemeral app runners.
+    optional OpenapiConfig openapi_config = 16;
 }
 
 message BuildEnvironmentRequest {
@@ -314,6 +316,11 @@ message ApplicationHealthCheckConfig {
     optional bool allow_on_busy = 6;
 }
 
+message OpenapiConfig {
+    // path to the OpenAPI metadata endpoint
+    string path = 1;
+}
+
 enum RetryCondition {
     TIMEOUT = 0;
     CLIENT_ERROR = 1;
@@ -379,6 +386,8 @@ message RegisterApplicationRequest {
     // When set, the server may use the referenced environment directly. If both
     // `environments` and `env_id` are provided, the server validates they agree.
     optional string env_id = 25;
+    // Optional OpenAPI config for app runners.
+    optional OpenapiConfig openapi_config = 26;
 }
 
 message RegisterApplicationResultType {

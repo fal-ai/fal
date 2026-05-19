@@ -179,6 +179,28 @@ def test_env_id_field_presence_on_run_and_register():
     assert register_result_with_env.env_id == "abc123"
 
 
+def test_openapi_config_field_presence_on_run_and_register():
+    openapi_config = isolate_proto.OpenapiConfig(path="/openapi.json")
+    hosted_run = isolate_proto.HostedRun(entrypoint="pkg.mod:func")
+    assert hosted_run.HasField("openapi_config") is False
+
+    hosted_run_with_configs = isolate_proto.HostedRun(
+        entrypoint="pkg.mod:func",
+        openapi_config=openapi_config,
+    )
+    assert hosted_run_with_configs.HasField("openapi_config") is True
+    assert hosted_run_with_configs.openapi_config.path == "/openapi.json"
+
+    register = isolate_proto.RegisterApplicationRequest()
+    assert register.HasField("openapi_config") is False
+
+    register_with_configs = isolate_proto.RegisterApplicationRequest(
+        openapi_config=openapi_config,
+    )
+    assert register_with_configs.HasField("openapi_config") is True
+    assert register_with_configs.openapi_config.path == "/openapi.json"
+
+
 def test_build_environment_request_construction():
     request = isolate_proto.BuildEnvironmentRequest(
         environment_name="main",
