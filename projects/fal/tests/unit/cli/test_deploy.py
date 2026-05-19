@@ -142,6 +142,7 @@ def mock_parse_pyproject_toml():
                 "name": "override-name",
                 "auth": "private",
                 "requirements": ["numpy==1.26.4"],
+                "machine_type": "GPU-H100",
                 "min_concurrency": 2,
                 "regions": ["us-east"],
             },
@@ -390,7 +391,11 @@ def test_deploy_with_toml_overrides_applied(
             team=None,
             name="override-name",
             options=Options(
-                host={"min_concurrency": 2, "regions": ["us-east"]},
+                host={
+                    "min_concurrency": 2,
+                    "machine_type": "GPU-H100",
+                    "regions": ["us-east"],
+                },
                 environment={"requirements": ["numpy==1.26.4"]},
             ),
             local_project_root=".",
@@ -933,6 +938,41 @@ def test_get_app_data_from_toml_with_python_version(mock_parse_toml, mock_find_t
     toml_data = get_app_data_from_toml("python-version-app")
 
     assert toml_data.options.environment == {"python_version": "3.12"}
+
+
+@patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+def test_get_app_data_from_toml_with_machine_type(
+    mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml
+):
+    from fal.cli._utils import get_app_data_from_toml
+
+    mock_parse_toml.return_value = mock_parse_pyproject_toml
+
+    toml_data = get_app_data_from_toml("override-app")
+
+    assert toml_data.options.host["machine_type"] == "GPU-H100"
+
+
+@patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+def test_get_app_data_from_toml_with_machine_type_fallbacks(
+    mock_parse_toml, mock_find_toml
+):
+    from fal.cli._utils import get_app_data_from_toml
+
+    mock_parse_toml.return_value = {
+        "apps": {
+            "gpu-app": {
+                "ref": "src/gpu_app/inference.py::GpuApp",
+                "machine_type": ["GPU-H100", "GPU-A100"],
+            }
+        }
+    }
+
+    toml_data = get_app_data_from_toml("gpu-app")
+
+    assert toml_data.options.host["machine_type"] == ["GPU-H100", "GPU-A100"]
 
 
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")

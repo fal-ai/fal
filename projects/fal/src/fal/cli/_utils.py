@@ -117,6 +117,7 @@ def get_app_data_from_toml(
     scaling_delay = app_data.pop("scaling_delay", None)
     request_timeout = app_data.pop("request_timeout", None)
     startup_timeout = app_data.pop("startup_timeout", None)
+    machine_type = app_data.pop("machine_type", None)
     regions = app_data.pop("regions", None)
     app_files = app_data.pop("app_files", None)
     app_files_ignore = app_data.pop("app_files_ignore", None)
@@ -162,6 +163,8 @@ def get_app_data_from_toml(
         options.host["request_timeout"] = request_timeout
     if startup_timeout is not None:
         options.host["startup_timeout"] = startup_timeout
+    if machine_type is not None:
+        options.host["machine_type"] = machine_type
     if regions is not None:
         options.host["regions"] = regions
     if app_files is not None:
