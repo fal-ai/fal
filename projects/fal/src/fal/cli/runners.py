@@ -24,6 +24,7 @@ from rich.console import Console
 from structlog.typing import EventDict
 
 from fal.api.client import SyncServerlessClient
+from fal.console.encoding import make_terminal_safe
 from fal.sdk import ReplaceState, RunnerInfo, RunnerState
 
 from .parser import FalClientParser, SinceAction, get_output_parser
@@ -677,7 +678,10 @@ class LogPrinter:
         return self._renderer(logger={}, name=event["level"], event_dict=event)
 
     def print(self, log: dict) -> None:
-        self._console.print(self._render_log(log), highlight=False)
+        self._console.print(
+            make_terminal_safe(self._render_log(log), self._console.file),
+            highlight=False,
+        )
 
 
 DEFAULT_STREAM_SINCE = timedelta(minutes=1)
