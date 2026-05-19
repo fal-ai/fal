@@ -587,8 +587,14 @@ def test_worker_env_vars(isolated_client):
 def test_fal_storage_v3(isolated_client):
     url_prefixes = ["https://v3.fal.media/files", "https://v3b.fal.media/files"]
 
+    # v3b validates content against the claimed type; keep this test out of the
+    # rate-limited unrecognized-binary path.
     file = File.from_bytes(
-        b"Hello fal storage from local", repository="fal_v3", fallback_repository=None
+        b"Hello fal storage from local",
+        content_type="text/plain",
+        file_name="fal-storage-v3-local.txt",
+        repository="fal_v3",
+        fallback_repository=None,
     )
     assert any(file.url.startswith(url_prefix) for url_prefix in url_prefixes)
     assert file.as_bytes().decode().endswith("local")
@@ -600,6 +606,8 @@ def test_fal_storage_v3(isolated_client):
         # Run in the isolated environment
         return File.from_bytes(
             b"Hello fal storage from isolated",
+            content_type="text/plain",
+            file_name="fal-storage-v3-isolated.txt",
             repository="fal_v3",
             save_kwargs={
                 "multipart": False,
