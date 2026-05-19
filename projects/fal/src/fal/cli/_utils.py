@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+import atexit
 import copy
+import json
+import re
+import shutil
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
@@ -66,6 +71,9 @@ def get_app_data_from_toml(
     except KeyError:
         raise ValueError(f"App {app_name} not found in pyproject.toml")
 
+    image_config = app_data.pop("image", None)
+
+    generated_docker_entrypoint = False
     python_entry_point: str | None = app_data.pop("python_entry_point", None)
     if python_entry_point is not None:
         if not isinstance(python_entry_point, str):
@@ -79,17 +87,22 @@ def get_app_data_from_toml(
                 "and python_entry_point keys in pyproject.toml"
             )
     else:
-        try:
-            app_ref = app_data.pop("ref")
-        except KeyError:
-            raise ValueError(
-                f"App {app_name} does not have a ref key in pyproject.toml"
-            )
-        if not isinstance(app_ref, str):
-            raise ValueError(f"App {app_name} ref must be a string in pyproject.toml")
-        # Convert the app_ref to a path relative to the project root
-        project_root, _ = find_project_root(None)
-        app_ref = str(project_root / app_ref)
+        app_ref = app_data.pop("ref", None)
+        if app_ref is None:
+            if image_config is None:
+                raise ValueError(
+                    f"App {app_name} does not have a ref key in pyproject.toml"
+                )
+            python_entry_point = _GENERATED_DOCKER_ENTRYPOINT
+            generated_docker_entrypoint = True
+        else:
+            if not isinstance(app_ref, str):
+                raise ValueError(
+                    f"App {app_name} ref must be a string in pyproject.toml"
+                )
+            # Convert the app_ref to a path relative to the project root
+            project_root, _ = find_project_root(None)
+            app_ref = str(project_root / app_ref)
 
     app_auth: Optional[AuthModeLiteral] = app_data.pop("auth", None)
     app_deployment_strategy: Optional[DeploymentStrategyLiteral] = app_data.pop(
@@ -124,8 +137,6 @@ def get_app_data_from_toml(
     app_files_ignore = app_data.pop("app_files_ignore", None)
     app_files_context_dir = app_data.pop("app_files_context_dir", None)
     exposed_port = app_data.pop("exposed_port", None)
-
-    image_config = app_data.pop("image", None)
 
     if regions is not None:
         _validate_regions(regions)
@@ -184,7 +195,10 @@ def get_app_data_from_toml(
         options.environment["python_version"] = python_version
     if image_config is not None:
         container_image = _build_container_image_from_toml(
-            app_name, image_config, Path(toml_path).parent
+            app_name,
+            image_config,
+            Path(toml_path).parent,
+            inject_generated_entrypoint=generated_docker_entrypoint,
         )
         options.environment["kind"] = "container"
         options.environment["image"] = container_image.to_dict()
@@ -263,13 +277,39 @@ _IMAGE_PASSTHROUGH_KEYS = (
 )
 
 
+_GENERATED_DOCKER_ENTRYPOINT = "fal_entrypoint:fal_entry_point"
+
+
 def _build_container_image_from_toml(
-    app_name: str, image_config: Any, project_root: Path
+    app_name: str,
+    image_config: Any,
+    project_root: Path,
+    *,
+    inject_generated_entrypoint: bool = False,
 ) -> ContainerImage:
     if not isinstance(image_config, dict):
         raise ValueError(f"App {app_name} image must be a table in pyproject.toml")
 
+    project_root = project_root.resolve()
     image_config = dict(image_config)
+
+    wrapper_entrypoint = image_config.pop("entrypoint", None)
+    wrapper_cmd = image_config.pop("cmd", None)
+    if inject_generated_entrypoint:
+        wrapper_entrypoint = _validate_docker_command_list(
+            app_name, "entrypoint", wrapper_entrypoint
+        )
+        wrapper_cmd = _validate_docker_command_list(app_name, "cmd", wrapper_cmd)
+        if wrapper_entrypoint is None and wrapper_cmd is None:
+            raise ValueError(
+                f"App {app_name} image-only deployment must specify "
+                "image.entrypoint or image.cmd in pyproject.toml"
+            )
+    elif wrapper_entrypoint is not None or wrapper_cmd is not None:
+        raise ValueError(
+            f"App {app_name} image.entrypoint and image.cmd are only supported "
+            "for image-only deployments in pyproject.toml"
+        )
 
     dockerfile_path = image_config.pop("dockerfile", None)
     if dockerfile_path is None:
@@ -290,6 +330,19 @@ def _build_container_image_from_toml(
     except FileNotFoundError:
         raise ValueError(f"App {app_name} image.dockerfile not found: {resolved_path}")
 
+    if inject_generated_entrypoint:
+        assert wrapper_entrypoint is not None or wrapper_cmd is not None
+        generated_source = _write_generated_docker_entrypoint(
+            project_root,
+            entrypoint=wrapper_entrypoint,
+            cmd=wrapper_cmd,
+        )
+        source_path = generated_source.relative_to(project_root).as_posix()
+        dockerfile_str = _append_generated_entrypoint_copy(
+            dockerfile_str,
+            source_path=source_path,
+        )
+
     kwargs: dict[str, Any] = {
         "dockerfile_str": dockerfile_str,
         "context_dir": project_root,
@@ -305,3 +358,116 @@ def _build_container_image_from_toml(
         )
 
     return ContainerImage(**kwargs)
+
+
+def _validate_docker_command_list(
+    app_name: str,
+    field_name: str,
+    value: Any,
+) -> list[str] | None:
+    if value is None:
+        return None
+    if not (isinstance(value, list) and all(isinstance(item, str) for item in value)):
+        raise ValueError(
+            f"App {app_name} image.{field_name} must be a list of strings "
+            "in pyproject.toml"
+        )
+    if len(value) == 0:
+        raise ValueError(
+            f"App {app_name} image.{field_name} must not be empty in pyproject.toml"
+        )
+    return value
+
+
+def _write_generated_docker_entrypoint(
+    project_root: Path,
+    *,
+    entrypoint: list[str] | None,
+    cmd: list[str] | None,
+) -> Path:
+    generated_dir = Path(
+        tempfile.mkdtemp(prefix="fal-generated-", dir=project_root)
+    ).resolve()
+    atexit.register(shutil.rmtree, generated_dir, ignore_errors=True)
+    generated_path = generated_dir / "fal_entrypoint"
+    generated_path.write_text(
+        _render_generated_docker_entrypoint(entrypoint=entrypoint, cmd=cmd),
+        encoding="utf-8",
+    )
+    return generated_path
+
+
+def _render_generated_docker_entrypoint(
+    *,
+    entrypoint: list[str] | None,
+    cmd: list[str] | None,
+) -> str:
+    return f"""\
+import os
+import signal
+import subprocess
+
+_ENTRYPOINT = {json.dumps(entrypoint or [])}
+_CMD = {json.dumps(cmd or [])}
+
+
+def _argv():
+    if _ENTRYPOINT:
+        return [*_ENTRYPOINT, *_CMD]
+    return [*_CMD]
+
+
+class fal_entry_point:
+    @staticmethod
+    def build_metadata():
+        return {{}}
+
+    @staticmethod
+    def run_local():
+        popen_kwargs = {{}}
+        if os.name != "nt":
+            popen_kwargs["start_new_session"] = True
+
+        proc = subprocess.Popen(
+            _argv(),
+            stdin=subprocess.DEVNULL,
+            **popen_kwargs,
+        )
+
+        def _terminate(signum, frame):
+            del frame
+            try:
+                if os.name != "nt":
+                    os.killpg(proc.pid, signum)
+                else:
+                    proc.send_signal(signum)
+            except ProcessLookupError:
+                pass
+
+        try:
+            signal.signal(signal.SIGTERM, _terminate)
+            signal.signal(signal.SIGINT, _terminate)
+        except ValueError:
+            pass
+
+        code = proc.wait()
+        if code != 0:
+            raise RuntimeError(f"Process exited with code {{code}}")
+"""
+
+
+def _append_generated_entrypoint_copy(
+    dockerfile_str: str,
+    *,
+    source_path: str,
+) -> str:
+    if not re.match(r"^[A-Za-z0-9._/-]+$", source_path):
+        raise ValueError(f"Invalid generated entrypoint path: {source_path}")
+
+    return (
+        dockerfile_str.rstrip()
+        + "\n\n"
+        + "# fal generated Docker wrapper entrypoint\n"
+        + f"COPY {source_path} /app/fal_entrypoint.py\n"
+        + 'ENV PYTHONPATH="/app:${PYTHONPATH}"\n'
+    )

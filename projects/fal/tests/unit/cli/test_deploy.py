@@ -1145,6 +1145,156 @@ def test_get_app_data_from_toml_with_image(mock_parse_toml, mock_find_toml, tmp_
     assert env["image"]["secrets"] == {"TOKEN": "shh"}
 
 
+@patch("fal.cli._utils.find_pyproject_toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+def test_get_app_data_from_toml_with_image_only_generated_entrypoint(
+    mock_parse_toml, mock_find_toml, tmp_path
+):
+    from fal.cli._utils import get_app_data_from_toml
+
+    dockerfile = "FROM python:3.12-slim\nCOPY server.py /app/server.py\n"
+    (tmp_path / "Dockerfile").write_text(dockerfile)
+    (tmp_path / "server.py").write_text("print('hello')\n")
+    mock_find_toml.return_value = str(tmp_path / "pyproject.toml")
+    mock_parse_toml.return_value = {
+        "apps": {
+            "container-app": {
+                "auth": "public",
+                "machine_type": "GPU-H100",
+                "exposed_port": 8000,
+                "image": {
+                    "dockerfile": "Dockerfile",
+                    "entrypoint": ["python", "/app/server.py"],
+                    "cmd": ["--host", "0.0.0.0", "--port", "8000"],
+                },
+            }
+        }
+    }
+
+    toml_data = get_app_data_from_toml("container-app")
+
+    image = toml_data.options.environment["image"]
+    dockerfile_str = image["dockerfile_str"]
+    generated_sources = [
+        source
+        for source in image["docker_files_list"]
+        if source.startswith("fal-generated-")
+    ]
+    assert toml_data.ref is None
+    assert toml_data.python_entry_point == "fal_entrypoint:fal_entry_point"
+    assert toml_data.auth == "public"
+    assert toml_data.options.host["machine_type"] == "GPU-H100"
+    assert toml_data.options.gateway["exposed_port"] == 8000
+    assert toml_data.options.environment["kind"] == "container"
+    assert dockerfile_str.startswith(dockerfile)
+    assert "COPY fal-generated-" in dockerfile_str
+    assert " /app/fal_entrypoint.py\n" in dockerfile_str
+    assert 'ENV PYTHONPATH="/app:${PYTHONPATH}"' in dockerfile_str
+    assert "server.py" in image["docker_files_list"]
+    assert len(generated_sources) == 1
+    assert generated_sources[0].endswith("/fal_entrypoint")
+
+    generated_source = (tmp_path / generated_sources[0]).read_text()
+    assert "import fal" not in generated_source
+    assert "class fal_entry_point:" in generated_source
+    assert "def build_metadata():" in generated_source
+    assert "def run_local():" in generated_source
+    assert '_ENTRYPOINT = ["python", "/app/server.py"]' in generated_source
+    assert '_CMD = ["--host", "0.0.0.0", "--port", "8000"]' in generated_source
+    assert "subprocess.Popen" in generated_source
+
+
+@patch("fal.cli._utils.find_pyproject_toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+def test_get_app_data_from_toml_rejects_image_only_without_command(
+    mock_parse_toml, mock_find_toml, tmp_path
+):
+    from fal.cli._utils import get_app_data_from_toml
+
+    (tmp_path / "Dockerfile").write_text("FROM python:3.12-slim\n")
+    mock_find_toml.return_value = str(tmp_path / "pyproject.toml")
+    mock_parse_toml.return_value = {
+        "apps": {
+            "container-app": {
+                "image": {"dockerfile": "Dockerfile"},
+            }
+        }
+    }
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "App container-app image-only deployment must specify "
+            "image.entrypoint or image.cmd in pyproject.toml"
+        ),
+    ):
+        get_app_data_from_toml("container-app")
+
+
+@patch("fal.cli._utils.find_pyproject_toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+def test_get_app_data_from_toml_rejects_image_command_with_ref(
+    mock_parse_toml, mock_find_toml, tmp_path
+):
+    from fal.cli._utils import get_app_data_from_toml
+
+    (tmp_path / "Dockerfile").write_text("FROM python:3.12-slim\n")
+    mock_find_toml.return_value = str(tmp_path / "pyproject.toml")
+    mock_parse_toml.return_value = {
+        "apps": {
+            "container-app": {
+                "ref": "src/my_app/inference.py::MyApp",
+                "image": {
+                    "dockerfile": "Dockerfile",
+                    "entrypoint": ["python", "/app/server.py"],
+                },
+            }
+        }
+    }
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "App container-app image.entrypoint and image.cmd are only "
+            "supported for image-only deployments in pyproject.toml"
+        ),
+    ):
+        get_app_data_from_toml("container-app")
+
+
+@pytest.mark.parametrize(
+    ("field_name", "field_value", "message"),
+    [
+        ("entrypoint", "python /app/server.py", "must be a list of strings"),
+        ("cmd", [], "must not be empty"),
+    ],
+)
+@patch("fal.cli._utils.find_pyproject_toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+def test_get_app_data_from_toml_rejects_invalid_image_command(
+    mock_parse_toml, mock_find_toml, tmp_path, field_name, field_value, message
+):
+    from fal.cli._utils import get_app_data_from_toml
+
+    (tmp_path / "Dockerfile").write_text("FROM python:3.12-slim\n")
+    image_config = {
+        "dockerfile": "Dockerfile",
+        "entrypoint": ["python", "/app/server.py"],
+    }
+    image_config[field_name] = field_value
+    mock_find_toml.return_value = str(tmp_path / "pyproject.toml")
+    mock_parse_toml.return_value = {
+        "apps": {
+            "container-app": {
+                "image": image_config,
+            }
+        }
+    }
+
+    with pytest.raises(ValueError, match=message):
+        get_app_data_from_toml("container-app")
+
+
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
 @patch("fal.cli._utils.parse_pyproject_toml")
 def test_get_app_data_from_toml_rejects_image_without_dockerfile(
