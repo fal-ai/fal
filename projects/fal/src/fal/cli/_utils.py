@@ -5,6 +5,7 @@ import copy
 import json
 import re
 import shutil
+import sys
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -199,6 +200,7 @@ def get_app_data_from_toml(
             image_config,
             Path(toml_path).parent,
             inject_generated_entrypoint=generated_docker_entrypoint,
+            python_version=python_version,
         )
         options.environment["kind"] = "container"
         options.environment["image"] = container_image.to_dict()
@@ -278,6 +280,34 @@ _IMAGE_PASSTHROUGH_KEYS = (
 
 
 _GENERATED_DOCKER_ENTRYPOINT = "fal_entrypoint:fal_entry_point"
+_PYTHON_BUILD_STANDALONE_RELEASE = "20260510"
+_PYTHON_BUILD_STANDALONE_ARCHIVES = {
+    "3.10": (
+        "cpython-3.10.20+20260510-x86_64-unknown-linux-gnu-"
+        "install_only_stripped.tar.gz",
+        "sha256:dc734bdd388975c0b093fe730b272af741a2e192475d38bc6845a687b6405922",
+    ),
+    "3.11": (
+        "cpython-3.11.15+20260510-x86_64-unknown-linux-gnu-"
+        "install_only_stripped.tar.gz",
+        "sha256:171dffd8c0f66e8a0725364a7428015b22fc18dd298b24f541392e17dd0e561f",
+    ),
+    "3.12": (
+        "cpython-3.12.13+20260510-x86_64-unknown-linux-gnu-"
+        "install_only_stripped.tar.gz",
+        "sha256:d480f5d5878910ecbae212bf23bd7c25d7b209eb8cf5e98823c977384d272e88",
+    ),
+    "3.13": (
+        "cpython-3.13.13+20260510-x86_64-unknown-linux-gnu-"
+        "install_only_stripped.tar.gz",
+        "sha256:bbe27549e475fe5f22d42a8e0d553dc79d80d8a00e05712599637857d287360e",
+    ),
+    "3.14": (
+        "cpython-3.14.5+20260510-x86_64-unknown-linux-gnu-"
+        "install_only_stripped.tar.gz",
+        "sha256:dc10977b0db3bef1ee2275107fde6fe9c148135b556fa352e83c6baa67d17ed6",
+    ),
+}
 
 
 def _build_container_image_from_toml(
@@ -286,6 +316,7 @@ def _build_container_image_from_toml(
     project_root: Path,
     *,
     inject_generated_entrypoint: bool = False,
+    python_version: str | None = None,
 ) -> ContainerImage:
     if not isinstance(image_config, dict):
         raise ValueError(f"App {app_name} image must be a table in pyproject.toml")
@@ -341,6 +372,7 @@ def _build_container_image_from_toml(
         dockerfile_str = _append_generated_entrypoint_copy(
             dockerfile_str,
             source_path=source_path,
+            python_version=python_version,
         )
 
     kwargs: dict[str, Any] = {
@@ -460,14 +492,55 @@ def _append_generated_entrypoint_copy(
     dockerfile_str: str,
     *,
     source_path: str,
+    python_version: str | None,
 ) -> str:
     if not re.match(r"^[A-Za-z0-9._/-]+$", source_path):
         raise ValueError(f"Invalid generated entrypoint path: {source_path}")
 
+    python_archive_url, python_archive_checksum = _python_runtime_archive(
+        python_version
+    )
+
     return (
         dockerfile_str.rstrip()
         + "\n\n"
+        + "# fal generated Python runtime for wrapper entrypoint\n"
+        + f"ADD --checksum={python_archive_checksum} {python_archive_url} "
+        + "/tmp/fal-python.tar.gz\n"
+        + "RUN mkdir -p /opt/fal && "
+        + "tar -xzf /tmp/fal-python.tar.gz -C /opt/fal && "
+        + "rm /tmp/fal-python.tar.gz\n"
+        + 'ENV PATH="${PATH}:/opt/fal/python/bin"\n\n'
         + "# fal generated Docker wrapper entrypoint\n"
         + f"COPY {source_path} /app/fal_entrypoint.py\n"
         + 'ENV PYTHONPATH="/app:${PYTHONPATH}"\n'
+    )
+
+
+def _python_runtime_archive(python_version: str | None) -> tuple[str, str]:
+    if python_version is None:
+        normalized_version = f"{sys.version_info.major}.{sys.version_info.minor}"
+    else:
+        match = re.match(r"^(\d+\.\d+)(?:\.\d+)?$", python_version)
+        if match is None:
+            raise ValueError(
+                "python_version must be in '<major>.<minor>' or "
+                "'<major>.<minor>.<patch>' format for image-only deployments."
+            )
+        normalized_version = match.group(1)
+
+    try:
+        filename, checksum = _PYTHON_BUILD_STANDALONE_ARCHIVES[normalized_version]
+    except KeyError:
+        supported = ", ".join(sorted(_PYTHON_BUILD_STANDALONE_ARCHIVES))
+        raise ValueError(
+            "image-only deployments currently support generated Python runtime "
+            f"injection for Python versions: {supported}."
+        )
+
+    escaped_filename = filename.replace("+", "%2B")
+    return (
+        "https://github.com/astral-sh/python-build-standalone/releases/download/"
+        f"{_PYTHON_BUILD_STANDALONE_RELEASE}/{escaped_filename}",
+        checksum,
     )

@@ -1161,6 +1161,7 @@ def test_get_app_data_from_toml_with_image_only_generated_entrypoint(
             "container-app": {
                 "auth": "public",
                 "machine_type": "GPU-H100",
+                "python_version": "3.12",
                 "exposed_port": 8000,
                 "image": {
                     "dockerfile": "Dockerfile",
@@ -1187,6 +1188,14 @@ def test_get_app_data_from_toml_with_image_only_generated_entrypoint(
     assert toml_data.options.gateway["exposed_port"] == 8000
     assert toml_data.options.environment["kind"] == "container"
     assert dockerfile_str.startswith(dockerfile)
+    assert "python-build-standalone/releases/download/20260510/" in dockerfile_str
+    assert "cpython-3.12.13%2B20260510" in dockerfile_str
+    assert (
+        "sha256:d480f5d5878910ecbae212bf23bd7c25d7b209eb8cf5e98823c977384d272e88"
+        in dockerfile_str
+    )
+    assert "tar -xzf /tmp/fal-python.tar.gz -C /opt/fal" in dockerfile_str
+    assert 'ENV PATH="${PATH}:/opt/fal/python/bin"' in dockerfile_str
     assert "COPY fal-generated-" in dockerfile_str
     assert " /app/fal_entrypoint.py\n" in dockerfile_str
     assert 'ENV PYTHONPATH="/app:${PYTHONPATH}"' in dockerfile_str
