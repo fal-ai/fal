@@ -144,10 +144,6 @@ def get_app_data_from_toml(
 
     image_config = app_data.pop("image", None)
 
-    if keep_alive is not None:
-        _validate_int("keep_alive", keep_alive)
-    if private_logs is not None:
-        _validate_bool("private_logs", private_logs)
     if regions is not None:
         _validate_regions(regions)
     if app_files is not None:
@@ -168,8 +164,12 @@ def get_app_data_from_toml(
         _validate_port("exposed_port", exposed_port)
     if image_config is not None and app_files:
         raise ValueError("app_files is not supported for container apps.")
-    if scheduler is not None and not isinstance(scheduler, str):
-        raise ValueError("_scheduler must be a string.")
+    if keep_alive is not None:
+        _validate_int("keep_alive", keep_alive)
+    if private_logs is not None:
+        _validate_bool("private_logs", private_logs)
+    if scheduler is not None and not (isinstance(scheduler, str) and scheduler):
+        raise ValueError("_scheduler must be a non-empty string.")
     if scheduler_options is not None and not isinstance(scheduler_options, dict):
         raise ValueError("_scheduler_options must be a table in pyproject.toml.")
     if skip_retry_conditions is not None:
@@ -332,8 +332,7 @@ def _validate_skip_retry_conditions(value: Any) -> None:
 
 
 def _validate_port(field_name: str, value: Any) -> None:
-    if not isinstance(value, int) or isinstance(value, bool):
-        raise ValueError(f"{field_name} must be an integer.")
+    _validate_int(field_name, value)
     if value < 0 or value > 65535:
         raise ValueError(f"{field_name} must be between 0 and 65535.")
 
@@ -346,8 +345,8 @@ def _build_health_check_config_from_toml(
             f"App {app_name} health_check must be a table in pyproject.toml"
         )
 
-    health_check = dict(health_check)
-    path = health_check.pop("path", None)
+    health_check_data = dict(health_check)
+    path = health_check_data.pop("path", None)
     if path is None:
         raise ValueError(
             f"App {app_name} health_check must specify 'path' in pyproject.toml"
@@ -357,10 +356,10 @@ def _build_health_check_config_from_toml(
             f"App {app_name} health_check.path must be a string in pyproject.toml"
         )
 
-    start_period_seconds = health_check.pop("start_period_seconds", None)
-    timeout_seconds = health_check.pop("timeout_seconds", None)
-    failure_threshold = health_check.pop("failure_threshold", None)
-    call_regularly = health_check.pop("call_regularly", None)
+    start_period_seconds = health_check_data.pop("start_period_seconds", None)
+    timeout_seconds = health_check_data.pop("timeout_seconds", None)
+    failure_threshold = health_check_data.pop("failure_threshold", None)
+    call_regularly = health_check_data.pop("call_regularly", None)
 
     if start_period_seconds is not None:
         _validate_int("health_check.start_period_seconds", start_period_seconds)
@@ -371,9 +370,9 @@ def _build_health_check_config_from_toml(
     if call_regularly is not None:
         _validate_bool("health_check.call_regularly", call_regularly)
 
-    if health_check:
+    if health_check_data:
         raise ValueError(
-            f"Found unexpected keys in app {app_name} health_check: {health_check}"
+            f"Found unexpected keys in app {app_name} health_check: {health_check_data}"
         )
 
     return ApplicationHealthCheckConfig(
@@ -388,6 +387,7 @@ def _build_health_check_config_from_toml(
 _IMAGE_PASSTHROUGH_KEYS = (
     "build_args",
     "registries",
+    # Image build-time secrets, distinct from app-level runtime `secrets`.
     "secrets",
 )
 

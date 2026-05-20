@@ -1164,13 +1164,12 @@ def test_get_app_data_from_toml_rejects_app_files_context_dir_without_app_files(
         get_app_data_from_toml("my-app")
 
 
-@patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
-@patch("fal.cli._utils.parse_pyproject_toml")
 @pytest.mark.parametrize(
     ("field_name", "value", "message"),
     [
         ("keep_alive", True, "keep_alive must be an integer."),
         ("private_logs", "yes", "private_logs must be a boolean."),
+        ("_scheduler", "", "_scheduler must be a non-empty string."),
         ("_scheduler_options", "nomad", "_scheduler_options must be a table"),
         ("secrets", "OPENAI_API_KEY", "secrets must be a list of strings."),
         ("data_mounts", ["/data", 1], "data_mounts must be a list of strings."),
@@ -1186,6 +1185,8 @@ def test_get_app_data_from_toml_rejects_app_files_context_dir_without_app_files(
         ),
     ],
 )
+@patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
 def test_get_app_data_from_toml_rejects_invalid_advanced_runtime_options(
     mock_parse_toml, mock_find_toml, field_name, value, message
 ):

@@ -289,6 +289,8 @@ def _toml_host_keys_overriding_app_defaults(
 def _is_app_default_host_option(
     app_cls: type[App], base_app_cls: type[App], key: str
 ) -> bool:
+    if key in getattr(app_cls, "_explicit_host_kwargs", set()):
+        return False
     if key in app_cls.__dict__:
         return False
 

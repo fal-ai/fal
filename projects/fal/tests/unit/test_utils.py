@@ -232,8 +232,12 @@ def test_load_function_from_preserves_explicit_app_host_options_over_toml(tmp_pa
     app_file.write_text(
         "import fal\n"
         "\n"
-        "class MyApp(fal.App, keep_alive=77):\n"
-        "    _scheduler_options = {'storage_region': 'class'}\n"
+        "class MyApp(\n"
+        "    fal.App,\n"
+        "    keep_alive=60,\n"
+        "    _scheduler='nomad',\n"
+        "    _scheduler_options={'storage_region': 'us-east'},\n"
+        "):\n"
         "\n"
         "    @fal.endpoint('/', health_check=fal.HealthCheck(timeout_seconds=9))\n"
         "    def run(self):\n"
@@ -245,6 +249,7 @@ def test_load_function_from_preserves_explicit_app_host_options_over_toml(tmp_pa
     options = Options(
         host={
             "keep_alive": 123,
+            "_scheduler": "kubernetes",
             "_scheduler_options": {"storage_region": "toml"},
             "health_check_config": ApplicationHealthCheckConfig(
                 path="/ready",
@@ -259,9 +264,10 @@ def test_load_function_from_preserves_explicit_app_host_options_over_toml(tmp_pa
     loaded = load_function_from(host, str(app_file), "MyApp", options=options)
     health_check_config = loaded.function.options.host["health_check_config"]
 
-    assert loaded.function.options.host["keep_alive"] == 77
+    assert loaded.function.options.host["keep_alive"] == 60
+    assert loaded.function.options.host["_scheduler"] == "nomad"
     assert loaded.function.options.host["_scheduler_options"] == {
-        "storage_region": "class"
+        "storage_region": "us-east"
     }
     assert health_check_config.path == "/"
     assert health_check_config.timeout_seconds == 9
