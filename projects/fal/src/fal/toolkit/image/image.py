@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import io
 from functools import wraps
-from tempfile import NamedTemporaryFile
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import TYPE_CHECKING, Literal, Optional, Union
 from urllib.parse import urlparse
 
@@ -200,8 +201,8 @@ class Image(File):
             raise ImportError("The PIL package is required to use Image.to_pil().")
 
         # Stream the image data from url to a temp file and convert it to a PIL image
-        with NamedTemporaryFile() as temp_file:
-            temp_file_path = temp_file.name
+        with TemporaryDirectory() as temp_dir:
+            temp_file_path = Path(temp_dir) / "image"
 
             if urlparse(self.url).scheme == "data":
                 _download_file_python(self.url, temp_file_path)
