@@ -23,6 +23,8 @@ if TYPE_CHECKING:
     from PIL import Image as PILImage
 
 
+MAX_IMAGE_DOWNLOAD_SIZE = 50 * 1024 * 1024
+
 ImageSizePreset = Literal[
     "square_hd",
     "square",
@@ -208,6 +210,7 @@ class Image(File):
                     self.url,
                     temp_file_path,
                     headers=TEMP_HEADERS,
+                    max_size=MAX_IMAGE_DOWNLOAD_SIZE,
                 )
 
             img = PILImage.open(temp_file_path).convert(mode)

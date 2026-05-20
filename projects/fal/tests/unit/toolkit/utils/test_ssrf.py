@@ -599,6 +599,22 @@ def test_image_to_pil_preserves_data_uri() -> None:
     assert image.to_pil().size == (1, 1)
 
 
+def test_image_to_pil_applies_download_limit() -> None:
+    def fake_get_to_file(
+        url: str,
+        target_path: str,
+        **kwargs: Any,
+    ) -> ssrf.SafeResponse:
+        assert url == "https://attacker.example/image.png"
+        assert target_path
+        assert kwargs["max_size"] == image_toolkit.MAX_IMAGE_DOWNLOAD_SIZE
+        raise ssrf.SSRFError("too large")
+
+    with patch("fal.toolkit.image.image.ssrf_safe_get_to_file", fake_get_to_file):
+        with pytest.raises(ssrf.SSRFError, match="too large"):
+            FalImage(url="https://attacker.example/image.png").to_pil()
+
+
 def test_download_file_redownloads_truncated_data_uri_cache(tmp_path) -> None:
     url = "data:text/plain;base64,aGVsbG8="
     target_path = tmp_path / download_utils._hash_url(url)

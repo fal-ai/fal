@@ -10,8 +10,7 @@ from fal.toolkit.utils.download_utils import TEMP_HEADERS
 from fal.toolkit.utils.ssrf import ssrf_safe_get
 
 from .image import *  # noqa: F403
-
-MAX_IMAGE_DOWNLOAD_SIZE = 50 * 1024 * 1024
+from .image import MAX_IMAGE_DOWNLOAD_SIZE
 
 if TYPE_CHECKING:
     # suffix so we don't clash with PILImage from .image
