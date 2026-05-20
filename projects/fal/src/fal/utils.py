@@ -162,6 +162,7 @@ def load_function_from(
         source_code = f.read()
 
     wrapped_app = False
+    toml_host_overrides: set[str] = set()
     if isinstance(target, type) and issubclass(target, App):
         # ``App.__init_subclass__`` enforces ``image``/``app_files`` exclusivity
         # at class-definition time, but ``image`` can also arrive from
@@ -174,6 +175,9 @@ def load_function_from(
         ):
             raise FalServerlessError("app_files is not supported for container apps.")
         _apply_toml_app_file_options(target, options)
+        toml_host_overrides = _toml_host_keys_overriding_app_defaults(
+            target, App, options
+        )
         target = wrap_app(
             target,
             host=host,
@@ -187,7 +191,7 @@ def load_function_from(
             f"Function '{function_name}' is not a fal.function or a fal.App"
         )
     if options is not None:
-        _merge_options(target.options, options)
+        _merge_options(target.options, options, overwrite_host_keys=toml_host_overrides)
         if wrapped_app and options.gateway.get("exposed_port") is not None:
             target.options.gateway["exposed_port"] = options.gateway["exposed_port"]
 
@@ -266,7 +270,56 @@ def _load_from_python_entry_point(
     )
 
 
-def _merge_options(target: Options, incoming: Options) -> None:
-    merge_basic_config(target.host, incoming.host)
+_MISSING = object()
+
+
+def _toml_host_keys_overriding_app_defaults(
+    app_cls: type[App], base_app_cls: type[App], options: Optional[Options]
+) -> set[str]:
+    if options is None:
+        return set()
+
+    override_keys = set()
+    for key in options.host:
+        if _is_app_default_host_option(app_cls, base_app_cls, key):
+            override_keys.add(key)
+    return override_keys
+
+
+def _is_app_default_host_option(
+    app_cls: type[App], base_app_cls: type[App], key: str
+) -> bool:
+    if key in app_cls.__dict__:
+        return False
+
+    current_host_value = app_cls.host_kwargs.get(key, _MISSING)
+    if current_host_value is not _MISSING:
+        if current_host_value is None:
+            return True
+        default_host_value = base_app_cls.host_kwargs.get(key, _MISSING)
+        return (
+            default_host_value is not _MISSING
+            and current_host_value == default_host_value
+        )
+
+    if hasattr(base_app_cls, key):
+        return getattr(app_cls, key) == getattr(base_app_cls, key)
+
+    return False
+
+
+def _merge_options(
+    target: Options, incoming: Options, *, overwrite_host_keys: set[str] | None = None
+) -> None:
+    _merge_host_config(target.host, incoming.host, overwrite_host_keys or set())
     merge_basic_config(target.environment, incoming.environment)
     merge_basic_config(target.gateway, incoming.gateway)
+
+
+def _merge_host_config(
+    target: dict[str, object], incoming: dict[str, object], overwrite_keys: set[str]
+) -> None:
+    for key, value in incoming.items():
+        if key in target and key not in overwrite_keys:
+            continue
+        target[key] = value

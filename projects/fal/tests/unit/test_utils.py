@@ -6,6 +6,7 @@ import fal
 from fal.api import IsolatedFunction, Options
 from fal.api.api import merge_basic_config
 from fal.api.client import SyncServerlessClient
+from fal.sdk import ApplicationHealthCheckConfig
 from fal.utils import (
     _find_target,
     _parse_python_entry_point,
@@ -187,6 +188,83 @@ def test_load_function_from_applies_toml_exposed_port_for_fal_app(tmp_path):
     loaded = load_function_from(host, str(app_file), "MyApp", options=options)
 
     assert loaded.function.options.gateway["exposed_port"] == 9000
+
+
+def test_load_function_from_applies_toml_host_options_over_app_defaults(tmp_path):
+    app_file = tmp_path / "app.py"
+    app_file.write_text(
+        "import fal\n"
+        "\n"
+        "class MyApp(fal.App):\n"
+        "    @fal.endpoint('/')\n"
+        "    def run(self):\n"
+        "        return {'ok': True}\n"
+    )
+
+    client = SyncServerlessClient(host="api.alpha.fal.ai")
+    host = client._create_host(local_file_path=str(app_file))
+    health_check_config = ApplicationHealthCheckConfig(
+        path="/ready",
+        start_period_seconds=30,
+        timeout_seconds=5,
+        failure_threshold=3,
+        call_regularly=True,
+    )
+    options = Options(
+        host={
+            "keep_alive": 123,
+            "_scheduler_options": {"storage_region": "eu-west"},
+            "health_check_config": health_check_config,
+        }
+    )
+
+    loaded = load_function_from(host, str(app_file), "MyApp", options=options)
+
+    assert loaded.function.options.host["keep_alive"] == 123
+    assert loaded.function.options.host["_scheduler_options"] == {
+        "storage_region": "eu-west"
+    }
+    assert loaded.function.options.host["health_check_config"] == health_check_config
+
+
+def test_load_function_from_preserves_explicit_app_host_options_over_toml(tmp_path):
+    app_file = tmp_path / "app.py"
+    app_file.write_text(
+        "import fal\n"
+        "\n"
+        "class MyApp(fal.App, keep_alive=77):\n"
+        "    _scheduler_options = {'storage_region': 'class'}\n"
+        "\n"
+        "    @fal.endpoint('/', health_check=fal.HealthCheck(timeout_seconds=9))\n"
+        "    def run(self):\n"
+        "        return {'ok': True}\n"
+    )
+
+    client = SyncServerlessClient(host="api.alpha.fal.ai")
+    host = client._create_host(local_file_path=str(app_file))
+    options = Options(
+        host={
+            "keep_alive": 123,
+            "_scheduler_options": {"storage_region": "toml"},
+            "health_check_config": ApplicationHealthCheckConfig(
+                path="/ready",
+                start_period_seconds=30,
+                timeout_seconds=5,
+                failure_threshold=3,
+                call_regularly=True,
+            ),
+        }
+    )
+
+    loaded = load_function_from(host, str(app_file), "MyApp", options=options)
+    health_check_config = loaded.function.options.host["health_check_config"]
+
+    assert loaded.function.options.host["keep_alive"] == 77
+    assert loaded.function.options.host["_scheduler_options"] == {
+        "storage_region": "class"
+    }
+    assert health_check_config.path == "/"
+    assert health_check_config.timeout_seconds == 9
 
 
 def test_load_function_from_preserves_app_defined_app_files_over_toml(tmp_path):
