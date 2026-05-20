@@ -376,18 +376,29 @@ class File(BaseModel):
 
         return self.file_data
 
-    def save(self, path: str | Path, overwrite: bool = False) -> Path:
+    def save(
+        self,
+        path: str | Path,
+        overwrite: bool = False,
+    ) -> Path:
         file_path = Path(path).resolve()
 
         if file_path.exists() and not overwrite:
             raise FileExistsError(f"File {file_path} already exists")
 
-        downloaded_path = download_file(self.url, target_dir=file_path.parent)
+        downloaded_path = download_file(
+            self.url,
+            target_dir=file_path.parent,
+        )
         downloaded_path.replace(file_path)
 
         return file_path
 
-    async def save_async(self, path: str | Path, overwrite: bool = False) -> Path:
+    async def save_async(
+        self,
+        path: str | Path,
+        overwrite: bool = False,
+    ) -> Path:
         return await run_in_thread(self.save, path, overwrite)
 
 

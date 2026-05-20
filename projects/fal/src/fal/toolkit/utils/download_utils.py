@@ -8,10 +8,18 @@ import subprocess
 import sys
 import time
 from contextlib import suppress
+from email.message import Message
 from pathlib import Path, PurePath
 from tempfile import TemporaryDirectory, mkstemp
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
+
+from fal.toolkit.utils.ssrf import (
+    SafeResponse,
+    SSRFError,
+    SSRFHTTPStatusError,
+    _ssrf_safe_get_to_file,
+)
 
 FAL_PERSISTENT_DIR = PurePath("/data")
 FAL_REPOSITORY_DIR = FAL_PERSISTENT_DIR / ".fal" / "repos"
@@ -43,83 +51,38 @@ def _hash_url(url: str) -> str:
     return hashlib.sha256(url.encode("utf-8")).hexdigest()
 
 
-def _get_remote_file_properties(
-    url: str,
-    request_headers: dict[str, str] | None = None,
-) -> tuple[str, int]:
-    """Retrieves the file name and content length of a remote file.
-
-    This function sends an HTTP request to the remote URL and retrieves the
-    "Content-Disposition" header and the "Content-Length" header from the response.
-    The "Content-Disposition" header contains the file name of the remote file, while
-    the "Content-Length" header contains the expected content length of the remote
-    file.
-
-    If the "Content-Disposition" header is not available, the function attempts to
-    extract the file name from the URL's path component. If the URL does not contain a
-    path component, the function generates a hashed value of the URL using SHA-256 and
-    uses it as the file name.
-
-    If the "Content-Length" header is not available, the function returns -1 as the
-    content length.
-
-    Args:
-        url: The URL of the remote file.
-        request_headers: A dictionary containing additional headers to be included in
-            the HTTP request.
-
-    Returns:
-        A tuple containing the file name and the content length of the remote file.
-    """
-    headers = {**TEMP_HEADERS, **(request_headers or {})}
-    request = Request(url, headers=headers)
-
-    with urlopen(request, timeout=30) as response:
-        file_name = response.headers.get_filename()
-        content_length = int(response.headers.get("Content-Length", -1))
-
-    if not file_name:
-        parsed_url = urlparse(url)
-
-        if parsed_url.scheme == "data":
-            file_name = _hash_url(url)
-        else:
-            url_path = parsed_url.path
-            file_name = Path(url_path).name or _hash_url(url)
-
-    # file name can still contain a forward slash if the server returns a relative path
-    file_name = Path(file_name).name
-
-    return file_name, content_length
+def _headers(request_headers: dict[str, str] | None = None) -> dict[str, str]:
+    return {**TEMP_HEADERS, **(request_headers or {})}
 
 
-def _file_content_length_matches(
-    url: str, file_path: Path, request_headers: dict[str, str] | None = None
-) -> bool:
-    """Check if the local file's content length matches the expected remote
-    file's content length.
+def _filename_from_response(url: str, response: SafeResponse) -> str:
+    content_disposition = response.headers.get("content-disposition", "")
+    if content_disposition:
+        message = Message()
+        message["content-disposition"] = content_disposition
+        filename = message.get_filename()
+        if filename:
+            return Path(filename).name
 
-    This function compares the content length of a local file to the expected content
-    length of a remote file, which is determined by sending an HTTP request to the
-    remote URL. If the content lengths match, the function returns `True`, indicating
-    that the local file's content matches the expected remote content. If the content
-    lengths do not match or information about the content length is unavailable, the
-    function returns `False`.
+    parsed_url = urlparse(url)
+    if parsed_url.scheme == "data":
+        return _hash_url(url)
 
-    Args:
-        url: The URL of the remote file.
-        file_path: The local path to the file being compared.
-        request_headers: A dictionary containing additional headers to be included in
-            the HTTP request.
+    return Path(parsed_url.path).name or _hash_url(url)
 
-    Returns:
-        bool: `True` if the local file's content length matches the remote file's
-            content length, `False` otherwise.
-    """
-    local_file_content_length = file_path.stat().st_size
-    remote_file_content_length = _get_remote_file_properties(url, request_headers)[1]
 
-    return local_file_content_length == remote_file_content_length
+def _content_length_from_response(response: SafeResponse) -> int:
+    try:
+        return int(response.headers.get("content-length", -1))
+    except ValueError:
+        return -1
+
+
+def _content_length_from_headers(headers: dict[str, str]) -> int:
+    try:
+        return int(headers.get("content-length", -1))
+    except ValueError:
+        return -1
 
 
 def download_file(
@@ -135,10 +98,8 @@ def download_file(
     The function downloads the file from the given URL and saves it in the specified
     target directory, provided it is below the given filesize limit.
 
-    It also checks whether the local file already exists and whether its content length
-    matches the expected content length from the remote file. If the local file already
-    exists and its content length matches the expected content length from the remote
-    file, the existing file is returned without re-downloading it.
+    If the downloaded response resolves to an existing local file whose content length
+    matches the downloaded file, the existing file is kept.
 
     If the file needs to be downloaded or if an existing file's content length does not
     match the expected length, the function proceeds to download and save the file. It
@@ -150,8 +111,7 @@ def download_file(
         target_dir: The directory where the downloaded file will be saved. If it's not
             an absolute path, it's treated as a relative directory to "/data".
         force: If `True`, the file is downloaded even if it already exists locally and
-            its content length matches the expected content length from the remote file.
-            Defaults to `False`.
+            its content length matches the downloaded response. Defaults to `False`.
         request_headers: A dictionary containing additional headers to be included in
             the HTTP request. Defaults to `None`.
         filesize_limit: An integer specifying the maximum downloadable size,
@@ -162,27 +122,21 @@ def download_file(
         A Path object representing the full path to the downloaded file.
 
     Raises:
-        ValueError: If the provided `file_name` contains a forward slash ('/').
         DownloadError: If an error occurs during the download process.
     """
     ONE_MB = 1024**2
+    parsed_url = urlparse(url)
+    limit_bytes = filesize_limit * ONE_MB if filesize_limit is not None else None
 
-    try:
-        file_name, expected_filesize = _get_remote_file_properties(url, request_headers)
-    except Exception as e:
-        print(f"Got error: {e}")
-        raise DownloadError(f"Failed to get remote file properties for {url}") from e
+    def raise_if_declared_size_exceeds_limit(headers: dict[str, str]) -> None:
+        expected_filesize = _content_length_from_headers(headers)
+        expected_filesize_mb = expected_filesize / ONE_MB
 
-    expected_filesize_mb = expected_filesize / ONE_MB
-
-    if filesize_limit is not None and expected_filesize_mb > filesize_limit:
-        raise DownloadError(
-            f"""File to be downloaded is of size {expected_filesize_mb},
-                which is over the limit of {filesize_limit}"""
-        )
-
-    if "/" in file_name:
-        raise ValueError(f"File name '{file_name}' cannot contain a slash.")
+        if filesize_limit is not None and expected_filesize_mb > filesize_limit:
+            raise DownloadError(
+                f"""File to be downloaded is of size {expected_filesize_mb},
+                    which is over the limit of {filesize_limit}"""
+            )
 
     target_dir_path = Path(target_dir)
 
@@ -190,36 +144,71 @@ def download_file(
     if not target_dir_path.is_absolute():
         target_dir_path = Path(FAL_PERSISTENT_DIR / target_dir_path)  # type: ignore[assignment]
 
-    target_path = target_dir_path.resolve() / file_name
+    target_dir_path = target_dir_path.resolve()
+    target_dir_path.mkdir(parents=True, exist_ok=True)
+    target_path: Path | None = None
 
-    if (
-        target_path.exists()
-        and _file_content_length_matches(url, target_path, request_headers)
-        and not force
-    ):
-        return target_path
-
-    if force:
-        print(f"File already exists. Forcing download of {url} to {target_path}")
-    else:
-        print(f"Downloading {url} to {target_path}")
-
-    # Make sure the directory exists
-    target_path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temp_file_path = mkstemp(dir=target_dir_path, prefix=".fal_download.tmp.")
+    os.close(fd)
+    temp_path = Path(temp_file_path)
 
     try:
-        _download_file_python(
-            url=url,
-            target_path=target_path,
-            request_headers=request_headers,
-            filesize_limit=filesize_limit,
-        )
+        if parsed_url.scheme == "data":
+            target_path = target_dir_path / _hash_url(url)
+            _download_file_python(
+                url=url,
+                target_path=temp_path,
+                request_headers=request_headers,
+                filesize_limit=filesize_limit,
+            )
+            response = SafeResponse(
+                200,
+                headers={"content-length": str(temp_path.stat().st_size)},
+            )
+        else:
+            response = _ssrf_safe_get_to_file(
+                url,
+                temp_path,
+                headers=_headers(request_headers),
+                max_size=limit_bytes,
+                on_response_headers=raise_if_declared_size_exceeds_limit,
+            )
+
+        file_name = _filename_from_response(url, response)
+        expected_filesize = _content_length_from_response(response)
+        target_path = target_dir_path / file_name
+
+        if (
+            target_path.exists()
+            and expected_filesize >= 0
+            and target_path.stat().st_size == expected_filesize
+            and not force
+        ):
+            temp_path.unlink(missing_ok=True)
+            return target_path
+
+        if force:
+            print(f"File already exists. Forcing download of {url} to {target_path}")
+        else:
+            print(f"Downloading {url} to {target_path}")
+
+        os.replace(temp_path, target_path)
+    except DownloadError:
+        temp_path.unlink(missing_ok=True)
+        raise
+    except SSRFHTTPStatusError as e:
+        temp_path.unlink(missing_ok=True)
+        raise DownloadError(f"Failed to get remote file properties for {url}") from e
+    except SSRFError as e:
+        temp_path.unlink(missing_ok=True)
+        if str(e).startswith("File body exceeded"):
+            error_target = target_path or target_dir_path
+            raise DownloadError(f"Failed to download {url} to {error_target}") from e
+        raise DownloadError(str(e)) from e
     except Exception as e:
-        msg = f"Failed to download {url} to {target_path}"
-
-        target_path.unlink(missing_ok=True)
-
-        raise DownloadError(msg) from e
+        temp_path.unlink(missing_ok=True)
+        error_target = target_path or target_dir_path
+        raise DownloadError(f"Failed to download {url} to {error_target}") from e
 
     return target_path
 
@@ -230,8 +219,7 @@ def _download_file_python(
     request_headers: dict[str, str] | None = None,
     filesize_limit: int | None = None,
 ) -> Path:
-    """Download a file from a given URL and save it to a specified path using a
-    Python interface.
+    """Download a non-HTTP URL and save it to a specified path.
 
     Args:
         url: The URL of the file to be downloaded.
@@ -244,102 +232,62 @@ def _download_file_python(
     Returns:
         The path where the downloaded file has been saved.
     """
+    ONE_MB = 1024**2
+    if urlparse(url).scheme in {"http", "https"}:
+        raise DownloadError("HTTP(S) downloads must use ssrf_safe_get_to_file")
+
     target_path = Path(target_path)
+    limit_bytes = filesize_limit * ONE_MB if filesize_limit is not None else None
     basename = target_path.name
+
     # NOTE: using the same directory to avoid potential copies across temp fs and target
     # fs, and also to be able to atomically rename a downloaded file into place.
-    fd, file_path = mkstemp(dir=target_path.parent, prefix=f"{basename}.tmp")
+    fd, temp_file_path = mkstemp(dir=target_path.parent, prefix=f"{basename}.tmp")
     os.close(fd)
-
+    temp_path = Path(temp_file_path)
     try:
-        for progress, total_size in _stream_url_data_to_file(
-            url,
-            file_path,
-            request_headers=request_headers,
-            filesize_limit=filesize_limit,
-        ):
-            if total_size:
-                progress_msg = f"Downloading {url} ... {progress:.2%}"
-            else:
-                progress_msg = f"Downloading {url} ... {progress:.2f} MB"
+        request = Request(url, headers=_headers(request_headers))
+        received_size = 0
+        total_size = 0
 
-            print(progress_msg, end="\r\n")
+        with urlopen(request, timeout=30) as response, open(
+            temp_path, "wb"
+        ) as temp_file:
+            total_size = int(response.headers.get("content-length", total_size))
+            while data := response.read(64 * ONE_MB):
+                temp_file.write(data)
+
+                received_size = temp_file.tell()
+                if limit_bytes is not None and received_size > limit_bytes:
+                    raise DownloadError(
+                        f"""Attempted to download more data {received_size}
+                            than the set limit of {limit_bytes}"""
+                    )
+
+                if total_size:
+                    progress_msg = (
+                        f"Downloading {url} ... {received_size / total_size:.2%}"
+                    )
+                else:
+                    progress_msg = (
+                        f"Downloading {url} ... {received_size / ONE_MB:.2f} MB"
+                    )
+                print(progress_msg, end="\r\n")
+
+        if total_size and received_size < total_size:
+            raise DownloadError("Received less data than expected from the server.")
 
         # NOTE: Atomically replacing the file when the download is complete.
         #
         # Since the file used is temporary, in a case of an interruption, the
         # downloaded content will be lost. So, it is safe to redownload the file in
         # such cases.
-        os.replace(file_path, target_path)
+        os.replace(temp_path, target_path)
 
     finally:
-        Path(file_path).unlink(missing_ok=True)
+        temp_path.unlink(missing_ok=True)
 
     return target_path
-
-
-def _stream_url_data_to_file(
-    url: str,
-    file_path: str,
-    chunk_size_in_mb: int = 64,
-    request_headers: dict[str, str] | None = None,
-    filesize_limit: int | None = None,
-):
-    """Download data from a URL and stream it to a file.
-
-    Note:
-        - This function sets a User-Agent header to mimic a web browser to
-            prevent issues with some websites.
-        - It downloads the file in chunks to save memory and ensures the file
-            is only moved when the download is complete.
-
-    Args:
-        request: The Request object representing the URL to download from.
-        file_path: The path to the file where the downloaded data will be saved.
-        chunk_size_in_mb: The size of each download chunk in megabytes.
-            Defaults to 64.
-        request_headers: A dictionary containing additional headers to be included in
-            the HTTP request. Defaults to `None`.
-        filesize_limit: An integer specifying how many megabytes can be
-            downloaded at maximum. Defaults to `None`.
-
-    Yields:
-        A tuple containing two elements:
-        - float: The progress of the download as a percentage (0.0 to 1.0) if
-            the total size is known. Else, equals to the downloaded size in MB.
-        - int: The total size of the downloaded content in bytes. If the total
-            size is not known (e.g., the server doesn't provide a
-            'content-length' header), the second element is 0.
-    """
-    ONE_MB = 1024**2
-
-    headers = {**TEMP_HEADERS, **(request_headers or {})}
-    request = Request(url, headers=headers)
-
-    received_size = 0
-    total_size = 0
-
-    with urlopen(request, timeout=30) as response, open(file_path, "wb") as f_stream:
-        total_size = int(response.headers.get("content-length", total_size))
-        while data := response.read(chunk_size_in_mb * ONE_MB):
-            f_stream.write(data)
-
-            received_size = f_stream.tell()
-            if filesize_limit is not None and received_size > filesize_limit:
-                raise DownloadError(
-                    f"""Attempted to download more data {received_size}
-                        than the set limit of {filesize_limit}"""
-                )
-
-            if total_size:
-                progress = received_size / total_size
-            else:
-                progress = received_size / ONE_MB
-            yield progress, total_size
-
-    # Check if received size matches the expected total size
-    if total_size and received_size < total_size:
-        raise DownloadError("Received less data than expected from the server.")
 
 
 def _mark_used_dir(dir: Path):
@@ -351,7 +299,9 @@ def _mark_used_dir(dir: Path):
 
 
 def download_model_weights(
-    url: str, force: bool = False, request_headers: dict[str, str] | None = None
+    url: str,
+    force: bool = False,
+    request_headers: dict[str, str] | None = None,
 ) -> Path:
     """Downloads model weights from the specified URL and saves them to a
     predefined directory.
