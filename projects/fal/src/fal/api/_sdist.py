@@ -18,7 +18,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import threading
 from pathlib import Path
 from typing import Any, Callable, List, Optional, Tuple, Union
 
@@ -31,10 +30,8 @@ from fal.project import _load_toml
 #   "build_started"  -> {"package_name": str, "project_root": Path}
 #   "build_finished" -> {"sdist_path": Path, "sdist_size": int}
 #   "upload_started" -> {"sdist_path": Path, "sdist_size": int}
-#   "upload_finished"-> {"url": str, "cached": bool, "sdist_size": int | None}
+#   "upload_finished"-> {"url": str, "sdist_size": int}
 #
-# Only the upload_finished event fires on a cache hit; in that case
-# ``cached`` is True and ``sdist_size`` is None (no upload happened).
 # Callers are free to ignore unknown events. Keeping the contract loose so
 # we can add phases later without breaking integrations.
 ProgressCallback = Callable[[str, dict], None]
@@ -43,24 +40,7 @@ ProgressCallback = Callable[[str, dict], None]
 # ``-e .``, ``file://...``) are intentionally left alone.
 _LOCAL_PATH_RE = re.compile(r"^\.(\[[^\]]+\])?$")
 
-# In-process cache to avoid re-building/re-uploading the sdist on every
-# dispatch within a single ``fal run``/``fal deploy`` invocation. Keyed by
-# resolved project root path. The user's source tree isn't expected to change
-# mid-invocation; a fresh process re-runs the build either way, so this cache
-# tradeoff matches user expectation ("I ran fal once, it packaged once").
-#
-# Note: hashing the sdist content would be more conservative but doesn't help
-# in practice — ``python -m build`` is non-deterministic (file mtimes inside
-# the tarball drift between back-to-back builds), so a content-hash cache
-# misses on every call.
-_SDIST_URL_CACHE: dict[str, tuple[str, str]] = {}
-# Global lock serializing the build+upload sequence across the whole
-# process. A finer per-root lock would let independent projects build
-# in parallel, but the realistic concurrent shape today is at most one
-# project per ``fal run``/``fal deploy`` invocation, so a single lock
-# keeps the implementation simple. The trade-off: two threads packaging
-# *different* roots in the same process will serialize.
-_SDIST_URL_CACHE_LOCK = threading.Lock()
+EXPIRATION_DURATION_SECONDS = 60 * 60
 
 Requirements = Union[List[str], List[List[str]]]
 
@@ -85,10 +65,8 @@ def materialize_local_paths(
 ) -> Requirements:
     """Rewrite ``.``/``.[extras]`` entries to ``<package> @ <url>``.
 
-    Builds an sdist of ``project_root`` once per project root per process and
-    uploads it to the fal CDN via ``fal.toolkit.File.from_path``; subsequent
-    calls within the same process reuse the cached URL. No-op when no
-    local-path entry is present.
+    Builds an sdist of ``project_root`` and uploads it to the fal CDN via
+    ``fal.toolkit.File.from_path``. No-op when no local-path entry is present.
 
     Preserves the input shape (flat list vs layered list-of-lists).
 
@@ -133,33 +111,19 @@ def _resolve_sdist_url(
         if on_progress is not None:
             on_progress(event, payload)
 
-    cache_key = str(project_root.resolve())
+    package_name = _read_package_name(project_root)
+    _emit("build_started", package_name=package_name, project_root=project_root)
+    sdist = _build_sdist(project_root)
+    try:
+        sdist_size = sdist.stat().st_size
+        _emit("build_finished", sdist_path=sdist, sdist_size=sdist_size)
 
-    # Hold the lock for the entire check-build-upload-populate sequence so
-    # a concurrent dispatch waits and re-uses the populated entry instead
-    # of running its own build + upload in parallel. See the comment on
-    # ``_SDIST_URL_CACHE_LOCK`` for the cross-root serialization caveat.
-    with _SDIST_URL_CACHE_LOCK:
-        cached = _SDIST_URL_CACHE.get(cache_key)
-        if cached is not None:
-            package_name, url = cached
-            _emit("upload_finished", url=url, cached=True, sdist_size=None)
-            return package_name, url
-
-        package_name = _read_package_name(project_root)
-        _emit("build_started", package_name=package_name, project_root=project_root)
-        sdist = _build_sdist(project_root)
-        try:
-            sdist_size = sdist.stat().st_size
-            _emit("build_finished", sdist_path=sdist, sdist_size=sdist_size)
-
-            _emit("upload_started", sdist_path=sdist, sdist_size=sdist_size)
-            url = _upload_sdist(sdist)
-            _SDIST_URL_CACHE[cache_key] = (package_name, url)
-            _emit("upload_finished", url=url, sdist_size=sdist_size, cached=False)
-        finally:
-            shutil.rmtree(sdist.parent, ignore_errors=True)
-        return package_name, url
+        _emit("upload_started", sdist_path=sdist, sdist_size=sdist_size)
+        url = _upload_sdist(sdist)
+        _emit("upload_finished", url=url, sdist_size=sdist_size)
+    finally:
+        shutil.rmtree(sdist.parent, ignore_errors=True)
+    return package_name, url
 
 
 def _read_package_name(project_root: Path) -> str:
@@ -237,5 +201,14 @@ def _build_sdist(project_root: Path) -> Path:
 def _upload_sdist(sdist_path: Path) -> str:
     from fal.toolkit import File  # noqa: PLC0415
 
-    file = File.from_path(sdist_path)
+    save_kwargs = {
+        "object_lifecycle_preference": {
+            "expiration_duration_seconds": EXPIRATION_DURATION_SECONDS
+        }
+    }
+    file = File.from_path(
+        sdist_path,
+        save_kwargs=save_kwargs,
+        fallback_save_kwargs=save_kwargs,
+    )
     return file.url

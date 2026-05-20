@@ -886,15 +886,13 @@ class FalServerlessHost(Host):
                 console.print(
                     f"Uploading {payload['sdist_path'].name} ({size_kb:.1f} KB)..."
                 )
-            elif event == "upload_finished" and not payload["cached"]:
+            elif event == "upload_finished":
                 print_rule(console, style="dim")
                 console.print(f"{check_icon} Project packaged", style="bold green")
                 console.print("")
             # ``build_finished`` has no host-side rendering: the live
             # ``python -m build`` output between the rules already tells the
-            # user the build is done. Cached ``upload_finished`` is also
-            # silent — the user saw the original packaging output once;
-            # repeating it on every dispatch is noise.
+            # user the build is done.
 
         environment_options["requirements"] = materialize_local_paths(
             requirements, self.local_project_root, on_progress=_on_progress
