@@ -179,6 +179,24 @@
 <li class="toctree-l3"><a class="reference internal" href="fal.toolkit.utils.html#fal.toolkit.utils.setup_utils.patch_onnx_runtime"><code class="docutils literal notranslate"><span class="pre">patch_onnx_runtime()</span></code></a></li>
 </ul>
 </li>
+<li class="toctree-l2"><a class="reference internal" href="fal.toolkit.utils.html#module-fal.toolkit.utils.ssrf">fal.toolkit.utils.ssrf module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="fal.toolkit.utils.html#fal.toolkit.utils.ssrf.SSRFConnectionError"><code class="docutils literal notranslate"><span class="pre">SSRFConnectionError</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal.toolkit.utils.html#fal.toolkit.utils.ssrf.SSRFError"><code class="docutils literal notranslate"><span class="pre">SSRFError</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal.toolkit.utils.html#fal.toolkit.utils.ssrf.SSRFHTTPStatusError"><code class="docutils literal notranslate"><span class="pre">SSRFHTTPStatusError</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal.toolkit.utils.html#fal.toolkit.utils.ssrf.SafeResponse"><code class="docutils literal notranslate"><span class="pre">SafeResponse</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.toolkit.utils.html#fal.toolkit.utils.ssrf.SafeResponse.content"><code class="docutils literal notranslate"><span class="pre">SafeResponse.content</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.toolkit.utils.html#fal.toolkit.utils.ssrf.SafeResponse.headers"><code class="docutils literal notranslate"><span class="pre">SafeResponse.headers</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.toolkit.utils.html#fal.toolkit.utils.ssrf.SafeResponse.status_code"><code class="docutils literal notranslate"><span class="pre">SafeResponse.status_code</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.toolkit.utils.html#fal.toolkit.utils.ssrf.is_globally_routable_ip"><code class="docutils literal notranslate"><span class="pre">is_globally_routable_ip()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal.toolkit.utils.html#fal.toolkit.utils.ssrf.merge_headers_for_pinned_request"><code class="docutils literal notranslate"><span class="pre">merge_headers_for_pinned_request()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal.toolkit.utils.html#fal.toolkit.utils.ssrf.resolve_and_validate_host"><code class="docutils literal notranslate"><span class="pre">resolve_and_validate_host()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal.toolkit.utils.html#fal.toolkit.utils.ssrf.ssrf_safe_get"><code class="docutils literal notranslate"><span class="pre">ssrf_safe_get()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal.toolkit.utils.html#fal.toolkit.utils.ssrf.ssrf_safe_get_headers"><code class="docutils literal notranslate"><span class="pre">ssrf_safe_get_headers()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="fal.toolkit.utils.html#fal.toolkit.utils.ssrf.ssrf_safe_get_to_file"><code class="docutils literal notranslate"><span class="pre">ssrf_safe_get_to_file()</span></code></a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="fal.toolkit.utils.html#module-fal.toolkit.utils">Module contents</a></li>
 </ul>
 </li>
@@ -1799,10 +1817,8 @@ Defaults to <cite>False</cite>.</p></li>
 <dd><p>Downloads a file from the specified URL to the target directory.</p>
 <p>The function downloads the file from the given URL and saves it in the specified
 target directory, provided it is below the given filesize limit.</p>
-<p>It also checks whether the local file already exists and whether its content length
-matches the expected content length from the remote file. If the local file already
-exists and its content length matches the expected content length from the remote
-file, the existing file is returned without re-downloading it.</p>
+<p>If the downloaded response resolves to an existing local file whose content length
+matches the downloaded file, the existing file is kept.</p>
 <p>If the file needs to be downloaded or if an existing file’s content length does not
 match the expected length, the function proceeds to download and save the file. It
 ensures that the target directory exists and handles any errors that may occur
@@ -1814,8 +1830,7 @@ during the download process, raising a <cite>DownloadError</cite> if necessary.<
 <li><p><strong>target_dir</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code> | <code class="xref py py-class docutils literal notranslate"><span class="pre">Path</span></code></span>) – The directory where the downloaded file will be saved. If it’s not
 an absolute path, it’s treated as a relative directory to “/data”.</p></li>
 <li><p><strong>force</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span>) – If <cite>True</cite>, the file is downloaded even if it already exists locally and
-its content length matches the expected content length from the remote file.
-Defaults to <cite>False</cite>.</p></li>
+its content length matches the downloaded response. Defaults to <cite>False</cite>.</p></li>
 <li><p><strong>request_headers</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>] | <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span>) – A dictionary containing additional headers to be included in
 the HTTP request. Defaults to <cite>None</cite>.</p></li>
 <li><p><strong>filesize_limit</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code> | <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span>) – An integer specifying the maximum downloadable size,
@@ -1829,10 +1844,7 @@ in megabytes. Defaults to <cite>None</cite>.</p></li>
 <dd class="field-odd"><p>A Path object representing the full path to the downloaded file.</p>
 </dd>
 <dt class="field-even">Raises<span class="colon">:</span></dt>
-<dd class="field-even"><ul class="simple">
-<li><p><strong>ValueError</strong> – If the provided <cite>file_name</cite> contains a forward slash (‘/’).</p></li>
-<li><p><a class="reference internal" href="#fal.toolkit.DownloadError" title="fal.toolkit.DownloadError"><strong>DownloadError</strong></a> – If an error occurs during the download process.</p></li>
-</ul>
+<dd class="field-even"><p><a class="reference internal" href="#fal.toolkit.DownloadError" title="fal.toolkit.DownloadError"><strong>DownloadError</strong></a> – If an error occurs during the download process.</p>
 </dd>
 </dl>
 </dd></dl>

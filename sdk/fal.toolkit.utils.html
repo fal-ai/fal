@@ -85,10 +85,8 @@ Defaults to <cite>False</cite>.</p></li>
 <dd><p>Downloads a file from the specified URL to the target directory.</p>
 <p>The function downloads the file from the given URL and saves it in the specified
 target directory, provided it is below the given filesize limit.</p>
-<p>It also checks whether the local file already exists and whether its content length
-matches the expected content length from the remote file. If the local file already
-exists and its content length matches the expected content length from the remote
-file, the existing file is returned without re-downloading it.</p>
+<p>If the downloaded response resolves to an existing local file whose content length
+matches the downloaded file, the existing file is kept.</p>
 <p>If the file needs to be downloaded or if an existing file’s content length does not
 match the expected length, the function proceeds to download and save the file. It
 ensures that the target directory exists and handles any errors that may occur
@@ -100,8 +98,7 @@ during the download process, raising a <cite>DownloadError</cite> if necessary.<
 <li><p><strong>target_dir</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code> | <code class="xref py py-class docutils literal notranslate"><span class="pre">Path</span></code></span>) – The directory where the downloaded file will be saved. If it’s not
 an absolute path, it’s treated as a relative directory to “/data”.</p></li>
 <li><p><strong>force</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span>) – If <cite>True</cite>, the file is downloaded even if it already exists locally and
-its content length matches the expected content length from the remote file.
-Defaults to <cite>False</cite>.</p></li>
+its content length matches the downloaded response. Defaults to <cite>False</cite>.</p></li>
 <li><p><strong>request_headers</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>] | <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span>) – A dictionary containing additional headers to be included in
 the HTTP request. Defaults to <cite>None</cite>.</p></li>
 <li><p><strong>filesize_limit</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code> | <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span>) – An integer specifying the maximum downloadable size,
@@ -115,10 +112,7 @@ in megabytes. Defaults to <cite>None</cite>.</p></li>
 <dd class="field-odd"><p>A Path object representing the full path to the downloaded file.</p>
 </dd>
 <dt class="field-even">Raises<span class="colon">:</span></dt>
-<dd class="field-even"><ul class="simple">
-<li><p><strong>ValueError</strong> – If the provided <cite>file_name</cite> contains a forward slash (‘/’).</p></li>
-<li><p><a class="reference internal" href="#fal.toolkit.utils.download_utils.DownloadError" title="fal.toolkit.utils.download_utils.DownloadError"><strong>DownloadError</strong></a> – If an error occurs during the download process.</p></li>
-</ul>
+<dd class="field-even"><p><a class="reference internal" href="#fal.toolkit.utils.download_utils.DownloadError" title="fal.toolkit.utils.download_utils.DownloadError"><strong>DownloadError</strong></a> – If an error occurs during the download process.</p>
 </dd>
 </dl>
 </dd></dl>
@@ -197,6 +191,111 @@ in your application.</p>
 <li><p><strong>intra_op_num_threads</strong> (<em>int</em>) – Number of threads for intra-op parallelism.</p></li>
 <li><p><strong>omp_num_threads</strong> (<em>int</em>) – Number of threads for OpenMP parallelism.</p></li>
 </ul>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+<section id="module-fal.toolkit.utils.ssrf">
+<span id="fal-toolkit-utils-ssrf-module"></span><h2>fal.toolkit.utils.ssrf module<a class="headerlink" href="#module-fal.toolkit.utils.ssrf" title="Link to this heading">¶</a></h2>
+<p>SSRF-safe HTTP(S) download helpers.</p>
+<p>This client connects directly to validated target IPs and does not honor
+HTTP_PROXY or HTTPS_PROXY environment variables.</p>
+<dl class="py exception">
+<dt class="sig sig-object py" id="fal.toolkit.utils.ssrf.SSRFConnectionError">
+<em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.toolkit.utils.ssrf.</span></span><span class="sig-name descname"><span class="pre">SSRFConnectionError</span></span><a class="headerlink" href="#fal.toolkit.utils.ssrf.SSRFConnectionError" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#fal.toolkit.utils.ssrf.SSRFError" title="fal.toolkit.utils.ssrf.SSRFError"><code class="xref py py-class docutils literal notranslate"><span class="pre">SSRFError</span></code></a></p>
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="fal.toolkit.utils.ssrf.SSRFError">
+<em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.toolkit.utils.ssrf.</span></span><span class="sig-name descname"><span class="pre">SSRFError</span></span><a class="headerlink" href="#fal.toolkit.utils.ssrf.SSRFError" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Exception</span></code></p>
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="fal.toolkit.utils.ssrf.SSRFHTTPStatusError">
+<em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.toolkit.utils.ssrf.</span></span><span class="sig-name descname"><span class="pre">SSRFHTTPStatusError</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">status_code</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.utils.ssrf.SSRFHTTPStatusError" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#fal.toolkit.utils.ssrf.SSRFError" title="fal.toolkit.utils.ssrf.SSRFError"><code class="xref py py-class docutils literal notranslate"><span class="pre">SSRFError</span></code></a></p>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.toolkit.utils.ssrf.SafeResponse">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.toolkit.utils.ssrf.</span></span><span class="sig-name descname"><span class="pre">SafeResponse</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">status_code</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">headers</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">content</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">b''</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.utils.ssrf.SafeResponse" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.utils.ssrf.SafeResponse.content">
+<span class="sig-name descname"><span class="pre">content</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">bytes</span></code></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">b''</span></em><a class="headerlink" href="#fal.toolkit.utils.ssrf.SafeResponse.content" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.utils.ssrf.SafeResponse.headers">
+<span class="sig-name descname"><span class="pre">headers</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">,</span> <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">]</span></em><a class="headerlink" href="#fal.toolkit.utils.ssrf.SafeResponse.headers" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.utils.ssrf.SafeResponse.status_code">
+<span class="sig-name descname"><span class="pre">status_code</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></em><a class="headerlink" href="#fal.toolkit.utils.ssrf.SafeResponse.status_code" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.toolkit.utils.ssrf.is_globally_routable_ip">
+<span class="sig-prename descclassname"><span class="pre">fal.toolkit.utils.ssrf.</span></span><span class="sig-name descname"><span class="pre">is_globally_routable_ip</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ip_str</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.utils.ssrf.is_globally_routable_ip" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.toolkit.utils.ssrf.merge_headers_for_pinned_request">
+<span class="sig-prename descclassname"><span class="pre">fal.toolkit.utils.ssrf.</span></span><span class="sig-name descname"><span class="pre">merge_headers_for_pinned_request</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">extra_headers</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pinned_headers</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.utils.ssrf.merge_headers_for_pinned_request" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.toolkit.utils.ssrf.resolve_and_validate_host">
+<span class="sig-prename descclassname"><span class="pre">fal.toolkit.utils.ssrf.</span></span><span class="sig-name descname"><span class="pre">resolve_and_validate_host</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">hostname</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">port</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.utils.ssrf.resolve_and_validate_host" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.toolkit.utils.ssrf.ssrf_safe_get">
+<span class="sig-prename descclassname"><span class="pre">fal.toolkit.utils.ssrf.</span></span><span class="sig-name descname"><span class="pre">ssrf_safe_get</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">url</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">timeout</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">30.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_hops</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">headers</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">allowed_schemes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">frozenset({'http',</span> <span class="pre">'https'})</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.utils.ssrf.ssrf_safe_get" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference internal" href="#fal.toolkit.utils.ssrf.SafeResponse" title="fal.toolkit.utils.ssrf.SafeResponse"><code class="xref py py-class docutils literal notranslate"><span class="pre">SafeResponse</span></code></a></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.toolkit.utils.ssrf.ssrf_safe_get_headers">
+<span class="sig-prename descclassname"><span class="pre">fal.toolkit.utils.ssrf.</span></span><span class="sig-name descname"><span class="pre">ssrf_safe_get_headers</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">url</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">timeout</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">30.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_hops</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">headers</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">allowed_schemes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">frozenset({'http',</span> <span class="pre">'https'})</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.utils.ssrf.ssrf_safe_get_headers" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference internal" href="#fal.toolkit.utils.ssrf.SafeResponse" title="fal.toolkit.utils.ssrf.SafeResponse"><code class="xref py py-class docutils literal notranslate"><span class="pre">SafeResponse</span></code></a></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.toolkit.utils.ssrf.ssrf_safe_get_to_file">
+<span class="sig-prename descclassname"><span class="pre">fal.toolkit.utils.ssrf.</span></span><span class="sig-name descname"><span class="pre">ssrf_safe_get_to_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">url</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_path</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">timeout</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">30.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_hops</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">headers</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">allowed_schemes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">frozenset({'http',</span> <span class="pre">'https'})</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">chunk_size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">65536</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.utils.ssrf.ssrf_safe_get_to_file" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference internal" href="#fal.toolkit.utils.ssrf.SafeResponse" title="fal.toolkit.utils.ssrf.SafeResponse"><code class="xref py py-class docutils literal notranslate"><span class="pre">SafeResponse</span></code></a></span></p>
 </dd>
 </dl>
 </dd></dl>
