@@ -549,6 +549,7 @@ class App(BaseServable):
         "resolver": "uv",
         "keep_alive": 60,
     }
+    _explicit_host_kwargs: ClassVar[set[str]] = set()
     app_name: ClassVar[Optional[str]] = None
     app_auth: ClassVar[Optional[AuthModeLiteral]] = None
     app_files: ClassVar[list[str]] = []
@@ -578,6 +579,14 @@ class App(BaseServable):
     def __init_subclass__(cls, **kwargs):
         app_name = kwargs.pop("name", None) or _to_fal_app_name(cls.__name__)
         parent_settings = getattr(cls, "host_kwargs", {})
+        parent_explicit_host_kwargs: set[str] = getattr(
+            cls, "_explicit_host_kwargs", set()
+        )
+        explicit_host_kwargs = set(parent_explicit_host_kwargs) | set(kwargs)
+        explicit_host_kwargs.update(
+            key for key in parent_settings if key in cls.__dict__
+        )
+        cls._explicit_host_kwargs = explicit_host_kwargs
         cls.host_kwargs = {**parent_settings, **kwargs}
 
         for key in parent_settings.keys():

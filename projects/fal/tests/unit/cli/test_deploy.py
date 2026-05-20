@@ -21,7 +21,7 @@ from fal.cli.deploy_check import (
 )
 from fal.cli.main import parse_args
 from fal.project import find_project_root
-from fal.sdk import AliasInfo
+from fal.sdk import AliasInfo, ApplicationHealthCheckConfig
 
 
 def test_deploy():
@@ -155,6 +155,28 @@ def mock_parse_pyproject_toml():
                 "app_files": ["assets", "config.yaml"],
                 "app_files_ignore": [r"\\.venv/"],
                 "app_files_context_dir": ".",
+            },
+            "advanced-options-app": {
+                "ref": "src/advanced_options/inference.py::AdvancedOptionsApp",
+                "keep_alive": 300,
+                "private_logs": True,
+                "_scheduler": "nomad",
+                "_scheduler_options": {"storage_region": "us-east"},
+                "skip_retry_conditions": [
+                    "timeout",
+                    "server_error",
+                    "connection_error",
+                ],
+                "termination_grace_period_seconds": 30,
+                "secrets": ["OPENAI_API_KEY", "HF_TOKEN"],
+                "data_mounts": ["/data", "/data/.cache"],
+                "health_check": {
+                    "path": "/health",
+                    "start_period_seconds": 30,
+                    "timeout_seconds": 5,
+                    "failure_threshold": 3,
+                    "call_regularly": True,
+                },
             },
             "app-with-extras": {
                 "ref": "src/app_with_extras/inference.py::AppWithExtras",
@@ -1010,8 +1032,7 @@ def test_get_app_data_from_toml_rejects_non_string_python_version(
     with pytest.raises(
         ValueError,
         match=(
-            "App python-version-app python_version must be a string "
-            "in pyproject.toml"
+            "App python-version-app python_version must be a string in pyproject.toml"
         ),
     ):
         get_app_data_from_toml("python-version-app")
@@ -1038,6 +1059,40 @@ def test_get_app_data_from_toml_with_app_files(
         "app_files_context_dir": ".",
     }
     assert toml_data.options.environment == {}
+
+
+@patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+def test_get_app_data_from_toml_with_advanced_runtime_options(
+    mock_parse_toml, mock_find_toml, mock_parse_pyproject_toml
+):
+    from fal.cli._utils import get_app_data_from_toml
+
+    mock_parse_toml.return_value = mock_parse_pyproject_toml
+
+    toml_data = get_app_data_from_toml("advanced-options-app")
+
+    assert toml_data.options.host == {
+        "keep_alive": 300,
+        "private_logs": True,
+        "_scheduler": "nomad",
+        "_scheduler_options": {"storage_region": "us-east"},
+        "skip_retry_conditions": [
+            "timeout",
+            "server_error",
+            "connection_error",
+        ],
+        "termination_grace_period_seconds": 30,
+        "secrets": ["OPENAI_API_KEY", "HF_TOKEN"],
+        "data_mounts": ["/data", "/data/.cache"],
+        "health_check_config": ApplicationHealthCheckConfig(
+            path="/health",
+            start_period_seconds=30,
+            timeout_seconds=5,
+            failure_threshold=3,
+            call_regularly=True,
+        ),
+    }
 
 
 @patch("fal.cli._utils.find_pyproject_toml")
@@ -1105,6 +1160,73 @@ def test_get_app_data_from_toml_rejects_app_files_context_dir_without_app_files(
     with pytest.raises(
         ValueError,
         match="app_files_context_dir is only supported when app_files is provided.",
+    ):
+        get_app_data_from_toml("my-app")
+
+
+@pytest.mark.parametrize(
+    ("field_name", "value", "message"),
+    [
+        ("keep_alive", True, "keep_alive must be an integer."),
+        ("private_logs", "yes", "private_logs must be a boolean."),
+        ("_scheduler", "", "_scheduler must be a non-empty string."),
+        ("_scheduler_options", "nomad", "_scheduler_options must be a table"),
+        ("secrets", "OPENAI_API_KEY", "secrets must be a list of strings."),
+        ("data_mounts", ["/data", 1], "data_mounts must be a list of strings."),
+        (
+            "skip_retry_conditions",
+            ["client_error"],
+            "Invalid skip_retry_conditions: client_error.",
+        ),
+        (
+            "termination_grace_period_seconds",
+            "30",
+            "termination_grace_period_seconds must be an integer.",
+        ),
+    ],
+)
+@patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+def test_get_app_data_from_toml_rejects_invalid_advanced_runtime_options(
+    mock_parse_toml, mock_find_toml, field_name, value, message
+):
+    from fal.cli._utils import get_app_data_from_toml
+
+    mock_parse_toml.return_value = {
+        "apps": {
+            "my-app": {
+                "ref": "src/my_app/inference.py::MyApp",
+                field_name: value,
+            }
+        }
+    }
+
+    with pytest.raises(ValueError, match=message):
+        get_app_data_from_toml("my-app")
+
+
+@patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+def test_get_app_data_from_toml_rejects_invalid_health_check(
+    mock_parse_toml, mock_find_toml
+):
+    from fal.cli._utils import get_app_data_from_toml
+
+    mock_parse_toml.return_value = {
+        "apps": {
+            "my-app": {
+                "ref": "src/my_app/inference.py::MyApp",
+                "health_check": {
+                    "path": "/health",
+                    "timeout_seconds": "5",
+                },
+            }
+        }
+    }
+
+    with pytest.raises(
+        ValueError,
+        match="health_check.timeout_seconds must be an integer.",
     ):
         get_app_data_from_toml("my-app")
 
