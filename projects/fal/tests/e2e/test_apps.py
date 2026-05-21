@@ -1428,6 +1428,35 @@ def submit_and_wait_for_runner(app: str, arguments: dict = {}, *, path: str = ""
     return handle
 
 
+_TERMINAL_RUNNER_STATES = {RunnerState.DEAD, RunnerState.TERMINATED}
+
+
+def _non_terminal_runner_ids(runners):
+    return {
+        runner.runner_id
+        for runner in runners
+        if runner.state not in _TERMINAL_RUNNER_STATES
+    }
+
+
+def wait_for_new_runner(client, app_alias: str, previous_runner_ids):
+    timeout = 20
+    start_time = time.monotonic()
+    last_runners = []
+
+    while time.monotonic() - start_time < timeout:
+        last_runners = client.list_alias_runners(app_alias)
+        runner_ids = _non_terminal_runner_ids(last_runners)
+        if runner_ids and not runner_ids.intersection(previous_runner_ids):
+            return last_runners
+        time.sleep(0.5)
+
+    raise AssertionError(
+        "Timed out waiting for a new runner after rollout "
+        f"{sorted(previous_runner_ids)}. Last runners: {last_runners}"
+    )
+
+
 def test_stop_runner(host: api.FalServerlessHost, test_sleep_app: str):
     # Submit a runner and wait for it to be idle
     submit_and_wait_for_runner(test_sleep_app, arguments={"wait_time": 1})
@@ -1529,7 +1558,7 @@ def test_kill_runner(host: api.FalServerlessHost, test_sleep_app: str):
 
 
 def test_rollout_application(host: api.FalServerlessHost, test_sleep_app: str):
-    handle = apps.submit(test_sleep_app, arguments={"wait_time": 30})
+    handle = apps.submit(test_sleep_app, arguments={"wait_time": 5})
 
     while True:
         status = handle.status()
@@ -1547,22 +1576,18 @@ def test_rollout_application(host: api.FalServerlessHost, test_sleep_app: str):
         runner_id_before = runners_before[0].runner_id
 
         client.rollout_application(app_alias, force=True)
+        # This app has min_concurrency=0, so force rollout only removes the
+        # current runner. A fresh request creates demand for the next runner.
+        submit_and_wait_for_runner(test_sleep_app, arguments={"wait_time": 1})
 
-        time.sleep(15)
-
-        runners_after = client.list_alias_runners(app_alias)
-        runner_ids_after = {r.runner_id for r in runners_after}
-
-        assert runner_id_before not in runner_ids_after
+        runners_after = wait_for_new_runner(client, app_alias, {runner_id_before})
+        runner_ids_after = _non_terminal_runner_ids(runners_after)
 
         client.rollout_application(app_alias, force=True)
+        # Verify the same post-rollout request path for the new runner.
+        submit_and_wait_for_runner(test_sleep_app, arguments={"wait_time": 1})
 
-        time.sleep(3)
-
-        runners_final = client.list_alias_runners(app_alias)
-        runner_ids_final = {r.runner_id for r in runners_final}
-
-        assert not runner_ids_after.intersection(runner_ids_final)
+        wait_for_new_runner(client, app_alias, runner_ids_after)
 
 
 def test_shell_runner(host: api.FalServerlessHost, test_sleep_app: str):
