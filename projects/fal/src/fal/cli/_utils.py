@@ -72,6 +72,8 @@ def get_app_data_from_toml(
     except KeyError:
         raise ValueError(f"App {app_name} not found in pyproject.toml")
 
+    image_config = app_data.pop("image", None)
+
     python_entry_point: str | None = app_data.pop("python_entry_point", None)
     if python_entry_point is not None:
         if not isinstance(python_entry_point, str):
@@ -84,18 +86,21 @@ def get_app_data_from_toml(
                 f"App {app_name} cannot have both ref "
                 "and python_entry_point keys in pyproject.toml"
             )
+        # python_entry_point can be paired with image: the symbol is resolved
+        # inside the custom container image instead of local source.
     else:
-        try:
-            app_ref = app_data.pop("ref")
-        except KeyError:
-            raise ValueError(
-                f"App {app_name} does not have a ref key in pyproject.toml"
-            )
-        if not isinstance(app_ref, str):
+        app_ref = app_data.pop("ref", None)
+        if app_ref is None:
+            if image_config is None:
+                raise ValueError(
+                    f"App {app_name} does not have a ref key in pyproject.toml"
+                )
+        elif not isinstance(app_ref, str):
             raise ValueError(f"App {app_name} ref must be a string in pyproject.toml")
-        # Convert the app_ref to a path relative to the project root
-        project_root, _ = find_project_root(None)
-        app_ref = str(project_root / app_ref)
+        else:
+            # Convert the app_ref to a path relative to the project root
+            project_root, _ = find_project_root(None)
+            app_ref = str(project_root / app_ref)
 
     app_auth: Optional[AuthModeLiteral] = app_data.pop("auth", None)
     app_deployment_strategy: Optional[DeploymentStrategyLiteral] = app_data.pop(
@@ -141,8 +146,6 @@ def get_app_data_from_toml(
     secrets = app_data.pop("secrets", None)
     data_mounts = app_data.pop("data_mounts", None)
     health_check = app_data.pop("health_check", None)
-
-    image_config = app_data.pop("image", None)
 
     if regions is not None:
         _validate_regions(regions)
@@ -243,8 +246,15 @@ def get_app_data_from_toml(
     if python_version is not None:
         options.environment["python_version"] = python_version
     if image_config is not None:
+        image_uses_isolate = None
+        if app_ref is None and python_entry_point is None:
+            image_uses_isolate = False
+
         container_image = _build_container_image_from_toml(
-            app_name, image_config, Path(toml_path).parent
+            app_name,
+            image_config,
+            Path(toml_path).parent,
+            use_isolate=image_uses_isolate,
         )
         options.environment["kind"] = "container"
         options.environment["image"] = container_image.to_dict()
@@ -389,11 +399,18 @@ _IMAGE_PASSTHROUGH_KEYS = (
     "registries",
     # Image build-time secrets, distinct from app-level runtime `secrets`.
     "secrets",
+    # Docker ENTRYPOINT/CMD overrides.
+    "entrypoint",
+    "cmd",
 )
 
 
 def _build_container_image_from_toml(
-    app_name: str, image_config: Any, project_root: Path
+    app_name: str,
+    image_config: Any,
+    project_root: Path,
+    *,
+    use_isolate: bool | None = None,
 ) -> ContainerImage:
     if not isinstance(image_config, dict):
         raise ValueError(f"App {app_name} image must be a table in pyproject.toml")
@@ -423,6 +440,8 @@ def _build_container_image_from_toml(
         "dockerfile_str": dockerfile_str,
         "context_dir": project_root,
     }
+    if use_isolate is not None:
+        kwargs["use_isolate"] = use_isolate
 
     for key in _IMAGE_PASSTHROUGH_KEYS:
         if key in image_config:
