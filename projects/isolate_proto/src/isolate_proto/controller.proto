@@ -128,7 +128,8 @@ message HostedRun {
     // When set, the server may use the referenced environment directly. If both
     // `environments` and `env_id` are provided, the server validates they agree.
     optional string env_id = 15;
-    // Whether to use isolate for this run. Unset preserves the server default.
+    // Whether this environment should use isolate. Unset defaults to true.
+    // When false, the callable oneof (`function`/`entrypoint`) is ignored.
     optional bool use_isolate = 16;
 }
 
@@ -145,7 +146,7 @@ message BuildEnvironmentRequest {
     optional string application_name = 5;
     // Explicit allow-list of user secrets exposed during the build.
     optional SecretsConfig secrets = 6;
-    // Whether to use isolate for this build. Unset preserves the server default.
+    // Whether this environment should use isolate. Unset defaults to true.
     optional bool use_isolate = 7;
 }
 
@@ -383,7 +384,8 @@ message RegisterApplicationRequest {
     // When set, the server may use the referenced environment directly. If both
     // `environments` and `env_id` are provided, the server validates they agree.
     optional string env_id = 25;
-    // Whether to use isolate for this registration. Unset preserves the server default.
+    // Whether this environment should use isolate. Unset defaults to true.
+    // When false, the callable oneof (`function`/`entrypoint`) is ignored.
     optional bool use_isolate = 26;
 }
 

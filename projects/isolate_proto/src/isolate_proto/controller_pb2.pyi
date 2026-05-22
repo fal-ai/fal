@@ -220,7 +220,9 @@ class HostedRun(google.protobuf.message.Message):
     `environments` and `env_id` are provided, the server validates they agree.
     """
     use_isolate: builtins.bool
-    """Whether to use isolate for this run. Unset preserves the server default."""
+    """Whether this environment should use isolate. Unset defaults to true.
+    When false, the callable oneof (`function`/`entrypoint`) is ignored.
+    """
     def __init__(
         self,
         *,
@@ -298,7 +300,7 @@ class BuildEnvironmentRequest(google.protobuf.message.Message):
     def secrets(self) -> global___SecretsConfig:
         """Explicit allow-list of user secrets exposed during the build."""
     use_isolate: builtins.bool
-    """Whether to use isolate for this build. Unset preserves the server default."""
+    """Whether this environment should use isolate. Unset defaults to true."""
     def __init__(
         self,
         *,
@@ -905,7 +907,9 @@ class RegisterApplicationRequest(google.protobuf.message.Message):
     `environments` and `env_id` are provided, the server validates they agree.
     """
     use_isolate: builtins.bool
-    """Whether to use isolate for this registration. Unset preserves the server default."""
+    """Whether this environment should use isolate. Unset defaults to true.
+    When false, the callable oneof (`function`/`entrypoint`) is ignored.
+    """
     def __init__(
         self,
         *,
