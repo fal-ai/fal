@@ -161,12 +161,22 @@ def test_use_isolate_field_presence():
     assert hosted_run_without_isolate.HasField("use_isolate") is True
     assert hosted_run_without_isolate.use_isolate is False
 
+    hosted_run_with_isolate = isolate_proto.HostedRun(
+        entrypoint="pkg.mod:func", use_isolate=True
+    )
+    assert hosted_run_with_isolate.HasField("use_isolate") is True
+    assert hosted_run_with_isolate.use_isolate is True
+
     build = isolate_proto.BuildEnvironmentRequest()
     assert build.HasField("use_isolate") is False
 
     build_without_isolate = isolate_proto.BuildEnvironmentRequest(use_isolate=False)
     assert build_without_isolate.HasField("use_isolate") is True
     assert build_without_isolate.use_isolate is False
+
+    build_with_isolate = isolate_proto.BuildEnvironmentRequest(use_isolate=True)
+    assert build_with_isolate.HasField("use_isolate") is True
+    assert build_with_isolate.use_isolate is True
 
     register = isolate_proto.RegisterApplicationRequest()
     assert register.HasField("use_isolate") is False
@@ -176,6 +186,10 @@ def test_use_isolate_field_presence():
     )
     assert register_without_isolate.HasField("use_isolate") is True
     assert register_without_isolate.use_isolate is False
+
+    register_with_isolate = isolate_proto.RegisterApplicationRequest(use_isolate=True)
+    assert register_with_isolate.HasField("use_isolate") is True
+    assert register_with_isolate.use_isolate is True
 
 
 def test_env_id_field_presence_on_run_and_register():
