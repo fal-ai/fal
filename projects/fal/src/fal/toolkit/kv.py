@@ -98,10 +98,17 @@ class KVStore:
             with _maybe_retry_request(request) as response:
                 result = json.load(response)
         except HTTPError as e:
+            if e.status == 404:
+                return None
+            detail = None
             try:
-                detail = json.loads(e.read()).get("error")
+                payload = json.loads(e.read())
             except (json.JSONDecodeError, ValueError):
-                detail = e.msg  # type: ignore[attr-defined]
+                payload = None
+            if isinstance(payload, dict):
+                detail = payload.get("error")
+            if not detail:
+                detail = e.reason
             raise KVStoreException(
                 f"Error sending request. Status {e.status}: {detail}"
             )
