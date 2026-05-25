@@ -10,13 +10,6 @@ import pytest
 from fal.api import _sdist
 
 
-@pytest.fixture(autouse=True)
-def _clear_cache():
-    _sdist._SDIST_URL_CACHE.clear()
-    yield
-    _sdist._SDIST_URL_CACHE.clear()
-
-
 @pytest.mark.parametrize(
     "req,expected",
     [
@@ -120,29 +113,31 @@ def test_materialize_preserves_layered_shape(tmp_path):
     assert out == [["fal"], ["simple @ https://cdn/simple.tgz", "numpy"]]
 
 
-def test_materialize_caches_by_project_root(tmp_path):
-    """Subsequent calls for the same project root skip both build and upload.
-
-    Within a single process, ``_resolve_sdist_url`` short-circuits on the
-    cached ``(package_name, url)`` rather than re-running ``python -m build``.
-    """
+def test_materialize_reuploads_each_time(tmp_path):
     pyproject = tmp_path / "pyproject.toml"
     pyproject.write_text('[project]\nname = "simple"\nversion = "0.1.0"\n')
 
-    fake_sdist = tmp_path / "build_out" / "simple-0.1.0.tar.gz"
-    fake_sdist.parent.mkdir()
-    fake_sdist.write_bytes(b"sdist-bytes")
+    build_count = 0
 
-    with patch.object(_sdist, "_build_sdist", return_value=fake_sdist) as build, patch(
-        "fal.api._sdist._upload_sdist", return_value="https://cdn/simple.tgz"
+    def build_sdist(_project_root):
+        nonlocal build_count
+        build_count += 1
+        fake_sdist = tmp_path / f"build_out_{build_count}" / "simple-0.1.0.tar.gz"
+        fake_sdist.parent.mkdir()
+        fake_sdist.write_bytes(b"sdist-bytes")
+        return fake_sdist
+
+    with patch.object(_sdist, "_build_sdist", side_effect=build_sdist) as build, patch(
+        "fal.api._sdist._upload_sdist",
+        side_effect=["https://cdn/simple-1.tgz", "https://cdn/simple-2.tgz"],
     ) as upload:
         first = _sdist.materialize_local_paths([".[func]"], tmp_path)
         second = _sdist.materialize_local_paths([".[app]"], tmp_path)
 
-    assert first == ["simple[func] @ https://cdn/simple.tgz"]
-    assert second == ["simple[app] @ https://cdn/simple.tgz"]
-    assert build.call_count == 1  # second call short-circuits on cache
-    assert upload.call_count == 1
+    assert first == ["simple[func] @ https://cdn/simple-1.tgz"]
+    assert second == ["simple[app] @ https://cdn/simple-2.tgz"]
+    assert build.call_count == 2
+    assert upload.call_count == 2
 
 
 def test_materialize_progress_events(tmp_path):
@@ -172,19 +167,26 @@ def test_materialize_progress_events(tmp_path):
     ]
     assert events[0][1]["package_name"] == "simple"
     assert events[3][1]["url"] == "https://cdn/simple.tgz"
-    assert events[3][1]["cached"] is False
+    assert "cached" not in events[3][1]
 
 
-def test_materialize_progress_emits_cached_on_second_call(tmp_path):
+def test_materialize_progress_repeats_after_previous_call(tmp_path):
     pyproject = tmp_path / "pyproject.toml"
     pyproject.write_text('[project]\nname = "simple"\nversion = "0.1.0"\n')
 
-    fake_sdist = tmp_path / "build_out" / "simple-0.1.0.tar.gz"
-    fake_sdist.parent.mkdir()
-    fake_sdist.write_bytes(b"x")
+    build_count = 0
 
-    with patch.object(_sdist, "_build_sdist", return_value=fake_sdist), patch(
-        "fal.api._sdist._upload_sdist", return_value="https://cdn/simple.tgz"
+    def build_sdist(_project_root):
+        nonlocal build_count
+        build_count += 1
+        fake_sdist = tmp_path / f"build_out_{build_count}" / "simple-0.1.0.tar.gz"
+        fake_sdist.parent.mkdir()
+        fake_sdist.write_bytes(b"x")
+        return fake_sdist
+
+    with patch.object(_sdist, "_build_sdist", side_effect=build_sdist), patch(
+        "fal.api._sdist._upload_sdist",
+        side_effect=["https://cdn/simple-1.tgz", "https://cdn/simple-2.tgz"],
     ):
         _sdist.materialize_local_paths([".[func]"], tmp_path)
         events: list[tuple[str, dict]] = []
@@ -192,8 +194,30 @@ def test_materialize_progress_emits_cached_on_second_call(tmp_path):
             [".[app]"], tmp_path, on_progress=lambda e, p: events.append((e, p))
         )
 
-    assert events == [("upload_finished", events[0][1])]
-    assert events[0][1]["cached"] is True
+    assert [name for name, _ in events] == [
+        "build_started",
+        "build_finished",
+        "upload_started",
+        "upload_finished",
+    ]
+    assert events[3][1]["url"] == "https://cdn/simple-2.tgz"
+
+
+def test_upload_sdist_uses_one_hour_lifecycle_for_primary_and_fallback(tmp_path):
+    sdist = tmp_path / "simple-0.1.0.tar.gz"
+    sdist.write_bytes(b"sdist")
+    uploaded_file = type("UploadedFile", (), {"url": "https://cdn/simple.tgz"})()
+
+    with patch("fal.toolkit.File.from_path", return_value=uploaded_file) as from_path:
+        url = _sdist._upload_sdist(sdist)
+
+    assert url == "https://cdn/simple.tgz"
+    from_path.assert_called_once()
+    _, kwargs = from_path.call_args
+    expected = {"expiration_duration_seconds": 3600}
+    assert kwargs["save_kwargs"]["object_lifecycle_preference"] == expected
+    assert kwargs["fallback_save_kwargs"]["object_lifecycle_preference"] == expected
+    assert kwargs["save_kwargs"] is kwargs["fallback_save_kwargs"]
 
 
 def test_read_package_name_missing_pyproject(tmp_path):

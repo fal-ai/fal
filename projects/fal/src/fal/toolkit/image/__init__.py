@@ -1,10 +1,16 @@
 from __future__ import annotations
 
-import urllib.request
+import io
 from functools import lru_cache
 from typing import TYPE_CHECKING
+from urllib.parse import urlparse
+from urllib.request import urlopen
+
+from fal.toolkit.utils.download_utils import TEMP_HEADERS
+from fal.toolkit.utils.ssrf import ssrf_safe_get
 
 from .image import *  # noqa: F403
+from .image import MAX_IMAGE_DOWNLOAD_SIZE
 
 if TYPE_CHECKING:
     # suffix so we don't clash with PILImage from .image
@@ -50,22 +56,28 @@ def preprocess_image(image_pil, convert_to_rgb=True, fix_orientation=True):
 
 @lru_cache(maxsize=64)
 def read_image_from_url(
-    url: str, convert_to_rgb: bool = True, fix_orientation: bool = True
+    url: str,
+    convert_to_rgb: bool = True,
+    fix_orientation: bool = True,
 ):
     from fastapi import HTTPException
     from PIL import Image
 
-    TEMP_HEADERS = {
-        "User-Agent": (
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.8; rv:21.0) "
-            "Gecko/20100101 Firefox/21.0"
-        ),
-    }
-
     try:
-        request = urllib.request.Request(url, headers=TEMP_HEADERS)
-        response = urllib.request.urlopen(request, timeout=30)
-        image_pil = Image.open(response)
+        if urlparse(url).scheme == "data":
+            with urlopen(url, timeout=30) as response:
+                content = response.read(MAX_IMAGE_DOWNLOAD_SIZE + 1)
+            if len(content) > MAX_IMAGE_DOWNLOAD_SIZE:
+                raise ValueError("Image body exceeded size limit")
+        else:
+            response = ssrf_safe_get(
+                url,
+                headers=TEMP_HEADERS,
+                timeout=30,
+                max_size=MAX_IMAGE_DOWNLOAD_SIZE,
+            )
+            content = response.content
+        image_pil = Image.open(io.BytesIO(content))
     except Exception:
         import traceback
 

@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import io
 from functools import wraps
-from tempfile import NamedTemporaryFile
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import TYPE_CHECKING, Literal, Optional, Union
+from urllib.parse import urlparse
 
 from fastapi import Request
 from pydantic import BaseModel, Field
@@ -15,11 +17,14 @@ from fal.toolkit.file.file import (
     File,
 )
 from fal.toolkit.file.types import FileRepository, RepositoryId
-from fal.toolkit.utils.download_utils import _download_file_python
+from fal.toolkit.utils.download_utils import TEMP_HEADERS, _download_file_python
+from fal.toolkit.utils.ssrf import ssrf_safe_get_to_file
 
 if TYPE_CHECKING:
     from PIL import Image as PILImage
 
+
+MAX_IMAGE_DOWNLOAD_SIZE = 50 * 1024 * 1024
 
 ImageSizePreset = Literal[
     "square_hd",
@@ -196,10 +201,18 @@ class Image(File):
             raise ImportError("The PIL package is required to use Image.to_pil().")
 
         # Stream the image data from url to a temp file and convert it to a PIL image
-        with NamedTemporaryFile() as temp_file:
-            temp_file_path = temp_file.name
+        with TemporaryDirectory() as temp_dir:
+            temp_file_path = Path(temp_dir) / "image"
 
-            _download_file_python(self.url, temp_file_path)
+            if urlparse(self.url).scheme == "data":
+                _download_file_python(self.url, temp_file_path)
+            else:
+                ssrf_safe_get_to_file(
+                    self.url,
+                    temp_file_path,
+                    headers=TEMP_HEADERS,
+                    max_size=MAX_IMAGE_DOWNLOAD_SIZE,
+                )
 
             img = PILImage.open(temp_file_path).convert(mode)
             img = ImageOps.exif_transpose(img)
