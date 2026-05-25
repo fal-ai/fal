@@ -1,6 +1,7 @@
 import json
 from typing import Any, Dict, Optional
 from urllib.error import HTTPError
+from urllib.parse import urlencode
 from urllib.request import Request
 
 from fal._user_agent import USER_AGENT
@@ -47,17 +48,37 @@ class KVStore:
 
         return response["value"]
 
-    def set(self, key: str, value: str) -> None:
+    def set(self, key: str, value: str, ttl: Optional[int] = None) -> None:
         """Store a value in the key-value store.
 
         Args:
             key: The key to store the value under.
             value: The value to store.
+            ttl: Optional time-to-live in seconds. Must be between 60 and
+                2592000 (30 days). Defaults to 30 days when omitted.
         """
+        path = f"/set/{self.db_name}/{key}"
+        if ttl is not None:
+            path = f"{path}?{urlencode({'ttl': ttl})}"
+
         self._send_request(
             method="PUT",
-            path=f"/set/{self.db_name}/{key}",
+            path=path,
             data=value.encode(),
+        )
+
+    def delete(self, key: str) -> None:
+        """Delete a value from the key-value store.
+
+        The operation is idempotent and succeeds whether or not the key
+        existed.
+
+        Args:
+            key: The key to delete.
+        """
+        self._send_request(
+            method="DELETE",
+            path=f"/delete/{self.db_name}/{key}",
         )
 
     def _send_request(
