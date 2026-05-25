@@ -185,6 +185,101 @@ def test_register_forwards_explicit_private_logs_false():
     assert call_kwargs["private_logs"] is False
 
 
+def test_register_allows_container_without_func_or_entrypoint():
+    from fal.api.api import FalServerlessHost, Options
+    from fal.sdk import RegisterApplicationResult, RegisterApplicationResultType
+
+    host = FalServerlessHost()
+    options = Options(
+        environment={"kind": "container", "image": {"use_isolate": False}}
+    )
+
+    connection = MagicMock()
+    connection.define_environment.return_value = object()
+    partial_result = RegisterApplicationResult(
+        result=RegisterApplicationResultType(application_id="app-id")
+    )
+    connection.register.return_value = iter([partial_result])
+
+    with patch.object(
+        FalServerlessHost, "_connection", new_callable=PropertyMock
+    ) as mock_connection:
+        mock_connection.return_value = connection
+        result = host.register(
+            None,
+            options,
+            application_name="container-app",
+            deployment_strategy="recreate",
+        )
+
+    assert result == partial_result
+    call_args, call_kwargs = connection.register.call_args
+    assert call_args[0] is None
+    assert call_kwargs["entrypoint"] is None
+
+
+def test_run_allows_container_without_func_or_entrypoint():
+    from fal.api.api import FalServerlessHost, Options, ResultHandler
+    from fal.sdk import HostedRunState
+
+    host = FalServerlessHost()
+    options = Options(
+        environment={"kind": "container", "image": {"use_isolate": False}}
+    )
+
+    connection = MagicMock()
+    connection.define_environment.return_value = object()
+    partial_result = MagicMock()
+    partial_result.status.state = HostedRunState.SUCCESS
+    partial_result.result = "ok"
+    connection.run.return_value = iter([partial_result])
+
+    with patch.object(
+        FalServerlessHost, "_connection", new_callable=PropertyMock
+    ) as mock_connection:
+        mock_connection.return_value = connection
+        result = host._run(
+            None,
+            options,
+            args=(),
+            kwargs={},
+            application_name="container-app",
+            result_handler=ResultHandler(),
+        )
+
+    assert result == "ok"
+    call_args, call_kwargs = connection.run.call_args
+    assert call_args[0] is None
+    assert call_kwargs["entrypoint"] is None
+    assert call_kwargs["application_name"] == "container-app"
+
+
+def test_load_function_from_allows_container_without_ref():
+    from fal.api.api import Options
+    from fal.utils import load_function_from
+
+    host = MagicMock()
+    options = Options(
+        environment={"kind": "container", "image": {"use_isolate": False}}
+    )
+
+    loaded = load_function_from(
+        host,
+        None,
+        options=options,
+        app_name="container-app",
+        app_auth="public",
+    )
+
+    assert loaded.app_name == "container-app"
+    assert loaded.app_auth == "public"
+    assert loaded.source_code is None
+    assert loaded.class_name is None
+    assert loaded.function.func is None
+    assert loaded.function.run_entrypoint is None
+    assert loaded.function.options is options
+
+
 def test_wrap_app_allows_resolver_with_container_kind():
     from fal.app import wrap_app
 

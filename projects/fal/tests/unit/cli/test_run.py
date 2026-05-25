@@ -1,4 +1,5 @@
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Optional, Tuple
 from unittest.mock import MagicMock, patch
 
@@ -210,6 +211,115 @@ def test_run_forwards_python_entry_point_to_loader(
     assert call_kwargs["options"].environment["python_version"] == "3.12"
     assert call_kwargs["options"].environment["requirements"] == ["fal"]
     assert call_kwargs["options"].gateway["exposed_port"] == 9000
+
+
+@patch("fal.cli._utils.find_pyproject_toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+@patch("fal.api.client.SyncServerlessClient._create_host")
+@patch("fal.utils.load_function_from")
+def test_run_image_only_forwards_no_ref_to_loader(
+    mock_load_function_from,
+    mock_create_host,
+    mock_parse_toml,
+    mock_find_toml,
+    tmp_path,
+):
+    dockerfile = "FROM debian:bookworm-slim\n"
+    (tmp_path / "Dockerfile").write_text(dockerfile)
+    mock_find_toml.return_value = str(tmp_path / "pyproject.toml")
+    mock_parse_toml.return_value = {
+        "apps": {
+            "container-app": {
+                "image": {"dockerfile": "Dockerfile"},
+                "exposed_port": 8080,
+            }
+        }
+    }
+
+    host = mocked_fal_serverless_host("my-host")
+    mock_create_host.return_value = host
+
+    isolated_function = MagicMock()
+    isolated_function.options = MagicMock()
+    isolated_function.options.host = {}
+    loaded = MagicMock()
+    loaded.function = isolated_function
+    loaded.app_name = "container-app"
+    loaded.app_auth = None
+    mock_load_function_from.return_value = loaded
+
+    args = mock_args(func_ref=("container-app", None), host="my-host")
+
+    _run(args)
+
+    mock_create_host.assert_called_once_with(
+        local_file_path="",
+        local_project_root=str(tmp_path),
+        environment_name=None,
+    )
+    mock_load_function_from.assert_called_once()
+    call_args, call_kwargs = mock_load_function_from.call_args
+    assert call_args[1] is None
+    assert call_args[2] is None
+    assert call_kwargs["python_entry_point"] is None
+    assert call_kwargs["options"].environment["kind"] == "container"
+    assert call_kwargs["options"].environment["image"]["dockerfile_str"] == dockerfile
+    assert call_kwargs["options"].environment["image"]["use_isolate"] is False
+    assert call_kwargs["options"].gateway["exposed_port"] == 8080
+
+
+@patch("fal.api.run.run")
+@patch("fal.cli._utils.find_pyproject_toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+@patch("fal.api.client.SyncServerlessClient._create_host")
+@patch("fal.utils.load_function_from")
+def test_run_image_only_builds_no_isolate_container(
+    mock_load_function_from,
+    mock_create_host,
+    mock_parse_toml,
+    mock_find_toml,
+    mock_run_api,
+    tmp_path,
+):
+    from fal.api.api import IsolatedFunction
+
+    (tmp_path / "Dockerfile").write_text("FROM debian:bookworm-slim\n")
+    mock_find_toml.return_value = str(tmp_path / "pyproject.toml")
+    mock_parse_toml.return_value = {
+        "apps": {"container-app": {"image": {"dockerfile": "Dockerfile"}}}
+    }
+    host = mocked_fal_serverless_host("my-host")
+    mock_create_host.return_value = host
+
+    def fake_load_function_from(
+        host_arg,
+        _file_path,
+        _func_name,
+        *,
+        options,
+        app_name,
+        app_auth,
+        **_kwargs,
+    ):
+        return SimpleNamespace(
+            function=IsolatedFunction(
+                host=host_arg,
+                options=options,
+                app_name=app_name,
+                app_auth=app_auth,
+            ),
+            app_name=app_name,
+            app_auth=app_auth,
+        )
+
+    mock_load_function_from.side_effect = fake_load_function_from
+
+    args = mock_args(func_ref=("container-app", None), host="my-host")
+    _run(args)
+
+    host.build_environment.assert_called_once()
+    _, run_kwargs = mock_run_api.call_args
+    assert run_kwargs["build_environment"] is False
 
 
 @patch("fal.api.client.SyncServerlessClient._create_host")

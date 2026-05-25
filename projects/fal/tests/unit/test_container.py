@@ -465,6 +465,33 @@ class TestContainerImageValidation:
                 registries={"docker.io": {"username": "user"}},
             )
 
+    @pytest.mark.parametrize("field_name", ["entrypoint", "cmd"])
+    @pytest.mark.parametrize(
+        "value",
+        [
+            123,
+            ["python", 123],
+            {"command": "python"},
+        ],
+    )
+    def test_invalid_command_override_raises_valueerror(self, field_name, value):
+        """Command overrides should be shell strings or exec-form string lists."""
+        with pytest.raises(
+            ValueError, match=f"{field_name} must be a string or list of strings"
+        ):
+            ContainerImage(
+                dockerfile_str="FROM python:3.11",
+                **{field_name: value},
+            )
+
+    def test_invalid_use_isolate_raises_valueerror(self):
+        """use_isolate should be a boolean when provided."""
+        with pytest.raises(ValueError, match="use_isolate must be a bool"):
+            ContainerImage(
+                dockerfile_str="FROM python:3.11",
+                use_isolate="false",  # type: ignore[arg-type]
+            )
+
 
 class TestContainerImageFromDockerfileStr:
     """Tests for from_dockerfile_str class method."""
@@ -649,3 +676,28 @@ class TestToDict:
         assert isinstance(d["docker_context_dir"], str)
         # builder defaults to None
         assert d["builder"] is None
+        assert "entrypoint" not in d
+        assert "cmd" not in d
+        assert "use_isolate" not in d
+
+    def test_command_overrides_in_dict(self):
+        """Should include Docker ENTRYPOINT/CMD overrides when provided."""
+        img = ContainerImage(
+            dockerfile_str="FROM python:3.11",
+            entrypoint=["python", "-m", "server"],
+            cmd="--host 0.0.0.0 --port 8080",
+        )
+        d = img.to_dict()
+
+        assert d["entrypoint"] == ["python", "-m", "server"]
+        assert d["cmd"] == "--host 0.0.0.0 --port 8080"
+
+    def test_use_isolate_in_dict(self):
+        """Should include use_isolate when provided."""
+        img = ContainerImage(
+            dockerfile_str="FROM python:3.11",
+            use_isolate=False,
+        )
+        d = img.to_dict()
+
+        assert d["use_isolate"] is False

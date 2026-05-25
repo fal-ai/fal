@@ -82,6 +82,55 @@ def test_execute_prepared_deployment_reuses_result_handler_for_build_by_default(
     assert build_kwargs["result_handler"] is result_handler
 
 
+def test_execute_prepared_deployment_builds_no_isolate_container():
+    from fal.api.api import IsolatedFunction
+    from fal.api.deploy import PreparedDeployment, execute_prepared_deployment
+    from fal.sdk import (
+        RegisterApplicationResult,
+        RegisterApplicationResultType,
+        ServiceURLs,
+    )
+
+    host = MagicMock()
+    options = Options(
+        environment={"kind": "container", "image": {"use_isolate": False}}
+    )
+    isolated_function = IsolatedFunction(
+        host=host,
+        options=options,
+        app_name="container-app",
+        app_auth="public",
+    )
+    host.register.return_value = RegisterApplicationResult(
+        result=RegisterApplicationResultType(application_id="app-id"),
+        service_urls=ServiceURLs(
+            playground="https://playground.example",
+            run="https://run.example",
+            queue="https://queue.example",
+            ws="wss://ws.example",
+            log="https://log.example",
+        ),
+    )
+    prepared = PreparedDeployment(
+        host=host,
+        loaded=SimpleNamespace(
+            function=isolated_function,
+            app_name="container-app",
+            app_auth="public",
+            source_code=None,
+            class_name=None,
+        ),
+        app_data=AppData(deployment_strategy="rolling"),
+        display_name="container-app",
+    )
+
+    execute_prepared_deployment(prepared)
+
+    host.build_environment.assert_called_once()
+    _, register_kwargs = host.register.call_args
+    assert register_kwargs["build_environment"] is False
+
+
 def test_deploy_with_env_and_other_options():
     args = parse_args(
         [
@@ -305,6 +354,58 @@ def test_deploy_python_entry_point_forwards_to_loader(
     assert call_kwargs["python_entry_point"] == "simple.app:SimpleApp"
     assert call_kwargs["options"].environment["python_version"] == "3.12"
     assert call_kwargs["options"].environment["requirements"] == ["fal"]
+
+
+@patch("fal.cli._utils.find_pyproject_toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+@patch("fal.api.deploy.execute_prepared_deployment")
+@patch("fal.api.client.SyncServerlessClient._create_host")
+@patch("fal.utils.load_function_from")
+def test_deploy_image_only_forwards_no_ref_to_loader(
+    mock_load_function_from,
+    mock_create_host,
+    mock_execute,
+    mock_parse_toml,
+    mock_find_toml,
+    tmp_path,
+):
+    dockerfile = "FROM debian:bookworm-slim\n"
+    (tmp_path / "Dockerfile").write_text(dockerfile)
+    mock_find_toml.return_value = str(tmp_path / "pyproject.toml")
+    mock_parse_toml.return_value = {
+        "apps": {
+            "container-app": {
+                "auth": "public",
+                "image": {"dockerfile": "Dockerfile"},
+            }
+        }
+    }
+    mock_create_host.return_value = MagicMock()
+    loaded = MagicMock()
+    loaded.app_name = "container-app"
+    loaded.app_auth = "public"
+    loaded.class_name = None
+    loaded.function = MagicMock()
+    mock_load_function_from.return_value = loaded
+
+    args = mock_args(app_ref=("container-app", None))
+    _deploy(args)
+
+    mock_create_host.assert_called_once()
+    _, host_kwargs = mock_create_host.call_args
+    assert host_kwargs["local_file_path"] == ""
+    assert host_kwargs["local_project_root"] == str(tmp_path)
+
+    mock_load_function_from.assert_called_once()
+    call_args, call_kwargs = mock_load_function_from.call_args
+    assert call_args[1] is None
+    assert call_args[2] is None
+    assert call_kwargs["python_entry_point"] is None
+    assert call_kwargs["app_name"] == "container-app"
+    assert call_kwargs["app_auth"] == "public"
+    assert call_kwargs["options"].environment["kind"] == "container"
+    assert call_kwargs["options"].environment["image"]["dockerfile_str"] == dockerfile
+    assert call_kwargs["options"].environment["image"]["use_isolate"] is False
 
 
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
@@ -1250,6 +1351,8 @@ def test_get_app_data_from_toml_with_image(mock_parse_toml, mock_find_toml, tmp_
                         "myregistry.com": {"username": "u", "password": "p"}
                     },
                     "secrets": {"TOKEN": "shh"},
+                    "entrypoint": ["python", "-m", "server"],
+                    "cmd": ["--host", "0.0.0.0", "--port", "8080"],
                 },
             }
         }
@@ -1265,6 +1368,68 @@ def test_get_app_data_from_toml_with_image(mock_parse_toml, mock_find_toml, tmp_
         "myregistry.com": {"username": "u", "password": "p"}
     }
     assert env["image"]["secrets"] == {"TOKEN": "shh"}
+    assert env["image"]["entrypoint"] == ["python", "-m", "server"]
+    assert env["image"]["cmd"] == ["--host", "0.0.0.0", "--port", "8080"]
+    assert "use_isolate" not in env["image"]
+
+
+@patch("fal.cli._utils.find_pyproject_toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+def test_get_app_data_from_toml_allows_python_entry_point_with_image(
+    mock_parse_toml, mock_find_toml, tmp_path
+):
+    from fal.cli._utils import get_app_data_from_toml
+
+    dockerfile = "FROM python:3.12-slim\n"
+    (tmp_path / "Dockerfile").write_text(dockerfile)
+    mock_find_toml.return_value = str(tmp_path / "pyproject.toml")
+    mock_parse_toml.return_value = {
+        "apps": {
+            "container-app": {
+                "python_entry_point": "simple.app:SimpleApp",
+                "image": {"dockerfile": "Dockerfile"},
+            }
+        }
+    }
+
+    toml_data = get_app_data_from_toml("container-app")
+
+    assert toml_data.ref is None
+    assert toml_data.python_entry_point == "simple.app:SimpleApp"
+    assert toml_data.options.environment["kind"] == "container"
+    assert toml_data.options.environment["image"]["dockerfile_str"] == dockerfile
+    assert "use_isolate" not in toml_data.options.environment["image"]
+
+
+@patch("fal.cli._utils.find_pyproject_toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+def test_get_app_data_from_toml_with_image_without_ref(
+    mock_parse_toml, mock_find_toml, tmp_path
+):
+    from fal.cli._utils import get_app_data_from_toml
+
+    dockerfile = "FROM debian:bookworm-slim\n"
+    (tmp_path / "Dockerfile").write_text(dockerfile)
+    mock_find_toml.return_value = str(tmp_path / "pyproject.toml")
+    mock_parse_toml.return_value = {
+        "apps": {
+            "container-app": {
+                "auth": "public",
+                "machine_type": "GPU-H100",
+                "image": {"dockerfile": "Dockerfile"},
+            }
+        }
+    }
+
+    toml_data = get_app_data_from_toml("container-app")
+
+    assert toml_data.ref is None
+    assert toml_data.python_entry_point is None
+    assert toml_data.auth == "public"
+    assert toml_data.options.host["machine_type"] == "GPU-H100"
+    assert toml_data.options.environment["kind"] == "container"
+    assert toml_data.options.environment["image"]["dockerfile_str"] == dockerfile
+    assert toml_data.options.environment["image"]["use_isolate"] is False
 
 
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
@@ -1317,6 +1482,42 @@ def test_get_app_data_from_toml_rejects_unknown_image_keys(
     with pytest.raises(
         ValueError,
         match=r"Found unexpected keys in app container-app image",
+    ):
+        get_app_data_from_toml("container-app")
+
+
+@pytest.mark.parametrize(
+    ("field_name", "value"),
+    [
+        ("entrypoint", 123),
+        ("entrypoint", ["python", 123]),
+        ("cmd", 123),
+        ("cmd", ["--port", 8080]),
+    ],
+)
+@patch("fal.cli._utils.find_pyproject_toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+def test_get_app_data_from_toml_rejects_invalid_image_command_overrides(
+    mock_parse_toml, mock_find_toml, tmp_path, field_name, value
+):
+    from fal.cli._utils import get_app_data_from_toml
+
+    (tmp_path / "Dockerfile").write_text("FROM python:3.12-slim\n")
+    mock_find_toml.return_value = str(tmp_path / "pyproject.toml")
+    mock_parse_toml.return_value = {
+        "apps": {
+            "container-app": {
+                "image": {
+                    "dockerfile": "Dockerfile",
+                    field_name: value,
+                },
+            }
+        }
+    }
+
+    with pytest.raises(
+        ValueError,
+        match=f"{field_name} must be a string or list of strings",
     ):
         get_app_data_from_toml("container-app")
 

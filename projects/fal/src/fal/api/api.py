@@ -465,6 +465,25 @@ class UserFunctionException(FalServerlessException):
     pass
 
 
+def _image_uses_isolate(options: Options) -> bool:
+    if options.environment.get("kind") != "container":
+        return True
+
+    image = options.environment.get("image")
+    if not isinstance(image, dict):
+        return True
+
+    return image.get("use_isolate", True) is not False
+
+
+def _uses_isolate(
+    func: Callable[..., Any] | None,
+    entrypoint: str | None,
+    options: Options,
+) -> bool:
+    return func is not None or entrypoint is not None or _image_uses_isolate(options)
+
+
 @dataclass(frozen=True)
 class FunctionRuntimeConfig:
     app_files_relative_path: str | None = None
@@ -1007,7 +1026,11 @@ class FalServerlessHost(Host):
 
         files = self.files_sync(FileSyncOptions.from_options(options))
 
-        if func is None and entrypoint is None:
+        if (
+            func is None
+            and entrypoint is None
+            and _uses_isolate(func, entrypoint, options)
+        ):
             raise FalServerlessError(
                 "register requires either a func or an entrypoint."
             )
@@ -1130,7 +1153,11 @@ class FalServerlessHost(Host):
         return_value = _UNSET
         # Allow isolate provided arguments (such as setup function) to take
         # precedence over the ones provided by the user.
-        if func is None and entrypoint is None:
+        if (
+            func is None
+            and entrypoint is None
+            and _uses_isolate(func, entrypoint, options)
+        ):
             raise FalServerlessError("_run requires either a func or an entrypoint.")
         if func is not None and entrypoint is not None:
             raise FalServerlessError(
@@ -2349,9 +2376,18 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
     _entrypoint_exposed_port_defaulted: bool = False
 
     def __post_init__(self) -> None:
-        if self.raw_func is None and self.entrypoint is None:
+        if (
+            self.raw_func is None
+            and self.entrypoint is None
+            and _uses_isolate(
+                self.raw_func,
+                self.entrypoint,
+                self.options,
+            )
+        ):
             raise FalServerlessError(
-                "IsolatedFunction requires either raw_func or entrypoint."
+                "IsolatedFunction requires raw_func or entrypoint unless a "
+                "container environment is provided."
             )
 
     def __getstate__(self) -> dict[str, Any]:
