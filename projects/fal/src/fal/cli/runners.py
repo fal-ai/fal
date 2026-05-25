@@ -352,7 +352,7 @@ def _list(args):
     ]
     setup_runners = [runner for runner in runners if runner.state == RunnerState.SETUP]
     failing_runners = [
-        runner for runner in runners if runner.state == RunnerState.FAILURE_DELAY
+        runner for runner in runners if runner.state == RunnerState.CRASH_BACKOFF
     ]
     terminated_runners = [
         runner
@@ -456,7 +456,7 @@ def _add_list_parser(subparsers, parents):
             "running",
             "pending",
             "setup",
-            "failure_delay",
+            "crash_backoff",
             "terminated",
         ],
         nargs="+",

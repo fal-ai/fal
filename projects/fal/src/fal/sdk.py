@@ -355,7 +355,14 @@ class RunnerState(Enum):
     TERMINATING = "TERMINATING"
     TERMINATED = "TERMINATED"
     IDLE = "IDLE"
-    FAILURE_DELAY = "FAILURE_DELAY"
+    CRASH_BACKOFF = "CRASH_BACKOFF"
+
+    @classmethod
+    def _missing_(cls, value):
+        # Proto wire still uses the legacy name; map it to the renamed member.
+        if value == "FAILURE_DELAY":
+            return cls.CRASH_BACKOFF
+        return None
 
 
 class ReplaceState(Enum):

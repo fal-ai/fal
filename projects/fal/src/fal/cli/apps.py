@@ -408,7 +408,7 @@ def _runners(args):
         failing_runners = [
             runner
             for runner in alias_runners
-            if runner.state == RunnerState.FAILURE_DELAY
+            if runner.state == RunnerState.CRASH_BACKOFF
         ]
         args.console.print(
             f"Runners: {len(alias_runners) - len(pending_runners) - len(setup_runners)}"
@@ -466,7 +466,7 @@ def _add_runners_parser(subparsers, parents):
             "running",
             "pending",
             "setup",
-            "failure_delay",
+            "crash_backoff",
             "terminated",
         ],
         nargs="+",
