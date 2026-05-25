@@ -1880,7 +1880,7 @@ experimental API, use it at your own risk.</p>
 <span id="fal-container-module"></span><h2>fal.container module<a class="headerlink" href="#module-fal.container" title="Link to this heading">¶</a></h2>
 <dl class="py class">
 <dt class="sig sig-object py" id="fal.container.ContainerImage">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.container.</span></span><span class="sig-name descname"><span class="pre">ContainerImage</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dockerfile_str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">build_args=&lt;factory&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">registries=&lt;factory&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">builder=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">compression='gzip'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">force_compression=False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">secrets=&lt;factory&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">context_dir=PosixPath('/home/runner/work/fal/fal/projects/fal')</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dockerignore=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dockerignore_path=None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.container.ContainerImage" title="Link to this definition">¶</a></dt>
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.container.</span></span><span class="sig-name descname"><span class="pre">ContainerImage</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dockerfile_str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">build_args=&lt;factory&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">registries=&lt;factory&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">builder=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">compression='gzip'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">force_compression=False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">secrets=&lt;factory&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">entrypoint=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cmd=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_isolate=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">context_dir=PosixPath('/home/runner/work/fal/fal/projects/fal')</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dockerignore=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dockerignore_path=None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.container.ContainerImage" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
 <p>ContainerImage represents a Docker image that can be built
 from a Dockerfile.</p>
@@ -1917,6 +1917,11 @@ You can provide either a list of patterns or a path to a .dockerignore file.</p>
 <dd></dd></dl>
 
 <dl class="py attribute">
+<dt class="sig sig-object py" id="fal.container.ContainerImage.cmd">
+<span class="sig-name descname"><span class="pre">cmd</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">,</span> <code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">],</span> <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.container.ContainerImage.cmd" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
 <dt class="sig sig-object py" id="fal.container.ContainerImage.compression">
 <span class="sig-name descname"><span class="pre">compression</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'gzip'</span></em><a class="headerlink" href="#fal.container.ContainerImage.compression" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
@@ -1939,6 +1944,11 @@ You can provide either a list of patterns or a path to a .dockerignore file.</p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="fal.container.ContainerImage.dockerignore_path">
 <span class="sig-name descname"><span class="pre">dockerignore_path</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">PathLike</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.container.ContainerImage.dockerignore_path" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.container.ContainerImage.entrypoint">
+<span class="sig-name descname"><span class="pre">entrypoint</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">,</span> <code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">],</span> <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.container.ContainerImage.entrypoint" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
@@ -2002,6 +2012,11 @@ found.</p>
 </dd>
 </dl>
 </dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.container.ContainerImage.use_isolate">
+<span class="sig-name descname"><span class="pre">use_isolate</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.container.ContainerImage.use_isolate" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
 
 </dd></dl>
 
@@ -4905,7 +4920,7 @@ based on the user model.</p>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="fal.ContainerImage">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.</span></span><span class="sig-name descname"><span class="pre">ContainerImage</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dockerfile_str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">build_args=&lt;factory&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">registries=&lt;factory&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">builder=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">compression='gzip'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">force_compression=False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">secrets=&lt;factory&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">context_dir=PosixPath('/home/runner/work/fal/fal/projects/fal')</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dockerignore=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dockerignore_path=None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.ContainerImage" title="Link to this definition">¶</a></dt>
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.</span></span><span class="sig-name descname"><span class="pre">ContainerImage</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dockerfile_str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">build_args=&lt;factory&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">registries=&lt;factory&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">builder=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">compression='gzip'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">force_compression=False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">secrets=&lt;factory&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">entrypoint=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cmd=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_isolate=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">context_dir=PosixPath('/home/runner/work/fal/fal/projects/fal')</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dockerignore=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dockerignore_path=None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.ContainerImage" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
 <p>ContainerImage represents a Docker image that can be built
 from a Dockerfile.</p>
@@ -4942,6 +4957,11 @@ You can provide either a list of patterns or a path to a .dockerignore file.</p>
 <dd></dd></dl>
 
 <dl class="py attribute">
+<dt class="sig sig-object py" id="fal.ContainerImage.cmd">
+<span class="sig-name descname"><span class="pre">cmd</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">,</span> <code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">],</span> <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.ContainerImage.cmd" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
 <dt class="sig sig-object py" id="fal.ContainerImage.compression">
 <span class="sig-name descname"><span class="pre">compression</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'gzip'</span></em><a class="headerlink" href="#fal.ContainerImage.compression" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
@@ -4964,6 +4984,11 @@ You can provide either a list of patterns or a path to a .dockerignore file.</p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="fal.ContainerImage.dockerignore_path">
 <span class="sig-name descname"><span class="pre">dockerignore_path</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">PathLike</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.ContainerImage.dockerignore_path" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.ContainerImage.entrypoint">
+<span class="sig-name descname"><span class="pre">entrypoint</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">,</span> <code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">],</span> <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.ContainerImage.entrypoint" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
@@ -5027,6 +5052,11 @@ found.</p>
 </dd>
 </dl>
 </dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.ContainerImage.use_isolate">
+<span class="sig-name descname"><span class="pre">use_isolate</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.ContainerImage.use_isolate" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
 
 </dd></dl>
 
