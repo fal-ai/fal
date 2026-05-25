@@ -101,7 +101,7 @@ class KVStore:
             try:
                 detail = json.loads(e.read()).get("error")
             except (json.JSONDecodeError, ValueError):
-                detail = e.msg
+                detail = e.msg  # type: ignore[attr-defined]
             raise KVStoreException(
                 f"Error sending request. Status {e.status}: {detail}"
             )
