@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING, Optional
 
 from fal.sdk import AuthModeLiteral, DeploymentStrategyLiteral
 
+from .api import _uses_isolate
+
 if TYPE_CHECKING:
     from openapi_fal_rest.client import Client
 
@@ -138,9 +140,10 @@ def _resolve_deployment_reference(
         assert resolved_app_name is not None
 
         app_data = get_app_data_from_toml(resolved_app_name)
-        if app_data.python_entry_point is not None:
+        if app_data.python_entry_point is not None or app_data.ref is None:
+            # python_entry_point is resolved by the loader; ref is None for
+            # image-only apps.
             return (None, None), app_data
-        assert app_data.ref is not None
         file_path, func_name = RefAction.split_ref(app_data.ref)
         return (file_path, func_name), app_data
 
@@ -163,7 +166,11 @@ def _prepare_deployment_from_reference(
     from fal.utils import load_function_from
 
     file_path, func_name = app_ref
-    if app_data.python_entry_point is None and file_path is None:
+    if (
+        app_data.python_entry_point is None
+        and file_path is None
+        and _uses_isolate(None, None, app_data.options)
+    ):
         # Try to find a python file in the current directory
         options = list(Path(".").glob("*.py"))
         if len(options) == 0:
@@ -246,8 +253,6 @@ def _execute_loaded_deployment(
 
     # Explicit build phase so the CLI / caller gets a clean "build → deploy"
     # split instead of inferring it from the log stream's source field.
-    # Downstream steps then assert `build_environment=False` to skip re-doing
-    # the build in their own RPC.
     host.build_environment(
         isolated_function.options,
         application_name=loaded.app_name,

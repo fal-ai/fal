@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
 
-from fal.api.api import merge_basic_config
+from fal.api.api import _uses_isolate, merge_basic_config
 from fal.sdk import AuthModeLiteral
 
 if TYPE_CHECKING:
@@ -144,6 +144,19 @@ def load_function_from(
         )
 
     if file_path is None:
+        if options is not None and not _uses_isolate(None, None, options):
+            return LoadedFunction(
+                IsolatedFunction(
+                    host=host,
+                    options=options,
+                    app_name=app_name,
+                    app_auth=app_auth,
+                ),
+                app_name=app_name,
+                app_auth=app_auth,
+                source_code=None,
+                class_name=None,
+            )
         raise FalServerlessError("App ref must resolve to a file path.")
 
     sys.path.append(os.getcwd())

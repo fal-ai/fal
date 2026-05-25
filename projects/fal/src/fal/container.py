@@ -5,9 +5,10 @@ import shlex
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Literal, Optional
+from typing import Dict, List, Literal, Optional, Union
 
 Builder = Literal["depot", "service", "worker"]
+CommandOverride = Union[str, List[str]]
 BUILDERS = {"depot", "service", "worker"}
 DEFAULT_COMPRESSION: str = "gzip"
 DEFAULT_FORCE_COMPRESSION: bool = False
@@ -30,6 +31,16 @@ DEFAULT_DOCKERIGNORE_PATTERNS = [
 ]
 
 
+def _validate_command_override(name: str, value: Optional[CommandOverride]) -> None:
+    if value is None:
+        return
+    if isinstance(value, str):
+        return
+    if isinstance(value, list) and all(isinstance(part, str) for part in value):
+        return
+    raise ValueError(f"{name} must be a string or list of strings.")
+
+
 @dataclass
 class ContainerImage:
     """ContainerImage represents a Docker image that can be built
@@ -43,6 +54,9 @@ class ContainerImage:
     compression: str = DEFAULT_COMPRESSION
     force_compression: bool = DEFAULT_FORCE_COMPRESSION
     secrets: Dict[str, str] = field(default_factory=dict)
+    entrypoint: Optional[CommandOverride] = None
+    cmd: Optional[CommandOverride] = None
+    use_isolate: Optional[bool] = None
     # Build context directory
     context_dir: os.PathLike = field(default=Path.cwd())
     dockerignore: Optional[List[str]] = field(default=None)
@@ -77,6 +91,11 @@ class ContainerImage:
                 f"Invalid builder: {self.builder}, must be one of {BUILDERS}"
             )
 
+        _validate_command_override("entrypoint", self.entrypoint)
+        _validate_command_override("cmd", self.cmd)
+        if self.use_isolate is not None and not isinstance(self.use_isolate, bool):
+            raise ValueError("use_isolate must be a bool.")
+
         if self.builder and self.builder in ("service", "worker"):
             # Yellow "Warning:" prefix via ANSI; falls back to plain text
             # on non-TTY or color-less terminals.
@@ -100,7 +119,7 @@ class ContainerImage:
             return cls.from_dockerfile_str(fobj.read(), **kwargs)
 
     def to_dict(self) -> dict:
-        return {
+        image = {
             "dockerfile_str": self.dockerfile_str,
             "build_args": self.build_args,
             "registries": self.registries,
@@ -112,6 +131,13 @@ class ContainerImage:
             "docker_files_list": self.get_copy_add_sources(),
             "docker_ignore": self._dockerignore,
         }
+        if self.entrypoint is not None:
+            image["entrypoint"] = self.entrypoint
+        if self.cmd is not None:
+            image["cmd"] = self.cmd
+        if self.use_isolate is not None:
+            image["use_isolate"] = self.use_isolate
+        return image
 
     def get_copy_add_sources(self) -> List[str]:
         """
