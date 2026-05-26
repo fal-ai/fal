@@ -26,6 +26,9 @@ from . import (
 from .debug import debugtools, get_debug_parser
 from .parser import FalParser, FalParserExit
 
+_CHECK_UPDATES_INTERVAL = 24 * 60 * 60
+_CHECK_UPDATES_CONFIG_KEY = "check_updates"
+
 
 def _get_main_parser() -> argparse.ArgumentParser:
     parents = [get_debug_parser()]
@@ -81,26 +84,59 @@ def _print_error(msg):
     console.print(f"{get_cross_icon(console)} {msg}")
 
 
+def _get_check_updates_config() -> bool:
+    from pydantic import BaseModel
+
+    from fal.config import Config
+
+    class CheckUpdatesConfig(BaseModel):
+        check_updates: bool = True
+
+    try:
+        config = Config()
+        raw_config = {}
+        value = config.get_global(_CHECK_UPDATES_CONFIG_KEY)
+        if value is not None:
+            raw_config[_CHECK_UPDATES_CONFIG_KEY] = value
+
+        check_updates_config = CheckUpdatesConfig(**raw_config)
+    except (OSError, ValueError):
+        check_updates_config = CheckUpdatesConfig()
+
+    return check_updates_config.check_updates
+
+
 def _check_latest_version():
     from packaging.version import parse
     from rich.panel import Panel
     from rich.text import Text
 
-    from fal._version import get_latest_version, version_tuple
-
-    latest_version = get_latest_version()
-    parsed = parse(latest_version)
-    latest_version_tuple = (parsed.major, parsed.minor, parsed.micro)
+    from fal._version import (
+        get_latest_version,
+        is_pypi_cache_stale,
+        version_tuple,
+    )
 
     # If we have a dev version, we don't want to check for updates
     if len(version_tuple) >= 4:
         if "dev" in str(version_tuple[3]):
             return
 
-    if latest_version_tuple <= version_tuple:
+    if not console.is_terminal:
         return
 
-    if not console.is_terminal:
+    enabled = _get_check_updates_config()
+    if not enabled:
+        return
+
+    if not is_pypi_cache_stale(_CHECK_UPDATES_INTERVAL):
+        return
+
+    latest_version = get_latest_version(cache_ttl=_CHECK_UPDATES_INTERVAL)
+    parsed = parse(latest_version)
+    latest_version_tuple = (parsed.major, parsed.minor, parsed.micro)
+
+    if latest_version_tuple <= version_tuple:
         return
 
     line1 = Text.assemble(
