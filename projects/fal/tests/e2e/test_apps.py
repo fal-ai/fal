@@ -309,10 +309,10 @@ def greet_server_app():
     exposed_port=8080,
     health_check_config=ApplicationHealthCheckConfig(
         path="/ready",
-        start_period_seconds=None,
-        timeout_seconds=None,
-        failure_threshold=None,
-        call_regularly=None,
+        start_period_seconds=1,
+        timeout_seconds=5,
+        failure_threshold=1,
+        call_regularly=True,
     ),
 )
 def custom_health_path_app():
@@ -353,10 +353,10 @@ def custom_health_path_app():
     exposed_port=8080,
     health_check_config=ApplicationHealthCheckConfig(
         path="/ready",
-        start_period_seconds=None,
-        timeout_seconds=None,
-        failure_threshold=None,
-        call_regularly=None,
+        start_period_seconds=1,
+        timeout_seconds=5,
+        failure_threshold=1,
+        call_regularly=True,
     ),
 )
 def health_override_fn():
@@ -580,10 +580,10 @@ class HealthOverrideApp(fal.App, keep_alive=300, max_concurrency=1):
     @fal.endpoint(
         "/ready",
         health_check=fal.HealthCheck(
-            start_period_seconds=10,
-            timeout_seconds=10,
-            failure_threshold=3,
-            call_regularly=False,
+            start_period_seconds=1,
+            timeout_seconds=5,
+            failure_threshold=1,
+            call_regularly=True,
         ),
     )
     def ready_post(self) -> Output:
@@ -924,10 +924,25 @@ def test_app_client(test_app: str):
     assert response["result"] == 5
 
 
-def test_function_with_custom_openapi_health(test_greet_server_app: str):
+def test_function_with_custom_openapi_health(
+    test_greet_server_app: str, rest_client: Client
+):
     """@fal.function deployments using exposed_port + custom openapi declaring
-    /health: both /greet and /health must be reachable through the platform."""
+    /health: both /greet and /health must be reachable. The platform does
+    not persist user-supplied openapi for non-serve apps (parallel to
+    test_app_no_serve_spec_metadata), which is documented here."""
     from fal.flags import FAL_RUN_HOST
+
+    # The platform does not store user-supplied openapi for non-serve apps.
+    # Same observation as test_app_no_serve_spec_metadata for calculator_app.
+    user_id, _, app_id = test_greet_server_app.partition("/")
+    res = app_metadata.sync_detailed(
+        app_alias_or_id=app_id, app_user_id=user_id, client=rest_client
+    )
+    assert res.status_code == 200, f"Failed to fetch metadata: {res}"
+    assert res.parsed, "Failed to parse metadata"
+    metadata = res.parsed.to_dict()
+    assert "openapi" not in metadata, f"openapi unexpectedly persisted: {metadata}"
 
     r = httpx.post(
         f"https://{FAL_RUN_HOST}/{test_greet_server_app}/greet",
