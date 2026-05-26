@@ -45,7 +45,7 @@ from fal.exceptions import (
 )
 from fal.exceptions.gpu import _CUDA_OOM_MESSAGE, _GPU_ERROR_STATUS_CODE
 from fal.ref import get_current_app
-from fal.sdk import RunnerState, get_credentials
+from fal.sdk import ApplicationHealthCheckConfig, RunnerState, get_credentials
 from fal.toolkit.utils.endpoint import cancel_on_disconnect
 from fal.workflows import Workflow
 
@@ -209,6 +209,140 @@ def calculator_app():
     )
 
     run(app, host="0.0.0.0", port=8080)
+
+
+GREET_SERVER_OPENAPI = {
+    "openapi": "3.0.3",
+    "info": {"title": "Greet Server", "version": "1.0.0"},
+    "paths": {
+        "/health": {
+            "get": {
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {"application/json": {"schema": {"type": "object"}}},
+                    }
+                }
+            }
+        },
+        "/greet": {
+            "post": {
+                "requestBody": {
+                    "required": True,
+                    "content": {
+                        "application/json": {
+                            "schema": {"$ref": "#/components/schemas/GreetInput"}
+                        }
+                    },
+                },
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/GreetOutput"}
+                            }
+                        },
+                    }
+                },
+            }
+        },
+    },
+    "components": {
+        "schemas": {
+            "GreetInput": {
+                "type": "object",
+                "required": ["name"],
+                "properties": {"name": {"type": "string"}},
+            },
+            "GreetOutput": {
+                "type": "object",
+                "properties": {"greeting": {"type": "string"}},
+            },
+        }
+    },
+}
+
+
+@fal.function(
+    keep_alive=300,
+    requirements=["fastapi", "uvicorn", f"pydantic=={pydantic_version}"],
+    machine_type="S",
+    max_concurrency=1,
+    exposed_port=8080,
+    metadata={"openapi": GREET_SERVER_OPENAPI},
+)
+def greet_server_app():
+    """@fal.function with exposed_port + user-supplied openapi declaring /health.
+
+    Regression guard for the bring-your-own-server + custom openapi
+    deployment shape.
+    """
+    from fastapi import FastAPI
+    from pydantic import BaseModel
+    from uvicorn import run
+
+    fastapi_app = FastAPI()
+
+    class GreetInput(BaseModel):
+        name: str
+
+    class GreetOutput(BaseModel):
+        greeting: str
+
+    @fastapi_app.get("/health")
+    def health():
+        return {"status": "ok"}
+
+    @fastapi_app.post("/greet")
+    def greet(req: GreetInput) -> GreetOutput:
+        return GreetOutput(greeting=f"Hello, {req.name}!")
+
+    run(fastapi_app, host="0.0.0.0", port=8080)
+
+
+@fal.function(
+    keep_alive=300,
+    requirements=["fastapi", "uvicorn", f"pydantic=={pydantic_version}"],
+    machine_type="S",
+    max_concurrency=1,
+    exposed_port=8080,
+    health_check_config=ApplicationHealthCheckConfig(
+        path="/ready",
+        start_period_seconds=None,
+        timeout_seconds=None,
+        failure_threshold=None,
+        call_regularly=None,
+    ),
+)
+def custom_health_path_app():
+    """@fal.function with user-declared health_check_config at a non-default path.
+
+    Regression guard for the case where users bring their own server
+    and want the platform to use a specific health endpoint instead
+    of the default /health.
+    """
+    from fastapi import FastAPI
+    from pydantic import BaseModel
+    from uvicorn import run
+
+    fastapi_app = FastAPI()
+
+    class GreetInput(BaseModel):
+        name: str
+
+    class GreetOutput(BaseModel):
+        greeting: str
+
+    @fastapi_app.get("/ready")
+    def ready():
+        return {"status": "ok"}
+
+    @fastapi_app.post("/greet")
+    def greet(req: GreetInput) -> GreetOutput:
+        return GreetOutput(greeting=f"Hello, {req.name}!")
+
+    run(fastapi_app, host="0.0.0.0", port=8080)
 
 
 class StatefulAdditionApp(fal.App, keep_alive=300, max_concurrency=1):
@@ -563,6 +697,24 @@ def test_container_build_args_app(
 
 
 @pytest.fixture()
+def test_greet_server_app(
+    user: User,
+    register_app,
+):
+    with register_app(greet_server_app, "greet-server") as (app_alias, _):
+        yield f"{user.username}/{app_alias}"
+
+
+@pytest.fixture()
+def test_custom_health_path_app(
+    user: User,
+    register_app,
+):
+    with register_app(custom_health_path_app, "custom-health") as (app_alias, _):
+        yield f"{user.username}/{app_alias}"
+
+
+@pytest.fixture()
 def test_fastapi_app(
     user: User,
     register_app,
@@ -656,6 +808,53 @@ def test_app_client(test_app: str):
 
     response = apps.run(test_app, arguments={"lhs": 2, "rhs": 3, "wait_time": 1})
     assert response["result"] == 5
+
+
+def test_function_with_custom_openapi_health(test_greet_server_app: str):
+    """@fal.function deployments using exposed_port + custom openapi declaring
+    /health: both /greet and /health must be reachable through the platform."""
+    from fal.flags import FAL_RUN_HOST
+
+    r = httpx.post(
+        f"https://{FAL_RUN_HOST}/{test_greet_server_app}/greet",
+        json={"name": "world"},
+        headers=_auth_headers(),
+        timeout=60,
+    )
+    assert r.status_code == 200, r.text
+    assert r.json() == {"greeting": "Hello, world!"}
+
+    r = httpx.get(
+        f"https://{FAL_RUN_HOST}/{test_greet_server_app}/health",
+        headers=_auth_headers(),
+        timeout=30,
+    )
+    assert r.status_code == 200, r.text
+    assert r.json() == {"status": "ok"}
+
+
+def test_function_with_custom_health_path(test_custom_health_path_app: str):
+    """@fal.function with explicit health_check_config at a non-default path:
+    both the user-declared health endpoint (/ready) and the app's main
+    endpoint (/greet) must be reachable through the platform."""
+    from fal.flags import FAL_RUN_HOST
+
+    r = httpx.post(
+        f"https://{FAL_RUN_HOST}/{test_custom_health_path_app}/greet",
+        json={"name": "world"},
+        headers=_auth_headers(),
+        timeout=60,
+    )
+    assert r.status_code == 200, r.text
+    assert r.json() == {"greeting": "Hello, world!"}
+
+    r = httpx.get(
+        f"https://{FAL_RUN_HOST}/{test_custom_health_path_app}/ready",
+        headers=_auth_headers(),
+        timeout=30,
+    )
+    assert r.status_code == 200, r.text
+    assert r.json() == {"status": "ok"}
 
 
 def test_ws_client(test_app: str):
