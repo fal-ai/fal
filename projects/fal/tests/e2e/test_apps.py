@@ -345,6 +345,56 @@ def custom_health_path_app():
     run(fastapi_app, host="0.0.0.0", port=8080)
 
 
+@fal.function(
+    keep_alive=300,
+    requirements=["fastapi", "uvicorn", f"pydantic=={pydantic_version}"],
+    machine_type="S",
+    max_concurrency=1,
+    exposed_port=8080,
+    health_check_config=ApplicationHealthCheckConfig(
+        path="/ready",
+        start_period_seconds=None,
+        timeout_seconds=None,
+        failure_threshold=None,
+        call_regularly=None,
+    ),
+)
+def health_override_fn():
+    """@fal.function declaring health at /ready, with a deliberately broken
+    /health endpoint that returns 502.
+
+    Regression guard for "user-declared health endpoint wins over the
+    default /health path." If the deployment reaches ready and /greet
+    responds, the platform correctly used /ready (the broken /health
+    must have been ignored).
+    """
+    from fastapi import FastAPI, HTTPException
+    from pydantic import BaseModel
+    from uvicorn import run
+
+    fastapi_app = FastAPI()
+
+    class GreetInput(BaseModel):
+        name: str
+
+    class GreetOutput(BaseModel):
+        greeting: str
+
+    @fastapi_app.get("/ready")
+    def ready():
+        return {"status": "ok"}
+
+    @fastapi_app.get("/health")
+    def broken_health():
+        raise HTTPException(status_code=502, detail="intentionally broken")
+
+    @fastapi_app.post("/greet")
+    def greet(req: GreetInput) -> GreetOutput:
+        return GreetOutput(greeting=f"Hello, {req.name}!")
+
+    run(fastapi_app, host="0.0.0.0", port=8080)
+
+
 class StatefulAdditionApp(fal.App, keep_alive=300, max_concurrency=1):
     machine_type = "S"
 
@@ -508,6 +558,51 @@ class HealthCheckApp(fal.App, keep_alive=300, max_concurrency=1, request_timeout
     )
     def health(self) -> Output:
         return Output(result=0)
+
+
+class HealthOverrideApp(fal.App, keep_alive=300, max_concurrency=1):
+    """fal.App declaring health at /ready with a broken default /health.
+
+    Regression guard for "user-declared health endpoint wins over the
+    default /health path." The default /health endpoint is intentionally
+    broken (returns 502 via the overridden ``health()`` method); a custom
+    GET /ready route is added so probes succeed. If the deployment reaches
+    ready and / responds, the platform correctly used /ready and ignored
+    the broken /health.
+    """
+
+    machine_type = "S"
+
+    @fal.endpoint("/")
+    def run(self, input: Input) -> Output:
+        return Output(result=input.lhs + input.rhs)
+
+    @fal.endpoint(
+        "/ready",
+        health_check=fal.HealthCheck(
+            start_period_seconds=10,
+            timeout_seconds=10,
+            failure_threshold=3,
+            call_regularly=False,
+        ),
+    )
+    def ready_post(self) -> Output:
+        return Output(result=0)
+
+    def _add_extra_routes(self, app):
+        # @fal.endpoint registers POST-only; add a GET /ready route so
+        # GET-based probes hit a happy 200.
+        super()._add_extra_routes(app)
+
+        @app.get("/ready")
+        def ready_get():
+            return {"status": "ok"}
+
+    def health(self):
+        # Intentionally broken so /health returns 502.
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=502, detail="intentionally broken")
 
 
 class RTInput(BaseModel):
@@ -715,6 +810,25 @@ def test_custom_health_path_app(
 
 
 @pytest.fixture()
+def test_health_override_fn(
+    user: User,
+    register_app,
+):
+    with register_app(health_override_fn, "health-override-fn") as (app_alias, _):
+        yield f"{user.username}/{app_alias}"
+
+
+@pytest.fixture()
+def test_health_override_app(
+    user: User,
+    register_app,
+):
+    health_override_app = wrap_app(HealthOverrideApp)
+    with register_app(health_override_app, "health-override-app") as (app_alias, _):
+        yield f"{user.username}/{app_alias}"
+
+
+@pytest.fixture()
 def test_fastapi_app(
     user: User,
     register_app,
@@ -855,6 +969,84 @@ def test_function_with_custom_health_path(test_custom_health_path_app: str):
     )
     assert r.status_code == 200, r.text
     assert r.json() == {"status": "ok"}
+
+
+def test_function_health_override(test_health_override_fn: str):
+    """@fal.function declaring health at /ready, with /health intentionally
+    returning 502: the platform must respect the user-declared health
+    endpoint and ignore the broken default /health.
+
+    If the deployment reaches ready and /greet responds, the platform used
+    /ready (otherwise /health's 502 would have blocked readiness).
+    """
+    from fal.flags import FAL_RUN_HOST
+
+    # main endpoint works → runner reached ready → platform probed /ready
+    r = httpx.post(
+        f"https://{FAL_RUN_HOST}/{test_health_override_fn}/greet",
+        json={"name": "world"},
+        headers=_auth_headers(),
+        timeout=60,
+    )
+    assert r.status_code == 200, r.text
+    assert r.json() == {"greeting": "Hello, world!"}
+
+    # /ready is the user-declared health endpoint
+    r = httpx.get(
+        f"https://{FAL_RUN_HOST}/{test_health_override_fn}/ready",
+        headers=_auth_headers(),
+        timeout=30,
+    )
+    assert r.status_code == 200, r.text
+    assert r.json() == {"status": "ok"}
+
+    # /health is intentionally broken — its 502 is observable but didn't
+    # block readiness because the platform used /ready instead
+    r = httpx.get(
+        f"https://{FAL_RUN_HOST}/{test_health_override_fn}/health",
+        headers=_auth_headers(),
+        timeout=30,
+    )
+    assert r.status_code == 502, r.text
+
+
+def test_app_health_override(test_health_override_app: str):
+    """fal.App declaring health at /ready, with the default /health endpoint
+    intentionally broken (returns 502): the platform must respect the
+    user-declared health endpoint and ignore /health.
+
+    If the deployment reaches ready and / responds, the platform used /ready
+    (otherwise /health's 502 would have blocked readiness).
+    """
+    from fal.flags import FAL_RUN_HOST
+
+    # main endpoint works → runner reached ready → platform probed /ready
+    r = httpx.post(
+        f"https://{FAL_RUN_HOST}/{test_health_override_app}/",
+        json={"lhs": 1, "rhs": 2},
+        headers=_auth_headers(),
+        timeout=60,
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["result"] == 3
+
+    # /ready is the user-declared health endpoint
+    r = httpx.get(
+        f"https://{FAL_RUN_HOST}/{test_health_override_app}/ready",
+        headers=_auth_headers(),
+        timeout=30,
+    )
+    assert r.status_code == 200, r.text
+    assert r.json() == {"status": "ok"}
+
+    # default /health is intentionally broken — observable 502, didn't
+    # block readiness
+    r = httpx.get(
+        f"https://{FAL_RUN_HOST}/{test_health_override_app}/health",
+        headers=_auth_headers(),
+        timeout=30,
+    )
+    assert r.status_code == 502, r.text
 
 
 def test_ws_client(test_app: str):
