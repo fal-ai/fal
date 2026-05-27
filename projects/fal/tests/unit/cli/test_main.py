@@ -1,6 +1,4 @@
 import importlib
-import os
-import time
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -38,7 +36,7 @@ def _check_latest_version():
     return latest
 
 
-def test_update_check_prints_once_per_day_by_default(monkeypatch, tmp_path):
+def test_update_check_prints_every_time_by_default(monkeypatch, tmp_path):
     console = _setup_version_check(monkeypatch, tmp_path)
 
     latest = _check_latest_version()
@@ -48,12 +46,6 @@ def test_update_check_prints_once_per_day_by_default(monkeypatch, tmp_path):
     console.print.reset_mock()
     latest = _check_latest_version()
     assert latest.call_count == 0
-    console.print.assert_not_called()
-
-    expired_mtime = time.time() - 24 * 60 * 60 - 1
-    os.utime(fal_version._PYPI_CACHE_PATH, (expired_mtime, expired_mtime))
-    latest = _check_latest_version()
-    assert latest.call_count == 1
     assert console.print.call_count == 1
 
 

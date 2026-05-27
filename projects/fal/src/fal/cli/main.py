@@ -26,7 +26,6 @@ from . import (
 from .debug import debugtools, get_debug_parser
 from .parser import FalParser, FalParserExit
 
-_CHECK_UPDATES_INTERVAL = 24 * 60 * 60
 _CHECK_UPDATES_CONFIG_KEY = "check_updates"
 
 
@@ -111,11 +110,14 @@ def _check_latest_version():
     from rich.panel import Panel
     from rich.text import Text
 
-    from fal._version import (
-        get_latest_version,
-        is_pypi_cache_stale,
-        version_tuple,
-    )
+    from fal._version import get_latest_version, version_tuple
+
+    if not _get_check_updates_config():
+        return
+
+    latest_version = get_latest_version()
+    parsed = parse(latest_version)
+    latest_version_tuple = (parsed.major, parsed.minor, parsed.micro)
 
     # If we have a dev version, we don't want to check for updates
     if len(version_tuple) >= 4:
@@ -124,17 +126,6 @@ def _check_latest_version():
 
     if not console.is_terminal:
         return
-
-    enabled = _get_check_updates_config()
-    if not enabled:
-        return
-
-    if not is_pypi_cache_stale(_CHECK_UPDATES_INTERVAL):
-        return
-
-    latest_version = get_latest_version(cache_ttl=_CHECK_UPDATES_INTERVAL)
-    parsed = parse(latest_version)
-    latest_version_tuple = (parsed.major, parsed.minor, parsed.micro)
 
     if latest_version_tuple <= version_tuple:
         return

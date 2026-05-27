@@ -1,7 +1,6 @@
 import json
 import os
 import tempfile
-import time
 from typing import Any, Dict, Optional
 
 try:
@@ -32,20 +31,15 @@ def _write_pypi_cache(data: Dict[str, Any]) -> None:
         os.rename(fobj.name, _PYPI_CACHE_PATH)
 
 
-def is_pypi_cache_stale(cache_ttl: int = _PYPI_CACHE_TTL) -> bool:
-    if cache_ttl <= 0:
-        return True
+def _get_pypi_cache() -> Optional[Dict[str, Any]]:
+    import time
 
     try:
         mtime = os.path.getmtime(_PYPI_CACHE_PATH)
-    except OSError:
-        return True
+    except FileNotFoundError:
+        return None
 
-    return mtime + cache_ttl <= time.time()
-
-
-def _get_pypi_cache(cache_ttl: int = _PYPI_CACHE_TTL) -> Optional[Dict[str, Any]]:
-    if is_pypi_cache_stale(cache_ttl):
+    if mtime + _PYPI_CACHE_TTL < time.time():
         return None
 
     with open(_PYPI_CACHE_PATH) as fobj:
@@ -66,13 +60,13 @@ def _fetch_pypi_data() -> Dict[str, Any]:
     return json.loads(data)
 
 
-def get_latest_version(cache_ttl: int = _PYPI_CACHE_TTL) -> str:
+def get_latest_version() -> str:
     from fal.logging import get_logger
 
     logger = get_logger(__name__)
 
     try:
-        data = _get_pypi_cache(cache_ttl)
+        data = _get_pypi_cache()
     except Exception:
         logger.warning("Failed to get pypi cache", exc_info=True)
         data = None
