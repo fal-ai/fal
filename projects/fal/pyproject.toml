@@ -41,8 +41,8 @@ dependencies = [
     "pathspec>=0.11.1,<1",
     "pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*",
     # serve=True dependencies
-    # https://github.com/fastapi/fastapi/issues/14221
-    "fastapi>=0.99.1,<0.119",
+    # FastAPI 0.123.1 fixes the OpenAPI schema remapping issue that blocked 0.119+.
+    "fastapi>=0.123.1,<0.124",
     "starlette-exporter>=0.21.0",
     # rest-api-client dependencies
     "httpx>=0.15.4",
