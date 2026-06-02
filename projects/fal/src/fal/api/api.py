@@ -1028,6 +1028,7 @@ class FalServerlessHost(Host):
         from isolate.backends.common import active_python  # noqa: PLC0415
 
         environment_options = options.environment.copy()
+
         # An explicit ``python_version=None`` must still resolve to the local
         # interpreter: we ship local cloudpickled bytecode, so the remote
         # Python must match. ``setdefault`` would leave an explicit None as-is.
@@ -1037,6 +1038,11 @@ class FalServerlessHost(Host):
             [func, options.host.get("setup_function")],
             environment_options["python_version"],
         )
+
+        if build_environment is False:
+            environment_options.pop("force", None)
+
+        environment_options.setdefault("python_version", active_python())
         self._materialize_local_requirements(environment_options)
         environments = [self._connection.define_environment(**environment_options)]
 
@@ -1161,6 +1167,7 @@ class FalServerlessHost(Host):
         from isolate.backends.common import active_python  # noqa: PLC0415
 
         environment_options = options.environment.copy()
+
         # An explicit ``python_version=None`` must still resolve to the local
         # interpreter: we ship local cloudpickled bytecode, so the remote
         # Python must match. ``setdefault`` would leave an explicit None as-is.
@@ -1170,6 +1177,11 @@ class FalServerlessHost(Host):
             [func, options.host.get("setup_function")],
             environment_options["python_version"],
         )
+
+        if build_environment is False:
+            environment_options.pop("force", None)
+
+        environment_options.setdefault("python_version", active_python())
         self._materialize_local_requirements(environment_options)
         environments = [self._connection.define_environment(**environment_options)]
 
