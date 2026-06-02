@@ -5,7 +5,58 @@ import pytest
 
 from fal import App, endpoint
 from fal.api import FalServerlessError, IsolatedFunction, Options
+from fal.api.api import _check_python_version_match
 from fal.api.run import run as run_api
+
+
+def _func():
+    pass
+
+
+def test_check_python_version_match_exempts_entrypoint(monkeypatch):
+    # No callable is serialized (entrypoint mode, no setup_function) -> no check.
+    monkeypatch.setattr(
+        "isolate.backends.common.active_python", lambda: "3.11", raising=True
+    )
+    _check_python_version_match([None], "3.12")  # must not raise
+
+
+def test_check_python_version_match_noop_when_target_is_none(monkeypatch):
+    # target resolved server-side -> nothing to compare against.
+    monkeypatch.setattr(
+        "isolate.backends.common.active_python", lambda: "3.11", raising=True
+    )
+    _check_python_version_match([_func], None)  # must not raise
+
+
+def test_check_python_version_match_allows_same_minor(monkeypatch):
+    monkeypatch.setattr(
+        "isolate.backends.common.active_python", lambda: "3.11", raising=True
+    )
+    # patch-level differences don't change the bytecode magic.
+    _check_python_version_match([_func], "3.11")  # must not raise
+
+
+def test_check_python_version_match_raises_on_minor_mismatch(monkeypatch):
+    monkeypatch.setattr(
+        "isolate.backends.common.active_python", lambda: "3.11", raising=True
+    )
+    with pytest.raises(FalServerlessError) as exc_info:
+        _check_python_version_match([_func], "3.12")
+
+    msg = str(exc_info.value)
+    assert "3.11" in msg
+    assert "3.12" in msg
+
+
+def test_check_python_version_match_checks_setup_function_in_entrypoint(monkeypatch):
+    # Entrypoint mode (func is None) but a setup_function is still pickled
+    # and shipped -> the mismatch must still be caught.
+    monkeypatch.setattr(
+        "isolate.backends.common.active_python", lambda: "3.11", raising=True
+    )
+    with pytest.raises(FalServerlessError):
+        _check_python_version_match([None, _func], "3.12")
 
 
 class _FakeHost:

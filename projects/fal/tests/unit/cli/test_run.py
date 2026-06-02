@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from fal.api import Options
 from fal.cli.main import parse_args
 from fal.cli.run import _run
 from fal.project import find_project_root
@@ -79,11 +80,7 @@ def test_run_uses_cli_auth_when_provided(mock_load_function_from, mock_create_ho
     host = mocked_fal_serverless_host("my-host")
     mock_create_host.return_value = host
 
-    isolated_function = MagicMock()
-    loaded = MagicMock()
-    loaded.function = isolated_function
-    loaded.app_name = None
-    loaded.app_auth = "private"
+    loaded = mocked_loaded_function(app_auth="private")
     mock_load_function_from.return_value = loaded
 
     args = mock_args(
@@ -141,6 +138,29 @@ def mocked_fal_serverless_host(host):
     return mock
 
 
+_DEFAULT_FUNC = object()
+
+
+def mocked_loaded_function(
+    *,
+    options: Optional[Options] = None,
+    func=_DEFAULT_FUNC,
+    app_name=None,
+    app_auth=None,
+):
+    isolated_function = MagicMock()
+    isolated_function.options = options or Options()
+    isolated_function.func = (lambda: None) if func is _DEFAULT_FUNC else func
+    isolated_function.run_entrypoint = None
+    isolated_function.endpoints = ["/"]
+
+    loaded = MagicMock()
+    loaded.function = isolated_function
+    loaded.app_name = app_name
+    loaded.app_auth = app_auth
+    return loaded
+
+
 def mock_args(
     host,
     func_ref: Tuple[str, Optional[str]],
@@ -187,13 +207,13 @@ def test_run_forwards_python_entry_point_to_loader(
     host = mocked_fal_serverless_host("my-host")
     mock_create_host.return_value = host
 
-    isolated_function = MagicMock()
-    isolated_function.options = MagicMock()
-    isolated_function.options.host = {}
-    loaded = MagicMock()
-    loaded.function = isolated_function
-    loaded.app_name = None
-    loaded.app_auth = None
+    loaded = mocked_loaded_function(
+        options=Options(
+            environment={"python_version": "3.12", "requirements": ["fal"]},
+            gateway={"exposed_port": 9000},
+        ),
+        func=None,
+    )
     mock_load_function_from.return_value = loaded
 
     args = mock_args(func_ref=("entrypoint-app", None), host="my-host")
@@ -239,13 +259,20 @@ def test_run_image_only_forwards_no_ref_to_loader(
     host = mocked_fal_serverless_host("my-host")
     mock_create_host.return_value = host
 
-    isolated_function = MagicMock()
-    isolated_function.options = MagicMock()
-    isolated_function.options.host = {}
-    loaded = MagicMock()
-    loaded.function = isolated_function
-    loaded.app_name = "container-app"
-    loaded.app_auth = None
+    loaded = mocked_loaded_function(
+        options=Options(
+            environment={
+                "kind": "container",
+                "image": {
+                    "dockerfile_str": dockerfile,
+                    "use_isolate": False,
+                },
+            },
+            gateway={"exposed_port": 8080},
+        ),
+        func=None,
+        app_name="container-app",
+    )
     mock_load_function_from.return_value = loaded
 
     args = mock_args(func_ref=("container-app", None), host="my-host")
@@ -330,11 +357,7 @@ def test_run_forwards_limit_max_requests_to_load_function_from(
     host = mocked_fal_serverless_host("my-host")
     mock_create_host.return_value = host
 
-    isolated_function = MagicMock()
-    loaded = MagicMock()
-    loaded.function = isolated_function
-    loaded.app_name = None
-    loaded.app_auth = "private"
+    loaded = mocked_loaded_function(app_auth="private")
     mock_load_function_from.return_value = loaded
 
     args = mock_args(
@@ -360,11 +383,7 @@ def test_run_forwards_exposed_port_options_to_run_api(
     host = mocked_fal_serverless_host("my-host")
     mock_create_host.return_value = host
 
-    isolated_function = MagicMock()
-    loaded = MagicMock()
-    loaded.function = isolated_function
-    loaded.app_name = None
-    loaded.app_auth = "private"
+    loaded = mocked_loaded_function(app_auth="private")
     mock_load_function_from.return_value = loaded
 
     args = mock_args(
@@ -410,13 +429,7 @@ def test_run_applies_machine_type_override(mock_load_function_from, mock_create_
     host = mocked_fal_serverless_host("my-host")
     mock_create_host.return_value = host
 
-    isolated_function = MagicMock()
-    isolated_function.options = MagicMock()
-    isolated_function.options.host = {"machine_type": "GPU-A10G"}
-    loaded = MagicMock()
-    loaded.function = isolated_function
-    loaded.app_name = None
-    loaded.app_auth = None
+    loaded = mocked_loaded_function(options=Options(host={"machine_type": "GPU-A10G"}))
     mock_load_function_from.return_value = loaded
 
     args = mock_args(
@@ -427,7 +440,7 @@ def test_run_applies_machine_type_override(mock_load_function_from, mock_create_
 
     _run(args)
 
-    assert isolated_function.options.host["machine_type"] == "GPU-H100"
+    assert loaded.function.options.host["machine_type"] == "GPU-H100"
 
 
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
@@ -445,12 +458,7 @@ def test_run_with_toml_success(
 
     host = mocked_fal_serverless_host("my-host")
     mock_create_host.return_value = host
-    loaded = MagicMock()
-    loaded.function = MagicMock()
-    loaded.function.options = MagicMock()
-    loaded.function.options.host = {}
-    loaded.app_name = None
-    loaded.app_auth = None
+    loaded = mocked_loaded_function()
     mock_load_function_from.return_value = loaded
 
     args = mock_args(func_ref=("my-app", None), host="my-host")
@@ -487,12 +495,17 @@ def test_run_with_toml_cli_name_override(
     host = mocked_fal_serverless_host("my-host")
     mock_create_host.return_value = host
 
-    loaded = MagicMock()
-    loaded.function = MagicMock()
-    loaded.function.options = MagicMock()
-    loaded.function.options.host = {}
-    loaded.app_name = None
-    loaded.app_auth = None
+    loaded = mocked_loaded_function(
+        options=Options(
+            environment={"requirements": ["numpy==1.26.4"]},
+            host={
+                "machine_type": "GPU-H100",
+                "num_gpus": 2,
+                "min_concurrency": 2,
+                "regions": ["us-east"],
+            },
+        )
+    )
     mock_load_function_from.return_value = loaded
 
     args = mock_args(func_ref=("override-app", None), host="my-host")
@@ -526,14 +539,17 @@ def test_run_with_toml_overrides_applied(
     host = mocked_fal_serverless_host("my-host")
     mock_create_host.return_value = host
 
-    isolated_function = MagicMock()
-    isolated_function.options = MagicMock()
-    isolated_function.options.host = {}
-    isolated_function.options.add_requirements = MagicMock()
-    loaded = MagicMock()
-    loaded.function = isolated_function
-    loaded.app_name = None
-    loaded.app_auth = None
+    loaded = mocked_loaded_function(
+        options=Options(
+            environment={"requirements": ["numpy==1.26.4"]},
+            host={
+                "machine_type": "GPU-H100",
+                "num_gpus": 2,
+                "min_concurrency": 2,
+                "regions": ["us-east"],
+            },
+        )
+    )
     mock_load_function_from.return_value = loaded
 
     args = mock_args(func_ref=("override-app", None), host="my-host")
@@ -566,12 +582,7 @@ def test_run_with_toml_cli_auth_override(
     host = mocked_fal_serverless_host("my-host")
     mock_create_host.return_value = host
 
-    loaded = MagicMock()
-    loaded.function = MagicMock()
-    loaded.function.options = MagicMock()
-    loaded.function.options.host = {}
-    loaded.app_name = None
-    loaded.app_auth = None
+    loaded = mocked_loaded_function()
     mock_load_function_from.return_value = loaded
 
     args = mock_args(func_ref=("team-app", None), host="my-host", auth="private")
@@ -645,6 +656,7 @@ def test_run_with_team_from_toml(
     mock_client_instance = MagicMock()
     mock_client_instance._create_host.return_value = host
     mock_client.return_value = mock_client_instance
+    mock_load_function_from.return_value = mocked_loaded_function()
 
     args = mock_args(func_ref=("team-app", None), host="my-host")
 
@@ -687,6 +699,7 @@ def test_run_with_team_from_toml_cli_team_override(
     mock_client_instance = MagicMock()
     mock_client_instance._create_host.return_value = host
     mock_client.return_value = mock_client_instance
+    mock_load_function_from.return_value = mocked_loaded_function()
 
     args = mock_args(func_ref=("team-app", None), host="my-host", team="my-cli-team")
 
@@ -729,6 +742,7 @@ def test_run_without_team_in_toml(
     mock_client_instance = MagicMock()
     mock_client_instance._create_host.return_value = host
     mock_client.return_value = mock_client_instance
+    mock_load_function_from.return_value = mocked_loaded_function()
 
     args = mock_args(func_ref=("my-app", None), host="my-host")
 
