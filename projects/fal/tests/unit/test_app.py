@@ -124,6 +124,96 @@ def test_run_forwards_regions_to_machine_requirements():
     assert call_kwargs["machine_requirements"].valid_regions == ["us-east"]
 
 
+def test_build_environment_forwards_force_environment_option():
+    from fal.api.api import FalServerlessHost, Options
+    from fal.sdk import HostedRunState
+
+    host = FalServerlessHost()
+    options = Options(environment={"kind": "virtualenv", "force": True})
+
+    connection = MagicMock()
+    connection.define_environment.return_value = object()
+    partial_result = MagicMock()
+    partial_result.status.state = HostedRunState.SUCCESS
+    connection.build_environment.return_value = iter([partial_result])
+
+    with patch.object(
+        FalServerlessHost, "_connection", new_callable=PropertyMock
+    ) as mock_connection:
+        mock_connection.return_value = connection
+        host.build_environment(options)
+
+    _, call_kwargs = connection.define_environment.call_args
+    assert call_kwargs["force"] is True
+
+
+def test_register_omits_force_when_build_environment_false():
+    from fal.api.api import FalServerlessHost, Options
+    from fal.sdk import RegisterApplicationResult, RegisterApplicationResultType
+
+    host = FalServerlessHost()
+    options = Options(environment={"kind": "virtualenv", "force": True})
+
+    connection = MagicMock()
+    connection.define_environment.return_value = object()
+    partial_result = RegisterApplicationResult(
+        result=RegisterApplicationResultType(application_id="app-id")
+    )
+    connection.register.return_value = iter([partial_result])
+
+    with patch.object(
+        FalServerlessHost, "_connection", new_callable=PropertyMock
+    ) as mock_connection:
+        mock_connection.return_value = connection
+        result = host.register(
+            None,
+            options,
+            application_name="example-app",
+            deployment_strategy="recreate",
+            entrypoint="example:run",
+            build_environment=False,
+        )
+
+    assert result == partial_result
+    _, call_kwargs = connection.define_environment.call_args
+    assert "force" not in call_kwargs
+    assert options.environment["force"] is True
+
+
+def test_run_omits_force_when_build_environment_false():
+    from fal.api.api import FalServerlessHost, Options, ResultHandler
+    from fal.sdk import HostedRunState
+
+    host = FalServerlessHost()
+    options = Options(environment={"kind": "virtualenv", "force": True})
+
+    connection = MagicMock()
+    connection.define_environment.return_value = object()
+    partial_result = MagicMock()
+    partial_result.status.state = HostedRunState.SUCCESS
+    partial_result.result = "ok"
+    connection.run.return_value = iter([partial_result])
+
+    with patch.object(
+        FalServerlessHost, "_connection", new_callable=PropertyMock
+    ) as mock_connection:
+        mock_connection.return_value = connection
+        result = host._run(
+            None,
+            options,
+            args=(),
+            kwargs={},
+            result_handler=ResultHandler(),
+            entrypoint="example:run",
+            build_environment=False,
+        )
+
+    assert result == "ok"
+    _, call_kwargs = connection.define_environment.call_args
+    assert "force" not in call_kwargs
+    assert options.environment["force"] is True
+
+
 def test_register_leaves_private_logs_unset_by_default():
     from fal.api.api import FalServerlessHost, Options
     from fal.sdk import RegisterApplicationResult, RegisterApplicationResultType

@@ -975,6 +975,8 @@ class FalServerlessHost(Host):
         from isolate.backends.common import active_python  # noqa: PLC0415
 
         environment_options = options.environment.copy()
+        if build_environment is False:
+            environment_options.pop("force", None)
         environment_options.setdefault("python_version", active_python())
         self._materialize_local_requirements(environment_options)
         environments = [self._connection.define_environment(**environment_options)]
@@ -1100,6 +1102,8 @@ class FalServerlessHost(Host):
         from isolate.backends.common import active_python  # noqa: PLC0415
 
         environment_options = options.environment.copy()
+        if build_environment is False:
+            environment_options.pop("force", None)
         environment_options.setdefault("python_version", active_python())
         self._materialize_local_requirements(environment_options)
         environments = [self._connection.define_environment(**environment_options)]
