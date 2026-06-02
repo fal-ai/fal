@@ -251,6 +251,11 @@ def _execute_loaded_deployment(
         result_handler if build_result_handler is None else build_result_handler
     )
 
+    # Fail fast on a local/remote Python version mismatch
+    from fal.api.api import check_python_version_for_options
+
+    check_python_version_for_options(isolated_function.func, isolated_function.options)
+
     # Explicit build phase so the CLI / caller gets a clean "build → deploy"
     # split instead of inferring it from the log stream's source field.
     host.build_environment(

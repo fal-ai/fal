@@ -20,6 +20,7 @@ from typing import (
     ClassVar,
     Dict,
     Generic,
+    Iterable,
     Iterator,
     Literal,
     NamedTuple,
@@ -525,6 +526,58 @@ def _apply_runtime_config(runtime_config: FunctionRuntimeConfig | None) -> None:
         include_app_files_path(runtime_config.app_files_relative_path)
 
 
+def _check_python_version_match(
+    serialized_callables: Iterable[Callable[..., Any] | None],
+    target_python_version: str | None,
+) -> None:
+    """Fail fast on a local/remote Python minor-version mismatch.
+
+    ``fal run`` (and serialized ``register``) ships callables as cloudpickled
+    bytecode, which is CPython-version specific. If the local interpreter and the
+    app's ``python_version`` differ at the minor level, the worker cannot
+    deserialize them and the run dies with an opaque gRPC
+    ``UNAVAILABLE / "Socket closed"`` error.
+
+    The check applies whenever *any* callable is serialized client-side. This
+    includes a ``setup_function`` in entrypoint mode (where the main ``func`` is
+    ``None`` but a setup callable is still pickled and sent). If nothing is
+    serialized, or ``target_python_version`` is ``None`` (resolved server-side,
+    nothing to compare against), the check is a no-op.
+    """
+    if all(c is None for c in serialized_callables) or target_python_version is None:
+        return
+
+    from isolate.backends.common import active_python  # noqa: PLC0415
+
+    local_python = active_python()
+    if local_python.split(".")[:2] != target_python_version.split(".")[:2]:
+        raise FalServerlessError(
+            f"Local Python {local_python} differs from the app's "
+            f"python_version={target_python_version}. "
+            f"Run from a Python {target_python_version} "
+            f"interpreter, or set python_version='{local_python}' on the app."
+        )
+
+
+def check_python_version_for_options(
+    func: Callable[..., Any] | None,
+    options: Options,
+) -> None:
+    """Run the Python version guard for a prepared callable + options.
+
+    Mirrors the target resolution in ``_run``/``register`` so callers (the CLI
+    build phase) can fail fast *before* the potentially slow remote environment
+    build, instead of only once the function is about to be serialized.
+    """
+    from isolate.backends.common import active_python  # noqa: PLC0415
+
+    target = options.environment.get("python_version") or active_python()
+    _check_python_version_match(
+        [func, options.host.get("setup_function")],
+        target,
+    )
+
+
 def _prepare_partial_func(
     func: Callable[..., ReturnT],
     args: tuple[Any, ...] = (),
@@ -975,8 +1028,20 @@ class FalServerlessHost(Host):
         from isolate.backends.common import active_python  # noqa: PLC0415
 
         environment_options = options.environment.copy()
+
+        # An explicit ``python_version=None`` must still resolve to the local
+        # interpreter: we ship local cloudpickled bytecode, so the remote
+        # Python must match. ``setdefault`` would leave an explicit None as-is.
+        if environment_options.get("python_version") is None:
+            environment_options["python_version"] = active_python()
+        _check_python_version_match(
+            [func, options.host.get("setup_function")],
+            environment_options["python_version"],
+        )
+
         if build_environment is False:
             environment_options.pop("force", None)
+
         environment_options.setdefault("python_version", active_python())
         self._materialize_local_requirements(environment_options)
         environments = [self._connection.define_environment(**environment_options)]
@@ -1102,8 +1167,20 @@ class FalServerlessHost(Host):
         from isolate.backends.common import active_python  # noqa: PLC0415
 
         environment_options = options.environment.copy()
+
+        # An explicit ``python_version=None`` must still resolve to the local
+        # interpreter: we ship local cloudpickled bytecode, so the remote
+        # Python must match. ``setdefault`` would leave an explicit None as-is.
+        if environment_options.get("python_version") is None:
+            environment_options["python_version"] = active_python()
+        _check_python_version_match(
+            [func, options.host.get("setup_function")],
+            environment_options["python_version"],
+        )
+
         if build_environment is False:
             environment_options.pop("force", None)
+
         environment_options.setdefault("python_version", active_python())
         self._materialize_local_requirements(environment_options)
         environments = [self._connection.define_environment(**environment_options)]
@@ -1266,7 +1343,11 @@ class FalServerlessHost(Host):
         from isolate.backends.common import active_python  # noqa: PLC0415
 
         environment_options = options.environment.copy()
-        environment_options.setdefault("python_version", active_python())
+        # An explicit ``python_version=None`` must still resolve to the local
+        # interpreter: we ship local cloudpickled bytecode, so the remote
+        # Python must match. ``setdefault`` would leave an explicit None as-is.
+        if environment_options.get("python_version") is None:
+            environment_options["python_version"] = active_python()
         self._materialize_local_requirements(environment_options)
         environments = [self._connection.define_environment(**environment_options)]
 
