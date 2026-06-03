@@ -91,6 +91,23 @@ message SecretsConfig {
     repeated string names = 1;
 }
 
+message ContainerEntrypoint {
+    repeated string entries = 1;
+}
+
+message ContainerCmd {
+    repeated string entries = 1;
+}
+
+message ContainerConfig {
+    // Override Dockerfile ENTRYPOINT. When omitted, inherit the image default.
+    // When present with no entries, clear the image ENTRYPOINT.
+    optional ContainerEntrypoint entrypoint = 1;
+    // Override Dockerfile CMD. When omitted, inherit the image default.
+    // When present with no entries, clear the image CMD.
+    optional ContainerCmd cmd = 2;
+}
+
 message HostedRun {
     // Environment definitions.
     repeated EnvironmentDefinition environments = 1;
@@ -128,10 +145,8 @@ message HostedRun {
     // When set, the server may use the referenced environment directly. If both
     // `environments` and `env_id` are provided, the server validates they agree.
     optional string env_id = 15;
-    // Container entrypoint argv override.
-    repeated string container_entrypoint = 16;
-    // Container command argv override.
-    repeated string container_cmd = 17;
+    // Container runtime overrides.
+    optional ContainerConfig container_config = 16;
 }
 
 message BuildEnvironmentRequest {
@@ -383,10 +398,8 @@ message RegisterApplicationRequest {
     // When set, the server may use the referenced environment directly. If both
     // `environments` and `env_id` are provided, the server validates they agree.
     optional string env_id = 25;
-    // Container entrypoint argv override.
-    repeated string container_entrypoint = 26;
-    // Container command argv override.
-    repeated string container_cmd = 27;
+    // Container runtime overrides.
+    optional ContainerConfig container_config = 26;
 }
 
 message RegisterApplicationResultType {
