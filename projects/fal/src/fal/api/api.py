@@ -762,7 +762,10 @@ def _handle_grpc_error():
             """
             Wraps grpc errors as fal Serverless Errors.
             """
-            from isolate.connections.common import SerializationError  # noqa: PLC0415
+            from isolate.connections.common import (  # noqa: PLC0415
+                ExceptionDeserializationError,
+                SerializationError,
+            )
 
             try:
                 return fn(*args, **kwargs)
@@ -785,6 +788,8 @@ def _handle_grpc_error():
             except SerializationError as e:
                 msg = str(e)
                 cause = e.__cause__
+                if isinstance(e, ExceptionDeserializationError):
+                    raise FalSerializationError(msg) from e
                 if isinstance(cause, ModuleNotFoundError):
                     missing_module = cause.name
                     msg += (
