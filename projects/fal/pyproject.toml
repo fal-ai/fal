@@ -43,7 +43,7 @@ dependencies = [
     # serve=True dependencies
     # FastAPI 0.123.1 fixes the OpenAPI schema remapping issue that blocked 0.119+.
     # See https://github.com/fastapi/fastapi/issues/14221
-    "fastapi>=0.99.1,<0.124,!=0.119.*,!=0.120.*,!=0.121.*,!=0.122.*,!=0.123.0",
+    "fastapi>=0.99.1,<0.137,!=0.119.*,!=0.120.*,!=0.121.*,!=0.122.*,!=0.123.0",
     "starlette-exporter>=0.21.0",
     # rest-api-client dependencies
     "httpx>=0.15.4",
