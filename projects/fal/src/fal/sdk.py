@@ -18,7 +18,6 @@ from typing import (
 
 import grpc
 import isolate_proto
-from isolate.connections.common import SerializationError
 from isolate.server.interface import from_grpc, to_serialized_object, to_struct
 
 from fal import flags
@@ -599,34 +598,6 @@ def _from_grpc_register_application_result(
     )
 
 
-def _remote_error_summary(stringized_traceback: str | None) -> str | None:
-    """Pull the remote exception's root-cause ``Type: message`` line from a
-    stringized traceback.
-
-    isolate reconstructs the frames into ``ExceptionDeserializationError.
-    original_traceback`` but drops the exception lines, which are the only place
-    the remote exception's type survives when it can't be imported locally. We
-    return the *first* exception (the root cause) rather than the last, since
-    the runner wraps user errors (e.g. in ``UserFunctionException``) and the
-    original error is the useful one.
-    """
-    if not stringized_traceback:
-        return None
-
-    in_frames = False
-    for line in stringized_traceback.splitlines():
-        if line.startswith("Traceback (most recent call last):"):
-            in_frames = True
-            continue
-        if not in_frames or not line.strip():
-            continue
-        # Frame lines are indented; the first non-indented line closes the
-        # first traceback block and is its exception summary (the root cause).
-        if not line.startswith((" ", "\t")):
-            return line.strip()
-    return None
-
-
 @from_grpc.register(isolate_proto.BuildEnvironmentResult)
 def _from_grpc_build_environment_result(
     message: isolate_proto.BuildEnvironmentResult,
@@ -658,17 +629,7 @@ def _from_grpc_hosted_run_result(
     message: isolate_proto.HostedRunResult,
 ) -> HostedRunResult[Any]:
     if message.return_value.definition:
-        try:
-            return_value = from_grpc(message.return_value)
-        except SerializationError as exc:
-            # isolate hands us the remote traceback frames but not the remote
-            # exception's identity, so recover it from the stringized traceback.
-            remote_error = _remote_error_summary(
-                message.return_value.stringized_traceback
-            )
-            if remote_error:
-                exc.remote_error = remote_error  # type: ignore[attr-defined]
-            raise
+        return_value = from_grpc(message.return_value)
     else:
         return_value = UNSET
 

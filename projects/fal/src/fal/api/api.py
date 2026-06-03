@@ -134,9 +134,6 @@ class FalSerializationError(FalServerlessException):
     # exception could not be deserialized locally (e.g. its type isn't
     # importable here).
     original_traceback: TracebackType | None = None
-    # The remote exception's ``Type: message`` line, used to label the remote
-    # traceback since the type itself isn't importable here.
-    remote_error: str | None = None
 
 
 @dataclass
@@ -710,6 +707,19 @@ def _format_unavailable_error(exc: grpc.RpcError) -> str:
     return error_msg
 
 
+def _serialization_error_message(error: Exception) -> str:
+    msg = str(error)
+    cause = error.__cause__
+    if isinstance(cause, ModuleNotFoundError):
+        msg += (
+            f". Could not find module '{cause.name}'. "
+            "This is likely due to a missing dependency. "
+            "Please make sure to include all dependencies "
+            "in the environment configuration."
+        )
+    return msg
+
+
 def _handle_grpc_error():
     def decorator(fn):
         @wraps(fn)
@@ -717,7 +727,10 @@ def _handle_grpc_error():
             """
             Wraps grpc errors as fal Serverless Errors.
             """
-            from isolate.connections.common import SerializationError  # noqa: PLC0415
+            from isolate.connections.common import (  # noqa: PLC0415
+                ExceptionDeserializationError,
+                SerializationError,
+            )
 
             try:
                 return fn(*args, **kwargs)
@@ -737,24 +750,18 @@ def _handle_grpc_error():
                     raise FalMissingDependencyError(msg) from None
                 else:
                     raise FalServerlessError(msg)
-            except SerializationError as e:
-                msg = str(e)
-                cause = e.__cause__
-                original_traceback = getattr(e, "original_traceback", None)
-                remote_error = getattr(e, "remote_error", None)
-                if isinstance(cause, ModuleNotFoundError):
-                    missing_module = cause.name
-                    msg += (
-                        f". Could not find module '{missing_module}'. "
-                        "This is likely due to a missing dependency. "
-                        "Please make sure to include all dependencies "
-                        "in the environment configuration."
-                    )
+            except ExceptionDeserializationError as e:
+                # The remote exception's type isn't importable here; isolate
+                # gives us its reconstructed traceback so we can show where it
+                # failed on the runner.
                 raise FalSerializationError(
-                    msg,
-                    original_traceback=original_traceback,
-                    remote_error=remote_error,
-                ) from cause
+                    _serialization_error_message(e),
+                    original_traceback=e.original_traceback,
+                ) from e.__cause__
+            except SerializationError as e:
+                raise FalSerializationError(
+                    _serialization_error_message(e)
+                ) from e.__cause__
 
         return handler
 

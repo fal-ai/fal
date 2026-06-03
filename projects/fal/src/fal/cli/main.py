@@ -1,4 +1,6 @@
 import argparse
+import traceback
+from types import TracebackType
 
 import rich
 
@@ -81,25 +83,25 @@ def _print_error(msg):
     console.print(f"{get_cross_icon(console)} {msg}")
 
 
-def _render_remote_traceback(remote_error, remote_traceback):
-    """Render a remote traceback labeled with the remote exception.
+def _format_remote_traceback(remote_traceback: TracebackType) -> str:
+    """Format the runner's traceback frames.
 
-    The remote exception's type isn't importable here, so we build a stand-in
-    type purely so rich labels the traceback with the real ``Type: message``
-    (``remote_error``) instead of the local deserialization error.
+    isolate reconstructs the remote frames but not the remote exception's type
+    (it isn't importable here), so we render the frames alone rather than
+    labeling them with the local deserialization error, which would be
+    misleading.
     """
-    if remote_error:
-        # rich labels the traceback with the type's __name__ only, so use the
-        # fully-qualified name there to keep the originating module visible.
-        qualname, _, message = remote_error.partition(": ")
-        exc_type = type(qualname, (Exception,), {})
-    else:
-        exc_type, message = Exception, ""
+    return "".join(traceback.format_tb(remote_traceback)).rstrip()
 
-    return rich.traceback.Traceback.from_exception(
-        exc_type,
-        exc_type(message),
-        remote_traceback,
+
+def _print_local_traceback(error: BaseException) -> None:
+    target = error.__cause__ or error
+    console.print(
+        rich.traceback.Traceback.from_exception(
+            type(target),
+            target,
+            target.__traceback__,
+        )
     )
 
 
@@ -155,36 +157,22 @@ def main(argv=None) -> int:
 
         with debugtools(args):
             ret = args.func(args)
-    except (UserFunctionException, FalSerializationError) as _exc:
-        remote_traceback = getattr(_exc, "original_traceback", None)
-        remote_error = getattr(_exc, "remote_error", None)
-        if remote_traceback is not None or remote_error is not None:
+    except FalSerializationError as _exc:
+        if _exc.original_traceback is not None:
             # The app raised an error on the runner that we couldn't
-            # reconstruct locally. Show that remote error on its own, then
+            # reconstruct locally. Show where it failed on the runner, then
             # explain the local deserialization failure separately below —
             # they are two distinct errors and conflating them is misleading.
             console.print(
-                "[bold]The application raised this error on the runner:[/bold]"
+                "[bold]Traceback from the runner (most recent call last):[/bold]"
             )
-            if remote_traceback is not None:
-                console.print(_render_remote_traceback(remote_error, remote_traceback))
-            else:
-                console.print(remote_error)
+            console.print(_format_remote_traceback(_exc.original_traceback))
         else:
-            cause = _exc.__cause__
-            exc: BaseException = cause or _exc
-            tb = rich.traceback.Traceback.from_exception(
-                type(exc),
-                exc,
-                exc.__traceback__,
-            )
-            console.print(tb)
-
-        if isinstance(_exc, UserFunctionException):
-            msg = "Unhandled user exception"
-        else:
-            msg = str(_exc)
-        _print_error(msg)
+            _print_local_traceback(_exc)
+        _print_error(str(_exc))
+    except UserFunctionException as _exc:
+        _print_local_traceback(_exc)
+        _print_error("Unhandled user exception")
     except KeyboardInterrupt:
         _print_error("Aborted.")
     except grpc.RpcError as exc:
