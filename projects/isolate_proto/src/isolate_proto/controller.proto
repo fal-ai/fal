@@ -91,6 +91,64 @@ message SecretsConfig {
     repeated string names = 1;
 }
 
+message ContainerBuildArg {
+    string name = 1;
+    string value = 2;
+}
+
+message ContainerRegistry {
+    string registry = 1;
+    string username = 2;
+    string password = 3;
+}
+
+message ContainerSecret {
+    string name = 1;
+    string value = 2;
+}
+
+message ContainerCommandArgs {
+    repeated string args = 1;
+}
+
+message ContainerCommand {
+    oneof value {
+        // Docker shell-form command, e.g. "python -m app".
+        string shell = 1;
+        // Docker exec-form command, e.g. ["python", "-m", "app"].
+        ContainerCommandArgs argv = 2;
+    }
+}
+
+message ContainerConfig {
+    // Dockerfile contents used to build the image.
+    string dockerfile_str = 1;
+    // Build arguments passed to the Docker builder.
+    repeated ContainerBuildArg build_args = 2;
+    // Registry credentials.
+    repeated ContainerRegistry registries = 3;
+    // Builder backend name (for example, "depot").
+    optional string builder = 4;
+    // Compression algorithm used for the build context.
+    optional string compression = 5;
+    // Whether to force compression of the build context.
+    optional bool force_compression = 6;
+    // Build-time secrets.
+    repeated ContainerSecret secrets = 7;
+    // Local Docker build context directory used for file synchronization.
+    optional string docker_context_dir = 8;
+    // Source paths collected from Dockerfile COPY/ADD instructions.
+    repeated string docker_files_list = 9;
+    // Ignore patterns applied while collecting Docker build context files.
+    repeated string docker_ignore = 10;
+    // Optional Docker ENTRYPOINT override.
+    optional ContainerCommand entrypoint = 11;
+    // Optional Docker CMD override.
+    optional ContainerCommand cmd = 12;
+    // Whether the container should run through isolate.
+    optional bool use_isolate = 13;
+}
+
 message HostedRun {
     // Environment definitions.
     repeated EnvironmentDefinition environments = 1;
@@ -128,6 +186,9 @@ message HostedRun {
     // When set, the server may use the referenced environment directly. If both
     // `environments` and `env_id` are provided, the server validates they agree.
     optional string env_id = 15;
+    // Explicit container image configuration. When set, this replaces the legacy
+    // image payload previously embedded in `environments.configuration`.
+    optional ContainerConfig container_config = 16;
 }
 
 message BuildEnvironmentRequest {
@@ -379,6 +440,9 @@ message RegisterApplicationRequest {
     // When set, the server may use the referenced environment directly. If both
     // `environments` and `env_id` are provided, the server validates they agree.
     optional string env_id = 25;
+    // Explicit container image configuration. When set, this replaces the legacy
+    // image payload previously embedded in `environments.configuration`.
+    optional ContainerConfig container_config = 26;
 }
 
 message RegisterApplicationResultType {
