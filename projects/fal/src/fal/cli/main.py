@@ -81,6 +81,28 @@ def _print_error(msg):
     console.print(f"{get_cross_icon(console)} {msg}")
 
 
+def _render_remote_traceback(remote_error, remote_traceback):
+    """Render a remote traceback labeled with the remote exception.
+
+    The remote exception's type isn't importable here, so we build a stand-in
+    type purely so rich labels the traceback with the real ``Type: message``
+    (``remote_error``) instead of the local deserialization error.
+    """
+    if remote_error:
+        # rich labels the traceback with the type's __name__ only, so use the
+        # fully-qualified name there to keep the originating module visible.
+        qualname, _, message = remote_error.partition(": ")
+        exc_type = type(qualname, (Exception,), {})
+    else:
+        exc_type, message = Exception, ""
+
+    return rich.traceback.Traceback.from_exception(
+        exc_type,
+        exc_type(message),
+        remote_traceback,
+    )
+
+
 def _check_latest_version():
     from packaging.version import parse
     from rich.panel import Panel
@@ -134,14 +156,29 @@ def main(argv=None) -> int:
         with debugtools(args):
             ret = args.func(args)
     except (UserFunctionException, FalSerializationError) as _exc:
-        cause = _exc.__cause__
-        exc: BaseException = cause or _exc
-        tb = rich.traceback.Traceback.from_exception(
-            type(exc),
-            exc,
-            exc.__traceback__,
-        )
-        console.print(tb)
+        remote_traceback = getattr(_exc, "original_traceback", None)
+        remote_error = getattr(_exc, "remote_error", None)
+        if remote_traceback is not None or remote_error is not None:
+            # The app raised an error on the runner that we couldn't
+            # reconstruct locally. Show that remote error on its own, then
+            # explain the local deserialization failure separately below —
+            # they are two distinct errors and conflating them is misleading.
+            console.print(
+                "[bold]The application raised this error on the runner:[/bold]"
+            )
+            if remote_traceback is not None:
+                console.print(_render_remote_traceback(remote_error, remote_traceback))
+            else:
+                console.print(remote_error)
+        else:
+            cause = _exc.__cause__
+            exc: BaseException = cause or _exc
+            tb = rich.traceback.Traceback.from_exception(
+                type(exc),
+                exc,
+                exc.__traceback__,
+            )
+            console.print(tb)
 
         if isinstance(_exc, UserFunctionException):
             msg = "Unhandled user exception"

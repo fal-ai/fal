@@ -13,6 +13,7 @@ from difflib import get_close_matches
 from functools import wraps
 from os import PathLike
 from queue import Queue
+from types import TracebackType
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -129,6 +130,13 @@ class InternalFalServerlessError(FalServerlessException):
 @dataclass
 class FalSerializationError(FalServerlessException):
     message: str
+    # The remote process' traceback, reconstructed by isolate when a remote
+    # exception could not be deserialized locally (e.g. its type isn't
+    # importable here).
+    original_traceback: TracebackType | None = None
+    # The remote exception's ``Type: message`` line, used to label the remote
+    # traceback since the type itself isn't importable here.
+    remote_error: str | None = None
 
 
 @dataclass
@@ -732,6 +740,8 @@ def _handle_grpc_error():
             except SerializationError as e:
                 msg = str(e)
                 cause = e.__cause__
+                original_traceback = getattr(e, "original_traceback", None)
+                remote_error = getattr(e, "remote_error", None)
                 if isinstance(cause, ModuleNotFoundError):
                     missing_module = cause.name
                     msg += (
@@ -740,7 +750,11 @@ def _handle_grpc_error():
                         "Please make sure to include all dependencies "
                         "in the environment configuration."
                     )
-                raise FalSerializationError(msg) from cause
+                raise FalSerializationError(
+                    msg,
+                    original_traceback=original_traceback,
+                    remote_error=remote_error,
+                ) from cause
 
         return handler
 
