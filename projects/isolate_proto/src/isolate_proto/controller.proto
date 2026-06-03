@@ -128,6 +128,10 @@ message HostedRun {
     // When set, the server may use the referenced environment directly. If both
     // `environments` and `env_id` are provided, the server validates they agree.
     optional string env_id = 15;
+    // Container entrypoint argv override.
+    repeated string container_entrypoint = 16;
+    // Container command argv override.
+    repeated string container_cmd = 17;
 }
 
 message BuildEnvironmentRequest {
@@ -379,6 +383,10 @@ message RegisterApplicationRequest {
     // When set, the server may use the referenced environment directly. If both
     // `environments` and `env_id` are provided, the server validates they agree.
     optional string env_id = 25;
+    // Container entrypoint argv override.
+    repeated string container_entrypoint = 26;
+    // Container command argv override.
+    repeated string container_cmd = 27;
 }
 
 message RegisterApplicationResultType {

@@ -179,6 +179,24 @@ def test_env_id_field_presence_on_run_and_register():
     assert register_result_with_env.env_id == "abc123"
 
 
+def test_container_command_fields_on_run_and_register():
+    hosted_run = isolate_proto.HostedRun(
+        entrypoint="pkg.mod:func",
+        container_entrypoint=["python", "-m"],
+        container_cmd=["pkg.mod"],
+    )
+    assert list(hosted_run.container_entrypoint) == ["python", "-m"]
+    assert list(hosted_run.container_cmd) == ["pkg.mod"]
+
+    register = isolate_proto.RegisterApplicationRequest(
+        entrypoint="pkg.mod:App.run",
+        container_entrypoint=["uvicorn"],
+        container_cmd=["pkg.mod:app", "--host", "0.0.0.0"],
+    )
+    assert list(register.container_entrypoint) == ["uvicorn"]
+    assert list(register.container_cmd) == ["pkg.mod:app", "--host", "0.0.0.0"]
+
+
 def test_build_environment_request_construction():
     request = isolate_proto.BuildEnvironmentRequest(
         environment_name="main",
