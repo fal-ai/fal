@@ -10,6 +10,7 @@ import threading
 import time
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Callable, ClassVar, Optional
 
 import fastapi
@@ -27,6 +28,7 @@ from fal.api import (
 from fal.api import (
     function as fal_function,
 )
+from fal.app_files import get_app_files_relative_path, include_app_files_path
 from fal.auth import key_credentials
 from fal.container import ContainerImage
 from fal.exceptions import FalServerlessException, RequestCancelledException
@@ -803,7 +805,10 @@ class App(BaseServable):
         # to ensure that container apps don't have app_files
         if self.app_files:
             # For app_files deployments (always use /app)
-            _include_app_files_path(self.local_file_path, self.app_files_context_dir)
+            app_files_relative_path = get_app_files_relative_path(
+                self.local_file_path or os.getcwd(), self.app_files_context_dir
+            )
+            include_app_files_path(app_files_relative_path)
         elif self.image is not None:
             # For containers, add the working directory to sys.path
             # isolate's runpy.run_path() overrides sys.path[0],
