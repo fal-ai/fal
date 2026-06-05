@@ -1,0 +1,177 @@
+name: Close stale issues
+
+on:
+  schedule:
+    - cron: "30 1 * * *"
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sync awaiting user response labels
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const awaitingUserLabel = "awaiting user response";
+            const maintainerAssociations = new Set([
+              "COLLABORATOR",
+              "MEMBER",
+              "OWNER",
+            ]);
+
+            const { owner, repo } = context.repo;
+
+            async function ensureLabel(name, color, description) {
+              try {
+                await github.rest.issues.createLabel({
+                  owner,
+                  repo,
+                  name,
+                  color,
+                  description,
+                });
+              } catch (error) {
+                if (error.status !== 422) {
+                  throw error;
+                }
+
+                await github.rest.issues.updateLabel({
+                  owner,
+                  repo,
+                  name,
+                  color,
+                  description,
+                });
+              }
+            }
+
+            function isBotComment(comment) {
+              return (
+                comment.user?.type === "Bot" ||
+                comment.user?.login?.endsWith("[bot]")
+              );
+            }
+
+            function labelNames(issue) {
+              return issue.labels.map((label) =>
+                typeof label === "string" ? label : label.name
+              );
+            }
+
+            async function removeLabelIfPresent(issue, label) {
+              if (!labelNames(issue).includes(label)) {
+                return false;
+              }
+
+              try {
+                await github.rest.issues.removeLabel({
+                  owner,
+                  repo,
+                  issue_number: issue.number,
+                  name: label,
+                });
+              } catch (error) {
+                if (error.status !== 404) {
+                  throw error;
+                }
+              }
+
+              return true;
+            }
+
+            await ensureLabel(
+              awaitingUserLabel,
+              "fbca04",
+              "Last human response is from a maintainer"
+            );
+
+            const issuesAndPulls = await github.paginate(
+              github.rest.issues.listForRepo,
+              {
+                owner,
+                repo,
+                state: "open",
+                per_page: 100,
+                sort: "updated",
+                direction: "asc",
+              }
+            );
+
+            let awaitingUser = 0;
+            let addedAwaitingUser = 0;
+            let removedAwaitingUser = 0;
+
+            for (const issue of issuesAndPulls) {
+              if (issue.pull_request) {
+                continue;
+              }
+
+              const comments = await github.paginate(
+                github.rest.issues.listComments,
+                {
+                  owner,
+                  repo,
+                  issue_number: issue.number,
+                  per_page: 100,
+                }
+              );
+              const lastHumanComment = comments
+                .toReversed()
+                .find((comment) => !isBotComment(comment));
+              const shouldAwaitUser =
+                lastHumanComment &&
+                maintainerAssociations.has(lastHumanComment.author_association);
+              const labels = labelNames(issue);
+              const hasAwaitingUserLabel = labels.includes(awaitingUserLabel);
+
+              if (shouldAwaitUser) {
+                awaitingUser += 1;
+
+                if (!hasAwaitingUserLabel) {
+                  await github.rest.issues.addLabels({
+                    owner,
+                    repo,
+                    issue_number: issue.number,
+                    labels: [awaitingUserLabel],
+                  });
+                  addedAwaitingUser += 1;
+                }
+
+                continue;
+              }
+
+              if (await removeLabelIfPresent(issue, awaitingUserLabel)) {
+                removedAwaitingUser += 1;
+              }
+            }
+
+            core.info(`Issues awaiting user response: ${awaitingUser}`);
+            core.info(`Added "${awaitingUserLabel}": ${addedAwaitingUser}`);
+            core.info(`Removed "${awaitingUserLabel}": ${removedAwaitingUser}`);
+
+      - uses: actions/stale@v10
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          days-before-issue-stale: -1
+          days-before-issue-close: 14
+          stale-issue-label: "awaiting user response"
+          stale-issue-message: ""
+          close-issue-message: >
+            This issue was closed because the last human response was from a
+            maintainer and there was no follow-up activity for 14 days.
+          close-issue-reason: not_planned
+          only-issue-labels: "awaiting user response"
+          exempt-issue-labels: "good first issue,help wanted"
+          exempt-all-issue-assignees: true
+          exempt-all-issue-milestones: true
+          remove-issue-stale-when-updated: false
+          remove-pr-stale-when-updated: false
+          days-before-pr-stale: -1
+          days-before-pr-close: -1
+          operations-per-run: 100
+          ascending: true
