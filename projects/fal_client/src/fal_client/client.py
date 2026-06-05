@@ -1041,6 +1041,7 @@ INGRESS_ERROR_CODES = [502, 503, 504]
 # to fire when the hang is at the raw SSL socket level (ssl.read()).  Using an
 # httpx.Timeout object with a shorter connect timeout ensures we detect stalls.
 QUEUE_POLL_TIMEOUT = httpx.Timeout(120.0, connect=30.0)
+DEFAULT_QUEUE_POLL_INTERVAL = 0.1
 
 
 def _is_ingress_error(response: httpx.Response) -> bool:
@@ -1514,7 +1515,7 @@ class SyncRequestHandle(_BaseRequestHandle):
         return self._parse_status(response.json())
 
     def iter_events(
-        self, *, with_logs: bool = False, interval: float = 0.1
+        self, *, with_logs: bool = False, interval: float = DEFAULT_QUEUE_POLL_INTERVAL
     ) -> Iterator[Status]:
         """Continuously poll for the status of the request and yield it at each interval till
         the request is completed. If `with_logs` is True, logs will be included in the response.
@@ -1528,9 +1529,9 @@ class SyncRequestHandle(_BaseRequestHandle):
 
             time.sleep(interval)
 
-    def get(self) -> AnyJSON:
+    def get(self, *, interval: float = DEFAULT_QUEUE_POLL_INTERVAL) -> AnyJSON:
         """Wait till the request is completed and return the result of the inference call."""
-        for _ in self.iter_events(with_logs=False):
+        for _ in self.iter_events(with_logs=False, interval=interval):
             continue
 
         response = _maybe_retry_request(
@@ -1591,7 +1592,7 @@ class AsyncRequestHandle(_BaseRequestHandle):
         return self._parse_status(response.json())
 
     async def iter_events(
-        self, *, with_logs: bool = False, interval: float = 0.1
+        self, *, with_logs: bool = False, interval: float = DEFAULT_QUEUE_POLL_INTERVAL
     ) -> AsyncIterator[Status]:
         """Continuously poll for the status of the request and yield it at each interval till
         the request is completed. If `with_logs` is True, logs will be included in the response.
@@ -1605,9 +1606,9 @@ class AsyncRequestHandle(_BaseRequestHandle):
 
             await asyncio.sleep(interval)
 
-    async def get(self) -> AnyJSON:
+    async def get(self, *, interval: float = DEFAULT_QUEUE_POLL_INTERVAL) -> AnyJSON:
         """Wait till the request is completed and return the result."""
-        async for _ in self.iter_events(with_logs=False):
+        async for _ in self.iter_events(with_logs=False, interval=interval):
             continue
 
         response = await _async_maybe_retry_request(
@@ -1807,6 +1808,7 @@ class AsyncClient:
         path: str = "",
         hint: str | None = None,
         with_logs: bool = False,
+        interval: float = DEFAULT_QUEUE_POLL_INTERVAL,
         on_enqueue: Optional[Callable[[str], None | Awaitable[None]]] = None,
         on_queue_update: Optional[Callable[[Status], None | Awaitable[None]]] = None,
         priority: Optional[Priority] = None,
@@ -1817,6 +1819,7 @@ class AsyncClient:
         """Subscribe to an application and wait for the result.
 
         Args:
+            interval: Polling interval in seconds while waiting for request updates.
             start_timeout: Server-side request timeout in seconds. Limits total time spent
                 waiting before processing starts (includes queue wait, retries, and
                 routing). Does not apply once the application begins processing.
@@ -1855,12 +1858,14 @@ class AsyncClient:
                     await result
 
             if on_queue_update is not None:
-                async for event in handle.iter_events(with_logs=with_logs):
+                async for event in handle.iter_events(
+                    with_logs=with_logs, interval=interval
+                ):
                     result = on_queue_update(event)
                     if inspect.isawaitable(result):
                         await result
 
-            return await handle.get()
+            return await handle.get(interval=interval)
 
         if client_timeout is None:
             return await _do_subscribe()
@@ -2338,6 +2343,7 @@ class SyncClient:
         path: str = "",
         hint: str | None = None,
         with_logs: bool = False,
+        interval: float = DEFAULT_QUEUE_POLL_INTERVAL,
         on_enqueue: Optional[Callable[[str], None]] = None,
         on_queue_update: Optional[Callable[[Status], None]] = None,
         priority: Optional[Priority] = None,
@@ -2348,6 +2354,7 @@ class SyncClient:
         """Subscribe to an application and wait for the result.
 
         Args:
+            interval: Polling interval in seconds while waiting for request updates.
             start_timeout: Server-side request timeout in seconds. Limits total time spent
                 waiting before processing starts (includes queue wait, retries, and
                 routing). Does not apply once the application begins processing.
@@ -2384,10 +2391,10 @@ class SyncClient:
                 on_enqueue(handle.request_id)
 
             if on_queue_update is not None:
-                for event in handle.iter_events(with_logs=with_logs):
+                for event in handle.iter_events(with_logs=with_logs, interval=interval):
                     on_queue_update(event)
 
-            return handle.get()
+            return handle.get(interval=interval)
 
         if client_timeout is None:
             return _do_subscribe()

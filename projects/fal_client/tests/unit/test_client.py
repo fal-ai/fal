@@ -17,6 +17,7 @@ from fal_client.client import (
     AsyncRequestHandle,
     CDN_URL,
     Completed,
+    DEFAULT_QUEUE_POLL_INTERVAL,
     FAL_CDN_FALLBACK_URL,
     FalClientHTTPError,
     FalClientTimeoutError,
@@ -1254,7 +1255,11 @@ def test_sync_handle_retries(monkeypatch):
     )
 
     # Mock iter_events to skip waiting
-    def _iter_events(self, with_logs: bool = False, interval: float = 0.1):
+    def _iter_events(
+        self,
+        with_logs: bool = False,
+        interval: float = DEFAULT_QUEUE_POLL_INTERVAL,
+    ):
         return iter([Completed(logs=[], metrics={})])
 
     monkeypatch.setattr(SyncRequestHandle, "iter_events", _iter_events, raising=True)
@@ -1336,7 +1341,11 @@ async def test_async_handle_retries(monkeypatch):
     )
 
     # Mock iter_events to skip waiting
-    async def _iter_events(self, with_logs: bool = False, interval: float = 0.1):
+    async def _iter_events(
+        self,
+        with_logs: bool = False,
+        interval: float = DEFAULT_QUEUE_POLL_INTERVAL,
+    ):
         yield Completed(logs=[], metrics={})
 
     monkeypatch.setattr(AsyncRequestHandle, "iter_events", _iter_events, raising=True)
@@ -1418,7 +1427,11 @@ def test_sync_get_does_not_retry_on_500_503(monkeypatch, status_code):
     )
 
     # Mock iter_events to skip waiting
-    def _iter_events(self, with_logs: bool = False, interval: float = 0.1):
+    def _iter_events(
+        self,
+        with_logs: bool = False,
+        interval: float = DEFAULT_QUEUE_POLL_INTERVAL,
+    ):
         return iter([Completed(logs=[], metrics={})])
 
     monkeypatch.setattr(SyncRequestHandle, "iter_events", _iter_events, raising=True)
@@ -1454,7 +1467,11 @@ async def test_async_get_does_not_retry_on_500_503(monkeypatch, status_code):
     )
 
     # Mock iter_events to skip waiting
-    async def _iter_events(self, with_logs: bool = False, interval: float = 0.1):
+    async def _iter_events(
+        self,
+        with_logs: bool = False,
+        interval: float = DEFAULT_QUEUE_POLL_INTERVAL,
+    ):
         yield Completed(logs=[], metrics={})
 
     monkeypatch.setattr(AsyncRequestHandle, "iter_events", _iter_events, raising=True)
@@ -1486,7 +1503,11 @@ def test_sync_handle_retries_ingress(monkeypatch):
     )
 
     # Mock iter_events to skip waiting
-    def _iter_events(self, with_logs: bool = False, interval: float = 0.1):
+    def _iter_events(
+        self,
+        with_logs: bool = False,
+        interval: float = DEFAULT_QUEUE_POLL_INTERVAL,
+    ):
         return iter([Completed(logs=[], metrics={})])
 
     monkeypatch.setattr(SyncRequestHandle, "iter_events", _iter_events, raising=True)
@@ -1574,7 +1595,11 @@ async def test_async_handle_retries_ingress(monkeypatch):
     )
 
     # Mock iter_events to skip waiting
-    async def _iter_events(self, with_logs: bool = False, interval: float = 0.1):
+    async def _iter_events(
+        self,
+        with_logs: bool = False,
+        interval: float = DEFAULT_QUEUE_POLL_INTERVAL,
+    ):
         yield Completed(logs=[], metrics={})
 
     monkeypatch.setattr(AsyncRequestHandle, "iter_events", _iter_events, raising=True)
@@ -1972,6 +1997,50 @@ def test_sync_client_subscribe_with_start_timeout():
         assert first_call_kwargs["headers"]["X-Fal-Request-Timeout"] == "90.0"
 
 
+def test_sync_client_subscribe_with_interval(monkeypatch):
+    """Test that subscribe() passes interval through to request polling."""
+    iter_event_calls = []
+
+    def _iter_events(
+        self,
+        *,
+        with_logs: bool = False,
+        interval: float = DEFAULT_QUEUE_POLL_INTERVAL,
+    ):
+        iter_event_calls.append((with_logs, interval))
+        return iter([Completed(logs=[], metrics={})])
+
+    monkeypatch.setattr(SyncRequestHandle, "iter_events", _iter_events, raising=True)
+
+    with patch("fal_client.client._maybe_retry_request") as mock_request:
+        submit_response = Mock()
+        submit_response.json.return_value = {
+            "request_id": "req-123",
+            "response_url": "http://response",
+            "status_url": "http://status",
+            "cancel_url": "http://cancel",
+        }
+
+        result_response = Mock()
+        result_response.json.return_value = {"result": "done"}
+
+        mock_request.side_effect = [submit_response, result_response]
+
+        queue_updates = []
+        client = SyncClient(key="test-key")
+        result = client.subscribe(
+            "test-app",
+            {"input": "data"},
+            interval=0.5,
+            with_logs=True,
+            on_queue_update=queue_updates.append,
+        )
+
+    assert result == {"result": "done"}
+    assert len(queue_updates) == 1
+    assert iter_event_calls == [(True, 0.5), (False, 0.5)]
+
+
 @pytest.mark.asyncio
 async def test_async_client_run_with_start_timeout():
     """Test that start_timeout adds X-Fal-Request-Timeout header in async run()."""
@@ -2042,6 +2111,53 @@ async def test_async_client_subscribe_with_start_timeout():
         first_call_kwargs = mock_request.call_args_list[0][1]
         assert "headers" in first_call_kwargs
         assert first_call_kwargs["headers"]["X-Fal-Request-Timeout"] == "90.0"
+
+
+@pytest.mark.asyncio
+async def test_async_client_subscribe_with_interval(monkeypatch):
+    """Test that async subscribe() passes interval through to request polling."""
+    iter_event_calls = []
+
+    async def _iter_events(
+        self,
+        *,
+        with_logs: bool = False,
+        interval: float = DEFAULT_QUEUE_POLL_INTERVAL,
+    ):
+        iter_event_calls.append((with_logs, interval))
+        yield Completed(logs=[], metrics={})
+
+    monkeypatch.setattr(AsyncRequestHandle, "iter_events", _iter_events, raising=True)
+
+    with patch(
+        "fal_client.client._async_maybe_retry_request", new_callable=AsyncMock
+    ) as mock_request:
+        submit_response = Mock()
+        submit_response.json.return_value = {
+            "request_id": "req-789",
+            "response_url": "http://response",
+            "status_url": "http://status",
+            "cancel_url": "http://cancel",
+        }
+
+        result_response = Mock()
+        result_response.json.return_value = {"result": "async_done"}
+
+        mock_request.side_effect = [submit_response, result_response]
+
+        queue_updates = []
+        client = AsyncClient(key="test-key")
+        result = await client.subscribe(
+            "test-app",
+            {"input": "data"},
+            interval=0.5,
+            with_logs=True,
+            on_queue_update=queue_updates.append,
+        )
+
+    assert result == {"result": "async_done"}
+    assert len(queue_updates) == 1
+    assert iter_event_calls == [(True, 0.5), (False, 0.5)]
 
 
 def test_sync_client_run_without_start_timeout_no_header():
