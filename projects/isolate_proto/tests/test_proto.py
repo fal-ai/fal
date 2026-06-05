@@ -179,6 +179,67 @@ def test_env_id_field_presence_on_run_and_register():
     assert register_result_with_env.env_id == "abc123"
 
 
+def test_container_config_fields_on_run_and_register():
+    hosted_run_without_config = isolate_proto.HostedRun(entrypoint="pkg.mod:func")
+    assert hosted_run_without_config.HasField("container_config") is False
+
+    hosted_run = isolate_proto.HostedRun(
+        entrypoint="pkg.mod:func",
+        container_config=isolate_proto.ContainerConfig(
+            entrypoint=isolate_proto.ContainerEntrypoint(
+                entries=["python", "-m"],
+            ),
+            cmd=isolate_proto.ContainerCmd(entries=["pkg.mod"]),
+        ),
+    )
+    assert hosted_run.HasField("container_config") is True
+    assert hosted_run.container_config.HasField("entrypoint") is True
+    assert list(hosted_run.container_config.entrypoint.entries) == ["python", "-m"]
+    assert hosted_run.container_config.HasField("cmd") is True
+    assert list(hosted_run.container_config.cmd.entries) == ["pkg.mod"]
+
+    hosted_run_with_empty_entrypoint = isolate_proto.HostedRun(
+        entrypoint="pkg.mod:func",
+        container_config=isolate_proto.ContainerConfig(
+            entrypoint=isolate_proto.ContainerEntrypoint(),
+        ),
+    )
+    assert hosted_run_with_empty_entrypoint.HasField("container_config") is True
+    assert (
+        hosted_run_with_empty_entrypoint.container_config.HasField("entrypoint")
+        is True
+    )
+    empty_entrypoint_entries = (
+        hosted_run_with_empty_entrypoint.container_config.entrypoint.entries
+    )
+    assert list(empty_entrypoint_entries) == []
+    assert hosted_run_with_empty_entrypoint.container_config.HasField("cmd") is False
+
+    register_without_config = isolate_proto.RegisterApplicationRequest(
+        entrypoint="pkg.mod:App.run"
+    )
+    assert register_without_config.HasField("container_config") is False
+
+    register = isolate_proto.RegisterApplicationRequest(
+        entrypoint="pkg.mod:App.run",
+        container_config=isolate_proto.ContainerConfig(
+            entrypoint=isolate_proto.ContainerEntrypoint(entries=["uvicorn"]),
+            cmd=isolate_proto.ContainerCmd(
+                entries=["pkg.mod:app", "--host", "0.0.0.0"],
+            ),
+        ),
+    )
+    assert register.HasField("container_config") is True
+    assert register.container_config.HasField("entrypoint") is True
+    assert list(register.container_config.entrypoint.entries) == ["uvicorn"]
+    assert register.container_config.HasField("cmd") is True
+    assert list(register.container_config.cmd.entries) == [
+        "pkg.mod:app",
+        "--host",
+        "0.0.0.0",
+    ]
+
+
 def test_build_environment_request_construction():
     request = isolate_proto.BuildEnvironmentRequest(
         environment_name="main",
