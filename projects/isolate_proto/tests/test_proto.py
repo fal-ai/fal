@@ -220,3 +220,86 @@ def test_register_application_private_logs_presence():
     )
     assert request_with_private_logs_true.HasField("private_logs") is True
     assert request_with_private_logs_true.private_logs is True
+
+
+def test_container_config_construction_and_presence():
+    assert isolate_proto.HostedRun().HasField("container_config") is False
+    assert (
+        isolate_proto.RegisterApplicationRequest().HasField("container_config")
+        is False
+    )
+
+    container_config = isolate_proto.ContainerConfig(
+        dockerfile_str="FROM python:3.12-slim\n",
+        build_args=[
+            isolate_proto.ContainerBuildArg(name="FOO", value="bar"),
+        ],
+        registries=[
+            isolate_proto.ContainerRegistry(
+                registry="registry.example.com",
+                username="user",
+                password="pass",
+            )
+        ],
+        builder="depot",
+        compression="gzip",
+        force_compression=False,
+        secrets=[
+            isolate_proto.ContainerSecret(name="TOKEN", value="secret"),
+        ],
+        docker_context_dir="/workspace/app",
+        docker_files_list=["src/", "requirements.txt"],
+        docker_ignore=["\\.git", "__pycache__"],
+        entrypoint=isolate_proto.ContainerCommand(
+            argv=isolate_proto.ContainerCommandArgs(
+                args=["python", "-m", "server"],
+            )
+        ),
+        cmd=isolate_proto.ContainerCommand(shell="--host 0.0.0.0 --port 8080"),
+        use_isolate=False,
+    )
+
+    assert container_config.dockerfile_str == "FROM python:3.12-slim\n"
+    assert list(container_config.build_args) == [
+        isolate_proto.ContainerBuildArg(name="FOO", value="bar"),
+    ]
+    assert list(container_config.registries) == [
+        isolate_proto.ContainerRegistry(
+            registry="registry.example.com",
+            username="user",
+            password="pass",
+        )
+    ]
+    assert container_config.HasField("builder") is True
+    assert container_config.builder == "depot"
+    assert container_config.HasField("compression") is True
+    assert container_config.compression == "gzip"
+    assert container_config.HasField("force_compression") is True
+    assert container_config.force_compression is False
+    assert list(container_config.secrets) == [
+        isolate_proto.ContainerSecret(name="TOKEN", value="secret"),
+    ]
+    assert container_config.HasField("docker_context_dir") is True
+    assert container_config.docker_context_dir == "/workspace/app"
+    assert list(container_config.docker_files_list) == ["src/", "requirements.txt"]
+    assert list(container_config.docker_ignore) == ["\\.git", "__pycache__"]
+    assert container_config.entrypoint.WhichOneof("value") == "argv"
+    assert list(container_config.entrypoint.argv.args) == ["python", "-m", "server"]
+    assert container_config.cmd.WhichOneof("value") == "shell"
+    assert container_config.cmd.shell == "--host 0.0.0.0 --port 8080"
+    assert container_config.HasField("use_isolate") is True
+    assert container_config.use_isolate is False
+
+    hosted_run = isolate_proto.HostedRun(
+        entrypoint="pkg.mod:func",
+        container_config=container_config,
+    )
+    assert hosted_run.HasField("container_config") is True
+    assert hosted_run.container_config == container_config
+
+    register = isolate_proto.RegisterApplicationRequest(
+        entrypoint="pkg.mod:App.run",
+        container_config=container_config,
+    )
+    assert register.HasField("container_config") is True
+    assert register.container_config == container_config
