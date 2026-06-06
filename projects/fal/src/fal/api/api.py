@@ -62,6 +62,7 @@ from fal.exceptions import (
 )
 from fal.exceptions.gpu import _is_cuda_oom_exception, _is_generic_gpu_error
 from fal.file_sync import FileSync, FileSyncOptions
+from fal.logging import get_logger
 from fal.logging.isolate import IsolateLogPrinter
 from fal.sdk import (
     FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER,
@@ -85,6 +86,8 @@ from fal.sdk import (
 
 if TYPE_CHECKING:
     from isolate.backends import BaseEnvironment
+
+logger = get_logger(__name__)
 
 ArgsT = ParamSpec("ArgsT")
 ReturnT = TypeVar("ReturnT", covariant=True)  # noqa: PLC0105
@@ -736,7 +739,22 @@ def _handle_grpc_error():
                 msg = str(e)
                 cause = e.__cause__
                 if isinstance(e, ExceptionDeserializationError):
-                    raise FalSerializationError(msg) from e
+                    logger.warning(
+                        "Failed to deserialize remote exception",
+                        exc_info=True,
+                    )
+                    exc_type = type(
+                        e.original_exception_type_name or "Exception",
+                        (Exception,),
+                        {"__module__": "builtins"},
+                    )
+                    exc_message = e.original_exception_message or ""
+                    remote_exc = exc_type(exc_message).with_traceback(
+                        e.original_traceback
+                    )
+                    raise UserFunctionException(
+                        "Uncaught user function exception"
+                    ) from remote_exc
                 if isinstance(cause, ModuleNotFoundError):
                     missing_module = cause.name
                     msg += (

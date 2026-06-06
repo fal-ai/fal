@@ -5,7 +5,6 @@ from contextlib import ExitStack
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
-from types import TracebackType
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -19,10 +18,6 @@ from typing import (
 
 import grpc
 import isolate_proto
-from isolate.connections.common import (
-    ExceptionDeserializationError,
-    load_serialized_object,
-)
 from isolate.server.interface import from_grpc, to_serialized_object, to_struct
 
 from fal import flags
@@ -601,36 +596,6 @@ def _from_grpc_register_application_result(
         if message.HasField("service_urls")
         else None,
     )
-
-
-class RemoteExceptionDeserializationError(ExceptionDeserializationError):
-    """A remote exception that couldn't be deserialized locally."""
-
-    def __init__(
-        self,
-        message: str,
-        original_traceback: TracebackType | None,
-        stringized_traceback: str | None = None,
-    ) -> None:
-        super().__init__(message, original_traceback)
-        self.stringized_traceback = stringized_traceback
-
-
-@from_grpc.register(isolate_proto.SerializedObject)
-def _from_grpc_serialized_object(message: isolate_proto.SerializedObject) -> Any:
-    try:
-        return load_serialized_object(
-            message.method,
-            message.definition,
-            was_it_raised=message.was_it_raised,
-            stringized_traceback=message.stringized_traceback,
-        )
-    except ExceptionDeserializationError as exc:
-        raise RemoteExceptionDeserializationError(
-            exc.message,
-            original_traceback=exc.original_traceback,
-            stringized_traceback=message.stringized_traceback or None,
-        ) from exc.__cause__
 
 
 @from_grpc.register(isolate_proto.BuildEnvironmentResult)
