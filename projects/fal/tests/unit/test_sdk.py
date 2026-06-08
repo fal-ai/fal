@@ -112,6 +112,37 @@ def test_connection_register_allows_no_isolate_container_without_callable():
     assert stub.register_request.WhichOneof("callable") is None
 
 
+def test_connection_register_forwards_container_image_reference():
+    connection = FalServerlessConnection("api.alpha.fal.ai", MagicMock())
+    stub = RecordingStub()
+    connection._stub = stub  # type: ignore[assignment]
+    environment = connection.define_environment(
+        "container",
+        image={
+            "image": "ghcr.io/fal-ai/container-app:latest",
+            "use_isolate": False,
+        },
+    )
+
+    list(
+        connection.register(
+            None,
+            [environment],
+            application_name="container-app",
+            deployment_strategy="rolling",
+        )
+    )
+
+    assert stub.register_request is not None
+    image = (
+        stub.register_request.environments[0]
+        .configuration.fields["image"]
+        .struct_value.fields
+    )
+    assert image["image"].string_value == "ghcr.io/fal-ai/container-app:latest"
+    assert image["use_isolate"].bool_value is False
+
+
 def test_connection_register_rejects_isolate_container_without_callable():
     connection = FalServerlessConnection("api.alpha.fal.ai", MagicMock())
     environment = connection.define_environment(
