@@ -27,13 +27,46 @@ if TYPE_CHECKING:
 MAX_IMAGE_DOWNLOAD_SIZE = 50 * 1024 * 1024
 
 ImageSizePreset = Literal[
-    "square_hd",
     "square",
     "portrait_4_3",
     "portrait_16_9",
     "landscape_4_3",
     "landscape_16_9",
 ]
+ImageSizePresetHD = Literal[
+    "square_hd",
+    "portrait_4_3_hd",
+    "portrait_16_9_hd",
+    "landscape_4_3_hd",
+    "landscape_16_9_hd",
+]
+ImageSizePresetFullHD = Literal[
+    "square_fhd",
+    "portrait_4_3_fhd",
+    "portrait_16_9_fhd",
+    "landscape_16_9_fhd",
+    "landscape_4_3_fhd",
+]
+ImageSizePresetQuadHD = Literal[
+    "square_qhd",
+    "portrait_4_3_qhd",
+    "portrait_16_9_qhd",
+    "landscape_4_3_qhd",
+    "landscape_16_9_qhd",
+]
+ImageSizePresetUltraHD = Literal[
+    "square_uhd",
+    "portrait_4_3_uhd",
+    "portrait_16_9_uhd",
+    "landscape_4_3_uhd",
+    "landscape_16_9_uhd",
+]
+
+# This syntax properly combines literals at runtime for introspection
+ImageSizePresetUpToHD = Literal[ImageSizePreset, ImageSizePresetHD]
+ImageSizePresetUpToFullHD = Literal[ImageSizePresetUpToHD, ImageSizePresetFullHD]
+ImageSizePresetUpToQuadHD = Literal[ImageSizePresetUpToFullHD, ImageSizePresetQuadHD]
+ImageSizePresetUpToUltraHD = Literal[ImageSizePresetUpToQuadHD, ImageSizePresetUltraHD]
 
 
 class ImageSize(BaseModel):
@@ -45,19 +78,52 @@ class ImageSize(BaseModel):
     )
 
 
-IMAGE_SIZE_PRESETS: dict[ImageSizePreset, ImageSize] = {
-    "square_hd": ImageSize(width=1024, height=1024),
+IMAGE_SIZE_PRESETS: dict[ImageSizePresetUpToUltraHD, ImageSize] = {
+    # legacy presets
     "square": ImageSize(width=512, height=512),
     "portrait_4_3": ImageSize(width=768, height=1024),
     "portrait_16_9": ImageSize(width=576, height=1024),
     "landscape_4_3": ImageSize(width=1024, height=768),
     "landscape_16_9": ImageSize(width=1024, height=576),
+    # hd presets
+    "square_hd": ImageSize(width=1024, height=1024),  # only hd legacy preset
+    "portrait_4_3_hd": ImageSize(width=960, height=1280),
+    "portrait_16_9_hd": ImageSize(width=720, height=1280),
+    "landscape_4_3_hd": ImageSize(width=1280, height=960),
+    "landscape_16_9_hd": ImageSize(width=1280, height=720),
+    # full HD presets
+    "square_fhd": ImageSize(width=1440, height=1440),
+    "portrait_4_3_fhd": ImageSize(width=1440, height=1920),
+    "portrait_16_9_fhd": ImageSize(width=1080, height=1920),
+    "landscape_16_9_fhd": ImageSize(width=1920, height=1080),
+    "landscape_4_3_fhd": ImageSize(width=1920, height=1440),
+    # quad HD presets
+    "square_qhd": ImageSize(width=1920, height=1920),
+    "portrait_4_3_qhd": ImageSize(width=1920, height=2560),
+    "portrait_16_9_qhd": ImageSize(width=1440, height=2560),
+    "landscape_16_9_qhd": ImageSize(width=2560, height=1440),
+    "landscape_4_3_qhd": ImageSize(width=2560, height=1920),
+    # ultra HD presets
+    "square_uhd": ImageSize(width=2560, height=2560),
+    "portrait_4_3_uhd": ImageSize(width=2880, height=3840),
+    "portrait_16_9_uhd": ImageSize(width=2160, height=3840),
+    "landscape_16_9_uhd": ImageSize(width=3840, height=2160),
+    "landscape_4_3_uhd": ImageSize(width=3840, height=2880),
 }
 
 ImageSizeInput = Union[ImageSize, ImageSizePreset]
+ImageSizeInputHD = Union[ImageSize, ImageSizePresetHD]
+ImageSizeInputFullHD = Union[ImageSize, ImageSizePresetFullHD]
+ImageSizeInputQuadHD = Union[ImageSize, ImageSizePresetQuadHD]
+ImageSizeInputUltraHD = Union[ImageSize, ImageSizePresetUltraHD]
+
+ImageSizeInputUpToHD = Union[ImageSize, ImageSizePresetUpToHD]
+ImageSizeInputUpToFullHD = Union[ImageSize, ImageSizePresetUpToFullHD]
+ImageSizeInputUpToQuadHD = Union[ImageSize, ImageSizePresetUpToQuadHD]
+ImageSizeInputUpToUltraHD = Union[ImageSize, ImageSizePresetUpToUltraHD]
 
 
-def get_image_size(source: ImageSizeInput) -> ImageSize:
+def get_image_size(source: ImageSizeInputUpToUltraHD) -> ImageSize:
     if isinstance(source, ImageSize):
         return source
     if isinstance(source, str) and source in IMAGE_SIZE_PRESETS:
