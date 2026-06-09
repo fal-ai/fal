@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import dataclasses
 import io
 from functools import wraps
 from pathlib import Path
@@ -11,6 +10,7 @@ from urllib.parse import urlparse
 from fastapi import Request
 from pydantic import BaseModel, Field
 
+from fal.toolkit.constraints import ImageSizeConstraints, to_xfal
 from fal.toolkit.file.file import (
     DEFAULT_REPOSITORY,
     FALLBACK_REPOSITORY,
@@ -67,35 +67,6 @@ def get_image_size(source: ImageSizeInput) -> ImageSize:
     raise TypeError(f"Invalid value for ImageSize: {source}")
 
 
-@dataclasses.dataclass(frozen=True)
-class ImageSizeConstraints:
-    """Advisory limits on the image size a model can generate.
-
-    Attach these to an ``image_size`` field via :func:`ImageSizeField` to surface
-    the model's size envelope in the OpenAPI schema (under the ``x-fal``
-    extension), so clients and UIs can validate sizes before a request. These are
-    documentation hints and are not enforced by the SDK.
-    """
-
-    min_width: Optional[int] = None
-    min_height: Optional[int] = None
-    max_width: Optional[int] = None
-    max_height: Optional[int] = None
-    min_area: Optional[int] = None
-    max_area: Optional[int] = None
-    multiple_of: Optional[int] = None
-    min_aspect_ratio: Optional[float] = None
-    max_aspect_ratio: Optional[float] = None
-
-    def to_schema_extra(self) -> dict:
-        """Return the set constraints as a plain dict for schema emission."""
-        return {
-            key: value
-            for key, value in dataclasses.asdict(self).items()
-            if value is not None
-        }
-
-
 @wraps(Field)
 def ImageSizeField(*args, constraints: Optional[ImageSizeConstraints] = None, **kwargs):
     """A ``Field`` for an ``image_size`` input that documents its size limits.
@@ -105,7 +76,7 @@ def ImageSizeField(*args, constraints: Optional[ImageSizeConstraints] = None, **
     """
     fal_extra: dict = {}
     if constraints is not None:
-        data = constraints.to_schema_extra()
+        data = to_xfal(constraints)
         if data:
             fal_extra["x-fal"] = data
 

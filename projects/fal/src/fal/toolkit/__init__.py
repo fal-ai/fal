@@ -7,6 +7,14 @@ from fal.toolkit.compilation import (
     sync_inductor_cache,
     synchronized_inductor_cache,
 )
+from fal.toolkit.constraints import (
+    ImageSizeConstraints,
+    ImageValidationConfig,
+    ImageValidationOptions,
+    VideoValidationConfig,
+    VideoValidationOptions,
+    to_xfal,
+)
 from fal.toolkit.exceptions import (
     FalTookitException,
     FileUploadException,
@@ -16,7 +24,6 @@ from fal.toolkit.file import CompressedFile, File, FileField
 from fal.toolkit.image.image import (
     Image,
     ImageField,
-    ImageSizeConstraints,
     ImageSizeField,
     ImageSizeInput,
     get_image_size,
@@ -47,6 +54,11 @@ __all__ = [
     "ImageSizeConstraints",
     "ImageSizeField",
     "ImageSizeInput",
+    "ImageValidationConfig",
+    "ImageValidationOptions",
+    "VideoValidationConfig",
+    "VideoValidationOptions",
+    "to_xfal",
     "KVStore",
     "Video",
     "VideoField",
