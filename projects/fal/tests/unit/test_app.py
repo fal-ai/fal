@@ -1855,3 +1855,22 @@ def test_app_lifecycle_callbacks_are_called():
     assert "setup" in lines
     assert "handle_exit" in lines
     assert "teardown" in lines
+
+
+def test_retry_config_classvar_propagates_to_host_kwargs():
+    from fal.sdk import RetryConfig
+
+    class NoRetryApp(App):
+        pass
+
+    assert "retry_config" not in NoRetryApp.host_kwargs
+
+    class RetryDataclassApp(App):
+        retry_config = RetryConfig(server_error=3)
+
+    assert RetryDataclassApp.host_kwargs["retry_config"] == RetryConfig(server_error=3)
+
+    class RetryDictApp(App):
+        retry_config = {"timeout": {"retries": 2}}
+
+    assert RetryDictApp.host_kwargs["retry_config"] == {"timeout": {"retries": 2}}

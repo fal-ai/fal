@@ -1088,6 +1088,7 @@ class FalServerlessHost(Host):
         regions = options.host.get("regions")
         health_check_config = options.host.get("health_check_config")
         skip_retry_conditions = options.host.get("skip_retry_conditions")
+        retry_config = options.host.get("retry_config")
         termination_grace_period_seconds = options.host.get(
             "termination_grace_period_seconds"
         )
@@ -1160,6 +1161,7 @@ class FalServerlessHost(Host):
             private_logs=options.host.get("private_logs"),
             files=files,
             skip_retry_conditions=skip_retry_conditions,
+            retry_config=retry_config,
             environment_name=environment_name,
             termination_grace_period_seconds=termination_grace_period_seconds,
             secrets=secrets,

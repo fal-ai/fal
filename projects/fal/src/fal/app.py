@@ -38,6 +38,8 @@ from fal.sdk import (
     AuthModeLiteral,
     HealthCheck,
     RetryConditionLiteral,
+    RetryConfig,
+    RetryConfigDict,
 )
 from fal.toolkit.file import request_lifecycle_preference
 from fal.toolkit.file.providers.fal import _LIFECYCLE_PREFERENCE
@@ -567,6 +569,7 @@ class App(BaseServable):
     image: ClassVar[Optional[ContainerImage]] = None
     local_file_path: ClassVar[Optional[str]] = None
     skip_retry_conditions: ClassVar[Optional[list[RetryConditionLiteral]]] = None
+    retry_config: ClassVar[Optional[RetryConfig | RetryConfigDict]] = None
     termination_grace_period_seconds: ClassVar[Optional[int]] = None
     secrets: ClassVar[Optional[list[str]]] = None
     data_mounts: ClassVar[Optional[list[str]]] = None
@@ -643,6 +646,9 @@ class App(BaseServable):
 
         if cls.skip_retry_conditions is not None:
             cls.host_kwargs["skip_retry_conditions"] = cls.skip_retry_conditions
+
+        if cls.retry_config is not None:
+            cls.host_kwargs["retry_config"] = cls.retry_config
 
         if cls.termination_grace_period_seconds is not None:
             cls.host_kwargs["termination_grace_period_seconds"] = (

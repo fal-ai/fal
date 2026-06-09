@@ -216,6 +216,7 @@ def mock_parse_pyproject_toml():
                     "server_error",
                     "connection_error",
                 ],
+                "retry_config": {"server_error": {"retries": 3}},
                 "termination_grace_period_seconds": 30,
                 "secrets": ["OPENAI_API_KEY", "HF_TOKEN"],
                 "data_mounts": ["/data", "/data/.cache"],
@@ -1183,6 +1184,7 @@ def test_get_app_data_from_toml_with_advanced_runtime_options(
             "server_error",
             "connection_error",
         ],
+        "retry_config": {"server_error": {"retries": 3}},
         "termination_grace_period_seconds": 30,
         "secrets": ["OPENAI_API_KEY", "HF_TOKEN"],
         "data_mounts": ["/data", "/data/.cache"],
@@ -2012,3 +2014,23 @@ def test_deploy_with_env_check_and_yes_renders_summary_without_prompt(
     mock_prepare_deployment.assert_called_once()
     mock_execute_prepared_deployment.assert_called_once()
     mock_input.assert_not_called()
+
+
+def test_validate_retry_config_accepts_nested_form():
+    from fal.cli._utils import _validate_retry_config
+
+    _validate_retry_config({"server_error": {"retries": 3}})  # no raise
+
+
+def test_validate_retry_config_rejects_bare_int_shorthand():
+    from fal.cli._utils import _validate_retry_config
+
+    with pytest.raises(ValueError, match="must be an object"):
+        _validate_retry_config({"server_error": 3})
+
+
+def test_validate_retry_config_rejects_unknown_condition():
+    from fal.cli._utils import _validate_retry_config
+
+    with pytest.raises(ValueError, match="Invalid retry_config condition"):
+        _validate_retry_config({"nope": {"retries": 1}})
