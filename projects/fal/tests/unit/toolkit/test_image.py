@@ -15,7 +15,9 @@ from fal.toolkit.image.image import (
 )
 
 # Legacy presets that existed before the additional HD/FHD/QHD/UHD tiers.
+# "square_hd" predates the HD tier and is kept for backwards compatibility.
 LEGACY_PRESETS = {
+    "square_hd": (1024, 1024),
     "square": (512, 512),
     "portrait_4_3": (768, 1024),
     "portrait_16_9": (576, 1024),
@@ -26,7 +28,6 @@ LEGACY_PRESETS = {
 # Presets introduced alongside the new resolution tiers.
 NEW_PRESETS = {
     # hd
-    "square_hd": (1024, 1024),
     "portrait_4_3_hd": (960, 1280),
     "portrait_16_9_hd": (720, 1280),
     "landscape_4_3_hd": (1280, 960),
@@ -106,26 +107,18 @@ class TestPresetTable:
         assert literal_values == set(ALL_PRESETS)
 
     @pytest.mark.parametrize(
-        ("literal_type", "presets"),
+        ("literal_type", "expected_presets"),
         [
-            (ImageSizePreset, LEGACY_PRESETS),
+            (ImageSizePreset, set(LEGACY_PRESETS)),
+            # "square_hd" appears in both the legacy and HD literals.
             (
                 ImageSizePresetHD,
-                {k: v for k, v in NEW_PRESETS.items() if k.endswith("_hd")},
+                {k for k in NEW_PRESETS if k.endswith("_hd")} | {"square_hd"},
             ),
-            (
-                ImageSizePresetFullHD,
-                {k: v for k, v in NEW_PRESETS.items() if k.endswith("_fhd")},
-            ),
-            (
-                ImageSizePresetQuadHD,
-                {k: v for k, v in NEW_PRESETS.items() if k.endswith("_qhd")},
-            ),
-            (
-                ImageSizePresetUltraHD,
-                {k: v for k, v in NEW_PRESETS.items() if k.endswith("_uhd")},
-            ),
+            (ImageSizePresetFullHD, {k for k in NEW_PRESETS if k.endswith("_fhd")}),
+            (ImageSizePresetQuadHD, {k for k in NEW_PRESETS if k.endswith("_qhd")}),
+            (ImageSizePresetUltraHD, {k for k in NEW_PRESETS if k.endswith("_uhd")}),
         ],
     )
-    def test_tier_literals_match_presets(self, literal_type, presets):
-        assert set(get_args(literal_type)) == set(presets)
+    def test_tier_literals_match_presets(self, literal_type, expected_presets):
+        assert set(get_args(literal_type)) == expected_presets
