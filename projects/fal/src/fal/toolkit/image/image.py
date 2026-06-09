@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import io
 from functools import wraps
 from pathlib import Path
@@ -64,6 +65,67 @@ def get_image_size(source: ImageSizeInput) -> ImageSize:
         size = IMAGE_SIZE_PRESETS[source]
         return size
     raise TypeError(f"Invalid value for ImageSize: {source}")
+
+
+@dataclasses.dataclass(frozen=True)
+class ImageSizeConstraints:
+    """Advisory limits on the image size a model can generate.
+
+    Attach these to an ``image_size`` field via :func:`ImageSizeField` to surface
+    the model's size envelope in the OpenAPI schema (under the ``x-fal``
+    extension), so clients and UIs can validate sizes before a request. These are
+    documentation hints and are not enforced by the SDK.
+    """
+
+    min_width: Optional[int] = None
+    min_height: Optional[int] = None
+    max_width: Optional[int] = None
+    max_height: Optional[int] = None
+    min_area: Optional[int] = None
+    max_area: Optional[int] = None
+    multiple_of: Optional[int] = None
+    min_aspect_ratio: Optional[float] = None
+    max_aspect_ratio: Optional[float] = None
+
+    def to_schema_extra(self) -> dict:
+        """Return the set constraints as a plain dict for schema emission."""
+        return {
+            key: value
+            for key, value in dataclasses.asdict(self).items()
+            if value is not None
+        }
+
+
+@wraps(Field)
+def ImageSizeField(*args, constraints: Optional[ImageSizeConstraints] = None, **kwargs):
+    """A ``Field`` for an ``image_size`` input that documents its size limits.
+
+    Pass ``constraints`` to emit the model's size envelope under the ``x-fal``
+    schema extension; all other arguments are forwarded to ``Field``.
+    """
+    fal_extra: dict = {}
+    if constraints is not None:
+        data = constraints.to_schema_extra()
+        if data:
+            fal_extra["x-fal"] = data
+
+    if IS_PYDANTIC_V2:
+        json_schema_extra = kwargs.pop("json_schema_extra", None) or {}
+        if callable(json_schema_extra):
+            original_func = json_schema_extra
+
+            def merged_schema_extra(schema):
+                original_func(schema)
+                schema.update(fal_extra)
+
+            kwargs["json_schema_extra"] = merged_schema_extra
+        else:
+            json_schema_extra.update(fal_extra)
+            kwargs["json_schema_extra"] = json_schema_extra
+    else:
+        # Pydantic v1: extra kwargs are stored on the field and emitted as-is.
+        kwargs.update(fal_extra)
+    return Field(*args, **kwargs)
 
 
 ImageFormat = Literal["png", "jpeg", "jpg", "webp", "gif"]

@@ -13,7 +13,14 @@ from fal.toolkit.exceptions import (
     KVStoreException,
 )
 from fal.toolkit.file import CompressedFile, File, FileField
-from fal.toolkit.image.image import Image, ImageField, ImageSizeInput, get_image_size
+from fal.toolkit.image.image import (
+    Image,
+    ImageField,
+    ImageSizeConstraints,
+    ImageSizeField,
+    ImageSizeInput,
+    get_image_size,
+)
 from fal.toolkit.kv import KVStore
 from fal.toolkit.pydantic import FalBaseModel, Field, Hidden
 from fal.toolkit.utils import (
@@ -37,6 +44,8 @@ __all__ = [
     "FileField",
     "Image",
     "ImageField",
+    "ImageSizeConstraints",
+    "ImageSizeField",
     "ImageSizeInput",
     "KVStore",
     "Video",
