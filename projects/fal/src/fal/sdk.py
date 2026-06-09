@@ -72,15 +72,13 @@ class RetryConfig:
     connection_error: Optional[int] = None
 
     def to_dict(self) -> RetryConfigDict:
-        result = {
-            cond: {"retries": max(int(count), 0)}
-            for cond, count in (
-                ("timeout", self.timeout),
-                ("server_error", self.server_error),
-                ("connection_error", self.connection_error),
-            )
-            if count is not None
-        }
+        result: RetryConfigDict = {}
+        if self.timeout is not None:
+            result["timeout"] = {"retries": max(int(self.timeout), 0)}
+        if self.server_error is not None:
+            result["server_error"] = {"retries": max(int(self.server_error), 0)}
+        if self.connection_error is not None:
+            result["connection_error"] = {"retries": max(int(self.connection_error), 0)}
         if not result:
             raise ValueError("RetryConfig must have at least one condition.")
         return result
