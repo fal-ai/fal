@@ -26,7 +26,9 @@ if TYPE_CHECKING:
 
 MAX_IMAGE_DOWNLOAD_SIZE = 50 * 1024 * 1024
 
+# Keep "square_hd" in this for backwards compatibility
 ImageSizePreset = Literal[
+    "square_hd",
     "square",
     "portrait_4_3",
     "portrait_16_9",
@@ -62,7 +64,7 @@ ImageSizePresetUltraHD = Literal[
     "landscape_16_9_uhd",
 ]
 
-# This syntax properly combines literals at runtime for introspection
+# This syntax properly combines and deduplicates literals
 ImageSizePresetUpToHD = Literal[ImageSizePreset, ImageSizePresetHD]
 ImageSizePresetUpToFullHD = Literal[ImageSizePresetUpToHD, ImageSizePresetFullHD]
 ImageSizePresetUpToQuadHD = Literal[ImageSizePresetUpToFullHD, ImageSizePresetQuadHD]
