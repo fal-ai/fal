@@ -1,5 +1,4 @@
 import argparse
-from typing import List
 
 import rich
 
@@ -82,52 +81,6 @@ def _print_error(msg):
     console.print(f"{get_cross_icon(console)} {msg}")
 
 
-def _remote_exception_summary(stringized_traceback):
-    if not stringized_traceback:
-        return None
-
-    in_frames = False
-    summary_lines: List[str] = []
-    for line in stringized_traceback.splitlines():
-        if line.startswith("Traceback (most recent call last):"):
-            if summary_lines:
-                break
-            in_frames = True
-            continue
-        if summary_lines:
-            if line.startswith(
-                (
-                    "During handling of the above exception",
-                    "The above exception was the direct cause",
-                )
-            ):
-                break
-            summary_lines.append(line.rstrip())
-            continue
-        if not in_frames or not line.strip():
-            continue
-        if not line.startswith((" ", "\t")):
-            summary_lines.append(line.strip())
-
-    if summary_lines:
-        return "\n".join(summary_lines).strip()
-    return None
-
-
-def _render_remote_traceback(remote_exception, remote_traceback):
-    if remote_exception:
-        qualname, _, message = remote_exception.partition(": ")
-        exc_type = type(qualname, (Exception,), {})
-    else:
-        exc_type, message = Exception, ""
-
-    return rich.traceback.Traceback.from_exception(
-        exc_type,
-        exc_type(message),
-        remote_traceback,
-    )
-
-
 def _check_latest_version():
     from packaging.version import parse
     from rich.panel import Panel
@@ -169,10 +122,8 @@ def _check_latest_version():
 
 def main(argv=None) -> int:
     import grpc
-    from isolate.connections.common import ExceptionDeserializationError
 
     from fal.api import FalSerializationError, UserFunctionException
-    from fal.sdk import RemoteExceptionDeserializationError
 
     _check_latest_version()
 
@@ -184,31 +135,13 @@ def main(argv=None) -> int:
             ret = args.func(args)
     except (UserFunctionException, FalSerializationError) as _exc:
         cause = _exc.__cause__
-
-        if (
-            isinstance(_exc, FalSerializationError)
-            and isinstance(cause, ExceptionDeserializationError)
-            and cause.original_traceback is not None
-        ):
-            # Keep the runner error separate from local deserialization failure.
-            stringized_traceback = None
-            if isinstance(cause, RemoteExceptionDeserializationError):
-                stringized_traceback = cause.stringized_traceback
-            remote_exception = _remote_exception_summary(stringized_traceback)
-            console.print(
-                "[bold]The application raised this error on the runner:[/bold]"
-            )
-            console.print(
-                _render_remote_traceback(remote_exception, cause.original_traceback)
-            )
-        else:
-            exc: BaseException = cause or _exc
-            tb = rich.traceback.Traceback.from_exception(
-                type(exc),
-                exc,
-                exc.__traceback__,
-            )
-            console.print(tb)
+        exc: BaseException = cause or _exc
+        tb = rich.traceback.Traceback.from_exception(
+            type(exc),
+            exc,
+            exc.__traceback__,
+        )
+        console.print(tb)
 
         if isinstance(_exc, UserFunctionException):
             msg = "Unhandled user exception"
