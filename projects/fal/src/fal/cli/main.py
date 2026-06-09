@@ -26,6 +26,8 @@ from . import (
 from .debug import debugtools, get_debug_parser
 from .parser import FalParser, FalParserExit
 
+_CHECK_UPDATES_CONFIG_KEY = "check_updates"
+
 
 def _get_main_parser() -> argparse.ArgumentParser:
     parents = [get_debug_parser()]
@@ -81,12 +83,37 @@ def _print_error(msg):
     console.print(f"{get_cross_icon(console)} {msg}")
 
 
+def _get_check_updates_config() -> bool:
+    from pydantic import BaseModel
+
+    from fal.config import Config
+
+    class CheckUpdatesConfig(BaseModel):
+        check_updates: bool = True
+
+    try:
+        config = Config()
+        raw_config = {}
+        value = config.get_global(_CHECK_UPDATES_CONFIG_KEY)
+        if value is not None:
+            raw_config[_CHECK_UPDATES_CONFIG_KEY] = value
+
+        check_updates_config = CheckUpdatesConfig(**raw_config)
+    except (OSError, ValueError):
+        check_updates_config = CheckUpdatesConfig()
+
+    return check_updates_config.check_updates
+
+
 def _check_latest_version():
     from packaging.version import parse
     from rich.panel import Panel
     from rich.text import Text
 
     from fal._version import get_latest_version, version_tuple
+
+    if not _get_check_updates_config():
+        return
 
     latest_version = get_latest_version()
     parsed = parse(latest_version)
@@ -97,10 +124,10 @@ def _check_latest_version():
         if "dev" in str(version_tuple[3]):
             return
 
-    if latest_version_tuple <= version_tuple:
+    if not console.is_terminal:
         return
 
-    if not console.is_terminal:
+    if latest_version_tuple <= version_tuple:
         return
 
     line1 = Text.assemble(
