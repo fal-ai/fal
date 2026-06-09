@@ -379,6 +379,8 @@ message RegisterApplicationRequest {
     // When set, the server may use the referenced environment directly. If both
     // `environments` and `env_id` are provided, the server validates they agree.
     optional string env_id = 25;
+    // App-level default retry config
+    optional string retry_config = 26;
 }
 
 message RegisterApplicationResultType {
