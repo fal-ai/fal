@@ -138,6 +138,28 @@ def _extract_wrapped_app_class(loaded):
     return loaded.function.raw_func.__closure__[cls_index].cell_contents
 
 
+def test_load_function_from_auto_finds_single_fal_function(tmp_path):
+    app_file = tmp_path / "app.py"
+    app_file.write_text(
+        "import fal\n"
+        "\n"
+        "@fal.function()\n"
+        "def predict():\n"
+        "    return {'ok': True}\n"
+    )
+
+    client = SyncServerlessClient(host="api.alpha.fal.ai")
+    host = client._create_host(local_file_path=str(app_file))
+
+    loaded = load_function_from(host, str(app_file))
+
+    assert loaded.class_name == "predict"
+    assert loaded.app_name == "predict"
+    assert loaded.app_auth is None
+    assert loaded.function.raw_func is not None
+    assert loaded.function.raw_func() == {"ok": True}
+
+
 def test_load_function_from_applies_toml_app_files_for_fal_app(tmp_path):
     app_file = tmp_path / "app.py"
     app_file.write_text(

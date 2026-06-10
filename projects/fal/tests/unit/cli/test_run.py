@@ -21,6 +21,12 @@ def test_run():
     assert args.exposed_metrics_port is None
 
 
+def test_run_with_python_file_without_function_name():
+    args = parse_args(["run", "a.py"])
+    assert args.func == _run
+    assert args.func_ref == ("a.py", None)
+
+
 def test_run_with_env():
     args = parse_args(["run", "/my/path.py::myfunc", "--env", "dev"])
     assert args.func == _run
