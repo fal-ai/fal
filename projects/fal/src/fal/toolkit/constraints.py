@@ -8,7 +8,9 @@ from typing import Any, Optional, TypedDict
 _NON_SCHEMA_FIELDS = {"auto_fix"}
 
 
-def to_xfal(config: Any) -> dict:
+def to_xfal(
+    config: ImageSizeConstraints | ImageValidationConfig | VideoValidationConfig,
+) -> dict[str, Any]:
     """Return a config's set (non-None) limits as the ``x-fal`` schema payload."""
     return {
         key: value
