@@ -3,9 +3,9 @@ from __future__ import annotations
 import dataclasses
 from typing import Any, Optional, TypedDict
 
-# Config fields that describe runtime behavior rather than documented limits, and
-# so are excluded from the ``x-fal`` schema extension.
-_NON_SCHEMA_FIELDS = {"auto_fix"}
+# Config fields that describe runtime behavior (download/processing) rather than
+# client-validatable limits, and so are excluded from the ``x-fal`` schema extension.
+_NON_SCHEMA_FIELDS = {"auto_fix", "timeout"}
 
 
 def to_xfal(
