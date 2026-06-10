@@ -68,17 +68,27 @@ def get_image_size(source: ImageSizeInput) -> ImageSize:
 
 
 @wraps(Field)
-def ImageSizeField(*args, constraints: Optional[ImageSizeConstraints] = None, **kwargs):
+def ImageSizeField(
+    *args,
+    constraints: Optional[ImageSizeConstraints] = None,
+    ui: Optional[dict] = None,
+    **kwargs,
+):
     """A ``Field`` for an ``image_size`` input that documents its size limits.
 
     Pass ``constraints`` to emit the model's size envelope under the ``x-fal``
-    schema extension; all other arguments are forwarded to ``Field``.
+    schema extension, and ``ui`` for UI metadata (e.g. ``{"important": True}``);
+    all other arguments are forwarded to ``Field``. ``ui`` is taken as an explicit
+    argument (rather than a passthrough kwarg) so it is not dropped when an
+    explicit ``json_schema_extra`` is also emitted on Pydantic v2.
     """
     fal_extra: dict = {}
     if constraints is not None:
         data = to_xfal(constraints)
         if data:
             fal_extra["x-fal"] = data
+    if ui:
+        fal_extra["ui"] = ui
 
     if IS_PYDANTIC_V2:
         json_schema_extra = kwargs.pop("json_schema_extra", None) or {}
