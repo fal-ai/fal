@@ -5,11 +5,11 @@ from typing import Any, Optional, TypedDict
 
 # Runtime settings (download/processing), not client-checkable limits, so they
 # are never emitted in the ``x-fal`` schema extension.
-_NON_SCHEMA_FIELDS = {"auto_fix", "timeout"}
+_NON_SCHEMA_FIELDS = {"timeout"}
 
 
 def to_xfal(
-    config: ImageSizeConstraints | ImageValidationConfig | VideoValidationConfig,
+    config: ImageSizeConstraints | ImageValidationConfig,
 ) -> dict[str, Any]:
     """Return a config's set (non-None) limits as the ``x-fal`` schema payload."""
     return {
@@ -82,45 +82,3 @@ class ImageValidationConfig:
 
     def __post_init__(self) -> None:
         _validate_aspect_ratio_pair(self.min_aspect_ratio, self.max_aspect_ratio)
-
-
-class VideoValidationOptions(TypedDict, total=False):
-    """Validation options accepted by input-video helpers."""
-
-    max_file_size: Optional[int]
-    min_width: Optional[int]
-    min_height: Optional[int]
-    max_width: Optional[int]
-    max_height: Optional[int]
-    min_aspect_ratio: Optional[float]
-    max_aspect_ratio: Optional[float]
-    min_frames: Optional[int]
-    max_frames: Optional[int]
-    min_duration: Optional[float]
-    max_duration: Optional[float]
-    min_fps: Optional[float]
-    max_fps: Optional[float]
-    timeout: Optional[float]
-    auto_fix: bool
-
-
-@dataclasses.dataclass(frozen=True)
-class VideoValidationConfig:
-    """Limits applied to an input video. Surfaced in the schema (``x-fal``); the
-    SDK does not enforce them."""
-
-    max_file_size: Optional[int] = None
-    min_width: Optional[int] = None
-    min_height: Optional[int] = None
-    max_width: Optional[int] = None
-    max_height: Optional[int] = None
-    min_aspect_ratio: Optional[float] = None
-    max_aspect_ratio: Optional[float] = None
-    min_frames: Optional[int] = None
-    max_frames: Optional[int] = None
-    min_duration: Optional[float] = None
-    max_duration: Optional[float] = None
-    min_fps: Optional[float] = None
-    max_fps: Optional[float] = None
-    timeout: float = 30.0
-    auto_fix: bool = True

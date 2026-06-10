@@ -11,8 +11,6 @@ from fal.toolkit.constraints import (
     ImageSizeConstraints,
     ImageValidationConfig,
     ImageValidationOptions,
-    VideoValidationConfig,
-    VideoValidationOptions,
     to_xfal,
 )
 from fal.toolkit.exceptions import (
@@ -56,8 +54,6 @@ __all__ = [
     "ImageSizeInput",
     "ImageValidationConfig",
     "ImageValidationOptions",
-    "VideoValidationConfig",
-    "VideoValidationOptions",
     "to_xfal",
     "KVStore",
     "Video",
