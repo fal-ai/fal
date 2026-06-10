@@ -3,20 +3,29 @@ from __future__ import annotations
 import dataclasses
 from typing import Any, Optional, TypedDict
 
-# Config fields that describe runtime behavior (download/processing) rather than
-# client-validatable limits, and so are excluded from the ``x-fal`` schema extension.
-_NON_SCHEMA_FIELDS = {"auto_fix", "timeout"}
+# Processing toggles that are never documented as limits.
+_NON_SCHEMA_FIELDS = {"auto_fix"}
+# Runtime settings that ride along with real limits but never stand alone, so a
+# defaults-only config emits nothing (mirrors the registry's gated emission).
+_PASSIVE_FIELDS = {"timeout"}
 
 
 def to_xfal(
     config: ImageSizeConstraints | ImageValidationConfig | VideoValidationConfig,
 ) -> dict[str, Any]:
-    """Return a config's set (non-None) limits as the ``x-fal`` schema payload."""
-    return {
+    """Return a config's set (non-None) limits as the ``x-fal`` schema payload.
+
+    ``auto_fix`` is always omitted; ``timeout`` is included only alongside real
+    limits, so a config that set no limits emits nothing.
+    """
+    values = {
         key: value
         for key, value in dataclasses.asdict(config).items()
         if value is not None and key not in _NON_SCHEMA_FIELDS
     }
+    if all(key in _PASSIVE_FIELDS for key in values):
+        return {}
+    return values
 
 
 def _validate_aspect_ratio_pair(
