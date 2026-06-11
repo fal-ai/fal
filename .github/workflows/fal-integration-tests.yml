@@ -76,4 +76,12 @@ jobs:
           FAL_GRPC_HOST: api.alpha.fal.ai
           FAL_REST_HOST: rest.fal.ai
           FAL_RUN_HOST: fal.run
-        run: pytest -n auto -v projects/fal/tests/integration
+        run: pytest -n auto -v projects/fal/tests/integration -k "not test_regular_function_in_a_container_with_custom_image"
+
+      - name: Run custom container image integration test
+        env:
+          FAL_KEY: ${{ secrets.FAL_KEY_PROD }}
+          FAL_GRPC_HOST: api.alpha.fal.ai
+          FAL_REST_HOST: rest.fal.ai
+          FAL_RUN_HOST: fal.run
+        run: pytest -v projects/fal/tests/integration/test_stability.py::test_regular_function_in_a_container_with_custom_image

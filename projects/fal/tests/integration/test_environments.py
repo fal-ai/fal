@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 import uuid
 from datetime import datetime, timezone
 
@@ -26,6 +27,25 @@ def client():
     return SyncServerlessClient(host=host, api_key=api_key)
 
 
+def _wait_for_environment(
+    client: SyncServerlessClient,
+    name: str,
+    *,
+    present: bool,
+    timeout: int = 30,
+):
+    deadline = time.monotonic() + timeout
+    environments = []
+    while True:
+        environments = client.environments.list()
+        found = next((env for env in environments if env.name == name), None)
+        if (found is not None) == present:
+            return found, environments
+        if time.monotonic() >= deadline:
+            return found, environments
+        time.sleep(1)
+
+
 @pytest.mark.flaky(max_runs=3)
 def test_environment_lifecycle(client: SyncServerlessClient, test_env_name: str):
     """Test creating, listing, and deleting environments."""
@@ -39,12 +59,15 @@ def test_environment_lifecycle(client: SyncServerlessClient, test_env_name: str)
 
     try:
         # List environments - verify our env exists
-        environments = client.environments.list()
+        found, environments = _wait_for_environment(
+            client, test_env_name, present=True
+        )
         env_names = [e.name for e in environments]
         assert test_env_name in env_names
 
         # Find our environment in the list
-        our_env = next(e for e in environments if e.name == test_env_name)
+        our_env = found
+        assert our_env is not None
         assert our_env.description == "Integration test environment"
 
     finally:
@@ -52,7 +75,9 @@ def test_environment_lifecycle(client: SyncServerlessClient, test_env_name: str)
         client.environments.delete(test_env_name)
 
         # Verify deletion
-        environments_after = client.environments.list()
+        _, environments_after = _wait_for_environment(
+            client, test_env_name, present=False
+        )
         env_names_after = [e.name for e in environments_after]
         assert test_env_name not in env_names_after
 
@@ -64,6 +89,7 @@ def test_environment_with_secrets(client: SyncServerlessClient, test_env_name: s
 
     # Create test environment
     client.environments.create(test_env_name, description="Test env for secrets")
+    _wait_for_environment(client, test_env_name, present=True)
 
     try:
         # Set a secret in the test environment
@@ -85,7 +111,7 @@ def test_environment_with_secrets(client: SyncServerlessClient, test_env_name: s
         client.environments.delete(test_env_name)
 
         # Verify the environment is gone
-        environments = client.environments.list()
+        _, environments = _wait_for_environment(client, test_env_name, present=False)
         assert test_env_name not in [e.name for e in environments]
 
     except Exception:
