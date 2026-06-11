@@ -4,7 +4,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from fal import App, endpoint
-from fal.api import FalServerlessError, IsolatedFunction, Options
+from fal.api import (
+    FalServerlessError,
+    IsolatedFunction,
+    Options,
+    UserFunctionException,
+)
 from fal.api.api import _check_python_version_match
 from fal.api.run import run as run_api
 
@@ -61,6 +66,32 @@ def test_check_python_version_match_checks_setup_function_in_entrypoint(monkeypa
 
 class _FakeHost:
     pass
+
+
+def test_run_reraises_synthetic_remote_exception_for_deserialization_error():
+    remote_error = type(
+        "RemoteOnlyError",
+        (Exception,),
+        {"__module__": "builtins"},
+    )("remote message")
+    user_error = UserFunctionException("Uncaught user function exception")
+    user_error.__cause__ = remote_error
+
+    host = MagicMock()
+    host.run.side_effect = user_error
+    iso = IsolatedFunction(
+        host=host,
+        raw_func=lambda: None,
+        options=Options(),
+    )
+
+    with pytest.raises(Exception) as exc_info:
+        run_api(iso)
+
+    assert type(exc_info.value).__name__ == "RemoteOnlyError"
+    assert str(exc_info.value) == "remote message"
+    assert not isinstance(exc_info.value, UserFunctionException)
+    assert exc_info.value.__cause__ is None
 
 
 def test_options_get_exposed_port_prefers_configured_port_for_serve_true():
