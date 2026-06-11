@@ -3,7 +3,7 @@
 import grpc
 import warnings
 
-from isolate.server.health import health_pb2 as health__pb2
+from isolate_proto.health import health_pb2 as health__pb2
 
 GRPC_GENERATED_VERSION = '1.64.0'
 GRPC_VERSION = grpc.__version__

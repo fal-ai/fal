@@ -62,6 +62,14 @@ service IsolateController {
     // Build (or warm the cache for) an environment without running anything in it.
     // Streams build logs and terminal status; reuses the same caches as Run/RegisterApplication.
     rpc BuildEnvironment (BuildEnvironmentRequest) returns (stream BuildEnvironmentResult) {}
+    // Update application canary config
+    rpc UpdateCanary(UpdateCanaryRequest) returns (UpdateCanaryResponse) {}
+    // Rollback (cancel) application canary
+    rpc RollbackCanary(RollbackCanaryRequest) returns (RollbackCanaryResponse) {}
+    // Commit (roll forward) application canary
+    rpc CommitCanary(CommitCanaryRequest) returns (CommitCanaryResponse) {}
+    // Get application canary info
+    rpc CanaryInfo(CanaryInfoRequest) returns (CanaryInfoResponse) {}
 }
 
 message HostedMap {
@@ -290,6 +298,7 @@ enum ApplicationAuthMode {
 enum DeploymentStrategy {
     RECREATE = 0;
     ROLLING = 1;
+    CANARY = 2;
 }
 
 message ApplicationHealthCheckConfig {
@@ -511,6 +520,7 @@ message AliasInfo {
     optional int32 scaling_delay_seconds = 15;
     optional string environment_name = 16;
     bool is_rolling = 17;
+    optional CanaryInfo canary = 18;
 }
 
 message SetSecretRequest {
@@ -595,7 +605,6 @@ message StopRunnerResponse {
     // Empty. For future use.
 }
 
-
 message KillRunnerRequest {
     string runner_id = 1;
 }
@@ -662,4 +671,45 @@ message DeleteEnvironmentRequest {
 
 message DeleteEnvironmentResponse {
     // Empty. For future use.
+}
+
+message CanaryInfo {
+    optional bool active = 1;
+    optional string revision = 2;
+    optional uint32 ratio = 3; // 0-100
+    optional uint32 runners = 4;
+}
+
+message UpdateCanaryRequest {
+    string alias = 1;
+    uint32 ratio = 2; // 0-100
+}
+
+message UpdateCanaryResponse {
+    CanaryInfo info = 1;
+}
+
+message RollbackCanaryRequest {
+    string alias = 1;
+}
+
+message RollbackCanaryResponse {
+    AliasInfo alias = 1;
+}
+
+message CommitCanaryRequest {
+    string alias = 1;
+    DeploymentStrategy strategy = 2;
+}
+
+message CommitCanaryResponse {
+    AliasInfo alias = 1;
+}
+
+message CanaryInfoRequest {
+    string alias = 1;
+}
+
+message CanaryInfoResponse {
+    CanaryInfo info = 1;
 }

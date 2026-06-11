@@ -220,3 +220,32 @@ def test_register_application_private_logs_presence():
     )
     assert request_with_private_logs_true.HasField("private_logs") is True
     assert request_with_private_logs_true.private_logs is True
+
+
+def test_canary_fields_and_messages():
+    canary = isolate_proto.CanaryInfoResponse(
+        active=True,
+        revision="rev-123",
+        ratio=25,
+        runners=3,
+    )
+    assert canary.HasField("active") is True
+    assert canary.HasField("revision") is True
+    assert canary.ratio == 25
+
+    alias = isolate_proto.AliasInfo(alias="my-app", canary=canary)
+    assert alias.HasField("canary") is True
+    assert alias.canary.revision == "rev-123"
+
+    update = isolate_proto.UpdateCanaryRequest(alias="my-app", ratio=50)
+    assert update.alias == "my-app"
+    assert update.ratio == 50
+
+    commit = isolate_proto.CommitCanaryRequest(
+        alias="my-app",
+        strategy=isolate_proto.CANARY,
+    )
+    assert commit.strategy == isolate_proto.CANARY
+
+    response = isolate_proto.UpdateCanaryResponse(info=canary)
+    assert response.info.active is True

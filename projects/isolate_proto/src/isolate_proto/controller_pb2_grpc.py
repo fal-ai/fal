@@ -164,6 +164,26 @@ class IsolateControllerStub(object):
                 request_serializer=controller__pb2.BuildEnvironmentRequest.SerializeToString,
                 response_deserializer=controller__pb2.BuildEnvironmentResult.FromString,
                 _registered_method=True)
+        self.UpdateCanary = channel.unary_unary(
+                '/controller.IsolateController/UpdateCanary',
+                request_serializer=controller__pb2.UpdateCanaryRequest.SerializeToString,
+                response_deserializer=controller__pb2.UpdateCanaryResponse.FromString,
+                _registered_method=True)
+        self.RollbackCanary = channel.unary_unary(
+                '/controller.IsolateController/RollbackCanary',
+                request_serializer=controller__pb2.RollbackCanaryRequest.SerializeToString,
+                response_deserializer=controller__pb2.RollbackCanaryResponse.FromString,
+                _registered_method=True)
+        self.CommitCanary = channel.unary_unary(
+                '/controller.IsolateController/CommitCanary',
+                request_serializer=controller__pb2.CommitCanaryRequest.SerializeToString,
+                response_deserializer=controller__pb2.CommitCanaryResponse.FromString,
+                _registered_method=True)
+        self.CanaryInfo = channel.unary_unary(
+                '/controller.IsolateController/CanaryInfo',
+                request_serializer=controller__pb2.CanaryInfoRequest.SerializeToString,
+                response_deserializer=controller__pb2.CanaryInfoResponse.FromString,
+                _registered_method=True)
 
 
 class IsolateControllerServicer(object):
@@ -348,6 +368,34 @@ class IsolateControllerServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def UpdateCanary(self, request, context):
+        """Update application canary config
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RollbackCanary(self, request, context):
+        """Rollback (cancel) application canary
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CommitCanary(self, request, context):
+        """Commit (roll forward) application canary
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CanaryInfo(self, request, context):
+        """Get application canary info
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_IsolateControllerServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -475,6 +523,26 @@ def add_IsolateControllerServicer_to_server(servicer, server):
                     servicer.BuildEnvironment,
                     request_deserializer=controller__pb2.BuildEnvironmentRequest.FromString,
                     response_serializer=controller__pb2.BuildEnvironmentResult.SerializeToString,
+            ),
+            'UpdateCanary': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdateCanary,
+                    request_deserializer=controller__pb2.UpdateCanaryRequest.FromString,
+                    response_serializer=controller__pb2.UpdateCanaryResponse.SerializeToString,
+            ),
+            'RollbackCanary': grpc.unary_unary_rpc_method_handler(
+                    servicer.RollbackCanary,
+                    request_deserializer=controller__pb2.RollbackCanaryRequest.FromString,
+                    response_serializer=controller__pb2.RollbackCanaryResponse.SerializeToString,
+            ),
+            'CommitCanary': grpc.unary_unary_rpc_method_handler(
+                    servicer.CommitCanary,
+                    request_deserializer=controller__pb2.CommitCanaryRequest.FromString,
+                    response_serializer=controller__pb2.CommitCanaryResponse.SerializeToString,
+            ),
+            'CanaryInfo': grpc.unary_unary_rpc_method_handler(
+                    servicer.CanaryInfo,
+                    request_deserializer=controller__pb2.CanaryInfoRequest.FromString,
+                    response_serializer=controller__pb2.CanaryInfoResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -1152,6 +1220,114 @@ class IsolateController(object):
             '/controller.IsolateController/BuildEnvironment',
             controller__pb2.BuildEnvironmentRequest.SerializeToString,
             controller__pb2.BuildEnvironmentResult.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UpdateCanary(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/controller.IsolateController/UpdateCanary',
+            controller__pb2.UpdateCanaryRequest.SerializeToString,
+            controller__pb2.UpdateCanaryResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RollbackCanary(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/controller.IsolateController/RollbackCanary',
+            controller__pb2.RollbackCanaryRequest.SerializeToString,
+            controller__pb2.RollbackCanaryResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CommitCanary(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/controller.IsolateController/CommitCanary',
+            controller__pb2.CommitCanaryRequest.SerializeToString,
+            controller__pb2.CommitCanaryResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CanaryInfo(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/controller.IsolateController/CanaryInfo',
+            controller__pb2.CanaryInfoRequest.SerializeToString,
+            controller__pb2.CanaryInfoResponse.FromString,
             options,
             channel_credentials,
             insecure,

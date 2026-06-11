@@ -47,11 +47,13 @@ class _DeploymentStrategyEnumTypeWrapper(google.protobuf.internal.enum_type_wrap
     DESCRIPTOR: google.protobuf.descriptor.EnumDescriptor
     RECREATE: _DeploymentStrategy.ValueType  # 0
     ROLLING: _DeploymentStrategy.ValueType  # 1
+    CANARY: _DeploymentStrategy.ValueType  # 2
 
 class DeploymentStrategy(_DeploymentStrategy, metaclass=_DeploymentStrategyEnumTypeWrapper): ...
 
 RECREATE: DeploymentStrategy.ValueType  # 0
 ROLLING: DeploymentStrategy.ValueType  # 1
+CANARY: DeploymentStrategy.ValueType  # 2
 global___DeploymentStrategy = DeploymentStrategy
 
 class _RetryCondition:
@@ -1429,6 +1431,7 @@ class AliasInfo(google.protobuf.message.Message):
     SCALING_DELAY_SECONDS_FIELD_NUMBER: builtins.int
     ENVIRONMENT_NAME_FIELD_NUMBER: builtins.int
     IS_ROLLING_FIELD_NUMBER: builtins.int
+    CANARY_FIELD_NUMBER: builtins.int
     alias: builtins.str
     revision: builtins.str
     auth_mode: global___ApplicationAuthMode.ValueType
@@ -1448,6 +1451,8 @@ class AliasInfo(google.protobuf.message.Message):
     scaling_delay_seconds: builtins.int
     environment_name: builtins.str
     is_rolling: builtins.bool
+    @property
+    def canary(self) -> global___CanaryInfoResponse: ...
     def __init__(
         self,
         *,
@@ -1468,9 +1473,12 @@ class AliasInfo(google.protobuf.message.Message):
         scaling_delay_seconds: builtins.int | None = ...,
         environment_name: builtins.str | None = ...,
         is_rolling: builtins.bool = ...,
+        canary: global___CanaryInfoResponse | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing_extensions.Literal["_concurrency_buffer", b"_concurrency_buffer", "_concurrency_buffer_perc", b"_concurrency_buffer_perc", "_environment_name", b"_environment_name", "_request_timeout", b"_request_timeout", "_scaling_delay_seconds", b"_scaling_delay_seconds", "_startup_timeout", b"_startup_timeout", "concurrency_buffer", b"concurrency_buffer", "concurrency_buffer_perc", b"concurrency_buffer_perc", "environment_name", b"environment_name", "request_timeout", b"request_timeout", "scaling_delay_seconds", b"scaling_delay_seconds", "startup_timeout", b"startup_timeout"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing_extensions.Literal["_concurrency_buffer", b"_concurrency_buffer", "_concurrency_buffer_perc", b"_concurrency_buffer_perc", "_environment_name", b"_environment_name", "_request_timeout", b"_request_timeout", "_scaling_delay_seconds", b"_scaling_delay_seconds", "_startup_timeout", b"_startup_timeout", "active_runners", b"active_runners", "alias", b"alias", "auth_mode", b"auth_mode", "concurrency_buffer", b"concurrency_buffer", "concurrency_buffer_perc", b"concurrency_buffer_perc", "environment_name", b"environment_name", "is_rolling", b"is_rolling", "keep_alive", b"keep_alive", "machine_types", b"machine_types", "max_concurrency", b"max_concurrency", "max_multiplexing", b"max_multiplexing", "min_concurrency", b"min_concurrency", "request_timeout", b"request_timeout", "revision", b"revision", "scaling_delay_seconds", b"scaling_delay_seconds", "startup_timeout", b"startup_timeout", "valid_regions", b"valid_regions"]) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["_canary", b"_canary", "_concurrency_buffer", b"_concurrency_buffer", "_concurrency_buffer_perc", b"_concurrency_buffer_perc", "_environment_name", b"_environment_name", "_request_timeout", b"_request_timeout", "_scaling_delay_seconds", b"_scaling_delay_seconds", "_startup_timeout", b"_startup_timeout", "canary", b"canary", "concurrency_buffer", b"concurrency_buffer", "concurrency_buffer_perc", b"concurrency_buffer_perc", "environment_name", b"environment_name", "request_timeout", b"request_timeout", "scaling_delay_seconds", b"scaling_delay_seconds", "startup_timeout", b"startup_timeout"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["_canary", b"_canary", "_concurrency_buffer", b"_concurrency_buffer", "_concurrency_buffer_perc", b"_concurrency_buffer_perc", "_environment_name", b"_environment_name", "_request_timeout", b"_request_timeout", "_scaling_delay_seconds", b"_scaling_delay_seconds", "_startup_timeout", b"_startup_timeout", "active_runners", b"active_runners", "alias", b"alias", "auth_mode", b"auth_mode", "canary", b"canary", "concurrency_buffer", b"concurrency_buffer", "concurrency_buffer_perc", b"concurrency_buffer_perc", "environment_name", b"environment_name", "is_rolling", b"is_rolling", "keep_alive", b"keep_alive", "machine_types", b"machine_types", "max_concurrency", b"max_concurrency", "max_multiplexing", b"max_multiplexing", "min_concurrency", b"min_concurrency", "request_timeout", b"request_timeout", "revision", b"revision", "scaling_delay_seconds", b"scaling_delay_seconds", "startup_timeout", b"startup_timeout", "valid_regions", b"valid_regions"]) -> None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_canary", b"_canary"]) -> typing_extensions.Literal["canary"] | None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_concurrency_buffer", b"_concurrency_buffer"]) -> typing_extensions.Literal["concurrency_buffer"] | None: ...
     @typing.overload
@@ -2018,3 +2026,155 @@ class DeleteEnvironmentResponse(google.protobuf.message.Message):
     ) -> None: ...
 
 global___DeleteEnvironmentResponse = DeleteEnvironmentResponse
+
+@typing_extensions.final
+class UpdateCanaryRequest(google.protobuf.message.Message):
+    DESCRIPTOR: google.protobuf.descriptor.Descriptor
+
+    ALIAS_FIELD_NUMBER: builtins.int
+    RATIO_FIELD_NUMBER: builtins.int
+    alias: builtins.str
+    ratio: builtins.int
+    """0-100"""
+    def __init__(
+        self,
+        *,
+        alias: builtins.str = ...,
+        ratio: builtins.int = ...,
+    ) -> None: ...
+    def ClearField(self, field_name: typing_extensions.Literal["alias", b"alias", "ratio", b"ratio"]) -> None: ...
+
+global___UpdateCanaryRequest = UpdateCanaryRequest
+
+@typing_extensions.final
+class UpdateCanaryResponse(google.protobuf.message.Message):
+    DESCRIPTOR: google.protobuf.descriptor.Descriptor
+
+    INFO_FIELD_NUMBER: builtins.int
+    @property
+    def info(self) -> global___CanaryInfoResponse: ...
+    def __init__(
+        self,
+        *,
+        info: global___CanaryInfoResponse | None = ...,
+    ) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["info", b"info"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["info", b"info"]) -> None: ...
+
+global___UpdateCanaryResponse = UpdateCanaryResponse
+
+@typing_extensions.final
+class RollbackCanaryRequest(google.protobuf.message.Message):
+    DESCRIPTOR: google.protobuf.descriptor.Descriptor
+
+    ALIAS_FIELD_NUMBER: builtins.int
+    alias: builtins.str
+    def __init__(
+        self,
+        *,
+        alias: builtins.str = ...,
+    ) -> None: ...
+    def ClearField(self, field_name: typing_extensions.Literal["alias", b"alias"]) -> None: ...
+
+global___RollbackCanaryRequest = RollbackCanaryRequest
+
+@typing_extensions.final
+class RollbackCanaryResponse(google.protobuf.message.Message):
+    DESCRIPTOR: google.protobuf.descriptor.Descriptor
+
+    ALIAS_FIELD_NUMBER: builtins.int
+    @property
+    def alias(self) -> global___AliasInfo: ...
+    def __init__(
+        self,
+        *,
+        alias: global___AliasInfo | None = ...,
+    ) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["alias", b"alias"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["alias", b"alias"]) -> None: ...
+
+global___RollbackCanaryResponse = RollbackCanaryResponse
+
+@typing_extensions.final
+class CommitCanaryRequest(google.protobuf.message.Message):
+    DESCRIPTOR: google.protobuf.descriptor.Descriptor
+
+    ALIAS_FIELD_NUMBER: builtins.int
+    STRATEGY_FIELD_NUMBER: builtins.int
+    alias: builtins.str
+    strategy: global___DeploymentStrategy.ValueType
+    def __init__(
+        self,
+        *,
+        alias: builtins.str = ...,
+        strategy: global___DeploymentStrategy.ValueType = ...,
+    ) -> None: ...
+    def ClearField(self, field_name: typing_extensions.Literal["alias", b"alias", "strategy", b"strategy"]) -> None: ...
+
+global___CommitCanaryRequest = CommitCanaryRequest
+
+@typing_extensions.final
+class CommitCanaryResponse(google.protobuf.message.Message):
+    DESCRIPTOR: google.protobuf.descriptor.Descriptor
+
+    ALIAS_FIELD_NUMBER: builtins.int
+    @property
+    def alias(self) -> global___AliasInfo: ...
+    def __init__(
+        self,
+        *,
+        alias: global___AliasInfo | None = ...,
+    ) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["alias", b"alias"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["alias", b"alias"]) -> None: ...
+
+global___CommitCanaryResponse = CommitCanaryResponse
+
+@typing_extensions.final
+class CanaryInfoRequest(google.protobuf.message.Message):
+    DESCRIPTOR: google.protobuf.descriptor.Descriptor
+
+    ALIAS_FIELD_NUMBER: builtins.int
+    alias: builtins.str
+    def __init__(
+        self,
+        *,
+        alias: builtins.str = ...,
+    ) -> None: ...
+    def ClearField(self, field_name: typing_extensions.Literal["alias", b"alias"]) -> None: ...
+
+global___CanaryInfoRequest = CanaryInfoRequest
+
+@typing_extensions.final
+class CanaryInfoResponse(google.protobuf.message.Message):
+    DESCRIPTOR: google.protobuf.descriptor.Descriptor
+
+    ACTIVE_FIELD_NUMBER: builtins.int
+    REVISION_FIELD_NUMBER: builtins.int
+    RATIO_FIELD_NUMBER: builtins.int
+    RUNNERS_FIELD_NUMBER: builtins.int
+    active: builtins.bool
+    revision: builtins.str
+    ratio: builtins.int
+    """0-100"""
+    runners: builtins.int
+    def __init__(
+        self,
+        *,
+        active: builtins.bool | None = ...,
+        revision: builtins.str | None = ...,
+        ratio: builtins.int | None = ...,
+        runners: builtins.int | None = ...,
+    ) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["_active", b"_active", "_ratio", b"_ratio", "_revision", b"_revision", "_runners", b"_runners", "active", b"active", "ratio", b"ratio", "revision", b"revision", "runners", b"runners"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["_active", b"_active", "_ratio", b"_ratio", "_revision", b"_revision", "_runners", b"_runners", "active", b"active", "ratio", b"ratio", "revision", b"revision", "runners", b"runners"]) -> None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_active", b"_active"]) -> typing_extensions.Literal["active"] | None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_ratio", b"_ratio"]) -> typing_extensions.Literal["ratio"] | None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_revision", b"_revision"]) -> typing_extensions.Literal["revision"] | None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_runners", b"_runners"]) -> typing_extensions.Literal["runners"] | None: ...
+
+global___CanaryInfoResponse = CanaryInfoResponse
