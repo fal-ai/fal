@@ -27,7 +27,6 @@ from fal.ref import get_current_app
 from fal.toolkit.file.providers.fal import (
     FalCDNFileRepository,
     FalFileRepository,
-    FalFileRepositoryV2,
     FalFileRepositoryV3,
     InMemoryRepository,
 )
@@ -40,7 +39,6 @@ FileRepositoryFactory = Callable[[], FileRepository]
 
 BUILT_IN_REPOSITORIES: dict[RepositoryId, FileRepositoryFactory] = {
     "fal": lambda: FalFileRepository(),
-    "fal_v2": lambda: FalFileRepositoryV2(),
     "fal_v3": lambda: FalFileRepositoryV3(),
     "in_memory": lambda: InMemoryRepository(),
     "gcp_storage": lambda: GoogleStorageRepository(),
@@ -48,10 +46,30 @@ BUILT_IN_REPOSITORIES: dict[RepositoryId, FileRepositoryFactory] = {
     "cdn": lambda: FalCDNFileRepository(),
 }
 
+# Repositories that are no longer supported. The v2 fal-cdn repository
+# ("fal_v2") is transparently redirected to "fal_v3", with a DeprecationWarning,
+# for backwards compatibility. ("cdn" remains supported; it now uploads directly
+# to the v3 CDN -- see FalCDNFileRepository.)
+_DEPRECATED_REPOSITORIES: dict[str, RepositoryId] = {
+    "fal_v2": "fal_v3",
+}
+
 
 def get_builtin_repository(id: RepositoryId | FileRepository) -> FileRepository:
     if isinstance(id, FileRepository):
         return id
+
+    if id in _DEPRECATED_REPOSITORIES:
+        import warnings  # noqa: PLC0415
+
+        replacement = _DEPRECATED_REPOSITORIES[id]
+        warnings.warn(
+            f'"{id}" file repository is deprecated and no longer supported; '
+            f'using "{replacement}" instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        id = replacement
 
     if id not in BUILT_IN_REPOSITORIES.keys():
         raise ValueError(f'"{id}" is not a valid built-in file repository')
@@ -61,7 +79,7 @@ def get_builtin_repository(id: RepositoryId | FileRepository) -> FileRepository:
 get_builtin_repository.__module__ = "__main__"
 
 DEFAULT_REPOSITORY: FileRepository | RepositoryId = "fal_v3"
-FALLBACK_REPOSITORY: list[FileRepository | RepositoryId] = ["cdn", "fal"]
+FALLBACK_REPOSITORY: list[FileRepository | RepositoryId] = ["fal"]
 OBJECT_LIFECYCLE_PREFERENCE_KEY = "x-fal-object-lifecycle-preference"
 
 

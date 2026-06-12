@@ -44,7 +44,7 @@ asyncio.run(main())
 
 ## Uploading files
 
-If the model requires files as input, you can upload them directly to fal.media (our CDN) and pass the URLs to the client. Here's an example:
+If the model requires files as input, you can upload them directly to fal's CDN and pass the URLs to the client. Here's an example:
 
 ```python
 import fal_client

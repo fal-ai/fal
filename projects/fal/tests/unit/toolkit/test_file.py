@@ -10,12 +10,34 @@ import pytest
 from pydantic import BaseModel
 
 from fal.toolkit.file.file import (
+    FalCDNFileRepository,
+    FalFileRepositoryV3,
     File,
     GoogleStorageRepository,
     _get_object_lifecycle_preference_from_context,
     _try_with_fallback,
+    get_builtin_repository,
 )
 from fal.toolkit.file.types import FileData, FileRepository
+
+
+def test_deprecated_fal_v2_redirects_to_fal_v3():
+    with pytest.warns(DeprecationWarning, match="fal_v2"):
+        repo = get_builtin_repository("fal_v2")
+
+    assert isinstance(repo, FalFileRepositoryV3)
+
+
+def test_cdn_repository_is_supported_without_warning(recwarn):
+    repo = get_builtin_repository("cdn")
+
+    assert isinstance(repo, FalCDNFileRepository)
+    assert not [w for w in recwarn.list if issubclass(w.category, DeprecationWarning)]
+
+
+def test_unknown_repository_still_raises():
+    with pytest.raises(ValueError, match="not a valid built-in file repository"):
+        get_builtin_repository("does-not-exist")  # type: ignore[arg-type]
 
 
 def test_binary_content_matches():

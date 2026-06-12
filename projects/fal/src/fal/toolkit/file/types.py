@@ -29,6 +29,10 @@ class FileData:
             self.file_name = file_name
 
 
+# "fal_v2" is deprecated: the v2 fal-cdn repository has been disabled. It remains
+# in the type for backwards compatibility but is transparently redirected to
+# "fal_v3" at runtime (see fal.toolkit.file.file.get_builtin_repository).
+# "cdn" remains supported and now uploads directly to the v3 CDN.
 RepositoryId = Literal[
     "fal", "fal_v2", "fal_v3", "in_memory", "gcp_storage", "r2", "cdn"
 ]
