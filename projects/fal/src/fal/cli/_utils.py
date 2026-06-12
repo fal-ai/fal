@@ -13,6 +13,7 @@ from fal.sdk import (
     AuthModeLiteral,
     DeploymentStrategyLiteral,
     RetryConditionLiteral,
+    validate_retry_config_dict,
 )
 
 VALID_REGIONS = {
@@ -179,7 +180,7 @@ def get_app_data_from_toml(
     if skip_retry_conditions is not None:
         _validate_skip_retry_conditions(skip_retry_conditions)
     if retry_config is not None:
-        _validate_retry_config(retry_config)
+        validate_retry_config_dict(retry_config)
     if termination_grace_period_seconds is not None:
         _validate_int(
             "termination_grace_period_seconds", termination_grace_period_seconds
@@ -344,12 +345,6 @@ def _validate_skip_retry_conditions(value: Any) -> None:
             "Valid conditions are: "
             f"{', '.join(sorted(VALID_RETRY_CONDITIONS))}"
         )
-
-
-def _validate_retry_config(value: Any) -> None:
-    from fal.sdk import validate_retry_config_dict  # noqa: PLC0415
-
-    validate_retry_config_dict(value)
 
 
 def _validate_port(field_name: str, value: Any) -> None:
