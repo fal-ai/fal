@@ -32,23 +32,31 @@ _FAL_CDN_V3 = "https://v3.fal.media"
 _LEGACY_CDN_HOSTS = frozenset({"fal.media", "v2.fal.media"})
 
 
-def _warn_if_legacy_cdn_host_set() -> None:
+def _resolve_cdn_host(default: str) -> str:
+    """Resolve the CDN host from ``FAL_CDN_HOST``, falling back to ``default``.
+
+    Returns ``default`` when ``FAL_CDN_HOST`` is unset or points at a disabled
+    legacy CDN (``fal.media`` / ``v2.fal.media``) -- in the legacy case a
+    ``DeprecationWarning`` is emitted rather than uploading to a dead host. A
+    bare host (no scheme) is normalized to ``https://`` so that URL
+    construction stays valid.
+    """
     host = os.environ.get("FAL_CDN_HOST")
     if not host:
-        return
+        return default
     # urlparse needs a scheme to populate `hostname`; add one for bare hosts.
-    parsed = urlparse(host if "//" in host else f"//{host}")
+    has_scheme = "//" in host
+    parsed = urlparse(host if has_scheme else f"//{host}")
     if (parsed.hostname or "").lower() in _LEGACY_CDN_HOSTS:
         warnings.warn(
             "FAL_CDN_HOST points at the legacy fal.media/v2.fal.media CDN, which "
-            "has been disabled. Point it at the v3 CDN host "
-            "(https://v3.fal.media) or unset it.",
+            "has been disabled; falling back to the v3 CDN host. Unset "
+            "FAL_CDN_HOST or point it at a supported host.",
             DeprecationWarning,
             stacklevel=2,
         )
-
-
-_warn_if_legacy_cdn_host_set()
+        return default
+    return host if has_scheme else f"https://{host}"
 
 
 def _require_auth_credentials() -> AuthCredentials:
@@ -1087,7 +1095,7 @@ class FalCDNFileRepository(FileRepository):
 
         _object_lifecycle_headers(headers, object_lifecycle_preference)
 
-        url = os.getenv("FAL_CDN_HOST", _FAL_CDN_V3) + "/files/upload"
+        url = _resolve_cdn_host(_FAL_CDN_V3) + "/files/upload"
         request = Request(url, headers=headers, method="POST", data=file.data)
         try:
             with _maybe_retry_request(request) as response:

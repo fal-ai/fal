@@ -21,6 +21,10 @@ def _fake_retry_request(_request, **_kwargs):
     [
         (None, "https://v3.fal.media"),
         ("https://my-proxy.example.com", "https://my-proxy.example.com"),
+        # Bare host (no scheme) is normalized to https:// so the URL is valid.
+        ("my-proxy.example.com", "https://my-proxy.example.com"),
+        # A disabled legacy host falls back to the v3 default instead of failing.
+        ("https://fal.media", "https://v3.fal.media"),
     ],
 )
 def test_fal_cdn_file_repository_save_posts_to_configured_host(
@@ -382,6 +386,11 @@ def test_internal_multipart_upload_v3_auth_headers_include_cdn_token():
     assert headers["User-Agent"] == providers.USER_AGENT
 
 
+def test_resolve_cdn_host_defaults_when_unset(monkeypatch):
+    monkeypatch.delenv("FAL_CDN_HOST", raising=False)
+    assert providers._resolve_cdn_host("https://v3.fal.media") == "https://v3.fal.media"
+
+
 @pytest.mark.parametrize(
     "host",
     [
@@ -392,23 +401,27 @@ def test_internal_multipart_upload_v3_auth_headers_include_cdn_token():
         "http://v2.fal.media:443",
     ],
 )
-def test_fal_cdn_host_env_warns_for_legacy_hosts(monkeypatch, host):
+def test_resolve_cdn_host_remaps_legacy_with_warning(monkeypatch, host):
+    # A disabled legacy host must fall back to the v3 default (not be used).
     monkeypatch.setenv("FAL_CDN_HOST", host)
     with pytest.warns(DeprecationWarning, match="FAL_CDN_HOST"):
-        providers._warn_if_legacy_cdn_host_set()
+        assert (
+            providers._resolve_cdn_host("https://v3.fal.media")
+            == "https://v3.fal.media"
+        )
 
 
 @pytest.mark.parametrize(
-    "host",
-    ["https://v3.fal.media", "https://my-proxy.example.com", "my-proxy.example.com"],
+    "host, expected",
+    [
+        ("https://v3.fal.media", "https://v3.fal.media"),
+        ("https://my-proxy.example.com", "https://my-proxy.example.com"),
+        ("http://localhost:8080", "http://localhost:8080"),
+        # Bare host (no scheme) is normalized to https:// so URL building works.
+        ("my-proxy.example.com", "https://my-proxy.example.com"),
+    ],
 )
-def test_fal_cdn_host_env_silent_for_supported_hosts(monkeypatch, recwarn, host):
+def test_resolve_cdn_host_honors_supported_hosts(monkeypatch, recwarn, host, expected):
     monkeypatch.setenv("FAL_CDN_HOST", host)
-    providers._warn_if_legacy_cdn_host_set()
-    assert not [w for w in recwarn.list if issubclass(w.category, DeprecationWarning)]
-
-
-def test_fal_cdn_host_env_silent_when_unset(monkeypatch, recwarn):
-    monkeypatch.delenv("FAL_CDN_HOST", raising=False)
-    providers._warn_if_legacy_cdn_host_set()
+    assert providers._resolve_cdn_host("https://v3.fal.media") == expected
     assert not [w for w in recwarn.list if issubclass(w.category, DeprecationWarning)]
