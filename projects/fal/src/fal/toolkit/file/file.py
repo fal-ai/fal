@@ -27,8 +27,6 @@ from fal.ref import get_current_app
 from fal.toolkit.file.providers.fal import (
     FalCDNFileRepository,
     FalFileRepository,
-    # Re-exported for backwards compatibility; resolves to FalFileRepositoryV3.
-    FalFileRepositoryV2,  # noqa: F401
     FalFileRepositoryV3,
     InMemoryRepository,
 )
@@ -48,30 +46,10 @@ BUILT_IN_REPOSITORIES: dict[RepositoryId, FileRepositoryFactory] = {
     "cdn": lambda: FalCDNFileRepository(),
 }
 
-# Repositories that are no longer supported. The v2 fal-cdn repository
-# ("fal_v2") is transparently redirected to "fal_v3", with a DeprecationWarning,
-# for backwards compatibility. ("cdn" remains supported; it now uploads directly
-# to the v3 CDN -- see FalCDNFileRepository.)
-_DEPRECATED_REPOSITORIES: dict[str, RepositoryId] = {
-    "fal_v2": "fal_v3",
-}
-
 
 def get_builtin_repository(id: RepositoryId | FileRepository) -> FileRepository:
     if isinstance(id, FileRepository):
         return id
-
-    if id in _DEPRECATED_REPOSITORIES:
-        import warnings  # noqa: PLC0415
-
-        replacement = _DEPRECATED_REPOSITORIES[id]
-        warnings.warn(
-            f'"{id}" file repository is deprecated and no longer supported; '
-            f'using "{replacement}" instead.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        id = replacement
 
     if id not in BUILT_IN_REPOSITORIES.keys():
         raise ValueError(f'"{id}" is not a valid built-in file repository')

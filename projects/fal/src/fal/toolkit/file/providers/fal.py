@@ -255,15 +255,6 @@ class FalV3TokenManager(FalCDNTokenManager):
 fal_v3_token_manager = FalV3TokenManager()
 
 
-# Backwards-compatible aliases. The legacy v2 `fal-cdn` token type/manager are no
-# longer supported; these names are retained only for import compatibility and
-# now describe the v3 CDN token (they do not mint legacy `fal-cdn` tokens).
-# `fal_v2_token_manager` likewise points at the v3 token manager instance.
-FalV2Token = FalCDNToken
-FalV2TokenManager = FalCDNTokenManager
-fal_v2_token_manager = fal_v3_token_manager
-
-
 VariableType = TypeVar("VariableType")
 
 
@@ -1236,12 +1227,6 @@ class FalFileRepositoryV3(FileRepository):
             )
 
         return url, data
-
-
-# Backwards-compatible alias. The legacy v2 fal-cdn repository is no longer
-# supported; this name is retained only for import compatibility and now resolves
-# to the v3 repository (consistent with the "fal_v2" -> "fal_v3" redirect).
-FalFileRepositoryV2 = FalFileRepositoryV3
 
 
 # This is only available for internal users to have long-lived access tokens
