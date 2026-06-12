@@ -25,7 +25,6 @@ from pydantic import BaseModel, Field
 from fal.compat import run_in_thread
 from fal.ref import get_current_app
 from fal.toolkit.file.providers.fal import (
-    FalCDNFileRepository,
     FalFileRepository,
     FalFileRepositoryV2,
     FalFileRepositoryV3,
@@ -45,7 +44,6 @@ BUILT_IN_REPOSITORIES: dict[RepositoryId, FileRepositoryFactory] = {
     "in_memory": lambda: InMemoryRepository(),
     "gcp_storage": lambda: GoogleStorageRepository(),
     "r2": lambda: R2Repository(),
-    "cdn": lambda: FalCDNFileRepository(),
 }
 
 
@@ -61,7 +59,7 @@ def get_builtin_repository(id: RepositoryId | FileRepository) -> FileRepository:
 get_builtin_repository.__module__ = "__main__"
 
 DEFAULT_REPOSITORY: FileRepository | RepositoryId = "fal_v3"
-FALLBACK_REPOSITORY: list[FileRepository | RepositoryId] = ["cdn", "fal"]
+FALLBACK_REPOSITORY: list[FileRepository | RepositoryId] = ["fal"]
 OBJECT_LIFECYCLE_PREFERENCE_KEY = "x-fal-object-lifecycle-preference"
 
 

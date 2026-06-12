@@ -68,7 +68,7 @@ if TYPE_CHECKING:
     from PIL import Image
 
 AnyJSON = Dict[str, Any]
-UploadRepositoryId = Literal["fal_v3", "cdn", "fal"]
+UploadRepositoryId = Literal["fal_v3", "fal"]
 LifecyclePreferencePayload = Dict[str, Any]
 ObjectExpiration = Union[
     Literal["never", "immediate", "1h", "1d", "7d", "30d", "1y"],
@@ -81,9 +81,8 @@ QUEUE_URL_FORMAT = f"https://{FAL_QUEUE_RUN_HOST}/"
 REALTIME_URL_FORMAT = f"wss://{FAL_RUN_HOST}/"
 REST_URL = "https://rest.fal.ai"
 CDN_URL = "https://v3.fal.media"
-FAL_CDN_FALLBACK_URL = os.environ.get("FAL_CDN_HOST", "https://fal.media")
 DEFAULT_UPLOAD_REPOSITORY: UploadRepositoryId = "fal_v3"
-DEFAULT_UPLOAD_FALLBACK_REPOSITORY: list[UploadRepositoryId] = ["cdn", "fal"]
+DEFAULT_UPLOAD_FALLBACK_REPOSITORY: list[UploadRepositoryId] = ["fal"]
 USER_AGENT = f"fal-client/{__version__} (python)"
 
 MIN_REQUEST_TIMEOUT_SECONDS = 1
@@ -1170,12 +1169,6 @@ async def _async_maybe_retry_request(
     raise RuntimeError("Failed to perform request")
 
 
-def _cdn_auth_header(auth: AuthCredentials) -> str:
-    if auth.scheme.lower() == "key":
-        return f"Bearer {auth.token}"
-    return auth.header_value
-
-
 def _object_lifecycle_headers(
     headers: dict[str, str],
     object_lifecycle_preference: LifecyclePreferencePayload | None,
@@ -1234,19 +1227,6 @@ def _normalize_upload_lifecycle(
     return normalized or None
 
 
-def _cdn_upload_headers(
-    auth: AuthCredentials,
-    content_type: str,
-    file_name: str | None,
-    object_lifecycle_preference: LifecyclePreferencePayload | None,
-) -> dict[str, str]:
-    headers = {"Content-Type": content_type, "Authorization": _cdn_auth_header(auth)}
-    if file_name is not None:
-        headers["X-Fal-File-Name"] = file_name
-    _object_lifecycle_headers(headers, object_lifecycle_preference)
-    return headers
-
-
 def _storage_upload_headers(
     auth: AuthCredentials,
     object_lifecycle_preference: LifecyclePreferencePayload | None,
@@ -1264,7 +1244,7 @@ def _normalize_upload_repositories(
     repository: UploadRepositoryId | None,
     fallback_repository: UploadRepositoryId | list[UploadRepositoryId] | None,
 ) -> list[UploadRepositoryId]:
-    allowed = {"fal_v3", "cdn", "fal"}
+    allowed = {"fal_v3", "fal"}
     if repository is None:
         repository = DEFAULT_UPLOAD_REPOSITORY
 
@@ -1366,27 +1346,6 @@ def _upload_v3(
     return response.json()["access_url"]
 
 
-def _upload_cdn(
-    client: httpx.Client,
-    auth: AuthCredentials,
-    *,
-    data: bytes,
-    content_type: str,
-    file_name: str | None,
-    object_lifecycle_preference: LifecyclePreferencePayload | None = None,
-) -> str:
-    response = _maybe_retry_request(
-        client,
-        "POST",
-        FAL_CDN_FALLBACK_URL + "/files/upload",
-        content=data,
-        headers=_cdn_upload_headers(
-            auth, content_type, file_name, object_lifecycle_preference
-        ),
-    )
-    return response.json()["access_url"]
-
-
 async def _async_upload_v3(
     client: httpx.AsyncClient,
     *,
@@ -1399,27 +1358,6 @@ async def _async_upload_v3(
         CDN_URL + "/files/upload",
         content=data,
         headers=headers,
-    )
-    return response.json()["access_url"]
-
-
-async def _async_upload_cdn(
-    client: httpx.AsyncClient,
-    auth: AuthCredentials,
-    *,
-    data: bytes,
-    content_type: str,
-    file_name: str | None,
-    object_lifecycle_preference: LifecyclePreferencePayload | None = None,
-) -> str:
-    response = await _async_maybe_retry_request(
-        client,
-        "POST",
-        FAL_CDN_FALLBACK_URL + "/files/upload",
-        content=data,
-        headers=_cdn_upload_headers(
-            auth, content_type, file_name, object_lifecycle_preference
-        ),
     )
     return response.json()["access_url"]
 
@@ -1996,25 +1934,6 @@ class AsyncClient:
         for repo in repository_chain:
             if repo == "fal_v3":
                 attempts.append(("fal_v3", _v3_attempt))
-            elif repo == "cdn":
-                if auth is None:
-                    auth = await self._auth
-                if client is None:
-                    client = await self._client
-                attempts.append(
-                    (
-                        "cdn",
-                        partial(
-                            _async_upload_cdn,
-                            client,
-                            auth,
-                            data=data,
-                            content_type=content_type,
-                            file_name=file_name,
-                            object_lifecycle_preference=resolved_lifecycle,
-                        ),
-                    )
-                )
             elif repo == "fal":
                 if auth is None:
                     auth = await self._auth
@@ -2511,21 +2430,6 @@ class SyncClient:
                     (
                         "fal_v3",
                         partial(_upload_v3, client, data=data, headers=headers),
-                    )
-                )
-            elif repo == "cdn":
-                attempts.append(
-                    (
-                        "cdn",
-                        partial(
-                            _upload_cdn,
-                            self._client,
-                            auth,
-                            data=data,
-                            content_type=content_type,
-                            file_name=file_name,
-                            object_lifecycle_preference=resolved_lifecycle,
-                        ),
                     )
                 )
             elif repo == "fal":

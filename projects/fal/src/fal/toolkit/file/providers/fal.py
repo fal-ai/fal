@@ -25,7 +25,6 @@ from fal.toolkit.exceptions import FileUploadException
 from fal.toolkit.file.types import FileData, FileRepository
 from fal.toolkit.utils.retry import retry
 
-_FAL_CDN = "https://fal.media"
 _FAL_CDN_V3 = "https://v3.fal.media"
 
 
@@ -1290,47 +1289,6 @@ class InMemoryRepository(FileRepository):
         object_lifecycle_preference: dict[str, str] | None = None,
     ) -> str:
         return f"data:{file.content_type};base64,{b64encode(file.data).decode('utf-8')}"
-
-
-@dataclass
-class FalCDNFileRepository(FileRepository):
-    def save(
-        self,
-        file: FileData,
-        multipart: bool | None = None,
-        multipart_threshold: int | None = None,
-        multipart_chunk_size: int | None = None,
-        multipart_max_concurrency: int | None = None,
-        object_lifecycle_preference: dict[str, str] | None = None,
-    ) -> str:
-        headers = {
-            **self.auth_headers,
-            "Accept": "application/json",
-            "Content-Type": file.content_type,
-            "X-Fal-File-Name": file.file_name,
-        }
-
-        _object_lifecycle_headers(headers, object_lifecycle_preference)
-
-        url = os.getenv("FAL_CDN_HOST", _FAL_CDN) + "/files/upload"
-        request = Request(url, headers=headers, method="POST", data=file.data)
-        try:
-            with _maybe_retry_request(request) as response:
-                result = json.load(response)
-        except HTTPError as e:
-            raise FileUploadException(
-                f"Error initiating upload. Status {e.status}: {e.reason}"
-            )
-
-        access_url = result["access_url"]
-        return access_url
-
-    @property
-    def auth_headers(self) -> dict[str, str]:
-        return {
-            "Authorization": f"Bearer {_require_auth_credentials().token}",
-            "User-Agent": USER_AGENT,
-        }
 
 
 @dataclass
