@@ -27,6 +27,8 @@ from fal.ref import get_current_app
 from fal.toolkit.file.providers.fal import (
     FalCDNFileRepository,
     FalFileRepository,
+    # Re-exported for backwards compatibility; resolves to FalFileRepositoryV3.
+    FalFileRepositoryV2,  # noqa: F401
     FalFileRepositoryV3,
     InMemoryRepository,
 )
