@@ -88,7 +88,9 @@ CDN_URL = os.environ.get("FAL_CDN_V3_HOST", "https://v3.fal.media")
 if os.environ.get("FAL_CDN_HOST"):
     warnings.warn(
         "FAL_CDN_HOST is no longer used: the legacy fal.media CDN has been "
-        "disabled. Set FAL_CDN_V3_HOST to override the v3 CDN host instead.",
+        "disabled. Set FAL_CDN_V3_HOST to override the v3 CDN host for "
+        "single-request uploads instead; large/multipart uploads use the "
+        "server-provided host.",
         DeprecationWarning,
         stacklevel=2,
     )
