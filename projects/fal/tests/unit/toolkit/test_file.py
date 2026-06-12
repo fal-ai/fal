@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from fal.toolkit.file.file import (
     FalCDNFileRepository,
+    FalFileRepositoryV2,
     FalFileRepositoryV3,
     File,
     GoogleStorageRepository,
@@ -19,6 +20,11 @@ from fal.toolkit.file.file import (
     get_builtin_repository,
 )
 from fal.toolkit.file.types import FileData, FileRepository
+
+
+def test_fal_file_repository_v2_is_reexported_as_v3_alias():
+    # Importable from the historical public path and resolves to the v3 class.
+    assert FalFileRepositoryV2 is FalFileRepositoryV3
 
 
 def test_deprecated_fal_v2_redirects_to_fal_v3():
