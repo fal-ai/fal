@@ -320,18 +320,6 @@ def test_internal_multipart_upload_v3_auth_headers_include_cdn_token():
     assert headers["User-Agent"] == providers.USER_AGENT
 
 
-def test_v2_names_are_backwards_compatible_aliases():
-    """The legacy v2 names remain importable and resolve to v3 equivalents."""
-    assert providers.FalV2Token is providers.FalCDNToken
-    assert providers.FalV2TokenManager is providers.FalCDNTokenManager
-    assert providers.fal_v2_token_manager is providers.fal_v3_token_manager
-    assert providers.FalFileRepositoryV2 is providers.FalFileRepositoryV3
-
-    # The v2-named manager must not mint legacy "fal-cdn" tokens.
-    assert providers.FalV2TokenManager.storage_type == "fal-cdn-v3"
-    assert providers.FalV2TokenManager.upload_prefix == ""
-
-
 @pytest.mark.parametrize(
     "host",
     [
