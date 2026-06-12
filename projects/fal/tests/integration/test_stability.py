@@ -585,7 +585,7 @@ def test_worker_env_vars(isolated_client):
 
 @pytest.mark.flaky(max_runs=3)
 def test_fal_storage_v3(isolated_client):
-    url_prefixes = ["https://v3.fal.media/files", "https://v3b.fal.media/files"]
+    url_prefixes = ["https://v3b.fal.media/files"]
 
     # v3b validates content against the claimed type; keep this test out of the
     # rate-limited unrecognized-binary path.

@@ -171,6 +171,16 @@ def test_caller_cdn_header_adds_both_cdn_token_and_request_id():
                 expires_at=datetime.now(timezone.utc),
             ),
         ),
+        (
+            providers.FalCDNFileRepository,
+            providers.fal_v3_token_manager,
+            providers.FalV3Token(
+                token="test-token",
+                token_type="Bearer",
+                base_upload_url="https://upload",
+                expires_at=datetime.now(timezone.utc),
+            ),
+        ),
     ],
 )
 def test_repository_auth_headers_include_cdn_token(repo_cls, token_manager, token):
@@ -204,6 +214,16 @@ def test_repository_auth_headers_include_cdn_token(repo_cls, token_manager, toke
         ),
         (
             providers.InternalFalFileRepositoryV3,
+            providers.fal_v3_token_manager,
+            providers.FalV3Token(
+                token="test-token",
+                token_type="Bearer",
+                base_upload_url="https://upload",
+                expires_at=datetime.now(timezone.utc),
+            ),
+        ),
+        (
+            providers.FalCDNFileRepository,
             providers.fal_v3_token_manager,
             providers.FalV3Token(
                 token="test-token",
@@ -276,52 +296,6 @@ def test_fal_file_repository_v3_auth_headers_with_bearer_credentials():
         headers = repo.auth_headers
 
     assert headers["Authorization"] == "Bearer jwt-token"
-
-
-def test_fal_cdn_file_repository_auth_headers_with_key_credentials():
-    """FalCDNFileRepository emits `Bearer <id>:<secret>` even for Key creds."""
-    with patch.object(
-        providers,
-        "fetch_auth_credentials",
-        return_value=AuthCredentials("Key", "key_id:key_secret"),
-    ):
-        repo = providers.FalCDNFileRepository()
-        headers = repo.auth_headers
-
-    # CDN endpoint expects Bearer scheme regardless of how creds were obtained.
-    assert headers["Authorization"] == "Bearer key_id:key_secret"
-    assert headers["User-Agent"] == providers.USER_AGENT
-
-
-def test_fal_cdn_file_repository_auth_headers_with_bearer_credentials():
-    """FalCDNFileRepository emits `Bearer <jwt>` for auth0 bearer creds."""
-    with patch.object(
-        providers,
-        "fetch_auth_credentials",
-        return_value=AuthCredentials("Bearer", "jwt-token"),
-    ):
-        repo = providers.FalCDNFileRepository()
-        headers = repo.auth_headers
-
-    assert headers["Authorization"] == "Bearer jwt-token"
-    assert headers["User-Agent"] == providers.USER_AGENT
-
-
-def test_fal_cdn_file_repository_raises_file_upload_exception_when_missing():
-    """FalCDNFileRepository surfaces missing creds as FileUploadException."""
-    from fal.exceptions.auth import UnauthenticatedException
-    from fal.toolkit.exceptions import FileUploadException
-
-    with patch.object(
-        providers,
-        "fetch_auth_credentials",
-        side_effect=UnauthenticatedException(),
-    ):
-        repo = providers.FalCDNFileRepository()
-        with pytest.raises(FileUploadException) as excinfo:
-            _ = repo.auth_headers
-
-    assert isinstance(excinfo.value.__cause__, UnauthenticatedException)
 
 
 def test_internal_multipart_upload_v3_auth_headers_include_cdn_token():

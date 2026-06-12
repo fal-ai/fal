@@ -45,17 +45,6 @@ def _assert_multipart_preference_call(mock, preference: dict[str, str]) -> None:
             {"file_url": "https://files", "upload_url": "https://upload"},
         ),
         (
-            providers.MultipartUpload,
-            providers.fal_v2_token_manager,
-            providers.FalV2Token(
-                token="token",
-                token_type="Bearer",
-                base_upload_url="https://upload",
-                expires_at=datetime.now(timezone.utc),
-            ),
-            {"file_url": "https://files", "upload_url": "https://upload"},
-        ),
-        (
             providers.MultipartUploadV3,
             None,
             None,
@@ -113,8 +102,6 @@ def test_multipart_create_includes_lifecycle_headers(
     [
         (providers.FalFileRepository, providers.MultipartUploadGCS, "save"),
         (providers.FalFileRepository, providers.MultipartUploadGCS, "save_file"),
-        (providers.FalFileRepositoryV2, providers.MultipartUpload, "save"),
-        (providers.FalFileRepositoryV2, providers.MultipartUpload, "save_file"),
         (providers.FalFileRepositoryV3, providers.MultipartUploadV3, "save"),
         (providers.FalFileRepositoryV3, providers.MultipartUploadV3, "save_file"),
         (
