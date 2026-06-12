@@ -30,7 +30,7 @@ from typing import (
     Callable,
     Union,
 )
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 import warnings
 
 import aiofiles
@@ -84,16 +84,28 @@ RUN_URL_FORMAT = f"https://{FAL_RUN_HOST}/"
 QUEUE_URL_FORMAT = f"https://{FAL_QUEUE_RUN_HOST}/"
 REALTIME_URL_FORMAT = f"wss://{FAL_RUN_HOST}/"
 REST_URL = "https://rest.fal.ai"
-CDN_URL = os.environ.get("FAL_CDN_V3_HOST", "https://v3.fal.media")
-if os.environ.get("FAL_CDN_HOST"):
-    warnings.warn(
-        "FAL_CDN_HOST is no longer used: the legacy fal.media CDN has been "
-        "disabled. Set FAL_CDN_V3_HOST to override the v3 CDN host for "
-        "single-request uploads instead; large/multipart uploads use the "
-        "server-provided host.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
+
+_LEGACY_CDN_HOSTS = frozenset({"fal.media", "v2.fal.media"})
+
+
+def _warn_if_legacy_cdn_host_set() -> None:
+    host = os.environ.get("FAL_CDN_HOST")
+    if not host:
+        return
+    # urlparse needs a scheme to populate `hostname`; add one for bare hosts.
+    parsed = urlparse(host if "//" in host else f"//{host}")
+    if (parsed.hostname or "").lower() in _LEGACY_CDN_HOSTS:
+        warnings.warn(
+            "FAL_CDN_HOST points at the legacy fal.media/v2.fal.media CDN, which "
+            "has been disabled. Point it at the v3 CDN host "
+            "(https://v3.fal.media) or unset it.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
+
+_warn_if_legacy_cdn_host_set()
+CDN_URL = os.environ.get("FAL_CDN_HOST", "https://v3.fal.media")
 DEFAULT_UPLOAD_REPOSITORY: UploadRepositoryId = "fal_v3"
 DEFAULT_UPLOAD_FALLBACK_REPOSITORY: list[UploadRepositoryId] = ["fal"]
 # Aliases mapped onto a supported repository before dispatch. "cdn" is kept for
