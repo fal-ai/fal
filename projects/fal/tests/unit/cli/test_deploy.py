@@ -1377,6 +1377,40 @@ def test_get_app_data_from_toml_with_image(mock_parse_toml, mock_find_toml, tmp_
 
 @patch("fal.cli._utils.find_pyproject_toml")
 @patch("fal.cli._utils.parse_pyproject_toml")
+def test_get_app_data_from_toml_with_image_reference(
+    mock_parse_toml, mock_find_toml, tmp_path
+):
+    from fal.cli._utils import get_app_data_from_toml
+
+    mock_find_toml.return_value = str(tmp_path / "pyproject.toml")
+    mock_parse_toml.return_value = {
+        "apps": {
+            "container-app": {
+                "ref": "src/my_app/inference.py::MyApp",
+                "image": {
+                    "image": "ghcr.io/fal-ai/container-app:latest",
+                    "registries": {"ghcr.io": {"username": "u", "password": "p"}},
+                    "entrypoint": ["python", "-m", "server"],
+                    "cmd": ["--host", "0.0.0.0", "--port", "8080"],
+                },
+            }
+        }
+    }
+
+    toml_data = get_app_data_from_toml("container-app")
+
+    env = toml_data.options.environment
+    assert env["kind"] == "container"
+    assert env["image"]["image"] == "ghcr.io/fal-ai/container-app:latest"
+    assert env["image"]["registries"] == {"ghcr.io": {"username": "u", "password": "p"}}
+    assert env["image"]["entrypoint"] == ["python", "-m", "server"]
+    assert env["image"]["cmd"] == ["--host", "0.0.0.0", "--port", "8080"]
+    assert "dockerfile_str" not in env["image"]
+    assert "use_isolate" not in env["image"]
+
+
+@patch("fal.cli._utils.find_pyproject_toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
 def test_get_app_data_from_toml_allows_python_entry_point_with_image(
     mock_parse_toml, mock_find_toml, tmp_path
 ):
@@ -1400,6 +1434,35 @@ def test_get_app_data_from_toml_allows_python_entry_point_with_image(
     assert toml_data.python_entry_point == "simple.app:SimpleApp"
     assert toml_data.options.environment["kind"] == "container"
     assert toml_data.options.environment["image"]["dockerfile_str"] == dockerfile
+    assert "use_isolate" not in toml_data.options.environment["image"]
+
+
+@patch("fal.cli._utils.find_pyproject_toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+def test_get_app_data_from_toml_allows_python_entry_point_with_image_reference(
+    mock_parse_toml, mock_find_toml, tmp_path
+):
+    from fal.cli._utils import get_app_data_from_toml
+
+    mock_find_toml.return_value = str(tmp_path / "pyproject.toml")
+    mock_parse_toml.return_value = {
+        "apps": {
+            "container-app": {
+                "python_entry_point": "simple.app:SimpleApp",
+                "image": {"image": "ghcr.io/fal-ai/container-app:latest"},
+            }
+        }
+    }
+
+    toml_data = get_app_data_from_toml("container-app")
+
+    assert toml_data.ref is None
+    assert toml_data.python_entry_point == "simple.app:SimpleApp"
+    assert toml_data.options.environment["kind"] == "container"
+    assert (
+        toml_data.options.environment["image"]["image"]
+        == "ghcr.io/fal-ai/container-app:latest"
+    )
     assert "use_isolate" not in toml_data.options.environment["image"]
 
 
@@ -1434,9 +1497,41 @@ def test_get_app_data_from_toml_with_image_without_ref(
     assert toml_data.options.environment["image"]["use_isolate"] is False
 
 
+@patch("fal.cli._utils.find_pyproject_toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+def test_get_app_data_from_toml_with_image_reference_without_ref(
+    mock_parse_toml, mock_find_toml, tmp_path
+):
+    from fal.cli._utils import get_app_data_from_toml
+
+    mock_find_toml.return_value = str(tmp_path / "pyproject.toml")
+    mock_parse_toml.return_value = {
+        "apps": {
+            "container-app": {
+                "auth": "public",
+                "machine_type": "GPU-H100",
+                "image": {"image": "ghcr.io/fal-ai/container-app:latest"},
+            }
+        }
+    }
+
+    toml_data = get_app_data_from_toml("container-app")
+
+    assert toml_data.ref is None
+    assert toml_data.python_entry_point is None
+    assert toml_data.auth == "public"
+    assert toml_data.options.host["machine_type"] == "GPU-H100"
+    assert toml_data.options.environment["kind"] == "container"
+    assert (
+        toml_data.options.environment["image"]["image"]
+        == "ghcr.io/fal-ai/container-app:latest"
+    )
+    assert toml_data.options.environment["image"]["use_isolate"] is False
+
+
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
 @patch("fal.cli._utils.parse_pyproject_toml")
-def test_get_app_data_from_toml_rejects_image_without_dockerfile(
+def test_get_app_data_from_toml_rejects_image_without_source(
     mock_parse_toml, mock_find_toml
 ):
     from fal.cli._utils import get_app_data_from_toml
@@ -1453,9 +1548,65 @@ def test_get_app_data_from_toml_rejects_image_without_dockerfile(
     with pytest.raises(
         ValueError,
         match=(
-            "App container-app image must specify 'dockerfile' "
-            r"\(path\) in pyproject.toml"
+            "App container-app image must specify either 'dockerfile' "
+            r"\(path\) or 'image' \(container image\) in pyproject.toml"
         ),
+    ):
+        get_app_data_from_toml("container-app")
+
+
+@patch("fal.cli._utils.find_pyproject_toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+def test_get_app_data_from_toml_rejects_image_with_multiple_sources(
+    mock_parse_toml, mock_find_toml, tmp_path
+):
+    from fal.cli._utils import get_app_data_from_toml
+
+    (tmp_path / "Dockerfile").write_text("FROM python:3.12-slim\n")
+    mock_find_toml.return_value = str(tmp_path / "pyproject.toml")
+    mock_parse_toml.return_value = {
+        "apps": {
+            "container-app": {
+                "ref": "src/my_app/inference.py::MyApp",
+                "image": {
+                    "dockerfile": "Dockerfile",
+                    "image": "ghcr.io/fal-ai/container-app:latest",
+                },
+            }
+        }
+    }
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "App container-app image must specify only one of "
+            "'dockerfile' or 'image'"
+        ),
+    ):
+        get_app_data_from_toml("container-app")
+
+
+@pytest.mark.parametrize("image_ref", ["", "   ", 123])
+@patch("fal.cli._utils.find_pyproject_toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+def test_get_app_data_from_toml_rejects_invalid_image_reference(
+    mock_parse_toml, mock_find_toml, tmp_path, image_ref
+):
+    from fal.cli._utils import get_app_data_from_toml
+
+    mock_find_toml.return_value = str(tmp_path / "pyproject.toml")
+    mock_parse_toml.return_value = {
+        "apps": {
+            "container-app": {
+                "ref": "src/my_app/inference.py::MyApp",
+                "image": {"image": image_ref},
+            }
+        }
+    }
+
+    with pytest.raises(
+        ValueError,
+        match="App container-app image.image must be a non-empty string",
     ):
         get_app_data_from_toml("container-app")
 
@@ -1484,6 +1635,66 @@ def test_get_app_data_from_toml_rejects_unknown_image_keys(
     with pytest.raises(
         ValueError,
         match=r"Found unexpected keys in app container-app image",
+    ):
+        get_app_data_from_toml("container-app")
+
+
+@patch("fal.cli._utils.find_pyproject_toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+def test_get_app_data_from_toml_rejects_unknown_image_reference_keys(
+    mock_parse_toml, mock_find_toml, tmp_path
+):
+    from fal.cli._utils import get_app_data_from_toml
+
+    mock_find_toml.return_value = str(tmp_path / "pyproject.toml")
+    mock_parse_toml.return_value = {
+        "apps": {
+            "container-app": {
+                "ref": "src/my_app/inference.py::MyApp",
+                "image": {
+                    "image": "ghcr.io/fal-ai/container-app:latest",
+                    "bogus": "value",
+                },
+            }
+        }
+    }
+
+    with pytest.raises(
+        ValueError,
+        match=r"Found unexpected keys in app container-app image",
+    ):
+        get_app_data_from_toml("container-app")
+
+
+@pytest.mark.parametrize(
+    ("field_name", "value"),
+    [
+        ("build_args", {"FOO": "bar"}),
+        ("secrets", {"TOKEN": "shh"}),
+    ],
+)
+@patch("fal.cli._utils.find_pyproject_toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+def test_get_app_data_from_toml_rejects_image_reference_build_keys(
+    mock_parse_toml, mock_find_toml, tmp_path, field_name, value
+):
+    from fal.cli._utils import get_app_data_from_toml
+
+    mock_find_toml.return_value = str(tmp_path / "pyproject.toml")
+    mock_parse_toml.return_value = {
+        "apps": {
+            "container-app": {
+                "image": {
+                    "image": "ghcr.io/fal-ai/container-app:latest",
+                    field_name: value,
+                },
+            }
+        }
+    }
+
+    with pytest.raises(
+        ValueError,
+        match=f"{field_name!r}.*only supported with image.dockerfile",
     ):
         get_app_data_from_toml("container-app")
 
@@ -1521,6 +1732,102 @@ def test_get_app_data_from_toml_rejects_invalid_image_command_overrides(
         ValueError,
         match=f"{field_name} must be a string or list of strings",
     ):
+        get_app_data_from_toml("container-app")
+
+
+@pytest.mark.parametrize(
+    ("field_name", "value"),
+    [
+        ("entrypoint", 123),
+        ("entrypoint", ["python", 123]),
+        ("cmd", 123),
+        ("cmd", ["--port", 8080]),
+    ],
+)
+@patch("fal.cli._utils.find_pyproject_toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+def test_get_app_data_from_toml_rejects_invalid_image_reference_command_overrides(
+    mock_parse_toml, mock_find_toml, tmp_path, field_name, value
+):
+    from fal.cli._utils import get_app_data_from_toml
+
+    mock_find_toml.return_value = str(tmp_path / "pyproject.toml")
+    mock_parse_toml.return_value = {
+        "apps": {
+            "container-app": {
+                "image": {
+                    "image": "ghcr.io/fal-ai/container-app:latest",
+                    field_name: value,
+                },
+            }
+        }
+    }
+
+    with pytest.raises(
+        ValueError,
+        match=f"{field_name} must be a string or list of strings",
+    ):
+        get_app_data_from_toml("container-app")
+
+
+@pytest.mark.parametrize(
+    "registries",
+    [
+        {"ghcr.io": {"username": "u"}},
+        {"ghcr.io": {"password": "p"}},
+    ],
+)
+@patch("fal.cli._utils.find_pyproject_toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+def test_get_app_data_from_toml_rejects_invalid_image_reference_registries(
+    mock_parse_toml, mock_find_toml, tmp_path, registries
+):
+    from fal.cli._utils import get_app_data_from_toml
+
+    mock_find_toml.return_value = str(tmp_path / "pyproject.toml")
+    mock_parse_toml.return_value = {
+        "apps": {
+            "container-app": {
+                "image": {
+                    "image": "ghcr.io/fal-ai/container-app:latest",
+                    "registries": registries,
+                },
+            }
+        }
+    }
+
+    with pytest.raises(ValueError, match="Username and password"):
+        get_app_data_from_toml("container-app")
+
+
+@pytest.mark.parametrize(
+    ("registries", "message"),
+    [
+        ([], "registries must be a table"),
+        ("ghcr.io", "registries must be a table"),
+        ({"ghcr.io": "token"}, "Each registry must be a table"),
+    ],
+)
+@patch("fal.cli._utils.find_pyproject_toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+def test_get_app_data_from_toml_rejects_malformed_image_reference_registries(
+    mock_parse_toml, mock_find_toml, tmp_path, registries, message
+):
+    from fal.cli._utils import get_app_data_from_toml
+
+    mock_find_toml.return_value = str(tmp_path / "pyproject.toml")
+    mock_parse_toml.return_value = {
+        "apps": {
+            "container-app": {
+                "image": {
+                    "image": "ghcr.io/fal-ai/container-app:latest",
+                    "registries": registries,
+                },
+            }
+        }
+    }
+
+    with pytest.raises(ValueError, match=message):
         get_app_data_from_toml("container-app")
 
 

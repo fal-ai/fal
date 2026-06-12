@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Optional, get_args
 
 from fal.api import Options
-from fal.container import ContainerImage
+from fal.container import ContainerImage, _validate_command_override
 from fal.project import find_project_root, find_pyproject_toml, parse_pyproject_toml
 from fal.sdk import (
     ApplicationHealthCheckConfig,
@@ -256,14 +256,14 @@ def get_app_data_from_toml(
         if app_ref is None and python_entry_point is None:
             image_uses_isolate = False
 
-        container_image = _build_container_image_from_toml(
+        image = _build_container_image_from_toml(
             app_name,
             image_config,
             Path(toml_path).parent,
             use_isolate=image_uses_isolate,
         )
         options.environment["kind"] = "container"
-        options.environment["image"] = container_image.to_dict()
+        options.environment["image"] = image
 
     app_reset_scale: bool
     if "no_scale" in app_data:
@@ -401,14 +401,39 @@ def _build_health_check_config_from_toml(
 
 
 _IMAGE_PASSTHROUGH_KEYS = (
+    # Dockerfile build-time options; rejected for image references before passthrough.
     "build_args",
-    "registries",
     # Image build-time secrets, distinct from app-level runtime `secrets`.
     "secrets",
+    "registries",
     # Docker ENTRYPOINT/CMD overrides.
     "entrypoint",
     "cmd",
 )
+
+
+def _validate_image_registries(registries: Any) -> None:
+    if registries is None:
+        return
+    if not isinstance(registries, dict):
+        raise ValueError("registries must be a table in pyproject.toml")
+
+    for registry in registries.values():
+        if not isinstance(registry, dict):
+            raise ValueError("Each registry must be a table in pyproject.toml")
+        keys = registry.keys()
+        if "username" not in keys or "password" not in keys:
+            raise ValueError("Username and password are required for each registry")
+
+
+def _reject_image_reference_build_keys(image_config: dict[str, Any]) -> None:
+    build_keys = {"build_args", "secrets"} & image_config.keys()
+    if build_keys:
+        invalid_keys = ", ".join(f"{key!r}" for key in sorted(build_keys))
+        raise ValueError(
+            f"Image key(s) {invalid_keys} are only supported with "
+            "image.dockerfile in pyproject.toml"
+        )
 
 
 def _build_container_image_from_toml(
@@ -417,45 +442,74 @@ def _build_container_image_from_toml(
     project_root: Path,
     *,
     use_isolate: bool | None = None,
-) -> ContainerImage:
+) -> dict[str, Any]:
     if not isinstance(image_config, dict):
         raise ValueError(f"App {app_name} image must be a table in pyproject.toml")
 
     image_config = dict(image_config)
 
     dockerfile_path = image_config.pop("dockerfile", None)
-    if dockerfile_path is None:
+    image_ref = image_config.pop("image", None)
+    if dockerfile_path is None and image_ref is None:
         raise ValueError(
-            f"App {app_name} image must specify 'dockerfile' (path) in pyproject.toml"
+            f"App {app_name} image must specify either 'dockerfile' (path) "
+            "or 'image' (container image) in pyproject.toml"
         )
-    if not isinstance(dockerfile_path, str):
+    if dockerfile_path is not None and image_ref is not None:
+        raise ValueError(
+            f"App {app_name} image must specify only one of 'dockerfile' "
+            "or 'image' in pyproject.toml"
+        )
+    if dockerfile_path is not None and not isinstance(dockerfile_path, str):
         raise ValueError(
             f"App {app_name} image.dockerfile must be a string in pyproject.toml"
         )
+    if image_ref is not None and not (isinstance(image_ref, str) and image_ref.strip()):
+        raise ValueError(
+            f"App {app_name} image.image must be a non-empty string in pyproject.toml"
+        )
 
-    resolved_path = Path(dockerfile_path)
-    if not resolved_path.is_absolute():
-        resolved_path = project_root / resolved_path
-    try:
-        with open(resolved_path) as f:
-            dockerfile_str = f.read()
-    except FileNotFoundError:
-        raise ValueError(f"App {app_name} image.dockerfile not found: {resolved_path}")
+    if dockerfile_path is not None:
+        resolved_path = Path(dockerfile_path)
+        if not resolved_path.is_absolute():
+            resolved_path = project_root / resolved_path
+        try:
+            with open(resolved_path) as f:
+                dockerfile_str = f.read()
+        except FileNotFoundError:
+            raise ValueError(
+                f"App {app_name} image.dockerfile not found: {resolved_path}"
+            )
 
-    kwargs: dict[str, Any] = {
-        "dockerfile_str": dockerfile_str,
-        "context_dir": project_root,
-    }
-    if use_isolate is not None:
-        kwargs["use_isolate"] = use_isolate
+        kwargs: dict[str, Any] = {
+            "dockerfile_str": dockerfile_str,
+            "context_dir": project_root,
+        }
+        if use_isolate is not None:
+            kwargs["use_isolate"] = use_isolate
+    else:
+        kwargs = {"image": image_ref}
+        if use_isolate is not None:
+            kwargs["use_isolate"] = use_isolate
+
+    if dockerfile_path is None:
+        _reject_image_reference_build_keys(image_config)
 
     for key in _IMAGE_PASSTHROUGH_KEYS:
         if key in image_config:
             kwargs[key] = image_config.pop(key)
+
+    if dockerfile_path is None:
+        _validate_command_override("entrypoint", kwargs.get("entrypoint"))
+        _validate_command_override("cmd", kwargs.get("cmd"))
+        _validate_image_registries(kwargs.get("registries"))
 
     if image_config:
         raise ValueError(
             f"Found unexpected keys in app {app_name} image: {image_config}"
         )
 
-    return ContainerImage(**kwargs)
+    if dockerfile_path is not None:
+        return ContainerImage(**kwargs).to_dict()
+
+    return kwargs
