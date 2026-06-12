@@ -18,6 +18,8 @@ from fal_client.client import (
     CDN_URL,
     Completed,
     DEFAULT_QUEUE_POLL_INTERVAL,
+    DEFAULT_UPLOAD_FALLBACK_REPOSITORY,
+    DEFAULT_UPLOAD_REPOSITORY,
     FalClientHTTPError,
     FalClientTimeoutError,
     InProgress,
@@ -32,9 +34,52 @@ from fal_client.client import (
     SyncRequestHandle,
     USER_AGENT,
     _BaseRequestHandle,
+    _normalize_upload_repositories,
     _raise_for_status,
+    _upload_v3,
     _warn_if_legacy_cdn_host_set,
 )
+
+
+def test_default_upload_repository_and_fallback():
+    # Default upload routes to the v3 CDN and only falls back to GCS ("fal").
+    assert DEFAULT_UPLOAD_REPOSITORY == "fal_v3"
+    assert DEFAULT_UPLOAD_FALLBACK_REPOSITORY == ["fal"]
+
+
+def test_normalize_upload_repositories_default_chain():
+    assert _normalize_upload_repositories(None, None) == ["fal_v3", "fal"]
+
+
+def test_normalize_upload_repositories_cdn_aliases_to_v3_silently(recwarn):
+    assert _normalize_upload_repositories("cdn", []) == ["fal_v3"]
+    # "cdn" is a plain alias now, not a deprecation -- it must not warn.
+    assert not [w for w in recwarn.list if issubclass(w.category, DeprecationWarning)]
+
+
+def test_normalize_upload_repositories_dedupes():
+    # "cdn" resolves to "fal_v3", so it collapses into the primary entry.
+    assert _normalize_upload_repositories("fal_v3", ["cdn"]) == ["fal_v3"]
+    assert _normalize_upload_repositories("fal", ["fal", "fal_v3"]) == ["fal", "fal_v3"]
+
+
+@pytest.mark.parametrize("bad", ["fal_v2", "gcp_storage", "r2", "in_memory", "nope"])
+def test_normalize_upload_repositories_rejects_unsupported(bad):
+    with pytest.raises(ValueError, match="Unsupported upload repository"):
+        _normalize_upload_repositories(bad, [])
+
+
+def test_upload_v3_uses_configured_cdn_url(monkeypatch):
+    # `_upload_v3` POSTs to the (FAL_CDN_HOST-overridable) CDN_URL global.
+    monkeypatch.setattr("fal_client.client.CDN_URL", "https://my-proxy.example.com")
+    with patch("fal_client.client._maybe_retry_request") as mock_request:
+        mock_request.return_value = Mock(
+            json=Mock(return_value={"access_url": "https://out/file"})
+        )
+        url = _upload_v3(Mock(), data=b"x", headers={"Content-Type": "text/plain"})
+
+    assert url == "https://out/file"
+    assert mock_request.call_args[0][2] == "https://my-proxy.example.com/files/upload"
 
 
 @pytest.mark.parametrize(

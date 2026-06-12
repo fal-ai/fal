@@ -1,12 +1,74 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from datetime import datetime, timezone
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from fal.auth import AuthCredentials
 from fal.toolkit.file.providers import fal as providers
+from fal.toolkit.file.types import FileData
+
+
+@contextmanager
+def _fake_retry_request(_request, **_kwargs):
+    yield MagicMock()
+
+
+@pytest.mark.parametrize(
+    "env_host, expected_base",
+    [
+        (None, "https://v3.fal.media"),
+        ("https://my-proxy.example.com", "https://my-proxy.example.com"),
+    ],
+)
+def test_fal_cdn_file_repository_save_posts_to_configured_host(
+    monkeypatch, env_host, expected_base
+):
+    """`FalCDNFileRepository.save` POSTs a single request to the v3 CDN
+    (overridable via FAL_CDN_HOST) and returns the access URL."""
+    if env_host is None:
+        monkeypatch.delenv("FAL_CDN_HOST", raising=False)
+    else:
+        monkeypatch.setenv("FAL_CDN_HOST", env_host)
+
+    token = providers.FalV3Token(
+        token="tok",
+        token_type="Bearer",
+        base_upload_url="https://upload",
+        expires_at=datetime.now(timezone.utc),
+    )
+    captured: dict = {}
+
+    def _fake_request(url, headers=None, method=None, data=None):
+        captured.update(url=url, headers=headers, method=method, data=data)
+        return MagicMock()
+
+    with patch.object(
+        providers.fal_v3_token_manager, "get_token", return_value=token
+    ), patch.object(providers, "get_current_app", return_value=None), patch.object(
+        providers, "Request", side_effect=_fake_request
+    ), patch.object(
+        providers, "_maybe_retry_request", _fake_retry_request
+    ), patch.object(
+        providers.json,
+        "load",
+        return_value={"access_url": "https://cdn/returned.bin"},
+    ):
+        repo = providers.FalCDNFileRepository()
+        url = repo.save(
+            FileData(b"hello", content_type="text/plain", file_name="hello.txt")
+        )
+
+    assert url == "https://cdn/returned.bin"
+    assert captured["url"] == f"{expected_base}/files/upload"
+    assert captured["method"] == "POST"
+    assert captured["data"] == b"hello"
+    assert captured["headers"]["Accept"] == "application/json"
+    assert captured["headers"]["Content-Type"] == "text/plain"
+    assert captured["headers"]["X-Fal-File-Name"] == "hello.txt"
+    assert captured["headers"]["Authorization"] == "Bearer tok"
 
 
 class FakeRequest:
