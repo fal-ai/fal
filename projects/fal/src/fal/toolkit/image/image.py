@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 from fastapi import Request
 from pydantic import BaseModel, Field
 
+from fal.toolkit.constraints import ImageSizeConstraints, to_xfal
 from fal.toolkit.file.file import (
     DEFAULT_REPOSITORY,
     FALLBACK_REPOSITORY,
@@ -64,6 +65,48 @@ def get_image_size(source: ImageSizeInput) -> ImageSize:
         size = IMAGE_SIZE_PRESETS[source]
         return size
     raise TypeError(f"Invalid value for ImageSize: {source}")
+
+
+@wraps(Field)
+def ImageSizeField(
+    *args,
+    constraints: Optional[ImageSizeConstraints] = None,
+    ui: Optional[dict] = None,
+    **kwargs,
+):
+    """A ``Field`` for an ``image_size`` input that documents its size limits.
+
+    Pass ``constraints`` to emit the model's size envelope under the ``x-fal``
+    schema extension, and ``ui`` for UI metadata (e.g. ``{"important": True}``);
+    all other arguments are forwarded to ``Field``. ``ui`` is taken as an explicit
+    argument (rather than a passthrough kwarg) so it is not dropped when an
+    explicit ``json_schema_extra`` is also emitted on Pydantic v2.
+    """
+    fal_extra: dict = {}
+    if constraints is not None:
+        data = to_xfal(constraints)
+        if data:
+            fal_extra["x-fal"] = data
+    if ui:
+        fal_extra["ui"] = ui
+
+    if IS_PYDANTIC_V2:
+        json_schema_extra = kwargs.pop("json_schema_extra", None) or {}
+        if callable(json_schema_extra):
+            original_func = json_schema_extra
+
+            def merged_schema_extra(schema):
+                original_func(schema)
+                schema.update(fal_extra)
+
+            kwargs["json_schema_extra"] = merged_schema_extra
+        else:
+            json_schema_extra.update(fal_extra)
+            kwargs["json_schema_extra"] = json_schema_extra
+    else:
+        # Pydantic v1: extra kwargs are stored on the field and emitted as-is.
+        kwargs.update(fal_extra)
+    return Field(*args, **kwargs)
 
 
 ImageFormat = Literal["png", "jpeg", "jpg", "webp", "gif"]
