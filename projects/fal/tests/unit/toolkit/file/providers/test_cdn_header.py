@@ -318,3 +318,27 @@ def test_internal_multipart_upload_v3_auth_headers_include_cdn_token():
     assert headers["X-Fal-CDN-Token"] == cdn_token
     assert "Authorization" in headers
     assert headers["User-Agent"] == providers.USER_AGENT
+
+
+def test_v2_names_are_backwards_compatible_aliases():
+    """The legacy v2 names remain importable and resolve to v3 equivalents."""
+    assert providers.FalV2Token is providers.FalCDNToken
+    assert providers.FalV2TokenManager is providers.FalCDNTokenManager
+    assert providers.fal_v2_token_manager is providers.fal_v3_token_manager
+    assert providers.FalFileRepositoryV2 is providers.FalFileRepositoryV3
+
+    # The v2-named manager must not mint legacy "fal-cdn" tokens.
+    assert providers.FalV2TokenManager.storage_type == "fal-cdn-v3"
+    assert providers.FalV2TokenManager.upload_prefix == ""
+
+
+def test_legacy_fal_cdn_host_env_warns(monkeypatch):
+    monkeypatch.setenv("FAL_CDN_HOST", "https://example.com")
+    with pytest.warns(DeprecationWarning, match="FAL_CDN_HOST"):
+        providers._warn_if_legacy_cdn_host_set()
+
+
+def test_legacy_fal_cdn_host_env_silent_when_unset(monkeypatch, recwarn):
+    monkeypatch.delenv("FAL_CDN_HOST", raising=False)
+    providers._warn_if_legacy_cdn_host_set()
+    assert not [w for w in recwarn.list if issubclass(w.category, DeprecationWarning)]
