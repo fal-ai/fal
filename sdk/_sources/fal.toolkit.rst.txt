@@ -24,6 +24,14 @@ fal.toolkit.compilation module
    :undoc-members:
    :show-inheritance:
 
+fal.toolkit.constraints module
+------------------------------
+
+.. automodule:: fal.toolkit.constraints
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 fal.toolkit.exceptions module
 -----------------------------
 

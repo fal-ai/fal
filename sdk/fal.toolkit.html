@@ -353,6 +353,171 @@ The cache is loaded on entry and synced on exit (even if an exception occurs).</
 </dd></dl>
 
 </section>
+<section id="module-fal.toolkit.constraints">
+<span id="fal-toolkit-constraints-module"></span><h2>fal.toolkit.constraints module<a class="headerlink" href="#module-fal.toolkit.constraints" title="Link to this heading">¶</a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.toolkit.constraints.ImageSizeConstraints">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.toolkit.constraints.</span></span><span class="sig-name descname"><span class="pre">ImageSizeConstraints</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">min_width</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_height</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_width</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_height</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_area</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_area</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">multiple_of</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_aspect_ratio</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_aspect_ratio</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.constraints.ImageSizeConstraints" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Advisory limits on the image size a model can generate.</p>
+<p>Attach to an <code class="docutils literal notranslate"><span class="pre">image_size</span></code> field via <a class="reference internal" href="#fal.toolkit.ImageSizeField" title="fal.toolkit.ImageSizeField"><code class="xref py py-func docutils literal notranslate"><span class="pre">fal.toolkit.ImageSizeField()</span></code></a> to
+surface the model’s size envelope in the OpenAPI schema (under the <code class="docutils literal notranslate"><span class="pre">x-fal</span></code>
+extension), so clients and UIs can validate sizes before a request. These are
+documentation hints and are not enforced by the SDK.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.constraints.ImageSizeConstraints.max_area">
+<span class="sig-name descname"><span class="pre">max_area</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.toolkit.constraints.ImageSizeConstraints.max_area" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.constraints.ImageSizeConstraints.max_aspect_ratio">
+<span class="sig-name descname"><span class="pre">max_aspect_ratio</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.toolkit.constraints.ImageSizeConstraints.max_aspect_ratio" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.constraints.ImageSizeConstraints.max_height">
+<span class="sig-name descname"><span class="pre">max_height</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.toolkit.constraints.ImageSizeConstraints.max_height" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.constraints.ImageSizeConstraints.max_width">
+<span class="sig-name descname"><span class="pre">max_width</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.toolkit.constraints.ImageSizeConstraints.max_width" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.constraints.ImageSizeConstraints.min_area">
+<span class="sig-name descname"><span class="pre">min_area</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.toolkit.constraints.ImageSizeConstraints.min_area" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.constraints.ImageSizeConstraints.min_aspect_ratio">
+<span class="sig-name descname"><span class="pre">min_aspect_ratio</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.toolkit.constraints.ImageSizeConstraints.min_aspect_ratio" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.constraints.ImageSizeConstraints.min_height">
+<span class="sig-name descname"><span class="pre">min_height</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.toolkit.constraints.ImageSizeConstraints.min_height" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.constraints.ImageSizeConstraints.min_width">
+<span class="sig-name descname"><span class="pre">min_width</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.toolkit.constraints.ImageSizeConstraints.min_width" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.constraints.ImageSizeConstraints.multiple_of">
+<span class="sig-name descname"><span class="pre">multiple_of</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.toolkit.constraints.ImageSizeConstraints.multiple_of" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.toolkit.constraints.ImageValidationConfig">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.toolkit.constraints.</span></span><span class="sig-name descname"><span class="pre">ImageValidationConfig</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">max_file_size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_width</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_height</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_width</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_height</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_aspect_ratio</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_aspect_ratio</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">timeout</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">20.0</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.constraints.ImageValidationConfig" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Limits applied to an input image. Surfaced in the schema (<code class="docutils literal notranslate"><span class="pre">x-fal</span></code>); the
+SDK does not enforce them.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.constraints.ImageValidationConfig.max_aspect_ratio">
+<span class="sig-name descname"><span class="pre">max_aspect_ratio</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.toolkit.constraints.ImageValidationConfig.max_aspect_ratio" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.constraints.ImageValidationConfig.max_file_size">
+<span class="sig-name descname"><span class="pre">max_file_size</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.toolkit.constraints.ImageValidationConfig.max_file_size" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.constraints.ImageValidationConfig.max_height">
+<span class="sig-name descname"><span class="pre">max_height</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.toolkit.constraints.ImageValidationConfig.max_height" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.constraints.ImageValidationConfig.max_width">
+<span class="sig-name descname"><span class="pre">max_width</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.toolkit.constraints.ImageValidationConfig.max_width" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.constraints.ImageValidationConfig.min_aspect_ratio">
+<span class="sig-name descname"><span class="pre">min_aspect_ratio</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.toolkit.constraints.ImageValidationConfig.min_aspect_ratio" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.constraints.ImageValidationConfig.min_height">
+<span class="sig-name descname"><span class="pre">min_height</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.toolkit.constraints.ImageValidationConfig.min_height" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.constraints.ImageValidationConfig.min_width">
+<span class="sig-name descname"><span class="pre">min_width</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.toolkit.constraints.ImageValidationConfig.min_width" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.constraints.ImageValidationConfig.timeout">
+<span class="sig-name descname"><span class="pre">timeout</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">20.0</span></em><a class="headerlink" href="#fal.toolkit.constraints.ImageValidationConfig.timeout" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.toolkit.constraints.ImageValidationOptions">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.toolkit.constraints.</span></span><span class="sig-name descname"><span class="pre">ImageValidationOptions</span></span><a class="headerlink" href="#fal.toolkit.constraints.ImageValidationOptions" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">TypedDict</span></code></p>
+<p>Validation options accepted by input-image helpers.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.constraints.ImageValidationOptions.max_aspect_ratio">
+<span class="sig-name descname"><span class="pre">max_aspect_ratio</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code><span class="pre">]</span></em><a class="headerlink" href="#fal.toolkit.constraints.ImageValidationOptions.max_aspect_ratio" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.constraints.ImageValidationOptions.max_file_size">
+<span class="sig-name descname"><span class="pre">max_file_size</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code><span class="pre">]</span></em><a class="headerlink" href="#fal.toolkit.constraints.ImageValidationOptions.max_file_size" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.constraints.ImageValidationOptions.max_height">
+<span class="sig-name descname"><span class="pre">max_height</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code><span class="pre">]</span></em><a class="headerlink" href="#fal.toolkit.constraints.ImageValidationOptions.max_height" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.constraints.ImageValidationOptions.max_width">
+<span class="sig-name descname"><span class="pre">max_width</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code><span class="pre">]</span></em><a class="headerlink" href="#fal.toolkit.constraints.ImageValidationOptions.max_width" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.constraints.ImageValidationOptions.min_aspect_ratio">
+<span class="sig-name descname"><span class="pre">min_aspect_ratio</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code><span class="pre">]</span></em><a class="headerlink" href="#fal.toolkit.constraints.ImageValidationOptions.min_aspect_ratio" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.constraints.ImageValidationOptions.min_height">
+<span class="sig-name descname"><span class="pre">min_height</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code><span class="pre">]</span></em><a class="headerlink" href="#fal.toolkit.constraints.ImageValidationOptions.min_height" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.constraints.ImageValidationOptions.min_width">
+<span class="sig-name descname"><span class="pre">min_width</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code><span class="pre">]</span></em><a class="headerlink" href="#fal.toolkit.constraints.ImageValidationOptions.min_width" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.constraints.ImageValidationOptions.timeout">
+<span class="sig-name descname"><span class="pre">timeout</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code><span class="pre">]</span></em><a class="headerlink" href="#fal.toolkit.constraints.ImageValidationOptions.timeout" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.toolkit.constraints.to_xfal">
+<span class="sig-prename descclassname"><span class="pre">fal.toolkit.constraints.</span></span><span class="sig-name descname"><span class="pre">to_xfal</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.constraints.to_xfal" title="Link to this definition">¶</a></dt>
+<dd><p>Return a config’s set (non-None) limits as the <code class="docutils literal notranslate"><span class="pre">x-fal</span></code> schema payload.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code>]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
 <section id="module-fal.toolkit.exceptions">
 <span id="fal-toolkit-exceptions-module"></span><h2>fal.toolkit.exceptions module<a class="headerlink" href="#module-fal.toolkit.exceptions" title="Link to this heading">¶</a></h2>
 <dl class="py exception">
@@ -1641,6 +1806,243 @@ This option can be applied only to iterable types (list, tuple, set, and frozens
 </dd></dl>
 
 <dl class="py class">
+<dt class="sig sig-object py" id="fal.toolkit.ImageSizeConstraints">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.toolkit.</span></span><span class="sig-name descname"><span class="pre">ImageSizeConstraints</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">min_width</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_height</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_width</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_height</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_area</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_area</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">multiple_of</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_aspect_ratio</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_aspect_ratio</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.ImageSizeConstraints" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Advisory limits on the image size a model can generate.</p>
+<p>Attach to an <code class="docutils literal notranslate"><span class="pre">image_size</span></code> field via <a class="reference internal" href="#fal.toolkit.ImageSizeField" title="fal.toolkit.ImageSizeField"><code class="xref py py-func docutils literal notranslate"><span class="pre">fal.toolkit.ImageSizeField()</span></code></a> to
+surface the model’s size envelope in the OpenAPI schema (under the <code class="docutils literal notranslate"><span class="pre">x-fal</span></code>
+extension), so clients and UIs can validate sizes before a request. These are
+documentation hints and are not enforced by the SDK.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.ImageSizeConstraints.max_area">
+<span class="sig-name descname"><span class="pre">max_area</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.toolkit.ImageSizeConstraints.max_area" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.ImageSizeConstraints.max_aspect_ratio">
+<span class="sig-name descname"><span class="pre">max_aspect_ratio</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.toolkit.ImageSizeConstraints.max_aspect_ratio" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.ImageSizeConstraints.max_height">
+<span class="sig-name descname"><span class="pre">max_height</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.toolkit.ImageSizeConstraints.max_height" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.ImageSizeConstraints.max_width">
+<span class="sig-name descname"><span class="pre">max_width</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.toolkit.ImageSizeConstraints.max_width" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.ImageSizeConstraints.min_area">
+<span class="sig-name descname"><span class="pre">min_area</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.toolkit.ImageSizeConstraints.min_area" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.ImageSizeConstraints.min_aspect_ratio">
+<span class="sig-name descname"><span class="pre">min_aspect_ratio</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.toolkit.ImageSizeConstraints.min_aspect_ratio" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.ImageSizeConstraints.min_height">
+<span class="sig-name descname"><span class="pre">min_height</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.toolkit.ImageSizeConstraints.min_height" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.ImageSizeConstraints.min_width">
+<span class="sig-name descname"><span class="pre">min_width</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.toolkit.ImageSizeConstraints.min_width" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.ImageSizeConstraints.multiple_of">
+<span class="sig-name descname"><span class="pre">multiple_of</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.toolkit.ImageSizeConstraints.multiple_of" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.toolkit.ImageSizeField">
+<span class="sig-prename descclassname"><span class="pre">fal.toolkit.</span></span><span class="sig-name descname"><span class="pre">ImageSizeField</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">default</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">PydanticUndefined</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">default_factory</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">PydanticUndefined</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alias</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">PydanticUndefined</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alias_priority</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">PydanticUndefined</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">validation_alias</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">PydanticUndefined</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">serialization_alias</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">PydanticUndefined</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">title</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">PydanticUndefined</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">field_title_generator</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">PydanticUndefined</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">description</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">PydanticUndefined</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">examples</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">PydanticUndefined</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exclude</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">PydanticUndefined</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exclude_if</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">PydanticUndefined</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">discriminator</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">PydanticUndefined</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">deprecated</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">PydanticUndefined</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">json_schema_extra</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">PydanticUndefined</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">frozen</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">PydanticUndefined</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">validate_default</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">PydanticUndefined</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">repr</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">PydanticUndefined</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">init</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">PydanticUndefined</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">init_var</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">PydanticUndefined</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">kw_only</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">PydanticUndefined</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pattern</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">PydanticUndefined</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">strict</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">PydanticUndefined</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">coerce_numbers_to_str</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">PydanticUndefined</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gt</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">PydanticUndefined</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ge</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">PydanticUndefined</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lt</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">PydanticUndefined</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">le</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">PydanticUndefined</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">multiple_of</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">PydanticUndefined</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">allow_inf_nan</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">PydanticUndefined</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_digits</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">PydanticUndefined</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">decimal_places</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">PydanticUndefined</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_length</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">PydanticUndefined</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_length</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">PydanticUndefined</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">union_mode</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">PydanticUndefined</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fail_fast</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">PydanticUndefined</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">extra</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.ImageSizeField" title="Link to this definition">¶</a></dt>
+<dd><dl class="simple">
+<dt>!!! abstract “Usage Documentation”</dt><dd><p>[Fields](../concepts/fields.md)</p>
+</dd>
+</dl>
+<p>Create a field for objects that can be configured.</p>
+<p>Used to provide extra information about a field, either for the model schema or complex validation. Some arguments
+apply only to number fields (<cite>int</cite>, <cite>float</cite>, <cite>Decimal</cite>) and some apply only to <cite>str</cite>.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<ul class="simple">
+<li><p>Any <cite>_Unset</cite> objects will be replaced by the corresponding value defined in the <cite>_DefaultValues</cite> dictionary. If a key for the <cite>_Unset</cite> object is not found in the <cite>_DefaultValues</cite> dictionary, it will default to <cite>None</cite></p></li>
+</ul>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>default</strong> (<span class="sphinx_autodoc_typehints-type">Any</span>) – Default value if the field is not set.</p></li>
+<li><p><strong>default_factory</strong> (<span class="sphinx_autodoc_typehints-type">Callable[[], Any] | Callable[[dict[str, Any]], Any] | None</span>) – A callable to generate the default value. The callable can either take 0 arguments
+(in which case it is called as is) or a single argument containing the already validated data.</p></li>
+<li><p><strong>alias</strong> (<span class="sphinx_autodoc_typehints-type">str | None</span>) – The name to use for the attribute when validating or serializing by alias.
+This is often used for things like converting between snake and camel case.</p></li>
+<li><p><strong>alias_priority</strong> (<span class="sphinx_autodoc_typehints-type">int | None</span>) – Priority of the alias. This affects whether an alias generator is used.</p></li>
+<li><p><strong>validation_alias</strong> (<span class="sphinx_autodoc_typehints-type">str | AliasPath | AliasChoices | None</span>) – Like <cite>alias</cite>, but only affects validation, not serialization.</p></li>
+<li><p><strong>serialization_alias</strong> (<span class="sphinx_autodoc_typehints-type">str | None</span>) – Like <cite>alias</cite>, but only affects serialization, not validation.</p></li>
+<li><p><strong>title</strong> (<span class="sphinx_autodoc_typehints-type">str | None</span>) – Human-readable title.</p></li>
+<li><p><strong>field_title_generator</strong> (<span class="sphinx_autodoc_typehints-type">Callable[[str, FieldInfo], str] | None</span>) – A callable that takes a field name and returns title for it.</p></li>
+<li><p><strong>description</strong> (<span class="sphinx_autodoc_typehints-type">str | None</span>) – Human-readable description.</p></li>
+<li><p><strong>examples</strong> (<span class="sphinx_autodoc_typehints-type">list[Any] | None</span>) – Example values for this field.</p></li>
+<li><p><strong>exclude</strong> (<span class="sphinx_autodoc_typehints-type">bool | None</span>) – Whether to exclude the field from the model serialization.</p></li>
+<li><p><strong>exclude_if</strong> (<span class="sphinx_autodoc_typehints-type">Callable[[Any], bool] | None</span>) – A callable that determines whether to exclude a field during serialization based on its value.</p></li>
+<li><p><strong>discriminator</strong> (<span class="sphinx_autodoc_typehints-type">str | types.Discriminator | None</span>) – Field name or Discriminator for discriminating the type in a tagged union.</p></li>
+<li><p><strong>deprecated</strong> (<span class="sphinx_autodoc_typehints-type">Deprecated | str | bool | None</span>) – A deprecation message, an instance of <cite>warnings.deprecated</cite> or the <cite>typing_extensions.deprecated</cite> backport,
+or a boolean. If <cite>True</cite>, a default deprecation message will be emitted when accessing the field.</p></li>
+<li><p><strong>json_schema_extra</strong> (<span class="sphinx_autodoc_typehints-type">JsonDict | Callable[[JsonDict], None] | None</span>) – A dict or callable to provide extra JSON schema properties.</p></li>
+<li><p><strong>frozen</strong> (<span class="sphinx_autodoc_typehints-type">bool | None</span>) – Whether the field is frozen. If true, attempts to change the value on an instance will raise an error.</p></li>
+<li><p><strong>validate_default</strong> (<span class="sphinx_autodoc_typehints-type">bool | None</span>) – If <cite>True</cite>, apply validation to the default value every time you create an instance.
+Otherwise, for performance reasons, the default value of the field is trusted and not validated.</p></li>
+<li><p><strong>repr</strong> (<span class="sphinx_autodoc_typehints-type">bool</span>) – A boolean indicating whether to include the field in the <cite>__repr__</cite> output.</p></li>
+<li><p><strong>init</strong> (<span class="sphinx_autodoc_typehints-type">bool | None</span>) – Whether the field should be included in the constructor of the dataclass.
+(Only applies to dataclasses.)</p></li>
+<li><p><strong>init_var</strong> (<span class="sphinx_autodoc_typehints-type">bool | None</span>) – Whether the field should _only_ be included in the constructor of the dataclass.
+(Only applies to dataclasses.)</p></li>
+<li><p><strong>kw_only</strong> (<span class="sphinx_autodoc_typehints-type">bool | None</span>) – Whether the field should be a keyword-only argument in the constructor of the dataclass.
+(Only applies to dataclasses.)</p></li>
+<li><p><strong>coerce_numbers_to_str</strong> (<span class="sphinx_autodoc_typehints-type">bool | None</span>) – Whether to enable coercion of any <cite>Number</cite> type to <cite>str</cite> (not applicable in <cite>strict</cite> mode).</p></li>
+<li><p><strong>strict</strong> (<span class="sphinx_autodoc_typehints-type">bool | None</span>) – If <cite>True</cite>, strict validation is applied to the field.
+See [Strict Mode](../concepts/strict_mode.md) for details.</p></li>
+<li><p><strong>gt</strong> (<span class="sphinx_autodoc_typehints-type">annotated_types.SupportsGt | None</span>) – Greater than. If set, value must be greater than this. Only applicable to numbers.</p></li>
+<li><p><strong>ge</strong> (<span class="sphinx_autodoc_typehints-type">annotated_types.SupportsGe | None</span>) – Greater than or equal. If set, value must be greater than or equal to this. Only applicable to numbers.</p></li>
+<li><p><strong>lt</strong> (<span class="sphinx_autodoc_typehints-type">annotated_types.SupportsLt | None</span>) – Less than. If set, value must be less than this. Only applicable to numbers.</p></li>
+<li><p><strong>le</strong> (<span class="sphinx_autodoc_typehints-type">annotated_types.SupportsLe | None</span>) – Less than or equal. If set, value must be less than or equal to this. Only applicable to numbers.</p></li>
+<li><p><strong>multiple_of</strong> (<span class="sphinx_autodoc_typehints-type">float | None</span>) – Value must be a multiple of this. Only applicable to numbers.</p></li>
+<li><p><strong>min_length</strong> (<span class="sphinx_autodoc_typehints-type">int | None</span>) – Minimum length for iterables.</p></li>
+<li><p><strong>max_length</strong> (<span class="sphinx_autodoc_typehints-type">int | None</span>) – Maximum length for iterables.</p></li>
+<li><p><strong>pattern</strong> (<span class="sphinx_autodoc_typehints-type">str | re.Pattern[str] | None</span>) – Pattern for strings (a regular expression).</p></li>
+<li><p><strong>allow_inf_nan</strong> (<span class="sphinx_autodoc_typehints-type">bool | None</span>) – Allow <cite>inf</cite>, <cite>-inf</cite>, <cite>nan</cite>. Only applicable to float and [<cite>Decimal</cite>][decimal.Decimal] numbers.</p></li>
+<li><p><strong>max_digits</strong> (<span class="sphinx_autodoc_typehints-type">int | None</span>) – Maximum number of allow digits for strings.</p></li>
+<li><p><strong>decimal_places</strong> (<span class="sphinx_autodoc_typehints-type">int | None</span>) – Maximum number of decimal places allowed for numbers.</p></li>
+<li><p><strong>union_mode</strong> (<span class="sphinx_autodoc_typehints-type">Literal[‘smart’, ‘left_to_right’]</span>) – The strategy to apply when validating a union. Can be <cite>smart</cite> (the default), or <cite>left_to_right</cite>.
+See [Union Mode](../concepts/unions.md#union-modes) for details.</p></li>
+<li><p><strong>fail_fast</strong> (<span class="sphinx_autodoc_typehints-type">bool | None</span>) – If <cite>True</cite>, validation will stop on the first error. If <cite>False</cite>, all validation errors will be collected.
+This option can be applied only to iterable types (list, tuple, set, and frozenset).</p></li>
+<li><p><strong>extra</strong> (<span class="sphinx_autodoc_typehints-type">Unpack[_EmptyKwargs]</span>) – <p>(Deprecated) Extra fields that will be included in the JSON schema.</p>
+<dl class="simple">
+<dt>!!! warning Deprecated</dt><dd><p>The <cite>extra</cite> kwargs is deprecated. Use <cite>json_schema_extra</cite> instead.</p>
+</dd>
+</dl>
+</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type">Any</span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p><dl class="simple">
+<dt>A new [<cite>FieldInfo</cite>][pydantic.fields.FieldInfo]. The return annotation is <cite>Any</cite> so <cite>Field</cite> can be used on</dt><dd><p>type-annotated fields without causing a type error.</p>
+</dd>
+</dl>
+</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.toolkit.ImageValidationConfig">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.toolkit.</span></span><span class="sig-name descname"><span class="pre">ImageValidationConfig</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">max_file_size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_width</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_height</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_width</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_height</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_aspect_ratio</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_aspect_ratio</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">timeout</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">20.0</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.ImageValidationConfig" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Limits applied to an input image. Surfaced in the schema (<code class="docutils literal notranslate"><span class="pre">x-fal</span></code>); the
+SDK does not enforce them.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.ImageValidationConfig.max_aspect_ratio">
+<span class="sig-name descname"><span class="pre">max_aspect_ratio</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.toolkit.ImageValidationConfig.max_aspect_ratio" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.ImageValidationConfig.max_file_size">
+<span class="sig-name descname"><span class="pre">max_file_size</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.toolkit.ImageValidationConfig.max_file_size" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.ImageValidationConfig.max_height">
+<span class="sig-name descname"><span class="pre">max_height</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.toolkit.ImageValidationConfig.max_height" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.ImageValidationConfig.max_width">
+<span class="sig-name descname"><span class="pre">max_width</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.toolkit.ImageValidationConfig.max_width" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.ImageValidationConfig.min_aspect_ratio">
+<span class="sig-name descname"><span class="pre">min_aspect_ratio</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.toolkit.ImageValidationConfig.min_aspect_ratio" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.ImageValidationConfig.min_height">
+<span class="sig-name descname"><span class="pre">min_height</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.toolkit.ImageValidationConfig.min_height" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.ImageValidationConfig.min_width">
+<span class="sig-name descname"><span class="pre">min_width</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.toolkit.ImageValidationConfig.min_width" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.ImageValidationConfig.timeout">
+<span class="sig-name descname"><span class="pre">timeout</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">20.0</span></em><a class="headerlink" href="#fal.toolkit.ImageValidationConfig.timeout" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.toolkit.ImageValidationOptions">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.toolkit.</span></span><span class="sig-name descname"><span class="pre">ImageValidationOptions</span></span><a class="headerlink" href="#fal.toolkit.ImageValidationOptions" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">TypedDict</span></code></p>
+<p>Validation options accepted by input-image helpers.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.ImageValidationOptions.max_aspect_ratio">
+<span class="sig-name descname"><span class="pre">max_aspect_ratio</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code><span class="pre">]</span></em><a class="headerlink" href="#fal.toolkit.ImageValidationOptions.max_aspect_ratio" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.ImageValidationOptions.max_file_size">
+<span class="sig-name descname"><span class="pre">max_file_size</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code><span class="pre">]</span></em><a class="headerlink" href="#fal.toolkit.ImageValidationOptions.max_file_size" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.ImageValidationOptions.max_height">
+<span class="sig-name descname"><span class="pre">max_height</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code><span class="pre">]</span></em><a class="headerlink" href="#fal.toolkit.ImageValidationOptions.max_height" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.ImageValidationOptions.max_width">
+<span class="sig-name descname"><span class="pre">max_width</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code><span class="pre">]</span></em><a class="headerlink" href="#fal.toolkit.ImageValidationOptions.max_width" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.ImageValidationOptions.min_aspect_ratio">
+<span class="sig-name descname"><span class="pre">min_aspect_ratio</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code><span class="pre">]</span></em><a class="headerlink" href="#fal.toolkit.ImageValidationOptions.min_aspect_ratio" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.ImageValidationOptions.min_height">
+<span class="sig-name descname"><span class="pre">min_height</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code><span class="pre">]</span></em><a class="headerlink" href="#fal.toolkit.ImageValidationOptions.min_height" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.ImageValidationOptions.min_width">
+<span class="sig-name descname"><span class="pre">min_width</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code><span class="pre">]</span></em><a class="headerlink" href="#fal.toolkit.ImageValidationOptions.min_width" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="fal.toolkit.ImageValidationOptions.timeout">
+<span class="sig-name descname"><span class="pre">timeout</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code><span class="pre">]</span></em><a class="headerlink" href="#fal.toolkit.ImageValidationOptions.timeout" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
 <dt class="sig sig-object py" id="fal.toolkit.KVStore">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.toolkit.</span></span><span class="sig-name descname"><span class="pre">KVStore</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">db_name</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.KVStore" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
@@ -2029,6 +2431,17 @@ The cache is loaded on entry and synced on exit (even if an exception occurs).</
 <span class="go"># Cache is automatically synced after the with block</span>
 </pre></div>
 </div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.toolkit.to_xfal">
+<span class="sig-prename descclassname"><span class="pre">fal.toolkit.</span></span><span class="sig-name descname"><span class="pre">to_xfal</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.to_xfal" title="Link to this definition">¶</a></dt>
+<dd><p>Return a config’s set (non-None) limits as the <code class="docutils literal notranslate"><span class="pre">x-fal</span></code> schema payload.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code>]</span></p>
+</dd>
+</dl>
 </dd></dl>
 
 </section>
