@@ -36,8 +36,8 @@ from fal_client.client import (
     _BaseRequestHandle,
     _normalize_upload_repositories,
     _raise_for_status,
+    _resolve_cdn_host,
     _upload_v3,
-    _warn_if_legacy_cdn_host_set,
 )
 
 
@@ -82,6 +82,11 @@ def test_upload_v3_uses_configured_cdn_url(monkeypatch):
     assert mock_request.call_args[0][2] == "https://my-proxy.example.com/files/upload"
 
 
+def test_resolve_cdn_host_defaults_when_unset(monkeypatch):
+    monkeypatch.delenv("FAL_CDN_HOST", raising=False)
+    assert _resolve_cdn_host("https://v3.fal.media") == "https://v3.fal.media"
+
+
 @pytest.mark.parametrize(
     "host",
     [
@@ -91,25 +96,26 @@ def test_upload_v3_uses_configured_cdn_url(monkeypatch):
         "http://v2.fal.media:443",
     ],
 )
-def test_fal_cdn_host_env_warns_for_legacy_hosts(monkeypatch, host):
+def test_resolve_cdn_host_remaps_legacy_with_warning(monkeypatch, host):
+    # A disabled legacy host must fall back to the v3 default (not be used).
     monkeypatch.setenv("FAL_CDN_HOST", host)
     with pytest.warns(DeprecationWarning, match="FAL_CDN_HOST"):
-        _warn_if_legacy_cdn_host_set()
+        assert _resolve_cdn_host("https://v3.fal.media") == "https://v3.fal.media"
 
 
 @pytest.mark.parametrize(
-    "host",
-    ["https://v3.fal.media", "https://my-proxy.example.com", "my-proxy.example.com"],
+    "host, expected",
+    [
+        ("https://v3.fal.media", "https://v3.fal.media"),
+        ("https://my-proxy.example.com", "https://my-proxy.example.com"),
+        ("http://localhost:8080", "http://localhost:8080"),
+        # Bare host (no scheme) is normalized to https:// so URL building works.
+        ("my-proxy.example.com", "https://my-proxy.example.com"),
+    ],
 )
-def test_fal_cdn_host_env_silent_for_supported_hosts(monkeypatch, recwarn, host):
+def test_resolve_cdn_host_honors_supported_hosts(monkeypatch, recwarn, host, expected):
     monkeypatch.setenv("FAL_CDN_HOST", host)
-    _warn_if_legacy_cdn_host_set()
-    assert not [w for w in recwarn.list if issubclass(w.category, DeprecationWarning)]
-
-
-def test_fal_cdn_host_env_silent_when_unset(monkeypatch, recwarn):
-    monkeypatch.delenv("FAL_CDN_HOST", raising=False)
-    _warn_if_legacy_cdn_host_set()
+    assert _resolve_cdn_host("https://v3.fal.media") == expected
     assert not [w for w in recwarn.list if issubclass(w.category, DeprecationWarning)]
 
 
