@@ -585,10 +585,10 @@ def test_worker_env_vars(isolated_client):
 
 @pytest.mark.flaky(max_runs=3)
 def test_fal_storage_v3(isolated_client):
-    url_prefixes = ["https://v3.fal.media/files", "https://v3b.fal.media/files"]
+    url_prefixes = ["https://v3.fal.media/files"]
 
-    # v3b validates content against the claimed type; keep this test out of the
-    # rate-limited unrecognized-binary path.
+    # The v3 CDN validates content against the claimed type; keep this test out
+    # of the rate-limited unrecognized-binary path.
     file = File.from_bytes(
         b"Hello fal storage from local",
         content_type="text/plain",

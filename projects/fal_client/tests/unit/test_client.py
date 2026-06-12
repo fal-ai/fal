@@ -18,7 +18,8 @@ from fal_client.client import (
     CDN_URL,
     Completed,
     DEFAULT_QUEUE_POLL_INTERVAL,
-    FAL_CDN_FALLBACK_URL,
+    DEFAULT_UPLOAD_FALLBACK_REPOSITORY,
+    DEFAULT_UPLOAD_REPOSITORY,
     FalClientHTTPError,
     FalClientTimeoutError,
     InProgress,
@@ -33,8 +34,89 @@ from fal_client.client import (
     SyncRequestHandle,
     USER_AGENT,
     _BaseRequestHandle,
+    _normalize_upload_repositories,
     _raise_for_status,
+    _resolve_cdn_host,
+    _upload_v3,
 )
+
+
+def test_default_upload_repository_and_fallback():
+    # Default upload routes to the v3 CDN and only falls back to GCS ("fal").
+    assert DEFAULT_UPLOAD_REPOSITORY == "fal_v3"
+    assert DEFAULT_UPLOAD_FALLBACK_REPOSITORY == ["fal"]
+
+
+def test_normalize_upload_repositories_default_chain():
+    assert _normalize_upload_repositories(None, None) == ["fal_v3", "fal"]
+
+
+def test_normalize_upload_repositories_cdn_aliases_to_v3_silently(recwarn):
+    assert _normalize_upload_repositories("cdn", []) == ["fal_v3"]
+    # "cdn" is a plain alias now, not a deprecation -- it must not warn.
+    assert not [w for w in recwarn.list if issubclass(w.category, DeprecationWarning)]
+
+
+def test_normalize_upload_repositories_dedupes():
+    # "cdn" resolves to "fal_v3", so it collapses into the primary entry.
+    assert _normalize_upload_repositories("fal_v3", ["cdn"]) == ["fal_v3"]
+    assert _normalize_upload_repositories("fal", ["fal", "fal_v3"]) == ["fal", "fal_v3"]
+
+
+@pytest.mark.parametrize("bad", ["fal_v2", "gcp_storage", "r2", "in_memory", "nope"])
+def test_normalize_upload_repositories_rejects_unsupported(bad):
+    with pytest.raises(ValueError, match="Unsupported upload repository"):
+        _normalize_upload_repositories(bad, [])
+
+
+def test_upload_v3_uses_configured_cdn_url(monkeypatch):
+    # `_upload_v3` POSTs to the (FAL_CDN_HOST-overridable) CDN_URL global.
+    monkeypatch.setattr("fal_client.client.CDN_URL", "https://my-proxy.example.com")
+    with patch("fal_client.client._maybe_retry_request") as mock_request:
+        mock_request.return_value = Mock(
+            json=Mock(return_value={"access_url": "https://out/file"})
+        )
+        url = _upload_v3(Mock(), data=b"x", headers={"Content-Type": "text/plain"})
+
+    assert url == "https://out/file"
+    assert mock_request.call_args[0][2] == "https://my-proxy.example.com/files/upload"
+
+
+def test_resolve_cdn_host_defaults_when_unset(monkeypatch):
+    monkeypatch.delenv("FAL_CDN_HOST", raising=False)
+    assert _resolve_cdn_host("https://v3.fal.media") == "https://v3.fal.media"
+
+
+@pytest.mark.parametrize(
+    "host",
+    [
+        "https://fal.media",
+        "fal.media",
+        "https://v2.fal.media",
+        "http://v2.fal.media:443",
+    ],
+)
+def test_resolve_cdn_host_remaps_legacy_with_warning(monkeypatch, host):
+    # A disabled legacy host must fall back to the v3 default (not be used).
+    monkeypatch.setenv("FAL_CDN_HOST", host)
+    with pytest.warns(DeprecationWarning, match="FAL_CDN_HOST"):
+        assert _resolve_cdn_host("https://v3.fal.media") == "https://v3.fal.media"
+
+
+@pytest.mark.parametrize(
+    "host, expected",
+    [
+        ("https://v3.fal.media", "https://v3.fal.media"),
+        ("https://my-proxy.example.com", "https://my-proxy.example.com"),
+        ("http://localhost:8080", "http://localhost:8080"),
+        # Bare host (no scheme) is normalized to https:// so URL building works.
+        ("my-proxy.example.com", "https://my-proxy.example.com"),
+    ],
+)
+def test_resolve_cdn_host_honors_supported_hosts(monkeypatch, recwarn, host, expected):
+    monkeypatch.setenv("FAL_CDN_HOST", host)
+    assert _resolve_cdn_host("https://v3.fal.media") == expected
+    assert not [w for w in recwarn.list if issubclass(w.category, DeprecationWarning)]
 
 
 def test_clients_remain_hashable():
@@ -276,39 +358,25 @@ def test_sync_client_subscribe_with_headers():
         assert first_call_kwargs["headers"]["X-Trace-Id"] == "trace-123"
 
 
-def test_sync_upload_falls_back_to_cdn():
+def test_sync_upload_cdn_repository_aliases_to_v3():
     with patch("fal_client.client._maybe_retry_request") as mock_request, patch(
         "fal_client.client.SyncClient._get_cdn_client"
     ) as mock_cdn_context:
-        fallback_response = Mock()
-        fallback_response.json.return_value = {"access_url": "https://fallback/file"}
-        mock_request.side_effect = [Exception("boom"), fallback_response]
+        response = Mock()
+        response.json.return_value = {"access_url": "https://v3-only/file"}
+        mock_request.return_value = response
         mock_cdn_context.return_value = Mock()
-        settings = StorageSettings(expires_in=3600)
 
         client = SyncClient(key="test-key")
         url = client.upload(
             b"hello",
             content_type="text/plain",
-            lifecycle=settings,
+            repository="cdn",
+            fallback_repository=[],
         )
 
-    assert url == "https://fallback/file"
+    assert url == "https://v3-only/file"
     assert mock_request.call_args_list[0][0][2] == f"{CDN_URL}/files/upload"
-    assert (
-        mock_request.call_args_list[1][0][2] == f"{FAL_CDN_FALLBACK_URL}/files/upload"
-    )
-    expected = json.dumps({"expiration_duration_seconds": 3600})
-    assert (
-        mock_request.call_args_list[0][1]["headers"]["X-Fal-Object-Lifecycle"]
-        == expected
-    )
-    assert (
-        mock_request.call_args_list[1][1]["headers"][
-            "X-Fal-Object-Lifecycle-Preference"
-        ]
-        == expected
-    )
 
 
 def test_sync_upload_falls_back_to_storage():
@@ -321,7 +389,6 @@ def test_sync_upload_falls_back_to_storage():
             "file_url": "https://file.example.com/file",
         }
         mock_request.side_effect = [
-            Exception("boom"),
             Exception("boom"),
             init_response,
             Mock(),
@@ -339,16 +406,13 @@ def test_sync_upload_falls_back_to_storage():
     assert url == "https://file.example.com/file"
     assert mock_request.call_args_list[0][0][2] == f"{CDN_URL}/files/upload"
     assert (
-        mock_request.call_args_list[1][0][2] == f"{FAL_CDN_FALLBACK_URL}/files/upload"
-    )
-    assert (
-        mock_request.call_args_list[2][0][2]
+        mock_request.call_args_list[1][0][2]
         == f"{REST_URL}/storage/upload/initiate?storage_type=gcs"
     )
-    assert mock_request.call_args_list[3][0][2] == "https://upload.example.com/put"
+    assert mock_request.call_args_list[2][0][2] == "https://upload.example.com/put"
     expected = json.dumps({"expiration_duration_seconds": 3600})
     assert (
-        mock_request.call_args_list[2][1]["headers"][
+        mock_request.call_args_list[1][1]["headers"][
             "X-Fal-Object-Lifecycle-Preference"
         ]
         == expected
@@ -396,16 +460,19 @@ def test_sync_upload_file_passes_lifecycle_to_multipart(tmp_path, monkeypatch):
 
 
 def test_sync_upload_lifecycle_expires_in_is_normalized():
-    with patch("fal_client.client._maybe_retry_request") as mock_request:
+    with patch("fal_client.client._maybe_retry_request") as mock_request, patch(
+        "fal_client.client.SyncClient._get_cdn_client"
+    ) as mock_cdn_context:
         response = Mock()
         response.json.return_value = {"access_url": "https://cdn-only/file"}
         mock_request.return_value = response
+        mock_cdn_context.return_value = Mock()
 
         client = SyncClient(key="test-key")
         url = client.upload(
             b"hello",
             content_type="text/plain",
-            repository="cdn",
+            repository="fal_v3",
             fallback_repository=[],
             lifecycle=StorageSettings(expires_in="1h"),
         )
@@ -443,16 +510,19 @@ def test_sync_upload_lifecycle_is_sent_to_fal_v3():
 
 
 def test_sync_upload_lifecycle_immediate_is_normalized():
-    with patch("fal_client.client._maybe_retry_request") as mock_request:
+    with patch("fal_client.client._maybe_retry_request") as mock_request, patch(
+        "fal_client.client.SyncClient._get_cdn_client"
+    ) as mock_cdn_context:
         response = Mock()
         response.json.return_value = {"access_url": "https://cdn-only/file"}
         mock_request.return_value = response
+        mock_cdn_context.return_value = Mock()
 
         client = SyncClient(key="test-key")
         url = client.upload(
             b"hello",
             content_type="text/plain",
-            repository="cdn",
+            repository="fal_v3",
             fallback_repository=[],
             lifecycle=StorageSettings(expires_in="immediate"),
         )
@@ -465,16 +535,19 @@ def test_sync_upload_lifecycle_immediate_is_normalized():
 
 
 def test_sync_upload_lifecycle_never_is_normalized():
-    with patch("fal_client.client._maybe_retry_request") as mock_request:
+    with patch("fal_client.client._maybe_retry_request") as mock_request, patch(
+        "fal_client.client.SyncClient._get_cdn_client"
+    ) as mock_cdn_context:
         response = Mock()
         response.json.return_value = {"access_url": "https://cdn-only/file"}
         mock_request.return_value = response
+        mock_cdn_context.return_value = Mock()
 
         client = SyncClient(key="test-key")
         url = client.upload(
             b"hello",
             content_type="text/plain",
-            repository="cdn",
+            repository="fal_v3",
             fallback_repository=[],
             lifecycle=StorageSettings(expires_in="never"),
         )
@@ -492,7 +565,7 @@ def test_sync_upload_lifecycle_integer_must_be_positive():
         client.upload(
             b"hello",
             content_type="text/plain",
-            repository="cdn",
+            repository="fal_v3",
             fallback_repository=[],
             lifecycle=StorageSettings(expires_in=0),
         )
@@ -507,7 +580,7 @@ def test_sync_upload_lifecycle_negative_integer_is_rejected():
         client.upload(
             b"hello",
             content_type="text/plain",
-            repository="cdn",
+            repository="fal_v3",
             fallback_repository=[],
             lifecycle=StorageSettings(expires_in=-1),
         )
@@ -522,7 +595,7 @@ def test_sync_upload_lifecycle_boolean_is_rejected():
         client.upload(
             b"hello",
             content_type="text/plain",
-            repository="cdn",
+            repository="fal_v3",
             fallback_repository=[],
             lifecycle=StorageSettings(expires_in=True),
         )
@@ -537,7 +610,7 @@ def test_sync_upload_lifecycle_invalid_string_is_rejected():
         client.upload(
             b"hello",
             content_type="text/plain",
-            repository="cdn",
+            repository="fal_v3",
             fallback_repository=[],
             lifecycle=StorageSettings(expires_in="2h"),  # type: ignore[arg-type]
         )
@@ -552,16 +625,19 @@ def test_storage_settings_validates_expires_in_on_init():
 
 
 def test_sync_upload_lifecycle_includes_acl():
-    with patch("fal_client.client._maybe_retry_request") as mock_request:
+    with patch("fal_client.client._maybe_retry_request") as mock_request, patch(
+        "fal_client.client.SyncClient._get_cdn_client"
+    ) as mock_cdn_context:
         response = Mock()
         response.json.return_value = {"access_url": "https://cdn-only/file"}
         mock_request.return_value = response
+        mock_cdn_context.return_value = Mock()
 
         client = SyncClient(key="test-key")
         url = client.upload(
             b"hello",
             content_type="text/plain",
-            repository="cdn",
+            repository="fal_v3",
             fallback_repository=[],
             lifecycle=StorageSettings(
                 expires_in="immediate",
@@ -584,16 +660,19 @@ def test_sync_upload_lifecycle_includes_acl():
 
 
 def test_sync_upload_lifecycle_skips_empty_acl_rules():
-    with patch("fal_client.client._maybe_retry_request") as mock_request:
+    with patch("fal_client.client._maybe_retry_request") as mock_request, patch(
+        "fal_client.client.SyncClient._get_cdn_client"
+    ) as mock_cdn_context:
         response = Mock()
         response.json.return_value = {"access_url": "https://cdn-only/file"}
         mock_request.return_value = response
+        mock_cdn_context.return_value = Mock()
 
         client = SyncClient(key="test-key")
         url = client.upload(
             b"hello",
             content_type="text/plain",
-            repository="cdn",
+            repository="fal_v3",
             fallback_repository=[],
             lifecycle=StorageSettings(
                 initial_acl=StorageACL(
@@ -613,16 +692,19 @@ def test_sync_upload_lifecycle_skips_empty_acl_rules():
 
 
 def test_sync_upload_lifecycle_omits_empty_acl_object():
-    with patch("fal_client.client._maybe_retry_request") as mock_request:
+    with patch("fal_client.client._maybe_retry_request") as mock_request, patch(
+        "fal_client.client.SyncClient._get_cdn_client"
+    ) as mock_cdn_context:
         response = Mock()
         response.json.return_value = {"access_url": "https://cdn-only/file"}
         mock_request.return_value = response
+        mock_cdn_context.return_value = Mock()
 
         client = SyncClient(key="test-key")
         url = client.upload(
             b"hello",
             content_type="text/plain",
-            repository="cdn",
+            repository="fal_v3",
             fallback_repository=[],
             lifecycle=StorageSettings(
                 initial_acl=StorageACL(),
@@ -655,22 +737,31 @@ def test_sync_upload_image_passes_lifecycle():
 
 
 def test_sync_upload_respects_repository_order():
-    with patch("fal_client.client._maybe_retry_request") as mock_request:
-        cdn_response = Mock()
-        cdn_response.json.return_value = {"access_url": "https://cdn-only/file"}
-        mock_request.return_value = cdn_response
+    with patch("fal_client.client._maybe_retry_request") as mock_request, patch(
+        "fal_client.client.SyncClient._get_cdn_client"
+    ) as mock_cdn_context:
+        init_response = Mock()
+        init_response.json.return_value = {
+            "upload_url": "https://upload.example.com/put",
+            "file_url": "https://storage-only/file",
+        }
+        v3_response = Mock()
+        v3_response.json.return_value = {"access_url": "https://v3-only/file"}
+        mock_request.side_effect = [init_response, Mock(), v3_response]
+        mock_cdn_context.return_value = Mock()
 
         client = SyncClient(key="test-key")
         url = client.upload(
             b"hello",
             content_type="text/plain",
-            repository="cdn",
-            fallback_repository=[],
+            repository="fal",
+            fallback_repository=["fal_v3"],
         )
 
-    assert url == "https://cdn-only/file"
+    assert url == "https://storage-only/file"
     assert (
-        mock_request.call_args_list[0][0][2] == f"{FAL_CDN_FALLBACK_URL}/files/upload"
+        mock_request.call_args_list[0][0][2]
+        == f"{REST_URL}/storage/upload/initiate?storage_type=gcs"
     )
 
 
@@ -754,7 +845,7 @@ class FakeAsyncTokenManager:
 
 
 @pytest.mark.asyncio
-async def test_async_upload_falls_back_to_cdn():
+async def test_async_upload_cdn_repository_aliases_to_v3():
     @asynccontextmanager
     async def fake_cdn_client():
         yield Mock()
@@ -764,37 +855,23 @@ async def test_async_upload_falls_back_to_cdn():
     ) as mock_request, patch(
         "fal_client.client.AsyncClient._cdn_client"
     ) as mock_cdn_context:
-        fallback_response = httpx.Response(
-            status_code=200, json={"access_url": "https://fallback/file"}
+        response = httpx.Response(
+            status_code=200, json={"access_url": "https://v3-only/file"}
         )
-        mock_request.side_effect = [Exception("boom"), fallback_response]
+        mock_request.return_value = response
         mock_cdn_context.side_effect = lambda: fake_cdn_client()
-        settings = StorageSettings(expires_in=3600)
 
         client = AsyncClient(key="test-key")
         client.__dict__["_token_manager"] = FakeAsyncTokenManager()
         url = await client.upload(
             b"hello",
             content_type="text/plain",
-            lifecycle=settings,
+            repository="cdn",
+            fallback_repository=[],
         )
 
-    assert url == "https://fallback/file"
+    assert url == "https://v3-only/file"
     assert mock_request.call_args_list[0][0][2] == f"{CDN_URL}/files/upload"
-    assert (
-        mock_request.call_args_list[1][0][2] == f"{FAL_CDN_FALLBACK_URL}/files/upload"
-    )
-    expected = json.dumps({"expiration_duration_seconds": 3600})
-    assert (
-        mock_request.call_args_list[0][1]["headers"]["X-Fal-Object-Lifecycle"]
-        == expected
-    )
-    assert (
-        mock_request.call_args_list[1][1]["headers"][
-            "X-Fal-Object-Lifecycle-Preference"
-        ]
-        == expected
-    )
 
 
 @pytest.mark.asyncio
@@ -817,7 +894,6 @@ async def test_async_upload_falls_back_to_storage():
         )
         mock_request.side_effect = [
             Exception("boom"),
-            Exception("boom"),
             init_response,
             Mock(),
         ]
@@ -835,16 +911,13 @@ async def test_async_upload_falls_back_to_storage():
     assert url == "https://file.example.com/file"
     assert mock_request.call_args_list[0][0][2] == f"{CDN_URL}/files/upload"
     assert (
-        mock_request.call_args_list[1][0][2] == f"{FAL_CDN_FALLBACK_URL}/files/upload"
-    )
-    assert (
-        mock_request.call_args_list[2][0][2]
+        mock_request.call_args_list[1][0][2]
         == f"{REST_URL}/storage/upload/initiate?storage_type=gcs"
     )
-    assert mock_request.call_args_list[3][0][2] == "https://upload.example.com/put"
+    assert mock_request.call_args_list[2][0][2] == "https://upload.example.com/put"
     expected = json.dumps({"expiration_duration_seconds": 3600})
     assert (
-        mock_request.call_args_list[2][1]["headers"][
+        mock_request.call_args_list[1][1]["headers"][
             "X-Fal-Object-Lifecycle-Preference"
         ]
         == expected
@@ -1105,19 +1178,27 @@ async def test_async_upload_image_passes_lifecycle():
 
 @pytest.mark.asyncio
 async def test_async_upload_lifecycle_includes_acl():
+    @asynccontextmanager
+    async def fake_cdn_client():
+        yield Mock()
+
     with patch(
         "fal_client.client._async_maybe_retry_request", new_callable=AsyncMock
-    ) as mock_request:
+    ) as mock_request, patch(
+        "fal_client.client.AsyncClient._cdn_client"
+    ) as mock_cdn_context:
         response = httpx.Response(
             status_code=200, json={"access_url": "https://cdn-only/file"}
         )
         mock_request.return_value = response
+        mock_cdn_context.side_effect = lambda: fake_cdn_client()
 
         client = AsyncClient(key="test-key")
+        client.__dict__["_token_manager"] = FakeAsyncTokenManager()
         url = await client.upload(
             b"hello",
             content_type="text/plain",
-            repository="cdn",
+            repository="fal_v3",
             fallback_repository=[],
             lifecycle=StorageSettings(
                 expires_in="immediate",
@@ -1141,25 +1222,44 @@ async def test_async_upload_lifecycle_includes_acl():
 
 @pytest.mark.asyncio
 async def test_async_upload_respects_repository_order():
+    @asynccontextmanager
+    async def fake_cdn_client():
+        yield Mock()
+
     with patch(
         "fal_client.client._async_maybe_retry_request", new_callable=AsyncMock
-    ) as mock_request:
-        cdn_response = httpx.Response(
-            status_code=200, json={"access_url": "https://cdn-only/file"}
+    ) as mock_request, patch(
+        "fal_client.client.AsyncClient._cdn_client"
+    ) as mock_cdn_context:
+        init_response = httpx.Response(
+            status_code=200,
+            json={
+                "upload_url": "https://upload.example.com/put",
+                "file_url": "https://storage-only/file",
+            },
         )
-        mock_request.return_value = cdn_response
+        mock_request.side_effect = [
+            init_response,
+            httpx.Response(status_code=200, json={}),
+            httpx.Response(
+                status_code=200, json={"access_url": "https://v3-only/file"}
+            ),
+        ]
+        mock_cdn_context.side_effect = lambda: fake_cdn_client()
 
         client = AsyncClient(key="test-key")
+        client.__dict__["_token_manager"] = FakeAsyncTokenManager()
         url = await client.upload(
             b"hello",
             content_type="text/plain",
-            repository="cdn",
-            fallback_repository=[],
+            repository="fal",
+            fallback_repository=["fal_v3"],
         )
 
-    assert url == "https://cdn-only/file"
+    assert url == "https://storage-only/file"
     assert (
-        mock_request.call_args_list[0][0][2] == f"{FAL_CDN_FALLBACK_URL}/files/upload"
+        mock_request.call_args_list[0][0][2]
+        == f"{REST_URL}/storage/upload/initiate?storage_type=gcs"
     )
 
 

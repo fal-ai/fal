@@ -30,7 +30,7 @@ from typing import (
     Callable,
     Union,
 )
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 import warnings
 
 import aiofiles
@@ -68,6 +68,10 @@ if TYPE_CHECKING:
     from PIL import Image
 
 AnyJSON = Dict[str, Any]
+# "cdn" is an alias for "fal_v3": the legacy fal.media CDN has been disabled, and
+# the "fal_v3" path already uploads directly to the v3 CDN. "cdn" is kept for
+# backwards compatibility and maps onto "fal_v3" (see
+# _normalize_upload_repositories).
 UploadRepositoryId = Literal["fal_v3", "cdn", "fal"]
 LifecyclePreferencePayload = Dict[str, Any]
 ObjectExpiration = Union[
@@ -80,10 +84,44 @@ RUN_URL_FORMAT = f"https://{FAL_RUN_HOST}/"
 QUEUE_URL_FORMAT = f"https://{FAL_QUEUE_RUN_HOST}/"
 REALTIME_URL_FORMAT = f"wss://{FAL_RUN_HOST}/"
 REST_URL = "https://rest.fal.ai"
-CDN_URL = "https://v3.fal.media"
-FAL_CDN_FALLBACK_URL = os.environ.get("FAL_CDN_HOST", "https://fal.media")
+
+_LEGACY_CDN_HOSTS = frozenset({"fal.media", "v2.fal.media"})
+
+
+def _resolve_cdn_host(default: str) -> str:
+    """Resolve the CDN host from ``FAL_CDN_HOST``, falling back to ``default``.
+
+    Returns ``default`` when ``FAL_CDN_HOST`` is unset or points at a disabled
+    legacy CDN (``fal.media`` / ``v2.fal.media``) -- in the legacy case a
+    ``DeprecationWarning`` is emitted rather than uploading to a dead host. A
+    bare host (no scheme) is normalized to ``https://`` so that URL
+    construction stays valid.
+    """
+    host = os.environ.get("FAL_CDN_HOST")
+    if not host:
+        return default
+    # urlparse needs a scheme to populate `hostname`; add one for bare hosts.
+    has_scheme = "//" in host
+    parsed = urlparse(host if has_scheme else f"//{host}")
+    if (parsed.hostname or "").lower() in _LEGACY_CDN_HOSTS:
+        warnings.warn(
+            "FAL_CDN_HOST points at the legacy fal.media/v2.fal.media CDN, which "
+            "has been disabled; falling back to the v3 CDN host. Unset "
+            "FAL_CDN_HOST or point it at a supported host.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return default
+    return host if has_scheme else f"https://{host}"
+
+
+CDN_URL = _resolve_cdn_host("https://v3.fal.media")
 DEFAULT_UPLOAD_REPOSITORY: UploadRepositoryId = "fal_v3"
-DEFAULT_UPLOAD_FALLBACK_REPOSITORY: list[UploadRepositoryId] = ["cdn", "fal"]
+DEFAULT_UPLOAD_FALLBACK_REPOSITORY: list[UploadRepositoryId] = ["fal"]
+# Aliases mapped onto a supported repository before dispatch. "cdn" is kept for
+# backwards compatibility; the "fal_v3" path it maps to already uploads directly
+# to the v3 CDN.
+_UPLOAD_REPOSITORY_ALIASES: dict[str, UploadRepositoryId] = {"cdn": "fal_v3"}
 USER_AGENT = f"fal-client/{__version__} (python)"
 
 MIN_REQUEST_TIMEOUT_SECONDS = 1
@@ -1170,12 +1208,6 @@ async def _async_maybe_retry_request(
     raise RuntimeError("Failed to perform request")
 
 
-def _cdn_auth_header(auth: AuthCredentials) -> str:
-    if auth.scheme.lower() == "key":
-        return f"Bearer {auth.token}"
-    return auth.header_value
-
-
 def _object_lifecycle_headers(
     headers: dict[str, str],
     object_lifecycle_preference: LifecyclePreferencePayload | None,
@@ -1234,19 +1266,6 @@ def _normalize_upload_lifecycle(
     return normalized or None
 
 
-def _cdn_upload_headers(
-    auth: AuthCredentials,
-    content_type: str,
-    file_name: str | None,
-    object_lifecycle_preference: LifecyclePreferencePayload | None,
-) -> dict[str, str]:
-    headers = {"Content-Type": content_type, "Authorization": _cdn_auth_header(auth)}
-    if file_name is not None:
-        headers["X-Fal-File-Name"] = file_name
-    _object_lifecycle_headers(headers, object_lifecycle_preference)
-    return headers
-
-
 def _storage_upload_headers(
     auth: AuthCredentials,
     object_lifecycle_preference: LifecyclePreferencePayload | None,
@@ -1264,7 +1283,7 @@ def _normalize_upload_repositories(
     repository: UploadRepositoryId | None,
     fallback_repository: UploadRepositoryId | list[UploadRepositoryId] | None,
 ) -> list[UploadRepositoryId]:
-    allowed = {"fal_v3", "cdn", "fal"}
+    allowed = {"fal_v3", "fal"}
     if repository is None:
         repository = DEFAULT_UPLOAD_REPOSITORY
 
@@ -1276,6 +1295,7 @@ def _normalize_upload_repositories(
     ordered = [repository, *fallback_repository]
     deduped: list[UploadRepositoryId] = []
     for entry in ordered:
+        entry = _UPLOAD_REPOSITORY_ALIASES.get(entry, entry)
         if entry not in allowed:
             raise ValueError(f"Unsupported upload repository '{entry}'")
         if entry not in deduped:
@@ -1366,27 +1386,6 @@ def _upload_v3(
     return response.json()["access_url"]
 
 
-def _upload_cdn(
-    client: httpx.Client,
-    auth: AuthCredentials,
-    *,
-    data: bytes,
-    content_type: str,
-    file_name: str | None,
-    object_lifecycle_preference: LifecyclePreferencePayload | None = None,
-) -> str:
-    response = _maybe_retry_request(
-        client,
-        "POST",
-        FAL_CDN_FALLBACK_URL + "/files/upload",
-        content=data,
-        headers=_cdn_upload_headers(
-            auth, content_type, file_name, object_lifecycle_preference
-        ),
-    )
-    return response.json()["access_url"]
-
-
 async def _async_upload_v3(
     client: httpx.AsyncClient,
     *,
@@ -1399,27 +1398,6 @@ async def _async_upload_v3(
         CDN_URL + "/files/upload",
         content=data,
         headers=headers,
-    )
-    return response.json()["access_url"]
-
-
-async def _async_upload_cdn(
-    client: httpx.AsyncClient,
-    auth: AuthCredentials,
-    *,
-    data: bytes,
-    content_type: str,
-    file_name: str | None,
-    object_lifecycle_preference: LifecyclePreferencePayload | None = None,
-) -> str:
-    response = await _async_maybe_retry_request(
-        client,
-        "POST",
-        FAL_CDN_FALLBACK_URL + "/files/upload",
-        content=data,
-        headers=_cdn_upload_headers(
-            auth, content_type, file_name, object_lifecycle_preference
-        ),
     )
     return response.json()["access_url"]
 
@@ -1996,25 +1974,6 @@ class AsyncClient:
         for repo in repository_chain:
             if repo == "fal_v3":
                 attempts.append(("fal_v3", _v3_attempt))
-            elif repo == "cdn":
-                if auth is None:
-                    auth = await self._auth
-                if client is None:
-                    client = await self._client
-                attempts.append(
-                    (
-                        "cdn",
-                        partial(
-                            _async_upload_cdn,
-                            client,
-                            auth,
-                            data=data,
-                            content_type=content_type,
-                            file_name=file_name,
-                            object_lifecycle_preference=resolved_lifecycle,
-                        ),
-                    )
-                )
             elif repo == "fal":
                 if auth is None:
                     auth = await self._auth
@@ -2511,21 +2470,6 @@ class SyncClient:
                     (
                         "fal_v3",
                         partial(_upload_v3, client, data=data, headers=headers),
-                    )
-                )
-            elif repo == "cdn":
-                attempts.append(
-                    (
-                        "cdn",
-                        partial(
-                            _upload_cdn,
-                            self._client,
-                            auth,
-                            data=data,
-                            content_type=content_type,
-                            file_name=file_name,
-                            object_lifecycle_preference=resolved_lifecycle,
-                        ),
                     )
                 )
             elif repo == "fal":

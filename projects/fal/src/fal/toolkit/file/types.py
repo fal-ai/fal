@@ -29,9 +29,8 @@ class FileData:
             self.file_name = file_name
 
 
-RepositoryId = Literal[
-    "fal", "fal_v2", "fal_v3", "in_memory", "gcp_storage", "r2", "cdn"
-]
+# "cdn" uploads directly to the v3 CDN (see fal.toolkit.file.providers.fal).
+RepositoryId = Literal["fal", "fal_v3", "in_memory", "gcp_storage", "r2", "cdn"]
 
 
 @dataclass
