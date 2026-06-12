@@ -4,6 +4,7 @@ import json
 import math
 import os
 import threading
+import warnings
 from base64 import b64encode
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -25,7 +26,20 @@ from fal.toolkit.exceptions import FileUploadException
 from fal.toolkit.file.types import FileData, FileRepository
 from fal.toolkit.utils.retry import retry
 
-_FAL_CDN_V3 = "https://v3b.fal.media"
+_FAL_CDN_V3 = "https://v3.fal.media"
+
+
+def _warn_if_legacy_cdn_host_set() -> None:
+    if os.environ.get("FAL_CDN_HOST"):
+        warnings.warn(
+            "FAL_CDN_HOST is no longer used: the legacy fal.media CDN has been "
+            "disabled. Set FAL_CDN_V3_HOST to override the v3 CDN host instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
+
+_warn_if_legacy_cdn_host_set()
 
 
 def _require_auth_credentials() -> AuthCredentials:
@@ -222,18 +236,23 @@ class FalCDNTokenManager:
         self._lock = threading.Lock()
 
 
+# Empty subclass kept as a distinct public name: external code and the
+# `fal_v3_token_manager` instance reference `FalV3TokenManager` by name. The
+# implementation lives entirely in `FalCDNTokenManager` (v3 defaults).
 class FalV3TokenManager(FalCDNTokenManager):
     pass
+
+
+fal_v3_token_manager = FalV3TokenManager()
 
 
 # Backwards-compatible aliases. The legacy v2 `fal-cdn` token type/manager are no
 # longer supported; these names are retained only for import compatibility and
 # now describe the v3 CDN token (they do not mint legacy `fal-cdn` tokens).
+# `fal_v2_token_manager` likewise points at the v3 token manager instance.
 FalV2Token = FalCDNToken
 FalV2TokenManager = FalCDNTokenManager
-
-
-fal_v3_token_manager = FalV3TokenManager()
+fal_v2_token_manager = fal_v3_token_manager
 
 
 VariableType = TypeVar("VariableType")
@@ -1208,6 +1227,12 @@ class FalFileRepositoryV3(FileRepository):
             )
 
         return url, data
+
+
+# Backwards-compatible alias. The legacy v2 fal-cdn repository is no longer
+# supported; this name is retained only for import compatibility and now resolves
+# to the v3 repository (consistent with the "fal_v2" -> "fal_v3" redirect).
+FalFileRepositoryV2 = FalFileRepositoryV3
 
 
 # This is only available for internal users to have long-lived access tokens

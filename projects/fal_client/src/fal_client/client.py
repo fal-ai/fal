@@ -84,7 +84,14 @@ RUN_URL_FORMAT = f"https://{FAL_RUN_HOST}/"
 QUEUE_URL_FORMAT = f"https://{FAL_QUEUE_RUN_HOST}/"
 REALTIME_URL_FORMAT = f"wss://{FAL_RUN_HOST}/"
 REST_URL = "https://rest.fal.ai"
-CDN_URL = os.environ.get("FAL_CDN_V3_HOST", "https://v3b.fal.media")
+CDN_URL = os.environ.get("FAL_CDN_V3_HOST", "https://v3.fal.media")
+if os.environ.get("FAL_CDN_HOST"):
+    warnings.warn(
+        "FAL_CDN_HOST is no longer used: the legacy fal.media CDN has been "
+        "disabled. Set FAL_CDN_V3_HOST to override the v3 CDN host instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
 DEFAULT_UPLOAD_REPOSITORY: UploadRepositoryId = "fal_v3"
 DEFAULT_UPLOAD_FALLBACK_REPOSITORY: list[UploadRepositoryId] = ["fal"]
 # Aliases mapped onto a supported repository before dispatch. "cdn" is kept for

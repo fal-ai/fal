@@ -576,7 +576,14 @@ def test_fal_compressed_file(isolated_client):
 def test_fal_cdn(isolated_client):
     @isolated_client(requirements=[f"pydantic=={pydantic_version}", "tomli"])
     def upload_to_fal_cdn() -> FalImage:
-        return FalImage.from_bytes(b"0", "jpeg", repository="fal_v3")
+        # Minimal valid JPEG (SOI + JFIF APP0 segment + EOI). The v3 CDN
+        # validates uploaded content against the declared type, so the payload
+        # must actually sniff as image/jpeg.
+        jpeg_bytes = (
+            b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00"
+            b"\xff\xd9"
+        )
+        return FalImage.from_bytes(jpeg_bytes, "jpeg", repository="fal_v3")
 
     uploaded_image = upload_to_fal_cdn()
 
