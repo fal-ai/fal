@@ -9,11 +9,14 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
+    Dict,
     Generic,
     Iterator,
     Literal,
     Optional,
+    TypedDict,
     TypeVar,
+    get_args,
 )
 
 import grpc
@@ -51,6 +54,67 @@ patch_pickle()
 AuthModeLiteral = Literal["public", "private", "shared"]
 DeploymentStrategyLiteral = Literal["recreate", "rolling"]
 RetryConditionLiteral = Literal["timeout", "server_error", "connection_error"]
+
+
+class _RetriesEntry(TypedDict):
+    retries: int
+
+
+RetryConfigDict = Dict[RetryConditionLiteral, _RetriesEntry]
+
+
+@dataclass
+class RetryConfig:
+    """Per-condition retry counts, e.g. RetryConfig(server_error=3, timeout=1)."""
+
+    timeout: Optional[int] = None
+    server_error: Optional[int] = None
+    connection_error: Optional[int] = None
+
+    def to_dict(self) -> RetryConfigDict:
+        result: RetryConfigDict = {}
+        if self.timeout is not None:
+            result["timeout"] = {"retries": max(int(self.timeout), 0)}
+        if self.server_error is not None:
+            result["server_error"] = {"retries": max(int(self.server_error), 0)}
+        if self.connection_error is not None:
+            result["connection_error"] = {"retries": max(int(self.connection_error), 0)}
+        if not result:
+            raise ValueError("RetryConfig must have at least one condition.")
+        return result
+
+
+def validate_retry_config_dict(value: Any) -> RetryConfigDict:
+    """Validate a RetryConfigDict.
+
+    Raises ValueError on any invalid key, shape, or value.
+    """
+    if not isinstance(value, dict):
+        raise ValueError(
+            "retry_config must be a mapping of condition -> {retries: int}"
+        )
+    valid = set(get_args(RetryConditionLiteral))
+    normalized: RetryConfigDict = {}
+    for cond, entry in value.items():
+        if cond not in valid:
+            raise ValueError(
+                f"Invalid retry_config condition: {cond}. "
+                f"Valid conditions are: {', '.join(sorted(valid))}"
+            )
+        if not isinstance(entry, dict) or set(entry) != {"retries"}:
+            raise ValueError(
+                f"retry_config[{cond!r}] must be an object of the form "
+                '{"retries": <non-negative int>}'
+            )
+        retries = entry["retries"]
+        if not isinstance(retries, int) or isinstance(retries, bool):
+            raise ValueError(f"retry_config[{cond!r}]['retries'] must be an integer")
+        normalized[cond] = {"retries": max(retries, 0)}
+
+    if not normalized:
+        raise ValueError("retry_config must have at least one condition.")
+    return normalized
+
 
 ENVIRONMENT_SEPARATOR = "--"
 
@@ -864,6 +928,7 @@ class FalServerlessConnection:
         private_logs: bool | None = None,
         files: list[File] | None = None,
         skip_retry_conditions: list[RetryConditionLiteral] | None = None,
+        retry_config: RetryConfig | RetryConfigDict | None = None,
         environment_name: str | None = None,
         termination_grace_period_seconds: int | None = None,
         secrets: list[str] | None = None,
@@ -947,6 +1012,19 @@ class FalServerlessConnection:
         else:
             wrapped_skip_retry_conditions = []
 
+        if retry_config is None:
+            wrapped_retry_config = None
+        elif isinstance(retry_config, RetryConfig):
+            import json  # noqa: PLC0415
+
+            wrapped_retry_config = json.dumps(retry_config.to_dict(), sort_keys=True)
+        else:
+            import json  # noqa: PLC0415
+
+            wrapped_retry_config = json.dumps(
+                validate_retry_config_dict(retry_config), sort_keys=True
+            )
+
         full_application_name = (
             construct_alias(application_name, environment_name)
             if application_name
@@ -965,6 +1043,7 @@ class FalServerlessConnection:
             source_code=source_code,
             health_check_config=wrapped_health_check_config,
             skip_retry_conditions=wrapped_skip_retry_conditions,
+            retry_config=wrapped_retry_config,
             environment_name=environment_name,
             termination_grace_period_seconds=termination_grace_period_seconds,
             secrets=(

@@ -13,6 +13,7 @@ from fal.sdk import (
     AuthModeLiteral,
     DeploymentStrategyLiteral,
     RetryConditionLiteral,
+    validate_retry_config_dict,
 )
 
 VALID_REGIONS = {
@@ -140,6 +141,7 @@ def get_app_data_from_toml(
     scheduler = app_data.pop("_scheduler", None)
     scheduler_options = app_data.pop("_scheduler_options", None)
     skip_retry_conditions = app_data.pop("skip_retry_conditions", None)
+    retry_config = app_data.pop("retry_config", None)
     termination_grace_period_seconds = app_data.pop(
         "termination_grace_period_seconds", None
     )
@@ -177,6 +179,8 @@ def get_app_data_from_toml(
         raise ValueError("_scheduler_options must be a table in pyproject.toml.")
     if skip_retry_conditions is not None:
         _validate_skip_retry_conditions(skip_retry_conditions)
+    if retry_config is not None:
+        validate_retry_config_dict(retry_config)
     if termination_grace_period_seconds is not None:
         _validate_int(
             "termination_grace_period_seconds", termination_grace_period_seconds
@@ -229,6 +233,8 @@ def get_app_data_from_toml(
         options.host["_scheduler_options"] = scheduler_options
     if skip_retry_conditions is not None:
         options.host["skip_retry_conditions"] = skip_retry_conditions
+    if retry_config is not None:
+        options.host["retry_config"] = retry_config
     if termination_grace_period_seconds is not None:
         options.host["termination_grace_period_seconds"] = (
             termination_grace_period_seconds
