@@ -33,7 +33,39 @@ from fal_client.client import (
     USER_AGENT,
     _BaseRequestHandle,
     _raise_for_status,
+    _warn_if_legacy_cdn_host_set,
 )
+
+
+@pytest.mark.parametrize(
+    "host",
+    [
+        "https://fal.media",
+        "fal.media",
+        "https://v2.fal.media",
+        "http://v2.fal.media:443",
+    ],
+)
+def test_fal_cdn_host_env_warns_for_legacy_hosts(monkeypatch, host):
+    monkeypatch.setenv("FAL_CDN_HOST", host)
+    with pytest.warns(DeprecationWarning, match="FAL_CDN_HOST"):
+        _warn_if_legacy_cdn_host_set()
+
+
+@pytest.mark.parametrize(
+    "host",
+    ["https://v3.fal.media", "https://my-proxy.example.com", "my-proxy.example.com"],
+)
+def test_fal_cdn_host_env_silent_for_supported_hosts(monkeypatch, recwarn, host):
+    monkeypatch.setenv("FAL_CDN_HOST", host)
+    _warn_if_legacy_cdn_host_set()
+    assert not [w for w in recwarn.list if issubclass(w.category, DeprecationWarning)]
+
+
+def test_fal_cdn_host_env_silent_when_unset(monkeypatch, recwarn):
+    monkeypatch.delenv("FAL_CDN_HOST", raising=False)
+    _warn_if_legacy_cdn_host_set()
+    assert not [w for w in recwarn.list if issubclass(w.category, DeprecationWarning)]
 
 
 def test_clients_remain_hashable():
