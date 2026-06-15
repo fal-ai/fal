@@ -9,11 +9,8 @@ from fal.auth import AuthCredentials
 from fal.toolkit.file.providers import fal as providers
 
 
-def test_legacy_names_are_backwards_compatible_aliases():
-    """Legacy v2/cdn public names remain importable and resolve to v3."""
-    assert providers.FalV2Token is providers.FalCDNToken
-    assert providers.FalV2TokenManager is providers.FalCDNTokenManager
-    assert providers.fal_v2_token_manager is providers.fal_v3_token_manager
+def test_legacy_repository_names_are_v3_aliases():
+    """Legacy repository/multipart public names remain importable and resolve to v3."""
     assert providers.FalFileRepositoryV2 is providers.FalFileRepositoryV3
     assert providers.FalCDNFileRepository is providers.FalFileRepositoryV3
     assert providers.MultipartUpload is providers.MultipartUploadV3

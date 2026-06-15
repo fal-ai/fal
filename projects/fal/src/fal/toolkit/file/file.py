@@ -47,31 +47,20 @@ BUILT_IN_REPOSITORIES: dict[RepositoryId, FileRepositoryFactory] = {
     "r2": lambda: R2Repository(),
 }
 
-# Legacy repository ids that are no longer backed by their own implementation.
-# They are transparently redirected to "fal_v3" (with a DeprecationWarning) so
-# existing configs keep working: the v2 fal-cdn service and the legacy fal.media
-# CDN have been removed.
-_DEPRECATED_REPOSITORIES: dict[str, RepositoryId] = {
-    "fal_v2": "fal_v3",
-    "cdn": "fal_v3",
-}
-
 
 def get_builtin_repository(id: RepositoryId | FileRepository) -> FileRepository:
     if isinstance(id, FileRepository):
         return id
 
-    if id in _DEPRECATED_REPOSITORIES:
+    if id in ["fal_v2", "cdn"]:
         import warnings  # noqa: PLC0415
 
-        replacement = _DEPRECATED_REPOSITORIES[id]
         warnings.warn(
-            f'"{id}" file repository is deprecated and no longer supported; '
-            f'using "{replacement}" instead.',
+            f"`{id}` file repository is deprecated, falling back to `fal_v3`.",
             DeprecationWarning,
             stacklevel=2,
         )
-        id = replacement
+        id = "fal_v3"
 
     if id not in BUILT_IN_REPOSITORIES.keys():
         raise ValueError(f'"{id}" is not a valid built-in file repository')

@@ -106,8 +106,11 @@ def _caller_cdn_header(
             headers["X-Fal-Request-ID"] = request_id
 
 
+# TODO: remove the legacy v2 token classes in the next major release. The v2
+# fal-cdn service is no longer used; these names are retained only for backward
+# compatibility (existing imports and pickled state).
 @dataclass(repr=False)
-class FalCDNToken:
+class FalV2Token:
     token: str
     token_type: str
     base_upload_url: str
@@ -138,23 +141,17 @@ class FalCDNToken:
         return as_of >= self.expires_at
 
 
-class FalV3Token(FalCDNToken):
+class FalV3Token(FalV2Token):
     pass
 
 
-class FalCDNTokenManager:
-    """Mints and caches fal CDN storage tokens.
-
-    Defaults target the v3 CDN (`fal-cdn-v3`). The legacy v2 `fal-cdn` storage
-    type is no longer supported; subclasses must not reintroduce it.
-    """
-
-    token_cls: type[FalCDNToken] = FalV3Token
-    storage_type: str = "fal-cdn-v3"
-    upload_prefix = ""
+class FalV2TokenManager:
+    token_cls: type[FalV2Token] = FalV2Token
+    storage_type: str = "fal-cdn"
+    upload_prefix = "upload."
 
     def __init__(self):
-        self._token: FalCDNToken = self.token_cls(
+        self._token: FalV2Token = self.token_cls(
             token="",
             token_type="",
             base_upload_url="",
@@ -165,7 +162,7 @@ class FalCDNTokenManager:
     def get_token(
         self,
         valid_for: timedelta | int | None = timedelta(hours=1),
-    ) -> FalCDNToken:
+    ) -> FalV2Token:
         """
         Get a valid authentication token.
 
@@ -222,13 +219,13 @@ class FalCDNTokenManager:
         self._lock = threading.Lock()
 
 
-# Empty subclass kept as a distinct public name: external code and the
-# `fal_v3_token_manager` instance reference `FalV3TokenManager` by name. The
-# implementation lives entirely in `FalCDNTokenManager` (v3 defaults).
-class FalV3TokenManager(FalCDNTokenManager):
-    pass
+class FalV3TokenManager(FalV2TokenManager):
+    token_cls: type[FalV2Token] = FalV3Token
+    storage_type: str = "fal-cdn-v3"
+    upload_prefix = ""
 
 
+fal_v2_token_manager = FalV2TokenManager()
 fal_v3_token_manager = FalV3TokenManager()
 
 
@@ -1261,9 +1258,7 @@ class InternalFalFileRepositoryV3(FileRepository):
 # Backwards-compatible aliases. The legacy v2 fal-cdn service and the legacy
 # fal.media CDN have been removed; these public names are retained for import
 # compatibility and now resolve to their v3 equivalents.
-FalV2Token = FalCDNToken
-FalV2TokenManager = FalCDNTokenManager
-fal_v2_token_manager = fal_v3_token_manager
+# TODO: remove these aliases in the next major release.
 FalFileRepositoryV2 = FalFileRepositoryV3
 FalCDNFileRepository = FalFileRepositoryV3
 MultipartUpload = MultipartUploadV3

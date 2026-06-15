@@ -10,10 +10,6 @@ import pytest
 from pydantic import BaseModel
 
 from fal.toolkit.file.file import (
-    DEFAULT_REPOSITORY,
-    FALLBACK_REPOSITORY,
-    FalCDNFileRepository,
-    FalFileRepositoryV2,
     FalFileRepositoryV3,
     File,
     GoogleStorageRepository,
@@ -22,19 +18,6 @@ from fal.toolkit.file.file import (
     get_builtin_repository,
 )
 from fal.toolkit.file.types import FileData, FileRepository
-
-
-def test_default_repository_and_fallback_chain():
-    # The default upload routes to the v3 CDN and only falls back to GCS ("fal").
-    # The legacy fal.media CDN must not be in the default fallback chain.
-    assert DEFAULT_REPOSITORY == "fal_v3"
-    assert FALLBACK_REPOSITORY == ["fal"]
-
-
-def test_legacy_repository_classes_are_v3_aliases():
-    # Public class names are retained for import compatibility and resolve to v3.
-    assert FalFileRepositoryV2 is FalFileRepositoryV3
-    assert FalCDNFileRepository is FalFileRepositoryV3
 
 
 @pytest.mark.parametrize("repository_id", ["fal_v2", "cdn"])

@@ -88,10 +88,6 @@ REST_URL = "https://rest.fal.ai"
 CDN_URL = "https://v3.fal.media"
 DEFAULT_UPLOAD_REPOSITORY: UploadRepositoryId = "fal_v3"
 DEFAULT_UPLOAD_FALLBACK_REPOSITORY: list[UploadRepositoryId] = ["fal"]
-# Legacy upload repository ids that are transparently redirected to "fal_v3"
-# (with a DeprecationWarning) so existing configs keep working. The legacy
-# fal.media CDN has been removed.
-_DEPRECATED_UPLOAD_REPOSITORIES: dict[str, UploadRepositoryId] = {"cdn": "fal_v3"}
 USER_AGENT = f"fal-client/{__version__} (python)"
 
 MIN_REQUEST_TIMEOUT_SECONDS = 1
@@ -1265,15 +1261,13 @@ def _normalize_upload_repositories(
     ordered = [repository, *fallback_repository]
     deduped: list[UploadRepositoryId] = []
     for entry in ordered:
-        if entry in _DEPRECATED_UPLOAD_REPOSITORIES:
-            replacement = _DEPRECATED_UPLOAD_REPOSITORIES[entry]
+        if entry == "cdn":
             warnings.warn(
-                f"The '{entry}' upload repository is deprecated and no longer "
-                f"supported; using '{replacement}' instead.",
+                "`cdn` upload repository is deprecated, falling back to `fal_v3`.",
                 DeprecationWarning,
                 stacklevel=2,
             )
-            entry = replacement
+            entry = "fal_v3"
         if entry not in allowed:
             raise ValueError(f"Unsupported upload repository '{entry}'")
         if entry not in deduped:
