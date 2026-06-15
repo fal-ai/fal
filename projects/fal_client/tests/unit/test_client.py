@@ -38,7 +38,6 @@ from fal_client.client import (
 )
 
 
-
 def test_normalize_upload_repositories_default_chain():
     assert _normalize_upload_repositories(None, None) == ["fal_v3", "fal"]
 
