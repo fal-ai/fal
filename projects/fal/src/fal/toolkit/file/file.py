@@ -25,9 +25,10 @@ from pydantic import BaseModel, Field
 from fal.compat import run_in_thread
 from fal.ref import get_current_app
 from fal.toolkit.file.providers.fal import (
-    FalCDNFileRepository,
+    # Re-exported for backwards compatibility; both resolve to FalFileRepositoryV3.
+    FalCDNFileRepository,  # noqa: F401
     FalFileRepository,
-    FalFileRepositoryV2,
+    FalFileRepositoryV2,  # noqa: F401
     FalFileRepositoryV3,
     InMemoryRepository,
 )
@@ -40,18 +41,26 @@ FileRepositoryFactory = Callable[[], FileRepository]
 
 BUILT_IN_REPOSITORIES: dict[RepositoryId, FileRepositoryFactory] = {
     "fal": lambda: FalFileRepository(),
-    "fal_v2": lambda: FalFileRepositoryV2(),
     "fal_v3": lambda: FalFileRepositoryV3(),
     "in_memory": lambda: InMemoryRepository(),
     "gcp_storage": lambda: GoogleStorageRepository(),
     "r2": lambda: R2Repository(),
-    "cdn": lambda: FalCDNFileRepository(),
 }
 
 
 def get_builtin_repository(id: RepositoryId | FileRepository) -> FileRepository:
     if isinstance(id, FileRepository):
         return id
+
+    if id in ["fal_v2", "cdn"]:
+        import warnings  # noqa: PLC0415
+
+        warnings.warn(
+            f"`{id}` file repository is deprecated, falling back to `fal_v3`.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        id = "fal_v3"
 
     if id not in BUILT_IN_REPOSITORIES.keys():
         raise ValueError(f'"{id}" is not a valid built-in file repository')
@@ -61,7 +70,7 @@ def get_builtin_repository(id: RepositoryId | FileRepository) -> FileRepository:
 get_builtin_repository.__module__ = "__main__"
 
 DEFAULT_REPOSITORY: FileRepository | RepositoryId = "fal_v3"
-FALLBACK_REPOSITORY: list[FileRepository | RepositoryId] = ["cdn", "fal"]
+FALLBACK_REPOSITORY: list[FileRepository | RepositoryId] = ["fal"]
 OBJECT_LIFECYCLE_PREFERENCE_KEY = "x-fal-object-lifecycle-preference"
 
 

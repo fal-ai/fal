@@ -18,9 +18,6 @@ from fal.toolkit import (
     download_file,
     download_model_weights,
 )
-from fal.toolkit import (
-    Image as FalImage,
-)
 from fal.toolkit.file.file import CompressedFile
 from fal.toolkit.utils.download_utils import _git_rev_parse, _hash_url
 
@@ -570,17 +567,6 @@ def test_fal_compressed_file(isolated_client):
 
     assert all(isinstance(file, Path) for file in extracted_file_paths)
     assert len(extracted_file_paths) == 3
-
-
-@pytest.mark.flaky(max_runs=3)
-def test_fal_cdn(isolated_client):
-    @isolated_client(requirements=[f"pydantic=={pydantic_version}", "tomli"])
-    def upload_to_fal_cdn() -> FalImage:
-        return FalImage.from_bytes(b"0", "jpeg", repository="cdn")
-
-    uploaded_image = upload_to_fal_cdn()
-
-    assert uploaded_image
 
 
 def test_download_file_with_slash_in_filename():
