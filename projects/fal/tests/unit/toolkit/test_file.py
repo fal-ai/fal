@@ -13,6 +13,8 @@ from fal.toolkit.file.file import (
     DEFAULT_REPOSITORY,
     FALLBACK_REPOSITORY,
     FalCDNFileRepository,
+    FalFileRepositoryV2,
+    FalFileRepositoryV3,
     File,
     GoogleStorageRepository,
     _get_object_lifecycle_preference_from_context,
@@ -29,18 +31,24 @@ def test_default_repository_and_fallback_chain():
     assert FALLBACK_REPOSITORY == ["fal"]
 
 
-def test_cdn_repository_is_supported_without_warning(recwarn):
-    repo = get_builtin_repository("cdn")
+def test_legacy_repository_classes_are_v3_aliases():
+    # Public class names are retained for import compatibility and resolve to v3.
+    assert FalFileRepositoryV2 is FalFileRepositoryV3
+    assert FalCDNFileRepository is FalFileRepositoryV3
 
-    assert isinstance(repo, FalCDNFileRepository)
-    assert not [w for w in recwarn.list if issubclass(w.category, DeprecationWarning)]
+
+@pytest.mark.parametrize("repository_id", ["fal_v2", "cdn"])
+def test_legacy_repository_redirects_to_fal_v3(repository_id):
+    # Legacy ids keep working but emit a DeprecationWarning and resolve to v3.
+    with pytest.warns(DeprecationWarning, match=repository_id):
+        repo = get_builtin_repository(repository_id)
+
+    assert isinstance(repo, FalFileRepositoryV3)
 
 
-@pytest.mark.parametrize("repository_id", ["does-not-exist", "fal_v2"])
-def test_unknown_repository_raises(repository_id):
-    # "fal_v2" was the legacy v2 CDN repository; it is no longer supported.
+def test_unknown_repository_raises():
     with pytest.raises(ValueError, match="not a valid built-in file repository"):
-        get_builtin_repository(repository_id)  # type: ignore[arg-type]
+        get_builtin_repository("does-not-exist")  # type: ignore[arg-type]
 
 
 def test_binary_content_matches():

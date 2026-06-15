@@ -1,78 +1,22 @@
 from __future__ import annotations
 
-from contextlib import contextmanager
 from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
 from fal.auth import AuthCredentials
 from fal.toolkit.file.providers import fal as providers
-from fal.toolkit.file.types import FileData
 
 
-@contextmanager
-def _fake_retry_request(_request, **_kwargs):
-    yield MagicMock()
-
-
-@pytest.mark.parametrize(
-    "env_host, expected_base",
-    [
-        (None, "https://v3.fal.media"),
-        ("https://my-proxy.example.com", "https://my-proxy.example.com"),
-        # Bare host (no scheme) is normalized to https:// so the URL is valid.
-        ("my-proxy.example.com", "https://my-proxy.example.com"),
-        # A disabled legacy host falls back to the v3 default instead of failing.
-        ("https://fal.media", "https://v3.fal.media"),
-    ],
-)
-def test_fal_cdn_file_repository_save_posts_to_configured_host(
-    monkeypatch, env_host, expected_base
-):
-    """`FalCDNFileRepository.save` POSTs a single request to the v3 CDN
-    (overridable via FAL_CDN_HOST) and returns the access URL."""
-    if env_host is None:
-        monkeypatch.delenv("FAL_CDN_HOST", raising=False)
-    else:
-        monkeypatch.setenv("FAL_CDN_HOST", env_host)
-
-    token = providers.FalV3Token(
-        token="tok",
-        token_type="Bearer",
-        base_upload_url="https://upload",
-        expires_at=datetime.now(timezone.utc),
-    )
-    captured: dict = {}
-
-    def _fake_request(url, headers=None, method=None, data=None):
-        captured.update(url=url, headers=headers, method=method, data=data)
-        return MagicMock()
-
-    with patch.object(
-        providers.fal_v3_token_manager, "get_token", return_value=token
-    ), patch.object(providers, "get_current_app", return_value=None), patch.object(
-        providers, "Request", side_effect=_fake_request
-    ), patch.object(
-        providers, "_maybe_retry_request", _fake_retry_request
-    ), patch.object(
-        providers.json,
-        "load",
-        return_value={"access_url": "https://cdn/returned.bin"},
-    ):
-        repo = providers.FalCDNFileRepository()
-        url = repo.save(
-            FileData(b"hello", content_type="text/plain", file_name="hello.txt")
-        )
-
-    assert url == "https://cdn/returned.bin"
-    assert captured["url"] == f"{expected_base}/files/upload"
-    assert captured["method"] == "POST"
-    assert captured["data"] == b"hello"
-    assert captured["headers"]["Accept"] == "application/json"
-    assert captured["headers"]["Content-Type"] == "text/plain"
-    assert captured["headers"]["X-Fal-File-Name"] == "hello.txt"
-    assert captured["headers"]["Authorization"] == "Bearer tok"
+def test_legacy_names_are_backwards_compatible_aliases():
+    """Legacy v2/cdn public names remain importable and resolve to v3."""
+    assert providers.FalV2Token is providers.FalCDNToken
+    assert providers.FalV2TokenManager is providers.FalCDNTokenManager
+    assert providers.fal_v2_token_manager is providers.fal_v3_token_manager
+    assert providers.FalFileRepositoryV2 is providers.FalFileRepositoryV3
+    assert providers.FalCDNFileRepository is providers.FalFileRepositoryV3
+    assert providers.MultipartUpload is providers.MultipartUploadV3
 
 
 class FakeRequest:
@@ -237,16 +181,6 @@ def test_caller_cdn_header_adds_both_cdn_token_and_request_id():
                 expires_at=datetime.now(timezone.utc),
             ),
         ),
-        (
-            providers.FalCDNFileRepository,
-            providers.fal_v3_token_manager,
-            providers.FalV3Token(
-                token="test-token",
-                token_type="Bearer",
-                base_upload_url="https://upload",
-                expires_at=datetime.now(timezone.utc),
-            ),
-        ),
     ],
 )
 def test_repository_auth_headers_include_cdn_token(repo_cls, token_manager, token):
@@ -280,16 +214,6 @@ def test_repository_auth_headers_include_cdn_token(repo_cls, token_manager, toke
         ),
         (
             providers.InternalFalFileRepositoryV3,
-            providers.fal_v3_token_manager,
-            providers.FalV3Token(
-                token="test-token",
-                token_type="Bearer",
-                base_upload_url="https://upload",
-                expires_at=datetime.now(timezone.utc),
-            ),
-        ),
-        (
-            providers.FalCDNFileRepository,
             providers.fal_v3_token_manager,
             providers.FalV3Token(
                 token="test-token",
@@ -384,44 +308,3 @@ def test_internal_multipart_upload_v3_auth_headers_include_cdn_token():
     assert headers["X-Fal-CDN-Token"] == cdn_token
     assert "Authorization" in headers
     assert headers["User-Agent"] == providers.USER_AGENT
-
-
-def test_resolve_cdn_host_defaults_when_unset(monkeypatch):
-    monkeypatch.delenv("FAL_CDN_HOST", raising=False)
-    assert providers._resolve_cdn_host("https://v3.fal.media") == "https://v3.fal.media"
-
-
-@pytest.mark.parametrize(
-    "host",
-    [
-        "https://fal.media",
-        "fal.media",
-        "https://fal.media/files",
-        "https://v2.fal.media",
-        "http://v2.fal.media:443",
-    ],
-)
-def test_resolve_cdn_host_remaps_legacy_with_warning(monkeypatch, host):
-    # A disabled legacy host must fall back to the v3 default (not be used).
-    monkeypatch.setenv("FAL_CDN_HOST", host)
-    with pytest.warns(DeprecationWarning, match="FAL_CDN_HOST"):
-        assert (
-            providers._resolve_cdn_host("https://v3.fal.media")
-            == "https://v3.fal.media"
-        )
-
-
-@pytest.mark.parametrize(
-    "host, expected",
-    [
-        ("https://v3.fal.media", "https://v3.fal.media"),
-        ("https://my-proxy.example.com", "https://my-proxy.example.com"),
-        ("http://localhost:8080", "http://localhost:8080"),
-        # Bare host (no scheme) is normalized to https:// so URL building works.
-        ("my-proxy.example.com", "https://my-proxy.example.com"),
-    ],
-)
-def test_resolve_cdn_host_honors_supported_hosts(monkeypatch, recwarn, host, expected):
-    monkeypatch.setenv("FAL_CDN_HOST", host)
-    assert providers._resolve_cdn_host("https://v3.fal.media") == expected
-    assert not [w for w in recwarn.list if issubclass(w.category, DeprecationWarning)]

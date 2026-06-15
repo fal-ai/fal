@@ -29,8 +29,13 @@ class FileData:
             self.file_name = file_name
 
 
-# "cdn" uploads directly to the v3 CDN (see fal.toolkit.file.providers.fal).
-RepositoryId = Literal["fal", "fal_v3", "in_memory", "gcp_storage", "r2", "cdn"]
+# "fal_v2" and "cdn" are deprecated: the v2 fal-cdn service and the legacy
+# fal.media CDN have been removed. They remain valid (so existing configs keep
+# working) but are transparently redirected to "fal_v3" at runtime
+# (see fal.toolkit.file.file.get_builtin_repository).
+RepositoryId = Literal[
+    "fal", "fal_v2", "fal_v3", "in_memory", "gcp_storage", "r2", "cdn"
+]
 
 
 @dataclass

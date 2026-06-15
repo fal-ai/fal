@@ -36,7 +36,6 @@ from fal_client.client import (
     _BaseRequestHandle,
     _normalize_upload_repositories,
     _raise_for_status,
-    _resolve_cdn_host,
     _upload_v3,
 )
 
@@ -51,16 +50,17 @@ def test_normalize_upload_repositories_default_chain():
     assert _normalize_upload_repositories(None, None) == ["fal_v3", "fal"]
 
 
-def test_normalize_upload_repositories_cdn_aliases_to_v3_silently(recwarn):
-    assert _normalize_upload_repositories("cdn", []) == ["fal_v3"]
-    # "cdn" is a plain alias now, not a deprecation -- it must not warn.
-    assert not [w for w in recwarn.list if issubclass(w.category, DeprecationWarning)]
+def test_normalize_upload_repositories_cdn_redirects_to_v3_with_warning():
+    # Legacy "cdn" keeps working but is deprecated and resolves to "fal_v3".
+    with pytest.warns(DeprecationWarning, match="cdn"):
+        assert _normalize_upload_repositories("cdn", []) == ["fal_v3"]
 
 
 def test_normalize_upload_repositories_dedupes():
-    # "cdn" resolves to "fal_v3", so it collapses into the primary entry.
-    assert _normalize_upload_repositories("fal_v3", ["cdn"]) == ["fal_v3"]
     assert _normalize_upload_repositories("fal", ["fal", "fal_v3"]) == ["fal", "fal_v3"]
+    # "cdn" resolves to "fal_v3", so it collapses into the primary entry.
+    with pytest.warns(DeprecationWarning, match="cdn"):
+        assert _normalize_upload_repositories("fal_v3", ["cdn"]) == ["fal_v3"]
 
 
 @pytest.mark.parametrize("bad", ["fal_v2", "gcp_storage", "r2", "in_memory", "nope"])
@@ -70,7 +70,7 @@ def test_normalize_upload_repositories_rejects_unsupported(bad):
 
 
 def test_upload_v3_uses_configured_cdn_url(monkeypatch):
-    # `_upload_v3` POSTs to the (FAL_CDN_HOST-overridable) CDN_URL global.
+    # `_upload_v3` POSTs to the CDN_URL global.
     monkeypatch.setattr("fal_client.client.CDN_URL", "https://my-proxy.example.com")
     with patch("fal_client.client._maybe_retry_request") as mock_request:
         mock_request.return_value = Mock(
@@ -80,43 +80,6 @@ def test_upload_v3_uses_configured_cdn_url(monkeypatch):
 
     assert url == "https://out/file"
     assert mock_request.call_args[0][2] == "https://my-proxy.example.com/files/upload"
-
-
-def test_resolve_cdn_host_defaults_when_unset(monkeypatch):
-    monkeypatch.delenv("FAL_CDN_HOST", raising=False)
-    assert _resolve_cdn_host("https://v3.fal.media") == "https://v3.fal.media"
-
-
-@pytest.mark.parametrize(
-    "host",
-    [
-        "https://fal.media",
-        "fal.media",
-        "https://v2.fal.media",
-        "http://v2.fal.media:443",
-    ],
-)
-def test_resolve_cdn_host_remaps_legacy_with_warning(monkeypatch, host):
-    # A disabled legacy host must fall back to the v3 default (not be used).
-    monkeypatch.setenv("FAL_CDN_HOST", host)
-    with pytest.warns(DeprecationWarning, match="FAL_CDN_HOST"):
-        assert _resolve_cdn_host("https://v3.fal.media") == "https://v3.fal.media"
-
-
-@pytest.mark.parametrize(
-    "host, expected",
-    [
-        ("https://v3.fal.media", "https://v3.fal.media"),
-        ("https://my-proxy.example.com", "https://my-proxy.example.com"),
-        ("http://localhost:8080", "http://localhost:8080"),
-        # Bare host (no scheme) is normalized to https:// so URL building works.
-        ("my-proxy.example.com", "https://my-proxy.example.com"),
-    ],
-)
-def test_resolve_cdn_host_honors_supported_hosts(monkeypatch, recwarn, host, expected):
-    monkeypatch.setenv("FAL_CDN_HOST", host)
-    assert _resolve_cdn_host("https://v3.fal.media") == expected
-    assert not [w for w in recwarn.list if issubclass(w.category, DeprecationWarning)]
 
 
 def test_clients_remain_hashable():
@@ -358,7 +321,7 @@ def test_sync_client_subscribe_with_headers():
         assert first_call_kwargs["headers"]["X-Trace-Id"] == "trace-123"
 
 
-def test_sync_upload_cdn_repository_aliases_to_v3():
+def test_sync_upload_cdn_repository_redirects_to_v3():
     with patch("fal_client.client._maybe_retry_request") as mock_request, patch(
         "fal_client.client.SyncClient._get_cdn_client"
     ) as mock_cdn_context:
@@ -368,12 +331,13 @@ def test_sync_upload_cdn_repository_aliases_to_v3():
         mock_cdn_context.return_value = Mock()
 
         client = SyncClient(key="test-key")
-        url = client.upload(
-            b"hello",
-            content_type="text/plain",
-            repository="cdn",
-            fallback_repository=[],
-        )
+        with pytest.warns(DeprecationWarning, match="cdn"):
+            url = client.upload(
+                b"hello",
+                content_type="text/plain",
+                repository="cdn",
+                fallback_repository=[],
+            )
 
     assert url == "https://v3-only/file"
     assert mock_request.call_args_list[0][0][2] == f"{CDN_URL}/files/upload"
@@ -845,7 +809,7 @@ class FakeAsyncTokenManager:
 
 
 @pytest.mark.asyncio
-async def test_async_upload_cdn_repository_aliases_to_v3():
+async def test_async_upload_cdn_repository_redirects_to_v3():
     @asynccontextmanager
     async def fake_cdn_client():
         yield Mock()
@@ -863,12 +827,13 @@ async def test_async_upload_cdn_repository_aliases_to_v3():
 
         client = AsyncClient(key="test-key")
         client.__dict__["_token_manager"] = FakeAsyncTokenManager()
-        url = await client.upload(
-            b"hello",
-            content_type="text/plain",
-            repository="cdn",
-            fallback_repository=[],
-        )
+        with pytest.warns(DeprecationWarning, match="cdn"):
+            url = await client.upload(
+                b"hello",
+                content_type="text/plain",
+                repository="cdn",
+                fallback_repository=[],
+            )
 
     assert url == "https://v3-only/file"
     assert mock_request.call_args_list[0][0][2] == f"{CDN_URL}/files/upload"

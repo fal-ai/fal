@@ -30,7 +30,7 @@ from typing import (
     Callable,
     Union,
 )
-from urllib.parse import urlencode, urlparse
+from urllib.parse import urlencode
 import warnings
 
 import aiofiles
@@ -85,43 +85,13 @@ QUEUE_URL_FORMAT = f"https://{FAL_QUEUE_RUN_HOST}/"
 REALTIME_URL_FORMAT = f"wss://{FAL_RUN_HOST}/"
 REST_URL = "https://rest.fal.ai"
 
-_LEGACY_CDN_HOSTS = frozenset({"fal.media", "v2.fal.media"})
-
-
-def _resolve_cdn_host(default: str) -> str:
-    """Resolve the CDN host from ``FAL_CDN_HOST``, falling back to ``default``.
-
-    Returns ``default`` when ``FAL_CDN_HOST`` is unset or points at a disabled
-    legacy CDN (``fal.media`` / ``v2.fal.media``) -- in the legacy case a
-    ``DeprecationWarning`` is emitted rather than uploading to a dead host. A
-    bare host (no scheme) is normalized to ``https://`` so that URL
-    construction stays valid.
-    """
-    host = os.environ.get("FAL_CDN_HOST")
-    if not host:
-        return default
-    # urlparse needs a scheme to populate `hostname`; add one for bare hosts.
-    has_scheme = "//" in host
-    parsed = urlparse(host if has_scheme else f"//{host}")
-    if (parsed.hostname or "").lower() in _LEGACY_CDN_HOSTS:
-        warnings.warn(
-            "FAL_CDN_HOST points at the legacy fal.media/v2.fal.media CDN, which "
-            "has been disabled; falling back to the v3 CDN host. Unset "
-            "FAL_CDN_HOST or point it at a supported host.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return default
-    return host if has_scheme else f"https://{host}"
-
-
-CDN_URL = _resolve_cdn_host("https://v3.fal.media")
+CDN_URL = "https://v3.fal.media"
 DEFAULT_UPLOAD_REPOSITORY: UploadRepositoryId = "fal_v3"
 DEFAULT_UPLOAD_FALLBACK_REPOSITORY: list[UploadRepositoryId] = ["fal"]
-# Aliases mapped onto a supported repository before dispatch. "cdn" is kept for
-# backwards compatibility; the "fal_v3" path it maps to already uploads directly
-# to the v3 CDN.
-_UPLOAD_REPOSITORY_ALIASES: dict[str, UploadRepositoryId] = {"cdn": "fal_v3"}
+# Legacy upload repository ids that are transparently redirected to "fal_v3"
+# (with a DeprecationWarning) so existing configs keep working. The legacy
+# fal.media CDN has been removed.
+_DEPRECATED_UPLOAD_REPOSITORIES: dict[str, UploadRepositoryId] = {"cdn": "fal_v3"}
 USER_AGENT = f"fal-client/{__version__} (python)"
 
 MIN_REQUEST_TIMEOUT_SECONDS = 1
@@ -1295,7 +1265,15 @@ def _normalize_upload_repositories(
     ordered = [repository, *fallback_repository]
     deduped: list[UploadRepositoryId] = []
     for entry in ordered:
-        entry = _UPLOAD_REPOSITORY_ALIASES.get(entry, entry)
+        if entry in _DEPRECATED_UPLOAD_REPOSITORIES:
+            replacement = _DEPRECATED_UPLOAD_REPOSITORIES[entry]
+            warnings.warn(
+                f"The '{entry}' upload repository is deprecated and no longer "
+                f"supported; using '{replacement}' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            entry = replacement
         if entry not in allowed:
             raise ValueError(f"Unsupported upload repository '{entry}'")
         if entry not in deduped:

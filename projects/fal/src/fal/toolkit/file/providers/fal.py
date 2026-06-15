@@ -4,7 +4,6 @@ import json
 import math
 import os
 import threading
-import warnings
 from base64 import b64encode
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -27,36 +26,6 @@ from fal.toolkit.file.types import FileData, FileRepository
 from fal.toolkit.utils.retry import retry
 
 _FAL_CDN_V3 = "https://v3.fal.media"
-
-
-_LEGACY_CDN_HOSTS = frozenset({"fal.media", "v2.fal.media"})
-
-
-def _resolve_cdn_host(default: str) -> str:
-    """Resolve the CDN host from ``FAL_CDN_HOST``, falling back to ``default``.
-
-    Returns ``default`` when ``FAL_CDN_HOST`` is unset or points at a disabled
-    legacy CDN (``fal.media`` / ``v2.fal.media``) -- in the legacy case a
-    ``DeprecationWarning`` is emitted rather than uploading to a dead host. A
-    bare host (no scheme) is normalized to ``https://`` so that URL
-    construction stays valid.
-    """
-    host = os.environ.get("FAL_CDN_HOST")
-    if not host:
-        return default
-    # urlparse needs a scheme to populate `hostname`; add one for bare hosts.
-    has_scheme = "//" in host
-    parsed = urlparse(host if has_scheme else f"//{host}")
-    if (parsed.hostname or "").lower() in _LEGACY_CDN_HOSTS:
-        warnings.warn(
-            "FAL_CDN_HOST points at the legacy fal.media/v2.fal.media CDN, which "
-            "has been disabled; falling back to the v3 CDN host. Unset "
-            "FAL_CDN_HOST or point it at a supported host.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return default
-    return host if has_scheme else f"https://{host}"
 
 
 def _require_auth_credentials() -> AuthCredentials:
@@ -1068,59 +1037,6 @@ class InMemoryRepository(FileRepository):
 
 
 @dataclass
-class FalCDNFileRepository(FileRepository):
-    """Uploads a file directly to the fal CDN (v3) in a single request.
-
-    Unlike `FalFileRepositoryV3`, which initiates an upload through the REST API
-    and then PUTs the data to a signed URL, this POSTs the file straight to the
-    CDN's `/files/upload` endpoint and returns the access URL. It does not
-    support multipart uploads.
-    """
-
-    def save(
-        self,
-        file: FileData,
-        multipart: bool | None = None,
-        multipart_threshold: int | None = None,
-        multipart_chunk_size: int | None = None,
-        multipart_max_concurrency: int | None = None,
-        object_lifecycle_preference: dict[str, str] | None = None,
-    ) -> str:
-        headers = {
-            **self.auth_headers,
-            "Accept": "application/json",
-            "Content-Type": file.content_type,
-            "X-Fal-File-Name": file.file_name,
-        }
-
-        _object_lifecycle_headers(headers, object_lifecycle_preference)
-
-        url = _resolve_cdn_host(_FAL_CDN_V3) + "/files/upload"
-        request = Request(url, headers=headers, method="POST", data=file.data)
-        try:
-            with _maybe_retry_request(request) as response:
-                result = json.load(response)
-        except HTTPError as e:
-            raise FileUploadException(
-                f"Error initiating upload. Status {e.status}: {e.reason}"
-            )
-
-        access_url = result["access_url"]
-        return access_url
-
-    @property
-    def auth_headers(self) -> dict[str, str]:
-        token = fal_v3_token_manager.get_token()
-        headers = {
-            "Authorization": f"{token.token_type} {token.token}",
-            "User-Agent": USER_AGENT,
-        }
-        _caller_cdn_header(headers)
-
-        return headers
-
-
-@dataclass
 class FalFileRepositoryV3(FileRepository):
     @property
     def auth_headers(self) -> dict[str, str]:
@@ -1340,3 +1256,14 @@ class InternalFalFileRepositoryV3(FileRepository):
             )
 
         return url, data
+
+
+# Backwards-compatible aliases. The legacy v2 fal-cdn service and the legacy
+# fal.media CDN have been removed; these public names are retained for import
+# compatibility and now resolve to their v3 equivalents.
+FalV2Token = FalCDNToken
+FalV2TokenManager = FalCDNTokenManager
+fal_v2_token_manager = fal_v3_token_manager
+FalFileRepositoryV2 = FalFileRepositoryV3
+FalCDNFileRepository = FalFileRepositoryV3
+MultipartUpload = MultipartUploadV3
