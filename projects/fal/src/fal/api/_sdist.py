@@ -1,11 +1,12 @@
 """Build, upload, and rewrite local-path requirements for fal apps.
 
-When a ``[tool.fal.apps.*]`` block in ``pyproject.toml`` lists ``.`` or
-``.[extras]`` in its ``requirements``, the user means "install this project
-itself on the worker." We can't ship the source tree as a pip requirement,
-so we build an sdist locally, upload it to the fal CDN via
-``fal.toolkit.File``, and rewrite the requirement to ``<package> @ <url>``
-(or ``<package>[extras] @ <url>``) so the worker can pip-install it.
+When a ``[tool.fal.apps.*]`` block in ``pyproject.toml`` lists ``.``,
+``.[extras]``, or another local project path in its ``requirements``, the
+user means "install this project on the worker." We can't ship the source
+tree as a pip requirement, so we build an sdist locally, upload it to the fal
+CDN via ``fal.toolkit.File``, and rewrite the requirement to
+``<package> @ <url>`` (or ``<package>[extras] @ <url>``) so the worker can
+pip-install it.
 
 This module is the pure helper. ``FalServerlessHost`` calls
 ``materialize_local_paths`` on the way to dispatch.
@@ -18,6 +19,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, List, Optional, Tuple, Union
 
@@ -36,24 +38,33 @@ from fal.project import _load_toml
 # we can add phases later without breaking integrations.
 ProgressCallback = Callable[[str, dict], None]
 
-# Match ``.`` or ``.[extras]`` exactly. Other path-like forms (``./subdir``,
-# ``-e .``, ``file://...``) are intentionally left alone.
-_LOCAL_PATH_RE = re.compile(r"^\.(\[[^\]]+\])?$")
+_EXTRAS_SUFFIX_RE = re.compile(r"(?P<extras>\[[^\]]+\])$")
 
 EXPIRATION_DURATION_SECONDS = 60 * 60
 
 Requirements = Union[List[str], List[List[str]]]
 
 
-def has_local_path(requirements: Any) -> bool:
-    """True if ``requirements`` contains any ``.``/``.[extras]`` entry."""
+@dataclass(frozen=True)
+class _LocalPathRequirement:
+    path: Path
+    extras: str = ""
+
+
+def has_local_path(requirements: Any, project_root: Union[str, Path]) -> bool:
+    """True if ``requirements`` contains a local path entry.
+
+    Requirement strings are resolved relative to ``project_root``; if the path
+    part points at an existing directory, it is treated as local.
+    """
     if not isinstance(requirements, list):
         return False
+    base_path = Path(project_root)
     for item in requirements:
         if isinstance(item, list):
-            if has_local_path(item):
+            if has_local_path(item, base_path):
                 return True
-        elif isinstance(item, str) and _LOCAL_PATH_RE.match(item.strip()):
+        elif isinstance(item, str) and _parse_local_path_requirement(item, base_path):
             return True
     return False
 
@@ -63,10 +74,11 @@ def materialize_local_paths(
     project_root: Union[str, Path],
     on_progress: Optional[ProgressCallback] = None,
 ) -> Requirements:
-    """Rewrite ``.``/``.[extras]`` entries to ``<package> @ <url>``.
+    """Rewrite local path entries to ``<package> @ <url>``.
 
-    Builds an sdist of ``project_root`` and uploads it to the fal CDN via
-    ``fal.toolkit.File.from_path``. No-op when no local-path entry is present.
+    Builds an sdist for each referenced local project and uploads it to the fal
+    CDN via ``fal.toolkit.File.from_path``. No-op when no local-path entry is
+    present.
 
     Preserves the input shape (flat list vs layered list-of-lists).
 
@@ -74,33 +86,80 @@ def materialize_local_paths(
     :data:`ProgressCallback` for the event contract. Defaults to a no-op so
     library callers don't have to care about presentation.
     """
-    if not has_local_path(requirements):
-        return requirements
     project_root_path = Path(project_root)
-    package_name, url = _resolve_sdist_url(project_root_path, on_progress)
-    return _walk_and_rewrite(requirements, package_name, url)
+    resolved_sdists: dict[Path, tuple[str, str]] = {}
+    return _walk_and_rewrite(
+        requirements, project_root_path, resolved_sdists, on_progress
+    )
 
 
 def _walk_and_rewrite(
-    requirements: Requirements, package_name: str, url: str
+    requirements: Requirements,
+    project_root: Path,
+    resolved_sdists: dict[Path, tuple[str, str]],
+    on_progress: Optional[ProgressCallback],
 ) -> Requirements:
     out: list = []
     for item in requirements:
         if isinstance(item, list):
-            out.append(_walk_and_rewrite(item, package_name, url))
+            out.append(
+                _walk_and_rewrite(item, project_root, resolved_sdists, on_progress)
+            )
         elif isinstance(item, str):
-            out.append(_rewrite_one(item, package_name, url))
+            out.append(_rewrite_one(item, project_root, resolved_sdists, on_progress))
         else:
             out.append(item)
     return out  # type: ignore[return-value]
 
 
-def _rewrite_one(req: str, package_name: str, url: str) -> str:
-    match = _LOCAL_PATH_RE.match(req.strip())
-    if match is None:
+def _rewrite_one(
+    req: str,
+    project_root: Path,
+    resolved_sdists: dict[Path, tuple[str, str]],
+    on_progress: Optional[ProgressCallback],
+) -> str:
+    local_path_req = _parse_local_path_requirement(req, project_root)
+    if local_path_req is None:
         return req
-    extras = match.group(1) or ""
-    return f"{package_name}{extras} @ {url}"
+
+    local_project_root = local_path_req.path
+    package_name_url = resolved_sdists.get(local_project_root)
+    if package_name_url is None:
+        package_name_url = _resolve_sdist_url(local_project_root, on_progress)
+        resolved_sdists[local_project_root] = package_name_url
+
+    package_name, url = package_name_url
+    return f"{package_name}{local_path_req.extras} @ {url}"
+
+
+def _parse_local_path_requirement(
+    req: str, project_root: Path
+) -> Optional[_LocalPathRequirement]:
+    req = req.strip()
+    if not req:
+        return None
+
+    path_part = req
+    extras = ""
+    extras_match = _EXTRAS_SUFFIX_RE.search(req)
+    if extras_match is not None:
+        candidate_path = req[: extras_match.start()].strip()
+        if not candidate_path:
+            return None
+        path_part = candidate_path
+        extras = extras_match.group("extras")
+
+    path = _resolve_path(path_part, project_root)
+    if path.is_dir():
+        return _LocalPathRequirement(path, extras)
+    return None
+
+
+def _resolve_path(path: str, project_root: Path) -> Path:
+    result = Path(path).expanduser()
+    if not result.is_absolute():
+        result = project_root / result
+    return result.resolve()
 
 
 def _resolve_sdist_url(
