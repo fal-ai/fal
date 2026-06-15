@@ -960,7 +960,7 @@ class FalServerlessHost(Host):
         from fal.console.icons import get_check_icon  # noqa: PLC0415
         from fal.console.rules import print_rule  # noqa: PLC0415
 
-        if not has_local_path(requirements):
+        if not has_local_path(requirements, self.local_project_root):
             return
 
         check_icon = get_check_icon(console)
