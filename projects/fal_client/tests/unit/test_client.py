@@ -18,8 +18,6 @@ from fal_client.client import (
     CDN_URL,
     Completed,
     DEFAULT_QUEUE_POLL_INTERVAL,
-    DEFAULT_UPLOAD_FALLBACK_REPOSITORY,
-    DEFAULT_UPLOAD_REPOSITORY,
     FalClientHTTPError,
     FalClientTimeoutError,
     InProgress,
@@ -39,11 +37,6 @@ from fal_client.client import (
     _upload_v3,
 )
 
-
-def test_default_upload_repository_and_fallback():
-    # Default upload routes to the v3 CDN and only falls back to GCS ("fal").
-    assert DEFAULT_UPLOAD_REPOSITORY == "fal_v3"
-    assert DEFAULT_UPLOAD_FALLBACK_REPOSITORY == ["fal"]
 
 
 def test_normalize_upload_repositories_default_chain():

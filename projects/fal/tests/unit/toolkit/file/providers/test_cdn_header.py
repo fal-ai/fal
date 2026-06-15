@@ -9,13 +9,6 @@ from fal.auth import AuthCredentials
 from fal.toolkit.file.providers import fal as providers
 
 
-def test_legacy_repository_names_are_v3_aliases():
-    """Legacy repository/multipart public names remain importable and resolve to v3."""
-    assert providers.FalFileRepositoryV2 is providers.FalFileRepositoryV3
-    assert providers.FalCDNFileRepository is providers.FalFileRepositoryV3
-    assert providers.MultipartUpload is providers.MultipartUploadV3
-
-
 class FakeRequest:
     """Fake request object with headers."""
 

@@ -106,9 +106,6 @@ def _caller_cdn_header(
             headers["X-Fal-Request-ID"] = request_id
 
 
-# TODO: remove the legacy v2 token classes in the next major release. The v2
-# fal-cdn service is no longer used; these names are retained only for backward
-# compatibility (existing imports and pickled state).
 @dataclass(repr=False)
 class FalV2Token:
     token: str
