@@ -13,6 +13,7 @@ def _deploy(args):
     from ._result_handlers import (
         CliBuildEnvironmentResultHandler,
         CliRegisterResultHandler,
+        PrepareRequirementsCallback,
     )
 
     team, app_ref = _resolve_team_and_app_ref(args)
@@ -28,6 +29,7 @@ def _deploy(args):
     client = SyncServerlessClient(host=args.host, team=team)
     result_handler = CliRegisterResultHandler(console=args.console)
     build_result_handler = CliBuildEnvironmentResultHandler(console=args.console)
+    prepare_options_handler = PrepareRequirementsCallback(console=args.console)
 
     deploy_check_source = _resolve_deploy_check_source(args, client)
     if deploy_check_source is not None:
@@ -40,6 +42,7 @@ def _deploy(args):
             source=deploy_check_source,
             result_handler=result_handler,
             build_result_handler=build_result_handler,
+            prepare_options_handler=prepare_options_handler,
         )
     else:
         from fal.api import deploy as deploy_api
@@ -63,6 +66,7 @@ def _deploy(args):
             prepared,
             result_handler=result_handler,
             build_result_handler=build_result_handler,
+            prepare_options_handler=prepare_options_handler,
         )
 
     _render_deploy_result(args, res)

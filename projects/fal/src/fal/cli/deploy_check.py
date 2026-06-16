@@ -11,6 +11,7 @@ from fal.sdk import construct_alias
 logger = get_logger(__name__)
 
 if TYPE_CHECKING:
+    from fal.api._sdist import ProgressCallback
     from fal.api.api import ResultHandler
     from fal.api.client import SyncServerlessClient
     from fal.api.deploy import DeploymentResult, PreparedDeployment
@@ -108,6 +109,7 @@ def deploy_with_check(
     source: DeployCheckSource,
     result_handler: ResultHandler | None = None,
     build_result_handler: ResultHandler | None = None,
+    prepare_options_handler: ProgressCallback | None = None,
 ) -> DeploymentResult:
     from fal.api import deploy as deploy_api
 
@@ -142,6 +144,7 @@ def deploy_with_check(
         prepared,
         result_handler=result_handler,
         build_result_handler=build_result_handler,
+        prepare_options_handler=prepare_options_handler,
     )
 
 

@@ -1,11 +1,11 @@
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Optional, Tuple
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from fal.api import Options
+from fal.cli._result_handlers import PrepareRequirementsCallback
 from fal.cli.main import parse_args
 from fal.cli.run import _run
 from fal.project import find_project_root
@@ -135,6 +135,8 @@ def mock_parse_pyproject_toml():
 def mocked_fal_serverless_host(host):
     mock = MagicMock()
     mock.host = host
+    mock.local_project_root = ""
+    mock.prepare_options.side_effect = lambda options, **_: options
     return mock
 
 
@@ -309,6 +311,7 @@ def test_run_image_only_builds_no_isolate_container(
     tmp_path,
 ):
     from fal.api.api import IsolatedFunction
+    from fal.utils import LoadedFunction
 
     (tmp_path / "Dockerfile").write_text("FROM debian:bookworm-slim\n")
     mock_find_toml.return_value = str(tmp_path / "pyproject.toml")
@@ -328,15 +331,17 @@ def test_run_image_only_builds_no_isolate_container(
         app_auth,
         **_kwargs,
     ):
-        return SimpleNamespace(
-            function=IsolatedFunction(
-                host=host_arg,
-                options=options,
-                app_name=app_name,
-                app_auth=app_auth,
-            ),
+        isolated_function = IsolatedFunction(
+            host=host_arg,
+            options=options,
             app_name=app_name,
             app_auth=app_auth,
+        )
+        return LoadedFunction(
+            function=isolated_function,
+            app_name=app_name,
+            app_auth=app_auth,
+            source_code=None,
         )
 
     mock_load_function_from.side_effect = fake_load_function_from
@@ -370,6 +375,15 @@ def test_run_forwards_limit_max_requests_to_load_function_from(
 
     _, call_kwargs = mock_load_function_from.call_args
     assert call_kwargs["limit_max_requests"] == 1
+    assert "local" not in call_kwargs
+    host.prepare_options.assert_called_once()
+    (options,) = host.prepare_options.call_args.args
+    progress = host.prepare_options.call_args.kwargs["on_progress"]
+
+    assert options is loaded.function.options
+    assert host.prepare_options.call_args.kwargs["func"] is loaded.function.func
+    assert isinstance(progress, PrepareRequirementsCallback)
+    assert progress.console is args.console
 
 
 @patch("fal.api.run.run")
@@ -396,6 +410,7 @@ def test_run_forwards_exposed_port_options_to_run_api(
 
     _run(args)
 
+    host.prepare_options.assert_not_called()
     _, call_kwargs = mock_run_api.call_args
     assert call_kwargs["local"] is True
     assert call_kwargs["exposed_port"] == 3000

@@ -51,6 +51,7 @@ from typing_extensions import Concatenate, ParamSpec
 
 import fal.flags as flags
 from fal._serialization import include_module, include_modules_from, patch_pickle
+from fal.api._sdist import ProgressCallback, has_local_path, materialize_local_paths
 from fal.app_files import get_app_files_relative_path, include_app_files_path
 from fal.console import console
 from fal.container import ContainerImage
@@ -427,6 +428,20 @@ class Host(Generic[ArgsT, ReturnT]):
         entrypoint: str | None = None,
     ) -> SpawnInfo:
         raise NotImplementedError
+
+    def prepare_options(
+        self,
+        options: Options,
+        *,
+        func: Callable[..., Any] | None = None,
+        on_progress: ProgressCallback | None = None,
+    ) -> Options:
+        return replace(
+            options,
+            host=options.host.copy(),
+            environment=options.environment.copy(),
+            gateway=options.gateway.copy(),
+        )
 
 
 def cached(func: Callable[ArgsT, ReturnT]) -> Callable[ArgsT, ReturnT]:
@@ -937,7 +952,9 @@ class FalServerlessHost(Host):
             return client.connect()
 
     def _materialize_local_requirements(
-        self, environment_options: dict[str, Any]
+        self,
+        environment_options: dict[str, Any],
+        on_progress: ProgressCallback | None = None,
     ) -> None:
         """Rewrite ``.``/``.[extras]`` in ``environment_options['requirements']``
         to point at an uploaded sdist of ``self.local_project_root``.
@@ -946,52 +963,49 @@ class FalServerlessHost(Host):
         project root or no local-path requirement to rewrite — keeps the
         dispatch hot path quiet for users who don't use this feature.
         """
-        if not self.local_project_root:
+        local_project_root = self.local_project_root
+        if not local_project_root:
             return
+
         requirements = environment_options.get("requirements")
         if not requirements:
             return
 
-        from fal.api._sdist import (  # noqa: PLC0415
-            has_local_path,
-            materialize_local_paths,
-        )
-        from fal.console import console  # noqa: PLC0415
-        from fal.console.icons import get_check_icon  # noqa: PLC0415
-        from fal.console.rules import print_rule  # noqa: PLC0415
-
-        if not has_local_path(requirements, self.local_project_root):
+        if not has_local_path(requirements, local_project_root):
             return
 
-        check_icon = get_check_icon(console)
-
-        # Render in the same shape as the remote BUILDER phase
-        # (``Building environment...`` → rule → live logs → rule →
-        # ``✓ Build complete``) so the local sdist build feels like a
-        # natural sibling phase rather than out-of-band CLI chatter.
-        def _on_progress(event: str, payload: dict[str, Any]) -> None:
-            if event == "build_started":
-                console.print(
-                    f"Packaging local project [cyan]{payload['package_name']}[/]...",
-                    style="bold",
-                )
-                print_rule(console, style="dim")
-            elif event == "upload_started":
-                size_kb = payload["sdist_size"] / 1024
-                console.print(
-                    f"Uploading {payload['sdist_path'].name} ({size_kb:.1f} KB)..."
-                )
-            elif event == "upload_finished":
-                print_rule(console, style="dim")
-                console.print(f"{check_icon} Project packaged", style="bold green")
-                console.print("")
-            # ``build_finished`` has no host-side rendering: the live
-            # ``python -m build`` output between the rules already tells the
-            # user the build is done.
-
         environment_options["requirements"] = materialize_local_paths(
-            requirements, self.local_project_root, on_progress=_on_progress
+            requirements, local_project_root, on_progress=on_progress
         )
+
+    def prepare_options(
+        self,
+        options: Options,
+        *,
+        func: Callable[..., Any] | None = None,
+        on_progress: ProgressCallback | None = None,
+    ) -> Options:
+        from isolate.backends.common import active_python  # noqa: PLC0415
+
+        prepared_options = super().prepare_options(options)
+        environment_options = prepared_options.environment
+
+        # An explicit ``python_version=None`` must still resolve to the local
+        # interpreter: we ship local cloudpickled bytecode, so the remote
+        # Python must match. ``setdefault`` would leave an explicit None as-is.
+        if environment_options.get("python_version") is None:
+            environment_options["python_version"] = active_python()
+
+        _check_python_version_match(
+            [func, prepared_options.host.get("setup_function")],
+            environment_options["python_version"],
+        )
+
+        self._materialize_local_requirements(
+            environment_options, on_progress=on_progress
+        )
+
+        return prepared_options
 
     def files_sync(self, options: FileSyncOptions) -> list[File]:
         """Sync files to the server."""
@@ -1048,25 +1062,10 @@ class FalServerlessHost(Host):
         entrypoint: str | None = None,
         build_environment: bool | None = None,
     ) -> Optional[RegisterApplicationResult]:
-        from isolate.backends.common import active_python  # noqa: PLC0415
-
-        environment_options = options.environment.copy()
-
-        # An explicit ``python_version=None`` must still resolve to the local
-        # interpreter: we ship local cloudpickled bytecode, so the remote
-        # Python must match. ``setdefault`` would leave an explicit None as-is.
-        if environment_options.get("python_version") is None:
-            environment_options["python_version"] = active_python()
-        _check_python_version_match(
-            [func, options.host.get("setup_function")],
-            environment_options["python_version"],
-        )
-
+        options = self.prepare_options(options, func=func)
+        environment_options = options.environment
         if build_environment is False:
             environment_options.pop("force", None)
-
-        environment_options.setdefault("python_version", active_python())
-        self._materialize_local_requirements(environment_options)
         environments = [self._connection.define_environment(**environment_options)]
 
         machine_type: list[str] | str = options.host.get(
@@ -1189,25 +1188,10 @@ class FalServerlessHost(Host):
         entrypoint: str | None = None,
         build_environment: bool | None = None,
     ) -> ReturnT:
-        from isolate.backends.common import active_python  # noqa: PLC0415
-
-        environment_options = options.environment.copy()
-
-        # An explicit ``python_version=None`` must still resolve to the local
-        # interpreter: we ship local cloudpickled bytecode, so the remote
-        # Python must match. ``setdefault`` would leave an explicit None as-is.
-        if environment_options.get("python_version") is None:
-            environment_options["python_version"] = active_python()
-        _check_python_version_match(
-            [func, options.host.get("setup_function")],
-            environment_options["python_version"],
-        )
-
+        options = self.prepare_options(options, func=func)
+        environment_options = options.environment
         if build_environment is False:
             environment_options.pop("force", None)
-
-        environment_options.setdefault("python_version", active_python())
-        self._materialize_local_requirements(environment_options)
         environments = [self._connection.define_environment(**environment_options)]
 
         machine_type: list[str] | str = options.host.get(
@@ -1365,15 +1349,8 @@ class FalServerlessHost(Host):
         Streams build logs through ``result_handler`` (defaults to a no-op
         handler if not provided).
         """
-        from isolate.backends.common import active_python  # noqa: PLC0415
-
-        environment_options = options.environment.copy()
-        # An explicit ``python_version=None`` must still resolve to the local
-        # interpreter: we ship local cloudpickled bytecode, so the remote
-        # Python must match. ``setdefault`` would leave an explicit None as-is.
-        if environment_options.get("python_version") is None:
-            environment_options["python_version"] = active_python()
-        self._materialize_local_requirements(environment_options)
+        options = self.prepare_options(options)
+        environment_options = options.environment
         environments = [self._connection.define_environment(**environment_options)]
 
         machine_type: list[str] | str = options.host.get(

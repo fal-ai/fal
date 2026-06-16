@@ -83,11 +83,12 @@ def _run(args):
         isolated_function.options.host["machine_type"] = args.machine_type
 
     if not args.local:
-        # Fail fast on a local/remote Python version mismatch
-        from fal.api.api import check_python_version_for_options
+        from ._result_handlers import PrepareRequirementsCallback
 
-        check_python_version_for_options(
-            isolated_function.func, isolated_function.options
+        isolated_function.options = host.prepare_options(
+            isolated_function.options,
+            func=isolated_function.func,
+            on_progress=PrepareRequirementsCallback(console=args.console),
         )
 
         # Explicit build phase so the CLI gets a clean "build → run" split

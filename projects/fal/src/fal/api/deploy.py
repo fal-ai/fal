@@ -4,6 +4,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
+from fal.api._sdist import ProgressCallback
 from fal.sdk import AuthModeLiteral, DeploymentStrategyLiteral
 
 from .api import _uses_isolate
@@ -242,19 +243,23 @@ def _execute_loaded_deployment(
     environment_name: str | None = None,
     result_handler: ResultHandler | None = None,
     build_result_handler: ResultHandler | None = None,
+    prepare_options_handler: ProgressCallback | None = None,
 ) -> DeploymentResult:
     from fal.api import FalServerlessError
 
-    isolated_function = loaded.function
     strategy = app_data.deployment_strategy or "rolling"
     build_result_handler = (
         result_handler if build_result_handler is None else build_result_handler
     )
 
-    # Fail fast on a local/remote Python version mismatch
-    from fal.api.api import check_python_version_for_options
-
-    check_python_version_for_options(isolated_function.func, isolated_function.options)
+    isolated_function = replace(
+        loaded.function,
+        options=host.prepare_options(
+            loaded.function.options,
+            func=loaded.function.func,
+            on_progress=prepare_options_handler,
+        ),
+    )
 
     # Explicit build phase so the CLI / caller gets a clean "build → deploy"
     # split instead of inferring it from the log stream's source field.
@@ -347,6 +352,7 @@ def execute_prepared_deployment(
     *,
     result_handler: ResultHandler | None = None,
     build_result_handler: ResultHandler | None = None,
+    prepare_options_handler: ProgressCallback | None = None,
 ) -> DeploymentResult:
     return _execute_loaded_deployment(
         host=prepared.host,
@@ -356,6 +362,7 @@ def execute_prepared_deployment(
         environment_name=prepared.environment_name,
         result_handler=result_handler,
         build_result_handler=build_result_handler,
+        prepare_options_handler=prepare_options_handler,
     )
 
 
