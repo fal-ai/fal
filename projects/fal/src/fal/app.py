@@ -149,10 +149,15 @@ def wrap_app(cls: type[App], **kwargs) -> IsolatedFunction:
         set_current_app(app)
 
         serve_kwargs: dict[str, Any] = {"limit_max_requests": limit_max_requests}
+        app_metrics_port = cls.metrics_port
+        if app_metrics_port is None:
+            app_metrics_port = cls.host_kwargs.get("metrics_port")
         if exposed_port is not None:
             serve_kwargs["port"] = exposed_port
         if exposed_metrics_port is not None:
             serve_kwargs["metrics_port"] = exposed_metrics_port
+        elif app_metrics_port is not None:
+            serve_kwargs["metrics_port"] = app_metrics_port
 
         if threading.current_thread() == threading.main_thread():
             return app.serve(**serve_kwargs)
@@ -516,6 +521,8 @@ class App(BaseServable):
             Defaults to the directory containing the app file.
         request_timeout: Maximum seconds for a single request. None for default.
         startup_timeout: Maximum seconds for app startup/setup. None for default.
+        metrics_port: Internal metrics server port for platform scrapes.
+            When omitted, served/exposed deployments default to 9090.
         min_concurrency: Minimum warm instances to keep running. Set to 1+ to
             avoid cold starts. Default is 0 (scale to zero).
         max_concurrency: Maximum instances to scale up to.
@@ -559,6 +566,7 @@ class App(BaseServable):
     app_files_context_dir: ClassVar[Optional[str]] = None
     request_timeout: ClassVar[Optional[int]] = None
     startup_timeout: ClassVar[Optional[int]] = None
+    metrics_port: ClassVar[Optional[int]] = None
     min_concurrency: ClassVar[Optional[int]] = None
     max_concurrency: ClassVar[Optional[int]] = None
     concurrency_buffer: ClassVar[Optional[int]] = None
@@ -602,6 +610,9 @@ class App(BaseServable):
 
         if cls.startup_timeout is not None:
             cls.host_kwargs["startup_timeout"] = cls.startup_timeout
+
+        if cls.metrics_port is not None:
+            cls.host_kwargs["metrics_port"] = cls.metrics_port
 
         if cls.app_files:
             cls.host_kwargs["app_files"] = cls.app_files

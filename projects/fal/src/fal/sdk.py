@@ -726,6 +726,7 @@ class MachineRequirements:
     request_timeout: int | None = None
     startup_timeout: int | None = None
     valid_regions: list[str] | None = None
+    metrics_port: int | None = None
 
     def __post_init__(self):
         if isinstance(self.machine_types, str):
@@ -959,6 +960,7 @@ class FalServerlessConnection:
                 keep_alive=machine_requirements.keep_alive,
                 base_image=machine_requirements.base_image,
                 exposed_port=machine_requirements.exposed_port,
+                metrics_port=machine_requirements.metrics_port,
                 scheduler=machine_requirements.scheduler,
                 scheduler_options=to_struct(
                     machine_requirements.scheduler_options or {}
@@ -1188,6 +1190,7 @@ class FalServerlessConnection:
                 keep_alive=machine_requirements.keep_alive,
                 base_image=machine_requirements.base_image,
                 exposed_port=machine_requirements.exposed_port,
+                metrics_port=machine_requirements.metrics_port,
                 scheduler=machine_requirements.scheduler,
                 scheduler_options=to_struct(
                     machine_requirements.scheduler_options or {}

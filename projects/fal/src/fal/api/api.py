@@ -905,6 +905,7 @@ class FalServerlessHost(Host):
             "metadata",
             "request_timeout",
             "startup_timeout",
+            "metrics_port",
             "private_logs",
             "_base_image",
             "_scheduler",
@@ -1082,6 +1083,7 @@ class FalServerlessHost(Host):
         scaling_delay = options.host.get("scaling_delay")
         max_multiplexing = options.host.get("max_multiplexing")
         exposed_port = options.get_exposed_port()
+        metrics_port = options.get_metrics_port()
         request_timeout = options.host.get("request_timeout")
         startup_timeout = options.host.get("startup_timeout")
         regions = options.host.get("regions")
@@ -1099,6 +1101,7 @@ class FalServerlessHost(Host):
             keep_alive=keep_alive,
             base_image=base_image,
             exposed_port=exposed_port,
+            metrics_port=metrics_port,
             scheduler=scheduler,
             scheduler_options=scheduler_options,
             max_multiplexing=max_multiplexing,
@@ -1208,6 +1211,7 @@ class FalServerlessHost(Host):
         scheduler = options.host.get("_scheduler", None)
         scheduler_options = options.host.get("_scheduler_options", None)
         exposed_port = options.get_exposed_port()
+        metrics_port = options.get_metrics_port()
         runtime_config = self._runtime_config(options)
         setup_function = options.host.get("setup_function", None)
         if setup_function is not None and runtime_config is not None:
@@ -1225,6 +1229,7 @@ class FalServerlessHost(Host):
             keep_alive=keep_alive,
             base_image=base_image,
             exposed_port=exposed_port,
+            metrics_port=metrics_port,
             scheduler=scheduler,
             scheduler_options=scheduler_options,
             max_multiplexing=max_multiplexing,
@@ -1442,6 +1447,10 @@ class FalServerlessHost(Host):
         return ret
 
 
+_SERVE_PORT = 8080
+_METRICS_PORT = 9090
+
+
 @dataclass
 class Options:
     host: BasicConfig = field(default_factory=dict)
@@ -1486,8 +1495,15 @@ class Options:
         else:
             return None
 
+    def get_metrics_port(self) -> int | None:
+        metrics_port = self.host.get("metrics_port")
+        if metrics_port is not None:
+            return metrics_port
+        elif self.get_exposed_port() is not None and _image_uses_isolate(self):
+            return _METRICS_PORT
+        else:
+            return None
 
-_SERVE_PORT = 8080
 
 # Overload @function to help users identify the correct signature.
 # NOTE: This is both in sync with host options and with environment configs from
@@ -1543,6 +1559,7 @@ def function(
     host: FalServerlessHost | None = None,
     serve: Literal[False] = False,
     exposed_port: int | None = None,
+    metrics_port: int | None = None,
     max_concurrency: int | None = None,
     local_python_modules: list[str] | None = None,
     # FalServerlessHost options
@@ -1577,6 +1594,7 @@ def function(
     host: FalServerlessHost | None = None,
     serve: Literal[True],
     exposed_port: int | None = None,
+    metrics_port: int | None = None,
     max_concurrency: int | None = None,
     local_python_modules: list[str] | None = None,
     # FalServerlessHost options
@@ -1663,6 +1681,7 @@ def function(
     host: FalServerlessHost | None = None,
     serve: Literal[False] = False,
     exposed_port: int | None = None,
+    metrics_port: int | None = None,
     max_concurrency: int | None = None,
     local_python_modules: list[str] | None = None,
     # FalServerlessHost options
@@ -1702,6 +1721,7 @@ def function(
     host: FalServerlessHost | None = None,
     serve: Literal[True],
     exposed_port: int | None = None,
+    metrics_port: int | None = None,
     max_concurrency: int | None = None,
     local_python_modules: list[str] | None = None,
     # FalServerlessHost options
@@ -1735,6 +1755,7 @@ def function(
     host: FalServerlessHost | None = None,
     serve: Literal[False] = False,
     exposed_port: int | None = None,
+    metrics_port: int | None = None,
     max_concurrency: int | None = None,
     local_python_modules: list[str] | None = None,
     # FalServerlessHost options
@@ -1768,6 +1789,7 @@ def function(
     host: FalServerlessHost | None = None,
     serve: Literal[True],
     exposed_port: int | None = None,
+    metrics_port: int | None = None,
     max_concurrency: int | None = None,
     local_python_modules: list[str] | None = None,
     # FalServerlessHost options
@@ -2460,7 +2482,6 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
     app_name: str | None = None
     app_auth: AuthModeLiteral | None = None
     entrypoint: str | None = None
-    _entrypoint_exposed_port_defaulted: bool = False
 
     def __post_init__(self) -> None:
         if (
@@ -2487,8 +2508,6 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
         self.__dict__.update(state)
         if not hasattr(self, "executor"):
             self.executor = ThreadPoolExecutor()
-        if not hasattr(self, "_entrypoint_exposed_port_defaulted"):
-            self._entrypoint_exposed_port_defaulted = False
 
     @property
     def run_entrypoint(self) -> str | None:
@@ -2642,18 +2661,25 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
             )
 
         if supports_local_serve_options:
-            entrypoint_target_keeps_own_port = (
-                self.raw_func is None
-                and isinstance(local_serve_options_target, IsolatedFunction)
-                and self._entrypoint_exposed_port_defaulted
-            )
-            effective_exposed_port = exposed_port
-            if effective_exposed_port is None and not entrypoint_target_keeps_own_port:
-                effective_exposed_port = self.options.get_exposed_port()
+            is_entrypoint_wrapper = self.raw_func is None
+            if is_entrypoint_wrapper:
+                effective_exposed_port = exposed_port
+                effective_metrics_port = exposed_metrics_port
+            else:
+                effective_exposed_port = (
+                    exposed_port
+                    if exposed_port is not None
+                    else self.options.get_exposed_port()
+                )
+                effective_metrics_port = (
+                    exposed_metrics_port
+                    if exposed_metrics_port is not None
+                    else self.options.get_metrics_port()
+                )
             if effective_exposed_port is not None:
                 call_kwargs["exposed_port"] = effective_exposed_port
-            if exposed_metrics_port is not None:
-                call_kwargs["exposed_metrics_port"] = exposed_metrics_port
+            if effective_metrics_port is not None:
+                call_kwargs["exposed_metrics_port"] = effective_metrics_port
 
         previous_isolate_env = os.environ.get("IS_ISOLATE_AGENT")
         os.environ["IS_ISOLATE_AGENT"] = "1"
