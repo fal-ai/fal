@@ -8,6 +8,15 @@ def test_proto():
     assert test_mod.machine_type == "XL"
 
 
+def test_machine_requirements_metrics_port_presence():
+    requirements = isolate_proto.MachineRequirements()
+    assert requirements.HasField("metrics_port") is False
+
+    requirements.metrics_port = 9090
+    assert requirements.HasField("metrics_port") is True
+    assert requirements.metrics_port == 9090
+
+
 def test_callable_entrypoint_fields():
     serialized_function = isolate_proto.SerializedObject(
         method="pickle",

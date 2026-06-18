@@ -279,6 +279,7 @@ message MachineRequirements {
     optional int32 concurrency_buffer_perc = 16;
     optional int32 scaling_delay_seconds = 17;
     repeated string valid_regions = 18;
+    optional int32 metrics_port = 19;
 }
 
 enum ApplicationAuthMode {
