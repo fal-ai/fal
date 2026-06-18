@@ -16,6 +16,38 @@ if TYPE_CHECKING:
     from rich.console import Console
 
 
+class PrepareRequirementsCallback:
+    """Renders local requirement packaging as a top-level CLI step."""
+
+    def __init__(self, *, console: Console) -> None:
+        self.console = console
+
+    def __call__(self, event: str, payload: dict[str, Any]) -> None:
+        from fal.console.rules import print_rule  # noqa: PLC0415
+
+        if event == "build_started":
+            self.console.print(
+                f"Packaging local project [cyan]{payload['package_name']}[/]...",
+                style="bold",
+            )
+            print_rule(self.console, style="dim")
+        elif event == "upload_started":
+            size_kb = payload["sdist_size"] / 1024
+            self.console.print(
+                f"Uploading {payload['sdist_path'].name} ({size_kb:.1f} KB)..."
+            )
+        elif event == "upload_finished":
+            from fal.console.icons import get_check_icon  # noqa: PLC0415
+
+            print_rule(self.console, style="dim")
+            check_icon = get_check_icon(self.console)
+            self.console.print(f"{check_icon} Project packaged", style="bold green")
+            self.console.print("")
+        # ``build_finished`` has no host-side rendering: the live
+        # ``python -m build`` output between the rules already tells the
+        # user the build is done.
+
+
 class CliRunResultHandler(ResultHandler):
     """Renders an ephemeral-app banner + streams logs for ``fal run``."""
 

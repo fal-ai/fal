@@ -214,6 +214,237 @@ def test_run_omits_force_when_build_environment_false():
     assert options.environment["force"] is True
 
 
+LOCAL_PATH_REQUIREMENT_CASES = [
+    (
+        ["."],
+        ["simple @ https://cdn/simple-0.1.0.tar.gz"],
+    ),
+    (
+        [["."], ["other-pkg"]],
+        [["simple @ https://cdn/simple-0.1.0.tar.gz"], ["other-pkg"]],
+    ),
+]
+
+
+def _exercise_local_path_cache_only_sequence(tmp_path, requirements, prepare_for_build):
+    from fal.api.api import FalServerlessHost, Options, ResultHandler
+    from fal.sdk import (
+        BuildEnvironmentResult,
+        HostedRunState,
+        HostedRunStatus,
+        RegisterApplicationResult,
+        RegisterApplicationResultType,
+    )
+
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "simple"\nversion = "0.1.0"\n'
+    )
+    app_file = tmp_path / "app.py"
+    app_file.write_text(
+        "import fal\n" "\n" "@fal.function()\n" "def run():\n" "    return 'ok'\n"
+    )
+    fake_sdist = tmp_path / "build_out" / "simple-0.1.0.tar.gz"
+
+    def build_fake_sdist(_project_root):
+        fake_sdist.parent.mkdir()
+        fake_sdist.write_bytes(b"fake-sdist-bytes")
+        return fake_sdist
+
+    host = FalServerlessHost(local_project_root=str(tmp_path))
+    options = Options(environment={"kind": "virtualenv", "requirements": requirements})
+
+    connection = MagicMock()
+    connection.define_environment.side_effect = lambda **kwargs: kwargs
+    connection.build_environment.return_value = iter(
+        [BuildEnvironmentResult(status=HostedRunStatus(HostedRunState.SUCCESS))]
+    )
+
+    run_result = MagicMock()
+    run_result.status.state = HostedRunState.SUCCESS
+    run_result.result = "ok"
+    connection.run.return_value = iter([run_result])
+
+    register_result = RegisterApplicationResult(
+        result=RegisterApplicationResultType(application_id="app-id")
+    )
+    connection.register.return_value = iter([register_result])
+
+    with ExitStack() as stack:
+        stack.enter_context(
+            patch.object(FalServerlessHost, "_connection", new_callable=PropertyMock)
+        ).return_value = connection
+        build_sdist = stack.enter_context(
+            patch("fal.api._sdist._build_sdist", side_effect=build_fake_sdist)
+        )
+        upload_sdist = stack.enter_context(
+            patch(
+                "fal.api._sdist._upload_sdist",
+                return_value="https://cdn/simple-0.1.0.tar.gz",
+            )
+        )
+
+        active_options = prepare_for_build(host, options, app_file)
+        result = host._run(
+            None,
+            active_options,
+            args=(),
+            kwargs={},
+            result_handler=ResultHandler(),
+            entrypoint="simple.app:run",
+            build_environment=False,
+        )
+        registered = host.register(
+            None,
+            active_options,
+            deployment_strategy="recreate",
+            entrypoint="simple.app:run",
+            build_environment=False,
+        )
+
+    return {
+        "active_options": active_options,
+        "build_sdist": build_sdist,
+        "fake_sdist": fake_sdist,
+        "options": options,
+        "registered": registered,
+        "register_result": register_result,
+        "result": result,
+        "rewritten_requirements": [
+            call.kwargs["requirements"]
+            for call in connection.define_environment.call_args_list
+        ],
+        "upload_sdist": upload_sdist,
+    }
+
+
+@pytest.mark.parametrize(
+    ("requirements", "expected_requirements"), LOCAL_PATH_REQUIREMENT_CASES
+)
+def test_prepare_options_materializes_loaded_requirements_for_cache_only_calls(
+    tmp_path, requirements, expected_requirements
+):
+    from fal.utils import load_function_from
+
+    def prepare_for_build(host, options, app_file):
+        loaded = load_function_from(
+            host,
+            str(app_file),
+            "run",
+            options=options,
+        )
+        loaded.function.options = host.prepare_options(loaded.function.options)
+        host.build_environment(loaded.function.options)
+        return loaded.function.options
+
+    case = _exercise_local_path_cache_only_sequence(
+        tmp_path, requirements, prepare_for_build
+    )
+
+    assert case["result"] == "ok"
+    assert case["registered"] == case["register_result"]
+    assert case["rewritten_requirements"] == [expected_requirements] * 3
+    assert case["options"].environment["requirements"] == requirements
+    assert case["active_options"].environment["requirements"] == expected_requirements
+    case["build_sdist"].assert_called_once_with(tmp_path.resolve())
+    case["upload_sdist"].assert_called_once_with(case["fake_sdist"])
+
+
+@pytest.mark.parametrize(
+    ("requirements", "expected_requirements"), LOCAL_PATH_REQUIREMENT_CASES
+)
+def test_prepare_options_materializes_host_requirements_for_cache_only_calls(
+    tmp_path, requirements, expected_requirements
+):
+    def prepare_for_build(host, options, _app_file):
+        prepared_options = host.prepare_options(options)
+        host.build_environment(prepared_options)
+        return prepared_options
+
+    case = _exercise_local_path_cache_only_sequence(
+        tmp_path, requirements, prepare_for_build
+    )
+
+    assert case["result"] == "ok"
+    assert case["registered"] == case["register_result"]
+    assert case["rewritten_requirements"] == [expected_requirements] * 3
+    assert case["options"].environment["requirements"] == requirements
+    assert case["active_options"].environment["requirements"] == expected_requirements
+    case["build_sdist"].assert_called_once_with(tmp_path.resolve())
+    case["upload_sdist"].assert_called_once_with(case["fake_sdist"])
+
+
+def test_prepare_options_checks_python_version_before_materializing_requirements(
+    tmp_path,
+):
+    from fal.api.api import FalServerlessError, FalServerlessHost, Options
+
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "simple"\nversion = "0.1.0"\n'
+    )
+
+    host = FalServerlessHost(local_project_root=str(tmp_path))
+    options = Options(
+        environment={
+            "kind": "virtualenv",
+            "python_version": "3.12",
+            "requirements": ["."],
+        }
+    )
+
+    with patch("isolate.backends.common.active_python", return_value="3.11"):
+        with patch("fal.api._sdist._build_sdist") as build_sdist:
+            with pytest.raises(FalServerlessError, match="Local Python 3.11"):
+                host.prepare_options(options, func=lambda: None)
+
+    build_sdist.assert_not_called()
+
+
+def test_build_environment_keeps_local_requirements_for_future_rebuilds(tmp_path):
+    from fal.api.api import FalServerlessHost, Options
+    from fal.sdk import BuildEnvironmentResult, HostedRunState, HostedRunStatus
+
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "simple"\nversion = "0.1.0"\n'
+    )
+    fake_sdist = tmp_path / "build_out" / "simple-0.1.0.tar.gz"
+
+    def build_fake_sdist(_project_root):
+        fake_sdist.parent.mkdir(exist_ok=True)
+        fake_sdist.write_bytes(b"fake-sdist-bytes")
+        return fake_sdist
+
+    host = FalServerlessHost(local_project_root=str(tmp_path))
+    options = Options(environment={"kind": "virtualenv", "requirements": ["."]})
+
+    connection = MagicMock()
+    connection.define_environment.side_effect = lambda **kwargs: kwargs
+    connection.build_environment.return_value = iter(
+        [BuildEnvironmentResult(status=HostedRunStatus(HostedRunState.SUCCESS))]
+    )
+
+    with ExitStack() as stack:
+        stack.enter_context(
+            patch.object(FalServerlessHost, "_connection", new_callable=PropertyMock)
+        ).return_value = connection
+        build_sdist = stack.enter_context(
+            patch("fal.api._sdist._build_sdist", side_effect=build_fake_sdist)
+        )
+        upload_sdist = stack.enter_context(
+            patch(
+                "fal.api._sdist._upload_sdist",
+                return_value="https://cdn/simple-0.1.0.tar.gz",
+            )
+        )
+
+        host.build_environment(options)
+
+    _, call_kwargs = connection.define_environment.call_args
+    assert call_kwargs["requirements"] == ["simple @ https://cdn/simple-0.1.0.tar.gz"]
+    assert options.environment["requirements"] == ["."]
+    build_sdist.assert_called_once_with(tmp_path.resolve())
+    upload_sdist.assert_called_once_with(fake_sdist)
+
+
 def test_register_leaves_private_logs_unset_by_default():
     from fal.api.api import FalServerlessHost, Options
     from fal.sdk import RegisterApplicationResult, RegisterApplicationResultType

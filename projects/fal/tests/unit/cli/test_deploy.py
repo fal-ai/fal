@@ -6,6 +6,7 @@ import pytest
 from rich.console import Console
 
 from fal.api import Options
+from fal.api.api import IsolatedFunction
 from fal.cli._utils import AppData
 from fal.cli.deploy import _deploy
 from fal.cli.deploy_check import (
@@ -46,12 +47,15 @@ def test_execute_prepared_deployment_reuses_result_handler_for_build_by_default(
     )
 
     host = MagicMock()
-    isolated_function = MagicMock()
-    isolated_function.options = Options()
-    isolated_function.func = lambda: None
-    isolated_function.run_entrypoint = None
-    isolated_function.endpoints = ["/"]
-    isolated_function.build_metadata.return_value = {}
+    options = Options(environment={"requirements": ["."]})
+    prepared_options = Options(environment={"requirements": ["simple @ https://cdn"]})
+    isolated_function = IsolatedFunction(
+        host=host,
+        raw_func=lambda: None,
+        options=options,
+        app_name="my-app",
+        app_auth="public",
+    )
 
     host.register.return_value = RegisterApplicationResult(
         result=RegisterApplicationResultType(application_id="app-id"),
@@ -63,6 +67,7 @@ def test_execute_prepared_deployment_reuses_result_handler_for_build_by_default(
             log="https://log.example",
         ),
     )
+    host.prepare_options.return_value = prepared_options
     prepared = PreparedDeployment(
         host=host,
         loaded=SimpleNamespace(
@@ -76,14 +81,28 @@ def test_execute_prepared_deployment_reuses_result_handler_for_build_by_default(
     )
 
     result_handler = MagicMock()
-    execute_prepared_deployment(prepared, result_handler=result_handler)
+    prepare_options_handler = MagicMock()
+    execute_prepared_deployment(
+        prepared,
+        result_handler=result_handler,
+        prepare_options_handler=prepare_options_handler,
+    )
 
     _, build_kwargs = host.build_environment.call_args
     assert build_kwargs["result_handler"] is result_handler
+    assert host.build_environment.call_args.args[0] is prepared_options
+    host.prepare_options.assert_called_once_with(
+        options,
+        func=isolated_function.func,
+        on_progress=prepare_options_handler,
+    )
+    _, register_kwargs = host.register.call_args
+    assert register_kwargs["options"] is prepared_options
+    assert isolated_function.options is options
+    assert isolated_function.options.environment["requirements"] == ["."]
 
 
 def test_execute_prepared_deployment_builds_no_isolate_container():
-    from fal.api.api import IsolatedFunction
     from fal.api.deploy import PreparedDeployment, execute_prepared_deployment
     from fal.sdk import (
         RegisterApplicationResult,
@@ -111,6 +130,7 @@ def test_execute_prepared_deployment_builds_no_isolate_container():
             log="https://log.example",
         ),
     )
+    host.prepare_options.return_value = options
     prepared = PreparedDeployment(
         host=host,
         loaded=SimpleNamespace(
