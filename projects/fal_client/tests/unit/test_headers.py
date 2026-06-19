@@ -9,9 +9,11 @@ from fal_client._headers import (
     QUEUE_PRIORITY_HEADER,
     REQUEST_TIMEOUT_HEADER,
     RUNNER_HINT_HEADER,
+    add_fal_app_context_headers,
     add_hint_header,
     add_priority_header,
     add_timeout_header,
+    set_get_current_app,
 )
 
 
@@ -138,3 +140,88 @@ class TestAddPriorityHeader:
 
         with pytest.raises(ValueError):
             add_priority_header("", headers)  # type: ignore[arg-type]
+
+
+class _FakeRequest:
+    def __init__(self, headers: dict[str, str]) -> None:
+        self.headers = headers
+
+
+class _FakeApp:
+    def __init__(self, request: _FakeRequest | None) -> None:
+        self.current_request = request
+
+
+class TestAddFalAppContextHeaders:
+    """Tests for add_fal_app_context_headers function."""
+
+    @pytest.fixture(autouse=True)
+    def _reset_current_app(self):
+        yield
+        set_get_current_app(None)  # type: ignore[arg-type]
+
+    def _set_request(self, headers: dict[str, str] | None) -> None:
+        request = _FakeRequest(headers) if headers is not None else None
+        set_get_current_app(lambda: _FakeApp(request))
+
+    def test_no_app_context_leaves_headers_untouched(self) -> None:
+        """Outside a fal app, no context headers are added."""
+        set_get_current_app(None)  # type: ignore[arg-type]
+        headers: dict[str, str] = {}
+
+        add_fal_app_context_headers(headers)
+
+        assert headers == {}
+
+    def test_no_current_request_leaves_headers_untouched(self) -> None:
+        """When there is no current request, no context headers are added."""
+        self._set_request(None)
+        headers: dict[str, str] = {}
+
+        add_fal_app_context_headers(headers)
+
+        assert headers == {}
+
+    def test_propagates_cdn_token(self) -> None:
+        """Forwards x-fal-cdn-token from the current request."""
+        self._set_request({"x-fal-cdn-token": "tok"})
+        headers: dict[str, str] = {}
+
+        add_fal_app_context_headers(headers)
+
+        assert headers["x-fal-cdn-token"] == "tok"
+
+    def test_propagates_can_disable_filter(self) -> None:
+        """Forwards x-app-fal-can-disable-filter from the current request."""
+        self._set_request({"x-app-fal-can-disable-filter": "true"})
+        headers: dict[str, str] = {}
+
+        add_fal_app_context_headers(headers)
+
+        assert headers["x-app-fal-can-disable-filter"] == "true"
+
+    def test_propagates_all_context_headers(self) -> None:
+        """Forwards every supported context header at once."""
+        self._set_request(
+            {
+                "x-fal-cdn-token": "tok",
+                "x-app-fal-can-disable-filter": "true",
+            }
+        )
+        headers: dict[str, str] = {}
+
+        add_fal_app_context_headers(headers)
+
+        assert headers == {
+            "x-fal-cdn-token": "tok",
+            "x-app-fal-can-disable-filter": "true",
+        }
+
+    def test_absent_headers_are_not_added(self) -> None:
+        """Context headers missing from the request are not added."""
+        self._set_request({})
+        headers: dict[str, str] = {}
+
+        add_fal_app_context_headers(headers)
+
+        assert headers == {}
