@@ -1860,6 +1860,7 @@ class AsyncClient:
         *,
         path: str = "/stream",
         timeout: float | None = None,
+        headers: dict[str, str] = {},
     ) -> AsyncIterator[dict[str, Any]]:
         """Stream the output of an application with the given arguments (which will be JSON serialized). This is only supported
         at a few select applications at the moment, so be sure to first consult with the documentation of individual applications
@@ -1873,13 +1874,18 @@ class AsyncClient:
         if path:
             url += "/" + path.lstrip("/")
 
+        _headers: dict[str, str] = {**headers}
+        add_fal_app_context_headers(_headers)
+
         async with aconnect_sse(
             client,
             "POST",
             url,
             json=arguments,
             timeout=timeout,
+            headers=_headers,
         ) as events:
+            handle_response_headers(events.response.headers)
             async for event in events.aiter_sse():
                 yield event.json()
 
@@ -2369,6 +2375,7 @@ class SyncClient:
         *,
         path: str = "/stream",
         timeout: float | None = None,
+        headers: dict[str, str] = {},
     ) -> Iterator[dict[str, Any]]:
         """Stream the output of an application with the given arguments (which will be JSON serialized). This is only supported
         at a few select applications at the moment, so be sure to first consult with the documentation of individual applications
@@ -2381,9 +2388,13 @@ class SyncClient:
         if path:
             url += "/" + path.lstrip("/")
 
+        _headers: dict[str, str] = {**headers}
+        add_fal_app_context_headers(_headers)
+
         with connect_sse(
-            self._client, "POST", url, json=arguments, timeout=timeout
+            self._client, "POST", url, json=arguments, timeout=timeout, headers=_headers
         ) as events:
+            handle_response_headers(events.response.headers)
             for event in events.iter_sse():
                 yield event.json()
 

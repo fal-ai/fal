@@ -82,6 +82,8 @@ def add_fal_app_context_headers(headers: dict[str, str]) -> None:
     if request := _current_fal_app_request():
         if cdn_token := request.headers.get("x-fal-cdn-token"):
             headers["x-fal-cdn-token"] = cdn_token
+        if can_disable_filter := request.headers.get("x-app-fal-can-disable-filter"):
+            headers["x-app-fal-can-disable-filter"] = can_disable_filter
 
 
 def handle_response_headers(response_headers: Headers) -> None:
