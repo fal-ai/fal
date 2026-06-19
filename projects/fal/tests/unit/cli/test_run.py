@@ -127,6 +127,7 @@ def mock_parse_pyproject_toml():
                 "python_version": "3.12",
                 "requirements": ["fal"],
                 "exposed_port": 9000,
+                "metrics_port": 9001,
             },
         }
     }
@@ -212,6 +213,7 @@ def test_run_forwards_python_entry_point_to_loader(
     loaded = mocked_loaded_function(
         options=Options(
             environment={"python_version": "3.12", "requirements": ["fal"]},
+            host={"metrics_port": 9001},
             gateway={"exposed_port": 9000},
         ),
         func=None,
@@ -233,6 +235,7 @@ def test_run_forwards_python_entry_point_to_loader(
     assert call_kwargs["options"].environment["python_version"] == "3.12"
     assert call_kwargs["options"].environment["requirements"] == ["fal"]
     assert call_kwargs["options"].gateway["exposed_port"] == 9000
+    assert call_kwargs["options"].host["metrics_port"] == 9001
 
 
 @patch("fal.cli._utils.find_pyproject_toml")
@@ -254,6 +257,7 @@ def test_run_image_only_forwards_no_ref_to_loader(
             "container-app": {
                 "image": {"dockerfile": "Dockerfile"},
                 "exposed_port": 8080,
+                "metrics_port": 9091,
             }
         }
     }
@@ -270,6 +274,7 @@ def test_run_image_only_forwards_no_ref_to_loader(
                     "use_isolate": False,
                 },
             },
+            host={"metrics_port": 9091},
             gateway={"exposed_port": 8080},
         ),
         func=None,
@@ -295,6 +300,7 @@ def test_run_image_only_forwards_no_ref_to_loader(
     assert call_kwargs["options"].environment["image"]["dockerfile_str"] == dockerfile
     assert call_kwargs["options"].environment["image"]["use_isolate"] is False
     assert call_kwargs["options"].gateway["exposed_port"] == 8080
+    assert call_kwargs["options"].host["metrics_port"] == 9091
 
 
 @patch("fal.api.run.run")

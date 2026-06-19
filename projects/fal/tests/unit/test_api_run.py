@@ -100,6 +100,47 @@ def test_options_get_exposed_port_prefers_configured_port_for_serve_true():
     assert options.get_exposed_port() == 3000
 
 
+def test_options_get_metrics_port_defaults_for_served_apps():
+    assert Options().get_metrics_port() is None
+    assert Options(gateway={"serve": True}).get_metrics_port() == 9090
+    assert Options(gateway={"exposed_port": 8080}).get_metrics_port() == 9090
+    assert (
+        Options(
+            environment={
+                "kind": "container",
+                "image": {"use_isolate": True},
+            },
+            gateway={"exposed_port": 8080},
+        ).get_metrics_port()
+        == 9090
+    )
+    assert (
+        Options(
+            environment={
+                "kind": "container",
+                "image": {"use_isolate": False},
+            },
+            gateway={"exposed_port": 8080},
+        ).get_metrics_port()
+        is None
+    )
+    assert (
+        Options(host={"metrics_port": 3001}, gateway={"serve": True}).get_metrics_port()
+        == 3001
+    )
+    assert (
+        Options(
+            environment={
+                "kind": "container",
+                "image": {"use_isolate": False},
+            },
+            host={"metrics_port": 3001},
+            gateway={"exposed_port": 8080},
+        ).get_metrics_port()
+        == 3001
+    )
+
+
 def test_run_local_with_entrypoint_resolves_user_symbol(monkeypatch):
     sentinel = MagicMock(name="user_module.UserApp.run_local")
     sentinel.return_value = "ran"
@@ -220,6 +261,80 @@ def test_run_local_forwards_exposed_ports_to_entrypoint_app(monkeypatch):
     )
 
 
+def test_run_local_entrypoint_app_uses_target_metrics_port(monkeypatch):
+    sentinel = MagicMock(name="user_module.UserApp.run_local")
+    sentinel.return_value = "ran"
+
+    class UserApp(App):
+        metrics_port = 9100
+
+        @endpoint("/")
+        def run(self):
+            return "ok"
+
+    UserApp.run_local = sentinel
+
+    fake_module = MagicMock()
+    fake_module.UserApp = UserApp
+
+    import importlib
+
+    def fake_import_module(name):
+        assert name == "user_module"
+        return fake_module
+
+    monkeypatch.setattr(importlib, "import_module", fake_import_module)
+
+    iso = IsolatedFunction(
+        host=_FakeHost(),
+        options=Options(gateway={"exposed_port": 8080}),
+        entrypoint="user_module:UserApp",
+    )
+
+    result = run_api(iso, local=True)
+
+    assert result == "ran"
+    sentinel.assert_called_once_with()
+
+
+def test_run_local_entrypoint_app_uses_target_metrics_port_with_outer_port(
+    monkeypatch,
+):
+    sentinel = MagicMock(name="user_module.UserApp.run_local")
+    sentinel.return_value = "ran"
+
+    class UserApp(App):
+        metrics_port = 9100
+
+        @endpoint("/")
+        def run(self):
+            return "ok"
+
+    UserApp.run_local = sentinel
+
+    fake_module = MagicMock()
+    fake_module.UserApp = UserApp
+
+    import importlib
+
+    def fake_import_module(name):
+        assert name == "user_module"
+        return fake_module
+
+    monkeypatch.setattr(importlib, "import_module", fake_import_module)
+
+    iso = IsolatedFunction(
+        host=_FakeHost(),
+        options=Options(gateway={"exposed_port": 8080}),
+        entrypoint="user_module:UserApp",
+    )
+
+    result = run_api(iso, local=True)
+
+    assert result == "ran"
+    sentinel.assert_called_once_with()
+
+
 def test_run_local_rejects_exposed_ports_for_plain_function():
     iso = IsolatedFunction(
         host=_FakeHost(),
@@ -258,6 +373,33 @@ def test_run_local_forwards_exposed_ports_to_served_function(monkeypatch):
     run_api(iso, local=True, exposed_port=3000, exposed_metrics_port=3001)
 
     assert called_port == 3000
+    assert called_metrics_port == 3001
+
+
+def test_run_local_forwards_configured_metrics_port_to_served_function(monkeypatch):
+    from fal.api.api import ServeWrapper
+
+    called_metrics_port: int | None = None
+
+    async def fake_serve(
+        self,
+        *,
+        port: int = 8080,
+        metrics_port: int = 9090,
+    ):
+        nonlocal called_metrics_port
+        called_metrics_port = metrics_port
+
+    monkeypatch.setattr(ServeWrapper, "serve", fake_serve)
+
+    iso = IsolatedFunction(
+        host=_FakeHost(),
+        raw_func=lambda: "local",
+        options=Options(host={"metrics_port": 3001}, gateway={"serve": True}),
+    )
+
+    run_api(iso, local=True)
+
     assert called_metrics_port == 3001
 
 
@@ -307,7 +449,7 @@ def test_run_local_forwards_exposed_ports_to_entrypoint_served_function(monkeypa
     assert called_metrics_port == 3001
 
 
-def test_run_local_entrypoint_served_function_keeps_configured_port(monkeypatch):
+def test_run_local_entrypoint_served_function_uses_target_port(monkeypatch):
     from fal.api.api import ServeWrapper
 
     called_ports: list[int] = []
@@ -342,7 +484,6 @@ def test_run_local_entrypoint_served_function_keeps_configured_port(monkeypatch)
         host=_FakeHost(),
         options=Options(gateway={"exposed_port": 8080}),
         entrypoint="user_module:served_function",
-        _entrypoint_exposed_port_defaulted=True,
     )
 
     run_api(iso, local=True)
@@ -350,7 +491,142 @@ def test_run_local_entrypoint_served_function_keeps_configured_port(monkeypatch)
     assert called_ports == [9000]
 
 
-def test_run_local_entrypoint_served_function_honors_explicit_default_port(
+def test_run_local_entrypoint_served_function_uses_target_metrics_port_config(
+    monkeypatch,
+):
+    from fal.api.api import ServeWrapper
+
+    called_metrics_ports: list[int] = []
+
+    async def fake_serve(
+        self,
+        *,
+        port: int = 8080,
+        metrics_port: int = 9090,
+    ):
+        called_metrics_ports.append(metrics_port)
+
+    monkeypatch.setattr(ServeWrapper, "serve", fake_serve)
+
+    served_function = IsolatedFunction(
+        host=_FakeHost(),
+        raw_func=lambda: "local",
+        options=Options(host={"metrics_port": 9100}, gateway={"serve": True}),
+    )
+    fake_module = MagicMock()
+    fake_module.served_function = served_function
+
+    import importlib
+
+    def fake_import_module(name):
+        assert name == "user_module"
+        return fake_module
+
+    monkeypatch.setattr(importlib, "import_module", fake_import_module)
+
+    iso = IsolatedFunction(
+        host=_FakeHost(),
+        options=Options(gateway={"exposed_port": 8080}),
+        entrypoint="user_module:served_function",
+    )
+
+    run_api(iso, local=True)
+
+    assert called_metrics_ports == [9100]
+
+
+def test_run_local_entrypoint_served_function_uses_target_metrics_with_outer_port(
+    monkeypatch,
+):
+    from fal.api.api import ServeWrapper
+
+    called_ports: list[int] = []
+    called_metrics_ports: list[int] = []
+
+    async def fake_serve(
+        self,
+        *,
+        port: int = 8080,
+        metrics_port: int = 9090,
+    ):
+        called_ports.append(port)
+        called_metrics_ports.append(metrics_port)
+
+    monkeypatch.setattr(ServeWrapper, "serve", fake_serve)
+
+    served_function = IsolatedFunction(
+        host=_FakeHost(),
+        raw_func=lambda: "local",
+        options=Options(host={"metrics_port": 9100}, gateway={"serve": True}),
+    )
+    fake_module = MagicMock()
+    fake_module.served_function = served_function
+
+    import importlib
+
+    def fake_import_module(name):
+        assert name == "user_module"
+        return fake_module
+
+    monkeypatch.setattr(importlib, "import_module", fake_import_module)
+
+    iso = IsolatedFunction(
+        host=_FakeHost(),
+        options=Options(gateway={"exposed_port": 8080}),
+        entrypoint="user_module:served_function",
+    )
+
+    run_api(iso, local=True)
+
+    assert called_ports == [8080]
+    assert called_metrics_ports == [9100]
+
+
+def test_run_local_entrypoint_served_function_uses_target_metrics_port(
+    monkeypatch,
+):
+    from fal.api.api import ServeWrapper
+
+    called_metrics_ports: list[int] = []
+
+    async def fake_serve(
+        self,
+        *,
+        port: int = 8080,
+        metrics_port: int = 9090,
+    ):
+        called_metrics_ports.append(metrics_port)
+
+    monkeypatch.setattr(ServeWrapper, "serve", fake_serve)
+
+    served_function = IsolatedFunction(
+        host=_FakeHost(),
+        raw_func=lambda: "local",
+        options=Options(host={"metrics_port": 9100}, gateway={"serve": True}),
+    )
+    fake_module = MagicMock()
+    fake_module.served_function = served_function
+
+    import importlib
+
+    def fake_import_module(name):
+        assert name == "user_module"
+        return fake_module
+
+    monkeypatch.setattr(importlib, "import_module", fake_import_module)
+
+    iso = IsolatedFunction(
+        host=_FakeHost(),
+        options=Options(host={"metrics_port": 3001}, gateway={"exposed_port": 8080}),
+        entrypoint="user_module:served_function",
+    )
+
+    run_api(iso, local=True)
+
+    assert called_metrics_ports == [9100]
+
+
+def test_run_local_entrypoint_served_function_uses_target_port_with_outer_port(
     monkeypatch,
 ):
     from fal.api.api import ServeWrapper
@@ -391,7 +667,7 @@ def test_run_local_entrypoint_served_function_honors_explicit_default_port(
 
     run_api(iso, local=True)
 
-    assert called_ports == [8080]
+    assert called_ports == [9000]
 
 
 def test_run_local_exposed_port_override_does_not_mutate_options(monkeypatch):

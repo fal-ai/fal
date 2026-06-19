@@ -92,6 +92,68 @@ def test_app_regions_propagate_to_function_options():
     assert fn.options.host.get("regions") == ["us-east", "eu-west"]
 
 
+def test_app_metrics_port_propagates_to_function_options():
+    from fal.app import wrap_app
+
+    class MetricsApp(App):
+        metrics_port = 9091
+
+        @endpoint("/")
+        def hello(self) -> str:
+            return "Hello, world!"
+
+    fn = wrap_app(MetricsApp)
+    assert fn.options.host.get("metrics_port") == 9091
+
+
+def test_machine_requirements_preserves_positional_field_order():
+    from dataclasses import fields
+
+    from fal.sdk import MachineRequirements
+
+    assert [field.name for field in fields(MachineRequirements)] == [
+        "machine_types",
+        "num_gpus",
+        "keep_alive",
+        "base_image",
+        "exposed_port",
+        "scheduler",
+        "scheduler_options",
+        "max_concurrency",
+        "max_multiplexing",
+        "min_concurrency",
+        "concurrency_buffer",
+        "concurrency_buffer_perc",
+        "scaling_delay",
+        "request_timeout",
+        "startup_timeout",
+        "valid_regions",
+        "metrics_port",
+    ]
+
+    requirements = MachineRequirements(
+        ["GPU"],
+        None,
+        0,
+        "base-image",
+        8080,
+        "scheduler",
+        {"foo": "bar"},
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        ["us-east"],
+        9090,
+    )
+    assert requirements.scheduler == "scheduler"
+    assert requirements.metrics_port == 9090
+
+
 def test_run_forwards_regions_to_machine_requirements():
     from fal.api.api import FalServerlessHost, Options, ResultHandler
     from fal.sdk import HostedRunState
@@ -99,6 +161,7 @@ def test_run_forwards_regions_to_machine_requirements():
     host = FalServerlessHost()
     options = Options()
     options.host["regions"] = ["us-east"]
+    options.host["metrics_port"] = 3001
 
     connection = MagicMock()
     connection.define_environment.return_value = object()
@@ -121,7 +184,227 @@ def test_run_forwards_regions_to_machine_requirements():
 
     assert result == "ok"
     _, call_kwargs = connection.run.call_args
-    assert call_kwargs["machine_requirements"].valid_regions == ["us-east"]
+    machine_requirements = call_kwargs["machine_requirements"]
+    assert machine_requirements.valid_regions == ["us-east"]
+    assert machine_requirements.metrics_port == 3001
+
+
+def test_register_defaults_metrics_port_for_served_app():
+    from fal.api.api import FalServerlessHost, Options
+    from fal.sdk import RegisterApplicationResult, RegisterApplicationResultType
+
+    host = FalServerlessHost()
+    options = Options(gateway={"exposed_port": 8080})
+
+    connection = MagicMock()
+    connection.define_environment.return_value = object()
+    partial_result = RegisterApplicationResult(
+        result=RegisterApplicationResultType(application_id="app-id")
+    )
+    connection.register.return_value = iter([partial_result])
+
+    with patch.object(
+        FalServerlessHost, "_connection", new_callable=PropertyMock
+    ) as mock_connection:
+        mock_connection.return_value = connection
+        result = host.register(
+            lambda: "ok",
+            options,
+            application_name="example-app",
+            deployment_strategy="recreate",
+        )
+
+    assert result == partial_result
+    _, call_kwargs = connection.register.call_args
+    machine_requirements = call_kwargs["machine_requirements"]
+    assert machine_requirements.exposed_port == 8080
+    assert machine_requirements.metrics_port == 9090
+
+
+def test_register_forwards_metrics_port_to_wrapped_app_machine_requirements():
+    from fal.api.api import FalServerlessHost
+    from fal.app import wrap_app
+    from fal.sdk import RegisterApplicationResult, RegisterApplicationResultType
+
+    class MetricsFromOptionsApp(App):
+        @endpoint("/")
+        def hello(self) -> str:
+            return "Hello, world!"
+
+    host = FalServerlessHost()
+    fn = wrap_app(MetricsFromOptionsApp)
+    fn.options.host["metrics_port"] = 3001
+
+    connection = MagicMock()
+    connection.define_environment.return_value = object()
+    partial_result = RegisterApplicationResult(
+        result=RegisterApplicationResultType(application_id="app-id")
+    )
+
+    connection.register.return_value = iter([partial_result])
+
+    with patch.object(
+        FalServerlessHost, "_connection", new_callable=PropertyMock
+    ) as mock_connection:
+        mock_connection.return_value = connection
+        result = host.register(
+            fn.func,
+            fn.options,
+            application_name="example-app",
+            deployment_strategy="recreate",
+        )
+
+    assert result == partial_result
+    _, call_kwargs = connection.register.call_args
+    machine_requirements = call_kwargs["machine_requirements"]
+    assert machine_requirements.exposed_port == 8080
+    assert machine_requirements.metrics_port == 3001
+
+
+def test_plain_function_exposed_port_defaults_metrics_port_to_machine_requirements():
+    from fal.api.api import FalServerlessHost
+    from fal.sdk import RegisterApplicationResult, RegisterApplicationResultType
+
+    @fal.function(exposed_port=8080)
+    def plain_function():
+        return "ok"
+
+    connection = MagicMock()
+    connection.define_environment.return_value = object()
+    partial_result = RegisterApplicationResult(
+        result=RegisterApplicationResultType(application_id="app-id")
+    )
+    connection.register.return_value = iter([partial_result])
+
+    with patch.object(
+        FalServerlessHost, "_connection", new_callable=PropertyMock
+    ) as mock_connection:
+        mock_connection.return_value = connection
+        result = plain_function.host.register(
+            lambda: "ok",
+            plain_function.options,
+            application_name="example-function",
+            deployment_strategy="recreate",
+        )
+
+    assert result == partial_result
+    _, call_kwargs = connection.register.call_args
+    machine_requirements = call_kwargs["machine_requirements"]
+    assert machine_requirements.exposed_port == 8080
+    assert machine_requirements.metrics_port == 9090
+
+
+def test_no_isolate_container_exposed_port_does_not_default_metrics_port():
+    from fal.api.api import FalServerlessHost, Options
+    from fal.sdk import RegisterApplicationResult, RegisterApplicationResultType
+
+    host = FalServerlessHost()
+    options = Options(
+        environment={"kind": "container", "image": {"use_isolate": False}},
+        gateway={"exposed_port": 8080},
+    )
+
+    connection = MagicMock()
+    connection.define_environment.return_value = object()
+    partial_result = RegisterApplicationResult(
+        result=RegisterApplicationResultType(application_id="app-id")
+    )
+    connection.register.return_value = iter([partial_result])
+
+    with patch.object(
+        FalServerlessHost, "_connection", new_callable=PropertyMock
+    ) as mock_connection:
+        mock_connection.return_value = connection
+        result = host.register(
+            None,
+            options,
+            application_name="container-app",
+            deployment_strategy="recreate",
+        )
+
+    assert result == partial_result
+    _, call_kwargs = connection.register.call_args
+    machine_requirements = call_kwargs["machine_requirements"]
+    assert machine_requirements.exposed_port == 8080
+    assert machine_requirements.metrics_port is None
+
+
+def test_register_entrypoint_defaults_metrics_port():
+    from fal.api.api import FalServerlessHost, Options
+    from fal.sdk import RegisterApplicationResult, RegisterApplicationResultType
+    from fal.utils import _load_from_python_entry_point
+
+    host = FalServerlessHost()
+    loaded = _load_from_python_entry_point(
+        host,
+        "simple.app:SimpleApp",
+        options=Options(),
+    )
+
+    connection = MagicMock()
+    connection.define_environment.return_value = object()
+    partial_result = RegisterApplicationResult(
+        result=RegisterApplicationResultType(application_id="app-id")
+    )
+    connection.register.return_value = iter([partial_result])
+
+    with patch.object(
+        FalServerlessHost, "_connection", new_callable=PropertyMock
+    ) as mock_connection:
+        mock_connection.return_value = connection
+        result = host.register(
+            None,
+            loaded.function.options,
+            application_name="entrypoint-app",
+            deployment_strategy="recreate",
+            entrypoint=loaded.function.run_entrypoint,
+        )
+
+    assert result == partial_result
+    _, call_kwargs = connection.register.call_args
+    machine_requirements = call_kwargs["machine_requirements"]
+    assert machine_requirements.exposed_port == 8080
+    assert machine_requirements.metrics_port == 9090
+
+
+def test_run_entrypoint_forwards_metrics_port_with_entrypoint_port():
+    from fal.api.api import FalServerlessHost, Options, ResultHandler
+    from fal.sdk import HostedRunState
+    from fal.utils import _load_from_python_entry_point
+
+    host = FalServerlessHost()
+    loaded = _load_from_python_entry_point(
+        host,
+        "simple.app:SimpleApp",
+        options=Options(host={"metrics_port": 3001}),
+    )
+
+    connection = MagicMock()
+    connection.define_environment.return_value = object()
+    partial_result = MagicMock()
+    partial_result.status.state = HostedRunState.SUCCESS
+    partial_result.result = "ok"
+    connection.run.return_value = iter([partial_result])
+
+    with patch.object(
+        FalServerlessHost, "_connection", new_callable=PropertyMock
+    ) as mock_connection:
+        mock_connection.return_value = connection
+        result = host._run(
+            None,
+            loaded.function.options,
+            args=(),
+            kwargs={},
+            result_handler=ResultHandler(),
+            entrypoint=loaded.function.run_entrypoint,
+        )
+
+    assert result == "ok"
+    _, call_kwargs = connection.run.call_args
+    assert call_kwargs["entrypoint"] == loaded.function.run_entrypoint
+    machine_requirements = call_kwargs["machine_requirements"]
+    assert machine_requirements.exposed_port == 8080
+    assert machine_requirements.metrics_port == 3001
 
 
 def test_build_environment_forwards_force_environment_option():
@@ -688,6 +971,74 @@ def test_wrap_app_exposed_ports_propagate_to_serve(
     assert called_metrics_port == 3001
 
 
+def test_wrap_app_uses_app_metrics_port_when_not_overridden(
+    isolate_agent_env, monkeypatch: pytest.MonkeyPatch
+):
+    import asyncio
+
+    from fal import ref
+    from fal.app import wrap_app
+
+    class MetricsPortApp(App):
+        metrics_port = 9100
+
+        @endpoint("/")
+        def hello(self) -> str:
+            return "Hello, world!"
+
+    called_metrics_port: int | None = None
+
+    async def fake_serve(
+        self,
+        *,
+        limit_max_requests: int | None = None,
+        metrics_port: int = 9090,
+    ):
+        nonlocal called_metrics_port
+        called_metrics_port = metrics_port
+
+    monkeypatch.setattr(MetricsPortApp, "serve", fake_serve)
+    monkeypatch.setattr(ref, "current_app", None)
+
+    fn = wrap_app(MetricsPortApp)
+    asyncio.run(fn.func())
+
+    assert called_metrics_port == 9100
+
+
+def test_wrap_app_uses_app_metrics_port_from_class_keyword(
+    isolate_agent_env, monkeypatch: pytest.MonkeyPatch
+):
+    import asyncio
+
+    from fal import ref
+    from fal.app import wrap_app
+
+    class MetricsPortApp(App, metrics_port=9100):
+        @endpoint("/")
+        def hello(self) -> str:
+            return "Hello, world!"
+
+    called_metrics_port: int | None = None
+
+    async def fake_serve(
+        self,
+        *,
+        limit_max_requests: int | None = None,
+        metrics_port: int = 9090,
+    ):
+        nonlocal called_metrics_port
+        called_metrics_port = metrics_port
+
+    monkeypatch.setattr(MetricsPortApp, "serve", fake_serve)
+    monkeypatch.setattr(ref, "current_app", None)
+
+    fn = wrap_app(MetricsPortApp)
+    asyncio.run(fn.func())
+
+    assert called_metrics_port == 9100
+
+
 def test_wrap_app_raises_for_virtualenv_only_keys_with_conda_kind():
     from fal.app import wrap_app
 
@@ -937,6 +1288,13 @@ def test_data_mounts_not_in_host_kwargs_when_none():
         pass
 
     assert "data_mounts" not in NoMountsApp.host_kwargs
+
+
+def test_metrics_port_not_in_host_kwargs_when_none():
+    class NoMetricsApp(App):
+        pass
+
+    assert "metrics_port" not in NoMetricsApp.host_kwargs
 
 
 def test_data_mounts_empty_list_propagates():

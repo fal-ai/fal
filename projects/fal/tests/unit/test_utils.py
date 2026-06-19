@@ -170,7 +170,7 @@ def test_load_function_from_applies_toml_app_files_for_fal_app(tmp_path):
     assert wrapped_cls.app_files_context_dir == "."
 
 
-def test_load_function_from_applies_toml_exposed_port_for_fal_app(tmp_path):
+def test_load_function_from_applies_toml_ports_for_fal_app(tmp_path):
     app_file = tmp_path / "app.py"
     app_file.write_text(
         "import fal\n"
@@ -183,11 +183,12 @@ def test_load_function_from_applies_toml_exposed_port_for_fal_app(tmp_path):
 
     client = SyncServerlessClient(host="api.alpha.fal.ai")
     host = client._create_host(local_file_path=str(app_file))
-    options = Options(gateway={"exposed_port": 9000})
+    options = Options(host={"metrics_port": 9001}, gateway={"exposed_port": 9000})
 
     loaded = load_function_from(host, str(app_file), "MyApp", options=options)
 
     assert loaded.function.options.gateway["exposed_port"] == 9000
+    assert loaded.function.options.host["metrics_port"] == 9001
 
 
 def test_load_function_from_applies_toml_host_options_over_app_defaults(tmp_path):
@@ -389,6 +390,20 @@ def test_load_from_python_entry_point_keeps_pyproject_exposed_port():
     )
 
     assert loaded.function.options.gateway["exposed_port"] == 9000
+
+
+def test_load_from_python_entry_point_keeps_pyproject_metrics_port():
+    from fal.utils import _load_from_python_entry_point
+
+    host = MagicMock(spec=["run"])
+    options = Options(host={"metrics_port": 9001})
+    loaded = _load_from_python_entry_point(
+        host,
+        "simple.app:SimpleApp",
+        options=options,
+    )
+
+    assert loaded.function.options.host["metrics_port"] == 9001
 
 
 def test_isolated_function_endpoints_from_metadata():

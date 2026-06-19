@@ -138,6 +138,7 @@ def get_app_data_from_toml(
     app_files_ignore = app_data.pop("app_files_ignore", None)
     app_files_context_dir = app_data.pop("app_files_context_dir", None)
     exposed_port = app_data.pop("exposed_port", None)
+    metrics_port = app_data.pop("metrics_port", None)
     scheduler = app_data.pop("_scheduler", None)
     scheduler_options = app_data.pop("_scheduler_options", None)
     skip_retry_conditions = app_data.pop("skip_retry_conditions", None)
@@ -167,6 +168,8 @@ def get_app_data_from_toml(
             app_files_context_dir = str(Path(toml_path).parent / context_path)
     if exposed_port is not None:
         _validate_port("exposed_port", exposed_port)
+    if metrics_port is not None:
+        _validate_port("metrics_port", metrics_port)
     if image_config is not None and app_files:
         raise ValueError("app_files is not supported for container apps.")
     if keep_alive is not None:
@@ -247,6 +250,8 @@ def get_app_data_from_toml(
         options.host["health_check_config"] = health_check_config
     if exposed_port is not None:
         options.gateway["exposed_port"] = exposed_port
+    if metrics_port is not None:
+        options.host["metrics_port"] = metrics_port
     if requirements is not None:
         options.environment["requirements"] = requirements
     if python_version is not None:

@@ -257,10 +257,9 @@ def _load_from_python_entry_point(
     _parse_python_entry_point(python_entry_point)
 
     merged_options = deepcopy(options) if options is not None else ApiOptions()
-    exposed_port_defaulted = "exposed_port" not in merged_options.gateway
     merged_options.gateway.setdefault("exposed_port", 8080)
-    # The entry-point path bypasses Host.parse_options (which is where ``kind``
-    # would normally be defaulted for ``@fal.function``/``wrap_app``), so set
+    # The entry-point path bypasses Host.parse_options (which normally fills in
+    # ``kind`` for ``@fal.function``/``wrap_app``), so set
     # the virtualenv default here. Users who want a container-based env can
     # still configure that explicitly via the toml options downstream.
     merged_options.environment.setdefault("kind", "virtualenv")
@@ -271,7 +270,6 @@ def _load_from_python_entry_point(
         app_name=app_name,
         app_auth=app_auth,
         entrypoint=python_entry_point,
-        _entrypoint_exposed_port_defaulted=exposed_port_defaulted,
     )
 
     return LoadedFunction(
