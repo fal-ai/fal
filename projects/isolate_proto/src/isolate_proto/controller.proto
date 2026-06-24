@@ -382,6 +382,8 @@ message RegisterApplicationRequest {
     optional string env_id = 25;
     // App-level default retry config
     optional string retry_config = 26;
+    // Option to attach to the deployment process
+    optional bool attach_to_deployment = 27;
 }
 
 message RegisterApplicationResultType {
