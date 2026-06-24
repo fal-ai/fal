@@ -188,7 +188,6 @@ def _prepare_deployment_from_reference(
     local_file_path = str(file_path) if file_path is not None else ""
     host = client._create_host(
         local_file_path=local_file_path,
-        local_project_root=app_data.local_project_root or "",
         environment_name=environment_name,
     )
     loaded = load_function_from(
