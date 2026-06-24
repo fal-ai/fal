@@ -497,6 +497,9 @@ class App(BaseServable):
             to install in multiple steps.
             Example: `["numpy==1.24.0", "torch>=2.0.0"]` or
             `[["setuptools", "wheel"], ["numpy==1.24.0"]]`
+        requirements_context_dir: Base directory for resolving local-path
+            requirements such as `.[extra]` or `../shared[extra]`.
+            Defaults to the directory containing the app file.
         local_python_modules: List of local Python module names to include
             in the deployment. Use for custom code not available on PyPI.
             Example: `["my_utils", "models"]`
@@ -546,6 +549,7 @@ class App(BaseServable):
     """
 
     requirements: ClassVar[list[str] | list[list[str]]] = []  # type: ignore[assignment]
+    requirements_context_dir: ClassVar[Optional[str]] = None
     local_python_modules: ClassVar[list[str]] = []
     machine_type: ClassVar[str | list[str]] = "S"
     num_gpus: ClassVar[int | None] = None
@@ -626,6 +630,9 @@ class App(BaseServable):
                 raise ValueError(
                     "app_files_context_dir is only supported when app_files is provided"
                 )
+
+        if cls.requirements_context_dir is not None:
+            cls.host_kwargs["requirements_context_dir"] = cls.requirements_context_dir
 
         if cls.min_concurrency is not None:
             cls.host_kwargs["min_concurrency"] = cls.min_concurrency

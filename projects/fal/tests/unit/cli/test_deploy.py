@@ -1,3 +1,4 @@
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Optional, Tuple
 from unittest.mock import MagicMock, patch
@@ -271,6 +272,10 @@ def mock_parse_pyproject_toml():
     }
 
 
+def _default_requirements_context_dir() -> str:
+    return str(Path("pyproject.toml").parent.resolve())
+
+
 def mock_args(
     app_ref: Tuple[str, Optional[str]],
     app_name: Optional[str] = None,
@@ -331,7 +336,6 @@ def test_deploy_with_toml_success(
             reset_scale=False,
             team=None,
             name="my-app",
-            local_project_root=".",
         ),
         force_env_build=False,
         environment_name=None,
@@ -375,6 +379,10 @@ def test_deploy_python_entry_point_forwards_to_loader(
     assert call_kwargs["python_entry_point"] == "simple.app:SimpleApp"
     assert call_kwargs["options"].environment["python_version"] == "3.12"
     assert call_kwargs["options"].environment["requirements"] == ["fal"]
+    assert (
+        call_kwargs["options"].host["requirements_context_dir"]
+        == _default_requirements_context_dir()
+    )
 
 
 @patch("fal.cli._utils.find_pyproject_toml")
@@ -415,7 +423,6 @@ def test_deploy_image_only_forwards_no_ref_to_loader(
     mock_create_host.assert_called_once()
     _, host_kwargs = mock_create_host.call_args
     assert host_kwargs["local_file_path"] == ""
-    assert host_kwargs["local_project_root"] == str(tmp_path)
 
     mock_load_function_from.assert_called_once()
     call_args, call_kwargs = mock_load_function_from.call_args
@@ -444,7 +451,10 @@ def test_deploy_with_toml_python_entry_point(
     cleanly without crashing on the absent ``ref``.
     """
     mock_parse_toml.return_value = mock_parse_pyproject_toml
-    options = Options(environment={"requirements": ["fal"], "python_version": "3.12"})
+    options = Options(
+        host={"requirements_context_dir": _default_requirements_context_dir()},
+        environment={"requirements": ["fal"], "python_version": "3.12"},
+    )
 
     args = mock_args(app_ref=("entrypoint-app", None))
 
@@ -462,7 +472,6 @@ def test_deploy_with_toml_python_entry_point(
             team=None,
             name="entrypoint-app",
             options=options,
-            local_project_root=".",
         ),
         force_env_build=False,
         environment_name=None,
@@ -500,7 +509,6 @@ def test_deploy_with_toml_no_auth(
             reset_scale=False,
             team=None,
             name="another-app",
-            local_project_root=".",
         ),
         force_env_build=False,
         environment_name=None,
@@ -541,10 +549,10 @@ def test_deploy_with_toml_overrides_applied(
                     "machine_type": "GPU-H100",
                     "num_gpus": 2,
                     "regions": ["us-east"],
+                    "requirements_context_dir": _default_requirements_context_dir(),
                 },
                 environment={"requirements": ["numpy==1.26.4"]},
             ),
-            local_project_root=".",
         ),
         force_env_build=False,
         environment_name=None,
@@ -678,7 +686,6 @@ def test_deploy_with_toml_deployment_strategy(
             reset_scale=False,
             team=None,
             name="my-app",
-            local_project_root=".",
         ),
         force_env_build=False,
         environment_name=None,
@@ -714,7 +721,6 @@ def test_deploy_with_toml_default_deployment_strategy(
             reset_scale=False,
             team=None,
             name="another-app",
-            local_project_root=".",
         ),
         force_env_build=False,
         environment_name=None,
@@ -1239,6 +1245,79 @@ def test_get_app_data_from_toml_resolves_app_files_context_dir_from_pyproject(
     toml_data = get_app_data_from_toml("app-with-files")
 
     assert toml_data.options.host["app_files_context_dir"] == str(tmp_path)
+
+
+@patch("fal.cli._utils.find_pyproject_toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+def test_get_app_data_from_toml_resolves_requirements_context_dir_from_pyproject(
+    mock_parse_toml, mock_find_toml, tmp_path
+):
+    from fal.cli._utils import get_app_data_from_toml
+
+    mock_find_toml.return_value = str(tmp_path / "pyproject.toml")
+    mock_parse_toml.return_value = {
+        "apps": {
+            "app-with-local-req": {
+                "ref": "src/app.py::App",
+                "requirements": [".[worker]"],
+                "requirements_context_dir": "apps/../packages/my_package",
+            }
+        }
+    }
+
+    toml_data = get_app_data_from_toml("app-with-local-req")
+
+    assert toml_data.options.host["requirements_context_dir"] == str(
+        tmp_path / "packages" / "my_package"
+    )
+
+
+@patch("fal.cli._utils.find_pyproject_toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+def test_get_app_data_from_toml_preserves_absolute_requirements_context_dir(
+    mock_parse_toml, mock_find_toml, tmp_path
+):
+    from fal.cli._utils import get_app_data_from_toml
+
+    context_dir = tmp_path / "packages" / "my_package"
+    mock_find_toml.return_value = str(tmp_path / "pyproject.toml")
+    mock_parse_toml.return_value = {
+        "apps": {
+            "app-with-local-req": {
+                "ref": "src/app.py::App",
+                "requirements": [".[worker]"],
+                "requirements_context_dir": str(context_dir),
+            }
+        }
+    }
+
+    toml_data = get_app_data_from_toml("app-with-local-req")
+
+    assert toml_data.options.host["requirements_context_dir"] == str(context_dir)
+
+
+@patch("fal.cli._utils.find_pyproject_toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+def test_get_app_data_from_toml_rejects_invalid_requirements_context_dir(
+    mock_parse_toml, mock_find_toml, tmp_path
+):
+    from fal.cli._utils import get_app_data_from_toml
+
+    mock_find_toml.return_value = str(tmp_path / "pyproject.toml")
+    mock_parse_toml.return_value = {
+        "apps": {
+            "app-with-local-req": {
+                "ref": "src/app.py::App",
+                "requirements": [".[worker]"],
+                "requirements_context_dir": ["packages/my_package"],
+            }
+        }
+    }
+
+    with pytest.raises(
+        ValueError, match=r"requirements_context_dir must be a string\."
+    ):
+        get_app_data_from_toml("app-with-local-req")
 
 
 @patch("fal.cli._utils.find_pyproject_toml")
@@ -2001,7 +2080,6 @@ def _prepared_deployment(
             reset_scale=reset_scale,
             deployment_strategy="rolling",
             name="my-app",
-            local_project_root=".",
         ),
     )
 

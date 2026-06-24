@@ -533,7 +533,7 @@ def _exercise_local_path_cache_only_sequence(tmp_path, requirements, prepare_for
         fake_sdist.write_bytes(b"fake-sdist-bytes")
         return fake_sdist
 
-    host = FalServerlessHost(local_project_root=str(tmp_path))
+    host = FalServerlessHost(requirements_context_dir=str(tmp_path))
     options = Options(environment={"kind": "virtualenv", "requirements": requirements})
 
     connection = MagicMock()
@@ -665,7 +665,7 @@ def test_prepare_options_checks_python_version_before_materializing_requirements
         '[project]\nname = "simple"\nversion = "0.1.0"\n'
     )
 
-    host = FalServerlessHost(local_project_root=str(tmp_path))
+    host = FalServerlessHost(requirements_context_dir=str(tmp_path))
     options = Options(
         environment={
             "kind": "virtualenv",
@@ -682,6 +682,207 @@ def test_prepare_options_checks_python_version_before_materializing_requirements
     build_sdist.assert_not_called()
 
 
+def test_prepare_options_materializes_from_requirements_context_dir(tmp_path):
+    from fal.api.api import FalServerlessHost, Options
+
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    (project_dir / "pyproject.toml").write_text(
+        '[project]\nname = "simple"\nversion = "0.1.0"\n'
+    )
+    fake_sdist = project_dir / "build_out" / "simple-0.1.0.tar.gz"
+
+    def build_fake_sdist(_project_root):
+        fake_sdist.parent.mkdir()
+        fake_sdist.write_bytes(b"fake-sdist-bytes")
+        return fake_sdist
+
+    host = FalServerlessHost(requirements_context_dir=str(project_dir))
+    options = Options(environment={"kind": "virtualenv", "requirements": ["."]})
+
+    with patch("fal.api._sdist._build_sdist", side_effect=build_fake_sdist) as build:
+        with patch(
+            "fal.api._sdist._upload_sdist",
+            return_value="https://cdn/simple-0.1.0.tar.gz",
+        ):
+            prepared_options = host.prepare_options(options)
+
+    assert prepared_options.environment["requirements"] == [
+        "simple @ https://cdn/simple-0.1.0.tar.gz"
+    ]
+    build.assert_called_once_with(project_dir.resolve())
+
+
+def test_function_materializes_from_requirements_context_dir(tmp_path):
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    (project_dir / "pyproject.toml").write_text(
+        '[project]\nname = "simple"\nversion = "0.1.0"\n'
+    )
+    fake_sdist = project_dir / "build_out" / "simple-0.1.0.tar.gz"
+
+    def build_fake_sdist(_project_root):
+        fake_sdist.parent.mkdir()
+        fake_sdist.write_bytes(b"fake-sdist-bytes")
+        return fake_sdist
+
+    @fal.function(requirements=["."], requirements_context_dir=str(project_dir))
+    def fn():
+        return "ok"
+
+    with patch("fal.api._sdist._build_sdist", side_effect=build_fake_sdist) as build:
+        with patch(
+            "fal.api._sdist._upload_sdist",
+            return_value="https://cdn/simple-0.1.0.tar.gz",
+        ):
+            prepared_options = fn.host.prepare_options(fn.options, func=fn.raw_func)
+
+    assert prepared_options.environment["requirements"] == [
+        "simple @ https://cdn/simple-0.1.0.tar.gz"
+    ]
+    assert "requirements_context_dir" not in prepared_options.host
+    build.assert_called_once_with(project_dir.resolve())
+
+
+def test_prepare_options_supports_local_project_root_alias(tmp_path):
+    from fal.api.api import FalServerlessHost, Options
+
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "simple"\nversion = "0.1.0"\n'
+    )
+    fake_sdist = tmp_path / "build_out" / "simple-0.1.0.tar.gz"
+
+    def build_fake_sdist(_project_root):
+        fake_sdist.parent.mkdir()
+        fake_sdist.write_bytes(b"fake-sdist-bytes")
+        return fake_sdist
+
+    with pytest.warns(
+        DeprecationWarning,
+        match="FalServerlessHost\\(local_project_root=\\.\\.\\.\\) is deprecated",
+    ):
+        host = FalServerlessHost(local_project_root=str(tmp_path))
+    options = Options(environment={"kind": "virtualenv", "requirements": ["."]})
+
+    with patch("fal.api._sdist._build_sdist", side_effect=build_fake_sdist) as build:
+        with patch(
+            "fal.api._sdist._upload_sdist",
+            return_value="https://cdn/simple-0.1.0.tar.gz",
+        ):
+            prepared_options = host.prepare_options(options)
+
+    assert prepared_options.environment["requirements"] == [
+        "simple @ https://cdn/simple-0.1.0.tar.gz"
+    ]
+    assert host.requirements_context_dir == str(tmp_path)
+    build.assert_called_once_with(tmp_path.resolve())
+
+
+def test_prepare_options_defaults_requirements_context_dir_to_cwd(
+    tmp_path, monkeypatch
+):
+    from fal.api.api import FalServerlessHost, Options
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "simple"\nversion = "0.1.0"\n'
+    )
+    fake_sdist = tmp_path / "build_out" / "simple-0.1.0.tar.gz"
+
+    def build_fake_sdist(_project_root):
+        fake_sdist.parent.mkdir()
+        fake_sdist.write_bytes(b"fake-sdist-bytes")
+        return fake_sdist
+
+    host = FalServerlessHost()
+    options = Options(environment={"kind": "virtualenv", "requirements": ["."]})
+
+    with patch("fal.api._sdist._build_sdist", side_effect=build_fake_sdist) as build:
+        with patch(
+            "fal.api._sdist._upload_sdist",
+            return_value="https://cdn/simple-0.1.0.tar.gz",
+        ):
+            prepared_options = host.prepare_options(options)
+
+    assert prepared_options.environment["requirements"] == [
+        "simple @ https://cdn/simple-0.1.0.tar.gz"
+    ]
+    build.assert_called_once_with(tmp_path.resolve())
+
+
+def test_prepare_options_defaults_requirements_context_dir_to_local_file_dir(tmp_path):
+    from fal.api.api import FalServerlessHost, Options
+
+    app_dir = tmp_path / "app"
+    app_dir.mkdir()
+    app_file = app_dir / "app.py"
+    app_file.write_text("")
+    (app_dir / "pyproject.toml").write_text(
+        '[project]\nname = "simple"\nversion = "0.1.0"\n'
+    )
+    fake_sdist = app_dir / "build_out" / "simple-0.1.0.tar.gz"
+
+    def build_fake_sdist(_project_root):
+        fake_sdist.parent.mkdir()
+        fake_sdist.write_bytes(b"fake-sdist-bytes")
+        return fake_sdist
+
+    host = FalServerlessHost(local_file_path=str(app_file))
+    options = Options(environment={"kind": "virtualenv", "requirements": ["."]})
+
+    with patch("fal.api._sdist._build_sdist", side_effect=build_fake_sdist) as build:
+        with patch(
+            "fal.api._sdist._upload_sdist",
+            return_value="https://cdn/simple-0.1.0.tar.gz",
+        ):
+            prepared_options = host.prepare_options(options)
+
+    assert prepared_options.environment["requirements"] == [
+        "simple @ https://cdn/simple-0.1.0.tar.gz"
+    ]
+    build.assert_called_once_with(app_dir.resolve())
+
+
+def test_prepare_options_resolves_relative_requirements_context_dir_from_local_file(
+    tmp_path,
+):
+    from fal.api.api import FalServerlessHost, Options
+
+    app_dir = tmp_path / "app"
+    app_dir.mkdir()
+    app_file = app_dir / "app.py"
+    app_file.write_text("")
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    (project_dir / "pyproject.toml").write_text(
+        '[project]\nname = "simple"\nversion = "0.1.0"\n'
+    )
+    fake_sdist = project_dir / "build_out" / "simple-0.1.0.tar.gz"
+
+    def build_fake_sdist(_project_root):
+        fake_sdist.parent.mkdir()
+        fake_sdist.write_bytes(b"fake-sdist-bytes")
+        return fake_sdist
+
+    host = FalServerlessHost(local_file_path=str(app_file))
+    options = Options(
+        environment={"kind": "virtualenv", "requirements": ["."]},
+        host={"requirements_context_dir": "../project"},
+    )
+
+    with patch("fal.api._sdist._build_sdist", side_effect=build_fake_sdist) as build:
+        with patch(
+            "fal.api._sdist._upload_sdist",
+            return_value="https://cdn/simple-0.1.0.tar.gz",
+        ):
+            prepared_options = host.prepare_options(options)
+
+    assert prepared_options.environment["requirements"] == [
+        "simple @ https://cdn/simple-0.1.0.tar.gz"
+    ]
+    build.assert_called_once_with(project_dir.resolve())
+
+
 def test_build_environment_keeps_local_requirements_for_future_rebuilds(tmp_path):
     from fal.api.api import FalServerlessHost, Options
     from fal.sdk import BuildEnvironmentResult, HostedRunState, HostedRunStatus
@@ -696,7 +897,7 @@ def test_build_environment_keeps_local_requirements_for_future_rebuilds(tmp_path
         fake_sdist.write_bytes(b"fake-sdist-bytes")
         return fake_sdist
 
-    host = FalServerlessHost(local_project_root=str(tmp_path))
+    host = FalServerlessHost(requirements_context_dir=str(tmp_path))
     options = Options(environment={"kind": "virtualenv", "requirements": ["."]})
 
     connection = MagicMock()
@@ -1585,6 +1786,7 @@ def test_app_files_classvars_propagate_to_host_kwargs():
         app_files = ["a.py", "b.py"]
         app_files_ignore = [r"\\.venv/"]
         app_files_context_dir = "."
+        requirements_context_dir = "."
         min_concurrency = 2
         max_concurrency = 3
         concurrency_buffer = 4
@@ -1598,6 +1800,7 @@ def test_app_files_classvars_propagate_to_host_kwargs():
     assert hk["app_files"] == ["a.py", "b.py"]
     assert hk["app_files_ignore"] == [r"\\.venv/"]
     assert hk["app_files_context_dir"] == "."
+    assert hk["requirements_context_dir"] == "."
     assert hk["min_concurrency"] == 2
     assert hk["max_concurrency"] == 3
     assert hk["concurrency_buffer"] == 4
@@ -1952,6 +2155,7 @@ def test_non_host_classvars_do_not_leak_into_host_kwargs():
     assert "machine_type" not in hk
     assert "num_gpus" not in hk
     assert "app_auth" not in hk
+    assert "requirements_context_dir" not in hk
 
 
 @pytest.mark.asyncio
