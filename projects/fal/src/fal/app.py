@@ -857,6 +857,71 @@ class App(BaseServable):
 
     def _add_extra_middlewares(self, app: fastapi.FastAPI):
         @app.middleware("http")
+        async def caller_defined_fallback(request, call_next):
+            # Universal caller-defined fallback: any POST request may carry a
+            # ``fal_fallback`` chain in its body; if the primary fails (5xx) or
+            # times out, forward to the caller's next eligible endpoint. The pure
+            # engine (parse/walk/normalize) is unit-tested in
+            # tests/unit/test_caller_fallback.py; this glue (body buffering,
+            # status->trigger, fal_client forward, response building) needs
+            # integration testing on live serving infra.
+            import json  # noqa: PLC0415
+
+            from fastapi.responses import JSONResponse  # noqa: PLC0415
+
+            from fal._caller_fallback import (  # noqa: PLC0415
+                parse_fallback_chain,
+                run_fallback_chain,
+                trigger_for_status,
+            )
+
+            disabled = request.headers.get("x-app-fal-disable-fallback", "").lower() in (
+                "true",
+                "1",
+                "yes",
+                "y",
+            )
+            if request.method != "POST" or disabled:
+                return await call_next(request)
+
+            body_bytes = await request.body()
+            # Re-expose the buffered body so the endpoint can still parse it.
+            request._body = body_bytes
+            try:
+                payload = json.loads(body_bytes) if body_bytes else None
+            except Exception:
+                payload = None
+
+            chain = parse_fallback_chain(payload)
+            if not chain:
+                return await call_next(request)
+
+            response = await call_next(request)
+            trigger = trigger_for_status(response.status_code)
+            if trigger is None:
+                return response  # 2xx/3xx success or 4xx client error -> surface
+
+            async def _forward(endpoint, node_input):
+                import fal_client  # noqa: PLC0415
+
+                return await fal_client.subscribe_async(endpoint, arguments=node_input)
+
+            result, served = await run_fallback_chain(
+                chain, trigger=trigger, forward=_forward
+            )
+            if served is None:
+                return response  # chain exhausted -> keep the primary's failure
+
+            return JSONResponse(
+                content=result,
+                headers={
+                    "x-app-fal-api-fallback": "true",
+                    "x-app-fal-api-fallback-endpoint": served,
+                    "x-fal-bill-as": served,
+                },
+            )
+
+        @app.middleware("http")
         async def provide_hints_headers(request, call_next):
             response = await call_next(request)
             try:
