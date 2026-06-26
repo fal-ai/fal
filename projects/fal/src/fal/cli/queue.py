@@ -5,6 +5,7 @@ from http import HTTPStatus
 
 import httpx
 
+from ._utils import resolve_team_from_app_name
 from .parser import FalClientParser, get_output_parser
 
 
@@ -12,7 +13,8 @@ def _queue_size(args):
     from fal.api.client import SyncServerlessClient
     from fal.api.deploy import _get_user
 
-    client = SyncServerlessClient(host=args.host, team=args.team)._create_rest_client()
+    team = resolve_team_from_app_name(args.app_name, args.team)
+    client = SyncServerlessClient(host=args.host, team=team)._create_rest_client()
     user = _get_user(client)
 
     url = f"{client.base_url}/applications/{user.username}/{args.app_name}/queue"
@@ -61,7 +63,8 @@ def _queue_flush(args):
     from fal.api.client import SyncServerlessClient
     from fal.api.deploy import _get_user
 
-    client = SyncServerlessClient(host=args.host, team=args.team)._create_rest_client()
+    team = resolve_team_from_app_name(args.app_name, args.team)
+    client = SyncServerlessClient(host=args.host, team=team)._create_rest_client()
     user = _get_user(client)
     caller_user_id = args.caller_user_id
 

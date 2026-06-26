@@ -8,7 +8,7 @@ import fal.cli.runners as runners
 from fal.api.client import SyncServerlessClient
 from fal.sdk import RunnerState, deconstruct_alias
 
-from ._utils import VALID_REGIONS, get_client
+from ._utils import VALID_REGIONS, get_client, resolve_team_from_app_name
 from .parser import FalClientParser, SinceAction, add_env_argument, get_output_parser
 
 if TYPE_CHECKING:
@@ -165,7 +165,10 @@ def _app_rev_table(revs: list[ApplicationInfo]):
 
 
 def _list_rev(args):
-    client = get_client(args.host, args.team)
+    team = None
+    if args.app_name is not None:
+        team = resolve_team_from_app_name(args.app_name, args.team)
+    client = get_client(args.host, team)
     with client.connect() as connection:
         revs = connection.list_applications(args.app_name, environment_name=args.env)
         table = _app_rev_table(revs)
@@ -191,7 +194,8 @@ def _add_list_rev_parser(subparsers, parents):
 
 
 def _scale(args):
-    client = SyncServerlessClient(host=args.host, team=args.team)
+    team = resolve_team_from_app_name(args.app_name, args.team)
+    client = SyncServerlessClient(host=args.host, team=team)
     if (
         args.keep_alive is None
         and args.max_multiplexing is None
@@ -315,7 +319,8 @@ def _add_scale_parser(subparsers, parents):
 
 
 def _rollout(args):
-    client = SyncServerlessClient(host=args.host, team=args.team)
+    team = resolve_team_from_app_name(args.app_name, args.team)
+    client = SyncServerlessClient(host=args.host, team=team)
     client.apps.rollout(args.app_name, force=args.force, environment_name=args.env)
     args.console.log(f"Rolled out application {args.app_name}")
 
@@ -343,7 +348,8 @@ def _add_rollout_parser(subparsers, parents):
 
 
 def _set_rev(args):
-    client = get_client(args.host, args.team)
+    team = resolve_team_from_app_name(args.app_name, args.team)
+    client = get_client(args.host, team)
     with client.connect() as connection:
         alias_info = connection.create_alias(
             args.app_name,
@@ -392,7 +398,8 @@ def _add_set_rev_parser(subparsers, parents):
 
 
 def _runners(args):
-    client = SyncServerlessClient(host=args.host, team=args.team)
+    team = resolve_team_from_app_name(args.app_name, args.team)
+    client = SyncServerlessClient(host=args.host, team=team)
     start_time = args.since
     alias_runners = client.apps.runners(
         args.app_name, since=start_time, state=args.state, environment_name=args.env
@@ -478,7 +485,8 @@ def _add_runners_parser(subparsers, parents):
 
 
 def _gpus(args):
-    client = SyncServerlessClient(host=args.host, team=args.team)
+    team = resolve_team_from_app_name(args.app_name, args.team)
+    client = SyncServerlessClient(host=args.host, team=team)
     usage = client.apps.gpus(args.app_name)
     runners.render_gpus(args, usage["gpus"], usage["total"])
 
@@ -499,7 +507,8 @@ def _add_gpus_parser(subparsers, parents):
 
 
 def _delete(args):
-    client = get_client(args.host, args.team)
+    team = resolve_team_from_app_name(args.app_name, args.team)
+    client = get_client(args.host, team)
     with client.connect() as connection:
         res = connection.delete_alias(args.app_name, environment_name=args.env)
         if res is None:

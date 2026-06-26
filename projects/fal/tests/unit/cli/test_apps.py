@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from fal.cli._utils import AppData, resolve_team_from_app_name
 from fal.cli.apps import (
     _delete,
     _delete_rev,
@@ -145,6 +146,221 @@ def test_scale_with_env():
     assert args.app_name == "myapp"
     assert args.min_concurrency == 1
     assert args.env == "prod"
+
+
+@patch("fal.cli.apps._apps_table")
+@patch("fal.cli._utils.get_app_data_from_toml")
+@patch("fal.cli.apps.SyncServerlessClient")
+def test_scale_with_team_from_toml(
+    mock_client_cls,
+    mock_get_app_data_from_toml,
+    mock_apps_table,
+):
+    mock_get_app_data_from_toml.return_value = AppData(team="internal")
+    mock_client = MagicMock()
+    mock_client.apps.scale.return_value = MagicMock()
+    mock_client_cls.return_value = mock_client
+    mock_apps_table.return_value = "table-output"
+
+    args = parse_args(["apps", "scale", "team-app", "--min-concurrency", "1"])
+    args.host = "my-host"
+    args.console = MagicMock()
+    _scale(args)
+
+    mock_get_app_data_from_toml.assert_called_once_with(
+        "team-app", emit_deprecation_warnings=False
+    )
+    mock_client_cls.assert_called_once_with(host="my-host", team="internal")
+    mock_client.apps.scale.assert_called_once()
+
+
+@patch("fal.cli.apps._apps_table")
+@patch("fal.cli._utils.get_app_data_from_toml")
+@patch("fal.cli.apps.SyncServerlessClient")
+def test_scale_cli_team_overrides_team_from_toml(
+    mock_client_cls,
+    mock_get_app_data_from_toml,
+    mock_apps_table,
+):
+    mock_get_app_data_from_toml.return_value = AppData(team="internal")
+    mock_client = MagicMock()
+    mock_client.apps.scale.return_value = MagicMock()
+    mock_client_cls.return_value = mock_client
+    mock_apps_table.return_value = "table-output"
+
+    args = parse_args(
+        [
+            "apps",
+            "scale",
+            "team-app",
+            "--min-concurrency",
+            "1",
+            "--team",
+            "cli-team",
+        ]
+    )
+    args.host = "my-host"
+    args.console = MagicMock()
+    _scale(args)
+
+    mock_client_cls.assert_called_once_with(host="my-host", team="cli-team")
+
+
+@patch("fal.cli._utils.get_app_data_from_toml")
+def test_resolve_team_from_app_name_uses_toml(mock_get_app_data_from_toml):
+    mock_get_app_data_from_toml.return_value = AppData(team="internal")
+
+    team = resolve_team_from_app_name("team-app", None)
+
+    assert team == "internal"
+    mock_get_app_data_from_toml.assert_called_once_with(
+        "team-app", emit_deprecation_warnings=False
+    )
+
+
+@patch("fal.cli._utils.get_app_data_from_toml")
+def test_resolve_team_from_app_name_keeps_cli_override(mock_get_app_data_from_toml):
+    mock_get_app_data_from_toml.return_value = AppData(team="internal")
+
+    assert resolve_team_from_app_name("team-app", "cli-team") == "cli-team"
+
+
+@patch("fal.cli._utils.get_app_data_from_toml")
+def test_resolve_team_from_app_name_ignores_missing_toml(mock_get_app_data_from_toml):
+    mock_get_app_data_from_toml.side_effect = ValueError(
+        "App team-app not found in pyproject.toml"
+    )
+
+    assert resolve_team_from_app_name("team-app", None) is None
+
+
+@patch("fal.cli._utils.get_app_data_from_toml")
+def test_resolve_team_from_app_name_ignores_python_files(mock_get_app_data_from_toml):
+    assert resolve_team_from_app_name("app.py", None) is None
+
+    mock_get_app_data_from_toml.assert_not_called()
+
+
+@patch("fal.cli._utils.get_app_data_from_toml", return_value=AppData(team="internal"))
+@patch("fal.cli.apps.SyncServerlessClient")
+def test_rollout_with_team_from_toml(mock_client_cls, mock_get_app_data_from_toml):
+    mock_client = MagicMock()
+    mock_client_cls.return_value = mock_client
+
+    args = parse_args(["apps", "rollout", "team-app"])
+    args.host = "my-host"
+    args.console = MagicMock()
+    _rollout(args)
+
+    mock_client_cls.assert_called_once_with(host="my-host", team="internal")
+    mock_client.apps.rollout.assert_called_once_with(
+        "team-app", force=False, environment_name=None
+    )
+
+
+@patch(
+    "fal.cli.apps.runners.runners_table",
+    return_value=SimpleNamespace(columns=[object()]),
+)
+@patch(
+    "fal.cli.apps.runners.runners_requests_table",
+    return_value=SimpleNamespace(rows=[]),
+)
+@patch("fal.cli._utils.get_app_data_from_toml", return_value=AppData(team="internal"))
+@patch("fal.cli.apps.SyncServerlessClient")
+def test_runners_with_team_from_toml(
+    mock_client_cls,
+    mock_get_app_data_from_toml,
+    mock_requests_table,
+    mock_runners_table,
+):
+    mock_client = MagicMock()
+    mock_client.apps.runners.return_value = []
+    mock_client_cls.return_value = mock_client
+
+    args = parse_args(["apps", "runners", "team-app"])
+    args.host = "my-host"
+    args.console = MagicMock()
+    _runners(args)
+
+    mock_client_cls.assert_called_once_with(host="my-host", team="internal")
+    mock_client.apps.runners.assert_called_once_with(
+        "team-app", since=None, state=None, environment_name=None
+    )
+
+
+@patch("fal.cli._utils.get_app_data_from_toml", return_value=AppData(team="internal"))
+@patch("fal.cli.apps.SyncServerlessClient")
+def test_gpus_with_team_from_toml(mock_client_cls, mock_get_app_data_from_toml):
+    mock_client_cls.return_value = _mock_gpus_client(_GPUS_PAYLOAD)
+
+    args = parse_args(["apps", "gpus", "team-app"])
+    args.host = "my-host"
+    args.console = MagicMock()
+    _gpus(args)
+
+    mock_client_cls.assert_called_once_with(host="my-host", team="internal")
+
+
+@patch("fal.cli.apps._apps_table", return_value="table-output")
+@patch("fal.cli._utils.get_app_data_from_toml", return_value=AppData(team="internal"))
+@patch("fal.cli.apps.get_client")
+def test_list_rev_with_team_from_toml(
+    mock_get_client,
+    mock_get_app_data_from_toml,
+    mock_apps_table,
+):
+    mock_connection = MagicMock()
+    mock_connection.list_applications.return_value = []
+    mock_get_client.return_value.connect.return_value.__enter__.return_value = (
+        mock_connection
+    )
+
+    args = parse_args(["apps", "list-rev", "team-app"])
+    args.host = "my-host"
+    args.console = MagicMock()
+    _list_rev(args)
+
+    mock_get_client.assert_called_once_with("my-host", "internal")
+
+
+@patch("fal.cli.apps._apps_table", return_value="table-output")
+@patch("fal.cli._utils.get_app_data_from_toml", return_value=AppData(team="internal"))
+@patch("fal.cli.apps.get_client")
+def test_set_rev_with_team_from_toml(
+    mock_get_client,
+    mock_get_app_data_from_toml,
+    mock_apps_table,
+):
+    mock_connection = MagicMock()
+    mock_connection.create_alias.return_value = MagicMock()
+    mock_get_client.return_value.connect.return_value.__enter__.return_value = (
+        mock_connection
+    )
+
+    args = parse_args(["apps", "set-rev", "team-app", "app-rev"])
+    args.host = "my-host"
+    args.console = MagicMock()
+    _set_rev(args)
+
+    mock_get_client.assert_called_once_with("my-host", "internal")
+
+
+@patch("fal.cli._utils.get_app_data_from_toml", return_value=AppData(team="internal"))
+@patch("fal.cli.apps.get_client")
+def test_delete_with_team_from_toml(mock_get_client, mock_get_app_data_from_toml):
+    mock_connection = MagicMock()
+    mock_connection.delete_alias.return_value = "deleted"
+    mock_get_client.return_value.connect.return_value.__enter__.return_value = (
+        mock_connection
+    )
+
+    args = parse_args(["apps", "delete", "team-app"])
+    args.host = "my-host"
+    args.console = MagicMock()
+    _delete(args)
+
+    mock_get_client.assert_called_once_with("my-host", "internal")
 
 
 def test_rollout():

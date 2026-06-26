@@ -52,6 +52,17 @@ def is_app_name(app_ref: tuple[str, str | None]) -> bool:
     return is_single_file and not is_python_file
 
 
+def resolve_team_from_app_name(app_name: str, team: str | None) -> str | None:
+    if not is_app_name((app_name, None)):
+        return team
+
+    try:
+        toml_data = get_app_data_from_toml(app_name, emit_deprecation_warnings=False)
+        return team or toml_data.team
+    except (ValueError, FileNotFoundError):
+        return team
+
+
 def get_app_data_from_toml(
     app_name: str, *, emit_deprecation_warnings: bool = True
 ) -> AppData:
