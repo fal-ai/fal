@@ -112,7 +112,7 @@ def _resolve_deployment_reference(
     *,
     app_name: str | None = None,
     auth: AuthModeLiteral | None = None,
-    strategy: DeploymentStrategyLiteral = "rolling",
+    strategy: DeploymentStrategyLiteral | None = None,
     reset_scale: bool = False,
 ) -> tuple[tuple[str | None, str | None], AppData]:
     from fal.cli._utils import AppData, get_app_data_from_toml, is_app_name
@@ -127,7 +127,7 @@ def _resolve_deployment_reference(
 
     app_data = AppData(
         auth=auth,
-        deployment_strategy=cast(DeploymentStrategyLiteral, strategy),
+        deployment_strategy=strategy,
         reset_scale=cast(bool, reset_scale),
         name=app_name,
     )
@@ -141,6 +141,12 @@ def _resolve_deployment_reference(
         assert resolved_app_name is not None
 
         app_data = get_app_data_from_toml(resolved_app_name)
+
+        # re-apply the config user explicitly set so they take precedence over
+        # the TOML values.
+        if strategy is not None:
+            app_data = replace(app_data, deployment_strategy=strategy)
+
         if app_data.python_entry_point is not None or app_data.ref is None:
             # python_entry_point is resolved by the loader; ref is None for
             # image-only apps.
@@ -326,7 +332,7 @@ def prepare_deployment(
     *,
     app_name: str | None = None,
     auth: AuthModeLiteral | None = None,
-    strategy: DeploymentStrategyLiteral = "rolling",
+    strategy: DeploymentStrategyLiteral | None = None,
     reset_scale: bool = False,
     force_env_build: bool = False,
     environment_name: str | None = None,
@@ -372,7 +378,7 @@ def deploy(
     *,
     app_name: str | None = None,
     auth: AuthModeLiteral | None = None,
-    strategy: DeploymentStrategyLiteral = "rolling",
+    strategy: DeploymentStrategyLiteral | None = None,
     reset_scale: bool = False,
     force_env_build: bool = False,
     environment_name: str | None = None,
