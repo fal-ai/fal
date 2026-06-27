@@ -25,9 +25,11 @@ FALLBACK_FIELD = "fal_fallback"
 #: Request-body key for the caller's timeout (seconds) on the primary attempt.
 PRIMARY_TIMEOUT_FIELD = "fal_fallback_timeout"
 
-#: Media output fields, in priority order, used to infer a primary's output
-#: contract for result normalization.
-MEDIA_FIELDS = ("images", "image", "videos", "video", "audios", "audio")
+#: Primary output fields, in priority order, used to infer a primary's output
+#: contract for the result guard and normalization. Covers the four modalities
+#: (image / video / audio / text). Text has no list/single variant, so it only
+#: drives the output-shape guard, not normalization.
+MEDIA_FIELDS = ("images", "image", "videos", "video", "audios", "audio", "text")
 
 #: Statuses that map to a "timeout" trigger; other 5xx map to "error".
 _TIMEOUT_STATUSES = {408, 504}

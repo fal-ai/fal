@@ -201,9 +201,13 @@ def test_media_field_detection():
     class TextOut(BaseModel):
         text: str = ""
 
+    class JsonOut(BaseModel):
+        data: dict = {}
+
     assert media_field(ImagesOut) == "images"
     assert media_field(ImageOut) == "image"
-    assert media_field(TextOut) is None
+    assert media_field(TextOut) == "text"
+    assert media_field(JsonOut) is None  # non-text/media outputs stay ungrouped
     assert media_field(None) is None
 
 
@@ -430,3 +434,18 @@ def test_http_sse_failure_not_replaced_by_fallback():
     r = client.post("/sse_fail", json={"prompt": "x", "fal_fallback": _chain()})
     assert r.status_code == 500
     assert fwd.calls == []
+
+
+def test_chain_text_output_guard_skips_non_text():
+    # Primary returns `text`; a node lacking `text` is rejected, chain advances.
+    chain = parse_fallback_chain(
+        {"fal_fallback": [{"endpoint": GPT}, {"endpoint": SEEDREAM}]}
+    )
+    forward = _forward_returning(
+        {GPT: {"images": [{"url": "x"}]}, SEEDREAM: {"text": "hello world"}}
+    )
+    result, served = asyncio.run(
+        run_fallback_chain(chain, trigger="error", forward=forward, output_field="text")
+    )
+    assert served == SEEDREAM
+    assert result["text"] == "hello world"
