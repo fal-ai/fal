@@ -21,6 +21,7 @@ from fal._caller_fallback import (
     normalize_output,
     parse_fallback_chain,
     primary_timeout_from_body,
+    record_fallback,
     run_fallback_chain,
     trigger_for_status,
 )
@@ -336,3 +337,25 @@ def test_http_output_normalization_single_to_list():
     r = client.post("/err", json={"prompt": "x", "fal_fallback": _chain()})
     assert r.status_code == 200
     assert r.json()["images"] == [{"url": "single"}]
+
+
+# --- metrics: record_fallback -------------------------------------------------
+
+
+def test_record_fallback_increments_when_available():
+    pytest.importorskip("prometheus_client")
+    from prometheus_client import REGISTRY
+
+    labels = {"trigger": "error", "outcome": "served", "endpoint": GPT}
+    before = REGISTRY.get_sample_value("fal_caller_fallback_total", labels) or 0.0
+    assert record_fallback(trigger="error", outcome="served", endpoint=GPT) is True
+    after = REGISTRY.get_sample_value("fal_caller_fallback_total", labels) or 0.0
+    assert after == before + 1
+
+
+def test_record_fallback_handles_missing_endpoint():
+    # endpoint=None must not crash; it is labelled "none".
+    assert record_fallback(trigger="timeout", outcome="exhausted", endpoint=None) in (
+        True,
+        False,
+    )

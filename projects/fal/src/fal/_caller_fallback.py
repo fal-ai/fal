@@ -155,6 +155,40 @@ def normalize_output(result: Any, expected_field: Optional[str]) -> Any:
     return result
 
 
+_COUNTER: Any = None
+_COUNTER_FAILED = False
+
+
+def record_fallback(*, trigger: str, outcome: str, endpoint: Optional[str]) -> bool:
+    """Increment the fallback counter; returns True if recorded.
+
+    Defensive: if ``prometheus_client`` is unavailable or the counter can't be
+    created/incremented, it silently no-ops (returns False) so metrics never
+    affect request handling. ``outcome`` is ``served`` or ``exhausted``.
+    """
+    global _COUNTER, _COUNTER_FAILED
+    if _COUNTER is None and not _COUNTER_FAILED:
+        try:
+            from prometheus_client import Counter  # noqa: PLC0415
+
+            _COUNTER = Counter(
+                "fal_caller_fallback_total",
+                "Caller-defined fallback attempts",
+                labelnames=["trigger", "outcome", "endpoint"],
+            )
+        except Exception:
+            _COUNTER_FAILED = True
+    if _COUNTER is None:
+        return False
+    try:
+        _COUNTER.labels(
+            trigger=trigger, outcome=outcome, endpoint=endpoint or "none"
+        ).inc()
+        return True
+    except Exception:
+        return False
+
+
 def build_fallback_middleware(
     *,
     output_fields: Optional[dict] = None,
@@ -230,6 +264,11 @@ def build_fallback_middleware(
             trigger=trigger,
             forward=fwd,
             output_field=output_fields.get(request.url.path),
+        )
+        record_fallback(
+            trigger=trigger,
+            outcome="served" if served else "exhausted",
+            endpoint=served,
         )
         if served is None:
             if response is not None:
