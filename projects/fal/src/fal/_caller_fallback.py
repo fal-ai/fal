@@ -221,24 +221,39 @@ def build_fallback_middleware(
 
         from fastapi.responses import JSONResponse  # noqa: PLC0415
 
+        if request.method != "POST":
+            return await call_next(request)
+
+        body_bytes = await request.body()
+        try:
+            payload = json.loads(body_bytes) if body_bytes else None
+        except Exception:
+            payload = None
+
+        # Strip our reserved fields so the endpoint never sees them, regardless of
+        # its input's `extra` policy (apps with extra="forbid" would otherwise
+        # 422 the whole request on the unknown `fal_fallback` key). Re-expose the
+        # (possibly trimmed) body so the endpoint still parses its own params.
+        if isinstance(payload, dict) and (
+            FALLBACK_FIELD in payload or PRIMARY_TIMEOUT_FIELD in payload
+        ):
+            stripped = {
+                k: v
+                for k, v in payload.items()
+                if k not in (FALLBACK_FIELD, PRIMARY_TIMEOUT_FIELD)
+            }
+            request._body = json.dumps(stripped).encode("utf-8")
+        else:
+            request._body = body_bytes
+
         disabled = request.headers.get("x-app-fal-disable-fallback", "").lower() in (
             "true",
             "1",
             "yes",
             "y",
         )
-        if request.method != "POST" or disabled:
-            return await call_next(request)
-
-        body_bytes = await request.body()
-        request._body = body_bytes  # re-expose buffered body for the endpoint
-        try:
-            payload = json.loads(body_bytes) if body_bytes else None
-        except Exception:
-            payload = None
-
         chain = parse_fallback_chain(payload)
-        if not chain:
+        if disabled or not chain:
             return await call_next(request)
 
         primary_timeout = primary_timeout_from_body(payload)
@@ -256,8 +271,14 @@ def build_fallback_middleware(
             trigger, primary_exc = "error", exc
         else:
             trigger = trigger_for_status(response.status_code)
-            if trigger is None:
-                return response  # success or client error -> surface as-is
+            # Don't replace a streaming/SSE response with a JSON fallback -- it
+            # would break the streaming contract (success streams are already 2xx;
+            # this also guards the rare streamed error).
+            is_streaming = "text/event-stream" in response.headers.get(
+                "content-type", ""
+            )
+            if trigger is None or is_streaming:
+                return response  # success, client error, or stream -> surface
 
         result, served = await run_fallback_chain(
             chain,

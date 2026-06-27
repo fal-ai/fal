@@ -9,9 +9,9 @@ import asyncio
 
 import pytest
 from fastapi import FastAPI
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.testclient import TestClient
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from fal._caller_fallback import (
@@ -259,6 +259,29 @@ def _build_app(forward, output_fields=None):
         await asyncio.sleep(1.0)
         return {"images": [{"url": "primary"}]}
 
+    class StrictIn(BaseModel):
+        model_config = ConfigDict(extra="forbid")
+        prompt: str
+
+    @app.post("/strict")
+    async def strict(body: StrictIn):
+        return {"images": [{"url": "primary"}], "echo": body.prompt}
+
+    @app.post("/sse")
+    async def sse(body: dict):
+        async def gen():
+            yield b"data: hello\n\n"
+
+        return StreamingResponse(gen(), media_type="text/event-stream")
+
+    @app.post("/sse_fail")
+    async def sse_fail(body: dict):
+        return JSONResponse(
+            {"detail": "stream setup failed"},
+            status_code=500,
+            headers={"content-type": "text/event-stream"},
+        )
+
     return app
 
 
@@ -359,3 +382,51 @@ def test_record_fallback_handles_missing_endpoint():
         True,
         False,
     )
+
+
+# --- Must-fixes: extra="forbid" stripping + streaming skip ---------------------
+
+
+def test_http_strip_fields_avoid_422_on_extra_forbid():
+    # /strict input forbids extras; without stripping, `fal_fallback` in the body
+    # would 422 the whole request. The middleware must strip it so the primary runs.
+    fwd = _recording_forward({})
+    client = TestClient(_build_app(fwd), raise_server_exceptions=False)
+    r = client.post("/strict", json={"prompt": "hi", "fal_fallback": _chain()})
+    assert r.status_code == 200
+    assert r.json()["echo"] == "hi"
+    assert "x-app-fal-api-fallback" not in r.headers
+    assert fwd.calls == []
+
+
+def test_http_strip_also_applies_when_disabled():
+    # Even with fallback disabled, the reserved fields must be stripped so an
+    # extra="forbid" app isn't 422'd.
+    fwd = _recording_forward({})
+    client = TestClient(_build_app(fwd), raise_server_exceptions=False)
+    r = client.post(
+        "/strict",
+        json={"prompt": "hi", "fal_fallback_timeout": 5, "fal_fallback": _chain()},
+        headers={"x-app-fal-disable-fallback": "true"},
+    )
+    assert r.status_code == 200
+    assert r.json()["echo"] == "hi"
+
+
+def test_http_sse_success_passthrough():
+    fwd = _recording_forward({})
+    client = TestClient(_build_app(fwd))
+    r = client.post("/sse", json={"prompt": "x", "fal_fallback": _chain()})
+    assert r.status_code == 200
+    assert "text/event-stream" in r.headers.get("content-type", "")
+    assert "x-app-fal-api-fallback" not in r.headers
+    assert fwd.calls == []
+
+
+def test_http_sse_failure_not_replaced_by_fallback():
+    # A failed streaming response must NOT be swapped for a JSON fallback.
+    fwd = _recording_forward({})
+    client = TestClient(_build_app(fwd), raise_server_exceptions=False)
+    r = client.post("/sse_fail", json={"prompt": "x", "fal_fallback": _chain()})
+    assert r.status_code == 500
+    assert fwd.calls == []
