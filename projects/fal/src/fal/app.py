@@ -856,21 +856,36 @@ class App(BaseServable):
         """Teardown the application after serving."""
 
     def _add_extra_middlewares(self, app: fastapi.FastAPI):
+        # Map each route path to its primary media output field (images/image/
+        # video/...), resolved once, for normalizing fallback results.
+        from fal._caller_fallback import media_field as _media_field  # noqa: PLC0415
+
+        _output_fields: dict[str, Any] = {}
+        for _sig, _ep in self.collect_routes().items():
+            try:
+                _ann = inspect.signature(_ep, eval_str=True).return_annotation
+            except Exception:
+                _ann = None
+            _output_fields[_sig.path] = _media_field(_ann)
+
         @app.middleware("http")
         async def caller_defined_fallback(request, call_next):
             # Universal caller-defined fallback: any POST request may carry a
             # ``fal_fallback`` chain in its body; if the primary fails (5xx) or
-            # times out, forward to the caller's next eligible endpoint. The pure
-            # engine (parse/walk/normalize) is unit-tested in
+            # exceeds the caller's ``fal_fallback_timeout``, forward to the
+            # caller's next eligible endpoint. The pure engine (parse/walk/
+            # normalize/timeout) is unit-tested in
             # tests/unit/test_caller_fallback.py; this glue (body buffering,
-            # status->trigger, fal_client forward, response building) needs
+            # primary-timeout wrap, fal_client forward, response building) needs
             # integration testing on live serving infra.
+            import asyncio  # noqa: PLC0415
             import json  # noqa: PLC0415
 
             from fastapi.responses import JSONResponse  # noqa: PLC0415
 
             from fal._caller_fallback import (  # noqa: PLC0415
                 parse_fallback_chain,
+                primary_timeout_from_body,
                 run_fallback_chain,
                 trigger_for_status,
             )
@@ -896,10 +911,21 @@ class App(BaseServable):
             if not chain:
                 return await call_next(request)
 
-            response = await call_next(request)
-            trigger = trigger_for_status(response.status_code)
-            if trigger is None:
-                return response  # 2xx/3xx success or 4xx client error -> surface
+            primary_timeout = primary_timeout_from_body(payload)
+            response = None
+            try:
+                if primary_timeout:
+                    response = await asyncio.wait_for(
+                        call_next(request), primary_timeout
+                    )
+                else:
+                    response = await call_next(request)
+            except (asyncio.TimeoutError, TimeoutError):
+                trigger = "timeout"  # primary hung past the caller's budget
+            else:
+                trigger = trigger_for_status(response.status_code)
+                if trigger is None:
+                    return response  # 2xx/3xx success or 4xx client error -> surface
 
             async def _forward(endpoint, node_input):
                 import fal_client  # noqa: PLC0415
@@ -907,10 +933,18 @@ class App(BaseServable):
                 return await fal_client.subscribe_async(endpoint, arguments=node_input)
 
             result, served = await run_fallback_chain(
-                chain, trigger=trigger, forward=_forward
+                chain,
+                trigger=trigger,
+                forward=_forward,
+                output_field=_output_fields.get(request.url.path),
             )
             if served is None:
-                return response  # chain exhausted -> keep the primary's failure
+                if response is not None:
+                    return response  # chain exhausted -> keep the primary's failure
+                return JSONResponse(
+                    {"detail": "Primary request timed out and all fallbacks failed."},
+                    status_code=504,
+                )
 
             return JSONResponse(
                 content=result,

@@ -8,11 +8,14 @@ parsing, status -> trigger mapping, output normalization, and the chain walk
 import asyncio
 
 import pytest
+from pydantic import BaseModel
 
 from fal._caller_fallback import (
     FallbackNode,
+    media_field,
     normalize_output,
     parse_fallback_chain,
+    primary_timeout_from_body,
     run_fallback_chain,
     trigger_for_status,
 )
@@ -161,6 +164,41 @@ def test_chain_output_guard_skips_incompatible_then_serves():
     # GPT returned a video (no `images`) -> rejected; chain advanced to SEEDREAM.
     assert served == SEEDREAM
     assert result["images"] == [{"url": "ok"}]
+
+
+# --- primary_timeout_from_body ------------------------------------------------
+
+
+def test_primary_timeout_valid():
+    assert primary_timeout_from_body({"fal_fallback_timeout": 30}) == 30.0
+    assert primary_timeout_from_body({"fal_fallback_timeout": "12.5"}) == 12.5
+
+
+@pytest.mark.parametrize(
+    "body",
+    [None, "x", {}, {"fal_fallback_timeout": 0}, {"fal_fallback_timeout": -5}, {"fal_fallback_timeout": "abc"}],
+)
+def test_primary_timeout_absent_or_invalid(body):
+    assert primary_timeout_from_body(body) is None
+
+
+# --- media_field --------------------------------------------------------------
+
+
+def test_media_field_detection():
+    class ImagesOut(BaseModel):
+        images: list = []
+
+    class ImageOut(BaseModel):
+        image: dict = {}
+
+    class TextOut(BaseModel):
+        text: str = ""
+
+    assert media_field(ImagesOut) == "images"
+    assert media_field(ImageOut) == "image"
+    assert media_field(TextOut) is None
+    assert media_field(None) is None
 
 
 def test_chain_normalizes_winner_to_output_field():

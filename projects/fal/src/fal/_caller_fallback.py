@@ -22,6 +22,13 @@ from pydantic import BaseModel, ConfigDict, Field
 #: Request-body key that holds the caller's fallback chain.
 FALLBACK_FIELD = "fal_fallback"
 
+#: Request-body key for the caller's timeout (seconds) on the primary attempt.
+PRIMARY_TIMEOUT_FIELD = "fal_fallback_timeout"
+
+#: Media output fields, in priority order, used to infer a primary's output
+#: contract for result normalization.
+MEDIA_FIELDS = ("images", "image", "videos", "video", "audios", "audio")
+
 #: Statuses that map to a "timeout" trigger; other 5xx map to "error".
 _TIMEOUT_STATUSES = {408, 504}
 
@@ -85,6 +92,35 @@ def parse_fallback_chain(body: Any) -> list[FallbackNode]:
         except Exception:
             continue
     return chain
+
+
+def primary_timeout_from_body(body: Any) -> Optional[float]:
+    """Caller-chosen timeout (seconds) for the primary attempt. Never raises.
+
+    Returns ``None`` when absent, non-numeric, or non-positive.
+    """
+    if not isinstance(body, dict):
+        return None
+    try:
+        value = float(body.get(PRIMARY_TIMEOUT_FIELD))  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    return value if value > 0 else None
+
+
+def media_field(model: Any) -> Optional[str]:
+    """The primary media field (e.g. ``images``) of a pydantic output model.
+
+    Used to normalize a fallback result to the primary's output contract.
+    Returns ``None`` when the model has no recognizable media field.
+    """
+    fields = getattr(model, "model_fields", None)
+    if not fields:
+        return None
+    for name in MEDIA_FIELDS:
+        if name in fields:
+            return name
+    return None
 
 
 def trigger_for_status(status_code: int) -> Optional[str]:
