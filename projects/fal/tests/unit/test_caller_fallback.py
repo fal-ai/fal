@@ -8,10 +8,15 @@ parsing, status -> trigger mapping, output normalization, and the chain walk
 import asyncio
 
 import pytest
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse
+from fastapi.testclient import TestClient
 from pydantic import BaseModel
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from fal._caller_fallback import (
     FallbackNode,
+    build_fallback_middleware,
     media_field,
     normalize_output,
     parse_fallback_chain,
@@ -208,3 +213,126 @@ def test_chain_normalizes_winner_to_output_field():
         run_fallback_chain(chain, trigger="error", forward=forward, output_field="images")
     )
     assert result["images"] == [{"url": "single"}]
+
+
+# --- HTTP integration: the middleware glue via FastAPI TestClient -------------
+#
+# These exercise the actual middleware behaviour (body buffering + re-read,
+# raised-exception vs 5xx-response triggering, primary timeout, response
+# building, disable opt-out) without live fal serving. Only fal_client auth and
+# real gateway interaction remain out of scope here.
+
+
+def _recording_forward(result_by_endpoint):
+    calls = []
+
+    async def _forward(endpoint, payload):
+        calls.append((endpoint, payload))
+        return result_by_endpoint.get(endpoint, {"images": [{"url": f"fb:{endpoint}"}]})
+
+    _forward.calls = calls
+    return _forward
+
+
+def _build_app(forward, output_fields=None):
+    app = FastAPI()
+    app.add_middleware(
+        BaseHTTPMiddleware,
+        dispatch=build_fallback_middleware(forward=forward, output_fields=output_fields or {}),
+    )
+
+    @app.post("/ok")
+    async def ok(body: dict):
+        return {"images": [{"url": "primary"}], "echo": body.get("prompt")}
+
+    @app.post("/boom")
+    async def boom(body: dict):
+        raise RuntimeError("primary crashed")
+
+    @app.post("/err")
+    async def err(body: dict):
+        return JSONResponse({"detail": "downstream"}, status_code=503)
+
+    @app.post("/slow")
+    async def slow(body: dict):
+        await asyncio.sleep(1.0)
+        return {"images": [{"url": "primary"}]}
+
+    return app
+
+
+def _chain(endpoint=GPT):
+    return [{"endpoint": endpoint, "input": {"prompt": "fb"}}]
+
+
+def test_http_success_passthrough_and_body_reread():
+    fwd = _recording_forward({})
+    client = TestClient(_build_app(fwd))
+    r = client.post("/ok", json={"prompt": "hello", "fal_fallback": _chain()})
+    assert r.status_code == 200
+    # Endpoint still parsed the body after the middleware read it (echo == prompt).
+    assert r.json()["echo"] == "hello"
+    # Primary succeeded -> no fallback fired.
+    assert "x-app-fal-api-fallback" not in r.headers
+    assert fwd.calls == []
+
+
+def test_http_fallback_on_raised_exception():
+    fwd = _recording_forward({GPT: {"images": [{"url": "from-gpt"}]}})
+    client = TestClient(_build_app(fwd))
+    r = client.post("/boom", json={"prompt": "x", "fal_fallback": _chain()})
+    assert r.status_code == 200
+    assert r.headers["x-app-fal-api-fallback"] == "true"
+    assert r.headers["x-app-fal-api-fallback-endpoint"] == GPT
+    assert r.headers["x-fal-bill-as"] == GPT
+    assert r.json()["images"] == [{"url": "from-gpt"}]
+    assert fwd.calls and fwd.calls[0][0] == GPT
+
+
+def test_http_fallback_on_5xx_response():
+    fwd = _recording_forward({GPT: {"images": [{"url": "from-gpt"}]}})
+    client = TestClient(_build_app(fwd))
+    r = client.post("/err", json={"prompt": "x", "fal_fallback": _chain()})
+    assert r.status_code == 200
+    assert r.headers["x-app-fal-api-fallback-endpoint"] == GPT
+
+
+def test_http_disable_header_skips_fallback():
+    fwd = _recording_forward({})
+    client = TestClient(_build_app(fwd), raise_server_exceptions=False)
+    r = client.post(
+        "/boom",
+        json={"prompt": "x", "fal_fallback": _chain()},
+        headers={"x-app-fal-disable-fallback": "true"},
+    )
+    assert r.status_code == 500  # primary error surfaced, no fallback
+    assert fwd.calls == []
+
+
+def test_http_primary_timeout_falls_back():
+    fwd = _recording_forward({GPT: {"images": [{"url": "from-gpt"}]}})
+    client = TestClient(_build_app(fwd))
+    r = client.post(
+        "/slow",
+        json={"prompt": "x", "fal_fallback_timeout": 0.1, "fal_fallback": _chain()},
+    )
+    assert r.status_code == 200
+    assert r.headers["x-app-fal-api-fallback-endpoint"] == GPT
+
+
+def test_http_no_chain_passthrough():
+    fwd = _recording_forward({})
+    client = TestClient(_build_app(fwd))
+    r = client.post("/ok", json={"prompt": "hello"})
+    assert r.status_code == 200
+    assert "x-app-fal-api-fallback" not in r.headers
+    assert fwd.calls == []
+
+
+def test_http_output_normalization_single_to_list():
+    # Primary route declares images:list; fallback returns a single image.
+    fwd = _recording_forward({GPT: {"image": {"url": "single"}}})
+    client = TestClient(_build_app(fwd, output_fields={"/err": "images"}))
+    r = client.post("/err", json={"prompt": "x", "fal_fallback": _chain()})
+    assert r.status_code == 200
+    assert r.json()["images"] == [{"url": "single"}]

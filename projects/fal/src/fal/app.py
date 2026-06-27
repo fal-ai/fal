@@ -868,92 +868,14 @@ class App(BaseServable):
                 _ann = None
             _output_fields[_sig.path] = _media_field(_ann)
 
-        @app.middleware("http")
-        async def caller_defined_fallback(request, call_next):
-            # Universal caller-defined fallback: any POST request may carry a
-            # ``fal_fallback`` chain in its body; if the primary fails (5xx) or
-            # exceeds the caller's ``fal_fallback_timeout``, forward to the
-            # caller's next eligible endpoint. The pure engine (parse/walk/
-            # normalize/timeout) is unit-tested in
-            # tests/unit/test_caller_fallback.py; this glue (body buffering,
-            # primary-timeout wrap, fal_client forward, response building) needs
-            # integration testing on live serving infra.
-            import asyncio  # noqa: PLC0415
-            import json  # noqa: PLC0415
+        # Universal caller-defined fallback. Engine + dispatch live in
+        # fal._caller_fallback; HTTP behaviour is covered by
+        # tests/unit/test_caller_fallback.py via a FastAPI TestClient.
+        from fal._caller_fallback import (  # noqa: PLC0415
+            build_fallback_middleware,
+        )
 
-            from fastapi.responses import JSONResponse  # noqa: PLC0415
-
-            from fal._caller_fallback import (  # noqa: PLC0415
-                parse_fallback_chain,
-                primary_timeout_from_body,
-                run_fallback_chain,
-                trigger_for_status,
-            )
-
-            disabled = request.headers.get("x-app-fal-disable-fallback", "").lower() in (
-                "true",
-                "1",
-                "yes",
-                "y",
-            )
-            if request.method != "POST" or disabled:
-                return await call_next(request)
-
-            body_bytes = await request.body()
-            # Re-expose the buffered body so the endpoint can still parse it.
-            request._body = body_bytes
-            try:
-                payload = json.loads(body_bytes) if body_bytes else None
-            except Exception:
-                payload = None
-
-            chain = parse_fallback_chain(payload)
-            if not chain:
-                return await call_next(request)
-
-            primary_timeout = primary_timeout_from_body(payload)
-            response = None
-            try:
-                if primary_timeout:
-                    response = await asyncio.wait_for(
-                        call_next(request), primary_timeout
-                    )
-                else:
-                    response = await call_next(request)
-            except (asyncio.TimeoutError, TimeoutError):
-                trigger = "timeout"  # primary hung past the caller's budget
-            else:
-                trigger = trigger_for_status(response.status_code)
-                if trigger is None:
-                    return response  # 2xx/3xx success or 4xx client error -> surface
-
-            async def _forward(endpoint, node_input):
-                import fal_client  # noqa: PLC0415
-
-                return await fal_client.subscribe_async(endpoint, arguments=node_input)
-
-            result, served = await run_fallback_chain(
-                chain,
-                trigger=trigger,
-                forward=_forward,
-                output_field=_output_fields.get(request.url.path),
-            )
-            if served is None:
-                if response is not None:
-                    return response  # chain exhausted -> keep the primary's failure
-                return JSONResponse(
-                    {"detail": "Primary request timed out and all fallbacks failed."},
-                    status_code=504,
-                )
-
-            return JSONResponse(
-                content=result,
-                headers={
-                    "x-app-fal-api-fallback": "true",
-                    "x-app-fal-api-fallback-endpoint": served,
-                    "x-fal-bill-as": served,
-                },
-            )
+        app.middleware("http")(build_fallback_middleware(output_fields=_output_fields))
 
         @app.middleware("http")
         async def provide_hints_headers(request, call_next):

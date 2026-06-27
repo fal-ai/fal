@@ -155,6 +155,99 @@ def normalize_output(result: Any, expected_field: Optional[str]) -> Any:
     return result
 
 
+def build_fallback_middleware(
+    *,
+    output_fields: Optional[dict] = None,
+    forward: Optional[ForwardFn] = None,
+):
+    """Build the Starlette HTTP-middleware dispatch for caller-defined fallback.
+
+    Extracted from the app wiring so it can be exercised with a FastAPI
+    TestClient. ``forward`` defaults to ``fal_client.subscribe_async`` and is
+    injectable for tests. ``output_fields`` maps a route path to its primary
+    media output field for result normalization.
+
+    Note on triggering: this middleware sits inside Starlette's
+    ``ServerErrorMiddleware``, so an unhandled endpoint exception arrives here as
+    a raised exception, while app-mapped failures arrive as a 5xx *response*.
+    Both are handled -- exceptions and 5xx responses trigger ``error``, a blown
+    primary timeout triggers ``timeout``.
+    """
+    output_fields = output_fields or {}
+
+    async def _default_forward(endpoint: str, node_input: dict) -> Any:
+        import fal_client  # noqa: PLC0415
+
+        return await fal_client.subscribe_async(endpoint, arguments=node_input)
+
+    fwd = forward or _default_forward
+
+    async def dispatch(request, call_next):
+        import json  # noqa: PLC0415
+
+        from fastapi.responses import JSONResponse  # noqa: PLC0415
+
+        disabled = request.headers.get("x-app-fal-disable-fallback", "").lower() in (
+            "true",
+            "1",
+            "yes",
+            "y",
+        )
+        if request.method != "POST" or disabled:
+            return await call_next(request)
+
+        body_bytes = await request.body()
+        request._body = body_bytes  # re-expose buffered body for the endpoint
+        try:
+            payload = json.loads(body_bytes) if body_bytes else None
+        except Exception:
+            payload = None
+
+        chain = parse_fallback_chain(payload)
+        if not chain:
+            return await call_next(request)
+
+        primary_timeout = primary_timeout_from_body(payload)
+        response = None
+        primary_exc: Optional[BaseException] = None
+        try:
+            coro = call_next(request)
+            if primary_timeout:
+                response = await asyncio.wait_for(coro, primary_timeout)
+            else:
+                response = await coro
+        except (asyncio.TimeoutError, TimeoutError) as exc:
+            trigger, primary_exc = "timeout", exc
+        except Exception as exc:
+            trigger, primary_exc = "error", exc
+        else:
+            trigger = trigger_for_status(response.status_code)
+            if trigger is None:
+                return response  # success or client error -> surface as-is
+
+        result, served = await run_fallback_chain(
+            chain,
+            trigger=trigger,
+            forward=fwd,
+            output_field=output_fields.get(request.url.path),
+        )
+        if served is None:
+            if response is not None:
+                return response  # keep the primary's failed response
+            raise primary_exc  # re-surface the original timeout/exception
+
+        return JSONResponse(
+            content=result,
+            headers={
+                "x-app-fal-api-fallback": "true",
+                "x-app-fal-api-fallback-endpoint": served,
+                "x-fal-bill-as": served,
+            },
+        )
+
+    return dispatch
+
+
 async def run_fallback_chain(
     chain: list[FallbackNode],
     *,
