@@ -8,7 +8,7 @@ parsing, status -> trigger mapping, output normalization, and the chain walk
 import asyncio
 
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.testclient import TestClient
 from pydantic import BaseModel, ConfigDict
@@ -286,6 +286,11 @@ def _build_app(forward, output_fields=None):
             headers={"content-type": "text/event-stream"},
         )
 
+    @app.post("/raw")
+    async def raw(request: Request):
+        b = await request.body()
+        return {"len": len(b), "ct": request.headers.get("content-type", "")}
+
     return app
 
 
@@ -476,3 +481,17 @@ def test_http_reraises_primary_error_when_fallback_unavailable():
     client = TestClient(_build_app(_raising_forward()), raise_server_exceptions=False)
     r = client.post("/boom", json={"prompt": "x", "fal_fallback": _chain()})
     assert r.status_code == 500
+
+
+def test_http_non_json_post_passes_through_untouched():
+    # Non-JSON POST (e.g. upload/binary) must skip the middleware entirely: no
+    # body buffering, no _body touch, no fallback attempt.
+    fwd = _recording_forward({})
+    client = TestClient(_build_app(fwd))
+    payload = b"\x00\x01 raw upload bytes \xff"
+    r = client.post(
+        "/raw", content=payload, headers={"content-type": "application/octet-stream"}
+    )
+    assert r.status_code == 200
+    assert r.json()["len"] == len(payload)  # endpoint received the body intact
+    assert fwd.calls == []

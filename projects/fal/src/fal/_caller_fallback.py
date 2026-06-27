@@ -226,6 +226,12 @@ def build_fallback_middleware(
         if request.method != "POST":
             return await call_next(request)
 
+        # Only JSON bodies can carry `fal_fallback`. Skip non-JSON POSTs
+        # (multipart/form uploads, binary) entirely -- don't buffer their body
+        # or touch `_body`, which would risk breaking upload parsing.
+        if "application/json" not in request.headers.get("content-type", "").lower():
+            return await call_next(request)
+
         # Fail-safe pre-flight: read/parse/strip the body. A bug here must never
         # break a request that would otherwise succeed -- on any error we behave
         # as if the middleware were absent. We re-expose the original body first,
