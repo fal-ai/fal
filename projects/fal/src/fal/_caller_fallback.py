@@ -129,11 +129,16 @@ def trigger_for_status(status_code: int) -> Optional[str]:
     """Map a primary response status to a fallback trigger.
 
     Returns ``"timeout"`` / ``"error"`` when a fallback should be attempted, or
-    ``None`` when the response should be surfaced to the caller (2xx/3xx/4xx).
+    ``None`` when the response should be surfaced to the caller.
+
+    Triggers: all 5xx, 408/504 (timeout), 422 (model rejection -- but a 422 that
+    is a content-policy violation is excluded later by the middleware to avoid a
+    moderation bypass), and 429 (rate limit -> try another model). All other 4xx
+    (400/401/403/404/413/415) are surfaced, never fall back.
     """
     if status_code in _TIMEOUT_STATUSES:
         return "timeout"
-    if status_code >= 500:
+    if status_code in (422, 429) or status_code >= 500:
         return "error"
     return None
 
@@ -286,6 +291,30 @@ def build_fallback_middleware(
             )
             if trigger is None or is_streaming:
                 return response  # success, client error, or stream -> surface
+
+            # Content-policy carve-out: a 422 is a fallback trigger (model
+            # rejection), but a content-policy violation is also a 422 -- never
+            # fall back on it, or callers could bypass moderation via the
+            # fallback model. Buffer the body to inspect it (and keep the
+            # buffered copy so the surface/exhausted paths still return a body).
+            # TODO: make content-policy fallback opt-in for callers who do want
+            # it (e.g. an explicit `on: ["content_policy"]` category).
+            if response.status_code == 422:
+                from starlette.responses import Response as _Response  # noqa: PLC0415
+
+                raw = b"".join([chunk async for chunk in response.body_iterator])
+                response = _Response(
+                    content=raw,
+                    status_code=422,
+                    headers={
+                        k: v
+                        for k, v in response.headers.items()
+                        if k.lower() != "content-length"
+                    },
+                    media_type=response.media_type,
+                )
+                if b"content_policy_violation" in raw:
+                    return response  # surface the policy block; never fall back
 
         # Fail-safe orchestration: a bug in our own fallback code must never lose
         # the primary's natural outcome. Any unexpected error here degrades to

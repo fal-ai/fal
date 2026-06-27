@@ -73,13 +73,21 @@ def test_parse_lenient_defaults():
 
 @pytest.mark.parametrize(
     "status,expected",
-    [(408, "timeout"), (504, "timeout"), (500, "error"), (502, "error"), (503, "error")],
+    [
+        (408, "timeout"),
+        (504, "timeout"),
+        (500, "error"),
+        (502, "error"),
+        (503, "error"),
+        (422, "error"),  # model rejection (content-policy carved out in middleware)
+        (429, "error"),  # rate limit -> try another model
+    ],
 )
 def test_trigger_for_failure_statuses(status, expected):
     assert trigger_for_status(status) == expected
 
 
-@pytest.mark.parametrize("status", [200, 201, 301, 400, 401, 403, 422, 429])
+@pytest.mark.parametrize("status", [200, 201, 301, 400, 401, 403, 404, 413, 415])
 def test_trigger_none_for_non_failure(status):
     assert trigger_for_status(status) is None
 
@@ -291,6 +299,24 @@ def _build_app(forward, output_fields=None):
         b = await request.body()
         return {"len": len(b), "ct": request.headers.get("content-type", "")}
 
+    @app.post("/reject422")
+    async def reject422(body: dict):
+        return JSONResponse(
+            {"detail": [{"type": "validation_error", "msg": "model can't handle"}]},
+            status_code=422,
+        )
+
+    @app.post("/policy422")
+    async def policy422(body: dict):
+        return JSONResponse(
+            {"detail": [{"type": "content_policy_violation", "msg": "blocked"}]},
+            status_code=422,
+        )
+
+    @app.post("/ratelimit")
+    async def ratelimit(body: dict):
+        return JSONResponse({"detail": "rate limited"}, status_code=429)
+
     return app
 
 
@@ -495,3 +521,34 @@ def test_http_non_json_post_passes_through_untouched():
     assert r.status_code == 200
     assert r.json()["len"] == len(payload)  # endpoint received the body intact
     assert fwd.calls == []
+
+
+# --- 4xx triggers: 422 model rejection + 429 rate limit, content-policy carved out
+
+
+def test_http_422_model_rejection_falls_back():
+    fwd = _recording_forward({GPT: {"images": [{"url": "fb"}]}})
+    client = TestClient(_build_app(fwd))
+    r = client.post("/reject422", json={"prompt": "x", "fal_fallback": _chain()})
+    assert r.status_code == 200
+    assert r.headers["x-app-fal-api-fallback-endpoint"] == GPT
+    assert fwd.calls
+
+
+def test_http_422_content_policy_is_not_fallen_back():
+    # A content-policy 422 must be surfaced, never fall back (no moderation bypass).
+    fwd = _recording_forward({GPT: {"images": [{"url": "fb"}]}})
+    client = TestClient(_build_app(fwd))
+    r = client.post("/policy422", json={"prompt": "x", "fal_fallback": _chain()})
+    assert r.status_code == 422
+    assert "x-app-fal-api-fallback" not in r.headers
+    assert "content_policy_violation" in r.text  # body preserved
+    assert fwd.calls == []
+
+
+def test_http_429_rate_limit_falls_back():
+    fwd = _recording_forward({GPT: {"images": [{"url": "fb"}]}})
+    client = TestClient(_build_app(fwd))
+    r = client.post("/ratelimit", json={"prompt": "x", "fal_fallback": _chain()})
+    assert r.status_code == 200
+    assert r.headers["x-app-fal-api-fallback-endpoint"] == GPT
