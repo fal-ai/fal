@@ -226,39 +226,38 @@ def build_fallback_middleware(
         if request.method != "POST":
             return await call_next(request)
 
-        body_bytes = await request.body()
+        # Fail-safe pre-flight: read/parse/strip the body. A bug here must never
+        # break a request that would otherwise succeed -- on any error we behave
+        # as if the middleware were absent. We re-expose the original body first,
+        # then strip our reserved fields (so apps with extra="forbid" inputs
+        # aren't 422'd by the unknown `fal_fallback` key).
         try:
-            payload = json.loads(body_bytes) if body_bytes else None
-        except Exception:
-            payload = None
-
-        # Strip our reserved fields so the endpoint never sees them, regardless of
-        # its input's `extra` policy (apps with extra="forbid" would otherwise
-        # 422 the whole request on the unknown `fal_fallback` key). Re-expose the
-        # (possibly trimmed) body so the endpoint still parses its own params.
-        if isinstance(payload, dict) and (
-            FALLBACK_FIELD in payload or PRIMARY_TIMEOUT_FIELD in payload
-        ):
-            stripped = {
-                k: v
-                for k, v in payload.items()
-                if k not in (FALLBACK_FIELD, PRIMARY_TIMEOUT_FIELD)
-            }
-            request._body = json.dumps(stripped).encode("utf-8")
-        else:
+            body_bytes = await request.body()
             request._body = body_bytes
+            try:
+                payload = json.loads(body_bytes) if body_bytes else None
+            except Exception:
+                payload = None
+            if isinstance(payload, dict) and (
+                FALLBACK_FIELD in payload or PRIMARY_TIMEOUT_FIELD in payload
+            ):
+                stripped = {
+                    k: v
+                    for k, v in payload.items()
+                    if k not in (FALLBACK_FIELD, PRIMARY_TIMEOUT_FIELD)
+                }
+                request._body = json.dumps(stripped).encode("utf-8")
+            disabled = request.headers.get(
+                "x-app-fal-disable-fallback", ""
+            ).lower() in ("true", "1", "yes", "y")
+            chain = parse_fallback_chain(payload)
+            primary_timeout = primary_timeout_from_body(payload)
+        except Exception:
+            return await call_next(request)
 
-        disabled = request.headers.get("x-app-fal-disable-fallback", "").lower() in (
-            "true",
-            "1",
-            "yes",
-            "y",
-        )
-        chain = parse_fallback_chain(payload)
         if disabled or not chain:
             return await call_next(request)
 
-        primary_timeout = primary_timeout_from_body(payload)
         response = None
         primary_exc: Optional[BaseException] = None
         try:
@@ -282,30 +281,36 @@ def build_fallback_middleware(
             if trigger is None or is_streaming:
                 return response  # success, client error, or stream -> surface
 
-        result, served = await run_fallback_chain(
-            chain,
-            trigger=trigger,
-            forward=fwd,
-            output_field=output_fields.get(request.url.path),
-        )
-        record_fallback(
-            trigger=trigger,
-            outcome="served" if served else "exhausted",
-            endpoint=served,
-        )
-        if served is None:
-            if response is not None:
-                return response  # keep the primary's failed response
-            raise primary_exc  # re-surface the original timeout/exception
+        # Fail-safe orchestration: a bug in our own fallback code must never lose
+        # the primary's natural outcome. Any unexpected error here degrades to
+        # returning the primary response (or re-raising the primary error).
+        try:
+            result, served = await run_fallback_chain(
+                chain,
+                trigger=trigger,
+                forward=fwd,
+                output_field=output_fields.get(request.url.path),
+            )
+            record_fallback(
+                trigger=trigger,
+                outcome="served" if served else "exhausted",
+                endpoint=served,
+            )
+            if served is not None:
+                return JSONResponse(
+                    content=result,
+                    headers={
+                        "x-app-fal-api-fallback": "true",
+                        "x-app-fal-api-fallback-endpoint": served,
+                        "x-fal-bill-as": served,
+                    },
+                )
+        except Exception:
+            pass  # fall through to the primary's outcome below
 
-        return JSONResponse(
-            content=result,
-            headers={
-                "x-app-fal-api-fallback": "true",
-                "x-app-fal-api-fallback-endpoint": served,
-                "x-fal-bill-as": served,
-            },
-        )
+        if response is not None:
+            return response  # keep the primary's failed response
+        raise primary_exc  # re-surface the original timeout/exception
 
     return dispatch
 

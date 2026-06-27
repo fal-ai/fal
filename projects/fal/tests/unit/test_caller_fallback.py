@@ -449,3 +449,30 @@ def test_chain_text_output_guard_skips_non_text():
     )
     assert served == SEEDREAM
     assert result["text"] == "hello world"
+
+
+# --- Fail-safe: our code must never lose the primary's outcome ----------------
+
+
+def _raising_forward():
+    async def _f(endpoint, payload):
+        raise RuntimeError("forward unavailable (e.g. fal_client missing)")
+
+    _f.calls = []
+    return _f
+
+
+def test_http_keeps_primary_5xx_when_fallback_unavailable():
+    # Primary returns 503 and every fallback forward fails -> the primary 5xx is
+    # kept (we never crash or lose it).
+    client = TestClient(_build_app(_raising_forward()), raise_server_exceptions=False)
+    r = client.post("/err", json={"prompt": "x", "fal_fallback": _chain()})
+    assert r.status_code == 503
+
+
+def test_http_reraises_primary_error_when_fallback_unavailable():
+    # Primary raises and the fallback forward also fails -> the original primary
+    # error is surfaced (a 500), not swallowed.
+    client = TestClient(_build_app(_raising_forward()), raise_server_exceptions=False)
+    r = client.post("/boom", json={"prompt": "x", "fal_fallback": _chain()})
+    assert r.status_code == 500

@@ -69,6 +69,10 @@ dependencies = [
     # Used by ``fal.api._sdist`` to package a local project (``.`` /
     # ``.[extras]`` requirements) for upload to the worker.
     "build>=1.0,<2",
+    # Required at runtime by the caller-defined fallback middleware
+    # (fal.app -> fal._caller_fallback) to forward to fallback endpoints.
+    # fal_client has no dependency on fal, so this introduces no cycle.
+    "fal_client",
 ]
 
 [project.optional-dependencies]
@@ -86,7 +90,6 @@ test = [
     "boto3",
     "numpy",
     "pyzmq",
-    "fal_client",
 ]
 dev = [
     "fal[docs,test]",
