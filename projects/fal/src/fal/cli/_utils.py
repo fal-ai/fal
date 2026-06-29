@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import copy
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Optional, get_args
 
@@ -269,6 +269,13 @@ def get_app_data_from_toml(
         )
         options.environment["kind"] = "container"
         options.environment["image"] = image
+        if (
+            image_uses_isolate is False
+            and health_check_config
+            and not health_check_config.method
+        ):
+            health_check_config = replace(health_check_config, method="GET")
+            options.host["health_check_config"] = health_check_config
 
     pyproject_dir = Path(toml_path).parent.resolve()
     resolved_requirements_context_dir = pyproject_dir
@@ -393,6 +400,7 @@ def _build_health_check_config_from_toml(
     timeout_seconds = health_check_data.pop("timeout_seconds", None)
     failure_threshold = health_check_data.pop("failure_threshold", None)
     call_regularly = health_check_data.pop("call_regularly", None)
+    method = health_check_data.pop("method", None)
 
     if start_period_seconds is not None:
         _validate_int("health_check.start_period_seconds", start_period_seconds)
@@ -414,6 +422,7 @@ def _build_health_check_config_from_toml(
         timeout_seconds=timeout_seconds,
         failure_threshold=failure_threshold,
         call_regularly=call_regularly,
+        method=method,
     )
 
 

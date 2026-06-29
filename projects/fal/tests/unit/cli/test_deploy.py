@@ -243,6 +243,7 @@ def mock_parse_pyproject_toml():
                 "data_mounts": ["/data", "/data/.cache"],
                 "health_check": {
                     "path": "/health",
+                    "method": "get",
                     "start_period_seconds": 30,
                     "timeout_seconds": 5,
                     "failure_threshold": 3,
@@ -1220,6 +1221,7 @@ def test_get_app_data_from_toml_with_advanced_runtime_options(
             timeout_seconds=5,
             failure_threshold=3,
             call_regularly=True,
+            method="get",
         ),
     }
 
@@ -1581,6 +1583,7 @@ def test_get_app_data_from_toml_with_image_without_ref(
                 "auth": "public",
                 "machine_type": "GPU-H100",
                 "image": {"dockerfile": "Dockerfile"},
+                "health_check": {"path": "/health/ready"},
             }
         }
     }
@@ -1591,6 +1594,16 @@ def test_get_app_data_from_toml_with_image_without_ref(
     assert toml_data.python_entry_point is None
     assert toml_data.auth == "public"
     assert toml_data.options.host["machine_type"] == "GPU-H100"
+    assert toml_data.options.host[
+        "health_check_config"
+    ] == ApplicationHealthCheckConfig(
+        path="/health/ready",
+        start_period_seconds=None,
+        timeout_seconds=None,
+        failure_threshold=None,
+        call_regularly=None,
+        method="GET",
+    )
     assert toml_data.options.environment["kind"] == "container"
     assert toml_data.options.environment["image"]["dockerfile_str"] == dockerfile
     assert toml_data.options.environment["image"]["use_isolate"] is False
@@ -1610,6 +1623,7 @@ def test_get_app_data_from_toml_with_image_reference_without_ref(
                 "auth": "public",
                 "machine_type": "GPU-H100",
                 "image": {"image": "ghcr.io/fal-ai/container-app:latest"},
+                "health_check": {"path": "/health/ready"},
             }
         }
     }
@@ -1620,6 +1634,16 @@ def test_get_app_data_from_toml_with_image_reference_without_ref(
     assert toml_data.python_entry_point is None
     assert toml_data.auth == "public"
     assert toml_data.options.host["machine_type"] == "GPU-H100"
+    assert toml_data.options.host[
+        "health_check_config"
+    ] == ApplicationHealthCheckConfig(
+        path="/health/ready",
+        start_period_seconds=None,
+        timeout_seconds=None,
+        failure_threshold=None,
+        call_regularly=None,
+        method="GET",
+    )
     assert toml_data.options.environment["kind"] == "container"
     assert (
         toml_data.options.environment["image"]["image"]

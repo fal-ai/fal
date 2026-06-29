@@ -106,6 +106,19 @@ def test_app_metrics_port_propagates_to_function_options():
     assert fn.options.host.get("metrics_port") == 9091
 
 
+def test_app_health_check_defaults_method_to_post():
+    from fal.app import wrap_app
+
+    class HealthCheckApp(App):
+        @endpoint("/", health_check=fal.HealthCheck())
+        def hello(self) -> str:
+            return "Hello, world!"
+
+    fn = wrap_app(HealthCheckApp)
+
+    assert fn.options.host["health_check_config"].method == "POST"
+
+
 def test_machine_requirements_preserves_positional_field_order():
     from dataclasses import fields
 
