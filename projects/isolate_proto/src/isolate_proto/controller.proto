@@ -294,6 +294,11 @@ enum DeploymentStrategy {
 }
 
 message ApplicationHealthCheckConfig {
+    enum Method {
+        GET = 0;
+        POST = 1;
+    }
+
     // path to the health check endpoint
     string path = 1;
 
@@ -313,6 +318,9 @@ message ApplicationHealthCheckConfig {
 
     // do not perform health check if the runner has inflight requests
     optional bool allow_on_busy = 6;
+
+    // HTTP method to use for the health check request
+    optional Method method = 7;
 }
 
 enum RetryCondition {
