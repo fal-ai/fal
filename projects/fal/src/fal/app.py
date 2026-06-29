@@ -779,6 +779,7 @@ class App(BaseServable):
             timeout_seconds=health_check.timeout_seconds,
             failure_threshold=health_check.failure_threshold,
             call_regularly=health_check.call_regularly,
+            method=health_check.method or "POST",
         )
 
     def collect_routes(self) -> dict[RouteSignature, Callable[..., Any]]:

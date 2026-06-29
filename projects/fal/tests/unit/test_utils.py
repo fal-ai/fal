@@ -384,6 +384,7 @@ def test_load_function_from_applies_toml_host_options_over_app_defaults(tmp_path
         timeout_seconds=5,
         failure_threshold=3,
         call_regularly=True,
+        method="GET",
     )
     options = Options(
         host={
@@ -414,7 +415,9 @@ def test_load_function_from_preserves_explicit_app_host_options_over_toml(tmp_pa
         "    _scheduler_options={'storage_region': 'us-east'},\n"
         "):\n"
         "\n"
-        "    @fal.endpoint('/', health_check=fal.HealthCheck(timeout_seconds=9))\n"
+        "    @fal.endpoint(\n"
+        "        '/', health_check=fal.HealthCheck(timeout_seconds=9, method='GET')\n"
+        "    )\n"
         "    def run(self):\n"
         "        return {'ok': True}\n"
     )
@@ -432,6 +435,7 @@ def test_load_function_from_preserves_explicit_app_host_options_over_toml(tmp_pa
                 timeout_seconds=5,
                 failure_threshold=3,
                 call_regularly=True,
+                method="GET",
             ),
         }
     )
@@ -446,6 +450,7 @@ def test_load_function_from_preserves_explicit_app_host_options_over_toml(tmp_pa
     }
     assert health_check_config.path == "/"
     assert health_check_config.timeout_seconds == 9
+    assert health_check_config.method == "GET"
 
 
 def test_load_function_from_preserves_app_defined_app_files_over_toml(tmp_path):
@@ -601,6 +606,23 @@ def test_isolated_function_endpoints_fallback_to_routes():
 def test_isolated_function_endpoints_default():
     iso = IsolatedFunction(host=DummyHost(), entrypoint="pkg:Sym")
     assert iso.endpoints == ["/"]
+
+
+def test_isolated_function_preserves_explicit_health_check_method():
+    health_check_config = ApplicationHealthCheckConfig(
+        path="/health/ready",
+        start_period_seconds=None,
+        timeout_seconds=None,
+        failure_threshold=None,
+        call_regularly=None,
+        method="GET",
+    )
+    options = Options(host={"health_check_config": health_check_config})
+
+    iso = IsolatedFunction(host=DummyHost(), raw_func=lambda: None, options=options)
+
+    assert iso.options.host["health_check_config"] is health_check_config
+    assert iso.options.host["health_check_config"].method == "GET"
 
 
 def test_isolated_function_fetch_metadata_no_op_without_entrypoint():

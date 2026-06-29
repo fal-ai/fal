@@ -744,6 +744,7 @@ class HealthCheck:
     timeout_seconds: Optional[int] = None
     failure_threshold: Optional[int] = None
     call_regularly: Optional[bool] = None
+    method: Optional[str] = None
 
     def __init__(
         self,
@@ -752,10 +753,12 @@ class HealthCheck:
         timeout_seconds: Optional[int] = None,
         failure_threshold: Optional[int] = None,
         call_regularly: Optional[bool] = None,
+        method: Optional[str] = None,
     ):
         """Health check configuration for a runner.
 
         Args:
+            method: HTTP method to use for the health check request.
             start_period_seconds: Minimum time the runner has been running \
             before considering the runner unhealthy when health check fails. \
             To prevent the health check from failing too early, \
@@ -783,10 +786,12 @@ class HealthCheck:
         self.timeout_seconds = timeout_seconds
         self.failure_threshold = failure_threshold
         self.call_regularly = call_regularly
+        self.method = method
 
     def __hash__(self):
         return hash(
             (
+                self.method,
                 self.start_period_seconds,
                 self.timeout_seconds,
                 self.failure_threshold,
@@ -802,6 +807,17 @@ class ApplicationHealthCheckConfig:
     timeout_seconds: Optional[int]
     failure_threshold: Optional[int]
     call_regularly: Optional[bool]
+    method: Optional[str] = None
+
+    def to_proto(self) -> isolate_proto.ApplicationHealthCheckConfig:
+        return isolate_proto.ApplicationHealthCheckConfig(
+            path=self.path,
+            start_period_seconds=self.start_period_seconds,
+            timeout_seconds=self.timeout_seconds,
+            failure_threshold=self.failure_threshold,
+            call_regularly=self.call_regularly,
+            method=self.method.upper() if self.method else None,
+        )
 
 
 @dataclass
@@ -995,16 +1011,9 @@ class FalServerlessConnection:
             deployment_strategy.upper()
         ].to_proto()
 
-        if health_check_config:
-            wrapped_health_check_config = isolate_proto.ApplicationHealthCheckConfig(
-                path=health_check_config.path,
-                start_period_seconds=health_check_config.start_period_seconds,
-                timeout_seconds=health_check_config.timeout_seconds,
-                failure_threshold=health_check_config.failure_threshold,
-                call_regularly=health_check_config.call_regularly,
-            )
-        else:
-            wrapped_health_check_config = None
+        wrapped_health_check_config = (
+            health_check_config.to_proto() if health_check_config else None
+        )
 
         if skip_retry_conditions:
             wrapped_skip_retry_conditions = [
