@@ -809,15 +809,22 @@ class ApplicationHealthCheckConfig:
     call_regularly: Optional[bool]
     method: Optional[str] = None
 
-    def to_proto(self) -> isolate_proto.ApplicationHealthCheckConfig:
-        return isolate_proto.ApplicationHealthCheckConfig(
-            path=self.path,
-            start_period_seconds=self.start_period_seconds,
-            timeout_seconds=self.timeout_seconds,
-            failure_threshold=self.failure_threshold,
-            call_regularly=self.call_regularly,
-            method=self.method.upper() if self.method else None,
-        )
+
+def _health_check_config_to_proto(
+    health_check_config: ApplicationHealthCheckConfig,
+) -> isolate_proto.ApplicationHealthCheckConfig:
+    # Keep proto conversion off the dataclass: these objects can be pickled with
+    # user app code, and method annotations would require isolate_proto at load time.
+    return isolate_proto.ApplicationHealthCheckConfig(
+        path=health_check_config.path,
+        start_period_seconds=health_check_config.start_period_seconds,
+        timeout_seconds=health_check_config.timeout_seconds,
+        failure_threshold=health_check_config.failure_threshold,
+        call_regularly=health_check_config.call_regularly,
+        method=health_check_config.method.upper()
+        if health_check_config.method
+        else None,
+    )
 
 
 @dataclass
@@ -1012,7 +1019,9 @@ class FalServerlessConnection:
         ].to_proto()
 
         wrapped_health_check_config = (
-            health_check_config.to_proto() if health_check_config else None
+            _health_check_config_to_proto(health_check_config)
+            if health_check_config
+            else None
         )
 
         if skip_retry_conditions:
