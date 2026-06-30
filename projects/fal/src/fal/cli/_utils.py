@@ -33,6 +33,7 @@ class AppData:
     auth: Optional[AuthModeLiteral] = None
     deployment_strategy: Optional[DeploymentStrategyLiteral] = None
     reset_scale: bool = False
+    attach_to_deployment: bool | None = None
     team: Optional[str] = None
     name: Optional[str] = None
     options: Options = field(default_factory=Options)
