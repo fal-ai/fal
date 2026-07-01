@@ -5,6 +5,7 @@ import inspect
 import os
 import sys
 import threading
+import warnings
 from collections import defaultdict
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import asynccontextmanager, suppress
@@ -12,6 +13,7 @@ from dataclasses import dataclass, field, replace
 from difflib import get_close_matches
 from functools import wraps
 from os import PathLike
+from pathlib import Path
 from queue import Queue
 from typing import (
     TYPE_CHECKING,
@@ -918,6 +920,7 @@ class FalServerlessHost(Host):
             "termination_grace_period_seconds",
             "secrets",
             "data_mounts",
+            "requirements_context_dir",
         }
     )
 
@@ -926,12 +929,24 @@ class FalServerlessHost(Host):
     local_project_root: str = ""
     credentials: Credentials = field(default_factory=get_credentials)
     environment_name: Optional[str] = None
+    requirements_context_dir: str = ""
 
     _lock: threading.Lock = field(default_factory=threading.Lock, init=False)
 
     _thread_pool: ThreadPoolExecutor = field(
         default_factory=ThreadPoolExecutor, init=False
     )
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.local_project_root and not self.requirements_context_dir:
+            warnings.warn(
+                "FalServerlessHost(local_project_root=...) is deprecated; "
+                "use requirements_context_dir instead.",
+                DeprecationWarning,
+                stacklevel=3,
+            )
+            self.requirements_context_dir = self.local_project_root
 
     def _runtime_config(self, options: Options) -> FunctionRuntimeConfig | None:
         return _runtime_config_from_options(options, self.local_file_path)
@@ -955,28 +970,38 @@ class FalServerlessHost(Host):
     def _materialize_local_requirements(
         self,
         environment_options: dict[str, Any],
+        requirements_context_dir: str | None = None,
         on_progress: ProgressCallback | None = None,
     ) -> None:
-        """Rewrite ``.``/``.[extras]`` in ``environment_options['requirements']``
-        to point at an uploaded sdist of ``self.local_project_root``.
+        """Rewrite ``.``, ``.[extras]``, and other local paths in
+        ``environment_options['requirements']`` to point at an uploaded sdist
+        of the configured requirements context.
 
         Mutates ``environment_options`` in place. No-op when there's no
-        project root or no local-path requirement to rewrite — keeps the
-        dispatch hot path quiet for users who don't use this feature.
+        local-path requirement to rewrite — keeps the dispatch hot path quiet
+        for users who don't use this feature.
         """
-        local_project_root = self.local_project_root
-        if not local_project_root:
-            return
+        if requirements_context_dir is None:
+            requirements_context_dir = self.requirements_context_dir
+        base_path = Path(self.local_file_path or os.getcwd()).expanduser().resolve()
+        base_dir = base_path if base_path.is_dir() else base_path.parent
+        context_path = Path(requirements_context_dir or ".").expanduser()
+        if context_path.is_absolute():
+            resolved_requirements_context_dir = str(context_path.resolve())
+        else:
+            resolved_requirements_context_dir = str((base_dir / context_path).resolve())
 
         requirements = environment_options.get("requirements")
         if not requirements:
             return
 
-        if not has_local_path(requirements, local_project_root):
+        if not has_local_path(requirements, resolved_requirements_context_dir):
             return
 
         environment_options["requirements"] = materialize_local_paths(
-            requirements, local_project_root, on_progress=on_progress
+            requirements,
+            resolved_requirements_context_dir,
+            on_progress=on_progress,
         )
 
     def prepare_options(
@@ -990,6 +1015,9 @@ class FalServerlessHost(Host):
 
         prepared_options = super().prepare_options(options)
         environment_options = prepared_options.environment
+        requirements_context_dir = prepared_options.host.pop(
+            "requirements_context_dir", None
+        )
 
         # An explicit ``python_version=None`` must still resolve to the local
         # interpreter: we ship local cloudpickled bytecode, so the remote
@@ -1003,7 +1031,9 @@ class FalServerlessHost(Host):
         )
 
         self._materialize_local_requirements(
-            environment_options, on_progress=on_progress
+            environment_options,
+            requirements_context_dir=requirements_context_dir,
+            on_progress=on_progress,
         )
 
         return prepared_options
@@ -1578,6 +1608,7 @@ def function(
     request_timeout: int | None = None,
     startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
+    requirements_context_dir: str | None = None,
     force_env_build: bool = False,
     _base_image: str | None = None,
     _scheduler: str | None = None,
@@ -1613,6 +1644,7 @@ def function(
     request_timeout: int | None = None,
     startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
+    requirements_context_dir: str | None = None,
     force_env_build: bool = False,
     _base_image: str | None = None,
     _scheduler: str | None = None,
@@ -1700,6 +1732,7 @@ def function(
     request_timeout: int | None = None,
     startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
+    requirements_context_dir: str | None = None,
     force_env_build: bool = False,
     _base_image: str | None = None,
     _scheduler: str | None = None,
@@ -1740,6 +1773,7 @@ def function(
     request_timeout: int | None = None,
     startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
+    requirements_context_dir: str | None = None,
     force_env_build: bool = False,
     _base_image: str | None = None,
     _scheduler: str | None = None,
@@ -1774,6 +1808,7 @@ def function(
     request_timeout: int | None = None,
     startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
+    requirements_context_dir: str | None = None,
     force_env_build: bool = False,
     _base_image: str | None = None,
     _scheduler: str | None = None,
@@ -1808,6 +1843,7 @@ def function(
     request_timeout: int | None = None,
     startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
+    requirements_context_dir: str | None = None,
     force_env_build: bool = False,
     _base_image: str | None = None,
     _scheduler: str | None = None,

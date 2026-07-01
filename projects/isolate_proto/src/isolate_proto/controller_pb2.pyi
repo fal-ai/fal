@@ -751,12 +751,26 @@ global___MachineRequirements = MachineRequirements
 class ApplicationHealthCheckConfig(google.protobuf.message.Message):
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
+    class _Method:
+        ValueType = typing.NewType("ValueType", builtins.int)
+        V: typing_extensions.TypeAlias = ValueType
+
+    class _MethodEnumTypeWrapper(google.protobuf.internal.enum_type_wrapper._EnumTypeWrapper[ApplicationHealthCheckConfig._Method.ValueType], builtins.type):
+        DESCRIPTOR: google.protobuf.descriptor.EnumDescriptor
+        GET: ApplicationHealthCheckConfig._Method.ValueType  # 0
+        POST: ApplicationHealthCheckConfig._Method.ValueType  # 1
+
+    class Method(_Method, metaclass=_MethodEnumTypeWrapper): ...
+    GET: ApplicationHealthCheckConfig.Method.ValueType  # 0
+    POST: ApplicationHealthCheckConfig.Method.ValueType  # 1
+
     PATH_FIELD_NUMBER: builtins.int
     START_PERIOD_SECONDS_FIELD_NUMBER: builtins.int
     TIMEOUT_SECONDS_FIELD_NUMBER: builtins.int
     FAILURE_THRESHOLD_FIELD_NUMBER: builtins.int
     CALL_REGULARLY_FIELD_NUMBER: builtins.int
     ALLOW_ON_BUSY_FIELD_NUMBER: builtins.int
+    METHOD_FIELD_NUMBER: builtins.int
     path: builtins.str
     """path to the health check endpoint"""
     start_period_seconds: builtins.int
@@ -773,6 +787,8 @@ class ApplicationHealthCheckConfig(google.protobuf.message.Message):
     """
     allow_on_busy: builtins.bool
     """do not perform health check if the runner has inflight requests"""
+    method: global___ApplicationHealthCheckConfig.Method.ValueType
+    """HTTP method to use for the health check request"""
     def __init__(
         self,
         *,
@@ -782,15 +798,18 @@ class ApplicationHealthCheckConfig(google.protobuf.message.Message):
         failure_threshold: builtins.int | None = ...,
         call_regularly: builtins.bool | None = ...,
         allow_on_busy: builtins.bool | None = ...,
+        method: global___ApplicationHealthCheckConfig.Method.ValueType | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing_extensions.Literal["_allow_on_busy", b"_allow_on_busy", "_call_regularly", b"_call_regularly", "_failure_threshold", b"_failure_threshold", "_start_period_seconds", b"_start_period_seconds", "_timeout_seconds", b"_timeout_seconds", "allow_on_busy", b"allow_on_busy", "call_regularly", b"call_regularly", "failure_threshold", b"failure_threshold", "start_period_seconds", b"start_period_seconds", "timeout_seconds", b"timeout_seconds"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing_extensions.Literal["_allow_on_busy", b"_allow_on_busy", "_call_regularly", b"_call_regularly", "_failure_threshold", b"_failure_threshold", "_start_period_seconds", b"_start_period_seconds", "_timeout_seconds", b"_timeout_seconds", "allow_on_busy", b"allow_on_busy", "call_regularly", b"call_regularly", "failure_threshold", b"failure_threshold", "path", b"path", "start_period_seconds", b"start_period_seconds", "timeout_seconds", b"timeout_seconds"]) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["_allow_on_busy", b"_allow_on_busy", "_call_regularly", b"_call_regularly", "_failure_threshold", b"_failure_threshold", "_method", b"_method", "_start_period_seconds", b"_start_period_seconds", "_timeout_seconds", b"_timeout_seconds", "allow_on_busy", b"allow_on_busy", "call_regularly", b"call_regularly", "failure_threshold", b"failure_threshold", "method", b"method", "start_period_seconds", b"start_period_seconds", "timeout_seconds", b"timeout_seconds"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["_allow_on_busy", b"_allow_on_busy", "_call_regularly", b"_call_regularly", "_failure_threshold", b"_failure_threshold", "_method", b"_method", "_start_period_seconds", b"_start_period_seconds", "_timeout_seconds", b"_timeout_seconds", "allow_on_busy", b"allow_on_busy", "call_regularly", b"call_regularly", "failure_threshold", b"failure_threshold", "method", b"method", "path", b"path", "start_period_seconds", b"start_period_seconds", "timeout_seconds", b"timeout_seconds"]) -> None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_allow_on_busy", b"_allow_on_busy"]) -> typing_extensions.Literal["allow_on_busy"] | None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_call_regularly", b"_call_regularly"]) -> typing_extensions.Literal["call_regularly"] | None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_failure_threshold", b"_failure_threshold"]) -> typing_extensions.Literal["failure_threshold"] | None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_method", b"_method"]) -> typing_extensions.Literal["method"] | None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_start_period_seconds", b"_start_period_seconds"]) -> typing_extensions.Literal["start_period_seconds"] | None: ...
     @typing.overload

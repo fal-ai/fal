@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import copy
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Optional, get_args
 
@@ -37,11 +37,6 @@ class AppData:
     team: Optional[str] = None
     name: Optional[str] = None
     options: Options = field(default_factory=Options)
-    # Directory of the pyproject.toml this app was loaded from. Used by
-    # ``FalServerlessHost`` to materialize ``.``/``.[extras]`` requirements
-    # into uploaded sdists. ``None`` when the app wasn't loaded from a
-    # pyproject (e.g. file::func ref directly).
-    local_project_root: Optional[str] = None
 
 
 def get_client(host: str, team: str | None = None):
@@ -116,6 +111,11 @@ def get_app_data_from_toml(
     requirements = app_data.pop("requirements", None)
     if requirements is not None:
         _validate_requirements(requirements)
+    requirements_context_dir = app_data.pop("requirements_context_dir", None)
+    if requirements_context_dir is not None and not isinstance(
+        requirements_context_dir, str
+    ):
+        raise ValueError("requirements_context_dir must be a string.")
     python_version = app_data.pop("python_version", None)
     if python_version is not None and not isinstance(python_version, str):
         raise ValueError(
@@ -270,6 +270,26 @@ def get_app_data_from_toml(
         )
         options.environment["kind"] = "container"
         options.environment["image"] = image
+        if (
+            image_uses_isolate is False
+            and health_check_config
+            and not health_check_config.method
+        ):
+            health_check_config = replace(health_check_config, method="GET")
+            options.host["health_check_config"] = health_check_config
+
+    pyproject_dir = Path(toml_path).parent.resolve()
+    resolved_requirements_context_dir = pyproject_dir
+    if requirements_context_dir is not None:
+        context_path = Path(requirements_context_dir).expanduser()
+        if context_path.is_absolute():
+            resolved_requirements_context_dir = context_path.resolve()
+        else:
+            resolved_requirements_context_dir = (pyproject_dir / context_path).resolve()
+    if requirements is not None or requirements_context_dir is not None:
+        options.host["requirements_context_dir"] = str(
+            resolved_requirements_context_dir
+        )
 
     app_reset_scale: bool
     if "no_scale" in app_data:
@@ -293,7 +313,6 @@ def get_app_data_from_toml(
         team=app_team,
         name=app_name_value,
         options=options,
-        local_project_root=str(Path(toml_path).parent),
     )
 
 
@@ -382,6 +401,7 @@ def _build_health_check_config_from_toml(
     timeout_seconds = health_check_data.pop("timeout_seconds", None)
     failure_threshold = health_check_data.pop("failure_threshold", None)
     call_regularly = health_check_data.pop("call_regularly", None)
+    method = health_check_data.pop("method", None)
 
     if start_period_seconds is not None:
         _validate_int("health_check.start_period_seconds", start_period_seconds)
@@ -403,6 +423,7 @@ def _build_health_check_config_from_toml(
         timeout_seconds=timeout_seconds,
         failure_threshold=failure_threshold,
         call_regularly=call_regularly,
+        method=method,
     )
 
 

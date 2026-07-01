@@ -3,10 +3,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from fal.sdk import (
+    ApplicationHealthCheckConfig,
     FalServerlessConnection,
     FalServerlessKeyCredentials,
     RetryConfig,
     get_credentials,
+    isolate_proto,
     validate_retry_config_dict,
 )
 
@@ -141,6 +143,124 @@ def test_connection_register_forwards_container_image_reference():
     )
     assert image["image"].string_value == "ghcr.io/fal-ai/container-app:latest"
     assert image["use_isolate"].bool_value is False
+
+
+def test_connection_register_forwards_health_check_method():
+    connection = FalServerlessConnection("api.alpha.fal.ai", MagicMock())
+    stub = RecordingStub()
+    connection._stub = stub  # type: ignore[assignment]
+    environment = connection.define_environment(
+        "container",
+        image={"dockerfile_str": "FROM debian:bookworm-slim", "use_isolate": False},
+    )
+
+    list(
+        connection.register(
+            None,
+            [environment],
+            application_name="container-app",
+            deployment_strategy="rolling",
+            health_check_config=ApplicationHealthCheckConfig(
+                path="/health/ready",
+                start_period_seconds=30,
+                timeout_seconds=5,
+                failure_threshold=3,
+                call_regularly=True,
+                method="get",
+            ),
+        )
+    )
+
+    assert stub.register_request is not None
+    health_check_config = stub.register_request.health_check_config
+    assert health_check_config.path == "/health/ready"
+    assert health_check_config.method == isolate_proto.ApplicationHealthCheckConfig.GET
+
+
+def test_connection_register_preserves_explicit_pure_docker_health_check_method():
+    connection = FalServerlessConnection("api.alpha.fal.ai", MagicMock())
+    stub = RecordingStub()
+    connection._stub = stub  # type: ignore[assignment]
+    environment = connection.define_environment(
+        "container",
+        image={"dockerfile_str": "FROM debian:bookworm-slim", "use_isolate": False},
+    )
+
+    list(
+        connection.register(
+            None,
+            [environment],
+            application_name="container-app",
+            deployment_strategy="rolling",
+            health_check_config=ApplicationHealthCheckConfig(
+                path="/health/ready",
+                start_period_seconds=30,
+                timeout_seconds=5,
+                failure_threshold=3,
+                call_regularly=True,
+                method="POST",
+            ),
+        )
+    )
+
+    assert stub.register_request is not None
+    health_check_config = stub.register_request.health_check_config
+    assert health_check_config.method == isolate_proto.ApplicationHealthCheckConfig.POST
+
+
+def test_connection_register_leaves_isolate_health_check_method_unset():
+    connection = FalServerlessConnection("api.alpha.fal.ai", MagicMock())
+    stub = RecordingStub()
+    connection._stub = stub  # type: ignore[assignment]
+    environment = connection.define_environment("virtualenv")
+
+    list(
+        connection.register(
+            lambda: None,
+            [environment],
+            application_name="function-app",
+            deployment_strategy="rolling",
+            health_check_config=ApplicationHealthCheckConfig(
+                path="/health/ready",
+                start_period_seconds=30,
+                timeout_seconds=5,
+                failure_threshold=3,
+                call_regularly=True,
+            ),
+        )
+    )
+
+    assert stub.register_request is not None
+    health_check_config = stub.register_request.health_check_config
+    assert not health_check_config.HasField("method")
+
+
+def test_connection_register_rejects_invalid_health_check_method():
+    connection = FalServerlessConnection("api.alpha.fal.ai", MagicMock())
+    stub = RecordingStub()
+    connection._stub = stub  # type: ignore[assignment]
+    environment = connection.define_environment(
+        "container",
+        image={"dockerfile_str": "FROM debian:bookworm-slim", "use_isolate": False},
+    )
+
+    with pytest.raises(ValueError, match='unknown enum label "TRACE"'):
+        list(
+            connection.register(
+                None,
+                [environment],
+                application_name="container-app",
+                deployment_strategy="rolling",
+                health_check_config=ApplicationHealthCheckConfig(
+                    path="/health/ready",
+                    start_period_seconds=30,
+                    timeout_seconds=5,
+                    failure_threshold=3,
+                    call_regularly=True,
+                    method="TRACE",
+                ),
+            )
+        )
 
 
 def test_connection_register_rejects_isolate_container_without_callable():
