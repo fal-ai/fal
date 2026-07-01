@@ -36,6 +36,14 @@ fal.cli.cli\_nested\_json module
    :undoc-members:
    :show-inheritance:
 
+fal.cli.completion module
+-------------------------
+
+.. automodule:: fal.cli.completion
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 fal.cli.create module
 ---------------------
 
