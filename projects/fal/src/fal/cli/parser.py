@@ -4,6 +4,7 @@ import sys
 from datetime import datetime, timedelta
 from typing import Optional
 
+import argcomplete
 import rich_argparse
 
 
@@ -171,6 +172,7 @@ class FalParser(argparse.ArgumentParser):
         raise FalParserExit(status)
 
     def parse_args(self, args=None, namespace=None):
+        argcomplete.autocomplete(self)
         args, argv = self.parse_known_args(args, namespace)
         if argv:
             parser = _find_parser(self, getattr(args, "func", None)) or self
