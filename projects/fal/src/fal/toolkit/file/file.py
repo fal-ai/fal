@@ -5,6 +5,7 @@ import secrets
 import shutil
 import traceback
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from functools import wraps
 from pathlib import Path
 from tempfile import NamedTemporaryFile, mkdtemp
@@ -83,6 +84,12 @@ UPLOAD_POLICY_EXECUTOR = ThreadPoolExecutor(
 UPLOAD_POLICY_PENDING = BoundedSemaphore(UPLOAD_POLICY_MAX_PENDING)
 
 
+@dataclass(frozen=True)
+class UploadPolicy:
+    url: str
+    fields: dict[str, Any]
+
+
 @wraps(Field)
 def FileField(*args, **kwargs):
     if IS_PYDANTIC_V2:
@@ -151,7 +158,7 @@ def _get_object_lifecycle_preference_from_context() -> dict[str, str] | None:
     return current_app.current_request.lifecycle_preference
 
 
-def parse_upload_policy(headers: Any) -> dict | None:
+def parse_upload_policy(headers: Any) -> UploadPolicy | None:
     """Parse the X-App-Fal-Upload-Policy header.
 
     Expected value: the JSON object returned by S3's generate_presigned_post(),
@@ -160,7 +167,7 @@ def parse_upload_policy(headers: Any) -> dict | None:
         {"url": "https://bucket.s3.<region>.amazonaws.com/",
          "fields": {"key": "...", "policy": "...", "x-amz-signature": "...", ...}}
 
-    Returns the parsed policy dict, or None if the header is absent.
+    Returns the parsed policy, or None if the header is absent.
     Raises FileUploadException on malformed input.
     """
     raw = headers.get(UPLOAD_POLICY_KEY)
@@ -192,10 +199,10 @@ def parse_upload_policy(headers: Any) -> dict | None:
             f"Invalid {UPLOAD_POLICY_KEY} 'url': must start with http:// or https://"
         )
 
-    return policy
+    return UploadPolicy(url=url, fields=fields)
 
 
-def _get_upload_policy() -> dict | None:
+def _get_upload_policy() -> UploadPolicy | None:
     """Return the parsed upload policy for the current request, or None."""
     current_app = get_current_app()
     if current_app is None or current_app.current_request is None:
@@ -257,12 +264,12 @@ def _build_multipart_form(
 
 
 def _build_upload_policy_request(
-    policy: dict,
+    policy: UploadPolicy,
     file_name: str,
     data: bytes,
     content_type: str,
 ) -> tuple[str, URLRequest]:
-    fields = dict(policy["fields"])
+    fields = dict(policy.fields)
     key_template = fields.get("key")
     if (
         not isinstance(key_template, str)
@@ -285,13 +292,13 @@ def _build_upload_policy_request(
     )
 
     request = URLRequest(
-        policy["url"],
+        policy.url,
         data=body,
         headers={"Content-Type": content_type_header},
         method="POST",
     )
     encoded_key = quote(final_key.lstrip("/"), safe="/~")
-    return f"{policy['url'].rstrip('/')}/{encoded_key}", request
+    return f"{policy.url.rstrip('/')}/{encoded_key}", request
 
 
 def _post_upload_policy_request(request: URLRequest) -> None:
@@ -326,7 +333,7 @@ def _reserve_upload_policy_slot() -> None:
 
 
 def _enqueue_upload_via_policy(
-    policy: dict, file_name: str, data: bytes, content_type: str
+    policy: UploadPolicy, file_name: str, data: bytes, content_type: str
 ) -> str:
     try:
         url, request = _build_upload_policy_request(

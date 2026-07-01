@@ -41,7 +41,7 @@ from fal.sdk import (
     RetryConditionLiteral,
 )
 from fal.toolkit.file import request_lifecycle_preference
-from fal.toolkit.file.file import parse_upload_policy
+from fal.toolkit.file.file import UploadPolicy, parse_upload_policy
 from fal.toolkit.file.providers.fal import _LIFECYCLE_PREFERENCE
 
 REALTIME_APP_REQUIREMENTS = ["websockets", "msgpack"]
@@ -513,7 +513,7 @@ class RequestContext:
     endpoint: str | None
     lifecycle_preference: dict[str, str] | None
     headers: fastapi.Header
-    upload_policy: dict | None = None
+    upload_policy: UploadPolicy | None = None
 
 
 class App(BaseServable):
