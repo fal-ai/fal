@@ -41,7 +41,11 @@ from fal.sdk import (
     RetryConditionLiteral,
 )
 from fal.toolkit.file import request_lifecycle_preference
-from fal.toolkit.file.file import UploadPolicy, parse_upload_policy
+from fal.toolkit.file.file import (
+    UPLOAD_POLICY_UPLOADER,
+    UploadPolicy,
+    parse_upload_policy,
+)
 from fal.toolkit.file.providers.fal import _LIFECYCLE_PREFERENCE
 
 REALTIME_APP_REQUIREMENTS = ["websockets", "msgpack"]
@@ -839,6 +843,7 @@ class App(BaseServable):
             yield
         finally:
             os.environ["FAL_RUNNER_STATE"] = "TERMINATING"
+            UPLOAD_POLICY_UPLOADER.drain(timeout=5)
             await _call_any_fn(self.teardown)
 
     @property

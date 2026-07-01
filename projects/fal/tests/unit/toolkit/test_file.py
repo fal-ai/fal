@@ -3,8 +3,9 @@ from __future__ import annotations
 import os
 from base64 import b64encode
 from pathlib import Path
+from threading import Event, Thread
 from typing import Any, Optional
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from pydantic import BaseModel
@@ -13,6 +14,8 @@ from fal.toolkit.file.file import (
     FalFileRepositoryV3,
     File,
     GoogleStorageRepository,
+    UploadPolicy,
+    UploadPolicyUploader,
     _get_object_lifecycle_preference_from_context,
     _try_with_fallback,
     get_builtin_repository,
@@ -159,6 +162,67 @@ def test_load_nested():
     assert parsed_input.file.url == file_dict["url"]
     assert parsed_input.file.content_type == file_dict["content_type"]
     assert parsed_input.file.file_name == file_dict["file_name"]
+
+
+class TestUploadPolicyUploaderDrain:
+    def test_waits_for_pending_upload_completion(self):
+        uploader = UploadPolicyUploader(max_workers=1)
+        policy = UploadPolicy(
+            url="https://example.com/upload",
+            fields={"key": "uploads/${filename}"},
+        )
+        started = Event()
+        release = Event()
+        drained = Event()
+
+        def post_bytes(*args: Any, **kwargs: Any) -> None:
+            started.set()
+            release.wait(timeout=1)
+
+        with patch.object(uploader, "_post_bytes", side_effect=post_bytes):
+            uploader.enqueue_bytes(policy, "hello.txt", b"hello", "text/plain")
+            assert started.wait(timeout=1)
+
+            drain_thread = Thread(
+                target=lambda: (uploader.drain(timeout=1), drained.set())
+            )
+            drain_thread.start()
+            assert not drained.wait(timeout=0.05)
+
+            release.set()
+            drain_thread.join(timeout=1)
+
+        assert drained.is_set()
+        with uploader._futures_lock:
+            assert not uploader._futures
+
+    def test_timeout_leaves_pending_upload_tracked(self):
+        uploader = UploadPolicyUploader(max_workers=1)
+        policy = UploadPolicy(
+            url="https://example.com/upload",
+            fields={"key": "uploads/${filename}"},
+        )
+        started = Event()
+        release = Event()
+
+        def post_bytes(*args: Any, **kwargs: Any) -> None:
+            started.set()
+            release.wait(timeout=1)
+
+        with patch.object(uploader, "_post_bytes", side_effect=post_bytes):
+            uploader.enqueue_bytes(policy, "hello.txt", b"hello", "text/plain")
+            assert started.wait(timeout=1)
+
+            uploader.drain(timeout=0.01)
+
+            with uploader._futures_lock:
+                assert len(uploader._futures) == 1
+
+            release.set()
+            uploader.drain(timeout=1)
+
+        with uploader._futures_lock:
+            assert not uploader._futures
 
 
 class MockRepository(FileRepository):
@@ -494,8 +558,6 @@ class TestContextBasedLifecyclePreference:
 
     def test_from_bytes_explicit_request_takes_precedence(self):
         """Test that explicit request parameter takes precedence over context."""
-        from unittest.mock import MagicMock
-
         context_preference = {"expiration_seconds": 100}
         request_preference = {"expiration_seconds": 200}
 

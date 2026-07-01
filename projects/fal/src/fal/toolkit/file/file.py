@@ -3,12 +3,12 @@ from __future__ import annotations
 import json
 import shutil
 import traceback
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from functools import wraps
 from pathlib import Path
 from tempfile import NamedTemporaryFile, mkdtemp
-from threading import BoundedSemaphore
+from threading import BoundedSemaphore, Lock
 from typing import Any, Callable, Optional, cast
 from urllib.parse import quote, urlparse
 from uuid import uuid4
@@ -224,6 +224,8 @@ class UploadPolicyUploader:
         )
         self._pending = BoundedSemaphore(max_pending)
         self._spool_bytes_threshold = spool_bytes_threshold
+        self._futures: set[Future] = set()
+        self._futures_lock = Lock()
 
     def enqueue_bytes(
         self, policy: UploadPolicy, file_name: str, data: bytes, content_type: str
@@ -315,7 +317,7 @@ class UploadPolicyUploader:
             self._pending.release()
             raise
 
-        future.add_done_callback(self._complete_upload)
+        self._track_future(future)
         return url
 
     def _enqueue_path(
@@ -343,8 +345,14 @@ class UploadPolicyUploader:
             self._pending.release()
             raise
 
-        future.add_done_callback(self._complete_upload)
+        self._track_future(future)
         return url
+
+    def drain(self, timeout: float | None = None) -> None:
+        with self._futures_lock:
+            futures = tuple(self._futures)
+        if futures:
+            wait(futures, timeout=timeout)
 
     def _post_bytes(
         self,
@@ -423,8 +431,15 @@ class UploadPolicyUploader:
                 f"{exc.response.reason_phrase}. {detail}"
             )
 
-    def _complete_upload(self, future) -> None:
+    def _track_future(self, future: Future) -> None:
+        with self._futures_lock:
+            self._futures.add(future)
+        future.add_done_callback(self._complete_upload)
+
+    def _complete_upload(self, future: Future) -> None:
         self._pending.release()
+        with self._futures_lock:
+            self._futures.discard(future)
         try:
             future.result()
         except Exception:
