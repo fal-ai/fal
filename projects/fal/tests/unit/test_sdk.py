@@ -449,6 +449,50 @@ def test_register_omits_retry_config_when_none():
     assert not stub.register_request.HasField("retry_config")
 
 
+def test_register_omits_attach_to_deployment_when_none():
+    connection = FalServerlessConnection("api.alpha.fal.ai", MagicMock())
+    stub = RecordingStub()
+    connection._stub = stub  # type: ignore[assignment]
+    environment = connection.define_environment(
+        "container",
+        image={"dockerfile_str": "FROM debian:bookworm-slim", "use_isolate": False},
+    )
+
+    list(
+        connection.register(
+            None,
+            [environment],
+            application_name="container-app",
+            deployment_strategy="rolling",
+        )
+    )
+
+    assert not stub.register_request.HasField("attach_to_deployment")
+
+
+@pytest.mark.parametrize("attach_to_deployment", [True, False])
+def test_register_forwards_attach_to_deployment(attach_to_deployment):
+    connection = FalServerlessConnection("api.alpha.fal.ai", MagicMock())
+    stub = RecordingStub()
+    connection._stub = stub  # type: ignore[assignment]
+    environment = connection.define_environment(
+        "container",
+        image={"dockerfile_str": "FROM debian:bookworm-slim", "use_isolate": False},
+    )
+
+    list(
+        connection.register(
+            None,
+            [environment],
+            application_name="container-app",
+            deployment_strategy="rolling",
+            attach_to_deployment=attach_to_deployment,
+        )
+    )
+
+    assert stub.register_request.attach_to_deployment is attach_to_deployment
+
+
 def test_register_rejects_empty_retry_config():
     connection = FalServerlessConnection("api.alpha.fal.ai", MagicMock())
     stub = RecordingStub()

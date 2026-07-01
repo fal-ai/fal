@@ -114,6 +114,7 @@ def _resolve_deployment_reference(
     auth: AuthModeLiteral | None = None,
     strategy: DeploymentStrategyLiteral = "rolling",
     reset_scale: bool = False,
+    attach_to_deployment: bool | None = None,
 ) -> tuple[tuple[str | None, str | None], AppData]:
     from fal.cli._utils import AppData, get_app_data_from_toml, is_app_name
     from fal.cli.parser import RefAction
@@ -129,6 +130,7 @@ def _resolve_deployment_reference(
         auth=auth,
         deployment_strategy=cast(DeploymentStrategyLiteral, strategy),
         reset_scale=cast(bool, reset_scale),
+        attach_to_deployment=attach_to_deployment,
         name=app_name,
     )
 
@@ -141,6 +143,8 @@ def _resolve_deployment_reference(
         assert resolved_app_name is not None
 
         app_data = get_app_data_from_toml(resolved_app_name)
+        if attach_to_deployment is not None:
+            app_data = replace(app_data, attach_to_deployment=attach_to_deployment)
         if app_data.python_entry_point is not None or app_data.ref is None:
             # python_entry_point is resolved by the loader; ref is None for
             # image-only apps.
@@ -154,6 +158,17 @@ def _resolve_deployment_reference(
 
     ref = f"{file_path}::{func_name}" if func_name else file_path
     return (file_path, func_name), replace(app_data, ref=ref)
+
+
+def _validate_attach_to_deployment(app_data: AppData) -> None:
+    from fal.api import FalServerlessError
+
+    strategy = app_data.deployment_strategy or "rolling"
+    if app_data.attach_to_deployment is not None and strategy != "rolling":
+        raise FalServerlessError(
+            "--attach/--detach only applies to rolling deployments. "
+            "Use --strategy rolling or remove the attach flag."
+        )
 
 
 def _prepare_deployment_from_reference(
@@ -246,6 +261,7 @@ def _execute_loaded_deployment(
 ) -> DeploymentResult:
     from fal.api import FalServerlessError
 
+    _validate_attach_to_deployment(app_data)
     strategy = app_data.deployment_strategy or "rolling"
     build_result_handler = (
         result_handler if build_result_handler is None else build_result_handler
@@ -280,6 +296,7 @@ def _execute_loaded_deployment(
         metadata=isolated_function.build_metadata(),
         deployment_strategy=strategy,
         scale=app_data.reset_scale,
+        attach_to_deployment=app_data.attach_to_deployment,
         environment_name=environment_name,
         result_handler=result_handler,
         entrypoint=isolated_function.run_entrypoint,
@@ -327,6 +344,7 @@ def prepare_deployment(
     auth: AuthModeLiteral | None = None,
     strategy: DeploymentStrategyLiteral = "rolling",
     reset_scale: bool = False,
+    attach_to_deployment: bool | None = None,
     force_env_build: bool = False,
     environment_name: str | None = None,
 ) -> PreparedDeployment:
@@ -336,6 +354,7 @@ def prepare_deployment(
         auth=auth,
         strategy=strategy,
         reset_scale=reset_scale,
+        attach_to_deployment=attach_to_deployment,
     )
     return _prepare_deployment_from_reference(
         client,
@@ -373,6 +392,7 @@ def deploy(
     auth: AuthModeLiteral | None = None,
     strategy: DeploymentStrategyLiteral = "rolling",
     reset_scale: bool = False,
+    attach_to_deployment: bool | None = None,
     force_env_build: bool = False,
     environment_name: str | None = None,
     result_handler: ResultHandler | None = None,
@@ -384,6 +404,7 @@ def deploy(
         auth=auth,
         strategy=strategy,
         reset_scale=reset_scale,
+        attach_to_deployment=attach_to_deployment,
     )
     return _deploy_from_reference(
         client,

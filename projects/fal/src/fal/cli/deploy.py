@@ -54,6 +54,7 @@ def _deploy(args):
             auth=args.auth,
             strategy=args.strategy,
             reset_scale=args.app_scale_settings,
+            attach_to_deployment=args.attach_to_deployment,
             force_env_build=no_cache,
             environment_name=args.env,
         )
@@ -191,6 +192,7 @@ def add_parser(main_subparsers, parents):
         "  fal deploy path/to/myfile.py::MyApp\n"
         "  fal deploy path/to/myfile.py::MyApp --app-name myapp --auth public\n"
         "  fal deploy my-app\n"
+        "  fal deploy my-app --attach\n"
     )
 
     parser = main_subparsers.add_parser(
@@ -235,6 +237,27 @@ def add_parser(main_subparsers, parents):
         help="Deployment strategy.",
         default="rolling",
     )
+    rolling_group = parser.add_argument_group("Rolling deployment")
+    attach_group = rolling_group.add_mutually_exclusive_group()
+    attach_group.add_argument(
+        "--attach",
+        action="store_true",
+        dest="attach_to_deployment",
+        help=(
+            "Attach to the deployment process. "
+            "Only applies when --strategy is rolling (the default)."
+        ),
+    )
+    attach_group.add_argument(
+        "--detach",
+        action="store_false",
+        dest="attach_to_deployment",
+        help=(
+            "Do not attach to the deployment process. "
+            "Only applies when --strategy is rolling (the default)."
+        ),
+    )
+    parser.set_defaults(attach_to_deployment=None)
     parser.add_argument(
         "--no-scale",
         action="store_false",
