@@ -75,11 +75,7 @@ UPLOAD_POLICY_POST_TIMEOUT = 5 * 60
 UPLOAD_POLICY_FILENAME_PLACEHOLDER = "${filename}"
 UPLOAD_POLICY_MAX_PENDING = 32
 UPLOAD_POLICY_SPOOL_BYTES_THRESHOLD = 16 * 1024 * 1024
-UPLOAD_POLICY_EXECUTOR = ThreadPoolExecutor(
-    max_workers=8,
-    thread_name_prefix="fal-upload-policy",
-)
-UPLOAD_POLICY_PENDING = BoundedSemaphore(UPLOAD_POLICY_MAX_PENDING)
+UPLOAD_POLICY_MAX_WORKERS = 8
 
 
 @dataclass
@@ -214,189 +210,248 @@ def _get_upload_policy() -> UploadPolicy | None:
     return getattr(current_app.current_request, "upload_policy", None)
 
 
-def _validate_multipart_header_value(name: str, value: str) -> None:
-    if "\r" in value or "\n" in value:
-        raise FileUploadException(f"Invalid multipart {name}: contains CR/LF")
-
-
-def _prepare_upload_policy_fields(
-    policy: UploadPolicy,
-    file_name: str,
-    content_type: str,
-) -> tuple[str, dict[str, Any]]:
-    fields = dict(policy.fields)
-    key_template = fields.get("key")
-    if (
-        not isinstance(key_template, str)
-        or UPLOAD_POLICY_FILENAME_PLACEHOLDER not in key_template
-    ):
-        raise FileUploadException(
-            f"Invalid {UPLOAD_POLICY_KEY} header: fields.key must contain "
-            f"{UPLOAD_POLICY_FILENAME_PLACEHOLDER!r}"
+class UploadPolicyUploader:
+    def __init__(
+        self,
+        *,
+        max_workers: int = UPLOAD_POLICY_MAX_WORKERS,
+        max_pending: int = UPLOAD_POLICY_MAX_PENDING,
+        spool_bytes_threshold: int = UPLOAD_POLICY_SPOOL_BYTES_THRESHOLD,
+    ) -> None:
+        self._executor = ThreadPoolExecutor(
+            max_workers=max_workers,
+            thread_name_prefix="fal-upload-policy",
         )
+        self._pending = BoundedSemaphore(max_pending)
+        self._spool_bytes_threshold = spool_bytes_threshold
 
-    upload_file_name = f"{uuid4().hex}-{file_name}"
-    final_key = key_template.replace(
-        UPLOAD_POLICY_FILENAME_PLACEHOLDER, upload_file_name
-    )
-    fields["key"] = final_key
-    fields["Content-Type"] = content_type
+    def enqueue_bytes(
+        self, policy: UploadPolicy, file_name: str, data: bytes, content_type: str
+    ) -> tuple[str, bytes | None]:
+        self._reserve_slot()
+        if len(data) > self._spool_bytes_threshold:
+            try:
+                upload_path = self._write_upload_source(data)
+            except Exception:
+                self._pending.release()
+                raise
+            url = self._enqueue_path(
+                policy,
+                upload_path,
+                file_name,
+                content_type,
+                cleanup_path=True,
+            )
+            return url, None
 
-    encoded_key = quote(final_key.lstrip("/"), safe="/~")
-    return f"{policy.url.rstrip('/')}/{encoded_key}", fields
+        url = self._enqueue_bytes(policy, file_name, data, content_type)
+        return url, data
 
-
-def _post_upload_policy_data(
-    policy: UploadPolicy,
-    fields: dict[str, Any],
-    file_name: str,
-    data: bytes,
-    content_type: str,
-) -> httpx.Response:
-    _validate_multipart_header_value("content type", content_type)
-    return httpx.post(
-        policy.url,
-        data=fields,
-        files={"file": (file_name, data, content_type)},
-        timeout=UPLOAD_POLICY_POST_TIMEOUT,
-    )
-
-
-def _raise_upload_policy_response(response: httpx.Response) -> None:
-    try:
-        response.raise_for_status()
-    except httpx.HTTPStatusError as exc:
-        detail = exc.response.text[:500]
-        raise FileUploadException(
-            f"Upload via {UPLOAD_POLICY_KEY} failed. "
-            f"Status {exc.response.status_code}: {exc.response.reason_phrase}. {detail}"
-        )
-
-
-def _post_upload_policy_bytes(
-    policy: UploadPolicy,
-    fields: dict[str, Any],
-    file_name: str,
-    data: bytes,
-    content_type: str,
-) -> None:
-    try:
-        response = _post_upload_policy_data(
-            policy, fields, file_name, data, content_type
-        )
-    except httpx.HTTPError as exc:
-        raise FileUploadException(f"Upload via {UPLOAD_POLICY_KEY} failed: {exc}")
-    _raise_upload_policy_response(response)
-
-
-def _post_upload_policy_file(
-    policy: UploadPolicy,
-    fields: dict[str, Any],
-    file_name: str,
-    file_obj: Any,
-    content_type: str,
-) -> None:
-    _validate_multipart_header_value("content type", content_type)
-    try:
-        response = httpx.post(
-            policy.url,
-            data=fields,
-            files={"file": (file_name, file_obj, content_type)},
-            timeout=UPLOAD_POLICY_POST_TIMEOUT,
-        )
-    except httpx.HTTPError as exc:
-        raise FileUploadException(f"Upload via {UPLOAD_POLICY_KEY} failed: {exc}")
-    _raise_upload_policy_response(response)
-
-
-def _post_upload_policy_path(
-    policy: UploadPolicy,
-    fields: dict[str, Any],
-    file_path: Path,
-    file_name: str,
-    content_type: str,
-    cleanup_path: bool,
-) -> None:
-    try:
-        with open(file_path, "rb") as f:
-            _post_upload_policy_file(policy, fields, file_name, f, content_type)
-    finally:
-        if cleanup_path:
-            file_path.unlink(missing_ok=True)
-
-
-def _complete_upload_policy_request(future) -> None:
-    UPLOAD_POLICY_PENDING.release()
-    try:
-        future.result()
-    except Exception:
-        traceback.print_exc()
-
-
-def _reserve_upload_policy_slot() -> None:
-    if not UPLOAD_POLICY_PENDING.acquire(blocking=False):
-        raise FileUploadException(f"Too many pending {UPLOAD_POLICY_KEY} uploads")
-
-
-def _copy_upload_source(file_path: Path) -> Path:
-    with NamedTemporaryFile(delete=False) as dst:
-        temp_path = Path(dst.name)
-    try:
-        shutil.copyfile(file_path, temp_path)
-    except Exception:
-        temp_path.unlink(missing_ok=True)
-        raise
-    return temp_path
-
-
-def _write_upload_source(data: bytes) -> Path:
-    with NamedTemporaryFile(delete=False) as dst:
-        dst.write(data)
-        return Path(dst.name)
-
-
-def _enqueue_upload_via_policy(
-    policy: UploadPolicy, file_name: str, data: bytes, content_type: str
-) -> str:
-    try:
-        url, fields = _prepare_upload_policy_fields(policy, file_name, content_type)
-        future = UPLOAD_POLICY_EXECUTOR.submit(
-            _post_upload_policy_bytes, policy, fields, file_name, data, content_type
-        )
-    except Exception:
-        UPLOAD_POLICY_PENDING.release()
-        raise
-
-    future.add_done_callback(_complete_upload_policy_request)
-    return url
-
-
-def _enqueue_path_upload_via_policy(
-    policy: UploadPolicy,
-    file_path: Path,
-    file_name: str,
-    content_type: str,
-    cleanup_path: bool = False,
-) -> str:
-    try:
-        url, fields = _prepare_upload_policy_fields(policy, file_name, content_type)
-        future = UPLOAD_POLICY_EXECUTOR.submit(
-            _post_upload_policy_path,
+    def enqueue_path(
+        self,
+        policy: UploadPolicy,
+        file_path: Path,
+        file_name: str,
+        content_type: str,
+    ) -> str:
+        self._reserve_slot()
+        try:
+            upload_path = self._copy_upload_source(file_path)
+        except Exception:
+            self._pending.release()
+            raise
+        return self._enqueue_path(
             policy,
-            fields,
-            file_path,
+            upload_path,
             file_name,
             content_type,
-            cleanup_path,
+            cleanup_path=True,
         )
-    except Exception:
-        if cleanup_path:
-            file_path.unlink(missing_ok=True)
-        UPLOAD_POLICY_PENDING.release()
-        raise
 
-    future.add_done_callback(_complete_upload_policy_request)
-    return url
+    def _reserve_slot(self) -> None:
+        if not self._pending.acquire(blocking=False):
+            raise FileUploadException(f"Too many pending {UPLOAD_POLICY_KEY} uploads")
+
+    def _prepare_fields(
+        self,
+        policy: UploadPolicy,
+        file_name: str,
+        content_type: str,
+    ) -> tuple[str, dict[str, Any]]:
+        fields = dict(policy.fields)
+        key_template = fields.get("key")
+        if (
+            not isinstance(key_template, str)
+            or UPLOAD_POLICY_FILENAME_PLACEHOLDER not in key_template
+        ):
+            raise FileUploadException(
+                f"Invalid {UPLOAD_POLICY_KEY} header: fields.key must contain "
+                f"{UPLOAD_POLICY_FILENAME_PLACEHOLDER!r}"
+            )
+
+        upload_file_name = f"{uuid4().hex}-{file_name}"
+        final_key = key_template.replace(
+            UPLOAD_POLICY_FILENAME_PLACEHOLDER, upload_file_name
+        )
+        fields["key"] = final_key
+        fields["Content-Type"] = content_type
+
+        encoded_key = quote(final_key.lstrip("/"), safe="/~")
+        return f"{policy.url.rstrip('/')}/{encoded_key}", fields
+
+    def _enqueue_bytes(
+        self,
+        policy: UploadPolicy,
+        file_name: str,
+        data: bytes,
+        content_type: str,
+    ) -> str:
+        try:
+            url, fields = self._prepare_fields(policy, file_name, content_type)
+            future = self._executor.submit(
+                self._post_bytes, policy, fields, file_name, data, content_type
+            )
+        except Exception:
+            self._pending.release()
+            raise
+
+        future.add_done_callback(self._complete_upload)
+        return url
+
+    def _enqueue_path(
+        self,
+        policy: UploadPolicy,
+        file_path: Path,
+        file_name: str,
+        content_type: str,
+        cleanup_path: bool,
+    ) -> str:
+        try:
+            url, fields = self._prepare_fields(policy, file_name, content_type)
+            future = self._executor.submit(
+                self._post_path,
+                policy,
+                fields,
+                file_path,
+                file_name,
+                content_type,
+                cleanup_path,
+            )
+        except Exception:
+            if cleanup_path:
+                file_path.unlink(missing_ok=True)
+            self._pending.release()
+            raise
+
+        future.add_done_callback(self._complete_upload)
+        return url
+
+    def _post_bytes(
+        self,
+        policy: UploadPolicy,
+        fields: dict[str, Any],
+        file_name: str,
+        data: bytes,
+        content_type: str,
+    ) -> None:
+        try:
+            response = self._post_data(policy, fields, file_name, data, content_type)
+        except httpx.HTTPError as exc:
+            raise FileUploadException(f"Upload via {UPLOAD_POLICY_KEY} failed: {exc}")
+        self._raise_response(response)
+
+    def _post_path(
+        self,
+        policy: UploadPolicy,
+        fields: dict[str, Any],
+        file_path: Path,
+        file_name: str,
+        content_type: str,
+        cleanup_path: bool,
+    ) -> None:
+        try:
+            with open(file_path, "rb") as f:
+                self._post_file(policy, fields, file_name, f, content_type)
+        finally:
+            if cleanup_path:
+                file_path.unlink(missing_ok=True)
+
+    def _post_data(
+        self,
+        policy: UploadPolicy,
+        fields: dict[str, Any],
+        file_name: str,
+        data: bytes,
+        content_type: str,
+    ) -> httpx.Response:
+        self._validate_multipart_header_value("content type", content_type)
+        return httpx.post(
+            policy.url,
+            data=fields,
+            files={"file": (file_name, data, content_type)},
+            timeout=UPLOAD_POLICY_POST_TIMEOUT,
+        )
+
+    def _post_file(
+        self,
+        policy: UploadPolicy,
+        fields: dict[str, Any],
+        file_name: str,
+        file_obj: Any,
+        content_type: str,
+    ) -> None:
+        self._validate_multipart_header_value("content type", content_type)
+        try:
+            response = httpx.post(
+                policy.url,
+                data=fields,
+                files={"file": (file_name, file_obj, content_type)},
+                timeout=UPLOAD_POLICY_POST_TIMEOUT,
+            )
+        except httpx.HTTPError as exc:
+            raise FileUploadException(f"Upload via {UPLOAD_POLICY_KEY} failed: {exc}")
+        self._raise_response(response)
+
+    def _raise_response(self, response: httpx.Response) -> None:
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            detail = exc.response.text[:500]
+            raise FileUploadException(
+                f"Upload via {UPLOAD_POLICY_KEY} failed. "
+                f"Status {exc.response.status_code}: "
+                f"{exc.response.reason_phrase}. {detail}"
+            )
+
+    def _complete_upload(self, future) -> None:
+        self._pending.release()
+        try:
+            future.result()
+        except Exception:
+            traceback.print_exc()
+
+    def _copy_upload_source(self, file_path: Path) -> Path:
+        with NamedTemporaryFile(delete=False) as dst:
+            temp_path = Path(dst.name)
+        try:
+            shutil.copyfile(file_path, temp_path)
+        except Exception:
+            temp_path.unlink(missing_ok=True)
+            raise
+        return temp_path
+
+    def _write_upload_source(self, data: bytes) -> Path:
+        with NamedTemporaryFile(delete=False) as dst:
+            dst.write(data)
+            return Path(dst.name)
+
+    @staticmethod
+    def _validate_multipart_header_value(name: str, value: str) -> None:
+        if "\r" in value or "\n" in value:
+            raise FileUploadException(f"Invalid multipart {name}: contains CR/LF")
+
+
+UPLOAD_POLICY_UPLOADER = UploadPolicyUploader()
 
 
 class File(BaseModel):
@@ -495,26 +550,9 @@ class File(BaseModel):
 
         upload_policy = _get_upload_policy()
         if upload_policy is not None:
-            _reserve_upload_policy_slot()
-            if len(data) > UPLOAD_POLICY_SPOOL_BYTES_THRESHOLD:
-                try:
-                    upload_path = _write_upload_source(data)
-                except Exception:
-                    UPLOAD_POLICY_PENDING.release()
-                    raise
-                url = _enqueue_path_upload_via_policy(
-                    upload_policy,
-                    upload_path,
-                    fdata.file_name,
-                    fdata.content_type,
-                    cleanup_path=True,
-                )
-                file_data = None
-            else:
-                url = _enqueue_upload_via_policy(
-                    upload_policy, fdata.file_name, data, fdata.content_type
-                )
-                file_data = data
+            url, file_data = UPLOAD_POLICY_UPLOADER.enqueue_bytes(
+                upload_policy, fdata.file_name, data, fdata.content_type
+            )
             return cls(
                 url=url,
                 content_type=fdata.content_type,
@@ -606,18 +644,8 @@ class File(BaseModel):
 
         upload_policy = _get_upload_policy()
         if upload_policy is not None:
-            _reserve_upload_policy_slot()
-            try:
-                upload_path = _copy_upload_source(file_path)
-            except Exception:
-                UPLOAD_POLICY_PENDING.release()
-                raise
-            url = _enqueue_path_upload_via_policy(
-                upload_policy,
-                upload_path,
-                file_path.name,
-                content_type,
-                cleanup_path=True,
+            url = UPLOAD_POLICY_UPLOADER.enqueue_path(
+                upload_policy, file_path, file_path.name, content_type
             )
             return cls(
                 url=url,
