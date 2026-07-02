@@ -21,6 +21,56 @@ _QUEUE_URL_FORMAT = f"https://{flags.FAL_QUEUE_RUN_HOST}/{{app_id}}"
 _REALTIME_URL_FORMAT = f"wss://{flags.FAL_RUN_HOST}/{{app_id}}"
 _WS_URL_FORMAT = f"wss://ws.{flags.FAL_RUN_HOST}/{{app_id}}"
 
+_TRANSIENT_STATUS_CODES = frozenset({502, 503, 504})
+_RETRY_ATTEMPTS = 3
+_RETRY_BASE_DELAY_SECONDS = 0.5
+
+
+def _request_with_retry(
+    send: Callable[[], httpx.Response],
+    *,
+    retry_on_read_errors: bool = False,
+    retry_transient_5xx: bool = False,
+) -> httpx.Response:
+    """Retry requests that failed for transient, infrastructure-level reasons.
+
+    Connection errors (the request never reached the server) and dropped
+    keep-alive connections (the server closed the connection without sending
+    a response) are always safe to retry. Read errors (e.g. timeouts while
+    waiting for the response) are only retried when ``retry_on_read_errors``
+    is set, because the server may have already processed the request; only
+    enable it for idempotent requests. ``retry_transient_5xx`` retries
+    502/503/504 responses and must only be used for endpoints that never
+    produce those codes as a legitimate result.
+    """
+    last_exception: Exception
+    for attempt in range(1, _RETRY_ATTEMPTS + 1):
+        try:
+            response = send()
+        except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+            last_exception = exc
+        except httpx.RemoteProtocolError as exc:
+            last_exception = exc
+        except httpx.TransportError as exc:
+            if not retry_on_read_errors:
+                raise
+            last_exception = exc
+        else:
+            if (
+                response.status_code in _TRANSIENT_STATUS_CODES
+                and retry_transient_5xx
+                and attempt < _RETRY_ATTEMPTS
+            ):
+                time.sleep(_RETRY_BASE_DELAY_SECONDS * attempt)
+                continue
+            return response
+
+        if attempt == _RETRY_ATTEMPTS:
+            raise last_exception
+        time.sleep(_RETRY_BASE_DELAY_SECONDS * attempt)
+
+    raise last_exception  # pragma: no cover - unreachable
+
 
 def _backwards_compatible_app_id(app_id: str) -> str:
     if "/" not in app_id:
@@ -60,7 +110,12 @@ class Completed(_Status):
 
 @lru_cache(maxsize=1)
 def _get_http_client() -> httpx.Client:
-    return httpx.Client(headers={"User-Agent": USER_AGENT})
+    return httpx.Client(
+        headers={"User-Agent": USER_AGENT},
+        # Queue operations can occasionally be slow on a busy cluster; the
+        # httpx default of 5s is too aggressive for them.
+        timeout=httpx.Timeout(30.0, connect=10.0),
+    )
 
 
 @dataclass
@@ -92,10 +147,18 @@ class RequestHandle:
             _QUEUE_URL_FORMAT.format(app_id=self.app_id)
             + f"/requests/{self.request_id}/status/"
         )
-        response = self._client.get(
-            url,
-            headers=self._creds.to_headers(),
-            params={"logs": int(logs)},
+        response = _request_with_retry(
+            lambda: self._client.get(
+                url,
+                headers=self._creds.to_headers(),
+                params={"logs": int(logs)},
+                # Status polls answer in milliseconds and are retried in a
+                # loop anyway; a short read timeout keeps a wedged connection
+                # from stalling the poll loop for the full client timeout.
+                timeout=httpx.Timeout(5.0, connect=5.0),
+            ),
+            retry_on_read_errors=True,
+            retry_transient_5xx=True,
         )
         response.raise_for_status()
 
@@ -117,7 +180,10 @@ class RequestHandle:
             _QUEUE_URL_FORMAT.format(app_id=self.app_id)
             + f"/requests/{self.request_id}/cancel"
         )
-        response = self._client.put(url, headers=self._creds.to_headers())
+        response = _request_with_retry(
+            lambda: self._client.put(url, headers=self._creds.to_headers()),
+            retry_on_read_errors=True,
+        )
         response.raise_for_status()
 
     def iter_events(
@@ -142,7 +208,14 @@ class RequestHandle:
             _QUEUE_URL_FORMAT.format(app_id=self.app_id)
             + f"/requests/{self.request_id}/"
         )
-        response = self._client.get(url, headers=self._creds.to_headers())
+        # The result endpoint relays the app's own response, which may
+        # legitimately be a 5xx; retrying is still safe because after the
+        # attempts are exhausted the response is returned unchanged.
+        response = _request_with_retry(
+            lambda: self._client.get(url, headers=self._creds.to_headers()),
+            retry_on_read_errors=True,
+            retry_transient_5xx=True,
+        )
         try:
             response.raise_for_status()
         except httpx.HTTPStatusError as e:
@@ -221,10 +294,16 @@ def submit(app_id: str, arguments: dict[str, Any], *, path: str = "") -> Request
     creds = get_credentials()
     client = _get_http_client()
 
-    response = client.post(
-        url,
-        json=arguments,
-        headers=creds.to_headers(),
+    # A read error may mean the request was already accepted server-side;
+    # retrying could execute it twice, so only definitely-unsent requests
+    # are retried.
+    response = _request_with_retry(
+        lambda: client.post(
+            url,
+            json=arguments,
+            headers=creds.to_headers(),
+        ),
+        retry_on_read_errors=False,
     )
     response.raise_for_status()
 

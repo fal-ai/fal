@@ -279,7 +279,9 @@ class AppSpawnInfo:
                     if resp.is_success:
                         return
 
-                    if resp.status_code in (500, 404):
+                    if resp.status_code in (500, 404, 502, 503, 504):
+                        # 5xx gateway errors (e.g. runner_connection_error)
+                        # are expected while the runner is still starting up.
                         last_error = f"Server not ready (HTTP {resp.status_code})"
                     else:
                         raise AppClientError(
