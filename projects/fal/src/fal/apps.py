@@ -152,6 +152,10 @@ class RequestHandle:
                 url,
                 headers=self._creds.to_headers(),
                 params={"logs": int(logs)},
+                # Status polls answer in milliseconds and are retried in a
+                # loop anyway; a short read timeout keeps a wedged connection
+                # from stalling the poll loop for the full client timeout.
+                timeout=httpx.Timeout(5.0, connect=5.0),
             ),
             retry_on_read_errors=True,
             retry_transient_5xx=True,
