@@ -780,6 +780,50 @@ def _register_with_retry(
             time.sleep(min(5 * attempt, 30))
 
 
+@pytest.fixture(scope="module")
+def module_register_app(host: api.FalServerlessHost):
+    """Module-scoped registration for apps that tests only read from.
+
+    Every function-scoped app costs a registration and a runner cold
+    start; on a busy dev fleet those dominate the suite's wall clock.
+    """
+
+    @contextmanager
+    def _register_app(
+        app: Union[api.ServedIsolatedFunction, api.IsolatedFunction],
+        suffix: str = "",
+    ):
+        app_alias = f"{suffix or 'test'}-{secrets.token_hex(4)}"
+        result = _register_with_retry(
+            host,
+            func=app.func,
+            options=app.options,
+            application_name=app_alias,
+            application_auth_mode="private",
+            deployment_strategy="recreate",
+        )
+
+        assert result
+        assert result.result
+        assert result.service_urls
+        app_revision = result.result.application_id
+
+        try:
+            yield app_alias, app_revision
+        finally:
+            with host._connection as client:
+                for attempt in range(3):
+                    try:
+                        client.delete_alias(app_alias)
+                        break
+                    except FalServerlessException as exc:
+                        if not _is_transient_register_error(exc) or attempt == 2:
+                            raise
+                        time.sleep(5)
+
+    return _register_app
+
+
 @pytest.fixture()
 def register_app(
     host: api.FalServerlessHost,
@@ -838,12 +882,12 @@ def base_app(register_app):
         yield app_alias, app_revision
 
 
-@pytest.fixture()
+@pytest.fixture(scope="module")
 def test_app(
     user: User,
-    register_app,
+    module_register_app,
 ):
-    with register_app(addition_app, "addition") as (
+    with module_register_app(addition_app, "addition") as (
         app_alias,
         _,
     ):
@@ -914,13 +958,13 @@ def test_fastapi_app(
         yield f"{user.username}/{app_alias}"
 
 
-@pytest.fixture()
+@pytest.fixture(scope="module")
 def test_stateful_app(
     user: User,
-    register_app,
+    module_register_app,
 ):
     stateful_app = wrap_app(StatefulAdditionApp)
-    with register_app(stateful_app, "stateful") as (app_alias, _):
+    with module_register_app(stateful_app, "stateful") as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
 
@@ -930,13 +974,13 @@ def test_pydantic_validation_error():
         yield client
 
 
-@pytest.fixture()
+@pytest.fixture(scope="module")
 def test_cancellable_app(
     user: User,
-    register_app,
+    module_register_app,
 ):
     cancellable_app = wrap_app(CancellableApp)
-    with register_app(cancellable_app, "cancellable") as (app_alias, _):
+    with module_register_app(cancellable_app, "cancellable") as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
 
@@ -976,13 +1020,13 @@ def test_queue_blocking_app(
         yield f"{user.username}/{app_alias}"
 
 
-@pytest.fixture()
+@pytest.fixture(scope="module")
 def test_realtime_app(
     user: User,
-    register_app,
+    module_register_app,
 ):
     realtime_app = wrap_app(RealtimeApp)
-    with register_app(realtime_app, "realtime") as (app_alias, _):
+    with module_register_app(realtime_app, "realtime") as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
 
