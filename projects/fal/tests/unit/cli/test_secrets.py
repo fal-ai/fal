@@ -8,6 +8,14 @@ def test_set():
     args = parse_args(["secrets", "set", "secret1=value1", "secret2=value2"])
     assert args.func == _set
     assert args.secrets == {"secret1": "value1", "secret2": "value2"}
+    assert args.not_exposed_by_default is False
+
+
+def test_set_not_exposed_by_default():
+    args = parse_args(["secrets", "set", "secret1=value1", "--not-exposed-by-default"])
+    assert args.func == _set
+    assert args.secrets == {"secret1": "value1"}
+    assert args.not_exposed_by_default is True
 
 
 def test_set_with_env():
