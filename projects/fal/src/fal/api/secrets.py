@@ -13,11 +13,17 @@ def set_secret(
     name: str,
     value: str,
     environment_name: str | None = None,
+    default_exposed: bool | None = None,
 ) -> None:
     from fal.sdk import FalServerlessClient
 
     with FalServerlessClient(client._grpc_host, client._credentials).connect() as conn:
-        conn.set_secret(name, value, environment_name=environment_name)
+        conn.set_secret(
+            name,
+            value,
+            environment_name=environment_name,
+            default_exposed=default_exposed,
+        )
 
 
 def list_secrets(
