@@ -88,6 +88,29 @@ def _auth_headers() -> Dict[str, str]:
     return {"Authorization": f"Key {key_id}:{key_secret}"}
 
 
+def _request(method: str, url: str, *, attempts: int = 3, **kwargs) -> httpx.Response:
+    """Direct HTTP request to an app with retries on infra-level flakes.
+
+    Transport errors and 502/503 responses (e.g. the gateway momentarily
+    failing to reach a runner) are retried; the last response is returned
+    unchanged so tests can still assert on any status code.
+    """
+    kwargs.setdefault("headers", _auth_headers())
+    kwargs.setdefault("timeout", 30)
+    for attempt in range(1, attempts + 1):
+        try:
+            response = httpx.request(method, url, **kwargs)
+        except httpx.TransportError:
+            if attempt == attempts:
+                raise
+        else:
+            if response.status_code not in (502, 503) or attempt == attempts:
+                return response
+        time.sleep(2 * attempt)
+
+    raise AssertionError("unreachable")
+
+
 def git_revision_short_hash() -> str:
     return (
         subprocess.check_output(["git", "rev-parse", "--short", "HEAD"])
@@ -711,6 +734,49 @@ def user(rest_client: Client) -> Generator[User, None, None]:
     yield user
 
 
+def _is_transient_register_error(exc: FalServerlessException) -> bool:
+    message = str(exc).lower()
+    return any(
+        marker in message
+        for marker in (
+            "could not reach fal host",
+            "unavailable",
+            "503",
+            "502",
+            "unexpected error",
+            "timed out",
+            "timeout",
+            "deadline",
+            "connection reset",
+            "socket closed",
+        )
+    )
+
+
+def _register_with_retry(
+    host: api.FalServerlessHost,
+    *,
+    timeout_seconds: int = 180,
+    **kwargs,
+):
+    """Register an app, retrying transient control-plane errors.
+
+    The preview control plane is restarted right before the test jobs run
+    and can throw transient UNAVAILABLE/INTERNAL errors for a while.
+    """
+    deadline = time.monotonic() + timeout_seconds
+    attempt = 0
+    while True:
+        attempt += 1
+        try:
+            return host.register(**kwargs)
+        except FalServerlessException as exc:
+            if not _is_transient_register_error(exc) or time.monotonic() > deadline:
+                raise
+            print(f"Transient register error (attempt {attempt}): {exc}. Retrying...")
+            time.sleep(min(5 * attempt, 30))
+
+
 @pytest.fixture()
 def register_app(
     host: api.FalServerlessHost,
@@ -728,7 +794,8 @@ def register_app(
         suffix: str = "",
     ):
         app_alias = make_tmp_app_name(suffix)
-        result = host.register(
+        result = _register_with_retry(
+            host,
             func=app.func,
             options=app.options,
             application_name=app_alias,
@@ -745,7 +812,14 @@ def register_app(
             yield app_alias, app_revision
         finally:
             with host._connection as client:
-                client.delete_alias(app_alias)
+                for attempt in range(3):
+                    try:
+                        client.delete_alias(app_alias)
+                        break
+                    except FalServerlessException as exc:
+                        if not _is_transient_register_error(exc) or attempt == 2:
+                            raise
+                        time.sleep(5)
 
     return _register_app
 
@@ -944,7 +1018,8 @@ def test_function_with_custom_openapi_health(
     metadata = res.parsed.to_dict()
     assert "openapi" not in metadata, f"openapi unexpectedly persisted: {metadata}"
 
-    r = httpx.post(
+    r = _request(
+        "POST",
         f"https://{FAL_RUN_HOST}/{test_greet_server_app}/greet",
         json={"name": "world"},
         headers=_auth_headers(),
@@ -953,7 +1028,8 @@ def test_function_with_custom_openapi_health(
     assert r.status_code == 200, r.text
     assert r.json() == {"greeting": "Hello, world!"}
 
-    r = httpx.get(
+    r = _request(
+        "GET",
         f"https://{FAL_RUN_HOST}/{test_greet_server_app}/health",
         headers=_auth_headers(),
         timeout=30,
@@ -968,7 +1044,8 @@ def test_function_with_custom_health_path(test_custom_health_path_app: str):
     endpoint (/greet) must be reachable through the platform."""
     from fal.flags import FAL_RUN_HOST
 
-    r = httpx.post(
+    r = _request(
+        "POST",
         f"https://{FAL_RUN_HOST}/{test_custom_health_path_app}/greet",
         json={"name": "world"},
         headers=_auth_headers(),
@@ -977,7 +1054,8 @@ def test_function_with_custom_health_path(test_custom_health_path_app: str):
     assert r.status_code == 200, r.text
     assert r.json() == {"greeting": "Hello, world!"}
 
-    r = httpx.get(
+    r = _request(
+        "GET",
         f"https://{FAL_RUN_HOST}/{test_custom_health_path_app}/ready",
         headers=_auth_headers(),
         timeout=30,
@@ -997,7 +1075,8 @@ def test_function_health_override(test_health_override_fn: str):
     from fal.flags import FAL_RUN_HOST
 
     # main endpoint works → runner reached ready → platform probed /ready
-    r = httpx.post(
+    r = _request(
+        "POST",
         f"https://{FAL_RUN_HOST}/{test_health_override_fn}/greet",
         json={"name": "world"},
         headers=_auth_headers(),
@@ -1007,7 +1086,8 @@ def test_function_health_override(test_health_override_fn: str):
     assert r.json() == {"greeting": "Hello, world!"}
 
     # /ready is the user-declared health endpoint
-    r = httpx.get(
+    r = _request(
+        "GET",
         f"https://{FAL_RUN_HOST}/{test_health_override_fn}/ready",
         headers=_auth_headers(),
         timeout=30,
@@ -1017,7 +1097,8 @@ def test_function_health_override(test_health_override_fn: str):
 
     # /health is intentionally broken — its 502 is observable but didn't
     # block readiness because the platform used /ready instead
-    r = httpx.get(
+    r = _request(
+        "GET",
         f"https://{FAL_RUN_HOST}/{test_health_override_fn}/health",
         headers=_auth_headers(),
         timeout=30,
@@ -1036,7 +1117,8 @@ def test_app_health_override(test_health_override_app: str):
     from fal.flags import FAL_RUN_HOST
 
     # main endpoint works → runner reached ready → platform probed /ready
-    r = httpx.post(
+    r = _request(
+        "POST",
         f"https://{FAL_RUN_HOST}/{test_health_override_app}/",
         json={"lhs": 1, "rhs": 2},
         headers=_auth_headers(),
@@ -1046,7 +1128,8 @@ def test_app_health_override(test_health_override_app: str):
     assert r.json()["result"] == 3
 
     # /ready is the user-declared health endpoint
-    r = httpx.get(
+    r = _request(
+        "GET",
         f"https://{FAL_RUN_HOST}/{test_health_override_app}/ready",
         headers=_auth_headers(),
         timeout=30,
@@ -1056,7 +1139,8 @@ def test_app_health_override(test_health_override_app: str):
 
     # default /health is intentionally broken — observable 502, didn't
     # block readiness
-    r = httpx.get(
+    r = _request(
+        "GET",
         f"https://{FAL_RUN_HOST}/{test_health_override_app}/health",
         headers=_auth_headers(),
         timeout=30,
@@ -1357,16 +1441,16 @@ def test_404_response(test_app: str, request: pytest.FixtureRequest):
 
 def test_404_billable_units(test_exception_app: AppClient):
     """Test that 404 responses include x-fal-billable-units: 0 header."""
-    with httpx.Client(headers=_auth_headers()) as httpx_client:
-        url = test_exception_app.url + "/non-existent-endpoint"
-        response = httpx_client.post(
-            url,
-            json={},
-            timeout=30,
-        )
+    url = test_exception_app.url + "/non-existent-endpoint"
+    response = _request(
+        "POST",
+        url,
+        json={},
+        timeout=30,
+    )
 
-        assert response.status_code == 404
-        assert response.headers.get("x-fal-billable-units") == "0"
+    assert response.status_code == 404
+    assert response.headers.get("x-fal-billable-units") == "0"
 
 
 def test_app_deploy_scale(host: api.FalServerlessHost, register_app):
@@ -1704,119 +1788,119 @@ def test_app_exceptions(test_exception_app: AppClient):
 
 
 def test_pydantic_validation_billing(test_pydantic_validation_error: AppClient):
-    with httpx.Client(headers=_auth_headers()) as httpx_client:
-        url = test_pydantic_validation_error.url + "/increment"
-        response = httpx_client.post(
-            url,
-            json={"value": "this-is-not-an-integer"},
-            timeout=30,
-        )
+    url = test_pydantic_validation_error.url + "/increment"
+    response = _request(
+        "POST",
+        url,
+        json={"value": "this-is-not-an-integer"},
+        timeout=30,
+    )
 
-        assert response.status_code == 422
-        assert response.headers.get("x-fal-billable-units") == "0"
+    assert response.status_code == 422
+    assert response.headers.get("x-fal-billable-units") == "0"
 
 
 def test_field_exception_billing(test_exception_app: AppClient):
-    with httpx.Client(headers=_auth_headers()) as httpx_client:
-        url = test_exception_app.url + "/field-exception"
-        response = httpx_client.post(
-            url,
-            json={"lhs": 1, "rhs": 2},
-            timeout=30,
-        )
+    url = test_exception_app.url + "/field-exception"
+    response = _request(
+        "POST",
+        url,
+        json={"lhs": 1, "rhs": 2},
+        timeout=30,
+    )
 
-        assert response.status_code == 422
-        # For errors raised on runtime, developers should be handling the billing.
-        # Therefore not adding billing units.
-        assert not hasattr(response.headers, "x-fal-billable-units")
+    assert response.status_code == 422
+    # For errors raised on runtime, developers should be handling the billing.
+    # Therefore not adding billing units.
+    assert not hasattr(response.headers, "x-fal-billable-units")
 
 
 def test_field_exception_int_billable_units_formatting(test_exception_app: AppClient):
     """Test that int billable_units are formatted without decimal places."""
-    with httpx.Client(headers=_auth_headers()) as httpx_client:
-        url = test_exception_app.url + "/field-exception-units"
-        response = httpx_client.post(
-            url,
-            json={"value": 42},
-            timeout=30,
-        )
+    url = test_exception_app.url + "/field-exception-units"
+    response = _request(
+        "POST",
+        url,
+        json={"value": 42},
+        timeout=30,
+    )
 
-        assert response.status_code == 422
-        assert response.headers.get("x-fal-billable-units") == "42"
+    assert response.status_code == 422
+    assert response.headers.get("x-fal-billable-units") == "42"
 
 
 def test_field_exception_float_billable_units_formatting(test_exception_app: AppClient):
     """Test that float billable_units are formatted with 8 decimal places."""
-    with httpx.Client(headers=_auth_headers()) as httpx_client:
-        url = test_exception_app.url + "/field-exception-units"
-        response = httpx_client.post(
-            url,
-            json={"value": 3.14159265},
-            timeout=30,
-        )
+    url = test_exception_app.url + "/field-exception-units"
+    response = _request(
+        "POST",
+        url,
+        json={"value": 3.14159265},
+        timeout=30,
+    )
 
-        assert response.status_code == 422
-        assert response.headers.get("x-fal-billable-units") == "3.14159265"
+    assert response.status_code == 422
+    assert response.headers.get("x-fal-billable-units") == "3.14159265"
 
 
 def test_field_exception_scientific_notation_small(test_exception_app: AppClient):
     """Test that small scientific notation values are properly formatted."""
-    with httpx.Client(headers=_auth_headers()) as httpx_client:
-        url = test_exception_app.url + "/field-exception-units"
-        response = httpx_client.post(
-            url,
-            json={"value": 1.23e-5},
-            timeout=30,
-        )
+    url = test_exception_app.url + "/field-exception-units"
+    response = _request(
+        "POST",
+        url,
+        json={"value": 1.23e-5},
+        timeout=30,
+    )
 
-        assert response.status_code == 422
-        # 1.23e-5 = 0.0000123 (float type uses .8f format)
-        assert response.headers.get("x-fal-billable-units") == "0.00001230"
+    assert response.status_code == 422
+    # 1.23e-5 = 0.0000123 (float type uses .8f format)
+    assert response.headers.get("x-fal-billable-units") == "0.00001230"
 
 
 def test_field_exception_scientific_notation_large(test_exception_app: AppClient):
     """Test that large scientific notation values are properly formatted."""
-    with httpx.Client(headers=_auth_headers()) as httpx_client:
-        url = test_exception_app.url + "/field-exception-units"
-        response = httpx_client.post(
-            url,
-            json={"value": 1.23e10},
-            timeout=30,
-        )
+    url = test_exception_app.url + "/field-exception-units"
+    response = _request(
+        "POST",
+        url,
+        json={"value": 1.23e10},
+        timeout=30,
+    )
 
-        assert response.status_code == 422
-        # 1.23e10 = 12300000000.0 (float type uses .8f format)
-        assert response.headers.get("x-fal-billable-units") == "12300000000.00000000"
+    assert response.status_code == 422
+    # 1.23e10 = 12300000000.0 (float type uses .8f format)
+    assert response.headers.get("x-fal-billable-units") == "12300000000.00000000"
 
 
 def test_field_exception_invalid_billable_units(test_exception_app: AppClient):
     """Test that invalid billable_units (non-numeric string) raises an error."""
-    with httpx.Client(headers=_auth_headers()) as httpx_client:
-        url = test_exception_app.url + "/field-exception-units"
-        response = httpx_client.post(
-            url,
-            json={"value": "not_a_number"},
-            timeout=30,
-        )
+    url = test_exception_app.url + "/field-exception-units"
+    response = _request(
+        "POST",
+        url,
+        json={"value": "not_a_number"},
+        timeout=30,
+    )
 
-        # should return 500 internal server error due to ValueError when
-        # converting to float
-        assert response.status_code == 500
+    # should return 500 internal server error due to ValueError when
+    # converting to float
+    assert response.status_code == 500
 
 
 def test_field_exception_default_billable_units(test_exception_app: AppClient):
     """Test that when billable_units is not set (None), no header is included."""
-    with httpx.Client(headers=_auth_headers()) as httpx_client:
-        url = test_exception_app.url + "/field-exception"
-        response = httpx_client.post(
-            url,
-            json={"lhs": 1, "rhs": 2},
-            timeout=30,
-        )
+    url = test_exception_app.url + "/field-exception"
+    response = _request(
+        "POST",
+        url,
+        json={"lhs": 1, "rhs": 2},
+        timeout=30,
+    )
 
-        assert response.status_code == 422
-        # When billable_units is None (default), header should not be present
-        assert "x-fal-billable-units" not in response.headers
+    assert response.status_code == 422
+    # When billable_units is None (default), header should not be present
+    assert "x-fal-billable-units" not in response.headers
 
 
 def submit_and_wait_for_runner(app: str, arguments: dict = {}, *, path: str = ""):
@@ -2079,15 +2163,15 @@ def test_hints_encoding():
     https://github.com/encode/starlette/blob/a766a58d14007f07c0b5782fa78cdc370b892796/starlette/datastructures.py#L568
     """
     with AppClient.connect(HintsApp) as client:
-        with httpx.Client(headers=_auth_headers()) as httpx_client:
-            url = client.url + "/add"
-            resp = httpx_client.post(
-                url,
-                json={"lhs": 1, "rhs": 2},
-                timeout=30,
-            )
-            assert resp.is_success
-            assert resp.json()["result"] == 3
+        url = client.url + "/add"
+        resp = _request(
+            "POST",
+            url,
+            json={"lhs": 1, "rhs": 2},
+            timeout=30,
+        )
+        assert resp.is_success
+        assert resp.json()["result"] == 3
 
 
 def _external_get_request_id() -> str:

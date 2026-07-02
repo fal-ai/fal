@@ -516,6 +516,7 @@ def test_cached_function(isolated_client, capsys, monkeypatch):
     assert out.count("computing") == 1
 
 
+@pytest.mark.flaky(max_runs=3)
 def test_pydantic_serialization(isolated_client):
     from pydantic import BaseModel, Field
 
@@ -535,6 +536,7 @@ def test_pydantic_serialization(isolated_client):
     assert result == MathResult(result=3)
 
 
+@pytest.mark.flaky(max_runs=3)
 def test_serve_on_off(isolated_client):
     from pydantic import BaseModel, Field
 
@@ -558,6 +560,7 @@ def test_serve_on_off(isolated_client):
     assert local_first_add_2(MathQuery(x=1, y=2)) == MathResult(result=3)
 
 
+@pytest.mark.flaky(max_runs=3)
 def test_worker_env_vars(isolated_client):
     from fal.flags import GRPC_HOST
 
