@@ -739,6 +739,9 @@ def _is_transient_register_error(exc: FalServerlessException) -> bool:
     return any(
         marker in message
         for marker in (
+            # register/operator propagation race: the app was just created,
+            # but the operator does not know it yet
+            "application not found",
             "could not reach fal host",
             "unavailable",
             "503",
