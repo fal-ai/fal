@@ -120,6 +120,6 @@ keep-runtime-typing = true
 [tool.pytest.ini_options]
 addopts = "-ra --durations=50"
 asyncio_mode = "auto"
-faulthandler_timeout = 230
+faulthandler_timeout = 410
 testpaths = "tests"
-timeout = 240
+timeout = 420

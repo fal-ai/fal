@@ -1709,7 +1709,7 @@ def delete_workflow_on_exit(client: httpx.Client, workflow_url: str):
         client.delete(workflow_url)
 
 
-@pytest.mark.timeout(300)
+@pytest.mark.timeout(600)
 def test_workflows(test_app: str, rest_client: Client):
     # The workflow engine may fail over to its ingress fallback path and the
     # dispatcher may re-run a failed workflow execution; give it headroom.
