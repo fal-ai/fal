@@ -1918,18 +1918,25 @@ def test_field_exception_default_billable_units(test_exception_app: AppClient):
 
 
 def submit_and_wait_for_runner(app: str, arguments: dict = {}, *, path: str = ""):
-    handle = apps.submit(app, arguments=arguments, path=path)
+    # A queued request can rarely get stuck undispatched for minutes; a
+    # fresh submit typically goes through, so resubmit instead of waiting
+    # on a single request forever.
+    for _attempt in range(3):
+        handle = apps.submit(app, arguments=arguments, path=path)
+        deadline = time.monotonic() + 120
 
-    while True:
-        status = handle.status()
-        if isinstance(status, apps.InProgress) or isinstance(status, apps.Completed):
-            break
-        elif isinstance(status, apps.Queued):
-            time.sleep(0.1)
-        else:
-            raise Exception(f"Failed to start the app: {status}")
+        while time.monotonic() < deadline:
+            status = handle.status()
+            if isinstance(status, (apps.InProgress, apps.Completed)):
+                return handle
+            elif isinstance(status, apps.Queued):
+                time.sleep(0.1)
+            else:
+                raise Exception(f"Failed to start the app: {status}")
 
-    return handle
+        print(f"request {handle.request_id} stuck in queue; resubmitting")
+
+    raise Exception(f"App {app} did not start a runner after 3 submits")
 
 
 def test_stop_runner(host: api.FalServerlessHost, test_sleep_app: str):
