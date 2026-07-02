@@ -29,19 +29,19 @@ jobs:
     steps:
       - name: Mint GitHub App token
         id: app_token
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2.2.2
         with:
           app-id: ${{ secrets.REGEN_APP_ID }}
           private-key: ${{ secrets.REGEN_APP_PRIVATE_KEY }}
           owner: fal-ai
           repositories: fal
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
         with:
           fetch-depth: 0
           token: ${{ steps.app_token.outputs.token }}
 
-      - uses: actions/setup-python@v2
+      - uses: actions/setup-python@e9aba2c848f5ebd159c070c61ea2c4e2b122355e # v2.3.4
         with:
           python-version: "3.9"
 
