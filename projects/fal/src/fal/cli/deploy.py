@@ -232,8 +232,9 @@ def add_parser(main_subparsers, parents):
     parser.add_argument(
         "--strategy",
         choices=["recreate", "rolling"],
-        help="Deployment strategy.",
-        default="rolling",
+        help="Deployment strategy. Defaults to the value in pyproject.toml, "
+        "or 'rolling' if unset.",
+        default=None,
     )
     parser.add_argument(
         "--no-scale",

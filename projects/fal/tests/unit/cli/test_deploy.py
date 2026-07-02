@@ -697,6 +697,46 @@ def test_deploy_with_toml_deployment_strategy(
 @patch("fal.cli._utils.parse_pyproject_toml")
 @patch("fal.api.deploy.execute_prepared_deployment")
 @patch("fal.api.deploy._prepare_deployment_from_reference")
+def test_deploy_cli_strategy_overrides_toml_for_app_name(
+    mock_prepare_ref,
+    mock_execute,
+    mock_parse_toml,
+    mock_find_toml,
+    mock_parse_pyproject_toml,
+):
+    # Regression test: an explicit --strategy on the CLI must take precedence
+    # over the deployment_strategy set in pyproject.toml when deploying by app
+    # name. Previously the TOML value silently won and --strategy was dropped.
+    mock_parse_toml.return_value = mock_parse_pyproject_toml
+
+    # my-app has deployment_strategy="rolling" in the TOML fixture.
+    args = mock_args(app_ref=("my-app", None), strategy="recreate")
+
+    _deploy(args)
+
+    project_root, _ = find_project_root(None)
+
+    mock_prepare_ref.assert_called_once_with(
+        mock_prepare_ref.call_args[0][0],
+        (f"{project_root / 'src/my_app/inference.py'}", "MyApp"),
+        AppData(
+            ref=f"{project_root / 'src/my_app/inference.py'}::MyApp",
+            auth="shared",
+            deployment_strategy="recreate",
+            reset_scale=False,
+            team=None,
+            name="my-app",
+            local_project_root=".",
+        ),
+        force_env_build=False,
+        environment_name=None,
+    )
+
+
+@patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+@patch("fal.api.deploy.execute_prepared_deployment")
+@patch("fal.api.deploy._prepare_deployment_from_reference")
 def test_deploy_with_toml_default_deployment_strategy(
     mock_prepare_ref,
     mock_execute,
