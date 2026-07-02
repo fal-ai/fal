@@ -1529,19 +1529,27 @@ class SetSecretRequest(google.protobuf.message.Message):
     NAME_FIELD_NUMBER: builtins.int
     VALUE_FIELD_NUMBER: builtins.int
     ENVIRONMENT_NAME_FIELD_NUMBER: builtins.int
+    DEFAULT_EXPOSED_FIELD_NUMBER: builtins.int
     name: builtins.str
     value: builtins.str
     environment_name: builtins.str
     """Target environment (defaults to "main")"""
+    default_exposed: builtins.bool
+    """Whether the secret is exposed to apps that do not explicitly list
+    their secrets. When unset, the account-level default applies.
+    """
     def __init__(
         self,
         *,
         name: builtins.str = ...,
         value: builtins.str | None = ...,
         environment_name: builtins.str | None = ...,
+        default_exposed: builtins.bool | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing_extensions.Literal["_environment_name", b"_environment_name", "_value", b"_value", "environment_name", b"environment_name", "value", b"value"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing_extensions.Literal["_environment_name", b"_environment_name", "_value", b"_value", "environment_name", b"environment_name", "name", b"name", "value", b"value"]) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["_default_exposed", b"_default_exposed", "_environment_name", b"_environment_name", "_value", b"_value", "default_exposed", b"default_exposed", "environment_name", b"environment_name", "value", b"value"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["_default_exposed", b"_default_exposed", "_environment_name", b"_environment_name", "_value", b"_value", "default_exposed", b"default_exposed", "environment_name", b"environment_name", "name", b"name", "value", b"value"]) -> None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_default_exposed", b"_default_exposed"]) -> typing_extensions.Literal["default_exposed"] | None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_environment_name", b"_environment_name"]) -> typing_extensions.Literal["environment_name"] | None: ...
     @typing.overload
@@ -1586,22 +1594,30 @@ class Secret(google.protobuf.message.Message):
     NAME_FIELD_NUMBER: builtins.int
     CREATED_TIME_FIELD_NUMBER: builtins.int
     ENVIRONMENT_NAME_FIELD_NUMBER: builtins.int
+    DEFAULT_EXPOSED_FIELD_NUMBER: builtins.int
     name: builtins.str
     @property
     def created_time(self) -> google.protobuf.timestamp_pb2.Timestamp: ...
     environment_name: builtins.str
     """Could also include the value/scope of the secret in the future."""
+    default_exposed: builtins.bool
+    """Whether the secret is exposed to apps that do not explicitly list
+    their secrets. Unset means the account-level default applies.
+    """
     def __init__(
         self,
         *,
         name: builtins.str = ...,
         created_time: google.protobuf.timestamp_pb2.Timestamp | None = ...,
         environment_name: builtins.str | None = ...,
+        default_exposed: builtins.bool | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing_extensions.Literal["_created_time", b"_created_time", "_environment_name", b"_environment_name", "created_time", b"created_time", "environment_name", b"environment_name"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing_extensions.Literal["_created_time", b"_created_time", "_environment_name", b"_environment_name", "created_time", b"created_time", "environment_name", b"environment_name", "name", b"name"]) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["_created_time", b"_created_time", "_default_exposed", b"_default_exposed", "_environment_name", b"_environment_name", "created_time", b"created_time", "default_exposed", b"default_exposed", "environment_name", b"environment_name"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["_created_time", b"_created_time", "_default_exposed", b"_default_exposed", "_environment_name", b"_environment_name", "created_time", b"created_time", "default_exposed", b"default_exposed", "environment_name", b"environment_name", "name", b"name"]) -> None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_created_time", b"_created_time"]) -> typing_extensions.Literal["created_time"] | None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_default_exposed", b"_default_exposed"]) -> typing_extensions.Literal["default_exposed"] | None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_environment_name", b"_environment_name"]) -> typing_extensions.Literal["environment_name"] | None: ...
 

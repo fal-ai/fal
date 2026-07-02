@@ -531,6 +531,9 @@ message SetSecretRequest {
     optional string value = 2;
     // Target environment (defaults to "main")
     optional string environment_name = 3;
+    // Whether the secret is exposed to apps that do not explicitly list
+    // their secrets. When unset, the account-level default applies.
+    optional bool default_exposed = 4;
 }
 
 message SetSecretResponse {
@@ -547,6 +550,9 @@ message Secret {
     optional google.protobuf.Timestamp created_time = 2;
     // Could also include the value/scope of the secret in the future.
     optional string environment_name = 3;
+    // Whether the secret is exposed to apps that do not explicitly list
+    // their secrets. Unset means the account-level default applies.
+    optional bool default_exposed = 4;
 }
 
 message ListSecretsResponse {
