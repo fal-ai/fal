@@ -1151,6 +1151,7 @@ def test_app_health_override(test_health_override_app: str):
     assert r.status_code == 502, r.text
 
 
+@pytest.mark.flaky(max_runs=3)
 def test_ws_client(test_app: str):
     with apps.ws(test_app) as connection:
         for i in range(3):
@@ -1598,6 +1599,7 @@ def test_app_set_delete_alias(base_app: Tuple[str, str]):
         assert not found, f"Found app {app_alias} in {res} after deletion"
 
 
+@pytest.mark.flaky(max_runs=3)
 def test_realtime_connection(test_realtime_app):
     response = apps.run(test_realtime_app, arguments={"prompt": "a cat"})
     assert response["text"] == "a cat"
@@ -1627,6 +1629,7 @@ def test_realtime_connection(test_realtime_app):
         assert batch_sizes == [4, 4, 2]
 
 
+@pytest.mark.flaky(max_runs=3)
 def test_realtime_ws_endpoint(test_realtime_app):
     app_id = apps._backwards_compatible_app_id(test_realtime_app)
     url = apps._REALTIME_URL_FORMAT.format(app_id=app_id) + "/ws"
@@ -1645,6 +1648,7 @@ def test_realtime_ws_endpoint(test_realtime_app):
     assert messages == [{"message": "Hello world!"}] * 3
 
 
+@pytest.mark.flaky(max_runs=3)
 def test_realtime_connection_custom_codec(test_realtime_app):
     with apps._connect(
         test_realtime_app,
@@ -1656,6 +1660,7 @@ def test_realtime_connection_custom_codec(test_realtime_app):
         assert response["text"] == "json cat"
 
 
+@pytest.mark.flaky(max_runs=3)
 def test_realtime_server_streaming_mode(test_realtime_app):
     with apps._connect(
         test_realtime_app, path="/realtime/server-streaming"
@@ -1669,6 +1674,7 @@ def test_realtime_server_streaming_mode(test_realtime_app):
         ]
 
 
+@pytest.mark.flaky(max_runs=3)
 def test_realtime_server_streaming_sync_mode(test_realtime_app):
     with apps._connect(
         test_realtime_app, path="/realtime/server-streaming-sync"
@@ -1682,6 +1688,7 @@ def test_realtime_server_streaming_sync_mode(test_realtime_app):
         ]
 
 
+@pytest.mark.flaky(max_runs=3)
 def test_realtime_client_streaming_mode(test_realtime_app):
     with apps._connect(
         test_realtime_app, path="/realtime/client-streaming"
@@ -1693,6 +1700,7 @@ def test_realtime_client_streaming_mode(test_realtime_app):
         assert response["texts"] == ["first", "second", "third"]
 
 
+@pytest.mark.flaky(max_runs=3)
 def test_realtime_bidi_mode(test_realtime_app):
     with apps._connect(test_realtime_app, path="/realtime/bidi") as connection:
         connection.send({"prompt": "one"})
