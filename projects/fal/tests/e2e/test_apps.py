@@ -1397,6 +1397,7 @@ def test_404_billable_units(test_exception_app: AppClient):
     response = httpx.post(
         url,
         json={},
+        headers=_auth_headers(),
         timeout=30,
     )
 
@@ -1743,6 +1744,7 @@ def test_pydantic_validation_billing(test_pydantic_validation_error: AppClient):
     response = httpx.post(
         url,
         json={"value": "this-is-not-an-integer"},
+        headers=_auth_headers(),
         timeout=30,
     )
 
@@ -1755,6 +1757,7 @@ def test_field_exception_billing(test_exception_app: AppClient):
     response = httpx.post(
         url,
         json={"lhs": 1, "rhs": 2},
+        headers=_auth_headers(),
         timeout=30,
     )
 
@@ -1770,6 +1773,7 @@ def test_field_exception_int_billable_units_formatting(test_exception_app: AppCl
     response = httpx.post(
         url,
         json={"value": 42},
+        headers=_auth_headers(),
         timeout=30,
     )
 
@@ -1783,6 +1787,7 @@ def test_field_exception_float_billable_units_formatting(test_exception_app: App
     response = httpx.post(
         url,
         json={"value": 3.14159265},
+        headers=_auth_headers(),
         timeout=30,
     )
 
@@ -1796,6 +1801,7 @@ def test_field_exception_scientific_notation_small(test_exception_app: AppClient
     response = httpx.post(
         url,
         json={"value": 1.23e-5},
+        headers=_auth_headers(),
         timeout=30,
     )
 
@@ -1810,6 +1816,7 @@ def test_field_exception_scientific_notation_large(test_exception_app: AppClient
     response = httpx.post(
         url,
         json={"value": 1.23e10},
+        headers=_auth_headers(),
         timeout=30,
     )
 
@@ -1824,6 +1831,7 @@ def test_field_exception_invalid_billable_units(test_exception_app: AppClient):
     response = httpx.post(
         url,
         json={"value": "not_a_number"},
+        headers=_auth_headers(),
         timeout=30,
     )
 
@@ -1838,6 +1846,7 @@ def test_field_exception_default_billable_units(test_exception_app: AppClient):
     response = httpx.post(
         url,
         json={"lhs": 1, "rhs": 2},
+        headers=_auth_headers(),
         timeout=30,
     )
 
@@ -2110,6 +2119,7 @@ def test_hints_encoding():
         resp = httpx.post(
             url,
             json={"lhs": 1, "rhs": 2},
+            headers=_auth_headers(),
             timeout=30,
         )
         assert resp.is_success
