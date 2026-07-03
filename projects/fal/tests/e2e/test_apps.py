@@ -88,29 +88,6 @@ def _auth_headers() -> Dict[str, str]:
     return {"Authorization": f"Key {key_id}:{key_secret}"}
 
 
-def _request(method: str, url: str, *, attempts: int = 3, **kwargs) -> httpx.Response:
-    """Direct HTTP request to an app with retries on infra-level flakes.
-
-    Transport errors and 502/503 responses (e.g. the gateway momentarily
-    failing to reach a runner) are retried; the last response is returned
-    unchanged so tests can still assert on any status code.
-    """
-    kwargs.setdefault("headers", _auth_headers())
-    kwargs.setdefault("timeout", 30)
-    for attempt in range(1, attempts + 1):
-        try:
-            response = httpx.request(method, url, **kwargs)
-        except httpx.TransportError:
-            if attempt == attempts:
-                raise
-        else:
-            if response.status_code not in (502, 503) or attempt == attempts:
-                return response
-        time.sleep(2 * attempt)
-
-    raise AssertionError("unreachable")
-
-
 def git_revision_short_hash() -> str:
     return (
         subprocess.check_output(["git", "rev-parse", "--short", "HEAD"])
@@ -734,52 +711,6 @@ def user(rest_client: Client) -> Generator[User, None, None]:
     yield user
 
 
-def _is_transient_register_error(exc: FalServerlessException) -> bool:
-    message = str(exc).lower()
-    return any(
-        marker in message
-        for marker in (
-            # register/operator propagation race: the app was just created,
-            # but the operator does not know it yet
-            "application not found",
-            "could not reach fal host",
-            "unavailable",
-            "503",
-            "502",
-            "unexpected error",
-            "timed out",
-            "timeout",
-            "deadline",
-            "connection reset",
-            "socket closed",
-        )
-    )
-
-
-def _register_with_retry(
-    host: api.FalServerlessHost,
-    *,
-    timeout_seconds: int = 180,
-    **kwargs,
-):
-    """Register an app, retrying transient control-plane errors.
-
-    The preview control plane is restarted right before the test jobs run
-    and can throw transient UNAVAILABLE/INTERNAL errors for a while.
-    """
-    deadline = time.monotonic() + timeout_seconds
-    attempt = 0
-    while True:
-        attempt += 1
-        try:
-            return host.register(**kwargs)
-        except FalServerlessException as exc:
-            if not _is_transient_register_error(exc) or time.monotonic() > deadline:
-                raise
-            print(f"Transient register error (attempt {attempt}): {exc}. Retrying...")
-            time.sleep(min(5 * attempt, 30))
-
-
 @pytest.fixture(scope="module")
 def module_register_app(host: api.FalServerlessHost):
     """Module-scoped registration for apps that tests only read from.
@@ -794,8 +725,7 @@ def module_register_app(host: api.FalServerlessHost):
         suffix: str = "",
     ):
         app_alias = f"{suffix or 'test'}-{secrets.token_hex(4)}"
-        result = _register_with_retry(
-            host,
+        result = host.register(
             func=app.func,
             options=app.options,
             application_name=app_alias,
@@ -812,14 +742,7 @@ def module_register_app(host: api.FalServerlessHost):
             yield app_alias, app_revision
         finally:
             with host._connection as client:
-                for attempt in range(3):
-                    try:
-                        client.delete_alias(app_alias)
-                        break
-                    except FalServerlessException as exc:
-                        if not _is_transient_register_error(exc) or attempt == 2:
-                            raise
-                        time.sleep(5)
+                client.delete_alias(app_alias)
 
     return _register_app
 
@@ -841,8 +764,7 @@ def register_app(
         suffix: str = "",
     ):
         app_alias = make_tmp_app_name(suffix)
-        result = _register_with_retry(
-            host,
+        result = host.register(
             func=app.func,
             options=app.options,
             application_name=app_alias,
@@ -859,14 +781,7 @@ def register_app(
             yield app_alias, app_revision
         finally:
             with host._connection as client:
-                for attempt in range(3):
-                    try:
-                        client.delete_alias(app_alias)
-                        break
-                    except FalServerlessException as exc:
-                        if not _is_transient_register_error(exc) or attempt == 2:
-                            raise
-                        time.sleep(5)
+                client.delete_alias(app_alias)
 
     return _register_app
 
@@ -1065,8 +980,7 @@ def test_function_with_custom_openapi_health(
     metadata = res.parsed.to_dict()
     assert "openapi" not in metadata, f"openapi unexpectedly persisted: {metadata}"
 
-    r = _request(
-        "POST",
+    r = httpx.post(
         f"https://{FAL_RUN_HOST}/{test_greet_server_app}/greet",
         json={"name": "world"},
         headers=_auth_headers(),
@@ -1075,8 +989,7 @@ def test_function_with_custom_openapi_health(
     assert r.status_code == 200, r.text
     assert r.json() == {"greeting": "Hello, world!"}
 
-    r = _request(
-        "GET",
+    r = httpx.get(
         f"https://{FAL_RUN_HOST}/{test_greet_server_app}/health",
         headers=_auth_headers(),
         timeout=30,
@@ -1091,8 +1004,7 @@ def test_function_with_custom_health_path(test_custom_health_path_app: str):
     endpoint (/greet) must be reachable through the platform."""
     from fal.flags import FAL_RUN_HOST
 
-    r = _request(
-        "POST",
+    r = httpx.post(
         f"https://{FAL_RUN_HOST}/{test_custom_health_path_app}/greet",
         json={"name": "world"},
         headers=_auth_headers(),
@@ -1101,8 +1013,7 @@ def test_function_with_custom_health_path(test_custom_health_path_app: str):
     assert r.status_code == 200, r.text
     assert r.json() == {"greeting": "Hello, world!"}
 
-    r = _request(
-        "GET",
+    r = httpx.get(
         f"https://{FAL_RUN_HOST}/{test_custom_health_path_app}/ready",
         headers=_auth_headers(),
         timeout=30,
@@ -1122,8 +1033,7 @@ def test_function_health_override(test_health_override_fn: str):
     from fal.flags import FAL_RUN_HOST
 
     # main endpoint works → runner reached ready → platform probed /ready
-    r = _request(
-        "POST",
+    r = httpx.post(
         f"https://{FAL_RUN_HOST}/{test_health_override_fn}/greet",
         json={"name": "world"},
         headers=_auth_headers(),
@@ -1133,8 +1043,7 @@ def test_function_health_override(test_health_override_fn: str):
     assert r.json() == {"greeting": "Hello, world!"}
 
     # /ready is the user-declared health endpoint
-    r = _request(
-        "GET",
+    r = httpx.get(
         f"https://{FAL_RUN_HOST}/{test_health_override_fn}/ready",
         headers=_auth_headers(),
         timeout=30,
@@ -1144,8 +1053,7 @@ def test_function_health_override(test_health_override_fn: str):
 
     # /health is intentionally broken — its 502 is observable but didn't
     # block readiness because the platform used /ready instead
-    r = _request(
-        "GET",
+    r = httpx.get(
         f"https://{FAL_RUN_HOST}/{test_health_override_fn}/health",
         headers=_auth_headers(),
         timeout=30,
@@ -1164,8 +1072,7 @@ def test_app_health_override(test_health_override_app: str):
     from fal.flags import FAL_RUN_HOST
 
     # main endpoint works → runner reached ready → platform probed /ready
-    r = _request(
-        "POST",
+    r = httpx.post(
         f"https://{FAL_RUN_HOST}/{test_health_override_app}/",
         json={"lhs": 1, "rhs": 2},
         headers=_auth_headers(),
@@ -1175,8 +1082,7 @@ def test_app_health_override(test_health_override_app: str):
     assert r.json()["result"] == 3
 
     # /ready is the user-declared health endpoint
-    r = _request(
-        "GET",
+    r = httpx.get(
         f"https://{FAL_RUN_HOST}/{test_health_override_app}/ready",
         headers=_auth_headers(),
         timeout=30,
@@ -1186,8 +1092,7 @@ def test_app_health_override(test_health_override_app: str):
 
     # default /health is intentionally broken — observable 502, didn't
     # block readiness
-    r = _request(
-        "GET",
+    r = httpx.get(
         f"https://{FAL_RUN_HOST}/{test_health_override_app}/health",
         headers=_auth_headers(),
         timeout=30,
@@ -1195,7 +1100,6 @@ def test_app_health_override(test_health_override_app: str):
     assert r.status_code == 502, r.text
 
 
-@pytest.mark.flaky(max_runs=3)
 def test_ws_client(test_app: str):
     with apps.ws(test_app) as connection:
         for i in range(3):
@@ -1490,8 +1394,7 @@ def test_404_response(test_app: str, request: pytest.FixtureRequest):
 def test_404_billable_units(test_exception_app: AppClient):
     """Test that 404 responses include x-fal-billable-units: 0 header."""
     url = test_exception_app.url + "/non-existent-endpoint"
-    response = _request(
-        "POST",
+    response = httpx.post(
         url,
         json={},
         timeout=30,
@@ -1643,7 +1546,6 @@ def test_app_set_delete_alias(base_app: Tuple[str, str]):
         assert not found, f"Found app {app_alias} in {res} after deletion"
 
 
-@pytest.mark.flaky(max_runs=3)
 def test_realtime_connection(test_realtime_app):
     response = apps.run(test_realtime_app, arguments={"prompt": "a cat"})
     assert response["text"] == "a cat"
@@ -1673,7 +1575,6 @@ def test_realtime_connection(test_realtime_app):
         assert batch_sizes == [4, 4, 2]
 
 
-@pytest.mark.flaky(max_runs=3)
 def test_realtime_ws_endpoint(test_realtime_app):
     app_id = apps._backwards_compatible_app_id(test_realtime_app)
     url = apps._REALTIME_URL_FORMAT.format(app_id=app_id) + "/ws"
@@ -1692,7 +1593,6 @@ def test_realtime_ws_endpoint(test_realtime_app):
     assert messages == [{"message": "Hello world!"}] * 3
 
 
-@pytest.mark.flaky(max_runs=3)
 def test_realtime_connection_custom_codec(test_realtime_app):
     with apps._connect(
         test_realtime_app,
@@ -1704,7 +1604,6 @@ def test_realtime_connection_custom_codec(test_realtime_app):
         assert response["text"] == "json cat"
 
 
-@pytest.mark.flaky(max_runs=3)
 def test_realtime_server_streaming_mode(test_realtime_app):
     with apps._connect(
         test_realtime_app, path="/realtime/server-streaming"
@@ -1718,7 +1617,6 @@ def test_realtime_server_streaming_mode(test_realtime_app):
         ]
 
 
-@pytest.mark.flaky(max_runs=3)
 def test_realtime_server_streaming_sync_mode(test_realtime_app):
     with apps._connect(
         test_realtime_app, path="/realtime/server-streaming-sync"
@@ -1732,7 +1630,6 @@ def test_realtime_server_streaming_sync_mode(test_realtime_app):
         ]
 
 
-@pytest.mark.flaky(max_runs=3)
 def test_realtime_client_streaming_mode(test_realtime_app):
     with apps._connect(
         test_realtime_app, path="/realtime/client-streaming"
@@ -1744,7 +1641,6 @@ def test_realtime_client_streaming_mode(test_realtime_app):
         assert response["texts"] == ["first", "second", "third"]
 
 
-@pytest.mark.flaky(max_runs=3)
 def test_realtime_bidi_mode(test_realtime_app):
     with apps._connect(test_realtime_app, path="/realtime/bidi") as connection:
         connection.send({"prompt": "one"})
@@ -1761,10 +1657,7 @@ def delete_workflow_on_exit(client: httpx.Client, workflow_url: str):
         client.delete(workflow_url)
 
 
-@pytest.mark.timeout(600)
 def test_workflows(test_app: str, rest_client: Client):
-    # The workflow engine may fail over to its ingress fallback path and the
-    # dispatcher may re-run a failed workflow execution; give it headroom.
     workflow = Workflow(
         name="test_workflow_" + secrets.token_hex(),
         input_schema={},
@@ -1847,8 +1740,7 @@ def test_app_exceptions(test_exception_app: AppClient):
 
 def test_pydantic_validation_billing(test_pydantic_validation_error: AppClient):
     url = test_pydantic_validation_error.url + "/increment"
-    response = _request(
-        "POST",
+    response = httpx.post(
         url,
         json={"value": "this-is-not-an-integer"},
         timeout=30,
@@ -1860,8 +1752,7 @@ def test_pydantic_validation_billing(test_pydantic_validation_error: AppClient):
 
 def test_field_exception_billing(test_exception_app: AppClient):
     url = test_exception_app.url + "/field-exception"
-    response = _request(
-        "POST",
+    response = httpx.post(
         url,
         json={"lhs": 1, "rhs": 2},
         timeout=30,
@@ -1876,8 +1767,7 @@ def test_field_exception_billing(test_exception_app: AppClient):
 def test_field_exception_int_billable_units_formatting(test_exception_app: AppClient):
     """Test that int billable_units are formatted without decimal places."""
     url = test_exception_app.url + "/field-exception-units"
-    response = _request(
-        "POST",
+    response = httpx.post(
         url,
         json={"value": 42},
         timeout=30,
@@ -1890,8 +1780,7 @@ def test_field_exception_int_billable_units_formatting(test_exception_app: AppCl
 def test_field_exception_float_billable_units_formatting(test_exception_app: AppClient):
     """Test that float billable_units are formatted with 8 decimal places."""
     url = test_exception_app.url + "/field-exception-units"
-    response = _request(
-        "POST",
+    response = httpx.post(
         url,
         json={"value": 3.14159265},
         timeout=30,
@@ -1904,8 +1793,7 @@ def test_field_exception_float_billable_units_formatting(test_exception_app: App
 def test_field_exception_scientific_notation_small(test_exception_app: AppClient):
     """Test that small scientific notation values are properly formatted."""
     url = test_exception_app.url + "/field-exception-units"
-    response = _request(
-        "POST",
+    response = httpx.post(
         url,
         json={"value": 1.23e-5},
         timeout=30,
@@ -1919,8 +1807,7 @@ def test_field_exception_scientific_notation_small(test_exception_app: AppClient
 def test_field_exception_scientific_notation_large(test_exception_app: AppClient):
     """Test that large scientific notation values are properly formatted."""
     url = test_exception_app.url + "/field-exception-units"
-    response = _request(
-        "POST",
+    response = httpx.post(
         url,
         json={"value": 1.23e10},
         timeout=30,
@@ -1934,8 +1821,7 @@ def test_field_exception_scientific_notation_large(test_exception_app: AppClient
 def test_field_exception_invalid_billable_units(test_exception_app: AppClient):
     """Test that invalid billable_units (non-numeric string) raises an error."""
     url = test_exception_app.url + "/field-exception-units"
-    response = _request(
-        "POST",
+    response = httpx.post(
         url,
         json={"value": "not_a_number"},
         timeout=30,
@@ -1949,8 +1835,7 @@ def test_field_exception_invalid_billable_units(test_exception_app: AppClient):
 def test_field_exception_default_billable_units(test_exception_app: AppClient):
     """Test that when billable_units is not set (None), no header is included."""
     url = test_exception_app.url + "/field-exception"
-    response = _request(
-        "POST",
+    response = httpx.post(
         url,
         json={"lhs": 1, "rhs": 2},
         timeout=30,
@@ -1962,25 +1847,18 @@ def test_field_exception_default_billable_units(test_exception_app: AppClient):
 
 
 def submit_and_wait_for_runner(app: str, arguments: dict = {}, *, path: str = ""):
-    # A queued request can rarely get stuck undispatched for minutes; a
-    # fresh submit typically goes through, so resubmit instead of waiting
-    # on a single request forever.
-    for _attempt in range(3):
-        handle = apps.submit(app, arguments=arguments, path=path)
-        deadline = time.monotonic() + 120
+    handle = apps.submit(app, arguments=arguments, path=path)
 
-        while time.monotonic() < deadline:
-            status = handle.status()
-            if isinstance(status, (apps.InProgress, apps.Completed)):
-                return handle
-            elif isinstance(status, apps.Queued):
-                time.sleep(0.1)
-            else:
-                raise Exception(f"Failed to start the app: {status}")
+    while True:
+        status = handle.status()
+        if isinstance(status, apps.InProgress) or isinstance(status, apps.Completed):
+            break
+        elif isinstance(status, apps.Queued):
+            time.sleep(0.1)
+        else:
+            raise Exception(f"Failed to start the app: {status}")
 
-        print(f"request {handle.request_id} stuck in queue; resubmitting")
-
-    raise Exception(f"App {app} did not start a runner after 3 submits")
+    return handle
 
 
 def test_stop_runner(host: api.FalServerlessHost, test_sleep_app: str):
@@ -2229,8 +2107,7 @@ def test_hints_encoding():
     """
     with AppClient.connect(HintsApp) as client:
         url = client.url + "/add"
-        resp = _request(
-            "POST",
+        resp = httpx.post(
             url,
             json={"lhs": 1, "rhs": 2},
             timeout=30,
