@@ -2313,24 +2313,19 @@ class BaseServable:
         async def request_val_exception_handler(
             request: Request, exc: RequestValidationError
         ):
-            return JSONResponse(
-                {
-                    "detail": jsonable_encoder(
-                        exc.errors(),
-                        custom_encoder={
-                            bytes: lambda value: f"<binary {len(value)} bytes>",
-                            bytearray: lambda value: f"<binary {len(value)} bytes>",
-                            memoryview: lambda value: f"<binary {len(value)} bytes>",
-                            str: lambda value: value.encode("utf-8", "replace").decode(
-                                "utf-8"
-                            ),
-                            float: lambda value: value
-                            if math.isfinite(value)
-                            else str(value),
-                            BaseException: str,
-                        },
-                    )
+            detail = jsonable_encoder(
+                exc.errors(),
+                custom_encoder={
+                    bytes: lambda value: f"<binary {len(value)} bytes>",
+                    bytearray: lambda value: f"<binary {len(value)} bytes>",
+                    memoryview: lambda value: f"<binary {len(value)} bytes>",
+                    str: lambda value: value.encode("utf-8", "replace").decode("utf-8"),
+                    float: lambda value: value if math.isfinite(value) else str(value),
+                    BaseException: str,
                 },
+            )
+            return JSONResponse(
+                {"detail": detail},
                 422,
                 headers={"x-fal-billable-units": "0"},
             )
