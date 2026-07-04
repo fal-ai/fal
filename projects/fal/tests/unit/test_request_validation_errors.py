@@ -9,6 +9,7 @@ endpoint) therefore crashed the exception handler itself with
 
 import json
 
+import pydantic
 import pytest
 from pydantic import BaseModel
 
@@ -16,6 +17,7 @@ import fal
 from fal.api.api import _sanitize_validation_errors
 
 PNG_BYTES = b"\x89PNG\r\n\x1a\n" + bytes(range(256))
+PYDANTIC_V2 = pydantic.VERSION.startswith("2")
 
 
 @pytest.fixture
@@ -110,8 +112,14 @@ def test_binary_body_returns_422_not_500(isolate_agent_env):
     )
 
     assert resp.status_code == 422, resp.text
-    assert f"<binary {len(PNG_BYTES)} bytes>" in resp.text
     assert resp.headers["x-fal-billable-units"] == "0"
+    assert resp.json()["detail"]
+    if PYDANTIC_V2:
+        # Pydantic v2 echoes the raw body bytes in the error's ``input``
+        # field, which is what used to crash the handler; the sanitizer
+        # must render them as a placeholder. Pydantic v1 does not echo
+        # the body, so its 422 never contained bytes to begin with.
+        assert f"<binary {len(PNG_BYTES)} bytes>" in resp.text
 
 
 def test_valid_json_still_works(isolate_agent_env):
