@@ -7,14 +7,11 @@ endpoint) therefore crashed the exception handler itself with
 ``UnicodeDecodeError`` and surfaced as a 500 instead of a 422.
 """
 
-import json
-
 import pydantic
 import pytest
 from pydantic import BaseModel
 
 import fal
-from fal.api.api import _sanitize_validation_errors
 
 PNG_BYTES = b"\x89PNG\r\n\x1a\n" + bytes(range(256))
 PYDANTIC_V2 = pydantic.VERSION.startswith("2")
@@ -39,64 +36,31 @@ class ValidationDemoApp(fal.App):
         return DemoOutput(echo=input.prompt)
 
 
-class TestSanitizer:
-    def test_bytes_become_placeholder(self):
-        errors = [
-            {
-                "type": "model_attributes_type",
-                "loc": ("body",),
-                "msg": "Input should be a valid dictionary",
-                "input": PNG_BYTES,
-            }
-        ]
-        sanitized = _sanitize_validation_errors(errors)
-        assert sanitized[0]["input"] == f"<binary {len(PNG_BYTES)} bytes>"
-        assert sanitized[0]["loc"] == ["body"]
-        json.dumps(sanitized)
+class ValidationEdgeCaseApp(ValidationDemoApp):
+    def _add_extra_routes(self, app):
+        from fastapi.exceptions import RequestValidationError
 
-    def test_bytearray_and_memoryview(self):
-        assert _sanitize_validation_errors(bytearray(b"\xff\xd8")) == "<binary 2 bytes>"
-        assert (
-            _sanitize_validation_errors(memoryview(b"\xff\xd8\xff"))
-            == "<binary 3 bytes>"
+        def raise_validation_error():
+            raise RequestValidationError(
+                [
+                    {"loc": ("body", "raw"), "input": bytearray(b"\xff\xd8")},
+                    {"loc": ("body", "view"), "input": memoryview(b"\xff\xd8\xff")},
+                    {"loc": ("body", "text"), "input": "hello \udc40 world"},
+                    {
+                        "loc": ("body", "number"),
+                        "input": {"nan": float("nan"), "inf": float("inf"), "ok": 1.5},
+                    },
+                    {"loc": ("body", "ctx"), "ctx": {"error": ValueError("boom")}},
+                    {"loc": ("body", "unicode"), "input": "Café 😄 東京"},
+                    {"loc": ("body", "tuple"), "input": ("x", "y")},
+                ]
+            )
+
+        app.add_api_route(
+            "/validation-error",
+            raise_validation_error,
+            methods=["GET"],
         )
-
-    def test_lone_surrogates_made_utf8_encodable(self):
-        sanitized = _sanitize_validation_errors([{"input": "hello \udc40 world"}])
-        # JSONResponse.render dumps with ensure_ascii=False and UTF-8
-        # encodes; a lone surrogate would raise UnicodeEncodeError there.
-        json.dumps({"detail": sanitized}, ensure_ascii=False).encode("utf-8")
-        assert sanitized[0]["input"] == "hello ? world"
-
-    def test_valid_non_ascii_preserved(self):
-        assert _sanitize_validation_errors("Café 😄 東京") == "Café 😄 東京"
-
-    def test_non_finite_floats_stringified(self):
-        sanitized = _sanitize_validation_errors(
-            {"nan": float("nan"), "inf": float("inf"), "ok": 1.5}
-        )
-        assert sanitized["nan"] == "nan"
-        assert sanitized["inf"] == "inf"
-        assert sanitized["ok"] == 1.5
-        json.dumps(sanitized, allow_nan=False)
-
-    def test_ctx_exception_objects_stringified(self):
-        sanitized = _sanitize_validation_errors(
-            [{"ctx": {"error": ValueError("boom")}}]
-        )
-        assert sanitized[0]["ctx"]["error"] == "boom"
-        json.dumps(sanitized)
-
-    def test_json_primitives_and_containers_preserved(self):
-        data = {
-            "a": 1,
-            "b": 2.5,
-            "c": None,
-            "d": True,
-            "e": [False, 0],
-            "f": ("x", "y"),
-        }
-        assert _sanitize_validation_errors(data) == {**data, "f": ["x", "y"]}
 
 
 def test_binary_body_returns_422_not_500(isolate_agent_env):
@@ -120,6 +84,26 @@ def test_binary_body_returns_422_not_500(isolate_agent_env):
         # must render them as a placeholder. Pydantic v1 does not echo
         # the body, so its 422 never contained bytes to begin with.
         assert f"<binary {len(PNG_BYTES)} bytes>" in resp.text
+
+
+def test_validation_error_payload_is_safe_for_json_response(isolate_agent_env):
+    from fastapi.testclient import TestClient
+
+    app = ValidationEdgeCaseApp()
+    client = TestClient(app._build_app(), raise_server_exceptions=False)
+
+    resp = client.get("/validation-error")
+
+    assert resp.status_code == 422
+    assert resp.headers["x-fal-billable-units"] == "0"
+    detail = resp.json()["detail"]
+    assert detail[0]["input"] == "<binary 2 bytes>"
+    assert detail[1]["input"] == "<binary 3 bytes>"
+    assert detail[2]["input"] == "hello ? world"
+    assert detail[3]["input"] == {"nan": "nan", "inf": "inf", "ok": 1.5}
+    assert detail[4]["ctx"]["error"] == "boom"
+    assert detail[5]["input"] == "Café 😄 東京"
+    assert detail[6]["input"] == ["x", "y"]
 
 
 def test_valid_json_still_works(isolate_agent_env):

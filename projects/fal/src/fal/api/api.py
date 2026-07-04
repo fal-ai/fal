@@ -2154,37 +2154,6 @@ class FalServer(uvicorn.Server):
             fastapi_logger.exception(f"Error in handle_exit: {e}")
 
 
-def _sanitize_validation_errors(errors: Any) -> Any:
-    """Make ``RequestValidationError.errors()`` safe for ``JSONResponse``.
-
-    The error payload echoes raw request data, which can defeat naive JSON
-    serialization and turn an intended 422 into an unhandled 500:
-
-    - ``bytes`` for binary request bodies: FastAPI's default handler uses
-      ``jsonable_encoder`` without a custom binary encoder, so a PNG/JPEG/
-      multipart body raises ``UnicodeDecodeError`` inside the exception
-      handler. See https://github.com/fastapi/fastapi/issues/13111;
-    - lone UTF-16 surrogates in echoed user strings: survive ``json.dumps``
-      with ``ensure_ascii=False`` but blow up ``JSONResponse.render``'s
-      UTF-8 encode with ``UnicodeEncodeError``;
-    - non-finite floats: serialize to ``NaN``/``Infinity``, which is not
-      valid JSON;
-    - arbitrary objects (e.g. the original exception Pydantic stashes in
-      ``ctx``): not JSON-serializable at all.
-    """
-    return jsonable_encoder(
-        errors,
-        custom_encoder={
-            bytes: lambda value: f"<binary {len(value)} bytes>",
-            bytearray: lambda value: f"<binary {len(value)} bytes>",
-            memoryview: lambda value: f"<binary {len(value)} bytes>",
-            str: lambda value: value.encode("utf-8", "replace").decode("utf-8"),
-            float: lambda value: value if math.isfinite(value) else str(value),
-            BaseException: str,
-        },
-    )
-
-
 class BaseServable:
     version: ClassVar[str] = "unknown"
 
@@ -2345,7 +2314,23 @@ class BaseServable:
             request: Request, exc: RequestValidationError
         ):
             return JSONResponse(
-                {"detail": _sanitize_validation_errors(exc.errors())},
+                {
+                    "detail": jsonable_encoder(
+                        exc.errors(),
+                        custom_encoder={
+                            bytes: lambda value: f"<binary {len(value)} bytes>",
+                            bytearray: lambda value: f"<binary {len(value)} bytes>",
+                            memoryview: lambda value: f"<binary {len(value)} bytes>",
+                            str: lambda value: value.encode("utf-8", "replace").decode(
+                                "utf-8"
+                            ),
+                            float: lambda value: value
+                            if math.isfinite(value)
+                            else str(value),
+                            BaseException: str,
+                        },
+                    )
+                },
                 422,
                 headers={"x-fal-billable-units": "0"},
             )
