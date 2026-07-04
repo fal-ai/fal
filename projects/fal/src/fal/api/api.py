@@ -2154,22 +2154,6 @@ class FalServer(uvicorn.Server):
             fastapi_logger.exception(f"Error in handle_exit: {e}")
 
 
-def _sanitize_json_response_payload(obj: Any) -> Any:
-    """Make already-encoded values safe for Starlette's ``JSONResponse``."""
-    if isinstance(obj, str):
-        return obj.encode("utf-8", "replace").decode("utf-8")
-    if isinstance(obj, float):
-        return obj if math.isfinite(obj) else str(obj)
-    if isinstance(obj, dict):
-        return {
-            _sanitize_json_response_payload(str(k)): _sanitize_json_response_payload(v)
-            for k, v in obj.items()
-        }
-    if isinstance(obj, (list, tuple, set, frozenset)):
-        return [_sanitize_json_response_payload(v) for v in obj]
-    return obj
-
-
 def _sanitize_validation_errors(errors: Any) -> Any:
     """Make ``RequestValidationError.errors()`` safe for ``JSONResponse``.
 
@@ -2188,16 +2172,17 @@ def _sanitize_validation_errors(errors: Any) -> Any:
     - arbitrary objects (e.g. the original exception Pydantic stashes in
       ``ctx``): not JSON-serializable at all.
     """
-    encoded_errors = jsonable_encoder(
+    return jsonable_encoder(
         errors,
         custom_encoder={
             bytes: lambda value: f"<binary {len(value)} bytes>",
             bytearray: lambda value: f"<binary {len(value)} bytes>",
             memoryview: lambda value: f"<binary {len(value)} bytes>",
+            str: lambda value: value.encode("utf-8", "replace").decode("utf-8"),
+            float: lambda value: value if math.isfinite(value) else str(value),
             BaseException: str,
         },
     )
-    return _sanitize_json_response_payload(encoded_errors)
 
 
 class BaseServable:
