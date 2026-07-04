@@ -2158,8 +2158,6 @@ def _sanitize_json_response_payload(obj: Any) -> Any:
     """Make already-encoded values safe for Starlette's ``JSONResponse``."""
     if isinstance(obj, str):
         return obj.encode("utf-8", "replace").decode("utf-8")
-    if isinstance(obj, bool) or obj is None or isinstance(obj, int):
-        return obj
     if isinstance(obj, float):
         return obj if math.isfinite(obj) else str(obj)
     if isinstance(obj, dict):
@@ -2169,7 +2167,7 @@ def _sanitize_json_response_payload(obj: Any) -> Any:
         }
     if isinstance(obj, (list, tuple, set, frozenset)):
         return [_sanitize_json_response_payload(v) for v in obj]
-    return str(obj).encode("utf-8", "replace").decode("utf-8")
+    return obj
 
 
 def _sanitize_validation_errors(errors: Any) -> Any:
