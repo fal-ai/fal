@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import math
 import os
 import sys
 import threading
@@ -40,7 +41,6 @@ import uvicorn
 import yaml
 from fastapi import FastAPI
 from fastapi import __version__ as fastapi_version
-from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.logger import logger as fastapi_logger
 from fastapi.params import Param
@@ -2153,6 +2153,41 @@ class FalServer(uvicorn.Server):
             fastapi_logger.exception(f"Error in handle_exit: {e}")
 
 
+def _sanitize_validation_errors(obj: Any) -> Any:
+    """Make ``RequestValidationError.errors()`` safely JSON-serializable.
+
+    The error payload echoes raw request data, which can defeat naive JSON
+    serialization and turn an intended 422 into an unhandled 500:
+
+    - ``bytes`` for binary request bodies: ``jsonable_encoder`` decodes
+      bytes as strict UTF-8, so a PNG/JPEG/multipart body raises
+      ``UnicodeDecodeError`` inside the exception handler;
+    - lone UTF-16 surrogates in echoed user strings: survive ``json.dumps``
+      with ``ensure_ascii=False`` but blow up ``JSONResponse.render``'s
+      UTF-8 encode with ``UnicodeEncodeError``;
+    - non-finite floats: serialize to ``NaN``/``Infinity``, which is not
+      valid JSON;
+    - arbitrary objects (e.g. the original exception Pydantic stashes in
+      ``ctx``): not JSON-serializable at all.
+    """
+    if isinstance(obj, str):
+        return obj.encode("utf-8", "replace").decode("utf-8")
+    if isinstance(obj, (bytes, bytearray, memoryview)):
+        return f"<binary {len(obj)} bytes>"
+    if isinstance(obj, bool) or obj is None or isinstance(obj, int):
+        return obj
+    if isinstance(obj, float):
+        return obj if math.isfinite(obj) else str(obj)
+    if isinstance(obj, dict):
+        return {
+            _sanitize_validation_errors(str(k)): _sanitize_validation_errors(v)
+            for k, v in obj.items()
+        }
+    if isinstance(obj, (list, tuple, set, frozenset)):
+        return [_sanitize_validation_errors(v) for v in obj]
+    return str(obj).encode("utf-8", "replace").decode("utf-8")
+
+
 class BaseServable:
     version: ClassVar[str] = "unknown"
 
@@ -2304,12 +2339,16 @@ class BaseServable:
             )
 
         # ref: https://github.com/fastapi/fastapi/blob/37c8e7d76b4b47eb2c4cced6b4de59eb3d5f08eb/fastapi/exception_handlers.py#L20
+        # Unlike FastAPI's default handler, sanitize the error payload:
+        # jsonable_encoder crashes on the raw request bytes that Pydantic
+        # echoes back for binary bodies (UnicodeDecodeError → 500 instead
+        # of 422). See _sanitize_validation_errors.
         @_app.exception_handler(RequestValidationError)
         async def request_val_exception_handler(
             request: Request, exc: RequestValidationError
         ):
             return JSONResponse(
-                {"detail": jsonable_encoder(exc.errors())},
+                {"detail": _sanitize_validation_errors(exc.errors())},
                 422,
                 headers={"x-fal-billable-units": "0"},
             )
