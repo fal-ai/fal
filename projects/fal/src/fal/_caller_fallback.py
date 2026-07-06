@@ -42,6 +42,19 @@ PRIMARY_ENDPOINT_HEADER = "x-fal-endpoint"
 #: Extra nodes are leniently ignored, never an error.
 MAX_CHAIN_LENGTH = 2
 
+#: Public OpenAPI spec for an endpoint, used to resolve a fallback target's
+#: output shape for pre-flight schema validation (before any billable work).
+OPENAPI_URL = "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id={endpoint}"
+
+#: Machine-readable error type returned when a fallback target's output shape
+#: does not match the primary's (rejected up front, no attempt is made).
+SHAPE_MISMATCH_TYPE = "fallback_output_shape_mismatch"
+
+# Resolved target output shapes, cached per endpoint for the process lifetime.
+# Values: a MEDIA_FIELDS name, or None for a non-media output. Failed lookups
+# are NOT cached so they can retry on a later request.
+_SHAPE_CACHE: dict[str, Optional[str]] = {}
+
 #: Primary output fields, in priority order, used to infer a primary's output
 #: contract for the output-shape guard. Fallback grouping is by the EXACT output
 #: field: ``images`` chains only with ``images``, single ``image`` only with
@@ -213,6 +226,100 @@ def record_fallback(*, trigger: str, outcome: str, endpoint: Optional[str]) -> b
         return False
 
 
+async def resolve_output_field(endpoint: str) -> tuple[bool, Optional[str]]:
+    """Resolve an endpoint's primary output media field from its public OpenAPI.
+
+    Returns ``(known, field)``: ``known`` is False when the spec could not be
+    fetched or parsed (callers must fail OPEN and skip validation); ``field``
+    is the output's media field, or ``None`` for a non-media output.
+    Successful resolutions are cached for the process lifetime. Never raises.
+    """
+    if endpoint in _SHAPE_CACHE:
+        return True, _SHAPE_CACHE[endpoint]
+    try:
+        import httpx  # noqa: PLC0415
+
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(OPENAPI_URL.format(endpoint=endpoint))
+            resp.raise_for_status()
+            spec = resp.json()
+
+        schemas = (spec.get("components") or {}).get("schemas") or {}
+
+        def _field_of(schema_name: str) -> Optional[str]:
+            props = (schemas.get(schema_name) or {}).get("properties") or {}
+            for media in MEDIA_FIELDS:
+                if media in props:
+                    return media
+            return None
+
+        # Prefer the POST 200 response schema of the spec's path(s); fall back
+        # to any *Output* component if the paths give nothing.
+        field: Optional[str] = None
+        for path_item in (spec.get("paths") or {}).values():
+            ok = ((path_item.get("post") or {}).get("responses") or {}).get("200") or {}
+            content = (ok.get("content") or {}).get("application/json") or {}
+            ref = (content.get("schema") or {}).get("$ref") or ""
+            if ref:
+                field = _field_of(ref.rsplit("/", 1)[-1])
+                if field:
+                    break
+        if field is None:
+            for name in schemas:
+                if "Output" in name:
+                    field = _field_of(name)
+                    if field:
+                        break
+
+        _SHAPE_CACHE[endpoint] = field
+        return True, field
+    except Exception:
+        return False, None
+
+
+#: Async resolver signature: endpoint -> (known, output_field).
+ShapeResolver = Callable[[str], Awaitable[tuple[bool, Optional[str]]]]
+
+
+async def validate_chain_shapes(
+    chain: list[FallbackNode],
+    primary_field: Optional[str],
+    resolver: ShapeResolver,
+) -> Optional[dict]:
+    """Pre-flight schema validation: every fallback target must share the
+    primary's output shape.
+
+    Returns an error payload (fal error-taxonomy shaped) for the FIRST node
+    whose resolved output shape is known and differs from the primary's, or
+    ``None`` when the chain passes. Fail-open by design: an unknown primary
+    field, retry nodes, and unresolvable targets are skipped -- the runtime
+    output-shape guard still covers those.
+    """
+    if not primary_field:
+        return None
+    for index, node in enumerate(chain):
+        if node.retry or not node.endpoint:
+            continue  # a retry re-targets a prior attempt; always compatible
+        known, node_field = await resolver(node.endpoint)
+        if known and node_field != primary_field:
+            produces = f"'{node_field}'" if node_field else "a non-media output"
+            return {
+                "detail": [
+                    {
+                        "loc": ["body", FALLBACK_FIELD, index, "endpoint"],
+                        "msg": (
+                            f"fallback endpoint '{node.endpoint}' produces "
+                            f"{produces} but this endpoint produces "
+                            f"'{primary_field}'; fallback targets must share "
+                            "the primary's output shape."
+                        ),
+                        "type": SHAPE_MISMATCH_TYPE,
+                    }
+                ]
+            }
+    return None
+
+
 _DISABLE_HEADER = b"x-app-fal-disable-fallback"
 
 
@@ -240,6 +347,7 @@ def build_fallback_middleware(
     *,
     output_fields: Optional[dict] = None,
     forward: Optional[ForwardFn] = None,
+    shape_resolver: Optional[ShapeResolver] = None,
 ):
     """Build the Starlette HTTP-middleware dispatch for caller-defined fallback.
 
@@ -262,6 +370,7 @@ def build_fallback_middleware(
         return await fal_client.subscribe_async(endpoint, arguments=node_input)
 
     fwd = forward or _default_forward
+    resolver = shape_resolver or resolve_output_field
 
     async def dispatch(request, call_next):
         import json  # noqa: PLC0415
@@ -310,6 +419,22 @@ def build_fallback_middleware(
         if disabled or not chain:
             return await call_next(request)
 
+        # Pre-flight schema validation: a fallback target must share the
+        # primary's output shape. A KNOWN mismatch is a caller integration
+        # error -- reject the whole request up front with a clear, typed 400
+        # before any (billable) work happens. Unknown shapes (resolver
+        # failure, non-media primary) fail OPEN; the runtime output-shape
+        # guard still covers them. Wrapped so a bug in the validation itself
+        # can never break a request (only the intentional 400 escapes).
+        try:
+            shape_error = await validate_chain_shapes(
+                chain, output_fields.get(request.url.path), resolver
+            )
+        except Exception:
+            shape_error = None
+        if shape_error is not None:
+            return JSONResponse(content=shape_error, status_code=400)
+
         # Caller intent wins (scenario 4): when the caller supplies a chain, it
         # is the authority on fallback, so suppress the app's own static
         # ``@fallback_to`` for this request. We inject the disable-fallback header
@@ -340,6 +465,27 @@ def build_fallback_middleware(
             is_streaming = "text/event-stream" in response.headers.get(
                 "content-type", ""
             )
+            # A partner-backend failure surfaces as a 400 with error type
+            # `downstream_service_error` (public error taxonomy). That is a
+            # server-side failure of the target, not a caller mistake, so
+            # upgrade it to a `server_error` trigger. Buffer + rebuild the
+            # body to inspect it (kept intact when surfaced).
+            if trigger is None and response.status_code == 400 and not is_streaming:
+                from starlette.responses import Response as _Response  # noqa: PLC0415
+
+                raw = b"".join([chunk async for chunk in response.body_iterator])
+                response = _Response(
+                    content=raw,
+                    status_code=400,
+                    headers={
+                        k: v
+                        for k, v in response.headers.items()
+                        if k.lower() != "content-length"
+                    },
+                    media_type=response.media_type,
+                )
+                if b"downstream_service_error" in raw:
+                    trigger = "server_error"
             if trigger is None or is_streaming:
                 return response  # success, client error, or stream -> surface
             # 5xx ("server_error"), 408 / blown budget ("timeout"), and 422

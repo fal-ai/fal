@@ -23,6 +23,7 @@ from fal._caller_fallback import (
     record_fallback,
     run_fallback_chain,
     trigger_for_status,
+    validate_chain_shapes,
 )
 
 GPT = "fal-ai/gpt-image-2"
@@ -373,11 +374,20 @@ def _recording_forward(result_by_endpoint):
     return _forward
 
 
-def _build_app(forward, output_fields=None):
+async def _unknown_resolver(endpoint):
+    # Default for tests: shape unknown -> pre-flight fails open, no network.
+    return False, None
+
+
+def _build_app(forward, output_fields=None, shape_resolver=None):
     app = FastAPI()
     app.add_middleware(
         BaseHTTPMiddleware,
-        dispatch=build_fallback_middleware(forward=forward, output_fields=output_fields or {}),
+        dispatch=build_fallback_middleware(
+            forward=forward,
+            output_fields=output_fields or {},
+            shape_resolver=shape_resolver or _unknown_resolver,
+        ),
     )
 
     @app.post("/ok")
@@ -442,6 +452,17 @@ def _build_app(forward, output_fields=None):
     @app.post("/ratelimit")
     async def ratelimit(body: dict):
         return JSONResponse({"detail": "rate limited"}, status_code=429)
+
+    @app.post("/err400_downstream")
+    async def err400_downstream(body: dict):
+        return JSONResponse(
+            {"detail": [{"type": "downstream_service_error", "msg": "partner down"}]},
+            status_code=400,
+        )
+
+    @app.post("/err400_plain")
+    async def err400_plain(body: dict):
+        return JSONResponse({"detail": "bad request"}, status_code=400)
 
     @app.post("/haystatic")
     async def haystatic(request: Request):
@@ -798,6 +819,129 @@ def test_http_retry_without_endpoint_header_keeps_primary_failure():
     client = TestClient(_build_app(fwd), raise_server_exceptions=False)
     r = client.post("/err", json={"prompt": "x", "fal_fallback": [{"retry": True}]})
     assert r.status_code == 503
+    assert fwd.calls == []
+
+
+def _static_resolver(mapping):
+    async def _resolve(endpoint):
+        if endpoint in mapping:
+            return True, mapping[endpoint]
+        return False, None
+
+    return _resolve
+
+
+def test_validate_chain_reports_mismatched_node_index():
+    chain = parse_fallback_chain(
+        {"fal_fallback": [{"retry": True}, {"endpoint": SEEDREAM}]}
+    )
+    err = asyncio.run(
+        validate_chain_shapes(chain, "images", _static_resolver({SEEDREAM: "video"}))
+    )
+    assert err["detail"][0]["loc"] == ["body", "fal_fallback", 1, "endpoint"]
+    assert err["detail"][0]["type"] == "fallback_output_shape_mismatch"
+    assert SEEDREAM in err["detail"][0]["msg"]
+
+
+def test_validate_chain_passes_without_primary_field_or_resolution():
+    chain = parse_fallback_chain({"fal_fallback": [{"endpoint": GPT}]})
+    # Non-media primary: nothing to validate against.
+    assert asyncio.run(
+        validate_chain_shapes(chain, None, _static_resolver({GPT: "video"}))
+    ) is None
+    # Unresolvable target: fail open.
+    assert asyncio.run(
+        validate_chain_shapes(chain, "images", _static_resolver({}))
+    ) is None
+
+
+def test_http_shape_mismatch_rejected_up_front():
+    # Primary produces images; the chain targets a video model -> a typed 400
+    # BEFORE the primary (or any billable forward) runs.
+    fwd = _recording_forward({})
+    client = TestClient(
+        _build_app(
+            fwd,
+            output_fields={"/ok": "images"},
+            shape_resolver=_static_resolver({GPT: "video"}),
+        )
+    )
+    r = client.post("/ok", json={"prompt": "x", "fal_fallback": _chain()})
+    assert r.status_code == 400
+    detail = r.json()["detail"][0]
+    assert detail["type"] == "fallback_output_shape_mismatch"
+    assert detail["loc"] == ["body", "fal_fallback", 0, "endpoint"]
+    assert fwd.calls == []
+
+
+def test_http_shape_match_passes_preflight_and_serves():
+    fwd = _recording_forward({GPT: {"images": [{"url": "fb"}]}})
+    client = TestClient(
+        _build_app(
+            fwd,
+            output_fields={"/err": "images"},
+            shape_resolver=_static_resolver({GPT: "images"}),
+        )
+    )
+    r = client.post("/err", json={"prompt": "x", "fal_fallback": _chain()})
+    assert r.status_code == 200
+    assert r.headers["x-app-fal-api-fallback-endpoint"] == GPT
+
+
+def test_http_unknown_shape_fails_open_runtime_guard_still_protects():
+    # Resolver can't determine the target's shape -> the request proceeds;
+    # the runtime output-shape guard still rejects the mismatched result and
+    # the primary's failure is kept.
+    fwd = _recording_forward({GPT: {"video": {"url": "v"}}})
+    client = TestClient(
+        _build_app(fwd, output_fields={"/err": "images"}),
+        raise_server_exceptions=False,
+    )
+    r = client.post("/err", json={"prompt": "x", "fal_fallback": _chain()})
+    assert r.status_code == 503
+
+
+def test_http_retry_node_skips_preflight_validation():
+    calls = []
+
+    async def recording_resolver(endpoint):
+        calls.append(endpoint)
+        return True, "video"
+
+    fwd = _recording_forward({"fal-ai/my-app": {"images": [{"url": "r"}]}})
+    client = TestClient(
+        _build_app(fwd, output_fields={"/err": "images"}, shape_resolver=recording_resolver)
+    )
+    r = client.post(
+        "/err",
+        json={"prompt": "x", "fal_fallback": [{"retry": True}]},
+        headers={"x-fal-endpoint": "fal-ai/my-app"},
+    )
+    assert r.status_code == 200  # retry served; resolver never consulted
+    assert calls == []
+
+
+# --- 400 `downstream_service_error` upgrade (partner-backend failure) ----------
+
+
+def test_http_400_downstream_service_error_falls_back():
+    # A partner failure surfaces as 400 downstream_service_error -> that is a
+    # server-side failure of the target, so the chain rescues it.
+    fwd = _recording_forward({GPT: {"images": [{"url": "fb"}]}})
+    client = TestClient(_build_app(fwd))
+    r = client.post("/err400_downstream", json={"prompt": "x", "fal_fallback": _chain()})
+    assert r.status_code == 200
+    assert r.headers["x-app-fal-api-fallback-endpoint"] == GPT
+
+
+def test_http_plain_400_surfaced_intact():
+    # An ordinary 400 (caller mistake) never falls back; body preserved even
+    # though it was buffered for inspection.
+    fwd = _recording_forward({GPT: {"images": [{"url": "fb"}]}})
+    client = TestClient(_build_app(fwd))
+    r = client.post("/err400_plain", json={"prompt": "x", "fal_fallback": _chain()})
+    assert r.status_code == 400
+    assert r.json() == {"detail": "bad request"}
     assert fwd.calls == []
 
 
