@@ -1,3 +1,4 @@
+# PYTHON_ARGCOMPLETE_OK
 import argparse
 
 import rich
@@ -10,6 +11,7 @@ from . import (
     api,
     apps,
     auth,
+    completion,
     create,
     deploy,
     doctor,
@@ -63,6 +65,7 @@ def _get_main_parser() -> argparse.ArgumentParser:
         runners,
         teams,
         files,
+        completion,
     ]:
         cmd.add_parser(subparsers, parents)
 
