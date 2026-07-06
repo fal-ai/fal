@@ -9,8 +9,8 @@ carries its own input, models with different request schemas can be chained
 without server-side adapters.
 
 A node may instead set ``retry: true`` -- a shortcut that re-attempts the
-previous attempt (the primary when first in the chain) with the same endpoint
-and payload. The chain is capped at ``MAX_CHAIN_LENGTH`` nodes, i.e. 3 total
+previous attempt (with the single-node cap: the primary) with the same endpoint
+and payload. The chain is capped at ``MAX_CHAIN_LENGTH`` node(s), i.e. 2 total
 attempts including the primary; extra nodes are leniently ignored.
 
 This lives in the fal SDK (not the model registry) so it applies to ALL apps
@@ -37,10 +37,11 @@ PRIMARY_TIMEOUT_FIELD = "fal_fallback_timeout"
 #: ``retry: true`` node back to the primary endpoint.
 PRIMARY_ENDPOINT_HEADER = "x-fal-endpoint"
 
-#: Maximum number of chain nodes considered per request: the primary plus up to
-#: ``MAX_CHAIN_LENGTH`` further attempts (fallback or retry) = 3 total attempts.
-#: Extra nodes are leniently ignored, never an error.
-MAX_CHAIN_LENGTH = 2
+#: Maximum number of chain nodes considered per request: the primary plus ONE
+#: further attempt (a fallback endpoint OR a retry) = 2 total attempts. Extra
+#: nodes are leniently ignored, never an error. (Reduced from 2 nodes / 3 total
+#: attempts on 2026-07-06 to bound worst-case cost and latency.)
+MAX_CHAIN_LENGTH = 1
 
 #: Public OpenAPI spec for an endpoint, used to resolve a fallback target's
 #: output shape for pre-flight schema validation (before any billable work).
@@ -118,7 +119,7 @@ def parse_fallback_chain(body: Any) -> list[FallbackNode]:
 
     A missing, non-list, or malformed ``fal_fallback`` yields an empty chain so
     a bad spec can never break an otherwise-valid request. The chain is capped
-    at ``MAX_CHAIN_LENGTH`` nodes (3 total attempts including the primary);
+    at ``MAX_CHAIN_LENGTH`` node(s) (2 total attempts including the primary);
     nodes past the cap are leniently ignored.
     """
     if not isinstance(body, dict):
@@ -571,6 +572,16 @@ async def run_fallback_chain(
             # Unusable: endpointless node, or a retry with no known prior
             # attempt (primary endpoint header absent). Skip, don't fail.
             continue
+        # Strip reserved fields from the forwarded input: a nested
+        # ``fal_fallback`` would otherwise be honored by the TARGET's own
+        # middleware, letting a caller build chains-of-chains that multiply
+        # attempts, runner holds, and cost beyond the cap.
+        if FALLBACK_FIELD in node_input or PRIMARY_TIMEOUT_FIELD in node_input:
+            node_input = {
+                k: v
+                for k, v in node_input.items()
+                if k not in (FALLBACK_FIELD, PRIMARY_TIMEOUT_FIELD)
+            }
         last_endpoint, last_input = endpoint, node_input
         node_timeout = node.timeout if (node.timeout and node.timeout > 0) else None
         try:

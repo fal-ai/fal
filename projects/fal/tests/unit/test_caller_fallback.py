@@ -56,8 +56,8 @@ def test_parse_absent_or_malformed_yields_empty(body):
 def test_parse_skips_bad_items_keeps_good():
     body = {"fal_fallback": ["not a dict", {"endpoint": GPT}, 42, {"input": {"a": 1}}]}
     chain = parse_fallback_chain(body)
-    # Two dict items survive (one with endpoint, one endpoint-less but parseable).
-    assert [n.endpoint for n in chain] == [GPT, None]
+    # Non-dict items are skipped; the first parseable node fills the single slot.
+    assert [n.endpoint for n in chain] == [GPT]
 
 
 def test_parse_lenient_defaults():
@@ -70,24 +70,24 @@ def test_parse_lenient_defaults():
 
 
 def test_parse_retry_node():
-    chain = parse_fallback_chain({"fal_fallback": [{"retry": True}, {"endpoint": GPT}]})
+    chain = parse_fallback_chain({"fal_fallback": [{"retry": True}]})
     assert chain[0].retry is True
     assert chain[0].endpoint is None
-    assert chain[1].retry is False
+    normal = parse_fallback_chain({"fal_fallback": [{"endpoint": GPT}]})
+    assert normal[0].retry is False
 
 
-def test_parse_chain_capped_at_two_nodes():
-    # 3 total attempts incl. the primary -> at most 2 chain nodes; extras are
-    # leniently ignored (never an error).
+def test_parse_chain_capped_at_one_node():
+    # 2 total attempts incl. the primary -> at most ONE chain node (retry OR
+    # fallback); extras are leniently ignored (never an error).
     body = {
         "fal_fallback": [
             {"endpoint": "a/a"},
             {"endpoint": "b/b"},
             {"endpoint": "c/c"},
-            {"endpoint": "d/d"},
         ]
     }
-    assert [n.endpoint for n in parse_fallback_chain(body)] == ["a/a", "b/b"]
+    assert [n.endpoint for n in parse_fallback_chain(body)] == ["a/a"]
 
 
 # --- trigger_for_status -------------------------------------------------------
@@ -143,9 +143,9 @@ def test_chain_skips_node_when_trigger_not_listed():
 
 
 def test_chain_advances_past_failing_node():
-    chain = parse_fallback_chain(
-        {"fal_fallback": [{"endpoint": GPT}, {"endpoint": SEEDREAM}]}
-    )
+    # Engine-level: the walk advances past failures (the 1-node cap is a parse
+    # concern; the engine itself handles any list it is given).
+    chain = [FallbackNode(endpoint=GPT), FallbackNode(endpoint=SEEDREAM)]
     forward = _forward_returning(
         {GPT: RuntimeError("down"), SEEDREAM: {"images": [{"url": "ok"}]}}
     )
@@ -161,18 +161,14 @@ def test_chain_exhausted_returns_none():
 
 
 def test_chain_endpointless_node_skipped():
-    chain = parse_fallback_chain(
-        {"fal_fallback": [{"input": {"a": 1}}, {"endpoint": GPT}]}
-    )
+    chain = [FallbackNode(input={"a": 1}), FallbackNode(endpoint=GPT)]
     forward = _forward_returning({GPT: {"images": [{"url": "ok"}]}})
     result, served = asyncio.run(run_fallback_chain(chain, trigger="server_error", forward=forward))
     assert served == GPT
 
 
 def test_chain_output_guard_skips_incompatible_then_serves():
-    chain = parse_fallback_chain(
-        {"fal_fallback": [{"endpoint": GPT}, {"endpoint": SEEDREAM}]}
-    )
+    chain = [FallbackNode(endpoint=GPT), FallbackNode(endpoint=SEEDREAM)]
     forward = _forward_returning(
         {GPT: {"video": {"url": "v"}}, SEEDREAM: {"images": [{"url": "ok"}]}}
     )
@@ -266,8 +262,10 @@ def test_chain_retry_first_reattempts_primary():
 
 
 def test_chain_retry_reattempts_last_attempt_not_primary():
-    # [fallback, retry]: the retry node re-attempts the LAST attempt (the
-    # fallback that just failed), not the primary.
+    # Engine-level: a retry node re-attempts the LAST attempt (the fallback
+    # that just failed), not the primary. (With the 1-node parse cap this
+    # combination is not reachable via a request body; the engine keeps the
+    # general semantics for future/direct callers.)
     calls = []
 
     async def forward(endpoint, payload):
@@ -276,9 +274,7 @@ def test_chain_retry_reattempts_last_attempt_not_primary():
             raise RuntimeError("first attempt down")
         return {"images": [{"url": "second-try"}]}
 
-    chain = parse_fallback_chain(
-        {"fal_fallback": [{"endpoint": GPT, "input": {"prompt": "fb"}}, {"retry": True}]}
-    )
+    chain = [FallbackNode(endpoint=GPT, input={"prompt": "fb"}), FallbackNode(retry=True)]
     result, served = asyncio.run(
         run_fallback_chain(
             chain,
@@ -631,9 +627,7 @@ def test_http_sse_failure_not_replaced_by_fallback():
 
 def test_chain_text_output_guard_skips_non_text():
     # Primary returns `text`; a node lacking `text` is rejected, chain advances.
-    chain = parse_fallback_chain(
-        {"fal_fallback": [{"endpoint": GPT}, {"endpoint": SEEDREAM}]}
-    )
+    chain = [FallbackNode(endpoint=GPT), FallbackNode(endpoint=SEEDREAM)]
     forward = _forward_returning(
         {GPT: {"images": [{"url": "x"}]}, SEEDREAM: {"text": "hello world"}}
     )
@@ -753,9 +747,7 @@ def test_http_429_rate_limit_surfaced_no_fallback():
 def test_chain_policy_trigger_matches_only_opted_in_nodes():
     # With trigger="policy", default-`on` nodes are skipped; the first node that
     # explicitly lists "policy" serves.
-    chain = parse_fallback_chain(
-        {"fal_fallback": [{"endpoint": GPT}, {"endpoint": SEEDREAM, "on": ["policy"]}]}
-    )
+    chain = [FallbackNode(endpoint=GPT), FallbackNode(endpoint=SEEDREAM, on=["policy"])]
     forward = _forward_returning(
         {GPT: {"images": [{"url": "skipped"}]}, SEEDREAM: {"images": [{"url": "ok"}]}}
     )
@@ -832,9 +824,7 @@ def _static_resolver(mapping):
 
 
 def test_validate_chain_reports_mismatched_node_index():
-    chain = parse_fallback_chain(
-        {"fal_fallback": [{"retry": True}, {"endpoint": SEEDREAM}]}
-    )
+    chain = [FallbackNode(retry=True), FallbackNode(endpoint=SEEDREAM)]
     err = asyncio.run(
         validate_chain_shapes(chain, "images", _static_resolver({SEEDREAM: "video"}))
     )
@@ -945,9 +935,9 @@ def test_http_plain_400_surfaced_intact():
     assert fwd.calls == []
 
 
-def test_http_chain_capped_at_three_total_attempts():
-    # 3 nodes supplied but the cap keeps only the first 2 (primary + 2 = 3 total
-    # attempts): the third endpoint is never tried; primary failure is kept.
+def test_http_chain_capped_at_two_total_attempts():
+    # 3 nodes supplied but the cap keeps only the FIRST (primary + 1 = 2 total
+    # attempts): the others are never tried; primary failure is kept.
     calls = []
 
     async def failing_forward(endpoint, payload):
@@ -967,4 +957,35 @@ def test_http_chain_capped_at_three_total_attempts():
         },
     )
     assert r.status_code == 503
-    assert calls == ["a/a", "b/b"]
+    assert calls == ["a/a"]
+
+
+def test_chain_strips_nested_fallback_from_forwarded_input():
+    # A nested `fal_fallback` inside node.input must NOT reach the target (its
+    # middleware would walk it -> chains-of-chains amplification). Reserved
+    # fields are stripped from the forwarded input.
+    calls = []
+
+    async def forward(endpoint, payload):
+        calls.append((endpoint, payload))
+        return {"images": [{"url": "ok"}]}
+
+    chain = parse_fallback_chain(
+        {
+            "fal_fallback": [
+                {
+                    "endpoint": GPT,
+                    "input": {
+                        "prompt": "x",
+                        "fal_fallback": [{"endpoint": SEEDREAM}],
+                        "fal_fallback_timeout": 5,
+                    },
+                }
+            ]
+        }
+    )
+    result, served = asyncio.run(
+        run_fallback_chain(chain, trigger="server_error", forward=forward)
+    )
+    assert served == GPT
+    assert calls == [(GPT, {"prompt": "x"})]
