@@ -95,6 +95,7 @@ class DeploymentCheckSummary:
     current_auth_mode: str | None
     next_auth_mode: str
     strategy: str
+    attach_to_deployment: bool | None
     force_env_build: bool
     effective_changes: list[DeploymentDiffRow]
     effective_scale_values: list[DeploymentDiffRow]
@@ -112,6 +113,7 @@ def deploy_with_check(
     prepare_options_handler: ProgressCallback | None = None,
 ) -> DeploymentResult:
     from fal.api import deploy as deploy_api
+    from fal.api.deploy import _validate_attach_to_deployment
 
     prepared = deploy_api.prepare_deployment(
         client,
@@ -120,9 +122,11 @@ def deploy_with_check(
         auth=args.auth,
         strategy=args.strategy,
         reset_scale=args.app_scale_settings,
+        attach_to_deployment=args.attach_to_deployment,
         force_env_build=force_env_build,
         environment_name=args.env,
     )
+    _validate_attach_to_deployment(prepared.app_data)
     production_alias = _get_production_alias(
         client,
         prepared.loaded.app_name,
@@ -332,6 +336,7 @@ def _build_deployment_check_summary(
         current_auth_mode=production_alias.auth_mode if production_alias else None,
         next_auth_mode=prepared.loaded.app_auth or "private",
         strategy=prepared.app_data.deployment_strategy or "rolling",
+        attach_to_deployment=prepared.app_data.attach_to_deployment,
         force_env_build=force_env_build,
         effective_changes=effective_changes,
         effective_scale_values=effective_scale_values,
@@ -461,6 +466,18 @@ def _render_environment_build_cache_line(force_env_build: bool):
     return line
 
 
+def _render_attach_to_deployment_line(attach_to_deployment: bool | None):
+    from rich.text import Text
+
+    if attach_to_deployment is None:
+        return None
+
+    line = Text()
+    line.append("Attach to deployment: ", style="bold")
+    line.append("yes" if attach_to_deployment else "no")
+    return line
+
+
 def _render_deployment_check_summary(console, summary: DeploymentCheckSummary) -> None:
     from fal.console.rules import print_rule
 
@@ -478,6 +495,9 @@ def _render_deployment_check_summary(console, summary: DeploymentCheckSummary) -
     console.print(f"[bold]Source object:[/bold] {summary.display_name}")
     console.print(_render_auth_line(summary.current_auth_mode, summary.next_auth_mode))
     console.print(_render_deployment_strategy_line(summary.strategy))
+    attach_line = _render_attach_to_deployment_line(summary.attach_to_deployment)
+    if attach_line is not None:
+        console.print(attach_line)
     console.print(_render_environment_build_cache_line(summary.force_env_build))
 
     if summary.effective_changes:
