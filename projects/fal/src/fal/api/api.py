@@ -1093,6 +1093,7 @@ class FalServerlessHost(Host):
         result_handler: ResultHandler | None = None,
         entrypoint: str | None = None,
         build_environment: bool | None = None,
+        attach_to_deployment: bool | None = None,
     ) -> Optional[RegisterApplicationResult]:
         options = self.prepare_options(options, func=func)
         environment_options = options.environment
@@ -1201,6 +1202,7 @@ class FalServerlessHost(Host):
             data_mounts=data_mounts,
             entrypoint=entrypoint,
             build_environment=build_environment,
+            attach_to_deployment=attach_to_deployment,
         ):
             result_handler(partial_result)
 

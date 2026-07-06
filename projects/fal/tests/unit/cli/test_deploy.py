@@ -39,6 +39,17 @@ def test_deploy_with_env():
     assert args.env == "dev"
 
 
+def test_deploy_attach_detach_flags():
+    attach_args = parse_args(["deploy", "myfile.py::MyApp", "--attach"])
+    assert attach_args.attach_to_deployment is True
+
+    detach_args = parse_args(["deploy", "myfile.py::MyApp", "--detach"])
+    assert detach_args.attach_to_deployment is False
+
+    default_args = parse_args(["deploy", "myfile.py::MyApp"])
+    assert default_args.attach_to_deployment is None
+
+
 def test_execute_prepared_deployment_reuses_result_handler_for_build_by_default():
     from fal.api.deploy import PreparedDeployment, execute_prepared_deployment
     from fal.sdk import (
@@ -150,6 +161,114 @@ def test_execute_prepared_deployment_builds_no_isolate_container():
     host.build_environment.assert_called_once()
     _, register_kwargs = host.register.call_args
     assert register_kwargs["build_environment"] is False
+
+
+def test_execute_prepared_deployment_forwards_attach_to_deployment():
+    from fal.api.deploy import PreparedDeployment, execute_prepared_deployment
+    from fal.sdk import (
+        RegisterApplicationResult,
+        RegisterApplicationResultType,
+        ServiceURLs,
+    )
+
+    host = MagicMock()
+    options = Options(environment={"requirements": ["."]})
+    isolated_function = IsolatedFunction(
+        host=host,
+        raw_func=lambda: None,
+        options=options,
+        app_name="my-app",
+        app_auth="public",
+    )
+    host.register.return_value = RegisterApplicationResult(
+        result=RegisterApplicationResultType(application_id="app-id"),
+        service_urls=ServiceURLs(
+            playground="https://playground.example",
+            run="https://run.example",
+            queue="https://queue.example",
+            ws="wss://ws.example",
+            log="https://log.example",
+        ),
+    )
+    host.prepare_options.return_value = options
+    prepared = PreparedDeployment(
+        host=host,
+        loaded=SimpleNamespace(
+            function=isolated_function,
+            app_name="my-app",
+            app_auth="public",
+            source_code=None,
+        ),
+        app_data=AppData(
+            deployment_strategy="rolling",
+            attach_to_deployment=True,
+        ),
+        display_name="MyApp",
+    )
+
+    execute_prepared_deployment(prepared)
+
+    _, register_kwargs = host.register.call_args
+    assert register_kwargs["attach_to_deployment"] is True
+
+
+def test_execute_prepared_deployment_rejects_attach_with_recreate_strategy():
+    from fal.api import FalServerlessError
+    from fal.api.deploy import PreparedDeployment, execute_prepared_deployment
+
+    host = MagicMock()
+    prepared = PreparedDeployment(
+        host=host,
+        loaded=SimpleNamespace(
+            function=SimpleNamespace(
+                options=Options(environment={"requirements": ["."]}),
+                func=lambda: None,
+            ),
+            app_name="my-app",
+            app_auth="public",
+            source_code=None,
+        ),
+        app_data=AppData(
+            deployment_strategy="recreate",
+            attach_to_deployment=True,
+        ),
+        display_name="MyApp",
+    )
+
+    with pytest.raises(FalServerlessError, match="only applies to rolling deployments"):
+        execute_prepared_deployment(prepared)
+
+
+def test_render_attach_to_deployment_line():
+    from fal.cli.deploy_check import _render_attach_to_deployment_line
+
+    assert _render_attach_to_deployment_line(None) is None
+    assert _render_attach_to_deployment_line(True).plain == "Attach to deployment: yes"
+    assert _render_attach_to_deployment_line(False).plain == "Attach to deployment: no"
+
+
+def test_build_deployment_check_summary_includes_attach_to_deployment():
+    prepared = _prepared_deployment(reset_scale=False)
+    prepared = SimpleNamespace(
+        loaded=prepared.loaded,
+        display_name=prepared.display_name,
+        environment_name=prepared.environment_name,
+        app_data=AppData(
+            reset_scale=False,
+            deployment_strategy="rolling",
+            name="my-app",
+            attach_to_deployment=True,
+        ),
+    )
+
+    summary = _build_deployment_check_summary(
+        prepared,
+        None,
+        source="flag",
+        force_env_build=False,
+    )
+
+    assert summary.attach_to_deployment is True
 
 
 def test_deploy_with_env_and_other_options():
@@ -301,6 +420,7 @@ def mock_args(
     args.env = env
     args.check = False
     args.yes = False
+    args.attach_to_deployment = None
     args.host = "my-host"
 
     return args
