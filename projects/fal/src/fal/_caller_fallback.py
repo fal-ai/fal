@@ -1,10 +1,17 @@
 """Caller-defined fallback chains, applied uniformly to every fal endpoint.
 
 A caller may include a ``fal_fallback`` array in the request body: an ordered
-list of alternative endpoints, each with its own input. When the primary
-endpoint fails (5xx) or times out, the framework forwards the request to the
-next eligible node. Because each node carries its own input, models with
-different request schemas can be chained without server-side adapters.
+list of alternative endpoints, each with its own input. Each node opts into
+trigger categories via ``on``: ``server_error`` (any 5xx, 504 included),
+``timeout`` (408 or a blown time budget), and ``policy`` (422 model/content
+rejection -- opt-in only, never triggered by default). Because each node
+carries its own input, models with different request schemas can be chained
+without server-side adapters.
+
+A node may instead set ``retry: true`` -- a shortcut that re-attempts the
+previous attempt (the primary when first in the chain) with the same endpoint
+and payload. The chain is capped at ``MAX_CHAIN_LENGTH`` nodes, i.e. 3 total
+attempts including the primary; extra nodes are leniently ignored.
 
 This lives in the fal SDK (not the model registry) so it applies to ALL apps
 without per-app wiring. Triggering is based on the primary's response status,
@@ -25,20 +32,29 @@ FALLBACK_FIELD = "fal_fallback"
 #: Request-body key for the caller's timeout (seconds) on the primary attempt.
 PRIMARY_TIMEOUT_FIELD = "fal_fallback_timeout"
 
+#: Request header carrying the primary endpoint id (set by the platform on
+#: dispatch; same value as ``fal.app.REQUEST_ENDPOINT_KEY``). Used to resolve a
+#: ``retry: true`` node back to the primary endpoint.
+PRIMARY_ENDPOINT_HEADER = "x-fal-endpoint"
+
+#: Maximum number of chain nodes considered per request: the primary plus up to
+#: ``MAX_CHAIN_LENGTH`` further attempts (fallback or retry) = 3 total attempts.
+#: Extra nodes are leniently ignored, never an error.
+MAX_CHAIN_LENGTH = 2
+
 #: Primary output fields, in priority order, used to infer a primary's output
-#: contract for the result guard and normalization. Covers the four modalities
-#: (image / video / audio / text). Text has no list/single variant, so it only
-#: drives the output-shape guard, not normalization.
+#: contract for the output-shape guard. Fallback grouping is by the EXACT output
+#: field: ``images`` chains only with ``images``, single ``image`` only with
+#: ``image`` (no single<->list bridging), so a served fallback always matches the
+#: primary's declared output shape. Covers the four modalities
+#: (image / video / audio / text).
 MEDIA_FIELDS = ("images", "image", "videos", "video", "audios", "audio", "text")
 
-#: Statuses that map to a "timeout" trigger; other 5xx map to "error".
-_TIMEOUT_STATUSES = {408, 504}
-
-# Media output fields, mapped between their list and single-item forms, used to
-# reconcile a fallback result to the primary's output contract (modality-level
-# grouping allows, e.g., an ``image``-returning model to back an ``images`` one).
-_PLURAL_BY_SINGULAR = {"image": "images", "video": "videos", "audio": "audios"}
-_SINGULAR_BY_PLURAL = {plural: single for single, plural in _PLURAL_BY_SINGULAR.items()}
+#: Statuses that map to a "timeout" trigger. Deliberately only 408: the
+#: "timeout" category is for blown time budgets (408, `fal_fallback_timeout`,
+#: node `timeout`); every 5xx -- 504 (gateway timeout) included -- counts as
+#: "server_error".
+_TIMEOUT_STATUSES = {408}
 
 # An async callable that forwards (endpoint, input) to another fal endpoint.
 ForwardFn = Callable[[str, dict], Awaitable[Any]]
@@ -63,10 +79,20 @@ class FallbackNode(BaseModel):
         default_factory=dict,
         description="Parameters shaped for ``endpoint`` (forwarded as-is).",
     )
+    retry: bool = Field(
+        default=False,
+        description="Shortcut: re-attempt the PREVIOUS attempt in the chain (the "
+        "primary when first) with the same endpoint and payload. When set, "
+        "``endpoint``/``input`` on this node are ignored; ``on``/``timeout`` "
+        "still apply to the retry attempt.",
+    )
     on: list[str] = Field(
-        default_factory=lambda: ["error", "timeout"],
-        description="Which outcomes of the preceding attempt trigger this node "
-        "('error' and/or 'timeout'). Unknown values never match.",
+        default_factory=lambda: ["server_error", "timeout"],
+        description="Which outcomes of the preceding attempt trigger this node: "
+        "'server_error' (any 5xx, 504 included), 'timeout' (408 or a blown "
+        "time budget), and/or 'policy' (422 model/content rejection; opt-in -- "
+        "not in the default, so a 422 never falls back unless explicitly "
+        "listed). Unknown values never match.",
     )
     timeout: Optional[float] = Field(
         default=None,
@@ -78,7 +104,9 @@ def parse_fallback_chain(body: Any) -> list[FallbackNode]:
     """Extract a fallback chain from a parsed request body. Never raises.
 
     A missing, non-list, or malformed ``fal_fallback`` yields an empty chain so
-    a bad spec can never break an otherwise-valid request.
+    a bad spec can never break an otherwise-valid request. The chain is capped
+    at ``MAX_CHAIN_LENGTH`` nodes (3 total attempts including the primary);
+    nodes past the cap are leniently ignored.
     """
     if not isinstance(body, dict):
         return []
@@ -87,6 +115,8 @@ def parse_fallback_chain(body: Any) -> list[FallbackNode]:
         return []
     chain: list[FallbackNode] = []
     for item in raw:
+        if len(chain) >= MAX_CHAIN_LENGTH:
+            break
         if not isinstance(item, dict):
             continue
         try:
@@ -128,38 +158,25 @@ def media_field(model: Any) -> Optional[str]:
 def trigger_for_status(status_code: int) -> Optional[str]:
     """Map a primary response status to a fallback trigger.
 
-    Returns ``"timeout"`` / ``"error"`` when a fallback should be attempted, or
-    ``None`` when the response should be surfaced to the caller.
+    Returns a trigger category (``server_error`` / ``timeout`` / ``policy``)
+    when a fallback may be attempted, or ``None`` when the response is surfaced
+    to the caller.
 
-    Triggers: all 5xx, 408/504 (timeout), 422 (model rejection -- but a 422 that
-    is a content-policy violation is excluded later by the middleware to avoid a
-    moderation bypass), and 429 (rate limit -> try another model). All other 4xx
-    (400/401/403/404/413/415) are surfaced, never fall back.
+    Mapping: all 5xx, 504 included -> ``server_error``; 408 -> ``timeout``; 422
+    (model/content rejection) -> ``policy``. ``policy`` is OPT-IN: the default node ``on`` is
+    ``["server_error", "timeout"]``, so a 422 only falls back when a node explicitly
+    lists ``"policy"`` -- the caller consciously accepts retrying a rejection
+    (including a content-policy one) on another model, so opting in can never be
+    a silent moderation bypass. All other 4xx (400/401/403/404/413/415/429) are
+    surfaced, never fall back (429 stays out of scope).
     """
     if status_code in _TIMEOUT_STATUSES:
         return "timeout"
-    if status_code in (422, 429) or status_code >= 500:
-        return "error"
+    if status_code >= 500:
+        return "server_error"
+    if status_code == 422:
+        return "policy"
     return None
-
-
-def normalize_output(result: Any, expected_field: Optional[str]) -> Any:
-    """Reconcile a fallback result to the primary's media field (single <-> list).
-
-    Best-effort and never raises; anything it cannot map is returned untouched.
-    """
-    if not expected_field or not isinstance(result, dict) or expected_field in result:
-        return result
-
-    singular = _SINGULAR_BY_PLURAL.get(expected_field)
-    if singular and result.get(singular) is not None:
-        return {**result, expected_field: [result[singular]]}
-
-    plural = _PLURAL_BY_SINGULAR.get(expected_field)
-    if plural and isinstance(result.get(plural), list) and result[plural]:
-        return {**result, expected_field: result[plural][0]}
-
-    return result
 
 
 _COUNTER: Any = None
@@ -194,6 +211,29 @@ def record_fallback(*, trigger: str, outcome: str, endpoint: Optional[str]) -> b
         return True
     except Exception:
         return False
+
+
+_DISABLE_HEADER = b"x-app-fal-disable-fallback"
+
+
+def _suppress_app_static_fallback(request) -> None:
+    """Inject the disable-fallback header into the request scope so the app's own
+    static ``@fallback_to`` short-circuits for this request (surfacing its
+    primary error for the caller's chain to handle instead of serving the app
+    author's curated fallback). Best-effort; never raises. No effect on apps
+    without a static fallback -- the header is simply unread.
+    """
+    try:
+        scope = request.scope
+        headers = [
+            (k, v)
+            for (k, v) in scope.get("headers", [])
+            if k.lower() != _DISABLE_HEADER
+        ]
+        headers.append((_DISABLE_HEADER, b"true"))
+        scope["headers"] = headers
+    except Exception:
+        pass
 
 
 def build_fallback_middleware(
@@ -242,6 +282,7 @@ def build_fallback_middleware(
         # as if the middleware were absent. We re-expose the original body first,
         # then strip our reserved fields (so apps with extra="forbid" inputs
         # aren't 422'd by the unknown `fal_fallback` key).
+        stripped: Optional[dict] = None
         try:
             body_bytes = await request.body()
             request._body = body_bytes
@@ -269,6 +310,16 @@ def build_fallback_middleware(
         if disabled or not chain:
             return await call_next(request)
 
+        # Caller intent wins (scenario 4): when the caller supplies a chain, it
+        # is the authority on fallback, so suppress the app's own static
+        # ``@fallback_to`` for this request. We inject the disable-fallback header
+        # the static fallback already honors -- it then surfaces its primary
+        # error instead of serving the app author's curated model, and that error
+        # triggers OUR chain. So the caller falls back to THEIR chosen models, not
+        # the app's. (Our own ``disabled`` was read from the original header
+        # above, so this injection never short-circuits us.)
+        _suppress_app_static_fallback(request)
+
         response = None
         primary_exc: Optional[BaseException] = None
         try:
@@ -280,7 +331,7 @@ def build_fallback_middleware(
         except (asyncio.TimeoutError, TimeoutError) as exc:
             trigger, primary_exc = "timeout", exc
         except Exception as exc:
-            trigger, primary_exc = "error", exc
+            trigger, primary_exc = "server_error", exc
         else:
             trigger = trigger_for_status(response.status_code)
             # Don't replace a streaming/SSE response with a JSON fallback -- it
@@ -291,40 +342,28 @@ def build_fallback_middleware(
             )
             if trigger is None or is_streaming:
                 return response  # success, client error, or stream -> surface
-
-            # Content-policy carve-out: a 422 is a fallback trigger (model
-            # rejection), but a content-policy violation is also a 422 -- never
-            # fall back on it, or callers could bypass moderation via the
-            # fallback model. Buffer the body to inspect it (and keep the
-            # buffered copy so the surface/exhausted paths still return a body).
-            # TODO: make content-policy fallback opt-in for callers who do want
-            # it (e.g. an explicit `on: ["content_policy"]` category).
-            if response.status_code == 422:
-                from starlette.responses import Response as _Response  # noqa: PLC0415
-
-                raw = b"".join([chunk async for chunk in response.body_iterator])
-                response = _Response(
-                    content=raw,
-                    status_code=422,
-                    headers={
-                        k: v
-                        for k, v in response.headers.items()
-                        if k.lower() != "content-length"
-                    },
-                    media_type=response.media_type,
-                )
-                if b"content_policy_violation" in raw:
-                    return response  # surface the policy block; never fall back
+            # 5xx ("server_error"), 408 / blown budget ("timeout"), and 422
+            # ("policy") reach here.
+            # "policy" is opt-in per node: with no node listing "policy" in its
+            # `on`, the chain matches nothing and the 422 (including a
+            # content-policy one) is surfaced intact -- falling back on a
+            # rejection is always an explicit caller choice, never a default.
 
         # Fail-safe orchestration: a bug in our own fallback code must never lose
         # the primary's natural outcome. Any unexpected error here degrades to
         # returning the primary response (or re-raising the primary error).
         try:
+            # `retry: true` nodes resolve to the primary via the platform's
+            # endpoint header + the stripped payload. Note a primary retry is a
+            # fresh queue call back to the same app; if the app is at capacity
+            # it may wait in queue -- per-node `timeout` bounds that.
             result, served = await run_fallback_chain(
                 chain,
                 trigger=trigger,
                 forward=fwd,
                 output_field=output_fields.get(request.url.path),
+                primary_endpoint=request.headers.get(PRIMARY_ENDPOINT_HEADER),
+                primary_input=stripped,
             )
             record_fallback(
                 trigger=trigger,
@@ -356,38 +395,59 @@ async def run_fallback_chain(
     trigger: str,
     forward: ForwardFn,
     output_field: Optional[str] = None,
+    primary_endpoint: Optional[str] = None,
+    primary_input: Optional[dict] = None,
 ) -> tuple[Any, Optional[str]]:
     """Walk a caller-defined fallback chain, trying nodes in order.
 
-    A node is attempted only when the current trigger (``error``/``timeout``) is
-    listed in its ``on``. The first node that succeeds with an output compatible
-    with ``output_field`` wins. Returns ``(result, endpoint)`` on success, or
-    ``(None, None)`` if the chain is exhausted (the caller keeps the primary's
-    failed response). Never raises on a node failure -- it advances instead.
+    A node is attempted only when the current trigger (``server_error`` /
+    ``timeout`` / ``policy``) is listed in its ``on``. A ``retry: true`` node re-attempts the PREVIOUS
+    attempt -- the primary (``primary_endpoint`` + ``primary_input``) when it is
+    the first attempt, otherwise the last chain node actually attempted -- with
+    the same endpoint and payload. The first node that succeeds with an output
+    compatible with ``output_field`` wins. Returns ``(result, endpoint)`` on
+    success, or ``(None, None)`` if the chain is exhausted (the caller keeps the
+    primary's failed response). Never raises on a node failure -- it advances
+    instead.
     """
+    # The (endpoint, input) a `retry` node re-attempts: starts at the primary,
+    # then follows whatever was last attempted.
+    last_endpoint = primary_endpoint
+    last_input: dict = primary_input if isinstance(primary_input, dict) else {}
     for node in chain:
-        if not node.endpoint or trigger not in node.on:
+        if trigger not in node.on:
             continue
+        if node.retry:
+            endpoint, node_input = last_endpoint, last_input
+        else:
+            endpoint, node_input = node.endpoint, node.input
+        if not endpoint:
+            # Unusable: endpointless node, or a retry with no known prior
+            # attempt (primary endpoint header absent). Skip, don't fail.
+            continue
+        last_endpoint, last_input = endpoint, node_input
         node_timeout = node.timeout if (node.timeout and node.timeout > 0) else None
         try:
             result = await asyncio.wait_for(
-                forward(node.endpoint, node.input), node_timeout
+                forward(endpoint, node_input), node_timeout
             )
         except (asyncio.TimeoutError, TimeoutError):
             trigger = "timeout"
             continue
         except Exception:
-            trigger = "error"
+            trigger = "server_error"
             continue
 
-        result = normalize_output(result, output_field)
-
-        # Output-shape guard: reject a result lacking the primary's media field
-        # (e.g. a cross-modality target) so the caller never gets garbage.
+        # Output-shape guard: the served result must carry the primary's EXACT
+        # media field (grouping is by exact output shape -- ``images`` with
+        # ``images``, single ``image`` with ``image``, no single<->list
+        # bridging). A result lacking it (cross-modality, or the wrong list/single
+        # form) is rejected and the chain advances, so the caller never gets a
+        # shape that doesn't match what the primary endpoint declared.
         if output_field and isinstance(result, dict) and output_field not in result:
-            trigger = "error"
+            trigger = "server_error"
             continue
 
-        return result, node.endpoint
+        return result, endpoint
 
     return None, None

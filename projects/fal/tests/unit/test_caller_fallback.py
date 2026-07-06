@@ -18,7 +18,6 @@ from fal._caller_fallback import (
     FallbackNode,
     build_fallback_middleware,
     media_field,
-    normalize_output,
     parse_fallback_chain,
     primary_timeout_from_body,
     record_fallback,
@@ -37,14 +36,14 @@ def test_parse_valid_chain():
     body = {
         "prompt": "x",
         "fal_fallback": [
-            {"endpoint": GPT, "input": {"prompt": "x"}, "on": ["error"], "timeout": 30}
+            {"endpoint": GPT, "input": {"prompt": "x"}, "on": ["server_error"], "timeout": 30}
         ],
     }
     chain = parse_fallback_chain(body)
     assert len(chain) == 1
     assert chain[0].endpoint == GPT
     assert chain[0].input == {"prompt": "x"}
-    assert chain[0].on == ["error"]
+    assert chain[0].on == ["server_error"]
     assert chain[0].timeout == 30
 
 
@@ -64,8 +63,30 @@ def test_parse_lenient_defaults():
     chain = parse_fallback_chain({"fal_fallback": [{"endpoint": GPT}]})
     node = chain[0]
     assert node.input == {}
-    assert node.on == ["error", "timeout"]
+    assert node.on == ["server_error", "timeout"]
     assert node.timeout is None
+    assert node.retry is False
+
+
+def test_parse_retry_node():
+    chain = parse_fallback_chain({"fal_fallback": [{"retry": True}, {"endpoint": GPT}]})
+    assert chain[0].retry is True
+    assert chain[0].endpoint is None
+    assert chain[1].retry is False
+
+
+def test_parse_chain_capped_at_two_nodes():
+    # 3 total attempts incl. the primary -> at most 2 chain nodes; extras are
+    # leniently ignored (never an error).
+    body = {
+        "fal_fallback": [
+            {"endpoint": "a/a"},
+            {"endpoint": "b/b"},
+            {"endpoint": "c/c"},
+            {"endpoint": "d/d"},
+        ]
+    }
+    assert [n.endpoint for n in parse_fallback_chain(body)] == ["a/a", "b/b"]
 
 
 # --- trigger_for_status -------------------------------------------------------
@@ -75,39 +96,21 @@ def test_parse_lenient_defaults():
     "status,expected",
     [
         (408, "timeout"),
-        (504, "timeout"),
-        (500, "error"),
-        (502, "error"),
-        (503, "error"),
-        (422, "error"),  # model rejection (content-policy carved out in middleware)
-        (429, "error"),  # rate limit -> try another model
+        (500, "server_error"),
+        (502, "server_error"),
+        (503, "server_error"),
+        (504, "server_error"),  # 504 counts as a server error, not a timeout
+        (422, "policy"),  # opt-in: only nodes listing "policy" in `on` match
     ],
 )
 def test_trigger_for_failure_statuses(status, expected):
     assert trigger_for_status(status) == expected
 
 
-@pytest.mark.parametrize("status", [200, 201, 301, 400, 401, 403, 404, 413, 415])
+# Other 4xx are surfaced and never fall back; 429 stays out of scope.
+@pytest.mark.parametrize("status", [200, 201, 301, 400, 401, 403, 404, 413, 415, 429])
 def test_trigger_none_for_non_failure(status):
     assert trigger_for_status(status) is None
-
-
-# --- normalize_output ---------------------------------------------------------
-
-
-def test_normalize_single_to_list():
-    assert normalize_output({"image": {"url": "a"}}, "images")["images"] == [{"url": "a"}]
-
-
-def test_normalize_list_to_single():
-    assert normalize_output({"images": [{"url": "a"}, {"url": "b"}]}, "image")["image"] == {"url": "a"}
-
-
-def test_normalize_passthrough_and_non_dict():
-    r = {"images": [{"url": "a"}]}
-    assert normalize_output(r, "images") is r
-    assert normalize_output("x", "images") == "x"
-    assert normalize_output({"images": []}, None) == {"images": []}
 
 
 # --- run_fallback_chain -------------------------------------------------------
@@ -126,13 +129,13 @@ def _forward_returning(mapping):
 def test_chain_first_eligible_node_wins():
     chain = parse_fallback_chain({"fal_fallback": [{"endpoint": GPT, "input": {"prompt": "x"}}]})
     forward = _forward_returning({GPT: {"images": [{"url": "ok"}]}})
-    result, served = asyncio.run(run_fallback_chain(chain, trigger="error", forward=forward))
+    result, served = asyncio.run(run_fallback_chain(chain, trigger="server_error", forward=forward))
     assert served == GPT
     assert result == {"images": [{"url": "ok"}]}
 
 
 def test_chain_skips_node_when_trigger_not_listed():
-    chain = parse_fallback_chain({"fal_fallback": [{"endpoint": GPT, "on": ["error"]}]})
+    chain = parse_fallback_chain({"fal_fallback": [{"endpoint": GPT, "on": ["server_error"]}]})
     forward = _forward_returning({GPT: {"images": []}})
     result, served = asyncio.run(run_fallback_chain(chain, trigger="timeout", forward=forward))
     assert (result, served) == (None, None)
@@ -145,7 +148,7 @@ def test_chain_advances_past_failing_node():
     forward = _forward_returning(
         {GPT: RuntimeError("down"), SEEDREAM: {"images": [{"url": "ok"}]}}
     )
-    result, served = asyncio.run(run_fallback_chain(chain, trigger="error", forward=forward))
+    result, served = asyncio.run(run_fallback_chain(chain, trigger="server_error", forward=forward))
     assert served == SEEDREAM
     assert result == {"images": [{"url": "ok"}]}
 
@@ -153,7 +156,7 @@ def test_chain_advances_past_failing_node():
 def test_chain_exhausted_returns_none():
     chain = parse_fallback_chain({"fal_fallback": [{"endpoint": GPT}]})
     forward = _forward_returning({GPT: RuntimeError("down")})
-    assert asyncio.run(run_fallback_chain(chain, trigger="error", forward=forward)) == (None, None)
+    assert asyncio.run(run_fallback_chain(chain, trigger="server_error", forward=forward)) == (None, None)
 
 
 def test_chain_endpointless_node_skipped():
@@ -161,7 +164,7 @@ def test_chain_endpointless_node_skipped():
         {"fal_fallback": [{"input": {"a": 1}}, {"endpoint": GPT}]}
     )
     forward = _forward_returning({GPT: {"images": [{"url": "ok"}]}})
-    result, served = asyncio.run(run_fallback_chain(chain, trigger="error", forward=forward))
+    result, served = asyncio.run(run_fallback_chain(chain, trigger="server_error", forward=forward))
     assert served == GPT
 
 
@@ -173,7 +176,7 @@ def test_chain_output_guard_skips_incompatible_then_serves():
         {GPT: {"video": {"url": "v"}}, SEEDREAM: {"images": [{"url": "ok"}]}}
     )
     result, served = asyncio.run(
-        run_fallback_chain(chain, trigger="error", forward=forward, output_field="images")
+        run_fallback_chain(chain, trigger="server_error", forward=forward, output_field="images")
     )
     # GPT returned a video (no `images`) -> rejected; chain advanced to SEEDREAM.
     assert served == SEEDREAM
@@ -219,13 +222,136 @@ def test_media_field_detection():
     assert media_field(None) is None
 
 
-def test_chain_normalizes_winner_to_output_field():
+def test_chain_rejects_mismatched_shape_no_single_list_bridge():
+    # Grouping is by EXACT output shape: a primary declaring `images` (list) is
+    # NOT satisfied by a fallback returning a single `image`. The single<->list
+    # bridge was removed, so this node is rejected and (with no other node) the
+    # chain is exhausted -- the caller keeps the primary's failure.
     chain = parse_fallback_chain({"fal_fallback": [{"endpoint": GPT}]})
     forward = _forward_returning({GPT: {"image": {"url": "single"}}})
     result, served = asyncio.run(
-        run_fallback_chain(chain, trigger="error", forward=forward, output_field="images")
+        run_fallback_chain(chain, trigger="server_error", forward=forward, output_field="images")
     )
-    assert result["images"] == [{"url": "single"}]
+    assert (result, served) == (None, None)
+
+
+# --- retry nodes: re-attempt the previous attempt ------------------------------
+
+
+PRIMARY = "fal-ai/primary"
+
+
+def test_chain_retry_first_reattempts_primary():
+    # [retry] as the first node re-attempts the primary with its own payload.
+    calls = []
+
+    async def forward(endpoint, payload):
+        calls.append((endpoint, payload))
+        return {"images": [{"url": "retry-win"}]}
+
+    chain = parse_fallback_chain({"fal_fallback": [{"retry": True}]})
+    result, served = asyncio.run(
+        run_fallback_chain(
+            chain,
+            trigger="server_error",
+            forward=forward,
+            primary_endpoint=PRIMARY,
+            primary_input={"prompt": "orig"},
+        )
+    )
+    assert served == PRIMARY
+    assert calls == [(PRIMARY, {"prompt": "orig"})]
+    assert result["images"] == [{"url": "retry-win"}]
+
+
+def test_chain_retry_reattempts_last_attempt_not_primary():
+    # [fallback, retry]: the retry node re-attempts the LAST attempt (the
+    # fallback that just failed), not the primary.
+    calls = []
+
+    async def forward(endpoint, payload):
+        calls.append((endpoint, payload))
+        if len(calls) == 1:
+            raise RuntimeError("first attempt down")
+        return {"images": [{"url": "second-try"}]}
+
+    chain = parse_fallback_chain(
+        {"fal_fallback": [{"endpoint": GPT, "input": {"prompt": "fb"}}, {"retry": True}]}
+    )
+    result, served = asyncio.run(
+        run_fallback_chain(
+            chain,
+            trigger="server_error",
+            forward=forward,
+            primary_endpoint=PRIMARY,
+            primary_input={"prompt": "orig"},
+        )
+    )
+    assert served == GPT
+    assert calls == [(GPT, {"prompt": "fb"}), (GPT, {"prompt": "fb"})]
+    assert result["images"] == [{"url": "second-try"}]
+
+
+def test_chain_retry_without_primary_endpoint_skipped():
+    # A retry node with no known prior attempt (no primary endpoint available)
+    # is unusable -> skipped, chain exhausted, primary failure kept.
+    chain = parse_fallback_chain({"fal_fallback": [{"retry": True}]})
+    forward = _forward_returning({})
+    assert asyncio.run(run_fallback_chain(chain, trigger="server_error", forward=forward)) == (
+        None,
+        None,
+    )
+
+
+def test_chain_retry_node_ignores_its_own_endpoint():
+    # When `retry: true`, any endpoint/input set on the node are ignored.
+    calls = []
+
+    async def forward(endpoint, payload):
+        calls.append((endpoint, payload))
+        return {"images": [{"url": "ok"}]}
+
+    chain = parse_fallback_chain(
+        {"fal_fallback": [{"retry": True, "endpoint": SEEDREAM, "input": {"x": 1}}]}
+    )
+    result, served = asyncio.run(
+        run_fallback_chain(
+            chain,
+            trigger="server_error",
+            forward=forward,
+            primary_endpoint=PRIMARY,
+            primary_input={"prompt": "orig"},
+        )
+    )
+    assert served == PRIMARY
+    assert calls == [(PRIMARY, {"prompt": "orig"})]
+
+
+def test_chain_retry_respects_on_filter():
+    # A retry node only fires for the outcomes listed in its `on`.
+    chain = parse_fallback_chain({"fal_fallback": [{"retry": True, "on": ["timeout"]}]})
+    forward = _forward_returning({})
+    result, served = asyncio.run(
+        run_fallback_chain(
+            chain,
+            trigger="server_error",
+            forward=forward,
+            primary_endpoint=PRIMARY,
+            primary_input={},
+        )
+    )
+    assert (result, served) == (None, None)
+
+
+def test_chain_serves_exact_shape_match():
+    # Same field on both sides (`images` -> `images`) is served untouched.
+    chain = parse_fallback_chain({"fal_fallback": [{"endpoint": GPT}]})
+    forward = _forward_returning({GPT: {"images": [{"url": "ok"}], "seed": 7}})
+    result, served = asyncio.run(
+        run_fallback_chain(chain, trigger="server_error", forward=forward, output_field="images")
+    )
+    assert served == GPT
+    assert result == {"images": [{"url": "ok"}], "seed": 7}
 
 
 # --- HTTP integration: the middleware glue via FastAPI TestClient -------------
@@ -317,6 +443,19 @@ def _build_app(forward, output_fields=None):
     async def ratelimit(body: dict):
         return JSONResponse({"detail": "rate limited"}, status_code=429)
 
+    @app.post("/haystatic")
+    async def haystatic(request: Request):
+        # Simulates an app carrying its own @fallback_to: when fallback is
+        # disabled for the request it surfaces its primary error (mirroring the
+        # real static handler, which raises DownstreamServiceUnavailableError
+        # when disabled); otherwise its curated static fallback serves.
+        disabled = request.headers.get(
+            "x-app-fal-disable-fallback", ""
+        ).lower() in ("true", "1", "yes", "y")
+        if disabled:
+            raise RuntimeError("primary failed; app static fallback suppressed")
+        return {"images": [{"url": "app-static"}], "via": "app-static"}
+
     return app
 
 
@@ -388,13 +527,15 @@ def test_http_no_chain_passthrough():
     assert fwd.calls == []
 
 
-def test_http_output_normalization_single_to_list():
-    # Primary route declares images:list; fallback returns a single image.
+def test_http_mismatched_shape_rejected_keeps_primary():
+    # Primary route declares images:list; fallback returns a single `image`.
+    # With the single<->list bridge removed, the guard rejects the fallback and
+    # the primary's 503 is kept (no shape the caller didn't ask for).
     fwd = _recording_forward({GPT: {"image": {"url": "single"}}})
     client = TestClient(_build_app(fwd, output_fields={"/err": "images"}))
     r = client.post("/err", json={"prompt": "x", "fal_fallback": _chain()})
-    assert r.status_code == 200
-    assert r.json()["images"] == [{"url": "single"}]
+    assert r.status_code == 503
+    assert "x-app-fal-api-fallback" not in r.headers
 
 
 # --- metrics: record_fallback -------------------------------------------------
@@ -404,9 +545,9 @@ def test_record_fallback_increments_when_available():
     pytest.importorskip("prometheus_client")
     from prometheus_client import REGISTRY
 
-    labels = {"trigger": "error", "outcome": "served", "endpoint": GPT}
+    labels = {"trigger": "server_error", "outcome": "served", "endpoint": GPT}
     before = REGISTRY.get_sample_value("fal_caller_fallback_total", labels) or 0.0
-    assert record_fallback(trigger="error", outcome="served", endpoint=GPT) is True
+    assert record_fallback(trigger="server_error", outcome="served", endpoint=GPT) is True
     after = REGISTRY.get_sample_value("fal_caller_fallback_total", labels) or 0.0
     assert after == before + 1
 
@@ -476,7 +617,7 @@ def test_chain_text_output_guard_skips_non_text():
         {GPT: {"images": [{"url": "x"}]}, SEEDREAM: {"text": "hello world"}}
     )
     result, served = asyncio.run(
-        run_fallback_chain(chain, trigger="error", forward=forward, output_field="text")
+        run_fallback_chain(chain, trigger="server_error", forward=forward, output_field="text")
     )
     assert served == SEEDREAM
     assert result["text"] == "hello world"
@@ -523,20 +664,39 @@ def test_http_non_json_post_passes_through_untouched():
     assert fwd.calls == []
 
 
-# --- 4xx triggers: 422 model rejection + 429 rate limit, content-policy carved out
+# --- 422 -> "policy" (opt-in); other 4xx surfaced, never fall back -------------
 
 
-def test_http_422_model_rejection_falls_back():
+def test_http_422_surfaced_without_policy_opt_in():
+    # Default `on` is ["server_error", "timeout"]: a 422 walks the chain but matches no
+    # node -> surfaced to the caller, no fallback.
     fwd = _recording_forward({GPT: {"images": [{"url": "fb"}]}})
     client = TestClient(_build_app(fwd))
     r = client.post("/reject422", json={"prompt": "x", "fal_fallback": _chain()})
+    assert r.status_code == 422
+    assert "x-app-fal-api-fallback" not in r.headers
+    assert fwd.calls == []
+
+
+def test_http_422_falls_back_with_policy_opt_in():
+    # A node explicitly listing "policy" opts into falling back on a 422.
+    fwd = _recording_forward({GPT: {"images": [{"url": "fb"}]}})
+    client = TestClient(_build_app(fwd))
+    r = client.post(
+        "/reject422",
+        json={
+            "prompt": "x",
+            "fal_fallback": [{"endpoint": GPT, "on": ["policy"], "input": {"prompt": "fb"}}],
+        },
+    )
     assert r.status_code == 200
     assert r.headers["x-app-fal-api-fallback-endpoint"] == GPT
-    assert fwd.calls
+    assert fwd.calls == [(GPT, {"prompt": "fb"})]
 
 
-def test_http_422_content_policy_is_not_fallen_back():
-    # A content-policy 422 must be surfaced, never fall back (no moderation bypass).
+def test_http_content_policy_422_surfaced_without_opt_in():
+    # A content-policy 422 is surfaced with its body intact unless the caller
+    # explicitly opted into "policy" -- no silent moderation bypass.
     fwd = _recording_forward({GPT: {"images": [{"url": "fb"}]}})
     client = TestClient(_build_app(fwd))
     r = client.post("/policy422", json={"prompt": "x", "fal_fallback": _chain()})
@@ -546,9 +706,121 @@ def test_http_422_content_policy_is_not_fallen_back():
     assert fwd.calls == []
 
 
-def test_http_429_rate_limit_falls_back():
+def test_http_content_policy_422_falls_back_with_explicit_opt_in():
+    # Opting into "policy" is a conscious caller choice and covers content-policy
+    # 422s too (trying another model on a rejection is explicitly requested).
+    fwd = _recording_forward({GPT: {"images": [{"url": "fb"}]}})
+    client = TestClient(_build_app(fwd))
+    r = client.post(
+        "/policy422",
+        json={"prompt": "x", "fal_fallback": [{"endpoint": GPT, "on": ["policy"]}]},
+    )
+    assert r.status_code == 200
+    assert r.headers["x-app-fal-api-fallback-endpoint"] == GPT
+
+
+def test_http_429_rate_limit_surfaced_no_fallback():
+    # 429 (rate limit) stays out of scope -> surfaced, no fallback.
     fwd = _recording_forward({GPT: {"images": [{"url": "fb"}]}})
     client = TestClient(_build_app(fwd))
     r = client.post("/ratelimit", json={"prompt": "x", "fal_fallback": _chain()})
+    assert r.status_code == 429
+    assert "x-app-fal-api-fallback" not in r.headers
+    assert fwd.calls == []
+
+
+def test_chain_policy_trigger_matches_only_opted_in_nodes():
+    # With trigger="policy", default-`on` nodes are skipped; the first node that
+    # explicitly lists "policy" serves.
+    chain = parse_fallback_chain(
+        {"fal_fallback": [{"endpoint": GPT}, {"endpoint": SEEDREAM, "on": ["policy"]}]}
+    )
+    forward = _forward_returning(
+        {GPT: {"images": [{"url": "skipped"}]}, SEEDREAM: {"images": [{"url": "ok"}]}}
+    )
+    result, served = asyncio.run(
+        run_fallback_chain(chain, trigger="policy", forward=forward)
+    )
+    assert served == SEEDREAM
+    assert result["images"] == [{"url": "ok"}]
+
+
+# --- Scenario 4: caller chain suppresses the app's own static @fallback_to ----
+
+
+def test_http_caller_chain_suppresses_app_static_fallback():
+    # Option B: when the caller supplies a chain, the app's static @fallback_to
+    # is suppressed so the CALLER'S choice wins. The middleware injects the
+    # disable header, the app surfaces its primary error, and our chain serves
+    # the caller's endpoint (not the app author's curated fallback).
+    fwd = _recording_forward({GPT: {"images": [{"url": "caller-choice"}]}})
+    client = TestClient(_build_app(fwd))
+    r = client.post("/haystatic", json={"prompt": "x", "fal_fallback": _chain()})
     assert r.status_code == 200
     assert r.headers["x-app-fal-api-fallback-endpoint"] == GPT
+    assert r.json()["images"] == [{"url": "caller-choice"}]
+    assert fwd.calls and fwd.calls[0][0] == GPT
+
+
+def test_http_app_static_runs_without_caller_chain():
+    # No caller chain -> nothing injected -> the app's own static fallback serves
+    # as usual (unchanged behaviour for the existing @fallback_to endpoints).
+    fwd = _recording_forward({})
+    client = TestClient(_build_app(fwd))
+    r = client.post("/haystatic", json={"prompt": "x"})
+    assert r.status_code == 200
+    assert r.json()["via"] == "app-static"
+    assert fwd.calls == []
+
+
+# --- Retry shortcut + chain cap over HTTP --------------------------------------
+
+
+def test_http_retry_node_reattempts_primary():
+    # `{"retry": true}` resolves to the primary endpoint (x-fal-endpoint header)
+    # and the STRIPPED primary payload (no fal_fallback in the forward).
+    fwd = _recording_forward({"fal-ai/my-app": {"images": [{"url": "retry"}]}})
+    client = TestClient(_build_app(fwd))
+    r = client.post(
+        "/err",
+        json={"prompt": "x", "fal_fallback": [{"retry": True}]},
+        headers={"x-fal-endpoint": "fal-ai/my-app"},
+    )
+    assert r.status_code == 200
+    assert r.headers["x-fal-bill-as"] == "fal-ai/my-app"
+    assert fwd.calls == [("fal-ai/my-app", {"prompt": "x"})]
+
+
+def test_http_retry_without_endpoint_header_keeps_primary_failure():
+    # No x-fal-endpoint header -> the retry node can't resolve a target -> it is
+    # skipped and the primary's failure is kept (fail-safe, no crash).
+    fwd = _recording_forward({})
+    client = TestClient(_build_app(fwd), raise_server_exceptions=False)
+    r = client.post("/err", json={"prompt": "x", "fal_fallback": [{"retry": True}]})
+    assert r.status_code == 503
+    assert fwd.calls == []
+
+
+def test_http_chain_capped_at_three_total_attempts():
+    # 3 nodes supplied but the cap keeps only the first 2 (primary + 2 = 3 total
+    # attempts): the third endpoint is never tried; primary failure is kept.
+    calls = []
+
+    async def failing_forward(endpoint, payload):
+        calls.append(endpoint)
+        raise RuntimeError("down")
+
+    client = TestClient(_build_app(failing_forward), raise_server_exceptions=False)
+    r = client.post(
+        "/err",
+        json={
+            "prompt": "x",
+            "fal_fallback": [
+                {"endpoint": "a/a"},
+                {"endpoint": "b/b"},
+                {"endpoint": "c/c"},
+            ],
+        },
+    )
+    assert r.status_code == 503
+    assert calls == ["a/a", "b/b"]
