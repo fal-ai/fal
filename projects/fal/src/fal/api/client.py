@@ -296,15 +296,29 @@ class SecretsNamespace:
     def __init__(self, client: SyncServerlessClient):
         self.client = client
 
-    def set(self, name: str, value: str, environment_name: str | None = None) -> None:
+    def set(
+        self,
+        name: str,
+        value: str,
+        environment_name: str | None = None,
+        default_exposed: bool | None = None,
+    ) -> None:
         """Set a secret value.
 
         Args:
             name: Name of the secret.
             value: Value to store.
+            environment_name: Optional environment name.
+            default_exposed: Whether the secret is exposed to apps that do not
+                explicitly list their secrets. None keeps the account-level
+                default (and preserves the current setting on updates).
         """
         return secrets_api.set_secret(
-            self.client, name, value, environment_name=environment_name
+            self.client,
+            name,
+            value,
+            environment_name=environment_name,
+            default_exposed=default_exposed,
         )
 
     def list(self, environment_name: str | None = None) -> List[ServerlessSecret]:

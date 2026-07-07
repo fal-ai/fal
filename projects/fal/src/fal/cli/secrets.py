@@ -6,7 +6,12 @@ from .parser import DictAction, FalClientParser, add_env_argument
 def _set(args):
     client = SyncServerlessClient(host=args.host, team=args.team)
     for name, value in args.secrets.items():
-        client.secrets.set(name, value, environment_name=args.env)
+        client.secrets.set(
+            name,
+            value,
+            environment_name=args.env,
+            default_exposed=not args.not_exposed_by_default,
+        )
 
 
 def _add_set_parser(subparsers, parents):
@@ -27,6 +32,14 @@ def _add_set_parser(subparsers, parents):
         action=DictAction,
         help="Secret NAME=VALUE pairs.",
     )
+    parser.add_argument(
+        "--not-exposed-by-default",
+        action="store_true",
+        help=(
+            "Do not expose the secret to apps by default; it is only "
+            "injected into apps that explicitly list it in their secrets."
+        ),
+    )
     add_env_argument(parser)
     parser.set_defaults(func=_set)
 
@@ -43,6 +56,7 @@ def _list(args):
                 "name": secret.name,
                 "environment": secret.environment_name,
                 "created_at": str(secret.created_at),
+                "default_exposed": secret.default_exposed,
             }
             for secret in secrets
         ]
@@ -54,12 +68,17 @@ def _list(args):
         table.add_column("Name")
         table.add_column("Env")
         table.add_column("Created At")
+        table.add_column("Exposed By Default")
 
         for secret in secrets:
             table.add_row(
                 secret.name,
                 secret.environment_name or "main",
                 str(secret.created_at),
+                # None means the account-level default decides.
+                "account default"
+                if secret.default_exposed is None
+                else ("yes" if secret.default_exposed else "no"),
             )
 
         args.console.print(table)
