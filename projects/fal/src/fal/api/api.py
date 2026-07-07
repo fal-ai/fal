@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import math
 import os
 import sys
 import threading
@@ -1092,6 +1093,7 @@ class FalServerlessHost(Host):
         result_handler: ResultHandler | None = None,
         entrypoint: str | None = None,
         build_environment: bool | None = None,
+        attach_to_deployment: bool | None = None,
     ) -> Optional[RegisterApplicationResult]:
         options = self.prepare_options(options, func=func)
         environment_options = options.environment
@@ -1200,6 +1202,7 @@ class FalServerlessHost(Host):
             data_mounts=data_mounts,
             entrypoint=entrypoint,
             build_environment=build_environment,
+            attach_to_deployment=attach_to_deployment,
         ):
             result_handler(partial_result)
 
@@ -2304,12 +2307,27 @@ class BaseServable:
             )
 
         # ref: https://github.com/fastapi/fastapi/blob/37c8e7d76b4b47eb2c4cced6b4de59eb3d5f08eb/fastapi/exception_handlers.py#L20
+        # Unlike FastAPI's default handler, extend jsonable_encoder for raw
+        # request bytes that Pydantic echoes back for binary bodies, then
+        # sanitize anything JSONResponse still cannot render safely. See
+        # https://github.com/fastapi/fastapi/issues/13111.
         @_app.exception_handler(RequestValidationError)
         async def request_val_exception_handler(
             request: Request, exc: RequestValidationError
         ):
+            detail = jsonable_encoder(
+                exc.errors(),
+                custom_encoder={
+                    bytes: lambda value: f"<binary {len(value)} bytes>",
+                    bytearray: lambda value: f"<binary {len(value)} bytes>",
+                    memoryview: lambda value: f"<binary {len(value)} bytes>",
+                    str: lambda value: value.encode("utf-8", "replace").decode("utf-8"),
+                    float: lambda value: value if math.isfinite(value) else str(value),
+                    BaseException: str,
+                },
+            )
             return JSONResponse(
-                {"detail": jsonable_encoder(exc.errors())},
+                {"detail": detail},
                 422,
                 headers={"x-fal-billable-units": "0"},
             )

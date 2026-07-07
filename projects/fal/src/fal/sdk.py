@@ -961,6 +961,7 @@ class FalServerlessConnection:
         data_mounts: list[str] | None = None,
         entrypoint: str | None = None,
         build_environment: bool | None = None,
+        attach_to_deployment: bool | None = None,
     ) -> Iterator[RegisterApplicationResult]:
         if (
             function is None
@@ -1083,6 +1084,8 @@ class FalServerlessConnection:
             request.private_logs = private_logs
         if build_environment is not None:
             request.build_environment = build_environment
+        if attach_to_deployment is not None:
+            request.attach_to_deployment = attach_to_deployment
         for partial_result in self.stub.RegisterApplication(request):
             yield from_grpc(partial_result)
 
