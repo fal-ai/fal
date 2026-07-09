@@ -576,6 +576,23 @@ def test_read_image_from_url_applies_download_limit() -> None:
     assert exc_info.value.status_code == 422
 
 
+def test_read_image_from_url_respects_custom_max_size() -> None:
+    custom_max_size = 1024
+
+    def fake_get(url: str, **kwargs: Any) -> ssrf.SafeResponse:
+        assert kwargs["max_size"] == custom_max_size
+        raise ssrf.SSRFError("too large")
+
+    with patch.object(image_toolkit, "ssrf_safe_get", fake_get):
+        with pytest.raises(HTTPException) as exc_info:
+            read_image_from_url(
+                "https://attacker.example/custom-limit.png",
+                max_size=custom_max_size,
+            )
+
+    assert exc_info.value.status_code == 422
+
+
 def test_read_image_from_url_preserves_data_uri() -> None:
     image = read_image_from_url(
         "data:image/png;base64,"
