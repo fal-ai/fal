@@ -426,6 +426,7 @@ def test_big_message(isolated_client):
     assert len(big_return_function(data_length)) == data_length
 
 
+@pytest.mark.timeout(120)
 def test_futures(isolated_client):
     from concurrent.futures import wait
 
