@@ -59,6 +59,7 @@ def read_image_from_url(
     url: str,
     convert_to_rgb: bool = True,
     fix_orientation: bool = True,
+    max_size: int = MAX_IMAGE_DOWNLOAD_SIZE,
 ):
     from fastapi import HTTPException
     from PIL import Image
@@ -66,15 +67,15 @@ def read_image_from_url(
     try:
         if urlparse(url).scheme == "data":
             with urlopen(url, timeout=30) as response:
-                content = response.read(MAX_IMAGE_DOWNLOAD_SIZE + 1)
-            if len(content) > MAX_IMAGE_DOWNLOAD_SIZE:
+                content = response.read(max_size + 1)
+            if len(content) > max_size:
                 raise ValueError("Image body exceeded size limit")
         else:
             response = ssrf_safe_get(
                 url,
                 headers=TEMP_HEADERS,
                 timeout=30,
-                max_size=MAX_IMAGE_DOWNLOAD_SIZE,
+                max_size=max_size,
             )
             content = response.content
         image_pil = Image.open(io.BytesIO(content))
