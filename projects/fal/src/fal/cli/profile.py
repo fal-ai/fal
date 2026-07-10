@@ -43,7 +43,14 @@ def _set(args):
     config = Config()
 
     # Check if the profile exists
-    if args.PROFILE not in config._config:
+    if args.PROFILE not in config.profiles():
+        if config.get_global(args.PROFILE) is not None:
+            args.console.print(
+                f"Global setting [cyan]{args.PROFILE}[/] cannot be used "
+                "as a profile name."
+            )
+            return
+
         # Profile doesn't exist, offer to create it
         args.console.print(f"Profile [cyan]{args.PROFILE}[/] does not exist.")
         create_profile = input("Would you like to create it? (y/N): ").strip().lower()
@@ -113,8 +120,14 @@ def _create(args):
     config = Config()
 
     # Check if the profile already exists
-    if args.PROFILE in config._config:
+    if args.PROFILE in config.profiles():
         args.console.print(f"Profile [cyan]{args.PROFILE}[/] already exists.")
+        return
+
+    if config.get_global(args.PROFILE) is not None:
+        args.console.print(
+            f"Global setting [cyan]{args.PROFILE}[/] cannot be used as a profile name."
+        )
         return
 
     # Create the profile
@@ -128,7 +141,12 @@ def _create(args):
 
 
 def _delete(args):
-    with Config().edit() as config:
+    config = Config()
+    if args.PROFILE not in config.profiles():
+        args.console.print(f"Profile [cyan]{args.PROFILE}[/] does not exist.")
+        return
+
+    with config.edit() as config:
         if config.profile == args.PROFILE:
             config.set_internal("profile", None)
 
