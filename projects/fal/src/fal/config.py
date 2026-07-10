@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from contextlib import contextmanager
-from typing import Dict, Iterator, List, Optional
+from typing import Any, Dict, Iterator, List, Optional
 
 SETTINGS_SECTION = "__internal__"
 
@@ -12,7 +12,7 @@ NO_PROFILE_ERROR = ValueError(
 
 
 class Config:
-    _config: Dict[str, Dict[str, str]]
+    _config: Dict[str, Any]
     _profile: Optional[str]
     _editing: bool = False
 
@@ -55,7 +55,7 @@ class Config:
 
     @profile.setter
     def profile(self, value: Optional[str]) -> None:
-        if value and value not in self._config:
+        if value and value not in self.profiles():
             # Don't automatically create profiles - they should be created explicitly
             raise ValueError(
                 f"Profile '{value}' does not exist. Create it first or use the profile set command."  # noqa: E501
@@ -67,8 +67,8 @@ class Config:
 
     def profiles(self) -> List[str]:
         keys: List[str] = []
-        for key in self._config:
-            if key != SETTINGS_SECTION:
+        for key, value in self._config.items():
+            if key != SETTINGS_SECTION and isinstance(value, dict):
                 keys.append(key)
 
         return keys
@@ -103,6 +103,9 @@ class Config:
 
         return self._config[SETTINGS_SECTION].get(key)
 
+    def get_global(self, key: str) -> Optional[Any]:
+        return self._config.get(key)
+
     def set_internal(self, key: str, value: Optional[str]) -> None:
         if SETTINGS_SECTION not in self._config:
             self._config[SETTINGS_SECTION] = {}
@@ -116,6 +119,9 @@ class Config:
         self._config.get(SETTINGS_SECTION, {}).pop(key, None)
 
     def delete_profile(self, profile: str) -> None:
+        if profile not in self.profiles():
+            raise ValueError(f"Profile '{profile}' does not exist.")
+
         del self._config[profile]
 
     @contextmanager
