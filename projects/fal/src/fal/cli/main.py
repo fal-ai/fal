@@ -28,6 +28,8 @@ from . import (
 from .debug import debugtools, get_debug_parser
 from .parser import FalParser, FalParserExit
 
+_CHECK_UPDATES_CONFIG_KEY = "check_updates"
+
 
 def _get_main_parser() -> argparse.ArgumentParser:
     parents = [get_debug_parser()]
@@ -84,6 +86,15 @@ def _print_error(msg):
     console.print(f"{get_cross_icon(console)} {msg}")
 
 
+def _get_check_updates_config() -> bool:
+    from fal.config import Config
+
+    try:
+        return Config().get_global(_CHECK_UPDATES_CONFIG_KEY) is not False
+    except (OSError, ValueError):
+        return True
+
+
 def _check_latest_version():
     from packaging.version import parse
     from rich.panel import Panel
@@ -91,19 +102,22 @@ def _check_latest_version():
 
     from fal._version import get_latest_version, version_tuple
 
-    latest_version = get_latest_version()
-    parsed = parse(latest_version)
-    latest_version_tuple = (parsed.major, parsed.minor, parsed.micro)
-
     # If we have a dev version, we don't want to check for updates
     if len(version_tuple) >= 4:
         if "dev" in str(version_tuple[3]):
             return
 
-    if latest_version_tuple <= version_tuple:
+    if not console.is_terminal:
         return
 
-    if not console.is_terminal:
+    if not _get_check_updates_config():
+        return
+
+    latest_version = get_latest_version()
+    parsed = parse(latest_version)
+    latest_version_tuple = (parsed.major, parsed.minor, parsed.micro)
+
+    if latest_version_tuple <= version_tuple:
         return
 
     line1 = Text.assemble(
