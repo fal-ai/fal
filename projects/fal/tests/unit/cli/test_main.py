@@ -11,6 +11,7 @@ import fal.api.api as api_module
 from fal.api.api import UserFunctionException, _handle_grpc_error
 
 cli_main = importlib.import_module("fal.cli.main")
+fal_version = importlib.import_module("fal._version")
 
 
 def test_main_shows_synthetic_remote_exception_for_deserialization_error(
@@ -99,3 +100,22 @@ def test_remote_exception_deserialization_is_user_function_exception() -> None:
         assert exc.__cause__.__cause__ is None
     else:
         raise AssertionError("expected UserFunctionException")
+
+
+def test_update_check_can_be_disabled(monkeypatch, tmp_path) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text("check_updates = false\n")
+    monkeypatch.setenv("FAL_CONFIG_PATH", str(config_path))
+    monkeypatch.delenv("FAL_PROFILE", raising=False)
+
+    get_latest_version = MagicMock(return_value="99.0.0")
+    monkeypatch.setattr(fal_version, "get_latest_version", get_latest_version)
+    monkeypatch.setattr(fal_version, "version_tuple", (1, 0, 0))
+
+    test_console = SimpleNamespace(is_terminal=True, print=MagicMock())
+    monkeypatch.setattr(cli_main, "console", test_console)
+
+    cli_main._check_latest_version()
+
+    get_latest_version.assert_not_called()
+    test_console.print.assert_not_called()
