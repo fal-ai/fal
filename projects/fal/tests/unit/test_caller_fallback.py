@@ -21,6 +21,7 @@ from fal._caller_fallback import (
     parse_fallback_chain,
     primary_timeout_from_body,
     record_fallback,
+    resolve_input_refs,
     run_fallback_chain,
     trigger_for_status,
     validate_chain_shapes,
@@ -958,6 +959,89 @@ def test_http_chain_capped_at_two_total_attempts():
     )
     assert r.status_code == 503
     assert calls == ["a/a"]
+
+
+# --- $ref: referencing the primary input from a fallback step ------------------
+
+
+def test_resolve_refs_top_level_and_dot_path():
+    primary = {"prompt": "a very long prompt", "image_urls": ["u1", "u2"]}
+    step_input = {
+        "prompt": {"$ref": "prompt"},
+        "image_url": {"$ref": "image_urls.0"},
+        "quality": "high",
+    }
+    assert resolve_input_refs(step_input, primary) == {
+        "prompt": "a very long prompt",
+        "image_url": "u1",
+        "quality": "high",
+    }
+
+
+def test_resolve_refs_inside_lists():
+    # A single primary value can be wrapped into a list for a list-shaped target.
+    primary = {"image_url": "u1"}
+    assert resolve_input_refs({"image_urls": [{"$ref": "image_url"}]}, primary) == {
+        "image_urls": ["u1"]
+    }
+
+
+def test_unresolvable_ref_drops_the_field():
+    # Fail-open: the target model must never receive a stray ref object.
+    primary = {"prompt": "p"}
+    assert resolve_input_refs(
+        {"prompt": {"$ref": "does.not.exist"}, "seed": 7}, primary
+    ) == {"seed": 7}
+
+
+def test_ref_like_dict_with_extra_keys_is_literal():
+    primary = {"prompt": "p"}
+    literal = {"meta": {"$ref": "prompt", "other": 1}}
+    assert resolve_input_refs(literal, primary) == literal
+
+
+def test_chain_resolves_refs_before_forward():
+    calls = []
+
+    async def forward(endpoint, payload):
+        calls.append((endpoint, payload))
+        return {"images": [{"url": "ok"}]}
+
+    chain = parse_fallback_chain(
+        {
+            "fal_fallback": [
+                {"endpoint": GPT, "input": {"prompt": {"$ref": "prompt"}, "quality": "high"}}
+            ]
+        }
+    )
+    result, served = asyncio.run(
+        run_fallback_chain(
+            chain,
+            trigger="server_error",
+            forward=forward,
+            primary_input={"prompt": "big prompt", "image_size": "1024x1024"},
+        )
+    )
+    assert served == GPT
+    assert calls == [(GPT, {"prompt": "big prompt", "quality": "high"})]
+
+
+def test_http_ref_resolves_against_stripped_primary_body():
+    # Over HTTP the refs resolve against the STRIPPED primary body (no
+    # reserved fields), so `{"$ref": "prompt"}` picks up the caller's prompt.
+    fwd = _recording_forward({GPT: {"images": [{"url": "fb"}]}})
+    client = TestClient(_build_app(fwd))
+    r = client.post(
+        "/err",
+        json={
+            "prompt": "the real prompt",
+            "fal_fallback": [
+                {"endpoint": GPT, "input": {"prompt": {"$ref": "prompt"}}}
+            ],
+        },
+    )
+    assert r.status_code == 200
+    assert fwd.calls == [(GPT, {"prompt": "the real prompt"})]
 
 
 def test_chain_strips_nested_fallback_from_forwarded_input():

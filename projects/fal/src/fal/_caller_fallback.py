@@ -43,6 +43,17 @@ PRIMARY_ENDPOINT_HEADER = "x-fal-endpoint"
 #: attempts on 2026-07-06 to bound worst-case cost and latency.)
 MAX_CHAIN_LENGTH = 1
 
+#: Reserved key for referencing a value from the PRIMARY input inside a
+#: fallback step's ``input``: ``{"$ref": "dot.path"}``. Explicit by design (the
+#: caller writes it); avoids duplicating large prompts or inline media in the
+#: step input and enables cross-schema mapping (e.g. ``image_urls.0`` mapped
+#: into a single ``image_url``).
+REF_KEY = "$ref"
+
+#: Sentinel for an unresolvable ``$ref`` path; the containing field/element is
+#: dropped so the target model never receives a stray ref object.
+_MISSING = object()
+
 #: Public OpenAPI spec for an endpoint, used to resolve a fallback target's
 #: output shape for pre-flight schema validation (before any billable work).
 OPENAPI_URL = "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id={endpoint}"
@@ -152,6 +163,56 @@ def primary_timeout_from_body(body: Any) -> Optional[float]:
     except (TypeError, ValueError):
         return None
     return value if value > 0 else None
+
+
+def _lookup_path(root: Any, path: str) -> Any:
+    """Walk a dot-path (dict keys and list indices) into ``root``.
+
+    Returns ``_MISSING`` when the path does not resolve. Never raises.
+    """
+    current = root
+    for segment in path.split("."):
+        if isinstance(current, dict) and segment in current:
+            current = current[segment]
+        elif (
+            isinstance(current, list)
+            and segment.isdigit()
+            and int(segment) < len(current)
+        ):
+            current = current[int(segment)]
+        else:
+            return _MISSING
+    return current
+
+
+def resolve_input_refs(value: Any, primary_input: Any) -> Any:
+    """Resolve ``{"$ref": "dot.path"}`` placeholders in a fallback step's input
+    against the PRIMARY input. Never raises.
+
+    A dict of exactly ``{"$ref": <str>}`` is replaced by the referenced value;
+    a dict carrying any other key alongside ``$ref`` is treated as a literal.
+    Unresolvable refs are DROPPED (the containing field or list element is
+    removed) so the target model sees its own default or fails honestly on a
+    missing field, never a stray ref object. Everything else passes through
+    untouched.
+    """
+    if isinstance(value, dict):
+        if set(value) == {REF_KEY} and isinstance(value[REF_KEY], str):
+            return _lookup_path(primary_input, value[REF_KEY])
+        resolved: dict = {}
+        for key, item in value.items():
+            result = resolve_input_refs(item, primary_input)
+            if result is not _MISSING:
+                resolved[key] = result
+        return resolved
+    if isinstance(value, list):
+        items = []
+        for item in value:
+            result = resolve_input_refs(item, primary_input)
+            if result is not _MISSING:
+                items.append(result)
+        return items
+    return value
 
 
 def media_field(model: Any) -> Optional[str]:
@@ -568,6 +629,11 @@ async def run_fallback_chain(
             endpoint, node_input = last_endpoint, last_input
         else:
             endpoint, node_input = node.endpoint, node.input
+            # Resolve {"$ref": "dot.path"} placeholders against the primary
+            # input, so large prompts / inline media need not be duplicated
+            # and cross-schema mappings (image_urls.0 -> image_url) work.
+            resolved = resolve_input_refs(node_input, primary_input)
+            node_input = resolved if isinstance(resolved, dict) else {}
         if not endpoint:
             # Unusable: endpointless node, or a retry with no known prior
             # attempt (primary endpoint header absent). Skip, don't fail.
