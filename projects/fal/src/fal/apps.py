@@ -60,7 +60,12 @@ class Completed(_Status):
 
 @lru_cache(maxsize=1)
 def _get_http_client() -> httpx.Client:
-    return httpx.Client(headers={"User-Agent": USER_AGENT})
+    return httpx.Client(
+        headers={"User-Agent": USER_AGENT},
+        # Queue operations can occasionally be slow on a busy cluster; the
+        # httpx default of 5s is too aggressive for them.
+        timeout=httpx.Timeout(30.0, connect=10.0),
+    )
 
 
 @dataclass
