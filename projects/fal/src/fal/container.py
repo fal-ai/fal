@@ -7,9 +7,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Literal, Optional, Union
 
-Builder = Literal["depot", "service", "worker"]
+Builder = Literal["depot", "namespace", "service", "worker"]
 CommandOverride = Union[str, List[str]]
-BUILDERS = {"depot", "service", "worker"}
+BUILDERS = {"depot", "namespace", "service", "worker"}
 DEFAULT_COMPRESSION: str = "gzip"
 DEFAULT_FORCE_COMPRESSION: bool = False
 
@@ -103,9 +103,10 @@ class ContainerImage:
                 "\033[1;33mWarning:\033[0m " if sys.stderr.isatty() else "Warning: "
             )
             print(
-                f"{prefix}builder='{self.builder}' is deprecated and has "
-                "been removed. All builds now use Depot. You can safely "
-                "remove the builder parameter or set builder='depot'.",
+                f"{prefix}builder='{self.builder}' is deprecated and no longer "
+                "selects that backend. Remove the builder parameter to use the "
+                "platform default, or explicitly set builder='depot' or "
+                "builder='namespace'.",
                 file=sys.stderr,
             )
 

@@ -443,11 +443,30 @@ class TestContainerImageValidation:
         with pytest.raises(ValueError, match="Invalid builder"):
             ContainerImage(dockerfile_str="FROM python:3.11", builder="invalid")  # type: ignore
 
-    def test_valid_builders_accepted(self):
+    @pytest.mark.parametrize("builder", ["depot", "namespace", "service", "worker"])
+    def test_valid_builders_accepted(self, builder):
         """Valid builders should be accepted."""
-        for builder in ["depot", "service", "worker"]:
-            img = ContainerImage(dockerfile_str="FROM python:3.11", builder=builder)  # type: ignore
-            assert img.builder == builder
+        img = ContainerImage(dockerfile_str="FROM python:3.11", builder=builder)
+        assert img.builder == builder
+
+    def test_namespace_builder_is_serialized(self):
+        """Namespace should be preserved in the image sent to the server."""
+        img = ContainerImage(
+            dockerfile_str="FROM python:3.11",
+            builder="namespace",
+        )
+
+        assert img.to_dict()["builder"] == "namespace"
+
+    @pytest.mark.parametrize("builder", ["service", "worker"])
+    def test_legacy_builder_warning_uses_platform_default(self, builder, capsys):
+        """Legacy builder warnings should not claim every build uses Depot."""
+        ContainerImage(dockerfile_str="FROM python:3.11", builder=builder)
+
+        warning = capsys.readouterr().err
+        assert f"builder='{builder}' is deprecated" in warning
+        assert "use the platform default" in warning
+        assert "All builds now use Depot" not in warning
 
     def test_registry_missing_username_raises_valueerror(self):
         """Registry without username should raise ValueError."""
