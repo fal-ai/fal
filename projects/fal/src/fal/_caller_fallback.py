@@ -10,8 +10,12 @@ without server-side adapters.
 
 A node may instead set ``retry: true`` -- a shortcut that re-attempts the
 previous attempt (with the single-node cap: the primary) with the same endpoint
-and payload. The chain is capped at ``MAX_CHAIN_LENGTH`` node(s), i.e. 2 total
-attempts including the primary; extra nodes are leniently ignored.
+and payload. Unlike fallback nodes, a retry node is policy-eligible BY DEFAULT:
+content flags usually moderate stochastic output, a re-roll can pass, and the
+same model re-applies its own moderation, so nothing is bypassed (decision
+2026-07-15; the ``policy`` opt-in keeps gating only fallback nodes). The chain
+is capped at ``MAX_CHAIN_LENGTH`` node(s), i.e. 2 total attempts including the
+primary; extra nodes are leniently ignored.
 
 This lives in the fal SDK (not the model registry) so it applies to ALL apps
 without per-app wiring. Triggering is based on the primary's response status,
@@ -24,7 +28,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Awaitable, Callable, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 #: Request-body key that holds the caller's fallback chain.
 FALLBACK_FIELD = "fal_fallback"
@@ -109,16 +113,30 @@ class FallbackNode(BaseModel):
         description="Shortcut: re-attempt the PREVIOUS attempt in the chain (the "
         "primary when first) with the same endpoint and payload. When set, "
         "``endpoint``/``input`` on this node are ignored; ``on``/``timeout`` "
-        "still apply to the retry attempt.",
+        "still apply to the retry attempt. A retry node's DEFAULT ``on`` also "
+        "includes 'policy': re-rolling the same model re-applies its own "
+        "moderation, so a retry can never bypass it (decision 2026-07-15).",
     )
     on: list[str] = Field(
         default_factory=lambda: ["server_error", "timeout"],
         description="Which outcomes of the preceding attempt trigger this node: "
         "'server_error' (any 5xx, 504 included), 'timeout' (408 or a blown "
-        "time budget), and/or 'policy' (422 model/content rejection; opt-in -- "
-        "not in the default, so a 422 never falls back unless explicitly "
-        "listed). Unknown values never match.",
+        "time budget), and/or 'policy' (422 model/content rejection; opt-in "
+        "for FALLBACK nodes -- not in their default, so a 422 never reaches "
+        "another model unless explicitly listed. Retry nodes default to "
+        "policy-eligible, see ``retry``). Unknown values never match.",
     )
+
+    @model_validator(mode="after")
+    def _retry_defaults_policy_eligible(self) -> "FallbackNode":
+        # Retry re-attempts the SAME model, which re-applies its own moderation,
+        # so policy eligibility cannot bypass anything; content flags usually
+        # moderate stochastic output and a re-roll can pass. An EXPLICIT `on`
+        # still wins (the caller narrowed it on purpose). Mirrors the workflow
+        # orchestrator's RETRY_ON = (server_error, timeout, policy).
+        if self.retry and "on" not in self.model_fields_set:
+            self.on = ["server_error", "timeout", "policy"]
+        return self
     timeout: Optional[float] = Field(
         default=None,
         description="Seconds budget for this node's own attempt; non-positive ignored.",

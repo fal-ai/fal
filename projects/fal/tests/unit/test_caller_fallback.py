@@ -74,8 +74,21 @@ def test_parse_retry_node():
     chain = parse_fallback_chain({"fal_fallback": [{"retry": True}]})
     assert chain[0].retry is True
     assert chain[0].endpoint is None
+    # Retry defaults are policy-eligible (same model, same moderation, no
+    # bypass); fallback defaults are NOT (policy stays opt-in for them).
+    assert chain[0].on == ["server_error", "timeout", "policy"]
     normal = parse_fallback_chain({"fal_fallback": [{"endpoint": GPT}]})
     assert normal[0].retry is False
+    assert normal[0].on == ["server_error", "timeout"]
+
+
+def test_parse_retry_node_explicit_on_wins():
+    # A caller who narrows a retry node's `on` gets exactly what they wrote:
+    # the policy-eligible default only applies when `on` is omitted.
+    chain = parse_fallback_chain(
+        {"fal_fallback": [{"retry": True, "on": ["server_error"]}]}
+    )
+    assert chain[0].on == ["server_error"]
 
 
 def test_parse_chain_capped_at_one_node():
@@ -333,6 +346,44 @@ def test_chain_retry_respects_on_filter():
         run_fallback_chain(
             chain,
             trigger="server_error",
+            forward=forward,
+            primary_endpoint=PRIMARY,
+            primary_input={},
+        )
+    )
+    assert (result, served) == (None, None)
+
+
+def test_chain_retry_fires_on_policy_by_default():
+    # A plain `{"retry": true}` re-attempts the primary on a policy (422)
+    # rejection: the re-roll runs on the SAME model with its own moderation,
+    # so nothing is bypassed (decision 2026-07-15).
+    chain = parse_fallback_chain({"fal_fallback": [{"retry": True}]})
+    forward = _forward_returning({PRIMARY: {"images": [{"url": "re-rolled"}]}})
+    result, served = asyncio.run(
+        run_fallback_chain(
+            chain,
+            trigger="policy",
+            forward=forward,
+            primary_endpoint=PRIMARY,
+            primary_input={"prompt": "x"},
+        )
+    )
+    assert served == PRIMARY
+    assert result["images"] == [{"url": "re-rolled"}]
+
+
+def test_chain_retry_explicit_on_excludes_policy():
+    # An explicit `on` narrows the retry too: no policy in the list, no
+    # re-attempt on a 422.
+    chain = parse_fallback_chain(
+        {"fal_fallback": [{"retry": True, "on": ["server_error"]}]}
+    )
+    forward = _forward_returning({PRIMARY: {"images": [{"url": "unused"}]}})
+    result, served = asyncio.run(
+        run_fallback_chain(
+            chain,
+            trigger="policy",
             forward=forward,
             primary_endpoint=PRIMARY,
             primary_input={},
@@ -733,6 +784,23 @@ def test_http_content_policy_422_falls_back_with_explicit_opt_in():
     )
     assert r.status_code == 200
     assert r.headers["x-app-fal-api-fallback-endpoint"] == GPT
+
+
+def test_http_content_policy_422_rescued_by_plain_retry():
+    # Mirror of the workflow orchestrator's content-flag test: a plain
+    # `{"retry": true}` (no `on` written) rescues a content-policy 422 by
+    # re-rolling the SAME model -- its own moderation applies to the re-roll,
+    # so nothing is bypassed. No policy opt-in needed for retry.
+    fwd = _recording_forward({"fal-ai/my-app": {"images": [{"url": "re-rolled"}]}})
+    client = TestClient(_build_app(fwd))
+    r = client.post(
+        "/policy422",
+        json={"prompt": "x", "fal_fallback": [{"retry": True}]},
+        headers={"x-fal-endpoint": "fal-ai/my-app"},
+    )
+    assert r.status_code == 200
+    assert r.headers["x-fal-bill-as"] == "fal-ai/my-app"
+    assert fwd.calls == [("fal-ai/my-app", {"prompt": "x"})]
 
 
 def test_http_429_rate_limit_surfaced_no_fallback():
