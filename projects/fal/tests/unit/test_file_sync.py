@@ -1,3 +1,4 @@
+import os
 import re
 import tempfile
 from pathlib import Path
@@ -24,6 +25,30 @@ def file_sync(temp_dir, monkeypatch):
     monkeypatch.setenv("FAL_HOST", "api.localhost")
     monkeypatch.setenv("ISOLATE_TEST_MODE", "1")
     return FileSync(local_file_path=str(Path(temp_dir) / "app.py"))
+
+
+@pytest.fixture
+def collection_context(tmp_path):
+    context = tmp_path / "ctx"
+    context.mkdir()
+    (context / "app.py").write_text("# app")
+    fs = FileSync.__new__(FileSync)
+    fs.local_file_path = str(context / "app.py")
+    return fs, context
+
+
+@pytest.fixture
+def escaping_symlink_context(collection_context):
+    fs, context = collection_context
+    outside = context.parent / "outside"
+    (outside / "bin").mkdir(parents=True)
+    (outside / "python3.12").write_text("binary")
+
+    venv_bin = context / ".venv" / "bin"
+    venv_bin.mkdir(parents=True)
+    os.symlink(outside / "python3.12", venv_bin / "python3")
+    os.symlink(outside, context / ".venv-link", target_is_directory=True)
+    return fs, context
 
 
 def test_file_sync_init(temp_dir):
@@ -204,6 +229,193 @@ def test_collect_files_handles_nonexistent_gracefully(temp_dir):
     files = fs.collect_files(["nonexistent.txt", "missing_dir/"])
 
     assert len(files) == 0
+
+
+def test_collect_files_prunes_ignored_symlink_before_validation(
+    escaping_symlink_context,
+):
+    from fal.exceptions import FalServerlessException
+
+    fs, context = escaping_symlink_context
+
+    with pytest.raises(FalServerlessException, match="Parent directory reference"):
+        fs.collect_files(["."], files_context_dir=str(context))
+
+    files = fs.collect_files(
+        ["."],
+        files_context_dir=str(context),
+        files_ignore=[re.compile(r"\.venv/")],
+    )
+    rel_paths = [f.relative_path for f in files]
+    assert "app.py" in rel_paths
+    assert not any(p.startswith(".venv/") for p in rel_paths)
+
+
+@pytest.mark.parametrize(
+    ("path", "pattern"),
+    [
+        (".venv/bin/python3", r"\.venv/"),
+        (".venv-link", r"\.venv-link/"),
+        (".venv-link", r"^\.venv-link$"),
+        (".venv-link/bin", r"\.venv-link/"),
+    ],
+)
+def test_collect_files_ignores_explicit_symlink_path(
+    escaping_symlink_context, path, pattern
+):
+    fs, context = escaping_symlink_context
+    files = fs.collect_files(
+        [path],
+        files_context_dir=str(context),
+        files_ignore=[re.compile(pattern)],
+    )
+    assert files == []
+
+
+def test_collect_files_matches_lexical_prefix_for_symlinked_dir(collection_context):
+    fs, context = collection_context
+    target = context / "target"
+    (target / "bin").mkdir(parents=True)
+    (target / "bin" / "tool").write_text("tool")
+    os.symlink("target", context / "link", target_is_directory=True)
+
+    files = fs.collect_files(
+        ["link"],
+        files_context_dir=str(context),
+        files_ignore=[re.compile(r"^link/bin/")],
+    )
+    assert files == []
+
+
+def test_collect_files_skips_unreadable_directory(collection_context, monkeypatch):
+    fs, context = collection_context
+    unreadable = context / "private"
+    unreadable.mkdir()
+    real_scandir = os.scandir
+
+    def guarded_scandir(path):
+        if Path(path) == unreadable:
+            raise PermissionError(path)
+        return real_scandir(path)
+
+    monkeypatch.setattr(file_sync_mod.os, "scandir", guarded_scandir)
+
+    files = fs.collect_files(["."], files_context_dir=str(context))
+
+    assert [file.relative_path for file in files] == ["app.py"]
+
+
+def test_collect_files_prunes_ignored_cyclic_symlink(collection_context):
+    fs, context = collection_context
+    os.symlink("loop", context / "loop", target_is_directory=True)
+
+    files = fs.collect_files(
+        ["loop"],
+        files_context_dir=str(context),
+        files_ignore=[re.compile(r"^loop/")],
+    )
+
+    assert files == []
+
+
+def test_collect_files_skips_nested_cyclic_symlink(collection_context):
+    fs, context = collection_context
+    os.symlink("loop", context / "loop", target_is_directory=True)
+
+    files = fs.collect_files(
+        ["."],
+        files_context_dir=str(context),
+        files_ignore=[re.compile(r"^loop/$")],
+    )
+
+    assert [file.relative_path for file in files] == ["app.py"]
+
+
+def test_collect_files_does_not_apply_directory_pattern_to_symlinked_file(
+    collection_context,
+):
+    fs, context = collection_context
+    target = context / "target"
+    target.write_text("content")
+    os.symlink(target, context / "asset")
+
+    files = fs.collect_files(
+        ["asset"],
+        files_context_dir=str(context),
+        files_ignore=[re.compile(r"^asset/$")],
+    )
+
+    assert [file.relative_path for file in files] == ["target"]
+
+
+def test_collect_files_matches_symlink_ignore_before_target_inspection(
+    collection_context, monkeypatch
+):
+    fs, context = collection_context
+    target = context / "target"
+    target.write_text("content")
+    alias = context / "alias"
+    os.symlink(target, alias)
+
+    real_is_dir = Path.is_dir
+
+    def guarded_is_dir(path):
+        if path == alias:
+            raise PermissionError(path)
+        return real_is_dir(path)
+
+    monkeypatch.setattr(Path, "is_dir", guarded_is_dir)
+
+    files = fs.collect_files(
+        ["alias"],
+        files_context_dir=str(context),
+        files_ignore=[re.compile(r"^alias$")],
+    )
+
+    assert files == []
+
+
+def test_collect_files_skips_dangling_symlink(collection_context):
+    fs, context = collection_context
+    os.symlink("missing-target", context / "broken")
+
+    files = fs.collect_files(["."], files_context_dir=str(context))
+
+    assert [f.relative_path for f in files] == ["app.py"]
+
+
+@pytest.mark.parametrize("pattern", [r"^src$", r"^src/$"])
+@pytest.mark.parametrize("paths", [["."], ["src"]])
+def test_collect_files_keeps_directory_contents_for_exact_directory_pattern(
+    collection_context, pattern, paths
+):
+    fs, context = collection_context
+    source = context / "src"
+    source.mkdir()
+    (source / "main.py").write_text("# main")
+
+    files = fs.collect_files(
+        paths,
+        files_context_dir=str(context),
+        files_ignore=[re.compile(pattern)],
+    )
+
+    assert "src/main.py" in [file.relative_path for file in files]
+
+
+def test_collect_files_skips_symlinked_directory(collection_context):
+    fs, context = collection_context
+    nested = context / "nested"
+    nested.mkdir()
+    (nested / "deep.txt").write_text("deep")
+    os.symlink(nested, context / "linkdir", target_is_directory=True)
+
+    files = fs.collect_files(["."], files_context_dir=str(context))
+    rel_paths = sorted(f.relative_path for f in files)
+    assert "app.py" in rel_paths
+    assert "nested/deep.txt" in rel_paths
+    assert "linkdir" not in rel_paths
+    assert "linkdir/deep.txt" not in rel_paths
 
 
 def test_should_ignore_file_basic_patterns(file_sync):
