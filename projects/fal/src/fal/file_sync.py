@@ -93,8 +93,10 @@ def sanitize_relative_path(rel_path: str, original_path: Path) -> str:
         raise FalServerlessException(
             "Parent directory reference is not allowed: "
             + f"{rel_path} for {original_path}\n"
-            + "If you didn't mean to sync this file, please ignore it using "
-            + "`app_files_ignore`."
+            + "This usually means a symlink resolves outside the build context. "
+            + "To skip it, add the path to your ignore patterns: `app_files_ignore` "
+            + "for app files, or `.dockerignore`/`dockerignore=[...]` for container "
+            + "builds."
         )
 
     return pure_path.as_posix()
@@ -115,10 +117,9 @@ def compute_hash(file_path: Path, mode: int) -> str:
     return file_hash.hexdigest()
 
 
-def normalize_path(
-    path_str: str, base_path_str: str, files_context_dir: Optional[str] = None
-) -> Tuple[str, str]:
-    path = Path(path_str)
+def _get_script_dir(
+    base_path_str: str, files_context_dir: Optional[str] = None
+) -> Path:
     base_path = Path(base_path_str).resolve()
 
     if base_path.is_dir():
@@ -133,17 +134,60 @@ def normalize_path(
         else:
             script_dir = (script_dir / context_path).resolve()
 
+    return script_dir
+
+
+def normalize_path(
+    path_str: str, base_path_str: str, files_context_dir: Optional[str] = None
+) -> Tuple[str, str]:
+    context_dir = _get_script_dir(base_path_str, files_context_dir)
+    return _normalize_path(path_str, context_dir)
+
+
+def _normalize_path(path_str: str, context_dir: Path) -> Tuple[str, str]:
+    path = Path(path_str)
+
     absolute_path = (
-        path.resolve() if path.is_absolute() else (script_dir / path).resolve()
+        path.resolve() if path.is_absolute() else (context_dir / path).resolve()
     )
 
     try:
-        relative_path = os.path.relpath(absolute_path, script_dir)
+        relative_path = os.path.relpath(absolute_path, context_dir)
         relative_path = sanitize_relative_path(relative_path, path)
     except ValueError:
         raise ValueError(f"Invalid relative path: {absolute_path}")
 
     return absolute_path.as_posix(), relative_path
+
+
+def _lexical_path(path_str: str, context_dir: Path) -> Tuple[Path, str]:
+    path = Path(path_str)
+    lexical_path = path if path.is_absolute() else context_dir / path
+
+    try:
+        relative_path = os.path.relpath(lexical_path, context_dir)
+    except ValueError:
+        raise ValueError(f"Invalid relative path: {lexical_path}")
+
+    return lexical_path, Path(relative_path).as_posix()
+
+
+def _has_symlink(path: Path) -> bool:
+    current = Path(path.anchor)
+    for part in path.parts:
+        if part == path.anchor:
+            continue
+        current /= part
+        if current.is_symlink():
+            return True
+
+    return False
+
+
+def _join_relative_path(prefix: str, path: str) -> str:
+    if prefix in ("", "."):
+        return path
+    return f"{prefix.rstrip('/')}/{path}"
 
 
 @dataclass
@@ -222,37 +266,91 @@ class FileSync:
             raise FalServerlessException(detail)
         return response
 
-    def collect_files(self, paths: List[str], files_context_dir: Optional[str] = None):
+    def _should_ignore_explicit_path(
+        self, path: Path, relative_path: str, patterns: List[re.Pattern]
+    ) -> bool:
+        has_symlink = _has_symlink(path)
+        if has_symlink:
+            if self._matches_patterns(relative_path, patterns):
+                return True
+            try:
+                is_file = path.is_file()
+            except OSError:
+                is_file = False
+            return not is_file and self._matches_patterns(
+                f"{relative_path.rstrip('/')}/", patterns
+            )
+        return not path.is_dir() and self._matches_patterns(relative_path, patterns)
+
+    def _collect_directory(
+        self,
+        root: Path,
+        lexical_root: str,
+        context_dir: Path,
+        patterns: List[re.Pattern],
+    ) -> List[FileMetadata]:
+        files: List[FileMetadata] = []
+
+        for current, _, filenames in os.walk(root, followlinks=False):
+            current_path = Path(current)
+            for filename in filenames:
+                file_path = current_path / filename
+                relative = _join_relative_path(
+                    lexical_root, file_path.relative_to(root).as_posix()
+                )
+                if self._matches_patterns(relative, patterns):
+                    if flags.DEBUG:
+                        console.print(f"Ignoring file: {relative}")
+                    continue
+                if not file_path.is_file():
+                    continue
+
+                absolute, resolved_relative = _normalize_path(
+                    str(file_path), context_dir
+                )
+                files.append(
+                    FileMetadata.from_path(
+                        Path(absolute), relative=resolved_relative, absolute=absolute
+                    )
+                )
+
+        return files
+
+    def collect_files(
+        self,
+        paths: List[str],
+        files_context_dir: Optional[str] = None,
+        files_ignore: Optional[List[re.Pattern]] = None,
+    ) -> List[FileMetadata]:
         collected_files: List[FileMetadata] = []
+        context_dir = _get_script_dir(self.local_file_path, files_context_dir)
+        patterns = files_ignore or []
 
         for path in paths:
-            abs_path_str, rel_path = normalize_path(
-                path, self.local_file_path, files_context_dir
-            )
-            abs_path = Path(abs_path_str)
-            if not abs_path.exists():
-                console.print(f"{abs_path} was not found, it will be skipped")
+            lexical_path, lexical_relative = _lexical_path(path, context_dir)
+            if patterns and self._should_ignore_explicit_path(
+                lexical_path, lexical_relative, patterns
+            ):
+                if flags.DEBUG:
+                    console.print(f"Ignoring path: {lexical_relative}")
                 continue
 
-            if abs_path.is_file():
-                metadata = FileMetadata.from_path(
-                    abs_path, relative=rel_path, absolute=abs_path_str
+            absolute, relative = _normalize_path(path, context_dir)
+            resolved_path = Path(absolute)
+            if not resolved_path.exists():
+                console.print(f"{resolved_path} was not found, it will be skipped")
+            elif resolved_path.is_file():
+                collected_files.append(
+                    FileMetadata.from_path(
+                        resolved_path, relative=relative, absolute=absolute
+                    )
                 )
-                collected_files.append(metadata)
-
-            elif abs_path.is_dir():
-                # Recursively walk directory tree
-                for file_path in abs_path.rglob("*"):
-                    if file_path.is_file():
-                        file_abs_str, file_rel_path = normalize_path(
-                            str(file_path), self.local_file_path, files_context_dir
-                        )
-                        metadata = FileMetadata.from_path(
-                            Path(file_abs_str),
-                            relative=file_rel_path,
-                            absolute=file_abs_str,
-                        )
-                        collected_files.append(metadata)
+            elif resolved_path.is_dir():
+                collected_files.extend(
+                    self._collect_directory(
+                        resolved_path, lexical_relative, context_dir, patterns
+                    )
+                )
 
         return collected_files
 
@@ -299,7 +397,7 @@ class FileSync:
         files_ignore: List[re.Pattern] = [],
         files_context_dir: Optional[str] = None,
     ) -> Tuple[List[FileMetadata], List[AppFileUploadException]]:
-        files = self.collect_files(paths, files_context_dir)
+        files = self.collect_files(paths, files_context_dir, files_ignore=files_ignore)
 
         # Filter out ignored files
         if files_ignore:
