@@ -73,6 +73,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+wma = [
+    "aiortc==1.15.0",
+]
 docs = [
     "sphinx<8.2.0",
     "sphinx-rtd-theme",
