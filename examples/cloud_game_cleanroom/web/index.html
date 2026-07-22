@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>Freedoom — fal WMA</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <header class="masthead">
+        <a class="wordmark" href="#" aria-label="Freedoom cloud game home">
+          <span class="wordmark-mark" aria-hidden="true"></span>
+          <span>Freedoom / fal</span>
+        </a>
+        <div
+          class="session-state"
+          data-state="idle"
+          role="status"
+          aria-live="polite"
+        >
+          <span class="state-dot" aria-hidden="true"></span>
+          <span id="connectionLabel">Session offline</span>
+        </div>
+      </header>
+
+      <main class="layout">
+        <section class="stage-column" aria-label="Game stream">
+          <div class="stage" id="stage" tabindex="0">
+            <video id="stream" autoplay playsinline></video>
+            <div class="stage-grid" aria-hidden="true"></div>
+
+            <div class="stage-empty" id="stageEmpty">
+              <p class="eyebrow">Remote runner / WMA transport</p>
+              <h1>A game running somewhere else.</h1>
+              <p>
+                Connect a fal session to play Freedoom running inside an
+                isolated Linux display on a fal runner.
+              </p>
+            </div>
+
+            <div class="stage-loading" id="stageLoading" hidden>
+              <div class="loading-line loading-line-wide"></div>
+              <div class="loading-line"></div>
+              <p>Leasing runner and negotiating ICE</p>
+            </div>
+
+            <div class="stage-error" id="stageError" hidden>
+              <span>Connection failed</span>
+              <p id="stageErrorMessage"></p>
+            </div>
+
+            <div class="hud" id="hud" hidden>
+              <div>
+                <span id="scoreLabel">Game</span>
+                <strong id="score">000000</strong>
+              </div>
+              <div>
+                <span id="livesLabel">State</span>
+                <strong id="lives">3</strong>
+              </div>
+              <div>
+                <span id="levelLabel">Controls</span>
+                <strong id="level">1</strong>
+              </div>
+            </div>
+
+            <button class="stage-action" id="focusButton" type="button" hidden>
+              Capture controls
+            </button>
+            <button
+              class="stage-action audio-action"
+              id="audioButton"
+              type="button"
+              hidden
+            >
+              Enable audio
+            </button>
+          </div>
+
+          <div class="transport-strip" aria-label="Stream telemetry">
+            <div>
+              <span>Round trip</span>
+              <strong id="rtt">—</strong>
+            </div>
+            <div>
+              <span>Video</span>
+              <strong id="fps">—</strong>
+            </div>
+            <div>
+              <span>Jitter</span>
+              <strong id="jitter">—</strong>
+            </div>
+            <div>
+              <span>Loss</span>
+              <strong id="loss">—</strong>
+            </div>
+          </div>
+        </section>
+
+        <aside class="control-column">
+          <div class="control-heading">
+            <p class="eyebrow">Session control</p>
+            <h2>Connect to a runner</h2>
+            <p>
+              Credentials stay in this tab and are used only for WMA session
+              and heartbeat requests.
+            </p>
+          </div>
+
+          <form id="connectionForm" novalidate>
+            <label class="field">
+              <span>WMA endpoint</span>
+              <input
+                id="wmaUrl"
+                name="wmaUrl"
+                type="url"
+                value="https://wma.fal.run"
+                autocomplete="url"
+                required
+              />
+              <small>Signaling bridge URL</small>
+            </label>
+
+            <label class="field">
+              <span>Application ID</span>
+              <input
+                id="appId"
+                name="appId"
+                type="text"
+                placeholder="username/cloud-game-cleanroom"
+                autocomplete="off"
+                required
+              />
+              <small>The app ID printed by fal run or fal deploy</small>
+            </label>
+
+            <label class="field">
+              <span>FAL key</span>
+              <input
+                id="falKey"
+                name="falKey"
+                type="password"
+                placeholder="key_id:key_secret"
+                autocomplete="off"
+                required
+              />
+              <small>Use a short-lived credential outside development</small>
+            </label>
+
+            <details class="advanced-fields">
+              <summary>Network relay</summary>
+              <label class="field">
+                <span>TURN URL</span>
+                <input
+                  id="turnUrl"
+                  name="turnUrl"
+                  type="url"
+                  placeholder="turns:turn.example.com:5349"
+                  autocomplete="url"
+                />
+              </label>
+              <label class="field">
+                <span>TURN username</span>
+                <input
+                  id="turnUsername"
+                  name="turnUsername"
+                  type="text"
+                  autocomplete="off"
+                />
+              </label>
+              <label class="field">
+                <span>TURN credential</span>
+                <input
+                  id="turnCredential"
+                  name="turnCredential"
+                  type="password"
+                  autocomplete="off"
+                />
+              </label>
+              <small>Recommended for restrictive or symmetric NAT networks</small>
+            </details>
+
+            <p class="form-error" id="formError" role="alert"></p>
+
+            <div class="button-row">
+              <button class="primary-button" id="connectButton" type="submit">
+                Start session
+              </button>
+              <button
+                class="secondary-button"
+                id="disconnectButton"
+                type="button"
+                disabled
+              >
+                Disconnect
+              </button>
+            </div>
+          </form>
+
+          <div class="instructions">
+            <div class="instruction">
+              <kbd>W</kbd><kbd>S</kbd>
+              <span>Move</span>
+            </div>
+            <div class="instruction">
+              <kbd>←</kbd><kbd>→</kbd>
+              <span>Turn</span>
+            </div>
+            <div class="instruction">
+              <kbd>A</kbd><kbd>D</kbd>
+              <span>Strafe</span>
+            </div>
+            <div class="instruction">
+              <kbd>Ctrl</kbd>
+              <span>Fire</span>
+            </div>
+            <div class="instruction">
+              <kbd>Space</kbd>
+              <span>Use</span>
+            </div>
+            <div class="instruction">
+              <kbd>Shift</kbd>
+              <span>Run</span>
+            </div>
+          </div>
+
+          <p class="footnote">
+            Freedoom 0.13.0 + Crispy Doom 7.1. GStreamer sends 60 fps H.264
+            through NVENC with synchronized Opus audio.
+          </p>
+        </aside>
+      </main>
+    </div>
+
+    <script type="module" src="./client.js"></script>
+  </body>
+</html>
