@@ -197,6 +197,11 @@ def wrap_app(cls: type[App], **kwargs) -> IsolatedFunction:
     fn.options.add_requirements(SERVE_REQUIREMENTS)
     if realtime_app:
         fn.options.add_requirements(REALTIME_APP_REQUIREMENTS)
+    # Extra runtime requirements declared by App subclasses in the SDK
+    # (e.g. fal.wma.RealtimeApp adds aiortc).
+    extra_requirements = getattr(cls, "_extra_serve_requirements", None)
+    if extra_requirements:
+        fn.options.add_requirements(list(extra_requirements))
 
     fn.app_name = cls.app_name
     fn.app_auth = cls.app_auth
