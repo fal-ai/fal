@@ -139,10 +139,10 @@ def deploy_with_check(
         force_env_build=force_env_build,
     )
     _render_deployment_check_summary(args.console, summary)
-    run_hint = run_command_hint(app_ref, prepared.loaded.app_name)
+    run_hint = run_command_hint(app_ref, prepared.loaded.app_name, args.env)
     is_first_deploy = production_alias is None
     if is_first_deploy:
-        print_first_deploy_nudge(args.console, summary.app_name, run_hint)
+        print_first_deploy_nudge(args.console, summary.app_name, run_hint, args.env)
     _confirm_deployment(
         summary.app_name,
         console=args.console,
@@ -165,25 +165,34 @@ def deploy_with_check(
 def run_command_hint(
     app_ref: tuple[str | None, str | None] | None,
     app_name: str | None = None,
+    environment_name: str | None = None,
 ) -> str:
     """Best-effort reconstruction of the equivalent ``fal run`` command.
 
     Used to point users at local validation with the same reference they just
     passed to ``fal deploy`` (a file path, ``file.py::App`` ref, or app name).
+    ``environment_name`` is appended as ``--env`` so the suggested command
+    targets the same environment the deploy did, not the default (``main``).
     """
     from ._utils import is_app_name
 
-    if app_ref:
-        file_path, func_name = app_ref
-        if file_path:
-            if is_app_name((file_path, func_name)):
+    def _base() -> str:
+        if app_ref:
+            file_path, func_name = app_ref
+            if file_path:
+                if is_app_name((file_path, func_name)):
+                    return f"fal run {file_path}"
+                if func_name:
+                    return f"fal run {file_path}::{func_name}"
                 return f"fal run {file_path}"
-            if func_name:
-                return f"fal run {file_path}::{func_name}"
-            return f"fal run {file_path}"
-    if app_name:
-        return f"fal run {app_name}"
-    return "fal run <app>"
+        if app_name:
+            return f"fal run {app_name}"
+        return "fal run <app>"
+
+    hint = _base()
+    if environment_name:
+        hint += f" --env {environment_name}"
+    return hint
 
 
 def is_first_deployment(
@@ -209,11 +218,22 @@ def is_first_deployment(
         return False
 
 
-def print_first_deploy_nudge(console, app_name: str, run_hint: str) -> None:
-    """Nudge users to validate locally with ``fal run`` before a first deploy."""
+def print_first_deploy_nudge(
+    console, app_name: str, run_hint: str, environment_name: str | None = None
+) -> None:
+    """Nudge users to validate locally with ``fal run`` before a first deploy.
+
+    First-deploy detection is per-environment, so when deploying to a non-default
+    environment the message names it — the app may already exist elsewhere.
+    """
+    where = (
+        f" to the [bold]{environment_name}[/bold] environment"
+        if environment_name
+        else ""
+    )
     console.print(
         f"[bold cyan]Tip:[/bold cyan] This looks like the first deployment of "
-        f"[bold]{app_name}[/bold]."
+        f"[bold]{app_name}[/bold]{where}."
     )
     console.print(
         "     Validate it locally first to catch import and setup() errors before "

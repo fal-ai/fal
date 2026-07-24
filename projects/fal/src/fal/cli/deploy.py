@@ -66,12 +66,12 @@ def _deploy(args):
             environment_name=args.env,
         )
         app_name = prepared.loaded.app_name
-        run_hint = run_command_hint(app_ref, app_name)
+        run_hint = run_command_hint(app_ref, app_name, args.env)
         is_first_deploy = bool(app_name) and is_first_deployment(
             client, app_name, args.env
         )
         if is_first_deploy and app_name:
-            print_first_deploy_nudge(args.console, app_name, run_hint)
+            print_first_deploy_nudge(args.console, app_name, run_hint, args.env)
         args.console.print(
             f"Deploying '{prepared.display_name}' as app '{prepared.loaded.app_name}'",
             style="bold",

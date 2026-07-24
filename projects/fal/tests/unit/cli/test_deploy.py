@@ -21,6 +21,7 @@ from fal.cli.deploy_check import (
     _render_environment_build_cache_line,
     _resolve_deploy_check_source,
     is_first_deployment,
+    print_first_deploy_nudge,
     run_command_hint,
 )
 from fal.cli.main import parse_args
@@ -2756,3 +2757,61 @@ def test_deploy_first_deploy_failure_nudges_run_only_once(
     assert "first deployment" in rendered
     assert "Deploy failed" not in rendered
     assert rendered.count("fal run src/my_app/inference.py::MyApp") == 1
+
+
+def test_run_command_hint_appends_env():
+    assert (
+        run_command_hint(("app.py", "MyApp"), None, "staging")
+        == "fal run app.py::MyApp --env staging"
+    )
+    # no env -> no --env (targets default/main, same as fal run's default)
+    assert run_command_hint(("app.py", "MyApp")) == "fal run app.py::MyApp"
+    assert (
+        run_command_hint(("my-app", None), None, "staging")
+        == "fal run my-app --env staging"
+    )
+
+
+def test_print_first_deploy_nudge_names_environment():
+    console = Console(record=True, width=120)
+    print_first_deploy_nudge(
+        console, "my-app", "fal run app.py::A --env staging", "staging"
+    )
+    out = console.export_text()
+    assert "staging environment" in out
+    assert "--env staging" in out
+
+
+def test_print_first_deploy_nudge_omits_environment_for_default():
+    console = Console(record=True, width=120)
+    print_first_deploy_nudge(console, "my-app", "fal run app.py::A")
+    out = console.export_text()
+    assert "environment" not in out
+
+
+@patch("fal.api.deploy.execute_prepared_deployment")
+@patch("fal.api.deploy.prepare_deployment")
+@patch("fal.cli.deploy_check._get_production_alias", return_value=None)
+def test_deploy_first_deploy_nudge_threads_env(
+    mock_get_alias,
+    mock_prepare_deployment,
+    mock_execute_prepared_deployment,
+):
+    mock_prepare_deployment.return_value = _prepared_deployment(reset_scale=False)
+    mock_execute_prepared_deployment.return_value = MagicMock(
+        revision="rev",
+        app_name="my-app",
+        auth_mode="public",
+        urls={"playground": {}, "sync": {}, "async": {}},
+        log_url="https://fal.ai/logs",
+    )
+
+    args = mock_args(app_ref=("src/my_app/inference.py", "MyApp"))
+    args.env = "staging"
+    args.console = Console(record=True, width=120)
+
+    _deploy(args)
+
+    rendered = args.console.export_text()
+    assert "staging environment" in rendered
+    assert "fal run src/my_app/inference.py::MyApp --env staging" in rendered
