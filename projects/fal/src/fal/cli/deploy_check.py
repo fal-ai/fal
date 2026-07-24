@@ -140,7 +140,8 @@ def deploy_with_check(
     )
     _render_deployment_check_summary(args.console, summary)
     run_hint = run_command_hint(app_ref, prepared.loaded.app_name)
-    if production_alias is None:
+    is_first_deploy = production_alias is None
+    if is_first_deploy:
         print_first_deploy_nudge(args.console, summary.app_name, run_hint)
     _confirm_deployment(
         summary.app_name,
@@ -155,7 +156,9 @@ def deploy_with_check(
             prepare_options_handler=prepare_options_handler,
         )
     except Exception:
-        print_deploy_failure_nudge(args.console, run_hint)
+        print_deploy_failure_nudge(
+            args.console, run_hint, already_nudged=is_first_deploy
+        )
         raise
 
 
@@ -224,8 +227,17 @@ def print_first_deploy_nudge(console, app_name: str, run_hint: str) -> None:
     console.print("")
 
 
-def print_deploy_failure_nudge(console, run_hint: str) -> None:
-    """Point users at ``fal run`` for faster local debugging after a failed deploy."""
+def print_deploy_failure_nudge(
+    console, run_hint: str, *, already_nudged: bool = False
+) -> None:
+    """Point users at ``fal run`` for faster local debugging after a failed deploy.
+
+    Skipped when ``already_nudged`` is set — a first-deploy run already showed the
+    ``fal run`` tip up front, so repeating it on failure would be redundant.
+    """
+    if already_nudged:
+        return
+
     console.print("")
     console.print(
         "[bold yellow]Deploy failed.[/bold yellow] To debug faster, reproduce this "

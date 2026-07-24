@@ -2724,3 +2724,35 @@ def test_deploy_with_check_first_deploy_nudges_run(
     rendered = args.console.export_text()
     assert "first deployment" in rendered
     assert "fal run src/my_app/inference.py::MyApp" in rendered
+
+
+def test_print_deploy_failure_nudge_suppressed_when_already_nudged():
+    from fal.cli.deploy_check import print_deploy_failure_nudge
+
+    console = Console(record=True, width=120)
+    print_deploy_failure_nudge(console, "fal run app.py::A", already_nudged=True)
+    assert console.export_text().strip() == ""
+
+
+@patch("fal.api.deploy.execute_prepared_deployment", side_effect=RuntimeError("boom"))
+@patch("fal.api.deploy.prepare_deployment")
+@patch("fal.cli.deploy_check._get_production_alias", return_value=None)
+def test_deploy_first_deploy_failure_nudges_run_only_once(
+    mock_get_alias,
+    mock_prepare_deployment,
+    mock_execute_prepared_deployment,
+):
+    # First deploy (no production alias) that then fails: the up-front first-deploy
+    # tip fires, so the failure nudge must NOT repeat the `fal run` guidance.
+    mock_prepare_deployment.return_value = _prepared_deployment(reset_scale=False)
+
+    args = mock_args(app_ref=("src/my_app/inference.py", "MyApp"))
+    args.console = Console(record=True, width=120)
+
+    with pytest.raises(RuntimeError):
+        _deploy(args)
+
+    rendered = args.console.export_text()
+    assert "first deployment" in rendered
+    assert "Deploy failed" not in rendered
+    assert rendered.count("fal run src/my_app/inference.py::MyApp") == 1
