@@ -139,16 +139,103 @@ def deploy_with_check(
         force_env_build=force_env_build,
     )
     _render_deployment_check_summary(args.console, summary)
+    run_hint = run_command_hint(app_ref, prepared.loaded.app_name)
+    if production_alias is None:
+        print_first_deploy_nudge(args.console, summary.app_name, run_hint)
     _confirm_deployment(
         summary.app_name,
         console=args.console,
         assume_yes=args.yes,
     )
-    return deploy_api.execute_prepared_deployment(
-        prepared,
-        result_handler=result_handler,
-        build_result_handler=build_result_handler,
-        prepare_options_handler=prepare_options_handler,
+    try:
+        return deploy_api.execute_prepared_deployment(
+            prepared,
+            result_handler=result_handler,
+            build_result_handler=build_result_handler,
+            prepare_options_handler=prepare_options_handler,
+        )
+    except Exception:
+        print_deploy_failure_nudge(args.console, run_hint)
+        raise
+
+
+def run_command_hint(
+    app_ref: tuple[str | None, str | None] | None,
+    app_name: str | None = None,
+) -> str:
+    """Best-effort reconstruction of the equivalent ``fal run`` command.
+
+    Used to point users at local validation with the same reference they just
+    passed to ``fal deploy`` (a file path, ``file.py::App`` ref, or app name).
+    """
+    from ._utils import is_app_name
+
+    if app_ref:
+        file_path, func_name = app_ref
+        if file_path:
+            if is_app_name((file_path, func_name)):
+                return f"fal run {file_path}"
+            if func_name:
+                return f"fal run {file_path}::{func_name}"
+            return f"fal run {file_path}"
+    if app_name:
+        return f"fal run {app_name}"
+    return "fal run <app>"
+
+
+def is_first_deployment(
+    client: SyncServerlessClient,
+    app_name: str | None,
+    environment_name: str | None,
+) -> bool:
+    """Best-effort check for whether ``app_name`` has no production alias yet.
+
+    Returns ``False`` (i.e. does not nudge) if the status can't be determined,
+    so a flaky lookup never blocks or misleads a deploy.
+    """
+    if not app_name:
+        return False
+
+    try:
+        return (
+            _get_production_alias(client, app_name, environment_name=environment_name)
+            is None
+        )
+    except Exception:
+        logger.warning("Failed to determine first-deploy status", exc_info=True)
+        return False
+
+
+def print_first_deploy_nudge(console, app_name: str, run_hint: str) -> None:
+    """Nudge users to validate locally with ``fal run`` before a first deploy."""
+    console.print(
+        f"[bold cyan]Tip:[/bold cyan] This looks like the first deployment of "
+        f"[bold]{app_name}[/bold]."
+    )
+    console.print(
+        "     Validate it locally first to catch import and setup() errors before "
+        "they become\n     a production crashloop:"
+    )
+    console.print(f"       [bold]{run_hint}[/bold]")
+    console.print(
+        "     [dim]`fal run` boots your app on a temporary worker (running setup() "
+        "and the\n     endpoints) so you can iterate without a full deploy.[/dim]"
+    )
+    console.print("")
+
+
+def print_deploy_failure_nudge(console, run_hint: str) -> None:
+    """Point users at ``fal run`` for faster local debugging after a failed deploy."""
+    console.print("")
+    console.print(
+        "[bold yellow]Deploy failed.[/bold yellow] To debug faster, reproduce this "
+        "locally first:"
+    )
+    console.print(f"       [bold]{run_hint}[/bold]")
+    console.print(
+        "     [dim]`fal run` boots your app on a temporary worker (running setup() "
+        "and the\n     endpoints) so you can fix errors without repeated deploys."
+        "[/dim]"
     )
 
 

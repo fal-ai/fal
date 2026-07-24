@@ -5,7 +5,14 @@ import json
 
 from fal.api.client import SyncServerlessClient
 
-from .deploy_check import _resolve_deploy_check_source, deploy_with_check
+from .deploy_check import (
+    _resolve_deploy_check_source,
+    deploy_with_check,
+    is_first_deployment,
+    print_deploy_failure_nudge,
+    print_first_deploy_nudge,
+    run_command_hint,
+)
 from .parser import FalClientParser, RefAction, add_env_argument, get_output_parser
 
 
@@ -58,17 +65,25 @@ def _deploy(args):
             force_env_build=no_cache,
             environment_name=args.env,
         )
+        app_name = prepared.loaded.app_name
+        run_hint = run_command_hint(app_ref, app_name)
+        if app_name and is_first_deployment(client, app_name, args.env):
+            print_first_deploy_nudge(args.console, app_name, run_hint)
         args.console.print(
             f"Deploying '{prepared.display_name}' as app '{prepared.loaded.app_name}'",
             style="bold",
         )
         args.console.print("")
-        res = deploy_api.execute_prepared_deployment(
-            prepared,
-            result_handler=result_handler,
-            build_result_handler=build_result_handler,
-            prepare_options_handler=prepare_options_handler,
-        )
+        try:
+            res = deploy_api.execute_prepared_deployment(
+                prepared,
+                result_handler=result_handler,
+                build_result_handler=build_result_handler,
+                prepare_options_handler=prepare_options_handler,
+            )
+        except Exception:
+            print_deploy_failure_nudge(args.console, run_hint)
+            raise
 
     _render_deploy_result(args, res)
 
