@@ -8,10 +8,10 @@ from fsspec import AbstractFileSystem
 
 from fal._user_agent import USER_AGENT
 from fal.upload import (
-    MULTIPART_CHUNK_SIZE,
     MULTIPART_MAX_CONCURRENCY,
     MULTIPART_THRESHOLD,
     DataFileMultipartUpload,
+    compute_multipart_chunk_size,
 )
 
 if TYPE_CHECKING:
@@ -155,7 +155,11 @@ class FalFileSystem(AbstractFileSystem):
     def _put_file_multipart(self, lpath, rpath, size, progress):
         md5 = _compute_md5(lpath)
 
-        num_parts = max(1, (size + MULTIPART_CHUNK_SIZE - 1) // MULTIPART_CHUNK_SIZE)
+        # Scale the chunk size with the file size so large checkpoints stay
+        # within the server's part-count limit (e.g. ~200GB checkpoints).
+        chunk_size = compute_multipart_chunk_size(size)
+
+        num_parts = max(1, (size + chunk_size - 1) // chunk_size)
         task = progress.add_task(f"{os.path.basename(lpath)}", total=num_parts)
 
         def on_part_complete(part_number: int):
@@ -164,9 +168,12 @@ class FalFileSystem(AbstractFileSystem):
         multipart = DataFileMultipartUpload(
             client=self._client,
             target_path=rpath,
-            chunk_size=MULTIPART_CHUNK_SIZE,
+            chunk_size=chunk_size,
             max_concurrency=MULTIPART_MAX_CONCURRENCY,
         )
+        # Enables server-side resume: the server derives a deterministic upload
+        # id from this identity and returns any parts already uploaded.
+        multipart._content_md5 = md5
 
         etag = multipart.upload_file(lpath, on_part_complete=on_part_complete)
 
