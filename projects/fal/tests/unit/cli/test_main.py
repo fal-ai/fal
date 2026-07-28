@@ -1,4 +1,7 @@
 import importlib
+import os
+import subprocess
+import sys
 from contextlib import nullcontext
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -119,3 +122,90 @@ def test_update_check_can_be_disabled(monkeypatch, tmp_path) -> None:
 
     get_latest_version.assert_not_called()
     test_console.print.assert_not_called()
+
+
+def _render_print_error(monkeypatch, msg, *, width=120, styles=False, **console_kwargs):
+    console = Console(
+        record=True,
+        width=width,
+        force_terminal=console_kwargs.pop("force_terminal", False),
+        color_system=console_kwargs.pop("color_system", None),
+        soft_wrap=True,
+        **console_kwargs,
+    )
+    monkeypatch.setattr(cli_main, "console", console)
+    cli_main._print_error(msg)
+    return console.export_text(styles=styles)
+
+
+def test_print_error_single_line_is_unchanged(monkeypatch) -> None:
+    output = _render_print_error(monkeypatch, "You must run `fal run` first.")
+    assert output.strip() == "✘ You must run `fal run` first."
+
+
+def test_print_error_multiline_hangs_under_the_cross(monkeypatch) -> None:
+    output = _render_print_error(
+        monkeypatch,
+        "New revision did not become ready.\n"
+        "Check the logs: https://fal.ai/logs?revisionId=abc-123",
+        width=120,
+    )
+    lines = [line for line in output.split("\n") if line]
+    assert lines[0].startswith("✘ New revision did not become ready.")
+    assert lines[1] == "  Check the logs: https://fal.ai/logs?revisionId=abc-123"
+    # every continuation line hangs under the message instead of at column 0
+    assert all(line.startswith("  ") for line in lines[1:])
+
+
+def test_print_error_wraps_long_line_with_hanging_indent(monkeypatch) -> None:
+    output = _render_print_error(monkeypatch, "alpha " * 20, width=24)
+    lines = [line for line in output.split("\n") if line]
+    assert len(lines) > 1  # soft-wrapped into multiple visual lines
+    assert lines[0].startswith("✘ ")
+    assert all(line.startswith("  ") for line in lines[1:])
+
+
+def test_print_error_empty_message_prints_bare_cross(monkeypatch) -> None:
+    output = _render_print_error(monkeypatch, "")
+    assert output.strip() == "✘"
+
+
+def test_print_error_preserves_repr_highlighting(monkeypatch) -> None:
+    def render(msg):
+        return _render_print_error(
+            monkeypatch,
+            msg,
+            width=200,
+            force_terminal=True,
+            color_system="standard",
+            styles=True,
+        )
+
+    with_url = render("Check the logs: https://fal.ai/logs?revisionId=abc-123")
+    without = render("no highlightable tokens present here")
+    # URL / number highlighting adds ANSI styling beyond the red cross glyph;
+    # building a Text without re-applying the highlighter would drop it.
+    assert with_url.count("\x1b[") > without.count("\x1b[")
+
+
+def test_print_error_renders_with_cp1252_output() -> None:
+    script = "\n".join(
+        [
+            "from fal.cli.main import _print_error",
+            '_print_error("Setup failed within the startup timeout.\\n"',
+            '             "Check the logs: https://fal.ai/logs?app=fail-app&revisionId=abc-123")',
+        ]
+    )
+    env = os.environ.copy()
+    env["PYTHONIOENCODING"] = "cp1252"
+
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        env=env,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr.decode(errors="replace")
+    assert b"startup timeout" in result.stdout
+    assert b"Check the logs" in result.stdout

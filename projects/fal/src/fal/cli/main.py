@@ -90,7 +90,13 @@ def _print_error(msg):
     # column 0 and blending into surrounding terminal output.
     from rich.text import Text
 
-    lines = Text(str(msg)).wrap(console, max(console.width - 2, 1)) or [Text()]
+    text = Text(str(msg))
+    # Building a Text bypasses the ReprHighlighter that console.print(str) applies,
+    # so re-apply it to keep URLs / numbers / paths styled (e.g. the logs link).
+    if console.highlighter is not None:
+        text = console.highlighter(text)
+
+    lines = text.wrap(console, max(console.width - 2, 1)) or [Text()]
     for i, line in enumerate(lines):
         gutter = f"{get_cross_icon(console)} " if i == 0 else "  "
         console.print(Text.from_markup(gutter) + line)
