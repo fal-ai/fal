@@ -209,3 +209,47 @@ def test_print_error_renders_with_cp1252_output() -> None:
     assert result.returncode == 0, result.stderr.decode(errors="replace")
     assert b"startup timeout" in result.stdout
     assert b"Check the logs" in result.stdout
+
+
+def test_main_prints_deploy_failure_reason_and_logs_link(monkeypatch) -> None:
+    """PR #8647 + #1119 (CLI boundary): a failed deploy comes back as a
+    grpc.RpcError whose details() carry the categorized reason + logs link; main()
+    must surface that to the terminal via _print_error, not swallow it. Guards the
+    seam between the gRPC error status and the rendered ``✘`` line."""
+    import grpc
+
+    reason = (
+        "New revision did not become ready within the startup timeout — the runner "
+        "never passed its health check (often a setup() failure or a crash-looping "
+        "runner).\n"
+        "Check the logs: https://fal.ai/dashboard/logs"
+        "?app=fail-app&revisionId=rev-new-123"
+    )
+
+    class _DeployRpcError(grpc.RpcError):
+        def code(self):
+            return grpc.StatusCode.FAILED_PRECONDITION
+
+        def details(self):
+            return reason
+
+    def deploy(_args):
+        raise _DeployRpcError()
+
+    console = Console(record=True, width=200, force_terminal=False, color_system=None)
+    monkeypatch.setattr(cli_main, "console", console)
+    monkeypatch.setattr(cli_main, "_check_latest_version", lambda: None)
+    monkeypatch.setattr(cli_main, "debugtools", lambda _args: nullcontext())
+    monkeypatch.setattr(
+        cli_main, "parse_args", lambda _argv: SimpleNamespace(func=deploy)
+    )
+
+    assert cli_main.main([]) == 1
+
+    output = console.export_text()
+    # The categorized reason and the revision-scoped logs link both reach stdout.
+    assert "New revision did not become ready within the startup timeout" in output
+    assert "Check the logs:" in output
+    assert "revisionId=rev-new-123" in output
+    # ...rendered as an error (cross glyph, ascii-fallback tolerant).
+    assert output.lstrip().startswith(("✘", "x "))
