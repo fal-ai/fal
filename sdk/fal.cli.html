@@ -437,6 +437,60 @@ append_path: LEFT_BRACKET RIGHT_BRACKET</p>
 </dl>
 </dd></dl>
 
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.cli.deploy_check.is_first_deployment">
+<span class="sig-prename descclassname"><span class="pre">fal.cli.deploy_check.</span></span><span class="sig-name descname"><span class="pre">is_first_deployment</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">client</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">app_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">environment_name</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.cli.deploy_check.is_first_deployment" title="Link to this definition">¶</a></dt>
+<dd><p>Best-effort check for whether <code class="docutils literal notranslate"><span class="pre">app_name</span></code> has no production alias yet.</p>
+<p>Returns <code class="docutils literal notranslate"><span class="pre">False</span></code> (i.e. does not nudge) if the status can’t be determined,
+so a flaky lookup never blocks or misleads a deploy.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.cli.deploy_check.print_deploy_failure_nudge">
+<span class="sig-prename descclassname"><span class="pre">fal.cli.deploy_check.</span></span><span class="sig-name descname"><span class="pre">print_deploy_failure_nudge</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">console</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">run_hint</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">already_nudged</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.cli.deploy_check.print_deploy_failure_nudge" title="Link to this definition">¶</a></dt>
+<dd><p>Point users at <code class="docutils literal notranslate"><span class="pre">fal</span> <span class="pre">run</span></code> for faster local debugging after a failed deploy.</p>
+<p>Skipped when <code class="docutils literal notranslate"><span class="pre">already_nudged</span></code> is set — a first-deploy run already showed the
+<code class="docutils literal notranslate"><span class="pre">fal</span> <span class="pre">run</span></code> tip up front, so repeating it on failure would be redundant.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.cli.deploy_check.print_first_deploy_nudge">
+<span class="sig-prename descclassname"><span class="pre">fal.cli.deploy_check.</span></span><span class="sig-name descname"><span class="pre">print_first_deploy_nudge</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">console</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">app_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">run_hint</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">environment_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.cli.deploy_check.print_first_deploy_nudge" title="Link to this definition">¶</a></dt>
+<dd><p>Nudge users to validate locally with <code class="docutils literal notranslate"><span class="pre">fal</span> <span class="pre">run</span></code> before a first deploy.</p>
+<p>First-deploy detection is per-environment, so when deploying to a non-default
+environment the message names it — the app may already exist elsewhere.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="fal.cli.deploy_check.run_command_hint">
+<span class="sig-prename descclassname"><span class="pre">fal.cli.deploy_check.</span></span><span class="sig-name descname"><span class="pre">run_command_hint</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">app_ref</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">app_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">environment_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.cli.deploy_check.run_command_hint" title="Link to this definition">¶</a></dt>
+<dd><p>Best-effort reconstruction of the equivalent <code class="docutils literal notranslate"><span class="pre">fal</span> <span class="pre">run</span></code> command.</p>
+<p>Used to point users at local validation with the same reference they just
+passed to <code class="docutils literal notranslate"><span class="pre">fal</span> <span class="pre">deploy</span></code> (a file path, <code class="docutils literal notranslate"><span class="pre">file.py::App</span></code> ref, or app name).
+<code class="docutils literal notranslate"><span class="pre">environment_name</span></code> is appended as <code class="docutils literal notranslate"><span class="pre">--env</span></code> so the suggested command
+targets the same environment the deploy did, not the default (<code class="docutils literal notranslate"><span class="pre">main</span></code>).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
 </section>
 <section id="module-fal.cli.doctor">
 <span id="fal-cli-doctor-module"></span><h2>fal.cli.doctor module<a class="headerlink" href="#module-fal.cli.doctor" title="Link to this heading">¶</a></h2>
