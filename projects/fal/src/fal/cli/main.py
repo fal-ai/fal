@@ -83,14 +83,17 @@ def parse_args(argv=None):
 
 
 def _print_error(msg):
-    # Render multi-line errors (e.g. a deploy failure with a reason on the first
-    # line and a "Check the logs: <url>" pointer on the next) with the cross on
-    # the first line and continuation lines indented beneath it, so the reason
-    # and the logs link stay legible instead of collapsing into one blob.
-    first, *rest = str(msg).split("\n")
-    console.print(f"{get_cross_icon(console)} {first}")
-    for line in rest:
-        console.print(f"  {line}")
+    # Wrap at (width - 2) and print with a hanging indent: the cross leads the
+    # first line, continuation lines (explicit newlines and soft-wraps) are
+    # indented 2 columns. Multi-line deploy failures (a reason + a "Check the
+    # logs: <url>" pointer) then read as one block instead of collapsing to
+    # column 0 and blending into surrounding terminal output.
+    from rich.text import Text
+
+    lines = Text(str(msg)).wrap(console, max(console.width - 2, 1)) or [Text()]
+    for i, line in enumerate(lines):
+        gutter = f"{get_cross_icon(console)} " if i == 0 else "  "
+        console.print(Text.from_markup(gutter) + line)
 
 
 def _get_check_updates_config() -> bool:
