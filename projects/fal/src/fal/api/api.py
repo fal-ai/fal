@@ -918,6 +918,7 @@ class FalServerlessHost(Host):
             "app_files_context_dir",
             "health_check_config",
             "skip_retry_conditions",
+            "retry_config",
             "termination_grace_period_seconds",
             "secrets",
             "data_mounts",
