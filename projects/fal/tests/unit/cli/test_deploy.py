@@ -53,6 +53,127 @@ def test_deploy_attach_detach_flags():
     assert default_args.attach_to_deployment is None
 
 
+def test_deploy_message_and_annotation_flags():
+    from fal.cli.deploy import _annotations_from_args
+
+    args = parse_args(
+        [
+            "deploy",
+            "myfile.py::MyApp",
+            "--message",
+            "a1b2c3d fix cold-start",
+            "--annotation",
+            "deployer_id=nflx-123",
+            "--annotation",
+            "build=456",
+        ]
+    )
+    assert args.message == "a1b2c3d fix cold-start"
+    assert _annotations_from_args(args) == {
+        "deployer_id": "nflx-123",
+        "build": "456",
+    }
+
+    default_args = parse_args(["deploy", "myfile.py::MyApp"])
+    assert default_args.message is None
+    assert _annotations_from_args(default_args) is None
+
+
+def test_deploy_annotation_flag_value_with_equals_sign():
+    from fal.cli.deploy import _annotations_from_args
+
+    args = parse_args(["deploy", "myfile.py::MyApp", "--annotation", "query=a=b"])
+    assert _annotations_from_args(args) == {"query": "a=b"}
+
+
+def test_deploy_annotation_flag_rejects_malformed_values():
+    from fal.cli.parser import FalParserExit
+
+    for malformed in ["no-equals-sign", "=empty-key"]:
+        with pytest.raises(FalParserExit):
+            parse_args(["deploy", "myfile.py::MyApp", "--annotation", malformed])
+
+
+def test_deploy_annotation_flag_rejects_duplicate_keys():
+    from fal.cli.deploy import _annotations_from_args
+
+    args = parse_args(
+        [
+            "deploy",
+            "myfile.py::MyApp",
+            "--annotation",
+            "build=1",
+            "--annotation",
+            "build=2",
+        ]
+    )
+    with pytest.raises(ValueError, match="Duplicate annotation key 'build'"):
+        _annotations_from_args(args)
+
+
+def test_validate_deploy_message():
+    from fal.api.deploy import (
+        MAX_DEPLOY_MESSAGE_LENGTH,
+        _validate_deploy_message,
+    )
+
+    _validate_deploy_message(None)
+    _validate_deploy_message("a1b2c3d fix cold-start")
+
+    with pytest.raises(ValueError, match="must be a string"):
+        _validate_deploy_message(123)
+    with pytest.raises(ValueError, match="too long"):
+        _validate_deploy_message("x" * (MAX_DEPLOY_MESSAGE_LENGTH + 1))
+
+
+def test_validate_deploy_annotations():
+    from fal.api.deploy import (
+        MAX_ANNOTATION_COUNT,
+        MAX_ANNOTATION_KEY_LENGTH,
+        MAX_ANNOTATIONS_TOTAL_BYTES,
+        _validate_deploy_annotations,
+    )
+
+    _validate_deploy_annotations(None)
+    _validate_deploy_annotations({"deployer_id": "nflx-123"})
+
+    with pytest.raises(ValueError, match="must be a dict"):
+        _validate_deploy_annotations("not-a-dict")
+    with pytest.raises(ValueError, match="Too many annotations"):
+        _validate_deploy_annotations(
+            {f"key-{i}": "v" for i in range(MAX_ANNOTATION_COUNT + 1)}
+        )
+    with pytest.raises(ValueError, match="non-empty strings"):
+        _validate_deploy_annotations({"": "value"})
+    with pytest.raises(ValueError, match="too long"):
+        _validate_deploy_annotations({"k" * (MAX_ANNOTATION_KEY_LENGTH + 1): "v"})
+    with pytest.raises(ValueError, match="reserved annotation key"):
+        _validate_deploy_annotations({"openapi": "v"})
+    with pytest.raises(ValueError, match="values must be strings"):
+        _validate_deploy_annotations({"build": 456})
+    with pytest.raises(ValueError, match="too large"):
+        _validate_deploy_annotations({"blob": "x" * MAX_ANNOTATIONS_TOTAL_BYTES})
+
+
+def test_resolve_deployment_reference_carries_message_and_annotations():
+    from fal.api.deploy import _resolve_deployment_reference
+
+    _, app_data = _resolve_deployment_reference(
+        ("myfile.py", "MyApp"),
+        message="a1b2c3d fix cold-start",
+        annotations={"deployer_id": "nflx-123"},
+    )
+    assert app_data.message == "a1b2c3d fix cold-start"
+    assert app_data.annotations == {"deployer_id": "nflx-123"}
+
+    # Validation happens up front, before any loading or building.
+    with pytest.raises(ValueError, match="reserved annotation key"):
+        _resolve_deployment_reference(
+            ("myfile.py", "MyApp"),
+            annotations={"message": "nope"},
+        )
+
+
 def test_execute_prepared_deployment_reuses_result_handler_for_build_by_default():
     from fal.api.deploy import PreparedDeployment, execute_prepared_deployment
     from fal.sdk import (
@@ -213,6 +334,93 @@ def test_execute_prepared_deployment_forwards_attach_to_deployment():
 
     _, register_kwargs = host.register.call_args
     assert register_kwargs["attach_to_deployment"] is True
+
+
+def _make_prepared_deployment(app_data: AppData, base_metadata: dict):
+    """Prepared deployment with a mocked host, for asserting register() kwargs."""
+    from fal.api.deploy import PreparedDeployment
+    from fal.sdk import (
+        RegisterApplicationResult,
+        RegisterApplicationResultType,
+        ServiceURLs,
+    )
+
+    host = MagicMock()
+    options = Options(
+        environment={"requirements": ["."]},
+        host={"metadata": base_metadata},
+    )
+    isolated_function = IsolatedFunction(
+        host=host,
+        raw_func=lambda: None,
+        options=options,
+        app_name="my-app",
+        app_auth="public",
+    )
+    host.register.return_value = RegisterApplicationResult(
+        result=RegisterApplicationResultType(application_id="app-id"),
+        service_urls=ServiceURLs(
+            playground="https://playground.example",
+            run="https://run.example",
+            queue="https://queue.example",
+            ws="wss://ws.example",
+            log="https://log.example",
+        ),
+    )
+    host.prepare_options.return_value = options
+    prepared = PreparedDeployment(
+        host=host,
+        loaded=SimpleNamespace(
+            function=isolated_function,
+            app_name="my-app",
+            app_auth="public",
+            source_code=None,
+        ),
+        app_data=app_data,
+        display_name="MyApp",
+    )
+    return host, prepared
+
+
+def test_execute_prepared_deployment_merges_message_and_annotations():
+    from fal.api.deploy import execute_prepared_deployment
+
+    base_metadata = {"openapi": {"paths": {}}}
+    host, prepared = _make_prepared_deployment(
+        AppData(
+            deployment_strategy="rolling",
+            message="a1b2c3d fix cold-start",
+            annotations={"deployer_id": "nflx-123", "build": "456"},
+        ),
+        base_metadata,
+    )
+
+    execute_prepared_deployment(prepared)
+
+    _, register_kwargs = host.register.call_args
+    assert register_kwargs["metadata"] == {
+        "openapi": {"paths": {}},
+        "message": "a1b2c3d fix cold-start",
+        "annotations": {"deployer_id": "nflx-123", "build": "456"},
+    }
+    # The blob cached on the function's options must not be mutated.
+    assert base_metadata == {"openapi": {"paths": {}}}
+
+
+def test_execute_prepared_deployment_without_message_or_annotations():
+    from fal.api.deploy import execute_prepared_deployment
+
+    host, prepared = _make_prepared_deployment(
+        AppData(deployment_strategy="rolling"),
+        {"openapi": {"paths": {}}},
+    )
+
+    execute_prepared_deployment(prepared)
+
+    _, register_kwargs = host.register.call_args
+    assert register_kwargs["metadata"] == {"openapi": {"paths": {}}}
+    assert "message" not in register_kwargs["metadata"]
+    assert "annotations" not in register_kwargs["metadata"]
 
 
 def test_execute_prepared_deployment_rejects_attach_with_recreate_strategy():
@@ -408,6 +616,8 @@ def mock_args(
     team: Optional[str] = None,
     no_cache: bool = False,
     env: Optional[str] = None,
+    message: Optional[str] = None,
+    annotation: Optional[list] = None,
 ):
     args = MagicMock()
 
@@ -425,6 +635,8 @@ def mock_args(
     args.yes = False
     args.attach_to_deployment = None
     args.host = "my-host"
+    args.message = message
+    args.annotation = annotation
 
     return args
 

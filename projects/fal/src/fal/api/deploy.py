@@ -24,6 +24,63 @@ from typing import cast
 
 User = namedtuple("User", ["user_id", "username"])
 
+# Guardrails for per-revision deploy metadata (message + annotations).
+MAX_DEPLOY_MESSAGE_LENGTH = 2048
+MAX_ANNOTATION_COUNT = 32
+MAX_ANNOTATION_KEY_LENGTH = 64
+MAX_ANNOTATIONS_TOTAL_BYTES = 16384
+
+# Keys that would collide with internal metadata stored in the same blob.
+RESERVED_ANNOTATION_KEYS = frozenset({"openapi", "message", "annotations"})
+
+
+def _validate_deploy_message(message: str | None) -> None:
+    if message is None:
+        return
+    if not isinstance(message, str):
+        raise ValueError("Deploy message must be a string.")
+    if len(message) > MAX_DEPLOY_MESSAGE_LENGTH:
+        raise ValueError(
+            f"Deploy message is too long ({len(message)} characters); "
+            f"the maximum is {MAX_DEPLOY_MESSAGE_LENGTH}."
+        )
+
+
+def _validate_deploy_annotations(annotations: dict[str, str] | None) -> None:
+    if annotations is None:
+        return
+    if not isinstance(annotations, dict):
+        raise ValueError(
+            "Deploy annotations must be a dict of string keys and string values."
+        )
+    if len(annotations) > MAX_ANNOTATION_COUNT:
+        raise ValueError(
+            f"Too many annotations ({len(annotations)}); "
+            f"the maximum is {MAX_ANNOTATION_COUNT}."
+        )
+    for key, value in annotations.items():
+        if not isinstance(key, str) or not key:
+            raise ValueError("Annotation keys must be non-empty strings.")
+        if len(key) > MAX_ANNOTATION_KEY_LENGTH:
+            raise ValueError(
+                f"Annotation key '{key[:MAX_ANNOTATION_KEY_LENGTH]}…' is too long "
+                f"({len(key)} characters); the maximum is "
+                f"{MAX_ANNOTATION_KEY_LENGTH}."
+            )
+        if key in RESERVED_ANNOTATION_KEYS:
+            raise ValueError(f"'{key}' is a reserved annotation key.")
+        if not isinstance(value, str):
+            raise ValueError(
+                f"Annotation '{key}' has a {type(value).__name__} value; "
+                "annotation values must be strings."
+            )
+    total_bytes = len(json.dumps(annotations).encode("utf-8"))
+    if total_bytes > MAX_ANNOTATIONS_TOTAL_BYTES:
+        raise ValueError(
+            f"Annotations are too large ({total_bytes} bytes serialized); "
+            f"the maximum is {MAX_ANNOTATIONS_TOTAL_BYTES} bytes."
+        )
+
 
 @dataclass
 class DeploymentResult:
@@ -115,9 +172,14 @@ def _resolve_deployment_reference(
     strategy: DeploymentStrategyLiteral = "rolling",
     reset_scale: bool = False,
     attach_to_deployment: bool | None = None,
+    message: str | None = None,
+    annotations: dict[str, str] | None = None,
 ) -> tuple[tuple[str | None, str | None], AppData]:
     from fal.cli._utils import AppData, get_app_data_from_toml, is_app_name
     from fal.cli.parser import RefAction
+
+    _validate_deploy_message(message)
+    _validate_deploy_annotations(annotations)
 
     if isinstance(app_ref, tuple):
         app_ref_tuple = app_ref
@@ -132,6 +194,8 @@ def _resolve_deployment_reference(
         reset_scale=cast(bool, reset_scale),
         attach_to_deployment=attach_to_deployment,
         name=app_name,
+        message=message,
+        annotations=annotations,
     )
 
     app_ref_candidate = cast("tuple[str, str | None]", app_ref_tuple)
@@ -142,7 +206,9 @@ def _resolve_deployment_reference(
         resolved_app_name, _unused_func_name = app_ref_candidate
         assert resolved_app_name is not None
 
+        # message/annotations are per-deploy, never from pyproject.toml
         app_data = get_app_data_from_toml(resolved_app_name)
+        app_data = replace(app_data, message=message, annotations=annotations)
         if attach_to_deployment is not None:
             app_data = replace(app_data, attach_to_deployment=attach_to_deployment)
         if app_data.python_entry_point is not None or app_data.ref is None:
@@ -287,13 +353,22 @@ def _execute_loaded_deployment(
 
     isolated_function.fetch_metadata(build_environment=False)
 
+    # Base metadata blob from the function (e.g. the openapi spec), plus the
+    # user-facing per-revision message/annotations. Copy so we never mutate
+    # the dict cached on the function's options.
+    metadata = dict(isolated_function.build_metadata())
+    if app_data.message is not None:
+        metadata["message"] = app_data.message
+    if app_data.annotations:
+        metadata["annotations"] = dict(app_data.annotations)
+
     result = host.register(
         func=isolated_function.func,
         options=isolated_function.options,
         application_name=loaded.app_name,
         application_auth_mode=loaded.app_auth,  # type: ignore
         source_code=loaded.source_code,
-        metadata=isolated_function.build_metadata(),
+        metadata=metadata,
         deployment_strategy=strategy,
         scale=app_data.reset_scale,
         attach_to_deployment=app_data.attach_to_deployment,
@@ -347,6 +422,8 @@ def prepare_deployment(
     attach_to_deployment: bool | None = None,
     force_env_build: bool = False,
     environment_name: str | None = None,
+    message: str | None = None,
+    annotations: dict[str, str] | None = None,
 ) -> PreparedDeployment:
     resolved_app_ref, app_data = _resolve_deployment_reference(
         app_ref,
@@ -355,6 +432,8 @@ def prepare_deployment(
         strategy=strategy,
         reset_scale=reset_scale,
         attach_to_deployment=attach_to_deployment,
+        message=message,
+        annotations=annotations,
     )
     return _prepare_deployment_from_reference(
         client,
@@ -397,6 +476,8 @@ def deploy(
     environment_name: str | None = None,
     result_handler: ResultHandler | None = None,
     build_result_handler: ResultHandler | None = None,
+    message: str | None = None,
+    annotations: dict[str, str] | None = None,
 ) -> DeploymentResult:
     resolved_app_ref, app_data = _resolve_deployment_reference(
         app_ref,
@@ -405,6 +486,8 @@ def deploy(
         strategy=strategy,
         reset_scale=reset_scale,
         attach_to_deployment=attach_to_deployment,
+        message=message,
+        annotations=annotations,
     )
     return _deploy_from_reference(
         client,

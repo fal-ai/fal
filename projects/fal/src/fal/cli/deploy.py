@@ -16,6 +16,26 @@ from .deploy_check import (
 from .parser import FalClientParser, RefAction, add_env_argument, get_output_parser
 
 
+def _parse_annotation(value: str) -> tuple[str, str]:
+    key, sep, val = value.partition("=")
+    if not sep or not key:
+        raise argparse.ArgumentTypeError(
+            f"invalid annotation {value!r}; expected KEY=VALUE"
+        )
+    return key, val
+
+
+def _annotations_from_args(args) -> dict[str, str] | None:
+    if not args.annotation:
+        return None
+    annotations: dict[str, str] = {}
+    for key, value in args.annotation:
+        if key in annotations:
+            raise ValueError(f"Duplicate annotation key '{key}'.")
+        annotations[key] = value
+    return annotations
+
+
 def _deploy(args):
     from ._result_handlers import (
         CliBuildEnvironmentResultHandler,
@@ -24,6 +44,7 @@ def _deploy(args):
     )
 
     team, app_ref = _resolve_team_and_app_ref(args)
+    annotations = _annotations_from_args(args)
 
     # Handle deprecated --force-env-build flag
     if args.force_env_build:
@@ -50,6 +71,8 @@ def _deploy(args):
             result_handler=result_handler,
             build_result_handler=build_result_handler,
             prepare_options_handler=prepare_options_handler,
+            message=args.message,
+            annotations=annotations,
         )
     else:
         from fal.api import deploy as deploy_api
@@ -64,6 +87,8 @@ def _deploy(args):
             attach_to_deployment=args.attach_to_deployment,
             force_env_build=no_cache,
             environment_name=args.env,
+            message=args.message,
+            annotations=annotations,
         )
         app_name = prepared.loaded.app_name
         run_hint = run_command_hint(app_ref, app_name, args.env)
@@ -213,6 +238,8 @@ def add_parser(main_subparsers, parents):
         "  fal deploy path/to/myfile.py::MyApp --app-name myapp --auth public\n"
         "  fal deploy my-app\n"
         "  fal deploy my-app --attach\n"
+        '  fal deploy my-app --message "a1b2c3d fix cold-start"\n'
+        "  fal deploy my-app --annotation DEPLOYER_ID=foo-123 --annotation GIT_SHA=1234567890\n"
     )
 
     parser = main_subparsers.add_parser(
@@ -306,6 +333,22 @@ def add_parser(main_subparsers, parents):
         help=(
             "Skip interactive deploy confirmation prompts. "
             "When combined with --check, the summary is still shown."
+        ),
+    )
+    parser.add_argument(
+        "--message",
+        help=(
+            "Freeform message to attach to this revision (e.g, 'add feature')"
+        ),
+    )
+    parser.add_argument(
+        "--annotation",
+        action="append",
+        type=_parse_annotation,
+        metavar="KEY=VALUE",
+        help=(
+            "Custom key=value pair to attach to this revision (e.g, "
+            "GIT_SHA=1234567890). Can be repeated. Value must be a string."
         ),
     )
     parser.add_argument(
