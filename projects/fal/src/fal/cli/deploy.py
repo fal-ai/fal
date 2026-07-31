@@ -239,7 +239,8 @@ def add_parser(main_subparsers, parents):
         "  fal deploy my-app\n"
         "  fal deploy my-app --attach\n"
         '  fal deploy my-app --message "a1b2c3d fix cold-start"\n'
-        "  fal deploy my-app --annotation DEPLOYER_ID=foo-123 --annotation GIT_SHA=1234567890\n"
+        "  fal deploy my-app --annotation DEPLOYER_ID=foo-123 "
+        "--annotation GIT_SHA=1234567890\n"
     )
 
     parser = main_subparsers.add_parser(
@@ -337,9 +338,7 @@ def add_parser(main_subparsers, parents):
     )
     parser.add_argument(
         "--message",
-        help=(
-            "Freeform message to attach to this revision (e.g, 'add feature')"
-        ),
+        help=("Freeform message to attach to this revision (e.g, 'add feature')"),
     )
     parser.add_argument(
         "--annotation",
