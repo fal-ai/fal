@@ -154,6 +154,13 @@ def test_validate_deploy_annotations():
     with pytest.raises(ValueError, match="too large"):
         _validate_deploy_annotations({"blob": "x" * MAX_ANNOTATIONS_TOTAL_BYTES})
 
+    # Non-ASCII content is measured at its real UTF-8 size
+    _validate_deploy_annotations(
+        {"blob": "é" * ((MAX_ANNOTATIONS_TOTAL_BYTES // 2) - 10)}
+    )
+    with pytest.raises(ValueError, match="too large"):
+        _validate_deploy_annotations({"blob": "é" * (MAX_ANNOTATIONS_TOTAL_BYTES // 2)})
+
 
 def test_resolve_deployment_reference_carries_message_and_annotations():
     from fal.api.deploy import _resolve_deployment_reference

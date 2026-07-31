@@ -63,7 +63,7 @@ def _validate_deploy_annotations(annotations: dict[str, str] | None) -> None:
             raise ValueError("Annotation keys must be non-empty strings.")
         if len(key) > MAX_ANNOTATION_KEY_LENGTH:
             raise ValueError(
-                f"Annotation key '{key[:MAX_ANNOTATION_KEY_LENGTH]}…' is too long "
+                f"Annotation key '{key[:MAX_ANNOTATION_KEY_LENGTH]}...' is too long "
                 f"({len(key)} characters); the maximum is "
                 f"{MAX_ANNOTATION_KEY_LENGTH}."
             )
@@ -74,7 +74,8 @@ def _validate_deploy_annotations(annotations: dict[str, str] | None) -> None:
                 f"Annotation '{key}' has a {type(value).__name__} value; "
                 "annotation values must be strings."
             )
-    total_bytes = len(json.dumps(annotations).encode("utf-8"))
+    # ensure_ascii=False so non-ASCII content is measured at its real UTF-8 size
+    total_bytes = len(json.dumps(annotations, ensure_ascii=False).encode("utf-8"))
     if total_bytes > MAX_ANNOTATIONS_TOTAL_BYTES:
         raise ValueError(
             f"Annotations are too large ({total_bytes} bytes serialized); "
