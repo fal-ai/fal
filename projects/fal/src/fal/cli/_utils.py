@@ -9,6 +9,7 @@ from fal.api import Options
 from fal.container import ContainerImage, _validate_command_override
 from fal.project import find_project_root, find_pyproject_toml, parse_pyproject_toml
 from fal.sdk import (
+    ALIAS_AUTH_MODES,
     ApplicationHealthCheckConfig,
     AuthModeLiteral,
     DeploymentStrategyLiteral,
@@ -63,6 +64,14 @@ def get_app_data_from_toml(
 
     fal_data = parse_pyproject_toml(toml_path)
     apps = fal_data.get("apps", {})
+    unexpected_top_level = {k: v for k, v in fal_data.items() if k != "apps"}
+    if unexpected_top_level and emit_deprecation_warnings:
+        # Not a hard error yet: an existing manifest may carry a stray top-level
+        # key today. Mirrors the app-level unexpected-keys check below, one
+        # release behind it so users have a chance to clean up first.
+        print(
+            f"[WARNING] Found unexpected keys in pyproject.toml: {unexpected_top_level}"
+        )
 
     try:
         app_data: dict[str, Any] = copy.deepcopy(apps[app_name])
@@ -100,6 +109,11 @@ def get_app_data_from_toml(
             app_ref = str(project_root / app_ref)
 
     app_auth: Optional[AuthModeLiteral] = app_data.pop("auth", None)
+    if app_auth is not None and app_auth not in ALIAS_AUTH_MODES:
+        raise ValueError(
+            f"App {app_name} auth must be one of {ALIAS_AUTH_MODES} in "
+            f"pyproject.toml, got {app_auth!r}."
+        )
     app_deployment_strategy: Optional[DeploymentStrategyLiteral] = app_data.pop(
         "deployment_strategy", None
     )
@@ -174,7 +188,7 @@ def get_app_data_from_toml(
     if image_config is not None and app_files:
         raise ValueError("app_files is not supported for container apps.")
     if keep_alive is not None:
-        _validate_int("keep_alive", keep_alive)
+        _validate_non_negative_int("keep_alive", keep_alive)
     if private_logs is not None:
         _validate_bool("private_logs", private_logs)
     if scheduler is not None and not (isinstance(scheduler, str) and scheduler):
@@ -353,6 +367,12 @@ def _validate_str_list(field_name: str, value: Any) -> None:
 def _validate_int(field_name: str, value: Any) -> None:
     if not isinstance(value, int) or isinstance(value, bool):
         raise ValueError(f"{field_name} must be an integer.")
+
+
+def _validate_non_negative_int(field_name: str, value: Any) -> None:
+    _validate_int(field_name, value)
+    if value < 0:
+        raise ValueError(f"{field_name} must be a non-negative integer.")
 
 
 def _validate_bool(field_name: str, value: Any) -> None:
