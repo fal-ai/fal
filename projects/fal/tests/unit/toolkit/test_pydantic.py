@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, List
 
 import pytest
 from pydantic import Field
@@ -333,7 +333,7 @@ class TestFieldHelpers:
         """On a list, per-item limits and list totals stay distinguishable."""
 
         class Model(FalBaseModel):
-            video_urls: list[str] = VideoField(
+            video_urls: List[str] = VideoField(
                 default_factory=list,
                 constraints=VideoValidationConfig(min_duration=2.0),
                 combined_constraints=VideoValidationConfig(max_duration=15.1),
