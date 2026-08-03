@@ -100,6 +100,7 @@ def _check_latest_version():
     from rich.panel import Panel
     from rich.text import Text
 
+    from fal._installer import get_upgrade_command
     from fal._version import get_latest_version, version_tuple
 
     # If we have a dev version, we don't want to check for updates
@@ -124,8 +125,9 @@ def _check_latest_version():
         ("A new version of fal is available: ", "bold white"),
         (latest_version, "bold green"),
     )
-    line2 = Text.assemble(("pip install --upgrade fal", "bold cyan"))
-    line2.align("center", width=len(line1))
+    line2 = Text.assemble((get_upgrade_command(), "bold cyan"))
+    # `align` truncates to `width`, so never go below the longest line.
+    line2.align("center", width=max(len(line1), len(line2)))
 
     panel = Panel(
         line1 + "\n\n" + line2,
