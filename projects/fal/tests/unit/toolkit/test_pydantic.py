@@ -3,6 +3,7 @@ from typing import Any
 import pytest
 from pydantic import Field
 
+from fal.toolkit.constraints import VideoValidationConfig
 from fal.toolkit.pydantic import (
     IS_PYDANTIC_V2,
     AudioField,
@@ -279,6 +280,54 @@ class TestFieldHelpers:
 
         schema = Model.model_json_schema() if IS_PYDANTIC_V2 else Model.schema()
         assert schema["properties"]["video_input"]["ui"]["field"] == "video"
+
+    def test_video_field_without_constraints_emits_no_xfal(self):
+        """A video input with no declared limits stays free of x-fal."""
+
+        class Model(FalBaseModel):
+            video_input: str = VideoField(default="", description="A video input")
+
+        schema = Model.model_json_schema() if IS_PYDANTIC_V2 else Model.schema()
+        assert "x-fal" not in schema["properties"]["video_input"]
+
+    def test_video_field_constraints(self):
+        """VideoField should emit its declared limits under x-fal."""
+
+        class Model(FalBaseModel):
+            video_input: str = VideoField(
+                default="",
+                description="A video input",
+                constraints=VideoValidationConfig(
+                    max_file_size=50 * 1024 * 1024,
+                    max_duration=15.0,
+                    max_area=834 * 1112,
+                ),
+            )
+
+        schema = Model.model_json_schema() if IS_PYDANTIC_V2 else Model.schema()
+        video_input = schema["properties"]["video_input"]
+        assert video_input["x-fal"] == {
+            "max_file_size": 52428800,
+            "max_duration": 15.0,
+            "max_area": 927408,
+        }
+        assert video_input["ui"]["field"] == "video"
+
+    def test_video_field_constraints_keep_ui(self):
+        """Caller ui survives alongside x-fal, which v2 drops for extra kwargs."""
+
+        class Model(FalBaseModel):
+            video_input: str = VideoField(
+                default="",
+                description="A video input",
+                constraints=VideoValidationConfig(max_duration=15.0),
+                ui={"important": True},
+            )
+
+        schema = Model.model_json_schema() if IS_PYDANTIC_V2 else Model.schema()
+        video_input = schema["properties"]["video_input"]
+        assert video_input["ui"] == {"important": True, "field": "video"}
+        assert video_input["x-fal"] == {"max_duration": 15.0}
 
     def test_audio_field_init(self):
         """AudioField should initialize and set ui.field = 'audio' in schema."""

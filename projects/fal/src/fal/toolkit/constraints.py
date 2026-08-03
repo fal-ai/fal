@@ -9,7 +9,7 @@ _NON_SCHEMA_FIELDS = {"timeout"}
 
 
 def to_xfal(
-    config: ImageSizeConstraints | ImageValidationConfig,
+    config: ImageSizeConstraints | ImageValidationConfig | VideoValidationConfig,
 ) -> dict[str, Any]:
     """Return a config's set (non-None) limits as the ``x-fal`` schema payload."""
     return {
@@ -79,6 +79,57 @@ class ImageValidationConfig:
     min_aspect_ratio: Optional[float] = None
     max_aspect_ratio: Optional[float] = None
     timeout: float = 20.0
+
+    def __post_init__(self) -> None:
+        _validate_aspect_ratio_pair(self.min_aspect_ratio, self.max_aspect_ratio)
+
+
+class VideoValidationOptions(TypedDict, total=False):
+    """Validation options accepted by input-video helpers."""
+
+    max_file_size: Optional[int]
+    min_width: Optional[int]
+    min_height: Optional[int]
+    max_width: Optional[int]
+    max_height: Optional[int]
+    min_area: Optional[int]
+    max_area: Optional[int]
+    min_aspect_ratio: Optional[float]
+    max_aspect_ratio: Optional[float]
+    min_frames: Optional[int]
+    max_frames: Optional[int]
+    min_duration: Optional[float]
+    max_duration: Optional[float]
+    min_fps: Optional[float]
+    max_fps: Optional[float]
+
+
+@dataclasses.dataclass(frozen=True)
+class VideoValidationConfig:
+    """Limits applied to an input video.
+
+    Attach to a video input via :func:`fal.toolkit.VideoField` to surface the
+    limits in the OpenAPI schema (under the ``x-fal`` extension), so clients and
+    UIs can reject a video before uploading it. Areas are per frame, in pixels.
+    These are documentation hints and are not enforced by the SDK. Fetch settings
+    such as the download timeout belong to the downloader, not here.
+    """
+
+    max_file_size: Optional[int] = None
+    min_width: Optional[int] = None
+    min_height: Optional[int] = None
+    max_width: Optional[int] = None
+    max_height: Optional[int] = None
+    min_area: Optional[int] = None
+    max_area: Optional[int] = None
+    min_aspect_ratio: Optional[float] = None
+    max_aspect_ratio: Optional[float] = None
+    min_frames: Optional[int] = None
+    max_frames: Optional[int] = None
+    min_duration: Optional[float] = None
+    max_duration: Optional[float] = None
+    min_fps: Optional[float] = None
+    max_fps: Optional[float] = None
 
     def __post_init__(self) -> None:
         _validate_aspect_ratio_pair(self.min_aspect_ratio, self.max_aspect_ratio)
