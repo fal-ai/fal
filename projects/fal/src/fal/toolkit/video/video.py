@@ -3,7 +3,11 @@ from typing import Optional
 
 from pydantic import Field
 
-from fal.toolkit.constraints import VideoNormalization, VideoValidationConfig, to_xfal
+from fal.toolkit.constraints import (
+    VideoNormalizationConfig,
+    VideoValidationConfig,
+    to_xfal,
+)
 from fal.toolkit.file.file import IS_PYDANTIC_V2, File
 
 
@@ -19,7 +23,7 @@ def _merge_ui(schema: dict, ui: Optional[dict]) -> None:
 def VideoField(
     *args,
     constraints: Optional[VideoValidationConfig] = None,
-    normalization: Optional[VideoNormalization] = None,
+    normalization: Optional[VideoNormalizationConfig] = None,
     ui: Optional[dict] = None,
     **kwargs,
 ):

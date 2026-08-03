@@ -12,7 +12,7 @@ def to_xfal(
     config: ImageSizeConstraints
     | ImageValidationConfig
     | VideoValidationConfig
-    | VideoNormalization,
+    | VideoNormalizationConfig,
 ) -> dict[str, Any]:
     """Return a config's set (non-None) limits as the ``x-fal`` schema payload."""
     return {
@@ -139,7 +139,7 @@ class VideoValidationConfig:
 
 
 @dataclasses.dataclass(frozen=True)
-class VideoNormalization:
+class VideoNormalizationConfig:
     """What a model does to an input video it accepts but has to reshape.
 
     The counterpart to :class:`VideoValidationConfig`: those limits reject a

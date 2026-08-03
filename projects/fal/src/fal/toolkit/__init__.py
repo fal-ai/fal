@@ -11,7 +11,7 @@ from fal.toolkit.constraints import (
     ImageSizeConstraints,
     ImageValidationConfig,
     ImageValidationOptions,
-    VideoNormalization,
+    VideoNormalizationConfig,
     VideoValidationConfig,
     VideoValidationOptions,
     to_xfal,
@@ -61,7 +61,7 @@ __all__ = [
     "KVStore",
     "Video",
     "VideoField",
-    "VideoNormalization",
+    "VideoNormalizationConfig",
     "VideoValidationConfig",
     "VideoValidationOptions",
     # Pydantic utilities

@@ -3,7 +3,7 @@ from typing import Any
 import pytest
 from pydantic import Field
 
-from fal.toolkit.constraints import VideoNormalization, VideoValidationConfig
+from fal.toolkit.constraints import VideoNormalizationConfig, VideoValidationConfig
 from fal.toolkit.pydantic import (
     IS_PYDANTIC_V2,
     AudioField,
@@ -320,7 +320,7 @@ class TestFieldHelpers:
             video_input: str = VideoField(
                 default="",
                 constraints=VideoValidationConfig(min_duration=2.0),
-                normalization=VideoNormalization(max_duration=15.1, fps=24),
+                normalization=VideoNormalizationConfig(max_duration=15.1, fps=24),
             )
 
         schema = Model.model_json_schema() if IS_PYDANTIC_V2 else Model.schema()
@@ -335,7 +335,7 @@ class TestFieldHelpers:
         class Model(FalBaseModel):
             video_input: str = VideoField(
                 default="",
-                normalization=VideoNormalization(max_area=834 * 1112),
+                normalization=VideoNormalizationConfig(max_area=834 * 1112),
             )
 
         schema = Model.model_json_schema() if IS_PYDANTIC_V2 else Model.schema()
