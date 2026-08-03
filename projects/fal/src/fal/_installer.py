@@ -66,11 +66,26 @@ def _is_uv_project(prefix: str) -> bool:
     return os.path.exists(os.path.join(os.path.dirname(prefix), "uv.lock"))
 
 
+def _same_path(left: Optional[str], right: Optional[str]) -> bool:
+    if not left or not right:
+        return False
+
+    try:
+        return os.path.samefile(left, right)
+    except OSError:
+        # One of them does not exist; compare them textually instead.
+        return os.path.normcase(os.path.normpath(left)) == os.path.normcase(
+            os.path.normpath(right)
+        )
+
+
 def _pip_command() -> str:
-    # Inside an activated virtualenv, `pip` is the one we want. Otherwise the
-    # `pip` on PATH may well belong to a different interpreter than the one
-    # running fal, so spell out the interpreter instead.
-    if sys.prefix != sys.base_prefix and os.environ.get("VIRTUAL_ENV"):
+    # `pip` on PATH is the right one only when the venv fal runs from is also
+    # the activated one. If a *different* venv is activated, that `pip` would
+    # upgrade the wrong environment, so spell out the interpreter instead.
+    if sys.prefix != sys.base_prefix and _same_path(
+        os.environ.get("VIRTUAL_ENV"), sys.prefix
+    ):
         return "pip"
 
     executable = sys.executable or "python"

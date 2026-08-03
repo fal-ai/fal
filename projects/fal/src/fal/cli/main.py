@@ -126,8 +126,11 @@ def _check_latest_version():
         (latest_version, "bold green"),
     )
     line2 = Text.assemble((get_upgrade_command(), "bold cyan"))
-    # `align` truncates to `width`, so never go below the longest line.
-    line2.align("center", width=max(len(line1), len(line2)))
+    # Center both against the longest line: the command can now be longer than
+    # the headline, and `align` truncates to `width` rather than padding.
+    width = max(len(line1), len(line2))
+    line1.align("center", width=width)
+    line2.align("center", width=width)
 
     panel = Panel(
         line1 + "\n\n" + line2,

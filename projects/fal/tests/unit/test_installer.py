@@ -1,4 +1,5 @@
 import importlib
+import os
 
 installer = importlib.import_module("fal._installer")
 
@@ -60,6 +61,31 @@ def test_activated_venv_suggests_bare_pip(monkeypatch, tmp_path) -> None:
     _fake_installer_metadata(monkeypatch, "pip")
 
     assert installer.get_upgrade_command() == "pip install --upgrade fal"
+
+
+def test_activated_venv_accepts_an_equivalent_path(monkeypatch, tmp_path) -> None:
+    # A trailing slash (or a symlinked path) still names the same venv.
+    prefix = _fake_prefix(monkeypatch, tmp_path)
+    monkeypatch.setenv("VIRTUAL_ENV", str(prefix) + os.sep)
+    _fake_installer_metadata(monkeypatch, "pip")
+
+    assert installer.get_upgrade_command() == "pip install --upgrade fal"
+
+
+def test_a_different_activated_venv_spells_out_the_interpreter(
+    monkeypatch, tmp_path
+) -> None:
+    # fal runs from venv B while venv A is the activated one, so bare `pip`
+    # would resolve through PATH to A's pip and upgrade the wrong environment.
+    _fake_prefix(monkeypatch, tmp_path)
+    monkeypatch.setenv("VIRTUAL_ENV", str(tmp_path / "some-other-venv"))
+    monkeypatch.setattr(installer.sys, "executable", "/usr/bin/python3")
+    _fake_installer_metadata(monkeypatch, "pip")
+
+    assert (
+        installer.get_upgrade_command()
+        == "/usr/bin/python3 -m pip install --upgrade fal"
+    )
 
 
 def test_global_install_spells_out_the_interpreter(monkeypatch, tmp_path) -> None:
