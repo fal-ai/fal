@@ -329,6 +329,22 @@ class TestFieldHelpers:
             "normalization": {"max_duration": 15.1, "fps": 24},
         }
 
+    def test_video_field_combined_constraints(self):
+        """On a list, per-item limits and list totals stay distinguishable."""
+
+        class Model(FalBaseModel):
+            video_urls: list[str] = VideoField(
+                default_factory=list,
+                constraints=VideoValidationConfig(min_duration=2.0),
+                combined_constraints=VideoValidationConfig(max_duration=15.1),
+            )
+
+        schema = Model.model_json_schema() if IS_PYDANTIC_V2 else Model.schema()
+        assert schema["properties"]["video_urls"]["x-fal"] == {
+            "min_duration": 2.0,
+            "combined": {"max_duration": 15.1},
+        }
+
     def test_video_field_normalization_only(self):
         """A model that reshapes but never rejects still documents itself."""
 

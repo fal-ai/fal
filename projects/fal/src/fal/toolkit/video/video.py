@@ -23,6 +23,7 @@ def _merge_ui(schema: dict, ui: Optional[dict]) -> None:
 def VideoField(
     *args,
     constraints: Optional[VideoValidationConfig] = None,
+    combined_constraints: Optional[VideoValidationConfig] = None,
     normalization: Optional[VideoNormalizationConfig] = None,
     ui: Optional[dict] = None,
     **kwargs,
@@ -32,6 +33,9 @@ def VideoField(
     Pass ``constraints`` for limits that reject a request and ``normalization``
     for reshaping the model applies to videos it accepts; both are emitted under
     the ``x-fal`` schema extension, the latter nested under ``normalization``.
+    On a list of videos, ``constraints`` applies to each one and
+    ``combined_constraints`` to their totals (nested under ``combined``) - only
+    summable limits such as duration, file size and frames mean anything there.
     Pass ``ui`` for UI metadata (e.g. ``{"important": True}``); all other
     arguments are forwarded to ``Field``. ``ui`` is taken as an explicit argument
     (rather than a passthrough kwarg) so it is not dropped when an explicit
@@ -40,6 +44,10 @@ def VideoField(
     xfal: dict = {}
     if constraints is not None:
         xfal.update(to_xfal(constraints))
+    if combined_constraints is not None:
+        combined = to_xfal(combined_constraints)
+        if combined:
+            xfal["combined"] = combined
     if normalization is not None:
         applied = to_xfal(normalization)
         if applied:
