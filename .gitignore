@@ -34,3 +34,6 @@ venv
 
 .DS_Store
 .vscode
+
+# uv auto-generates lockfiles on `uv run`; only tools/uv.lock is committed.
+projects/*/uv.lock

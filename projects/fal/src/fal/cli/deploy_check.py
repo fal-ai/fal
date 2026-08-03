@@ -111,6 +111,8 @@ def deploy_with_check(
     result_handler: ResultHandler | None = None,
     build_result_handler: ResultHandler | None = None,
     prepare_options_handler: ProgressCallback | None = None,
+    message: str | None = None,
+    annotations: dict[str, str] | None = None,
 ) -> DeploymentResult:
     from fal.api import deploy as deploy_api
     from fal.api.deploy import _validate_attach_to_deployment
@@ -125,6 +127,8 @@ def deploy_with_check(
         attach_to_deployment=args.attach_to_deployment,
         force_env_build=force_env_build,
         environment_name=args.env,
+        message=message,
+        annotations=annotations,
     )
     _validate_attach_to_deployment(prepared.app_data)
     production_alias = _get_production_alias(
