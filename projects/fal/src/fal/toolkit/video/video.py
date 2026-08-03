@@ -3,7 +3,7 @@ from typing import Optional
 
 from pydantic import Field
 
-from fal.toolkit.constraints import VideoValidationConfig, to_xfal
+from fal.toolkit.constraints import VideoNormalization, VideoValidationConfig, to_xfal
 from fal.toolkit.file.file import IS_PYDANTIC_V2, File
 
 
@@ -19,22 +19,29 @@ def _merge_ui(schema: dict, ui: Optional[dict]) -> None:
 def VideoField(
     *args,
     constraints: Optional[VideoValidationConfig] = None,
+    normalization: Optional[VideoNormalization] = None,
     ui: Optional[dict] = None,
     **kwargs,
 ):
     """A ``Field`` for a video input that documents the videos it accepts.
 
-    Pass ``constraints`` to emit the accepted-video limits under the ``x-fal``
-    schema extension, and ``ui`` for UI metadata (e.g. ``{"important": True}``);
-    all other arguments are forwarded to ``Field``. ``ui`` is taken as an explicit
-    argument (rather than a passthrough kwarg) so it is not dropped when an
-    explicit ``json_schema_extra`` is also emitted on Pydantic v2.
+    Pass ``constraints`` for limits that reject a request and ``normalization``
+    for reshaping the model applies to videos it accepts; both are emitted under
+    the ``x-fal`` schema extension, the latter nested under ``normalization``.
+    Pass ``ui`` for UI metadata (e.g. ``{"important": True}``); all other
+    arguments are forwarded to ``Field``. ``ui`` is taken as an explicit argument
+    (rather than a passthrough kwarg) so it is not dropped when an explicit
+    ``json_schema_extra`` is also emitted on Pydantic v2.
     """
-    fal_extra: dict = {}
+    xfal: dict = {}
     if constraints is not None:
-        data = to_xfal(constraints)
-        if data:
-            fal_extra["x-fal"] = data
+        xfal.update(to_xfal(constraints))
+    if normalization is not None:
+        applied = to_xfal(normalization)
+        if applied:
+            xfal["normalization"] = applied
+
+    fal_extra: dict = {"x-fal": xfal} if xfal else {}
 
     if IS_PYDANTIC_V2:
         # Pydantic v2: use json_schema_extra

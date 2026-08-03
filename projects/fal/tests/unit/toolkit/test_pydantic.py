@@ -3,7 +3,7 @@ from typing import Any
 import pytest
 from pydantic import Field
 
-from fal.toolkit.constraints import VideoValidationConfig
+from fal.toolkit.constraints import VideoNormalization, VideoValidationConfig
 from fal.toolkit.pydantic import (
     IS_PYDANTIC_V2,
     AudioField,
@@ -312,6 +312,36 @@ class TestFieldHelpers:
             "max_area": 927408,
         }
         assert video_input["ui"]["field"] == "video"
+
+    def test_video_field_normalization(self):
+        """Reshaping the model applies is nested, not mixed in with the limits."""
+
+        class Model(FalBaseModel):
+            video_input: str = VideoField(
+                default="",
+                constraints=VideoValidationConfig(min_duration=2.0),
+                normalization=VideoNormalization(max_duration=15.1, fps=24),
+            )
+
+        schema = Model.model_json_schema() if IS_PYDANTIC_V2 else Model.schema()
+        assert schema["properties"]["video_input"]["x-fal"] == {
+            "min_duration": 2.0,
+            "normalization": {"max_duration": 15.1, "fps": 24},
+        }
+
+    def test_video_field_normalization_only(self):
+        """A model that reshapes but never rejects still documents itself."""
+
+        class Model(FalBaseModel):
+            video_input: str = VideoField(
+                default="",
+                normalization=VideoNormalization(max_area=834 * 1112),
+            )
+
+        schema = Model.model_json_schema() if IS_PYDANTIC_V2 else Model.schema()
+        assert schema["properties"]["video_input"]["x-fal"] == {
+            "normalization": {"max_area": 927408}
+        }
 
     def test_video_field_constraints_keep_ui(self):
         """Caller ui survives alongside x-fal, which v2 drops for extra kwargs."""

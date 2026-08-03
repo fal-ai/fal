@@ -9,7 +9,10 @@ _NON_SCHEMA_FIELDS = {"timeout"}
 
 
 def to_xfal(
-    config: ImageSizeConstraints | ImageValidationConfig | VideoValidationConfig,
+    config: ImageSizeConstraints
+    | ImageValidationConfig
+    | VideoValidationConfig
+    | VideoNormalization,
 ) -> dict[str, Any]:
     """Return a config's set (non-None) limits as the ``x-fal`` schema payload."""
     return {
@@ -133,3 +136,23 @@ class VideoValidationConfig:
 
     def __post_init__(self) -> None:
         _validate_aspect_ratio_pair(self.min_aspect_ratio, self.max_aspect_ratio)
+
+
+@dataclasses.dataclass(frozen=True)
+class VideoNormalization:
+    """What a model does to an input video it accepts but has to reshape.
+
+    The counterpart to :class:`VideoValidationConfig`: those limits reject a
+    request, these describe a video that is accepted and then rescaled, trimmed
+    or resampled. Declaring both lets a UI block what will fail and merely warn
+    about what will change ("trimmed to 15s"). Areas are per frame, in pixels.
+    """
+
+    min_width: Optional[int] = None
+    min_height: Optional[int] = None
+    max_width: Optional[int] = None
+    max_height: Optional[int] = None
+    min_area: Optional[int] = None
+    max_area: Optional[int] = None
+    max_duration: Optional[float] = None
+    fps: Optional[float] = None
