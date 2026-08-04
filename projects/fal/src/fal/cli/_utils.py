@@ -37,6 +37,8 @@ class AppData:
     team: Optional[str] = None
     name: Optional[str] = None
     options: Options = field(default_factory=Options)
+    message: Optional[str] = None
+    annotations: Optional[dict[str, str]] = None
 
 
 def get_client(host: str, team: str | None = None):
