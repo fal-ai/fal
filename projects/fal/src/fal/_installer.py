@@ -104,13 +104,16 @@ def detect_install_manager(package: str = _PACKAGE) -> str:
     if os.path.exists(os.path.join(prefix, _UV_TOOL_MARKER)):
         return "uv-tool"
 
-    installer = _read_installer(package)
+    # Only the leading token names the installer: Poetry writes its version
+    # too ("Poetry 2.4.1"), while pip, uv and pdm write a bare name.
+    installer = (_read_installer(package) or "").split()
+    name = installer[0] if installer else None
 
-    if installer == "uv":
+    if name == "uv":
         return "uv-project" if _is_uv_project(prefix) else "uv"
 
-    if installer in ("poetry", "pdm"):
-        return installer
+    if name in ("poetry", "pdm"):
+        return name
 
     return "pip"
 

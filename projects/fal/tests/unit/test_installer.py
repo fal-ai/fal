@@ -49,10 +49,26 @@ def test_uv_project_suggests_lock_and_sync(monkeypatch, tmp_path) -> None:
 
 
 def test_poetry_install_suggests_poetry_update(monkeypatch, tmp_path) -> None:
+    # A real `poetry add` writes its version too, e.g. "Poetry 2.4.1"; only
+    # `poetry install` of the root project writes a bare "poetry".
+    _fake_prefix(monkeypatch, tmp_path)
+    _fake_installer_metadata(monkeypatch, "poetry 2.4.1")
+
+    assert installer.get_upgrade_command() == "poetry update fal"
+
+
+def test_bare_poetry_installer_value_still_matches(monkeypatch, tmp_path) -> None:
     _fake_prefix(monkeypatch, tmp_path)
     _fake_installer_metadata(monkeypatch, "poetry")
 
     assert installer.get_upgrade_command() == "poetry update fal"
+
+
+def test_pdm_install_suggests_pdm_update(monkeypatch, tmp_path) -> None:
+    _fake_prefix(monkeypatch, tmp_path)
+    _fake_installer_metadata(monkeypatch, "pdm")
+
+    assert installer.get_upgrade_command() == "pdm update fal"
 
 
 def test_activated_venv_suggests_bare_pip(monkeypatch, tmp_path) -> None:
