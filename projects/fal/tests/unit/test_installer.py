@@ -1,21 +1,32 @@
+import builtins
 import importlib
 import os
+import shutil
 
+fal_logging = importlib.import_module("fal.logging")
 installer = importlib.import_module("fal._installer")
 
 
-def _fake_prefix(monkeypatch, tmp_path, marker=None):
-    prefix = tmp_path / "env"
+def _fake_prefix(monkeypatch, tmp_path, marker=None, name="env"):
+    prefix = tmp_path / name
     prefix.mkdir()
     if marker:
         (prefix / marker).write_text("{}")
     monkeypatch.setattr(installer.sys, "prefix", str(prefix))
     monkeypatch.setattr(installer.sys, "base_prefix", str(tmp_path / "base"))
+    monkeypatch.delenv("VIRTUAL_ENV", raising=False)
+    monkeypatch.delenv("UV_PROJECT_ENVIRONMENT", raising=False)
     return prefix
 
 
 def _fake_installer_metadata(monkeypatch, value):
     monkeypatch.setattr(installer, "_read_installer", lambda _package: value)
+
+
+def _fake_interpreter(monkeypatch, executable, on_path=None):
+    """Run as `executable`, with `on_path` as what its bare name resolves to."""
+    monkeypatch.setattr(installer.sys, "executable", executable)
+    monkeypatch.setattr(shutil, "which", lambda _name: on_path)
 
 
 def test_pipx_install_suggests_pipx_upgrade(monkeypatch, tmp_path) -> None:
@@ -34,18 +45,58 @@ def test_uv_tool_install_suggests_uv_tool_upgrade(monkeypatch, tmp_path) -> None
 
 
 def test_uv_venv_suggests_uv_pip(monkeypatch, tmp_path) -> None:
-    _fake_prefix(monkeypatch, tmp_path)
+    prefix = _fake_prefix(monkeypatch, tmp_path)
+    monkeypatch.setenv("VIRTUAL_ENV", str(prefix))
     _fake_installer_metadata(monkeypatch, "uv")
 
     assert installer.get_upgrade_command() == "uv pip install --upgrade fal"
 
 
-def test_uv_project_suggests_lock_and_sync(monkeypatch, tmp_path) -> None:
-    prefix = _fake_prefix(monkeypatch, tmp_path)
+def test_uv_pip_names_the_interpreter_when_it_is_not_the_activated_venv(
+    monkeypatch, tmp_path
+) -> None:
+    # `uv pip` finds its target by discovery (VIRTUAL_ENV, then a nearby
+    # `.venv`), so without --python it would upgrade the activated venv A while
+    # fal keeps running from B.
+    _fake_prefix(monkeypatch, tmp_path)
+    monkeypatch.setenv("VIRTUAL_ENV", str(tmp_path / "some-other-venv"))
+    _fake_interpreter(monkeypatch, "/usr/bin/python3")
+    _fake_installer_metadata(monkeypatch, "uv")
+
+    assert installer.get_upgrade_command() == (
+        "uv pip install --python /usr/bin/python3 --upgrade fal"
+    )
+
+
+def test_uv_project_suggests_sync_with_upgrade_package(monkeypatch, tmp_path) -> None:
+    prefix = _fake_prefix(monkeypatch, tmp_path, name=".venv")
     (prefix.parent / "uv.lock").write_text("")
     _fake_installer_metadata(monkeypatch, "uv")
 
-    assert installer.get_upgrade_command() == "uv lock --upgrade-package fal && uv sync"
+    assert installer.get_upgrade_command() == "uv sync --upgrade-package fal"
+
+
+def test_side_venv_in_a_uv_project_is_not_the_project_environment(
+    monkeypatch, tmp_path
+) -> None:
+    # `uv venv side-env` in a project root sits next to the lockfile but is not
+    # what `uv sync` would touch, so syncing would leave this install stale.
+    prefix = _fake_prefix(monkeypatch, tmp_path, name="side-env")
+    (prefix.parent / "uv.lock").write_text("")
+    monkeypatch.setenv("VIRTUAL_ENV", str(prefix))
+    _fake_installer_metadata(monkeypatch, "uv")
+
+    assert installer.get_upgrade_command() == "uv pip install --upgrade fal"
+
+
+def test_uv_project_environment_override_is_recognised(monkeypatch, tmp_path) -> None:
+    # UV_PROJECT_ENVIRONMENT moves the managed environment, so it need not be
+    # named `.venv` nor sit beside the lockfile.
+    prefix = _fake_prefix(monkeypatch, tmp_path, name="managed-env")
+    monkeypatch.setenv("UV_PROJECT_ENVIRONMENT", str(prefix))
+    _fake_installer_metadata(monkeypatch, "uv")
+
+    assert installer.get_upgrade_command() == "uv sync --upgrade-package fal"
 
 
 def test_poetry_install_suggests_poetry_update(monkeypatch, tmp_path) -> None:
@@ -95,7 +146,7 @@ def test_a_different_activated_venv_spells_out_the_interpreter(
     # would resolve through PATH to A's pip and upgrade the wrong environment.
     _fake_prefix(monkeypatch, tmp_path)
     monkeypatch.setenv("VIRTUAL_ENV", str(tmp_path / "some-other-venv"))
-    monkeypatch.setattr(installer.sys, "executable", "/usr/bin/python3")
+    _fake_interpreter(monkeypatch, "/usr/bin/python3")
     _fake_installer_metadata(monkeypatch, "pip")
 
     assert (
@@ -106,8 +157,7 @@ def test_a_different_activated_venv_spells_out_the_interpreter(
 
 def test_global_install_spells_out_the_interpreter(monkeypatch, tmp_path) -> None:
     _fake_prefix(monkeypatch, tmp_path)
-    monkeypatch.delenv("VIRTUAL_ENV", raising=False)
-    monkeypatch.setattr(installer.sys, "executable", "/usr/bin/python3")
+    _fake_interpreter(monkeypatch, "/usr/bin/python3")
     _fake_installer_metadata(monkeypatch, "pip")
 
     assert (
@@ -116,15 +166,71 @@ def test_global_install_spells_out_the_interpreter(monkeypatch, tmp_path) -> Non
     )
 
 
+def test_interpreter_on_path_is_named_without_its_directory(
+    monkeypatch, tmp_path
+) -> None:
+    # When PATH resolves the bare name to this very interpreter, the short
+    # spelling is equivalent — and avoids quoting entirely.
+    executable = tmp_path / "python3.14"
+    executable.write_text("")
+    _fake_prefix(monkeypatch, tmp_path)
+    _fake_interpreter(monkeypatch, str(executable), on_path=str(executable))
+    _fake_installer_metadata(monkeypatch, "pip")
+
+    assert installer.get_upgrade_command() == "python3.14 -m pip install --upgrade fal"
+
+
 def test_interpreter_path_with_spaces_is_quoted(monkeypatch, tmp_path) -> None:
     _fake_prefix(monkeypatch, tmp_path)
-    monkeypatch.delenv("VIRTUAL_ENV", raising=False)
-    monkeypatch.setattr(installer.sys, "executable", "/opt/my python/bin/python")
+    # A different `python` leads PATH, so the full path is needed.
+    _fake_interpreter(
+        monkeypatch, "/opt/my python/bin/python", on_path="/usr/bin/python"
+    )
     _fake_installer_metadata(monkeypatch, "pip")
 
     assert installer.get_upgrade_command() == (
         '"/opt/my python/bin/python" -m pip install --upgrade fal'
     )
+
+
+def _write_dist_info(tmp_path, contents, *, directory="projects [client]"):
+    """Lay out a real `fal-*.dist-info/INSTALLER` and point the module at it."""
+    site_packages = tmp_path / directory / "site-packages"
+    dist_info = site_packages / "fal-1.2.3.dist-info"
+    dist_info.mkdir(parents=True)
+    (dist_info / "INSTALLER").write_text(contents)
+    return site_packages / "fal" / "_installer.py"
+
+
+def test_installer_is_read_from_the_dist_info_beside_the_package(
+    monkeypatch, tmp_path
+) -> None:
+    # Bracketed path components are legal everywhere but are a glob character
+    # class, so an unescaped pattern silently matches nothing here. The real
+    # capitalisation is exercised too: only this layer lowercases.
+    module = _write_dist_info(tmp_path, "Poetry 2.4.1\n")
+    monkeypatch.setattr(installer, "__file__", str(module))
+
+    assert installer._installer_from_disk("fal") == "poetry 2.4.1"
+
+    _fake_prefix(monkeypatch, tmp_path)
+    assert installer.get_upgrade_command() == "poetry update fal"
+
+
+def test_an_undecodable_installer_file_is_ignored(monkeypatch, tmp_path) -> None:
+    # A corrupted INSTALLER used to escape as UnicodeDecodeError, which only
+    # the catch-all in `get_upgrade_command` stopped — silently, and after
+    # losing the detection. Raised from `open` rather than written as bytes so
+    # the test does not depend on the locale's encoding.
+    module = _write_dist_info(tmp_path, "uv\n", directory="plain")
+    monkeypatch.setattr(installer, "__file__", str(module))
+
+    def explode(*_args, **_kwargs):
+        raise UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")
+
+    monkeypatch.setattr(builtins, "open", explode)
+
+    assert installer._installer_from_disk("fal") is None
 
 
 def test_missing_metadata_falls_back_to_pip(monkeypatch, tmp_path) -> None:
@@ -135,7 +241,9 @@ def test_missing_metadata_falls_back_to_pip(monkeypatch, tmp_path) -> None:
     assert installer.get_upgrade_command() == "pip install --upgrade fal"
 
 
-def test_detection_errors_fall_back_to_pip(monkeypatch, tmp_path) -> None:
+def test_detection_errors_fall_back_to_pip_and_are_logged(
+    monkeypatch, tmp_path
+) -> None:
     prefix = _fake_prefix(monkeypatch, tmp_path)
     monkeypatch.setenv("VIRTUAL_ENV", str(prefix))
 
@@ -144,4 +252,14 @@ def test_detection_errors_fall_back_to_pip(monkeypatch, tmp_path) -> None:
 
     monkeypatch.setattr(installer, "_read_installer", boom)
 
+    warnings = []
+
+    class _Logger:
+        def warning(self, message, *args, **kwargs):
+            warnings.append((message % args, kwargs))
+
+    monkeypatch.setattr(fal_logging, "get_logger", lambda *_args: _Logger())
+
     assert installer.get_upgrade_command() == "pip install --upgrade fal"
+
+    assert warnings == [("Failed to detect how fal was installed", {"exc_info": True})]

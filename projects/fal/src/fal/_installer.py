@@ -29,12 +29,16 @@ def _installer_from_disk(package: str) -> Optional[str]:
     import glob
 
     site_packages = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    pattern = os.path.join(site_packages, f"{package}-*.dist-info", "INSTALLER")
+    # `glob.escape` the directory: a bracketed path component (legal on every
+    # platform) would otherwise be read as a character class and match nothing.
+    pattern = os.path.join(
+        glob.escape(site_packages), f"{package}-*.dist-info", "INSTALLER"
+    )
     for path in sorted(glob.glob(pattern)):
         try:
             with open(path) as fobj:
                 installer = fobj.read().strip().lower()
-        except OSError:
+        except (OSError, UnicodeDecodeError):
             continue
 
         if installer:
@@ -61,11 +65,6 @@ def _read_installer(package: str) -> Optional[str]:
     return _installer_from_disk(package) or _installer_from_metadata(package)
 
 
-def _is_uv_project(prefix: str) -> bool:
-    """Is this venv the `.venv` of a uv project with a lockfile?"""
-    return os.path.exists(os.path.join(os.path.dirname(prefix), "uv.lock"))
-
-
 def _same_path(left: Optional[str], right: Optional[str]) -> bool:
     if not left or not right:
         return False
@@ -79,20 +78,79 @@ def _same_path(left: Optional[str], right: Optional[str]) -> bool:
         )
 
 
-def _pip_command() -> str:
-    # `pip` on PATH is the right one only when the venv fal runs from is also
-    # the activated one. If a *different* venv is activated, that `pip` would
-    # upgrade the wrong environment, so spell out the interpreter instead.
-    if sys.prefix != sys.base_prefix and _same_path(
+def _is_uv_project(prefix: str) -> bool:
+    """Is this venv the environment uv manages for a project with a lockfile?
+
+    Sitting next to a `uv.lock` is not enough: `uv venv side-env` in a project
+    root creates one too, and `uv sync` there would upgrade `.venv` instead,
+    leaving the running install untouched. uv's project environment is `.venv`
+    unless `UV_PROJECT_ENVIRONMENT` moves it, in which case the lockfile need
+    not be adjacent at all.
+    """
+    if _same_path(os.environ.get("UV_PROJECT_ENVIRONMENT"), prefix):
+        return True
+
+    if os.path.basename(prefix) != ".venv":
+        return False
+
+    return os.path.exists(os.path.join(os.path.dirname(prefix), "uv.lock"))
+
+
+def _in_activated_venv() -> bool:
+    """Is fal running from the virtualenv that is currently activated?
+
+    Only then does the activated venv's `bin/` — which leads PATH — belong to
+    the install we want upgraded. If a *different* venv is activated, a bare
+    `pip` or `uv pip` would resolve to that one and upgrade the wrong
+    environment, so callers have to spell the interpreter out instead.
+    """
+    return sys.prefix != sys.base_prefix and _same_path(
         os.environ.get("VIRTUAL_ENV"), sys.prefix
-    ):
-        return "pip"
+    )
+
+
+def _quote(path: str) -> str:
+    if " " not in path:
+        return path
+
+    # Valid in POSIX shells and in cmd.exe. PowerShell parses a leading quoted
+    # string as an expression and needs its `&` call operator to run it, which
+    # cmd.exe in turn rejects, so no single spelling satisfies all three.
+    return f'"{path}"'
+
+
+def _python_invocation() -> str:
+    """The shortest spelling of the running interpreter, as pip's own hint does.
+
+    Preferring the bare name when PATH resolves it to this very interpreter
+    keeps the hint short and sidesteps quoting a path with spaces entirely.
+    """
+    import shutil
 
     executable = sys.executable or "python"
-    if " " in executable:
-        executable = f'"{executable}"'
+    name = os.path.basename(executable)
+    found = shutil.which(name)
+    if found and _same_path(found, executable):
+        return name
 
-    return f"{executable} -m pip"
+    return _quote(executable)
+
+
+def _pip_command() -> str:
+    if _in_activated_venv():
+        return "pip"
+
+    return f"{_python_invocation()} -m pip"
+
+
+def _uv_pip_install_command(package: str) -> str:
+    if _in_activated_venv():
+        return f"uv pip install --upgrade {package}"
+
+    # `uv pip` picks its target environment by discovery (VIRTUAL_ENV, then a
+    # nearby `.venv`), not from the interpreter running fal — name it.
+    python = _quote(sys.executable or "python")
+    return f"uv pip install --python {python} --upgrade {package}"
 
 
 def detect_install_manager(package: str = _PACKAGE) -> str:
@@ -122,6 +180,14 @@ def get_upgrade_command(package: str = _PACKAGE) -> str:
     try:
         manager = detect_install_manager(package)
     except Exception:
+        from fal.logging import get_logger
+
+        # Never fatal — a version nudge must not break the CLI — but log it, or
+        # a wrong hint for the very installs this exists to serve leaves no
+        # trace at all.
+        get_logger(__name__).warning(
+            "Failed to detect how %s was installed", package, exc_info=True
+        )
         manager = "pip"
 
     if manager == "pipx":
@@ -129,9 +195,11 @@ def get_upgrade_command(package: str = _PACKAGE) -> str:
     if manager == "uv-tool":
         return f"uv tool upgrade {package}"
     if manager == "uv-project":
-        return f"uv lock --upgrade-package {package} && uv sync"
+        # Relocks and syncs in one command; `uv lock && uv sync` would need a
+        # `&&`, which Windows PowerShell 5.1 rejects.
+        return f"uv sync --upgrade-package {package}"
     if manager == "uv":
-        return f"uv pip install --upgrade {package}"
+        return _uv_pip_install_command(package)
     if manager == "poetry":
         return f"poetry update {package}"
     if manager == "pdm":
