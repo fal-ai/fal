@@ -180,6 +180,29 @@ def test_interpreter_on_path_is_named_without_its_directory(
     assert installer.get_upgrade_command() == "python3.14 -m pip install --upgrade fal"
 
 
+def test_another_venv_symlinked_to_the_same_interpreter_is_not_equivalent(
+    monkeypatch, tmp_path
+) -> None:
+    # A venv's `bin/python` is a symlink to the interpreter it was built from,
+    # so following symlinks makes venv A's python look like venv B's. Running
+    # the bare name would then upgrade A while fal keeps running from B.
+    base = tmp_path / "base-python"
+    base.write_text("")
+
+    def venv_python(prefix):
+        binary = prefix / "bin" / "python3.12"
+        binary.parent.mkdir(parents=True)
+        binary.symlink_to(base)
+        return binary
+
+    ours = venv_python(_fake_prefix(monkeypatch, tmp_path, name="venv-b"))
+    theirs = venv_python(tmp_path / "venv-a")
+    _fake_interpreter(monkeypatch, str(ours), on_path=str(theirs))
+    _fake_installer_metadata(monkeypatch, "pip")
+
+    assert installer.get_upgrade_command() == f"{ours} -m pip install --upgrade fal"
+
+
 def test_interpreter_path_with_spaces_is_quoted(monkeypatch, tmp_path) -> None:
     _fake_prefix(monkeypatch, tmp_path)
     # A different `python` leads PATH, so the full path is needed.

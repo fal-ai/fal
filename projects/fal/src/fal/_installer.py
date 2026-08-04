@@ -119,6 +119,20 @@ def _quote(path: str) -> str:
     return f'"{path}"'
 
 
+def _same_binary(left: str, right: str) -> bool:
+    """Are these the same file, *without* following symlinks?
+
+    A venv's `bin/python` is normally a symlink to the interpreter it was built
+    from, so following symlinks would call a different venv's `python` — or the
+    base interpreter itself — equivalent, and the bare name would then upgrade
+    the wrong environment. pip's own hint compares `lstat`s for this reason.
+    """
+    try:
+        return os.path.samestat(os.lstat(left), os.lstat(right))
+    except OSError:
+        return False
+
+
 def _python_invocation() -> str:
     """The shortest spelling of the running interpreter, as pip's own hint does.
 
@@ -130,7 +144,7 @@ def _python_invocation() -> str:
     executable = sys.executable or "python"
     name = os.path.basename(executable)
     found = shutil.which(name)
-    if found and _same_path(found, executable):
+    if found and _same_binary(found, executable):
         return name
 
     return _quote(executable)
