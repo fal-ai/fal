@@ -1461,6 +1461,8 @@ class TestToFalAppName:
 
 
 def test_app_classvars_propagate_to_host_kwargs():
+    from fal.app import wrap_app
+
     class VarsApp(App):
         request_timeout = 11
         startup_timeout = 22
@@ -1476,6 +1478,10 @@ def test_app_classvars_propagate_to_host_kwargs():
         )
         skip_retry_conditions = ["timeout", "connection_error"]
 
+        @endpoint("/")
+        def hello(self) -> str:
+            return "Hello, world!"
+
     hk = VarsApp.host_kwargs
     assert hk["request_timeout"] == 11
     assert hk["startup_timeout"] == 22
@@ -1488,6 +1494,22 @@ def test_app_classvars_propagate_to_host_kwargs():
     assert hk["kind"] == "container"
     assert isinstance(hk["image"], ContainerImage)
     assert hk["skip_retry_conditions"] == ["timeout", "connection_error"]
+
+    # Exercise the full deploy path: host_kwargs → wrap_app → fal.function
+    # → host.parse_options (which checks _SUPPORTED_KEYS).
+    fn = wrap_app(VarsApp)
+    assert fn.options.host.get("request_timeout") == 11
+    assert fn.options.host.get("startup_timeout") == 22
+    assert fn.options.host.get("min_concurrency") == 2
+    assert fn.options.host.get("max_concurrency") == 3
+    assert fn.options.host.get("concurrency_buffer") == 4
+    assert fn.options.host.get("concurrency_buffer_perc") == 50
+    assert fn.options.host.get("scaling_delay") == 33
+    assert fn.options.host.get("max_multiplexing") == 7
+    assert fn.options.host.get("skip_retry_conditions") == [
+        "timeout",
+        "connection_error",
+    ]
 
 
 def test_data_mounts_propagate_to_host_kwargs():
@@ -1793,6 +1815,8 @@ def test_secrets_run_sends_to_connection():
 
 
 def test_app_files_classvars_propagate_to_host_kwargs():
+    from fal.app import wrap_app
+
     class VarsApp(App):
         request_timeout = 11
         startup_timeout = 22
@@ -1807,6 +1831,10 @@ def test_app_files_classvars_propagate_to_host_kwargs():
         scaling_delay = 33
         max_multiplexing = 7
 
+        @endpoint("/")
+        def hello(self) -> str:
+            return "Hello, world!"
+
     hk = VarsApp.host_kwargs
     assert hk["request_timeout"] == 11
     assert hk["startup_timeout"] == 22
@@ -1820,6 +1848,20 @@ def test_app_files_classvars_propagate_to_host_kwargs():
     assert hk["concurrency_buffer_perc"] == 50
     assert hk["scaling_delay"] == 33
     assert hk["max_multiplexing"] == 7
+
+    fn = wrap_app(VarsApp)
+    assert fn.options.host.get("request_timeout") == 11
+    assert fn.options.host.get("startup_timeout") == 22
+    assert fn.options.host.get("app_files") == ["a.py", "b.py"]
+    assert fn.options.host.get("app_files_ignore") == [r"\\.venv/"]
+    assert fn.options.host.get("app_files_context_dir") == "."
+    assert fn.options.host.get("requirements_context_dir") == "."
+    assert fn.options.host.get("min_concurrency") == 2
+    assert fn.options.host.get("max_concurrency") == 3
+    assert fn.options.host.get("concurrency_buffer") == 4
+    assert fn.options.host.get("concurrency_buffer_perc") == 50
+    assert fn.options.host.get("scaling_delay") == 33
+    assert fn.options.host.get("max_multiplexing") == 7
 
 
 def test_app_files_runtime_path_uses_relative_app_directory(tmp_path):
@@ -2266,6 +2308,8 @@ def test_function_decorator_rejects_app_files_with_container_kind():
 
 
 def test_app_classvars_propagate_to_host_kwargs_when_overriding_hidden_defaults():
+    from fal.app import wrap_app
+
     class VarsApp(App):
         _scheduler = "kubernetes"
         _scheduler_options = {
@@ -2275,6 +2319,10 @@ def test_app_classvars_propagate_to_host_kwargs_when_overriding_hidden_defaults(
         resolver = "pip"
         _app_var = "example"
 
+        @endpoint("/")
+        def hello(self) -> str:
+            return "Hello, world!"
+
     hk = VarsApp.host_kwargs
     assert hk["_scheduler"] == "kubernetes"
     assert hk["_scheduler_options"] == {
@@ -2283,6 +2331,13 @@ def test_app_classvars_propagate_to_host_kwargs_when_overriding_hidden_defaults(
     assert hk["keep_alive"] == 30
     assert hk["resolver"] == "pip"
     assert "_app_var" not in hk
+
+    fn = wrap_app(VarsApp)
+    assert fn.options.host.get("_scheduler") == "kubernetes"
+    assert fn.options.host.get("_scheduler_options") == {
+        "storage_region": "us-west",
+    }
+    assert fn.options.host.get("keep_alive") == 30
 
 
 def test_app_is_picklable_with_request_context(isolate_agent_env):
@@ -2664,6 +2719,7 @@ def test_app_lifecycle_callbacks_are_called():
 
 
 def test_retry_config_classvar_propagates_to_host_kwargs():
+    from fal.app import wrap_app
     from fal.sdk import RetryConfig
 
     class NoRetryApp(App):
@@ -2674,9 +2730,23 @@ def test_retry_config_classvar_propagates_to_host_kwargs():
     class RetryDataclassApp(App):
         retry_config = RetryConfig(server_error=3)
 
+        @endpoint("/")
+        def hello(self) -> str:
+            return "Hello, world!"
+
     assert RetryDataclassApp.host_kwargs["retry_config"] == RetryConfig(server_error=3)
+
+    fn = wrap_app(RetryDataclassApp)
+    assert fn.options.host.get("retry_config") == RetryConfig(server_error=3)
 
     class RetryDictApp(App):
         retry_config = {"timeout": {"retries": 2}}
 
+        @endpoint("/")
+        def hello(self) -> str:
+            return "Hello, world!"
+
     assert RetryDictApp.host_kwargs["retry_config"] == {"timeout": {"retries": 2}}
+
+    fn = wrap_app(RetryDictApp)
+    assert fn.options.host.get("retry_config") == {"timeout": {"retries": 2}}
