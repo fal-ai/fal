@@ -3,7 +3,10 @@ from typing import Any, List
 import pytest
 from pydantic import Field
 
-from fal.toolkit.constraints import VideoNormalizationConfig, VideoValidationConfig
+from fal.toolkit.constraints import (
+    VideoNormalizationConfig,
+    VideoValidationConfig,
+)
 from fal.toolkit.pydantic import (
     IS_PYDANTIC_V2,
     AudioField,
@@ -343,6 +346,29 @@ class TestFieldHelpers:
         assert schema["properties"]["video_urls"]["x-fal"] == {
             "min_duration": 2.0,
             "combined": {"max_duration": 15.1},
+        }
+
+    def test_video_field_buckets_do_not_collide(self):
+        """One limit can mean three things at once without the buckets leaking.
+
+        Seedance declares max_duration in two buckets at the same value, so a
+        shared dict or an overwrite would go unnoticed. Distinct values here
+        pin each to its own place.
+        """
+
+        class Model(FalBaseModel):
+            video_urls: List[str] = VideoField(
+                default_factory=list,
+                constraints=VideoValidationConfig(max_duration=30.0),
+                combined_constraints=VideoValidationConfig(max_duration=15.1),
+                normalization=VideoNormalizationConfig(max_duration=10.0),
+            )
+
+        schema = Model.model_json_schema() if IS_PYDANTIC_V2 else Model.schema()
+        assert schema["properties"]["video_urls"]["x-fal"] == {
+            "max_duration": 30.0,
+            "combined": {"max_duration": 15.1},
+            "normalization": {"max_duration": 10.0},
         }
 
     def test_video_field_normalization_only(self):
