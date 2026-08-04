@@ -83,23 +83,45 @@ def parse_args(argv=None):
 
 
 def _print_error(msg):
-    # Wrap at (width - 2) and print with a hanging indent: the cross leads the
-    # first line, continuation lines (explicit newlines and soft-wraps) are
-    # indented 2 columns. Multi-line deploy failures (a reason + a "Check the
-    # logs: <url>" pointer) then read as one block instead of collapsing to
-    # column 0 and blending into surrounding terminal output.
+    # Print with a hanging indent: the cross leads the first line, continuation
+    # lines are indented 2 columns. Multi-line deploy failures (a reason + a
+    # "Check the logs: <url>" pointer) then read as one block instead of
+    # collapsing to column 0 and blending into surrounding terminal output.
     from rich.text import Text
 
-    text = Text(str(msg))
+    # overflow="ignore" keeps a token longer than the wrap width — a logs URL
+    # with a UUID revision id is ~116 chars — on one line instead of folding it
+    # mid-token, so it stays clickable and copy-pasteable. (Text.wrap only
+    # short-circuits wrapping entirely when "ignore" arrives as its *argument*,
+    # not as the Text's own attribute, so word wrapping still happens here.)
+    text = Text(str(msg), overflow="ignore")
     # Building a Text bypasses the ReprHighlighter that console.print(str) applies,
     # so re-apply it to keep URLs / numbers / paths styled (e.g. the logs link).
-    if console.highlighter is not None:
+    # `_highlight` is rich's record of the `highlight=` constructor flag; checking
+    # `console.highlighter` instead would be a no-op guard, since rich coerces a
+    # `highlighter=None` into a NullHighlighter instance.
+    if console._highlight:
         text = console.highlighter(text)
 
-    lines = text.wrap(console, max(console.width - 2, 1)) or [Text()]
+    if console.is_terminal:
+        # The terminal soft-wraps continuation lines back to column 0, so wrap
+        # here instead to keep them under the hanging indent.
+        lines = text.wrap(console, max(console.width - 2, 1))
+    else:
+        # Redirected output (pipes, CI logs, files) has no visual width to wrap
+        # to, and rich would fall back to 80 columns. Indent at the explicit
+        # newlines only, so a single-line grep over a CI log still matches.
+        lines = text.split(allow_blank=True)
+
     for i, line in enumerate(lines):
         gutter = f"{get_cross_icon(console)} " if i == 0 else "  "
-        console.print(Text.from_markup(gutter) + line)
+        rendered = Text.from_markup(gutter) + line
+        # Blank lines in the message would otherwise render as two spaces of
+        # gutter, and `Text.wrap` only strips whitespace *beyond* the wrap width,
+        # so a word-break space can survive at the end of a wrapped line.
+        rendered.rstrip()
+        # Already wrapped above; stop the console from wrapping or cropping again.
+        console.print(rendered, soft_wrap=True)
 
 
 def _get_check_updates_config() -> bool:

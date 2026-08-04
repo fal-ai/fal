@@ -1,4 +1,5 @@
 import importlib
+import io
 import os
 import subprocess
 import sys
@@ -124,13 +125,34 @@ def test_update_check_can_be_disabled(monkeypatch, tmp_path) -> None:
     test_console.print.assert_not_called()
 
 
-def _render_print_error(monkeypatch, msg, *, width=120, styles=False, **console_kwargs):
+# A logs URL with a UUID revision id: 116 chars once the "  Check the logs: "
+# gutter is on it, so it overruns rich's 80-column non-terminal default.
+LONG_LOGS_URL = (
+    "https://fal.ai/dashboard/logs?app=my-app"
+    "&revisionId=01937c8e-6f4b-7c3d-9e2a-1234567890ab"
+)
+
+
+def _render_print_error(
+    monkeypatch,
+    msg,
+    *,
+    width=120,
+    styles=False,
+    force_terminal=True,
+    color_system=None,
+    soft_wrap=True,
+    **console_kwargs,
+):
+    # file=StringIO keeps rich from deriving ascii_only from pytest's captured
+    # stdout, so the exact-"✘" assertions below hold under `pytest -s` too.
     console = Console(
         record=True,
+        file=io.StringIO(),
         width=width,
-        force_terminal=console_kwargs.pop("force_terminal", False),
-        color_system=console_kwargs.pop("color_system", None),
-        soft_wrap=True,
+        force_terminal=force_terminal,
+        color_system=color_system,
+        soft_wrap=soft_wrap,
         **console_kwargs,
     )
     monkeypatch.setattr(cli_main, "console", console)
@@ -165,9 +187,60 @@ def test_print_error_wraps_long_line_with_hanging_indent(monkeypatch) -> None:
     assert all(line.startswith("  ") for line in lines[1:])
 
 
-def test_print_error_empty_message_prints_bare_cross(monkeypatch) -> None:
-    output = _render_print_error(monkeypatch, "")
-    assert output.strip() == "✘"
+def test_print_error_keeps_a_long_url_whole_when_piped(monkeypatch) -> None:
+    """`fal deploy | tee`, CI logs, redirects: not a terminal, so rich falls back
+    to 80 columns. Folding there would insert a real newline mid-URL, which no
+    terminal rejoins on copy and no single-line `grep revisionId=` matches."""
+    output = _render_print_error(
+        monkeypatch,
+        f"New revision did not become ready.\nCheck the logs: {LONG_LOGS_URL}",
+        width=80,
+        force_terminal=False,
+        soft_wrap=False,
+    )
+    assert f"  Check the logs: {LONG_LOGS_URL}" in output.split("\n")
+
+
+def test_print_error_keeps_a_long_url_whole_in_a_narrow_terminal(monkeypatch) -> None:
+    """Same guarantee on a terminal too small for the URL: prose still wraps at
+    word boundaries, but the URL overflows onto its own line rather than folding
+    — the terminal soft-wraps it, and terminals rejoin soft-wraps on copy."""
+    output = _render_print_error(
+        monkeypatch,
+        f"New revision did not become ready.\nCheck the logs: {LONG_LOGS_URL}",
+        width=40,
+    )
+    lines = output.split("\n")
+    assert f"  {LONG_LOGS_URL}" in lines
+    assert "✘ New revision did not become ready." in lines
+
+
+def test_print_error_blank_lines_stay_empty(monkeypatch) -> None:
+    """A gutter prepended unconditionally would turn blank lines into two spaces,
+    which shows up in captured CI logs and exact-match greps."""
+    output = _render_print_error(monkeypatch, "reason\n\ndetail\n")
+    assert output.split("\n")[:4] == ["✘ reason", "", "  detail", ""]
+
+
+def test_print_error_leaves_no_trailing_whitespace(monkeypatch) -> None:
+    # Text.wrap only strips whitespace beyond the wrap width, so the space that
+    # broke "logs: " from the URL survives inside the budget without an rstrip.
+    output = _render_print_error(
+        monkeypatch, f"Check the logs: {LONG_LOGS_URL}", width=40
+    )
+    assert not any(line != line.rstrip() for line in output.split("\n"))
+
+
+def test_print_error_does_not_interpret_markup(monkeypatch) -> None:
+    """The main win of rendering via Text() rather than console.print(str):
+    brackets in a server-controlled message are literal text. Before, a token
+    like `[expected int]` was silently eaten as a style tag, and a stray
+    close-tag `[/red]` raised MarkupError from inside main()'s except handler."""
+    output = _render_print_error(monkeypatch, "invalid argument [expected int] got str")
+    assert output.strip() == "✘ invalid argument [expected int] got str"
+
+    output = _render_print_error(monkeypatch, "KeyError: [/red] unmatched")
+    assert output.strip() == "✘ KeyError: [/red] unmatched"
 
 
 def test_print_error_preserves_repr_highlighting(monkeypatch) -> None:
@@ -176,7 +249,6 @@ def test_print_error_preserves_repr_highlighting(monkeypatch) -> None:
             monkeypatch,
             msg,
             width=200,
-            force_terminal=True,
             color_system="standard",
             styles=True,
         )
@@ -198,6 +270,9 @@ def test_print_error_renders_with_cp1252_output() -> None:
     )
     env = os.environ.copy()
     env["PYTHONIOENCODING"] = "cp1252"
+    # rich sizes non-terminal consoles from COLUMNS too; a leaked narrow value
+    # (tmux, some Docker images, CI wrappers) would split the asserted phrase.
+    env.pop("COLUMNS", None)
 
     result = subprocess.run(
         [sys.executable, "-c", script],
@@ -212,7 +287,7 @@ def test_print_error_renders_with_cp1252_output() -> None:
 
 
 def test_main_prints_deploy_failure_reason_and_logs_link(monkeypatch) -> None:
-    """PR #8647 + #1119 (CLI boundary): a failed deploy comes back as a
+    """isolate-cloud#8647 (CLI boundary): a failed deploy comes back as a
     grpc.RpcError whose details() carry the categorized reason + logs link; main()
     must surface that to the terminal via _print_error, not swallow it. Guards the
     seam between the gRPC error status and the rendered ``✘`` line."""
