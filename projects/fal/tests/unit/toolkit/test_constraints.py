@@ -3,6 +3,7 @@ import pytest
 from fal.toolkit import (
     ImageSizeConstraints,
     ImageValidationConfig,
+    VideoNormalizationConfig,
     VideoValidationConfig,
     to_xfal,
 )
@@ -86,3 +87,35 @@ class TestVideoValidationConfig:
         config = VideoValidationConfig(min_aspect_ratio=0.5, max_aspect_ratio=2.0)
         assert config.min_aspect_ratio == 0.5
         assert config.max_aspect_ratio == 2.0
+
+
+class TestBoundsAreSelfConsistent:
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"min_width": 2048, "max_width": 512},
+            {"min_height": 2048, "max_height": 512},
+            {"min_area": 4096, "max_area": 1024},
+            {"min_frames": 300, "max_frames": 24},
+            {"min_duration": 15.0, "max_duration": 2.0},
+            {"min_fps": 60.0, "max_fps": 24.0},
+            {"min_aspect_ratio": 2.5, "max_aspect_ratio": 0.4},
+        ],
+    )
+    def test_a_lower_bound_above_its_upper_bound_is_rejected(self, kwargs):
+        """No input could satisfy these, so fail at declaration, not at serve time."""
+        with pytest.raises(ValueError, match="must not exceed"):
+            VideoValidationConfig(**kwargs)
+
+    def test_equal_bounds_are_allowed(self):
+        """Equal bounds pin an exact value, which is a legitimate declaration."""
+        config = VideoValidationConfig(min_width=1024, max_width=1024)
+        assert config.min_width == config.max_width == 1024
+
+    @pytest.mark.parametrize(
+        "factory",
+        [ImageSizeConstraints, ImageValidationConfig, VideoNormalizationConfig],
+    )
+    def test_every_config_checks_its_bounds(self, factory):
+        with pytest.raises(ValueError, match="must not exceed"):
+            factory(min_width=2048, max_width=512)

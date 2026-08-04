@@ -22,6 +22,25 @@ def to_xfal(
     }
 
 
+_BOUND_PAIRS = (
+    ("min_width", "max_width"),
+    ("min_height", "max_height"),
+    ("min_area", "max_area"),
+    ("min_frames", "max_frames"),
+    ("min_duration", "max_duration"),
+    ("min_fps", "max_fps"),
+    ("min_aspect_ratio", "max_aspect_ratio"),
+)
+
+
+def _validate_bounds(config: Any) -> None:
+    """Reject a config no input could satisfy. Equal bounds pin an exact value."""
+    for low, high in _BOUND_PAIRS:
+        lower, upper = getattr(config, low, None), getattr(config, high, None)
+        if lower is not None and upper is not None and lower > upper:
+            raise ValueError(f"{low} ({lower}) must not exceed {high} ({upper}).")
+
+
 def _validate_aspect_ratio_pair(
     min_aspect_ratio: Optional[float], max_aspect_ratio: Optional[float]
 ) -> None:
@@ -53,6 +72,7 @@ class ImageSizeConstraints:
     max_aspect_ratio: Optional[float] = None
 
     def __post_init__(self) -> None:
+        _validate_bounds(self)
         _validate_aspect_ratio_pair(self.min_aspect_ratio, self.max_aspect_ratio)
 
 
@@ -84,6 +104,7 @@ class ImageValidationConfig:
     timeout: float = 20.0
 
     def __post_init__(self) -> None:
+        _validate_bounds(self)
         _validate_aspect_ratio_pair(self.min_aspect_ratio, self.max_aspect_ratio)
 
 
@@ -135,6 +156,7 @@ class VideoValidationConfig:
     max_fps: Optional[float] = None
 
     def __post_init__(self) -> None:
+        _validate_bounds(self)
         _validate_aspect_ratio_pair(self.min_aspect_ratio, self.max_aspect_ratio)
 
 
@@ -156,3 +178,6 @@ class VideoNormalizationConfig:
     max_area: Optional[int] = None
     max_duration: Optional[float] = None
     fps: Optional[float] = None
+
+    def __post_init__(self) -> None:
+        _validate_bounds(self)
