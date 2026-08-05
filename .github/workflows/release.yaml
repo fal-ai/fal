@@ -53,10 +53,27 @@ jobs:
           name: dist
           path: projects/${{ steps.parse.outputs.name }}/dist
 
+  # Re-run the unit suite against the commit being released, resolving
+  # dependencies fresh. A green run from earlier in the day is not a statement
+  # about now: the dependency bounds are open, so the installed tree is a
+  # function of when the job runs. fal 1.79.0 shipped from a commit whose last
+  # CI run was green 12.5 hours earlier, by which point argcomplete 3.7.1 had
+  # broken the CLI on 3.8/3.9.
+  unit-tests:
+    if: ${{ needs.build.outputs.name == 'fal' }}
+    needs: build
+    uses: ./.github/workflows/fal-unit-tests.yml
+
   pypi-publish:
     name: Upload release to PyPI
     runs-on: ubuntu-latest
-    needs: build
+    needs: [build, unit-tests]
+    # `unit-tests` is skipped for non-fal projects (isolate_proto, fal_client),
+    # and a skipped dependency would otherwise skip this job too.
+    if: >-
+      ${{ !cancelled()
+        && needs.build.result == 'success'
+        && (needs['unit-tests'].result == 'success' || needs['unit-tests'].result == 'skipped') }}
     environment:
       name: pypi
       url: https://pypi.org/p/${{ needs.build.outputs.name }}
