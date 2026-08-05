@@ -100,9 +100,16 @@ jobs:
       - name: Publish package distributions to PyPI
         uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # v1.14.0
 
+  # Gated on the same terms as pypi-publish. Without this the container would
+  # run in parallel with the suite and could push ghcr.io/fal-ai/fal:latest from
+  # a build the gate had just blocked from PyPI.
   release-container:
-    if: ${{ needs.build.outputs.name == 'fal' }}
+    needs: [build, unit-tests]
+    if: >-
+      ${{ !cancelled()
+        && needs.build.outputs.name == 'fal'
+        && needs.build.result == 'success'
+        && (needs['unit-tests'].result == 'success' || needs['unit-tests'].result == 'skipped') }}
     uses: ./.github/workflows/container.yml
-    needs: build
     with:
       version: ${{ needs.build.outputs.version }}
