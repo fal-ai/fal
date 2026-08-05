@@ -1,0 +1,90 @@
+name: Install Smoke (fal)
+
+# Guards the path a user actually takes: resolve dependencies fresh, install,
+# start the CLI. The unit suite installs `projects/fal[test]` against a checkout,
+# so it cannot see a runtime-only resolution go bad -- and it never looks at what
+# is already published on PyPI.
+#
+# Motivating incident: argcomplete 3.7.1 (2026-08-04 15:03 UTC) shipped PEP 604
+# annotations while still declaring `requires-python >=3.8`, so every fal release
+# already on PyPI stopped importing on 3.8/3.9 with no commit to this repo.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "projects/fal/pyproject.toml"
+      - ".github/workflows/fal-install-smoke.yml"
+
+  pull_request:
+    types: [assigned, opened, synchronize, reopened]
+    paths:
+      - "projects/fal/pyproject.toml"
+      - ".github/workflows/fal-install-smoke.yml"
+
+  schedule:
+    - cron: "0 6 * * *" # every day at 6:00 UTC, after the unit-test cron
+
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # The tree as it would ship: runtime dependencies only, no test extras.
+  source:
+    name: source install (py ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install fal (runtime dependencies only)
+        run: |
+          pip install --upgrade pip wheel
+          pip install ./projects/fal
+
+      - name: Start the CLI
+        run: |
+          python -c "import fal, fal.cli, fal.cli.parser"
+          fal --help > /dev/null
+
+  # Canary against the released artifact. This is the job that catches an
+  # upstream break of a version that is already in users' hands, which no
+  # commit-triggered job can see. Scheduled only -- on a PR it would test
+  # whatever is on PyPI rather than the change under review.
+  published:
+    name: published fal (py ${{ matrix.python }})
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install the latest published fal from PyPI
+        run: |
+          pip install --upgrade pip wheel
+          pip install fal
+
+      - name: Start the CLI
+        run: |
+          python -c "import fal, fal.cli, fal.cli.parser"
+          fal --help > /dev/null
