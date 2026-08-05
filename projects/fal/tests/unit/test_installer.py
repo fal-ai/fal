@@ -99,6 +99,38 @@ def test_uv_project_environment_override_is_recognised(monkeypatch, tmp_path) ->
     assert installer.get_upgrade_command() == "uv sync --upgrade-package fal"
 
 
+def test_dot_venv_is_not_the_project_environment_when_the_override_moved_it(
+    monkeypatch, tmp_path
+) -> None:
+    # The override points elsewhere, so `uv sync` populates *that* environment
+    # and leaves this `.venv` stale — verified against uv 0.11.29. Suggesting a
+    # sync here would print a command that silently changes nothing, and the
+    # update panel would keep coming back.
+    prefix = _fake_prefix(monkeypatch, tmp_path, name=".venv")
+    (prefix.parent / "uv.lock").write_text("")
+    (tmp_path / "managed-env").mkdir()
+    monkeypatch.setenv("UV_PROJECT_ENVIRONMENT", str(tmp_path / "managed-env"))
+    monkeypatch.setenv("VIRTUAL_ENV", str(prefix))
+    _fake_installer_metadata(monkeypatch, "uv")
+
+    assert installer.get_upgrade_command() == "uv pip install --upgrade fal"
+
+
+def test_relative_override_resolves_against_the_project_root(
+    monkeypatch, tmp_path
+) -> None:
+    # uv resolves a relative UV_PROJECT_ENVIRONMENT against the project root —
+    # the directory holding the lockfile — not the cwd, so a relative override
+    # naming this very venv still means "sync me".
+    prefix = _fake_prefix(monkeypatch, tmp_path, name="managed-env")
+    (tmp_path / "uv.lock").write_text("")
+    monkeypatch.setenv("UV_PROJECT_ENVIRONMENT", "managed-env")
+    monkeypatch.chdir(prefix)  # deliberately not the project root
+    _fake_installer_metadata(monkeypatch, "uv")
+
+    assert installer.get_upgrade_command() == "uv sync --upgrade-package fal"
+
+
 def test_poetry_install_suggests_poetry_update(monkeypatch, tmp_path) -> None:
     # A real `poetry add` writes its version too, e.g. "Poetry 2.4.1"; only
     # `poetry install` of the root project writes a bare "poetry".

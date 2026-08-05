@@ -78,6 +78,20 @@ def _same_path(left: Optional[str], right: Optional[str]) -> bool:
         )
 
 
+def _uv_project_root(prefix: str) -> Optional[str]:
+    """The nearest ancestor of this venv holding a `uv.lock`, if any."""
+    current = os.path.dirname(os.path.abspath(prefix))
+    while True:
+        if os.path.exists(os.path.join(current, "uv.lock")):
+            return current
+
+        parent = os.path.dirname(current)
+        if parent == current:
+            return None
+
+        current = parent
+
+
 def _is_uv_project(prefix: str) -> bool:
     """Is this venv the environment uv manages for a project with a lockfile?
 
@@ -85,10 +99,26 @@ def _is_uv_project(prefix: str) -> bool:
     root creates one too, and `uv sync` there would upgrade `.venv` instead,
     leaving the running install untouched. uv's project environment is `.venv`
     unless `UV_PROJECT_ENVIRONMENT` moves it, in which case the lockfile need
-    not be adjacent at all.
+    not be adjacent at all — and, just as importantly, an adjacent `.venv` is
+    then merely an ordinary venv that `uv sync` will not touch.
     """
-    if _same_path(os.environ.get("UV_PROJECT_ENVIRONMENT"), prefix):
-        return True
+    override = os.environ.get("UV_PROJECT_ENVIRONMENT")
+    if override:
+        # The override *is* the project environment, so this is the whole
+        # question — a `.venv` beside the lockfile no longer qualifies.
+        if not os.path.isabs(override):
+            # uv resolves a relative override against the project root, not the
+            # cwd (verified against uv 0.11.29). Without a lockfile to locate
+            # that root we cannot say, so decline rather than guess: the caller
+            # then falls back to a `uv pip` command, which upgrades the right
+            # environment even though a later `uv sync` would revert it.
+            root = _uv_project_root(prefix)
+            if root is None:
+                return False
+
+            override = os.path.join(root, override)
+
+        return _same_path(override, prefix)
 
     if os.path.basename(prefix) != ".venv":
         return False
