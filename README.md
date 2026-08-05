@@ -98,6 +98,26 @@ pip install -e 'projects/fal_client[dev]'
 pip install -e 'projects/isolate_proto[dev]'
 ```
 
+## Configuring the CLI
+
+The `fal` CLI stores its configuration in `~/.fal/config.toml` (override the
+location with the `FAL_CONFIG_PATH` environment variable).
+
+### Disabling the version-update notification
+
+On start-up the CLI prints a "new version is available" panel when a newer
+`fal` release exists. To turn it off — useful in CI — set the global
+`check_updates` key to `false`, at the top level of the file (not inside a
+profile section):
+
+```toml
+# ~/.fal/config.toml
+check_updates = false
+```
+
+The value must be a TOML boolean; the check is skipped automatically when the
+CLI's output is not a terminal.
+
 ## More resources
 
 - [Documentation index](https://fal.ai/docs/documentation)
