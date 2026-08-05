@@ -106,6 +106,48 @@ def test_remote_exception_deserialization_is_user_function_exception() -> None:
         raise AssertionError("expected UserFunctionException")
 
 
+def test_update_panel_centers_both_lines(monkeypatch, tmp_path) -> None:
+    # A long upgrade command (the spelled-out interpreter fallback) is wider
+    # than the headline, so the headline has to be centered against it too.
+    config_path = tmp_path / "config.toml"
+    config_path.write_text("")
+    monkeypatch.setenv("FAL_CONFIG_PATH", str(config_path))
+    monkeypatch.delenv("FAL_PROFILE", raising=False)
+
+    monkeypatch.setattr(fal_version, "get_latest_version", lambda: "99.0.0")
+    monkeypatch.setattr(fal_version, "version_tuple", (1, 0, 0))
+
+    command = (
+        "/opt/homebrew/opt/python@3.14/bin/python3.14 -m pip install --upgrade fal"
+    )
+    monkeypatch.setattr(
+        importlib.import_module("fal._installer"),
+        "get_upgrade_command",
+        lambda *_args, **_kwargs: command,
+    )
+
+    console = Console(
+        record=True, width=120, force_terminal=True, color_system=None, no_color=True
+    )
+    monkeypatch.setattr(cli_main, "console", console)
+
+    cli_main._check_latest_version()
+
+    lines = [line for line in console.export_text().splitlines() if "│" in line]
+    headline = next(line for line in lines if "A new version" in line)
+    command_line = next(line for line in lines if command in line)
+
+    def padding(line: str) -> tuple:
+        body = line.strip("│")
+        return len(body) - len(body.lstrip()), len(body) - len(body.rstrip())
+
+    # Nothing truncated, and the headline is centered rather than left-flush.
+    assert command in command_line
+    left, right = padding(headline)
+    assert abs(left - right) <= 1
+    assert left > padding(command_line)[0]
+
+
 def test_update_check_can_be_disabled(monkeypatch, tmp_path) -> None:
     config_path = tmp_path / "config.toml"
     config_path.write_text("check_updates = false\n")
