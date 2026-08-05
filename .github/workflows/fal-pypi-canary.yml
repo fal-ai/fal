@@ -1,0 +1,58 @@
+name: PyPI Canary (fal)
+
+# Installs the *published* fal from PyPI and checks the CLI starts.
+#
+# Everything else in CI tests a checkout. Nothing watches what users actually
+# receive, so an upstream release can break every fal version already on PyPI
+# with no commit to this repo and no signal here.
+#
+# That is not hypothetical: argcomplete 3.7.1 (2026-08-04 15:03 UTC) declared
+# `requires-python >=3.8` while using 3.10-only syntax, so `pip install fal`
+# produced a CLI that could not start on 3.8/3.9 -- for every release ever
+# published, including ones a month old. It went unnoticed until someone looked.
+
+on:
+  schedule:
+    - cron: "0 7 * * *" # every day at 7:00 UTC
+
+  workflow_dispatch:
+
+  # Run when this file changes, so it can be validated in review.
+  pull_request:
+    types: [assigned, opened, synchronize, reopened]
+    paths:
+      - ".github/workflows/fal-pypi-canary.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  published:
+    name: published fal (py ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install the latest published fal from PyPI
+        run: |
+          pip install --upgrade pip wheel
+          pip install fal
+
+      - name: Report what resolved
+        run: pip freeze
+
+      - name: Start the CLI
+        run: |
+          python -c "import fal, fal.cli, fal.cli.parser"
+          fal --help > /dev/null
