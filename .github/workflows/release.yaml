@@ -11,6 +11,11 @@ on:
         description: "Existing release tag (see create-release workflow)"
         required: true
         type: string
+      skip_tests:
+        description: "Emergency: publish without re-running unit tests"
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   build:
@@ -53,10 +58,33 @@ jobs:
           name: dist
           path: projects/${{ steps.parse.outputs.name }}/dist
 
+  # Re-run the unit suite against the commit being released, resolving
+  # dependencies fresh. A green run from earlier in the day is not a statement
+  # about now: the dependency bounds are open, so the installed tree is a
+  # function of when the job runs. fal 1.79.0 shipped from a commit whose last
+  # CI run was green 12.5 hours earlier, by which point argcomplete 3.7.1 had
+  # broken the CLI on 3.8/3.9.
+  # `inputs.skip_tests` and not `github.event.inputs.skip_tests`: the latter is
+  # always a string, and any non-empty string is truthy in an expression, so
+  # `!github.event.inputs.skip_tests` would be false even for "false" and would
+  # silently disable this gate on every dispatch. `inputs` honours the declared
+  # boolean type, and is empty (falsy) on a `release` event, which keeps the
+  # automatic path gated with no way to bypass it.
+  unit-tests:
+    if: ${{ needs.build.outputs.name == 'fal' && !inputs.skip_tests }}
+    needs: build
+    uses: ./.github/workflows/fal-unit-tests.yml
+
   pypi-publish:
     name: Upload release to PyPI
     runs-on: ubuntu-latest
-    needs: build
+    needs: [build, unit-tests]
+    # `unit-tests` is skipped for non-fal projects (isolate_proto, fal_client),
+    # and a skipped dependency would otherwise skip this job too.
+    if: >-
+      ${{ !cancelled()
+        && needs.build.result == 'success'
+        && (needs['unit-tests'].result == 'success' || needs['unit-tests'].result == 'skipped') }}
     environment:
       name: pypi
       url: https://pypi.org/p/${{ needs.build.outputs.name }}
@@ -72,9 +100,16 @@ jobs:
       - name: Publish package distributions to PyPI
         uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # v1.14.0
 
+  # Gated on the same terms as pypi-publish. Without this the container would
+  # run in parallel with the suite and could push ghcr.io/fal-ai/fal:latest from
+  # a build the gate had just blocked from PyPI.
   release-container:
-    if: ${{ needs.build.outputs.name == 'fal' }}
+    needs: [build, unit-tests]
+    if: >-
+      ${{ !cancelled()
+        && needs.build.outputs.name == 'fal'
+        && needs.build.result == 'success'
+        && (needs['unit-tests'].result == 'success' || needs['unit-tests'].result == 'skipped') }}
     uses: ./.github/workflows/container.yml
-    needs: build
     with:
       version: ${{ needs.build.outputs.version }}

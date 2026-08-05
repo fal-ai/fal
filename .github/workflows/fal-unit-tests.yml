@@ -18,6 +18,10 @@ on:
 
   workflow_dispatch:
 
+  # Called by release.yaml so a release re-runs the suite against a fresh
+  # dependency resolution rather than trusting a possibly-stale green run.
+  workflow_call:
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
