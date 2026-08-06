@@ -10,6 +10,7 @@ import pytest
 from pydantic import BaseModel
 
 from fal.toolkit.file.file import (
+    OBJECT_LIFECYCLE_PREFERENCE_KEY,
     FalFileRepositoryV3,
     File,
     GoogleStorageRepository,
@@ -500,7 +501,14 @@ class TestContextBasedLifecyclePreference:
         request_preference = {"expiration_seconds": 200}
 
         mock_request = MagicMock()
-        mock_request.headers.get.return_value = '{"expiration_seconds": 200}'
+        # Keyed rather than a blanket return_value: a real Headers.get answers
+        # only for the header asked for, and other readers (the upload policy)
+        # must see None rather than this lifecycle payload.
+        mock_request.headers.get.side_effect = lambda key, default=None: (
+            '{"expiration_seconds": 200}'
+            if key == OBJECT_LIFECYCLE_PREFERENCE_KEY
+            else default
+        )
 
         mock_request_context = type(
             "MockRequestContext",

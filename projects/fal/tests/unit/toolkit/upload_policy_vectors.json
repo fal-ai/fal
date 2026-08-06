@@ -1,0 +1,339 @@
+{
+  "_comment": [
+    "Accept/reject decisions shared with registry/cdn.py for the",
+    "x-app-fal-upload-policy header. Sections are registry's enforcement stages;",
+    "the SDK enforces all of them at parse. sdk_only marks a real divergence.",
+    "Divergences that are not expressible as a header are in the release plan doc."
+  ],
+  "parse": [
+    {
+      "name": "valid virtual-hosted style bucket",
+      "header": "{\"url\": \"https://bucket.s3.us-west-1.amazonaws.com/\", \"fields\": {\"key\": \"uploads/${filename}\"}}",
+      "accepted": true
+    },
+    {
+      "name": "valid path style endpoint",
+      "header": "{\"url\": \"https://s3.us-west-1.amazonaws.com/bucket/\", \"fields\": {\"key\": \"uploads/${filename}\"}}",
+      "accepted": true
+    },
+    {
+      "name": "valid global endpoint",
+      "header": "{\"url\": \"https://s3.amazonaws.com/\", \"fields\": {\"key\": \"${filename}\"}}",
+      "accepted": true
+    },
+    {
+      "name": "valid china partition",
+      "header": "{\"url\": \"https://bucket.s3.cn-north-1.amazonaws.com.cn/\", \"fields\": {\"key\": \"a/${filename}\"}}",
+      "accepted": true
+    },
+    {
+      "name": "reject non-json",
+      "header": "{not json",
+      "accepted": false,
+      "message": "not valid JSON"
+    },
+    {
+      "name": "reject json array",
+      "header": "[]",
+      "accepted": false,
+      "message": "expected a JSON object"
+    },
+    {
+      "name": "reject missing url",
+      "header": "{\"fields\": {\"key\": \"uploads/${filename}\"}}",
+      "accepted": false,
+      "message": "must contain string 'url'"
+    },
+    {
+      "name": "reject missing fields",
+      "header": "{\"url\": \"https://bucket.s3.us-west-1.amazonaws.com/\"}",
+      "accepted": false,
+      "message": "must contain object 'fields'"
+    },
+    {
+      "name": "reject non-string url",
+      "header": "{\"url\": 42, \"fields\": {\"key\": \"uploads/${filename}\"}}",
+      "accepted": false,
+      "message": "must contain string 'url'"
+    },
+    {
+      "name": "reject http scheme",
+      "header": "{\"url\": \"http://bucket.s3.us-west-1.amazonaws.com/\", \"fields\": {\"key\": \"uploads/${filename}\"}}",
+      "accepted": false,
+      "message": "must be an HTTPS S3 upload URL"
+    },
+    {
+      "name": "reject link-local metadata endpoint",
+      "header": "{\"url\": \"https://169.254.169.254/\", \"fields\": {\"key\": \"uploads/${filename}\"}}",
+      "accepted": false,
+      "message": "must be an HTTPS S3 upload URL"
+    },
+    {
+      "name": "reject arbitrary host",
+      "header": "{\"url\": \"https://evil.example.com/\", \"fields\": {\"key\": \"uploads/${filename}\"}}",
+      "accepted": false,
+      "message": "must be an HTTPS S3 upload URL"
+    },
+    {
+      "name": "reject s3-lookalike host",
+      "header": "{\"url\": \"https://bucket.s3.amazonaws.com.evil.com/\", \"fields\": {\"key\": \"uploads/${filename}\"}}",
+      "accepted": false,
+      "message": "must be an HTTPS S3 upload URL"
+    },
+    {
+      "name": "reject userinfo pointing elsewhere",
+      "header": "{\"url\": \"https://bucket.s3.amazonaws.com@evil.com/\", \"fields\": {\"key\": \"uploads/${filename}\"}}",
+      "accepted": false,
+      "message": "must be an HTTPS S3 upload URL"
+    },
+    {
+      "name": "reject non-443 port",
+      "header": "{\"url\": \"https://bucket.s3.amazonaws.com:8080/\", \"fields\": {\"key\": \"uploads/${filename}\"}}",
+      "accepted": false,
+      "message": "is not allowed",
+      "sdk_only": true
+    },
+    {
+      "name": "reject url that fails nfkc normalization",
+      "header": "{\"url\": \"https://bucket.s3.amazonaws.com\uff0fevil.com/\", \"fields\": {\"key\": \"uploads/${filename}\"}}",
+      "accepted": false,
+      "message": "could not be parsed",
+      "sdk_only": true,
+      "note": "Both reject, but registry's urlparse ValueError is uncaught -> 500, vs the SDK's 422. The divergence is the status, which 'accepted' cannot express."
+    },
+    {
+      "name": "reject blank header value",
+      "header": "",
+      "accepted": false,
+      "message": "not valid JSON"
+    },
+    {
+      "name": "reject s3 privatelink vpce endpoint",
+      "header": "{\"url\": \"https://vpce-0a1b-ghij.s3.us-east-1.vpce.amazonaws.com/\", \"fields\": {\"key\": \"u/${filename}\"}}",
+      "accepted": false,
+      "message": "must be an HTTPS S3 upload URL",
+      "sdk_only": true
+    },
+    {
+      "name": "reject lone surrogate in url",
+      "header": "{\"url\": \"https://\\ud800.s3.amazonaws.com/\", \"fields\": {\"key\": \"u/${filename}\"}}",
+      "accepted": false,
+      "message": "not encodable as UTF-8",
+      "sdk_only": true
+    },
+    {
+      "name": "reject url with query string",
+      "header": "{\"url\": \"https://bkt.s3.us-east-1.amazonaws.com/?x=1\", \"fields\": {\"key\": \"u/${filename}\"}}",
+      "accepted": false,
+      "message": "must not have a query or fragment",
+      "sdk_only": true
+    },
+    {
+      "name": "accept transfer acceleration",
+      "header": "{\"url\": \"https://bucket.s3-accelerate.amazonaws.com/\", \"fields\": {\"key\": \"u/${filename}\"}}",
+      "accepted": true,
+      "sdk_only": true
+    },
+    {
+      "name": "accept legacy dash-region",
+      "header": "{\"url\": \"https://s3-us-west-2.amazonaws.com/\", \"fields\": {\"key\": \"u/${filename}\"}}",
+      "accepted": true,
+      "sdk_only": true
+    },
+    {
+      "name": "reject credentials embedded in the url",
+      "header": "{\"url\": \"https://AKIA:secret@bkt.s3.us-east-1.amazonaws.com/\", \"fields\": {\"key\": \"u/${filename}\"}}",
+      "accepted": false,
+      "message": "must not contain credentials",
+      "sdk_only": true,
+      "note": "Host is real S3, so registry accepts it and echoes the credentials into the returned public URL, and from there into logs."
+    },
+    {
+      "name": "reject key template with a leading slash or dot segment",
+      "header": "{\"url\": \"https://bkt.s3.us-east-1.amazonaws.com/\", \"fields\": {\"key\": \"/u/${filename}\"}}",
+      "accepted": false,
+      "message": "must not start with",
+      "sdk_only": true,
+      "note": "S3 stores the slash literally but URL resolution drops it, so registry returns a URL naming a different object."
+    },
+    {
+      "name": "reject lone surrogate in a field name",
+      "header": "{\"url\": \"https://bkt.s3.us-east-1.amazonaws.com/\", \"fields\": {\"key\": \"u/${filename}\", \"x-\\ud800\": \"v\"}}",
+      "accepted": false,
+      "message": "not encodable as UTF-8",
+      "sdk_only": true
+    },
+    {
+      "name": "reject url with an empty query",
+      "header": "{\"url\": \"https://bkt.s3.us-east-1.amazonaws.com/?\", \"fields\": {\"key\": \"u/${filename}\"}}",
+      "accepted": false,
+      "message": "must not have a query or fragment",
+      "sdk_only": true,
+      "note": "urlparse yields query='' which is falsy; the access URL would resolve to the bucket root."
+    },
+    {
+      "name": "reject key template with a parent-directory segment",
+      "header": "{\"url\": \"https://bkt.s3.us-east-1.amazonaws.com/\", \"fields\": {\"key\": \"u/../${filename}\"}}",
+      "accepted": false,
+      "message": "must not start with",
+      "sdk_only": true,
+      "note": "URL path resolution collapses '..', so the returned URL names a different object than the one stored."
+    },
+    {
+      "name": "reject url with a parent-directory path segment",
+      "header": "{\"url\": \"https://bkt.s3.us-east-1.amazonaws.com/../x\", \"fields\": {\"key\": \"u/${filename}\"}}",
+      "accepted": false,
+      "message": "path segments",
+      "sdk_only": true,
+      "note": "URL path resolution collapses '..', so the returned access URL names a different object than the one stored."
+    },
+    {
+      "name": "reject url with percent-encoded dot segments",
+      "header": "{\"url\": \"https://bkt.s3.us-east-1.amazonaws.com/%2e%2e/x\", \"fields\": {\"key\": \"u/${filename}\"}}",
+      "accepted": false,
+      "message": "path segments",
+      "sdk_only": true,
+      "note": "%2e%2e decodes to '..' in clients; the check unquotes the path before splitting."
+    },
+    {
+      "name": "reject url with an encoded-slash-smuggled dot segment",
+      "header": "{\"url\": \"https://bkt.s3.us-east-1.amazonaws.com/a%2f..%2fb\", \"fields\": {\"key\": \"u/${filename}\"}}",
+      "accepted": false,
+      "message": "path segments",
+      "sdk_only": true,
+      "note": "%2f decodes to '/', so a%2f..%2fb normalizes to a/../b -> b; the check splits on both / and \\ after unquoting."
+    },
+    {
+      "name": "accept url whose path segment merely starts with a dot",
+      "header": "{\"url\": \"https://bkt.s3.us-east-1.amazonaws.com/%2efile/\", \"fields\": {\"key\": \"u/${filename}\"}}",
+      "accepted": true,
+      "sdk_only": true,
+      "note": "%2efile decodes to '.file', not a bare dot segment, so it must not be over-rejected."
+    },
+    {
+      "name": "accept url with a benign encoded slash in the path",
+      "header": "{\"url\": \"https://bkt.s3.us-east-1.amazonaws.com/a%2fb/\", \"fields\": {\"key\": \"u/${filename}\"}}",
+      "accepted": true,
+      "sdk_only": true,
+      "note": "a%2fb decodes to ordinary segments 'a'/'b', so the decode-then-split must not over-reject."
+    }
+  ],
+  "prepare": [
+    {
+      "name": "reject fixed key without filename placeholder",
+      "header": "{\"url\": \"https://bucket.s3.us-west-1.amazonaws.com/\", \"fields\": {\"key\": \"uploads/fixed.txt\"}}",
+      "accepted": false,
+      "message": "must contain '${filename}'"
+    },
+    {
+      "name": "reject missing key field",
+      "header": "{\"url\": \"https://bucket.s3.us-west-1.amazonaws.com/\", \"fields\": {}}",
+      "accepted": false,
+      "message": "must contain '${filename}'"
+    },
+    {
+      "name": "reject non-string content-type field",
+      "header": "{\"url\": \"https://bucket.s3.us-west-1.amazonaws.com/\", \"fields\": {\"key\": \"uploads/${filename}\", \"Content-Type\": 5}}",
+      "accepted": false,
+      "message": "must be a string"
+    },
+    {
+      "name": "reject crlf in content-type field",
+      "header": "{\"url\": \"https://bucket.s3.us-west-1.amazonaws.com/\", \"fields\": {\"key\": \"uploads/${filename}\", \"Content-Type\": \"image/png\\r\\nX-Evil: 1\"}}",
+      "accepted": false,
+      "message": "CR/LF"
+    },
+    {
+      "name": "reject duplicate case-variant key fields",
+      "header": "{\"url\": \"https://bucket.s3.us-west-1.amazonaws.com/\", \"fields\": {\"key\": \"uploads/${filename}\", \"Key\": \"fixed/overwrite.png\"}}",
+      "accepted": false,
+      "message": "duplicate 'key' fields",
+      "sdk_only": true
+    },
+    {
+      "name": "valid with explicit content-type field",
+      "header": "{\"url\": \"https://bucket.s3.us-west-1.amazonaws.com/\", \"fields\": {\"key\": \"uploads/${filename}\", \"Content-Type\": \"image/png\"}}",
+      "accepted": true
+    },
+    {
+      "name": "reject mapping field value",
+      "header": "{\"url\": \"https://bkt.s3.us-east-1.amazonaws.com/\", \"fields\": {\"key\": \"u/${filename}\", \"nested\": {\"a\": 1}}}",
+      "accepted": false,
+      "message": "must be a string",
+      "sdk_only": true,
+      "note": "Registry has no check: httpx raises TypeError inside the background upload, which its bare retry() retries 5x before the thread dies -> 200 + dead URL."
+    },
+    {
+      "name": "accept numeric field value httpx can encode",
+      "header": "{\"url\": \"https://bkt.s3.us-east-1.amazonaws.com/\", \"fields\": {\"key\": \"u/${filename}\", \"x-amz-meta-n\": 5}}",
+      "accepted": true
+    },
+    {
+      "name": "accept agreeing case-variant content-type fields",
+      "header": "{\"url\": \"https://bkt.s3.us-east-1.amazonaws.com/\", \"fields\": {\"key\": \"u/${filename}\", \"Content-Type\": \"image/png\", \"content-type\": \"image/png\"}}",
+      "accepted": true
+    },
+    {
+      "name": "accept list field value httpx repeats",
+      "header": "{\"url\": \"https://bkt.s3.us-east-1.amazonaws.com/\", \"fields\": {\"key\": \"u/${filename}\", \"x\": [\"a\", \"b\"]}}",
+      "accepted": true
+    },
+    {
+      "name": "accept boolean field value unchanged",
+      "header": "{\"url\": \"https://bkt.s3.us-east-1.amazonaws.com/\", \"fields\": {\"key\": \"u/${filename}\", \"x-amz-meta-public\": true}}",
+      "accepted": true,
+      "note": "Must reach httpx as a bool so it encodes 'true'; str() would send 'True' and break the signature."
+    },
+    {
+      "name": "reject duplicate case-variant content-type fields",
+      "header": "{\"url\": \"https://bkt.s3.us-east-1.amazonaws.com/\", \"fields\": {\"key\": \"u/${filename}\", \"Content-Type\": \"image/png\", \"content-type\": \"image/jpeg\"}}",
+      "accepted": false,
+      "message": "duplicate 'content-type' fields",
+      "sdk_only": true
+    },
+    {
+      "name": "reject padded case-variant reserved name carrying CRLF",
+      "header": "{\"url\": \"https://bkt.s3.us-east-1.amazonaws.com/\", \"fields\": {\"key\": \"u/${filename}\", \" Content-Type\": \"image/png\\r\\nX-Evil: 1\"}}",
+      "accepted": false,
+      "message": "CR/LF",
+      "sdk_only": true,
+      "note": "Folding is strip+lower; registry folds with lower() only, so a padded name skips its CRLF check."
+    }
+  ],
+  "upload": [
+    {
+      "name": "signed content-type disagreeing with the file",
+      "header": "{\"url\": \"https://bkt.s3.us-east-1.amazonaws.com/\", \"fields\": {\"key\": \"u/${filename}\", \"Content-Type\": \"image/png\"}}",
+      "accepted": false,
+      "message": "cannot be changed",
+      "sdk_only": true,
+      "note": "SDK 422 before upload; registry returns 200 and the background upload dies. Asserted by test_rejects_mismatched_explicit_content_type, not the vector loop."
+    },
+    {
+      "name": "payload over the 5GB S3 POST limit",
+      "accepted": false,
+      "message": "exceeds",
+      "sdk_only": true,
+      "note": "Checked against the file size, not the header. SDK 422; registry 200 + dead upload."
+    },
+    {
+      "name": "upload failure",
+      "accepted": false,
+      "sdk_only": true,
+      "note": "SDK is synchronous and fails the request; registry returns 200 and a URL that never resolves. The agreed direction is for registry to converge on the SDK's behaviour."
+    },
+    {
+      "name": "303 success_action_redirect",
+      "accepted": true,
+      "sdk_only": true,
+      "note": "S3 answers 303 after storing when the policy carries success_action_redirect. The SDK treats it as success; registry's raise_for_status makes it a background failure."
+    },
+    {
+      "name": "file name containing a path separator",
+      "accepted": false,
+      "message": "path separator",
+      "sdk_only": true,
+      "note": "Not header-driven: comes from the app's file name. Client-side URL normalisation would collapse it, so the stored key and the returned URL would disagree."
+    }
+  ]
+}

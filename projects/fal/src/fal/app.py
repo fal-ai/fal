@@ -28,6 +28,7 @@ from fal.api import (
     function as fal_function,
 )
 from fal.auth import key_credentials
+from fal.compat import run_in_thread
 from fal.container import ContainerImage
 from fal.exceptions import FalServerlessException, RequestCancelledException
 from fal.logging import get_logger
@@ -42,6 +43,12 @@ from fal.sdk import (
     RetryConfigDict,
 )
 from fal.toolkit.file import request_lifecycle_preference
+from fal.toolkit.file._upload_policy import (
+    UploadPolicy,
+    UploadPolicyInputError,
+    parse_upload_policy,
+)
+from fal.toolkit.file._upload_policy import drain as drain_upload_policies
 from fal.toolkit.file.providers.fal import _LIFECYCLE_PREFERENCE
 
 REALTIME_APP_REQUIREMENTS = ["websockets", "msgpack"]
@@ -467,6 +474,7 @@ class RequestContext:
     endpoint: str | None
     lifecycle_preference: dict[str, str] | None
     headers: dict[str, str]
+    upload_policy: UploadPolicy | None = None
 
 
 class App(BaseServable):
@@ -843,6 +851,9 @@ class App(BaseServable):
             yield
         finally:
             os.environ["FAL_RUNNER_STATE"] = "TERMINATING"
+            # Let backgrounded policy uploads finish, bounded by the drain
+            # timeout so teardown cannot hang.
+            await run_in_thread(drain_upload_policies)
             await _call_any_fn(self.teardown)
 
     @property
@@ -911,11 +922,26 @@ class App(BaseServable):
                 )
                 return await call_next(request)
 
+            try:
+                upload_policy = parse_upload_policy(request.headers)
+            except UploadPolicyInputError as exc:
+                # Middleware sits outside the exception-handler chain, so render
+                # the pydantic-shaped body here. Bill zero explicitly (as the 404
+                # and RequestValidation handlers do -- the FieldException handler
+                # omits the header for units==0): this is pre-generation, and
+                # without it the platform charges the endpoint's default.
+                return fastapi.responses.JSONResponse(
+                    exc.to_pydantic_format(),
+                    exc.status_code,
+                    headers={"x-fal-billable-units": "0"},
+                )
+
             context = RequestContext(
                 request_id=request.headers.get(REQUEST_ID_KEY),
                 endpoint=request.headers.get(REQUEST_ENDPOINT_KEY),
                 lifecycle_preference=request_lifecycle_preference(request),
                 headers=dict(request.headers),
+                upload_policy=upload_policy,
             )
 
             token = self._current_request_context.set(context)
