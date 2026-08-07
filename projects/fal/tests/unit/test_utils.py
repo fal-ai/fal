@@ -489,15 +489,24 @@ def test_load_function_from_preserves_app_defined_app_files_over_toml(tmp_path):
     assert wrapped_cls.app_files_context_dir == "class-context"
 
 
-def test_load_function_from_reports_system_exit_during_import(tmp_path):
+@pytest.mark.parametrize(
+    ("exit_arg", "rendered_arg"),
+    [
+        (1, "1"),
+        ("missing API key", "'missing API key'"),
+    ],
+)
+def test_load_function_from_reports_system_exit_during_import(
+    tmp_path, exit_arg, rendered_arg
+):
     app_file = tmp_path / "app.py"
-    app_file.write_text("raise SystemExit(1)\n")
+    app_file.write_text(f"raise SystemExit({exit_arg!r})\n")
 
-    with pytest.raises(
-        FalServerlessError,
-        match=r"app\.py.*called sys\.exit\(1\) during import",
-    ):
+    with pytest.raises(FalServerlessError) as exc_info:
         load_function_from(DummyHost(), str(app_file))
+
+    assert str(app_file) in exc_info.value.message
+    assert f"called sys.exit({rendered_arg}) during import" in exc_info.value.message
 
 
 def test_load_function_from_rejects_class_app_files_with_toml_image(tmp_path):
