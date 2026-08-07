@@ -88,8 +88,20 @@ class FalFileSystem(AbstractFileSystem):
 
         return posixpath.join(cwd, rpath)
 
+    def _endpoint_path(self, path):
+        """Return a path relative to the server's implicit ``/data`` root.
+
+        Embedding an absolute path in a route would produce a double slash, for
+        example ``/files/list//data/models``. HTTP proxies are allowed to
+        normalize that to ``/files/list/data/models``. The files API interprets
+        route paths as relative to ``/data``, so the normalized request would
+        otherwise address ``/data/data/models``.
+        """
+        return posixpath.relpath(self._abspath(path), "/data")
+
     def _ls(self, path):
-        response = self._request("GET", f"/files/list/{path}")
+        endpoint_path = self._endpoint_path(path)
+        response = self._request("GET", f"/files/list/{endpoint_path}")
         files = response.json()
         return sorted(
             (
@@ -149,7 +161,8 @@ class FalFileSystem(AbstractFileSystem):
             return
 
         with open(lpath, "wb") as fobj:
-            response = self._request("GET", f"/files/file/{abs_rpath}")
+            endpoint_path = self._endpoint_path(abs_rpath)
+            response = self._request("GET", f"/files/file/{endpoint_path}")
             fobj.write(response.content)
 
     def _put_file_multipart(self, lpath, rpath, size, progress):
@@ -163,7 +176,7 @@ class FalFileSystem(AbstractFileSystem):
 
         multipart = DataFileMultipartUpload(
             client=self._client,
-            target_path=rpath,
+            target_path=self._endpoint_path(rpath),
             chunk_size=MULTIPART_CHUNK_SIZE,
             max_concurrency=MULTIPART_MAX_CONCURRENCY,
         )
@@ -195,9 +208,10 @@ class FalFileSystem(AbstractFileSystem):
             else:
                 task = progress.add_task(f"{os.path.basename(lpath)}", total=1)
                 with open(lpath, "rb") as fobj:
+                    endpoint_path = self._endpoint_path(abs_rpath)
                     self._request(
                         "POST",
-                        f"/files/file/local/{abs_rpath}",
+                        f"/files/file/local/{endpoint_path}",
                         files={"file_upload": (posixpath.basename(lpath), fobj)},
                     )
                 progress.advance(task)
@@ -205,9 +219,10 @@ class FalFileSystem(AbstractFileSystem):
 
     def put_file_from_url(self, url, rpath, mode="overwrite", **kwargs):
         abs_rpath = self._abspath(rpath)
+        endpoint_path = self._endpoint_path(abs_rpath)
         self._request(
             "POST",
-            f"/files/file/url/{abs_rpath}",
+            f"/files/file/url/{endpoint_path}",
             json={"url": url},
             timeout=10 * 60,  # 10 minutes in seconds
         )
@@ -215,18 +230,20 @@ class FalFileSystem(AbstractFileSystem):
 
     def rm(self, path, **kwargs):
         abs_path = self._abspath(path)
+        endpoint_path = self._endpoint_path(abs_path)
         self._request(
             "DELETE",
-            f"/files/file/{abs_path}",
+            f"/files/file/{endpoint_path}",
         )
         self.dircache.clear()
 
     def rename(self, path, destination, **kwargs):
         abs_path = self._abspath(path)
         abs_dest = self._abspath(destination)
+        endpoint_path = self._endpoint_path(abs_path)
         self._request(
             "POST",
-            f"/files/rename/{abs_path}",
+            f"/files/rename/{endpoint_path}",
             json={"destination": abs_dest},
         )
         self.dircache.clear()
