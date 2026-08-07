@@ -160,7 +160,18 @@ def load_function_from(
         raise FalServerlessError("App ref must resolve to a file path.")
 
     sys.path.append(os.getcwd())
-    module = runpy.run_path(file_path)
+    try:
+        module = runpy.run_path(file_path)
+    except SystemExit as exc:
+        status = exc.code
+        if status is None:
+            status = 0
+        elif not isinstance(status, int):
+            status = 1
+        raise FalServerlessError(
+            f"Failed to load app from {file_path!r}: "
+            f"the app module called sys.exit({status}) during import."
+        ) from None
     target, found_app_name, found_app_auth, class_name = _find_target(
         module, function_name
     )

@@ -3,7 +3,7 @@ from unittest.mock import MagicMock
 import pytest
 
 import fal
-from fal.api import IsolatedFunction, Options
+from fal.api import FalServerlessError, IsolatedFunction, Options
 from fal.api.api import merge_basic_config
 from fal.api.client import SyncServerlessClient
 from fal.sdk import ApplicationHealthCheckConfig
@@ -487,6 +487,17 @@ def test_load_function_from_preserves_app_defined_app_files_over_toml(tmp_path):
     assert wrapped_cls.app_files == ["class-files"]
     assert wrapped_cls.app_files_ignore == ["class-ignore"]
     assert wrapped_cls.app_files_context_dir == "class-context"
+
+
+def test_load_function_from_reports_system_exit_during_import(tmp_path):
+    app_file = tmp_path / "app.py"
+    app_file.write_text("raise SystemExit(1)\n")
+
+    with pytest.raises(
+        FalServerlessError,
+        match=r"app\.py.*called sys\.exit\(1\) during import",
+    ):
+        load_function_from(DummyHost(), str(app_file))
 
 
 def test_load_function_from_rejects_class_app_files_with_toml_image(tmp_path):
