@@ -37,7 +37,13 @@ dependencies = [
     "portalocker>=2.7.0,<3",
     "rich>=13.3.2,<15",
     "rich_argparse",
-    "argcomplete>=3.1.0,<4",
+    # argcomplete 3.7.1 annotates `str | bytes` in a class body while still
+    # declaring requires-python >=3.8, so importing it raises TypeError on 3.8/3.9
+    # -- and `fal.cli.parser` imports it at module scope, which takes the whole CLI
+    # down. Drop the upper bound once a fixed release is out (or 3.7.1 is yanked).
+    # See https://github.com/kislyuk/argcomplete/issues/559
+    "argcomplete>=3.1.0,<4; python_version >= '3.10'",
+    "argcomplete>=3.1.0,!=3.7.1,<4; python_version < '3.10'",
     "packaging>=21.3",
     "pathspec>=0.11.1,<1",
     "pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*",
