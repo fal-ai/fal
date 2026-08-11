@@ -2558,3 +2558,150 @@ class TestRaiseForStatus:
             request=httpx.Request("GET", "https://fal.run/test"),
         )
         _raise_for_status(resp)  # should not raise
+
+
+class _FakeCdnRequest:
+    def __init__(self, headers):
+        self.headers = headers
+
+
+class _FakeCdnApp:
+    def __init__(self, request):
+        self.current_request = request
+
+
+class TestQueueResultAdoptsCdnToken:
+    """``handle.get()`` must adopt the runner's re-scoped ``x-fal-cdn-token``.
+
+    The result response is the only one that can carry it: the submit response
+    is written before the runner has run, so its scope cannot cover the request
+    ids the run ended up with access to. Without this, a chaining app cannot
+    read the output it just commissioned once tokens are request-scoped, since
+    that object is tagged with the *inner* request id.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _reset_current_app(self):
+        from fal_client._headers import set_get_current_app
+
+        yield
+        set_get_current_app(None)
+
+    @staticmethod
+    def _bind_app(headers):
+        from fal_client._headers import set_get_current_app
+
+        set_get_current_app(lambda: _FakeCdnApp(_FakeCdnRequest(headers)))
+        return headers
+
+    @staticmethod
+    def _result_response(headers=None):
+        req = httpx.Request("GET", "http://resp")
+        return httpx.Response(
+            200,
+            content=b'{"ok": true}',
+            headers={"Content-Type": "application/json", **(headers or {})},
+            request=req,
+        )
+
+    def test_sync_get_adopts_token(self, monkeypatch):
+        app_headers = self._bind_app({"x-fal-cdn-token": "outer-scope"})
+        client = httpx.Client()
+        handle = SyncRequestHandle(
+            request_id="r",
+            response_url="http://resp",
+            status_url="http://status",
+            cancel_url="http://cancel",
+            client=client,
+        )
+        monkeypatch.setattr(
+            SyncRequestHandle,
+            "iter_events",
+            lambda self, with_logs=False, interval=0: iter(
+                [Completed(logs=[], metrics={})]
+            ),
+            raising=True,
+        )
+        monkeypatch.setattr(
+            client,
+            "send",
+            lambda *a, **k: self._result_response({"x-fal-cdn-token": "inner-scope"}),
+            raising=False,
+        )
+        assert handle.get() == {"ok": True}
+        assert app_headers["x-fal-cdn-token"] == "inner-scope"
+
+    def test_sync_get_leaves_token_when_response_has_none(self, monkeypatch):
+        app_headers = self._bind_app({"x-fal-cdn-token": "outer-scope"})
+        client = httpx.Client()
+        handle = SyncRequestHandle(
+            request_id="r",
+            response_url="http://resp",
+            status_url="http://status",
+            cancel_url="http://cancel",
+            client=client,
+        )
+        monkeypatch.setattr(
+            SyncRequestHandle,
+            "iter_events",
+            lambda self, with_logs=False, interval=0: iter(
+                [Completed(logs=[], metrics={})]
+            ),
+            raising=True,
+        )
+        monkeypatch.setattr(
+            client, "send", lambda *a, **k: self._result_response(), raising=False
+        )
+        assert handle.get() == {"ok": True}
+        assert app_headers["x-fal-cdn-token"] == "outer-scope"
+
+    @pytest.mark.asyncio
+    async def test_async_get_adopts_token(self, monkeypatch):
+        app_headers = self._bind_app({"x-fal-cdn-token": "outer-scope"})
+        client = httpx.AsyncClient()
+        handle = AsyncRequestHandle(
+            request_id="r",
+            response_url="http://resp",
+            status_url="http://status",
+            cancel_url="http://cancel",
+            client=client,
+        )
+
+        async def _iter_events(self, with_logs=False, interval=0):
+            yield Completed(logs=[], metrics={})
+
+        monkeypatch.setattr(
+            AsyncRequestHandle, "iter_events", _iter_events, raising=True
+        )
+
+        async def _send(*a, **k):
+            return self._result_response({"x-fal-cdn-token": "inner-scope"})
+
+        monkeypatch.setattr(client, "send", _send, raising=False)
+        assert await handle.get() == {"ok": True}
+        assert app_headers["x-fal-cdn-token"] == "inner-scope"
+
+    @pytest.mark.asyncio
+    async def test_async_get_outside_app_context_is_noop(self, monkeypatch):
+        """Off-floor use (no fal app bound) must not raise."""
+        client = httpx.AsyncClient()
+        handle = AsyncRequestHandle(
+            request_id="r",
+            response_url="http://resp",
+            status_url="http://status",
+            cancel_url="http://cancel",
+            client=client,
+        )
+
+        async def _iter_events(self, with_logs=False, interval=0):
+            yield Completed(logs=[], metrics={})
+
+        monkeypatch.setattr(
+            AsyncRequestHandle, "iter_events", _iter_events, raising=True
+        )
+
+        async def _send(*a, **k):
+            return self._result_response({"x-fal-cdn-token": "inner-scope"})
+
+        monkeypatch.setattr(client, "send", _send, raising=False)
+        assert await handle.get() == {"ok": True}
