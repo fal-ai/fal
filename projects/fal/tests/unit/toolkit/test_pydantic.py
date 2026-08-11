@@ -1,8 +1,12 @@
-from typing import Any
+from typing import Any, List
 
 import pytest
 from pydantic import Field
 
+from fal.toolkit.constraints import (
+    VideoNormalizationConfig,
+    VideoValidationConfig,
+)
 from fal.toolkit.pydantic import (
     IS_PYDANTIC_V2,
     AudioField,
@@ -279,6 +283,123 @@ class TestFieldHelpers:
 
         schema = Model.model_json_schema() if IS_PYDANTIC_V2 else Model.schema()
         assert schema["properties"]["video_input"]["ui"]["field"] == "video"
+
+    def test_video_field_without_constraints_emits_no_xfal(self):
+        """A video input with no declared limits stays free of x-fal."""
+
+        class Model(FalBaseModel):
+            video_input: str = VideoField(default="", description="A video input")
+
+        schema = Model.model_json_schema() if IS_PYDANTIC_V2 else Model.schema()
+        assert "x-fal" not in schema["properties"]["video_input"]
+
+    def test_video_field_constraints(self):
+        """VideoField should emit its declared limits under x-fal."""
+
+        class Model(FalBaseModel):
+            video_input: str = VideoField(
+                default="",
+                description="A video input",
+                constraints=VideoValidationConfig(
+                    max_file_size=50 * 1024 * 1024,
+                    max_duration=15.0,
+                    max_area=834 * 1112,
+                ),
+            )
+
+        schema = Model.model_json_schema() if IS_PYDANTIC_V2 else Model.schema()
+        video_input = schema["properties"]["video_input"]
+        assert video_input["x-fal"] == {
+            "max_file_size": 52428800,
+            "max_duration": 15.0,
+            "max_area": 927408,
+        }
+        assert video_input["ui"]["field"] == "video"
+
+    def test_video_field_normalization(self):
+        """Reshaping the model applies is nested, not mixed in with the limits."""
+
+        class Model(FalBaseModel):
+            video_input: str = VideoField(
+                default="",
+                constraints=VideoValidationConfig(min_duration=2.0),
+                normalization=VideoNormalizationConfig(max_duration=15.1, fps=24),
+            )
+
+        schema = Model.model_json_schema() if IS_PYDANTIC_V2 else Model.schema()
+        assert schema["properties"]["video_input"]["x-fal"] == {
+            "min_duration": 2.0,
+            "normalization": {"max_duration": 15.1, "fps": 24},
+        }
+
+    def test_video_field_combined_constraints(self):
+        """On a list, per-item limits and list totals stay distinguishable."""
+
+        class Model(FalBaseModel):
+            video_urls: List[str] = VideoField(
+                default_factory=list,
+                constraints=VideoValidationConfig(min_duration=2.0),
+                combined_constraints=VideoValidationConfig(max_duration=15.1),
+            )
+
+        schema = Model.model_json_schema() if IS_PYDANTIC_V2 else Model.schema()
+        assert schema["properties"]["video_urls"]["x-fal"] == {
+            "min_duration": 2.0,
+            "combined": {"max_duration": 15.1},
+        }
+
+    def test_video_field_buckets_do_not_collide(self):
+        """One limit can mean three things at once without the buckets leaking.
+
+        Seedance declares max_duration in two buckets at the same value, so a
+        shared dict or an overwrite would go unnoticed. Distinct values here
+        pin each to its own place.
+        """
+
+        class Model(FalBaseModel):
+            video_urls: List[str] = VideoField(
+                default_factory=list,
+                constraints=VideoValidationConfig(max_duration=30.0),
+                combined_constraints=VideoValidationConfig(max_duration=15.1),
+                normalization=VideoNormalizationConfig(max_duration=10.0),
+            )
+
+        schema = Model.model_json_schema() if IS_PYDANTIC_V2 else Model.schema()
+        assert schema["properties"]["video_urls"]["x-fal"] == {
+            "max_duration": 30.0,
+            "combined": {"max_duration": 15.1},
+            "normalization": {"max_duration": 10.0},
+        }
+
+    def test_video_field_normalization_only(self):
+        """A model that reshapes but never rejects still documents itself."""
+
+        class Model(FalBaseModel):
+            video_input: str = VideoField(
+                default="",
+                normalization=VideoNormalizationConfig(max_area=834 * 1112),
+            )
+
+        schema = Model.model_json_schema() if IS_PYDANTIC_V2 else Model.schema()
+        assert schema["properties"]["video_input"]["x-fal"] == {
+            "normalization": {"max_area": 927408}
+        }
+
+    def test_video_field_constraints_keep_ui(self):
+        """Caller ui survives alongside x-fal, which v2 drops for extra kwargs."""
+
+        class Model(FalBaseModel):
+            video_input: str = VideoField(
+                default="",
+                description="A video input",
+                constraints=VideoValidationConfig(max_duration=15.0),
+                ui={"important": True},
+            )
+
+        schema = Model.model_json_schema() if IS_PYDANTIC_V2 else Model.schema()
+        video_input = schema["properties"]["video_input"]
+        assert video_input["ui"] == {"important": True, "field": "video"}
+        assert video_input["x-fal"] == {"max_duration": 15.0}
 
     def test_audio_field_init(self):
         """AudioField should initialize and set ui.field = 'audio' in schema."""
