@@ -160,6 +160,25 @@ def test_build_environment_field_presence():
     assert register_skip.build_environment is False
 
 
+def test_hosted_run_health_check_config_presence():
+    hosted_run = isolate_proto.HostedRun(entrypoint="pkg.mod:func")
+    assert hosted_run.HasField("health_check_config") is False
+
+    hosted_run_with_health_check = isolate_proto.HostedRun(
+        entrypoint="pkg.mod:func",
+        health_check_config=isolate_proto.ApplicationHealthCheckConfig(
+            path="/ready",
+            method=isolate_proto.ApplicationHealthCheckConfig.GET,
+        ),
+    )
+    assert hosted_run_with_health_check.HasField("health_check_config") is True
+    assert hosted_run_with_health_check.health_check_config.path == "/ready"
+    assert (
+        hosted_run_with_health_check.health_check_config.method
+        == isolate_proto.ApplicationHealthCheckConfig.GET
+    )
+
+
 def test_env_id_field_presence_on_run_and_register():
     hosted_run = isolate_proto.HostedRun(entrypoint="pkg.mod:func")
     assert hosted_run.HasField("env_id") is False

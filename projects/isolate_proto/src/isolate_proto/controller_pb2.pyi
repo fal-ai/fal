@@ -174,6 +174,7 @@ class HostedRun(google.protobuf.message.Message):
     RUN_ON_MAIN_THREAD_FIELD_NUMBER: builtins.int
     BUILD_ENVIRONMENT_FIELD_NUMBER: builtins.int
     ENV_ID_FIELD_NUMBER: builtins.int
+    HEALTH_CHECK_CONFIG_FIELD_NUMBER: builtins.int
     @property
     def environments(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[server_pb2.EnvironmentDefinition]:
         """Environment definitions."""
@@ -218,6 +219,9 @@ class HostedRun(google.protobuf.message.Message):
     When set, the server may use the referenced environment directly. If both
     `environments` and `env_id` are provided, the server validates they agree.
     """
+    @property
+    def health_check_config(self) -> global___ApplicationHealthCheckConfig:
+        """Optional health check config for runners"""
     def __init__(
         self,
         *,
@@ -236,9 +240,10 @@ class HostedRun(google.protobuf.message.Message):
         run_on_main_thread: builtins.bool | None = ...,
         build_environment: builtins.bool | None = ...,
         env_id: builtins.str | None = ...,
+        health_check_config: global___ApplicationHealthCheckConfig | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing_extensions.Literal["_application_name", b"_application_name", "_auth_mode", b"_auth_mode", "_build_environment", b"_build_environment", "_env_id", b"_env_id", "_environment_name", b"_environment_name", "_fetch_openapi", b"_fetch_openapi", "_machine_requirements", b"_machine_requirements", "_run_on_main_thread", b"_run_on_main_thread", "_secrets", b"_secrets", "_setup_func", b"_setup_func", "application_name", b"application_name", "auth_mode", b"auth_mode", "build_environment", b"build_environment", "callable", b"callable", "entrypoint", b"entrypoint", "env_id", b"env_id", "environment_name", b"environment_name", "fetch_openapi", b"fetch_openapi", "function", b"function", "machine_requirements", b"machine_requirements", "run_on_main_thread", b"run_on_main_thread", "secrets", b"secrets", "setup_func", b"setup_func"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing_extensions.Literal["_application_name", b"_application_name", "_auth_mode", b"_auth_mode", "_build_environment", b"_build_environment", "_env_id", b"_env_id", "_environment_name", b"_environment_name", "_fetch_openapi", b"_fetch_openapi", "_machine_requirements", b"_machine_requirements", "_run_on_main_thread", b"_run_on_main_thread", "_secrets", b"_secrets", "_setup_func", b"_setup_func", "application_name", b"application_name", "auth_mode", b"auth_mode", "build_environment", b"build_environment", "callable", b"callable", "data_mounts", b"data_mounts", "entrypoint", b"entrypoint", "env_id", b"env_id", "environment_name", b"environment_name", "environments", b"environments", "fetch_openapi", b"fetch_openapi", "files", b"files", "function", b"function", "machine_requirements", b"machine_requirements", "run_on_main_thread", b"run_on_main_thread", "secrets", b"secrets", "setup_func", b"setup_func"]) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["_application_name", b"_application_name", "_auth_mode", b"_auth_mode", "_build_environment", b"_build_environment", "_env_id", b"_env_id", "_environment_name", b"_environment_name", "_fetch_openapi", b"_fetch_openapi", "_health_check_config", b"_health_check_config", "_machine_requirements", b"_machine_requirements", "_run_on_main_thread", b"_run_on_main_thread", "_secrets", b"_secrets", "_setup_func", b"_setup_func", "application_name", b"application_name", "auth_mode", b"auth_mode", "build_environment", b"build_environment", "callable", b"callable", "entrypoint", b"entrypoint", "env_id", b"env_id", "environment_name", b"environment_name", "fetch_openapi", b"fetch_openapi", "function", b"function", "health_check_config", b"health_check_config", "machine_requirements", b"machine_requirements", "run_on_main_thread", b"run_on_main_thread", "secrets", b"secrets", "setup_func", b"setup_func"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["_application_name", b"_application_name", "_auth_mode", b"_auth_mode", "_build_environment", b"_build_environment", "_env_id", b"_env_id", "_environment_name", b"_environment_name", "_fetch_openapi", b"_fetch_openapi", "_health_check_config", b"_health_check_config", "_machine_requirements", b"_machine_requirements", "_run_on_main_thread", b"_run_on_main_thread", "_secrets", b"_secrets", "_setup_func", b"_setup_func", "application_name", b"application_name", "auth_mode", b"auth_mode", "build_environment", b"build_environment", "callable", b"callable", "data_mounts", b"data_mounts", "entrypoint", b"entrypoint", "env_id", b"env_id", "environment_name", b"environment_name", "environments", b"environments", "fetch_openapi", b"fetch_openapi", "files", b"files", "function", b"function", "health_check_config", b"health_check_config", "machine_requirements", b"machine_requirements", "run_on_main_thread", b"run_on_main_thread", "secrets", b"secrets", "setup_func", b"setup_func"]) -> None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_application_name", b"_application_name"]) -> typing_extensions.Literal["application_name"] | None: ...
     @typing.overload
@@ -251,6 +256,8 @@ class HostedRun(google.protobuf.message.Message):
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_environment_name", b"_environment_name"]) -> typing_extensions.Literal["environment_name"] | None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_fetch_openapi", b"_fetch_openapi"]) -> typing_extensions.Literal["fetch_openapi"] | None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_health_check_config", b"_health_check_config"]) -> typing_extensions.Literal["health_check_config"] | None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_machine_requirements", b"_machine_requirements"]) -> typing_extensions.Literal["machine_requirements"] | None: ...
     @typing.overload
