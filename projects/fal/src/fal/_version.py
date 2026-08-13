@@ -1,7 +1,7 @@
 import json
 import os
 import tempfile
-from typing import Any, Dict, Optional
+from typing import Any
 
 try:
     from ._fal_version import version as __version__  # type: ignore[import]
@@ -17,7 +17,7 @@ _PYPI_CACHE_PATH = os.path.expanduser("~/.fal/cache/pypi.json")
 _URLOPEN_TIMEOUT = 1
 
 
-def _write_pypi_cache(data: Dict[str, Any]) -> None:
+def _write_pypi_cache(data: dict[str, Any]) -> None:
     cache_dir = os.path.dirname(_PYPI_CACHE_PATH)
     os.makedirs(cache_dir, exist_ok=True)
     prefix = os.path.basename(_PYPI_CACHE_PATH) + ".tmp."
@@ -31,7 +31,7 @@ def _write_pypi_cache(data: Dict[str, Any]) -> None:
         os.rename(fobj.name, _PYPI_CACHE_PATH)
 
 
-def _get_pypi_cache() -> Optional[Dict[str, Any]]:
+def _get_pypi_cache() -> dict[str, Any] | None:
     import time
 
     try:
@@ -49,7 +49,7 @@ def _get_pypi_cache() -> Optional[Dict[str, Any]]:
             return None
 
 
-def _fetch_pypi_data() -> Dict[str, Any]:
+def _fetch_pypi_data() -> dict[str, Any]:
     from urllib.request import urlopen
 
     response = urlopen(_PYPI_URL, timeout=_URLOPEN_TIMEOUT)

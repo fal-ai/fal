@@ -22,9 +22,11 @@ def test_build_jwk_client_uses_certifi_ssl_context():
     build_jwk_client.cache_clear()
 
     try:
-        with patch("certifi.where", return_value="certifi.pem"), patch(
-            "ssl.create_default_context"
-        ) as create_default_context, patch("jwt.PyJWKClient") as py_jwk_client:
+        with (
+            patch("certifi.where", return_value="certifi.pem"),
+            patch("ssl.create_default_context") as create_default_context,
+            patch("jwt.PyJWKClient") as py_jwk_client,
+        ):
             ssl_context = create_default_context.return_value
 
             build_jwk_client()
@@ -67,12 +69,15 @@ def test_login_with_connection_completes_device_flow():
     }
     token_response = MagicMock(status_code=200, json=MagicMock(return_value=token_data))
 
-    with patch(
-        "httpx.post",
-        side_effect=[device_response, pending_response, token_response],
-    ) as post, patch("fal.auth.auth0._open_browser") as open_browser, patch(
-        "fal.auth.auth0.validate_id_token"
-    ) as validate_id_token, patch("fal.auth.auth0.time.sleep") as sleep:
+    with (
+        patch(
+            "httpx.post",
+            side_effect=[device_response, pending_response, token_response],
+        ) as post,
+        patch("fal.auth.auth0._open_browser") as open_browser,
+        patch("fal.auth.auth0.validate_id_token") as validate_id_token,
+        patch("fal.auth.auth0.time.sleep") as sleep,
+    ):
         assert login(console, connection="github", no_browser=True) == token_data
 
     assert post.call_args_list == [

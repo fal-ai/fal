@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import enum
+from collections.abc import Callable, Iterator
 from contextlib import ExitStack
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -8,12 +9,8 @@ from enum import Enum
 from typing import (
     TYPE_CHECKING,
     Any,
-    Callable,
-    Dict,
     Generic,
-    Iterator,
     Literal,
-    Optional,
     TypedDict,
     TypeVar,
     get_args,
@@ -60,16 +57,16 @@ class _RetriesEntry(TypedDict):
     retries: int
 
 
-RetryConfigDict = Dict[RetryConditionLiteral, _RetriesEntry]
+RetryConfigDict = dict[RetryConditionLiteral, _RetriesEntry]
 
 
 @dataclass
 class RetryConfig:
     """Per-condition retry counts, e.g. RetryConfig(server_error=3, timeout=1)."""
 
-    timeout: Optional[int] = None
-    server_error: Optional[int] = None
-    connection_error: Optional[int] = None
+    timeout: int | None = None
+    server_error: int | None = None
+    connection_error: int | None = None
 
     def to_dict(self) -> RetryConfigDict:
         result: RetryConfigDict = {}
@@ -441,7 +438,7 @@ class ReplaceState(Enum):
 class RunnerInfo:
     runner_id: str
     in_flight_requests: int
-    expiration_countdown: Optional[int]
+    expiration_countdown: int | None
     uptime: timedelta
     external_metadata: dict[str, Any]
     revision: str
@@ -553,7 +550,7 @@ class DeploymentStrategy(enum.Enum):
 
 
 def _to_auth_mode_proto(
-    auth_mode: Optional[AuthModeLiteral],
+    auth_mode: AuthModeLiteral | None,
 ) -> isolate_proto.ApplicationAuthMode.ValueType | None:
     if auth_mode == "public":
         return isolate_proto.ApplicationAuthMode.PUBLIC
@@ -742,20 +739,20 @@ class MachineRequirements:
 
 
 class HealthCheck:
-    start_period_seconds: Optional[int] = None
-    timeout_seconds: Optional[int] = None
-    failure_threshold: Optional[int] = None
-    call_regularly: Optional[bool] = None
-    method: Optional[str] = None
+    start_period_seconds: int | None = None
+    timeout_seconds: int | None = None
+    failure_threshold: int | None = None
+    call_regularly: bool | None = None
+    method: str | None = None
 
     def __init__(
         self,
         *,
-        start_period_seconds: Optional[int] = None,
-        timeout_seconds: Optional[int] = None,
-        failure_threshold: Optional[int] = None,
-        call_regularly: Optional[bool] = None,
-        method: Optional[str] = None,
+        start_period_seconds: int | None = None,
+        timeout_seconds: int | None = None,
+        failure_threshold: int | None = None,
+        call_regularly: bool | None = None,
+        method: str | None = None,
     ):
         """Health check configuration for a runner.
 
@@ -805,11 +802,11 @@ class HealthCheck:
 @dataclass
 class ApplicationHealthCheckConfig:
     path: str
-    start_period_seconds: Optional[int]
-    timeout_seconds: Optional[int]
-    failure_threshold: Optional[int]
-    call_regularly: Optional[bool]
-    method: Optional[str] = None
+    start_period_seconds: int | None
+    timeout_seconds: int | None
+    failure_threshold: int | None
+    call_regularly: bool | None
+    method: str | None = None
 
 
 def _health_check_config_to_proto(
@@ -942,7 +939,7 @@ class FalServerlessConnection:
         function: Callable[..., ResultT] | None,
         environments: list[isolate_proto.EnvironmentDefinition],
         application_name: str | None = None,
-        auth_mode: Optional[AuthModeLiteral] = None,
+        auth_mode: AuthModeLiteral | None = None,
         *,
         source_code: str | None = None,
         health_check_config: ApplicationHealthCheckConfig | None = None,
@@ -1183,7 +1180,7 @@ class FalServerlessConnection:
         setup_function: Callable[[], InputT] | None = None,
         files: list[File] | None = None,
         application_name: str | None = None,
-        auth_mode: Optional[AuthModeLiteral] = None,
+        auth_mode: AuthModeLiteral | None = None,
         environment_name: str | None = None,
         secrets: list[str] | None = None,
         data_mounts: list[str] | None = None,
@@ -1331,7 +1328,7 @@ class FalServerlessConnection:
         self,
         alias: str,
         revision: str,
-        auth_mode: Optional[AuthModeLiteral],
+        auth_mode: AuthModeLiteral | None,
         *,
         environment_name: str | None = None,
         deployment_strategy: DeploymentStrategyLiteral | None = None,

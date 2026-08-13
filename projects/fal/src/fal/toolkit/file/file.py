@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import shutil
 import traceback
+from collections.abc import Callable
 from functools import wraps
 from pathlib import Path
 from tempfile import NamedTemporaryFile, mkdtemp
-from typing import Any, Callable, Optional
+from typing import Any
 from urllib.parse import urlparse
 from zipfile import ZipFile
 
@@ -103,9 +104,10 @@ def _try_with_fallback(
     func: str,
     args: list[Any],
     repository: FileRepository | RepositoryId,
-    fallback_repository: Optional[
-        FileRepository | RepositoryId | list[FileRepository | RepositoryId]
-    ],
+    fallback_repository: FileRepository
+    | RepositoryId
+    | list[FileRepository | RepositoryId]
+    | None,
     save_kwargs: dict,
     fallback_save_kwargs: dict,
 ) -> Any:
@@ -147,20 +149,20 @@ class File(BaseModel):
     url: str = Field(
         description="The URL where the file can be downloaded from.",
     )
-    content_type: Optional[str] = Field(
+    content_type: str | None = Field(
         None,
         description="The mime type of the file.",
         examples=["image/png"],
     )
-    file_name: Optional[str] = Field(
+    file_name: str | None = Field(
         None,
         description="The name of the file. It will be auto-generated if not provided.",
         examples=["z9RV14K95DvU.png"],
     )
-    file_size: Optional[int] = Field(
+    file_size: int | None = Field(
         None, description="The size of the file in bytes.", examples=[4404019]
     )
-    file_data: Optional[bytes] = Field(
+    file_data: bytes | None = Field(
         None,
         description="File data",
         exclude=True,
@@ -221,15 +223,16 @@ class File(BaseModel):
     def from_bytes(
         cls,
         data: bytes,
-        content_type: Optional[str] = None,
-        file_name: Optional[str] = None,
+        content_type: str | None = None,
+        file_name: str | None = None,
         repository: FileRepository | RepositoryId = DEFAULT_REPOSITORY,
-        fallback_repository: Optional[
-            FileRepository | RepositoryId | list[FileRepository | RepositoryId]
-        ] = FALLBACK_REPOSITORY,
-        request: Optional[Request] = None,
-        save_kwargs: Optional[dict] = None,
-        fallback_save_kwargs: Optional[dict] = None,
+        fallback_repository: FileRepository
+        | RepositoryId
+        | list[FileRepository | RepositoryId]
+        | None = FALLBACK_REPOSITORY,
+        request: Request | None = None,
+        save_kwargs: dict | None = None,
+        fallback_save_kwargs: dict | None = None,
     ) -> File:
         save_kwargs = save_kwargs or {}
         fallback_save_kwargs = fallback_save_kwargs or {}
@@ -271,15 +274,16 @@ class File(BaseModel):
     async def from_bytes_async(
         cls,
         data: bytes,
-        content_type: Optional[str] = None,
-        file_name: Optional[str] = None,
+        content_type: str | None = None,
+        file_name: str | None = None,
         repository: FileRepository | RepositoryId = DEFAULT_REPOSITORY,
-        fallback_repository: Optional[
-            FileRepository | RepositoryId | list[FileRepository | RepositoryId]
-        ] = FALLBACK_REPOSITORY,
-        request: Optional[Request] = None,
-        save_kwargs: Optional[dict] = None,
-        fallback_save_kwargs: Optional[dict] = None,
+        fallback_repository: FileRepository
+        | RepositoryId
+        | list[FileRepository | RepositoryId]
+        | None = FALLBACK_REPOSITORY,
+        request: Request | None = None,
+        save_kwargs: dict | None = None,
+        fallback_save_kwargs: dict | None = None,
     ) -> File:
         return await run_in_thread(
             cls.from_bytes,
@@ -297,15 +301,16 @@ class File(BaseModel):
     def from_path(
         cls,
         path: str | Path,
-        content_type: Optional[str] = None,
+        content_type: str | None = None,
         repository: FileRepository | RepositoryId = DEFAULT_REPOSITORY,
         multipart: bool | None = None,
-        fallback_repository: Optional[
-            FileRepository | RepositoryId | list[FileRepository | RepositoryId]
-        ] = FALLBACK_REPOSITORY,
-        request: Optional[Request] = None,
-        save_kwargs: Optional[dict] = None,
-        fallback_save_kwargs: Optional[dict] = None,
+        fallback_repository: FileRepository
+        | RepositoryId
+        | list[FileRepository | RepositoryId]
+        | None = FALLBACK_REPOSITORY,
+        request: Request | None = None,
+        save_kwargs: dict | None = None,
+        fallback_save_kwargs: dict | None = None,
     ) -> File:
         file_path = Path(path)
         if not file_path.exists():
@@ -357,15 +362,16 @@ class File(BaseModel):
     async def from_path_async(
         cls,
         path: str | Path,
-        content_type: Optional[str] = None,
+        content_type: str | None = None,
         repository: FileRepository | RepositoryId = DEFAULT_REPOSITORY,
         multipart: bool | None = None,
-        fallback_repository: Optional[
-            FileRepository | RepositoryId | list[FileRepository | RepositoryId]
-        ] = FALLBACK_REPOSITORY,
-        request: Optional[Request] = None,
-        save_kwargs: Optional[dict] = None,
-        fallback_save_kwargs: Optional[dict] = None,
+        fallback_repository: FileRepository
+        | RepositoryId
+        | list[FileRepository | RepositoryId]
+        | None = FALLBACK_REPOSITORY,
+        request: Request | None = None,
+        save_kwargs: dict | None = None,
+        fallback_save_kwargs: dict | None = None,
     ) -> File:
         return await run_in_thread(
             cls.from_path,
@@ -412,7 +418,7 @@ class File(BaseModel):
 
 
 class CompressedFile(File):
-    extract_dir: Optional[str] = Field(default=None, exclude=True, repr=False)
+    extract_dir: str | None = Field(default=None, exclude=True, repr=False)
 
     def __iter__(self):
         if not self.extract_dir:

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING
 
 from fal.sdk import AliasInfo, FalServerlessClient, RunnerInfo
 
@@ -14,9 +14,9 @@ if TYPE_CHECKING:
 def list_apps(
     client: SyncServerlessClient,
     *,
-    filter: Optional[str] = None,
-    environment_name: Optional[str] = None,
-) -> List[AliasInfo]:
+    filter: str | None = None,
+    environment_name: str | None = None,
+) -> list[AliasInfo]:
     with FalServerlessClient(client._grpc_host, client._credentials).connect() as conn:
         apps = conn.list_aliases(environment_name=environment_name)
 
@@ -29,10 +29,10 @@ def apps_runners(
     client: SyncServerlessClient,
     app_name: str,
     *,
-    since: Optional[datetime] = None,
-    state: Optional[list[str]] = None,
-    environment_name: Optional[str] = None,
-) -> List[RunnerInfo]:
+    since: datetime | None = None,
+    state: list[str] | None = None,
+    environment_name: str | None = None,
+) -> list[RunnerInfo]:
     with FalServerlessClient(client._grpc_host, client._credentials).connect() as conn:
         alias_runners = conn.list_alias_runners(
             alias=app_name, start_time=since, environment_name=environment_name

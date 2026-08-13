@@ -6,7 +6,6 @@ import os
 import posixpath
 import uuid
 from dataclasses import dataclass
-from typing import Optional
 
 from fal.toolkit.file.types import FileData, FileRepository
 from fal.toolkit.utils.retry import retry
@@ -60,7 +59,7 @@ class GoogleStorageRepository(FileRepository):
         multipart_threshold: int | None = None,
         multipart_chunk_size: int | None = None,
         multipart_max_concurrency: int | None = None,
-        object_lifecycle_preference: Optional[dict[str, str]] = None,
+        object_lifecycle_preference: dict[str, str] | None = None,
     ) -> str:
         destination_path = posixpath.join(
             self.folder,

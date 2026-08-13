@@ -1,5 +1,4 @@
 from functools import wraps
-from typing import Optional
 
 from pydantic import Field
 
@@ -11,7 +10,7 @@ from fal.toolkit.constraints import (
 from fal.toolkit.file.file import IS_PYDANTIC_V2, File
 
 
-def _merge_ui(schema: dict, ui: Optional[dict]) -> None:
+def _merge_ui(schema: dict, ui: dict | None) -> None:
     """Merge caller ``ui`` into a schema dict, defaulting ``ui.field`` to video."""
     schema_ui = schema.setdefault("ui", {})
     if ui:
@@ -22,10 +21,10 @@ def _merge_ui(schema: dict, ui: Optional[dict]) -> None:
 @wraps(Field)
 def VideoField(
     *args,
-    constraints: Optional[VideoValidationConfig] = None,
-    combined_constraints: Optional[VideoValidationConfig] = None,
-    normalization: Optional[VideoNormalizationConfig] = None,
-    ui: Optional[dict] = None,
+    constraints: VideoValidationConfig | None = None,
+    combined_constraints: VideoValidationConfig | None = None,
+    normalization: VideoNormalizationConfig | None = None,
+    ui: dict | None = None,
     **kwargs,
 ):
     """A ``Field`` for a video input that documents the videos it accepts.

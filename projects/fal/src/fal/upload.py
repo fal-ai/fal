@@ -4,8 +4,9 @@ import math
 import os
 import queue
 import time
+from collections.abc import Callable
 from threading import Lock, Thread
-from typing import Any, Callable, Dict, List, Optional, Tuple, cast
+from typing import Any, cast
 
 import httpx
 
@@ -28,8 +29,8 @@ class BaseMultipartUpload:
         self.client = client
         self.chunk_size = chunk_size
         self.max_concurrency = max_concurrency
-        self._upload_id: Optional[str] = None
-        self._parts: List[Dict[str, object]] = []
+        self._upload_id: str | None = None
+        self._parts: list[dict[str, object]] = []
         self._parts_lock = Lock()
 
     @property
@@ -51,13 +52,13 @@ class BaseMultipartUpload:
         raise NotImplementedError("Subclasses must implement complete_url")
 
     @property
-    def cancel_url(self) -> Optional[str]:
+    def cancel_url(self) -> str | None:
         return None
 
-    def get_initiate_payload(self) -> Optional[dict]:
+    def get_initiate_payload(self) -> dict | None:
         return None
 
-    def get_complete_payload(self, parts: List[Dict[str, object]]) -> dict:
+    def get_complete_payload(self, parts: list[dict[str, object]]) -> dict:
         return {"parts": parts}
 
     def _request(
@@ -132,7 +133,7 @@ class BaseMultipartUpload:
 
     def initiate(self) -> str:
         payload = self.get_initiate_payload()
-        kwargs: Dict[str, Any] = {"json": payload} if payload else {}
+        kwargs: dict[str, Any] = {"json": payload} if payload else {}
         response = self._request("POST", self.initiate_url, **kwargs)
         data = response.json()
         self._upload_id = data["upload_id"]
@@ -140,7 +141,7 @@ class BaseMultipartUpload:
 
     def _upload_part(
         self, part_number: int, data: bytes, filename: str = ""
-    ) -> Dict[str, object]:
+    ) -> dict[str, object]:
         file_name = filename or "chunk"
         response = self._request(
             "PUT",
@@ -176,7 +177,7 @@ class BaseMultipartUpload:
     def upload_file(
         self,
         file_path: str,
-        on_part_complete: Optional[Callable[[int], None]] = None,
+        on_part_complete: Callable[[int], None] | None = None,
     ) -> str:
         size = os.path.getsize(file_path)
 
@@ -205,10 +206,10 @@ class BaseMultipartUpload:
         except FileExistsError:
             return ""
 
-        chunk_queue: queue.Queue[Optional[Tuple[int, bytes]]] = queue.Queue(
+        chunk_queue: queue.Queue[tuple[int, bytes] | None] = queue.Queue(
             maxsize=self.max_concurrency * 2
         )
-        read_error: List[Exception] = []
+        read_error: list[Exception] = []
 
         def reader_thread():
             """Reads file chunks and puts them in bounded queue"""
@@ -291,13 +292,13 @@ class AppFileMultipartUpload(BaseMultipartUpload):
         return f"/files/app/multipart/{self.file_hash}/{self.upload_id}/complete"
 
     @property
-    def cancel_url(self) -> Optional[str]:
+    def cancel_url(self) -> str | None:
         return f"/files/app/multipart/{self.file_hash}/{self.upload_id}/cancel"
 
-    def get_initiate_payload(self) -> Optional[dict]:
+    def get_initiate_payload(self) -> dict | None:
         return self.metadata
 
-    def get_complete_payload(self, parts: List[Dict[str, object]]) -> dict:
+    def get_complete_payload(self, parts: list[dict[str, object]]) -> dict:
         return {
             "parts": parts,
             "metadata": self.metadata,
@@ -328,5 +329,5 @@ class DataFileMultipartUpload(BaseMultipartUpload):
         return f"/files/file/multipart/{self.target_path}/{self.upload_id}/complete"
 
     @property
-    def cancel_url(self) -> Optional[str]:
+    def cancel_url(self) -> str | None:
         return f"/files/file/multipart/{self.target_path}/{self.upload_id}/cancel"

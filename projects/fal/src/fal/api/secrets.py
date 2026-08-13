@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from fal.sdk import ServerlessSecret
@@ -28,7 +28,7 @@ def set_secret(
 
 def list_secrets(
     client: SyncServerlessClient, environment_name: str | None = None
-) -> List[ServerlessSecret]:
+) -> list[ServerlessSecret]:
     from fal.sdk import FalServerlessClient
 
     with FalServerlessClient(client._grpc_host, client._credentials).connect() as conn:

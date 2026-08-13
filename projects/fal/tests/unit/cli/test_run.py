@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import Optional, Tuple
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -154,7 +153,7 @@ _DEFAULT_FUNC = object()
 
 def mocked_loaded_function(
     *,
-    options: Optional[Options] = None,
+    options: Options | None = None,
     func=_DEFAULT_FUNC,
     app_name=None,
     app_auth=None,
@@ -174,16 +173,16 @@ def mocked_loaded_function(
 
 def mock_args(
     host,
-    func_ref: Tuple[str, Optional[str]],
-    team: Optional[str] = None,
+    func_ref: tuple[str, str | None],
+    team: str | None = None,
     no_cache: bool = False,
-    auth: Optional[str] = "public",
-    machine_type: Optional[str] = None,
+    auth: str | None = "public",
+    machine_type: str | None = None,
     forward_compat: bool = False,
-    limit_max_requests: Optional[int] = None,
+    limit_max_requests: int | None = None,
     local: bool = False,
-    exposed_port: Optional[int] = None,
-    exposed_metrics_port: Optional[int] = None,
+    exposed_port: int | None = None,
+    exposed_metrics_port: int | None = None,
 ):
     args = MagicMock()
     args.host = host

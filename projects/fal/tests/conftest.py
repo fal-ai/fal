@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import sys
 import uuid
+from collections.abc import Callable
 from functools import partial
-from typing import Callable
 
 import pytest
 

@@ -8,9 +8,9 @@ import subprocess
 import sys
 import textwrap
 import time
+from collections.abc import AsyncIterator, Iterator
 from contextlib import ExitStack
 from contextvars import ContextVar
-from typing import AsyncIterator, Iterator
 from unittest.mock import MagicMock, PropertyMock, patch
 
 import pytest
@@ -2139,8 +2139,9 @@ def test_app_files_configures_runtime_path_before_wrapped_app_serves(
 
     assert result == "remote-ok"
 
-    with patch("fal.api.api.include_app_files_path") as include_app_files_path, patch(
-        "fal.app.set_current_app"
+    with (
+        patch("fal.api.api.include_app_files_path") as include_app_files_path,
+        patch("fal.app.set_current_app"),
     ):
         assert asyncio.run(captured["partial_func"]()) == "served"
 

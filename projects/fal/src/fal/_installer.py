@@ -7,7 +7,6 @@ uv projects revert anything installed behind the lockfile's back.
 
 import os
 import sys
-from typing import Optional
 
 _PACKAGE = "fal"
 
@@ -19,7 +18,7 @@ _PIPX_MARKER = "pipx_metadata.json"
 _UV_TOOL_MARKER = "uv-receipt.toml"
 
 
-def _installer_from_disk(package: str) -> Optional[str]:
+def _installer_from_disk(package: str) -> str | None:
     """Read INSTALLER from the dist-info sitting next to this package.
 
     `importlib.metadata` resolves by name against `sys.path`, so a stale
@@ -47,7 +46,7 @@ def _installer_from_disk(package: str) -> Optional[str]:
     return None
 
 
-def _installer_from_metadata(package: str) -> Optional[str]:
+def _installer_from_metadata(package: str) -> str | None:
     from importlib.metadata import PackageNotFoundError, distribution
 
     try:
@@ -61,11 +60,11 @@ def _installer_from_metadata(package: str) -> Optional[str]:
     return installer.strip().lower()
 
 
-def _read_installer(package: str) -> Optional[str]:
+def _read_installer(package: str) -> str | None:
     return _installer_from_disk(package) or _installer_from_metadata(package)
 
 
-def _same_path(left: Optional[str], right: Optional[str]) -> bool:
+def _same_path(left: str | None, right: str | None) -> bool:
     if not left or not right:
         return False
 
@@ -78,7 +77,7 @@ def _same_path(left: Optional[str], right: Optional[str]) -> bool:
         )
 
 
-def _uv_project_root(prefix: str) -> Optional[str]:
+def _uv_project_root(prefix: str) -> str | None:
     """The nearest ancestor of this venv holding a `uv.lock`, if any."""
     current = os.path.dirname(os.path.abspath(prefix))
     while True:

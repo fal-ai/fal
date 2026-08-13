@@ -13,9 +13,8 @@ import warnings
 from collections.abc import AsyncIterator, Callable, Coroutine
 from concurrent.futures import Future
 from contextlib import asynccontextmanager
-from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional, Union
+from typing import TYPE_CHECKING, Any
 
 from fal.distributed.utils import (
     KeepAliveTimer,
@@ -154,7 +153,7 @@ class DistributedWorker:
             raise RuntimeError("Event loop is not running.")
         return asyncio.run_coroutine_threadsafe(coro, self.loop)
 
-    def shutdown(self, timeout: Optional[Union[int, float]] = None) -> None:
+    def shutdown(self, timeout: int | float | None = None) -> None:
         """
         Shutdown the event loop.
         :param timeout: The timeout for the shutdown.
@@ -166,16 +165,6 @@ class DistributedWorker:
 
         self.loop.call_soon_threadsafe(self.loop.stop)
         self.thread.join(timeout=timeout)
-
-    async def _run_sync_in_executor(
-        self,
-        func: Callable[..., Any],
-        *args: Any,
-        **kwargs: Any,
-    ) -> Any:
-        """Run a synchronous function in the executor."""
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, partial(func, *args, **kwargs))
 
     def run_in_worker(
         self,
@@ -189,9 +178,7 @@ class DistributedWorker:
         if inspect.iscoroutinefunction(func):
             coro = func(*args, **kwargs)
         else:
-            # Using in place of asyncio.to_thread
-            # since it's not available in Python 3.8
-            coro = self._run_sync_in_executor(func, *args, **kwargs)
+            coro = asyncio.to_thread(func, *args, **kwargs)
 
         return self.submit(coro)
 
@@ -223,9 +210,9 @@ class DistributedRunner:
     A class to launch and manage distributed workers.
     """
 
-    zmq_socket: Optional[Socket[Any]]
-    context: Optional[mp.ProcessContext]
-    keepalive_timer: Optional[KeepAliveTimer]
+    zmq_socket: Socket[Any] | None
+    context: mp.ProcessContext | None
+    keepalive_timer: KeepAliveTimer | None
     _lock: threading.Lock
 
     def __init__(
@@ -238,9 +225,9 @@ class DistributedRunner:
         worker_port: int = 54923,
         timeout: int = 86400,  # 24 hours
         keepalive_payload: dict[str, Any] = {},
-        keepalive_interval: Optional[Union[int, float]] = None,
-        cwd: Optional[Union[str, Path]] = None,
-        set_device: Optional[bool] = None,  # deprecated
+        keepalive_interval: int | float | None = None,
+        cwd: str | Path | None = None,
+        set_device: bool | None = None,  # deprecated
     ) -> None:
         self.worker_cls = worker_cls
         self.world_size = world_size
@@ -257,8 +244,8 @@ class DistributedRunner:
         self.keepalive_timer = None
         self._lock = threading.Lock()
         self._keepalive_shutdown = False
-        self._keepalive_loop: Optional[asyncio.AbstractEventLoop] = None
-        self._keepalive_loop_thread: Optional[threading.Thread] = None
+        self._keepalive_loop: asyncio.AbstractEventLoop | None = None
+        self._keepalive_loop_thread: threading.Thread | None = None
 
         if set_device is not None:
             warnings.warn("set_device is deprecated and will be removed in the future.")
@@ -291,7 +278,7 @@ class DistributedRunner:
                 return False
         return True
 
-    def _shutdown_keepalive(self, timeout: Union[int, float] = 10) -> None:
+    def _shutdown_keepalive(self, timeout: int | float = 10) -> None:
         """
         Cancel the keepalive timer and stop the persistent keepalive event loop.
         """
@@ -306,7 +293,7 @@ class DistributedRunner:
             self._keepalive_loop.close()
             self._keepalive_loop = None
 
-    def terminate(self, timeout: Union[int, float] = 10) -> None:
+    def terminate(self, timeout: int | float = 10) -> None:
         """
         Terminates the distributed worker processes.
         This method should be called to clean up the worker processes.
@@ -460,7 +447,7 @@ class DistributedRunner:
             assert isinstance(payload_dict, dict)
             payload_dict["streaming"] = True
             image_format = payload_dict.get("image_format", "jpeg")
-            encoded_response: Optional[bytes] = None
+            encoded_response: bytes | None = None
 
             try:
                 future = worker.run_in_worker(worker.__call__, **payload_dict)
@@ -642,7 +629,7 @@ class DistributedRunner:
             self._keepalive_loop_thread.start()
         return self._keepalive_loop
 
-    def keepalive(self, timeout: Optional[Union[int, float]] = 60.0) -> None:
+    def keepalive(self, timeout: int | float | None = 60.0) -> None:
         """
         Sends the keepalive payload to the worker.
         """
@@ -741,8 +728,8 @@ class DistributedRunner:
     async def stream(
         self,
         payload: dict[str, Any] = {},
-        timeout: Optional[int] = None,
-        streaming_timeout: Optional[int] = None,
+        timeout: int | None = None,
+        streaming_timeout: int | None = None,
         as_text_events: bool = False,
     ) -> AsyncIterator[Any]:
         """
@@ -762,8 +749,8 @@ class DistributedRunner:
     async def _stream(
         self,
         payload: dict[str, Any] = {},
-        timeout: Optional[int] = None,
-        streaming_timeout: Optional[int] = None,
+        timeout: int | None = None,
+        streaming_timeout: int | None = None,
         as_text_events: bool = False,
     ) -> AsyncIterator[Any]:
         import zmq
@@ -828,7 +815,7 @@ class DistributedRunner:
     async def invoke(
         self,
         payload: dict[str, Any] = {},
-        timeout: Optional[int] = None,
+        timeout: int | None = None,
     ) -> Any:
         """
         Invokes the distributed worker with the given payload.
@@ -843,7 +830,7 @@ class DistributedRunner:
     async def _invoke(
         self,
         payload: dict[str, Any],
-        timeout: Optional[int],
+        timeout: int | None,
     ) -> Any:
         import zmq
 
@@ -895,9 +882,9 @@ class DistributedRunner:
 
     async def __aexit__(
         self,
-        exc_type: Optional[type[BaseException]],
-        exc_value: Optional[BaseException],
-        exc_traceback: Optional[traceback.StackSummary],
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        exc_traceback: traceback.StackSummary | None,
     ) -> None:
         """
         Exit the context manager.

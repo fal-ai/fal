@@ -19,9 +19,10 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, List, Optional, Tuple, Union
+from typing import Any
 
 from fal.project import _load_toml
 
@@ -42,7 +43,7 @@ _EXTRAS_SUFFIX_RE = re.compile(r"(?P<extras>\[[^\]]+\])$")
 
 EXPIRATION_DURATION_SECONDS = 60 * 60
 
-Requirements = Union[List[str], List[List[str]]]
+Requirements = list[str] | list[list[str]]
 
 
 @dataclass(frozen=True)
@@ -51,7 +52,7 @@ class _LocalPathRequirement:
     extras: str = ""
 
 
-def has_local_path(requirements: Any, project_root: Union[str, Path]) -> bool:
+def has_local_path(requirements: Any, project_root: str | Path) -> bool:
     """True if ``requirements`` contains a local path entry.
 
     Requirement strings are resolved relative to ``project_root``; if the path
@@ -71,8 +72,8 @@ def has_local_path(requirements: Any, project_root: Union[str, Path]) -> bool:
 
 def materialize_local_paths(
     requirements: Requirements,
-    project_root: Union[str, Path],
-    on_progress: Optional[ProgressCallback] = None,
+    project_root: str | Path,
+    on_progress: ProgressCallback | None = None,
 ) -> Requirements:
     """Rewrite local path entries to ``<package> @ <url>``.
 
@@ -97,7 +98,7 @@ def _walk_and_rewrite(
     requirements: Requirements,
     project_root: Path,
     resolved_sdists: dict[Path, tuple[str, str]],
-    on_progress: Optional[ProgressCallback],
+    on_progress: ProgressCallback | None,
 ) -> Requirements:
     out: list = []
     for item in requirements:
@@ -116,7 +117,7 @@ def _rewrite_one(
     req: str,
     project_root: Path,
     resolved_sdists: dict[Path, tuple[str, str]],
-    on_progress: Optional[ProgressCallback],
+    on_progress: ProgressCallback | None,
 ) -> str:
     local_path_req = _parse_local_path_requirement(req, project_root)
     if local_path_req is None:
@@ -134,7 +135,7 @@ def _rewrite_one(
 
 def _parse_local_path_requirement(
     req: str, project_root: Path
-) -> Optional[_LocalPathRequirement]:
+) -> _LocalPathRequirement | None:
     req = req.strip()
     if not req:
         return None
@@ -164,8 +165,8 @@ def _resolve_path(path: str, project_root: Path) -> Path:
 
 def _resolve_sdist_url(
     project_root: Path,
-    on_progress: Optional[ProgressCallback] = None,
-) -> Tuple[str, str]:
+    on_progress: ProgressCallback | None = None,
+) -> tuple[str, str]:
     def _emit(event: str, **payload: Any) -> None:
         if on_progress is not None:
             on_progress(event, payload)

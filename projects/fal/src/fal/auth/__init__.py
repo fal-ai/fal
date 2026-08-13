@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from threading import Lock
-from typing import Optional
 
 from fal.auth import auth0, local
 from fal.config import Config
@@ -15,7 +14,7 @@ class GoogleColabState:
     def __init__(self):
         self.is_checked = False
         self.lock = Lock()
-        self.secret: Optional[str] = None
+        self.secret: str | None = None
 
     def __getstate__(self):
         state = self.__dict__.copy()
@@ -41,7 +40,7 @@ def is_google_colab() -> bool:
         return False
 
 
-def get_colab_token() -> Optional[str]:
+def get_colab_token() -> str | None:
     if not is_google_colab():
         return None
     with _colab_state.lock:

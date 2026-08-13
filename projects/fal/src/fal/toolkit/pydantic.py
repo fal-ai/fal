@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import warnings
-from typing import Any, ClassVar, List, Set, TypeVar
+from typing import Any, ClassVar, TypeVar
 
 import pydantic
 from pydantic import BaseModel, Field
@@ -125,7 +125,7 @@ def _apply_schema_modifications(schema: dict[str, Any], model: type) -> None:
     properties = schema.get("properties", {})
 
     # Apply SCHEMA_IGNORES: set ui.hidden = True
-    schema_ignores: Set[str] = getattr(model, "SCHEMA_IGNORES", set())
+    schema_ignores: set[str] = getattr(model, "SCHEMA_IGNORES", set())
 
     # Set ui.hidden = True for hidden fields and fields in SCHEMA_IGNORES
     if IS_PYDANTIC_V2:
@@ -174,8 +174,8 @@ class FalBaseModel(BaseModel):
             debug_mode: bool = Hidden(Field(default=False))
     """
 
-    SCHEMA_IGNORES: ClassVar[Set[str]] = set()
-    FIELD_ORDERS: ClassVar[List[str]] = []
+    SCHEMA_IGNORES: ClassVar[set[str]] = set()
+    FIELD_ORDERS: ClassVar[list[str]] = []
 
     if IS_PYDANTIC_V2:
         # Pydantic v2: Use model_config and model_validator

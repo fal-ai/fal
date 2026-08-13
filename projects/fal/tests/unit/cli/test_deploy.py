@@ -1,6 +1,5 @@
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Optional, Tuple
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -615,16 +614,16 @@ def _default_requirements_context_dir() -> str:
 
 
 def mock_args(
-    app_ref: Tuple[str, Optional[str]],
-    app_name: Optional[str] = None,
-    auth: Optional[str] = None,
-    strategy: Optional[str] = None,
+    app_ref: tuple[str, str | None],
+    app_name: str | None = None,
+    auth: str | None = None,
+    strategy: str | None = None,
     reset_scale: bool = False,
-    team: Optional[str] = None,
+    team: str | None = None,
     no_cache: bool = False,
-    env: Optional[str] = None,
-    message: Optional[str] = None,
-    annotation: Optional[list] = None,
+    env: str | None = None,
+    message: str | None = None,
+    annotation: list | None = None,
 ):
     args = MagicMock()
 
@@ -2414,7 +2413,7 @@ def _prepared_deployment(
     *,
     reset_scale: bool,
     auth: str = "public",
-    host_options: Optional[dict] = None,
+    host_options: dict | None = None,
 ):
     return SimpleNamespace(
         loaded=SimpleNamespace(

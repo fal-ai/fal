@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Any, Dict, Iterator, List, Optional
+from typing import Any
 
 SETTINGS_SECTION = "__internal__"
 
@@ -12,15 +13,13 @@ NO_PROFILE_ERROR = ValueError(
 
 
 class Config:
-    _config: Dict[str, Any]
-    _profile: Optional[str]
+    _config: dict[str, Any]
+    _profile: str | None
     _editing: bool = False
 
     DEFAULT_CONFIG_PATH = "~/.fal/config.toml"
 
-    def __init__(
-        self, *, validate_profile: bool = False, profile: Optional[str] = None
-    ):
+    def __init__(self, *, validate_profile: bool = False, profile: str | None = None):
         import tomli  # noqa: PLC0415
 
         self.config_path = os.path.expanduser(
@@ -50,11 +49,11 @@ class Config:
             raise NO_PROFILE_ERROR
 
     @property
-    def profile(self) -> Optional[str]:
+    def profile(self) -> str | None:
         return self._profile
 
     @profile.setter
-    def profile(self, value: Optional[str]) -> None:
+    def profile(self, value: str | None) -> None:
         if value and value not in self.profiles():
             # Don't automatically create profiles - they should be created explicitly
             raise ValueError(
@@ -65,8 +64,8 @@ class Config:
 
         self._profile = value
 
-    def profiles(self) -> List[str]:
-        keys: List[str] = []
+    def profiles(self) -> list[str]:
+        keys: list[str] = []
         for key, value in self._config.items():
             if key != SETTINGS_SECTION and isinstance(value, dict):
                 keys.append(key)
@@ -79,7 +78,7 @@ class Config:
         with open(self.config_path, "wb") as file:
             tomli_w.dump(self._config, file)
 
-    def get(self, key: str) -> Optional[str]:
+    def get(self, key: str) -> str | None:
         if not self.profile:
             return None
 
@@ -97,16 +96,16 @@ class Config:
 
         self._config.get(self.profile, {}).pop(key, None)
 
-    def get_internal(self, key: str) -> Optional[str]:
+    def get_internal(self, key: str) -> str | None:
         if SETTINGS_SECTION not in self._config:
             self._config[SETTINGS_SECTION] = {}
 
         return self._config[SETTINGS_SECTION].get(key)
 
-    def get_global(self, key: str) -> Optional[Any]:
+    def get_global(self, key: str) -> Any | None:
         return self._config.get(key)
 
-    def set_internal(self, key: str, value: Optional[str]) -> None:
+    def set_internal(self, key: str, value: str | None) -> None:
         if SETTINGS_SECTION not in self._config:
             self._config[SETTINGS_SECTION] = {}
 

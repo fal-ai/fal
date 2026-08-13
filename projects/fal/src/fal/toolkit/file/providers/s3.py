@@ -5,7 +5,6 @@ import posixpath
 import uuid
 from dataclasses import dataclass
 from io import BytesIO
-from typing import Optional
 
 from fal.toolkit.file.types import FileData, FileRepository
 from fal.toolkit.utils.retry import retry
@@ -61,8 +60,8 @@ class S3Repository(FileRepository):
         multipart_threshold: int | None = None,
         multipart_chunk_size: int | None = None,
         multipart_max_concurrency: int | None = None,
-        object_lifecycle_preference: Optional[dict[str, str]] = None,
-        key: Optional[str] = None,
+        object_lifecycle_preference: dict[str, str] | None = None,
+        key: str | None = None,
     ) -> str:
         destination_path = posixpath.join(
             key or "",

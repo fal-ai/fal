@@ -186,12 +186,9 @@ def test_function_exception(isolated_client):
 
 @pytest.mark.xfail(reason="See https://github.com/fal-ai/fal/issues/169")
 def test_function_calling_other_function(isolated_client):
-    try:
-        import importlib.metadata as importlib_metadata
-    except ImportError:
-        import importlib_metadata
+    import importlib.metadata
 
-    package_version = importlib_metadata.version(PACKAGE_NAME)
+    package_version = importlib.metadata.version(PACKAGE_NAME)
 
     @isolated_client("virtualenv")
     def regular_function():

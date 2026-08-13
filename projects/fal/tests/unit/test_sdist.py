@@ -97,9 +97,10 @@ def test_rewrite_one_passthrough(tmp_path):
 
 def test_materialize_noop_when_no_local_path(tmp_path):
     """No build/upload triggered when no `.` in requirements."""
-    with patch.object(_sdist, "_build_sdist") as build, patch.object(
-        _sdist, "_upload_sdist"
-    ) as upload:
+    with (
+        patch.object(_sdist, "_build_sdist") as build,
+        patch.object(_sdist, "_upload_sdist") as upload,
+    ):
         out = _sdist.materialize_local_paths(["fal", "numpy"], tmp_path)
     assert out == ["fal", "numpy"]
     build.assert_not_called()
@@ -114,9 +115,13 @@ def test_materialize_rewrites_flat_list(tmp_path):
     fake_sdist.parent.mkdir()
     fake_sdist.write_bytes(b"fake-sdist-bytes")
 
-    with patch.object(_sdist, "_build_sdist", return_value=fake_sdist) as build, patch(
-        "fal.api._sdist._upload_sdist", return_value="https://cdn/simple-0.1.0.tar.gz"
-    ) as upload:
+    with (
+        patch.object(_sdist, "_build_sdist", return_value=fake_sdist) as build,
+        patch(
+            "fal.api._sdist._upload_sdist",
+            return_value="https://cdn/simple-0.1.0.tar.gz",
+        ) as upload,
+    ):
         out = _sdist.materialize_local_paths(["fal", ".[func]", "numpy"], tmp_path)
 
     assert out == [
@@ -138,8 +143,12 @@ def test_materialize_rewrites_relative_project_path(tmp_path):
     fake_sdist.parent.mkdir()
     fake_sdist.write_bytes(b"fake-sdist-bytes")
 
-    with patch.object(_sdist, "_build_sdist", return_value=fake_sdist) as build, patch(
-        "fal.api._sdist._upload_sdist", return_value="https://cdn/common-0.1.0.tar.gz"
+    with (
+        patch.object(_sdist, "_build_sdist", return_value=fake_sdist) as build,
+        patch(
+            "fal.api._sdist._upload_sdist",
+            return_value="https://cdn/common-0.1.0.tar.gz",
+        ),
     ):
         out = _sdist.materialize_local_paths(
             ["fal", "./packages/common[func]"], tmp_path
@@ -162,8 +171,12 @@ def test_materialize_rewrites_bare_local_project_dir(tmp_path):
     fake_sdist.parent.mkdir()
     fake_sdist.write_bytes(b"fake-sdist-bytes")
 
-    with patch.object(_sdist, "_build_sdist", return_value=fake_sdist), patch(
-        "fal.api._sdist._upload_sdist", return_value="https://cdn/common-0.1.0.tar.gz"
+    with (
+        patch.object(_sdist, "_build_sdist", return_value=fake_sdist),
+        patch(
+            "fal.api._sdist._upload_sdist",
+            return_value="https://cdn/common-0.1.0.tar.gz",
+        ),
     ):
         out = _sdist.materialize_local_paths(["common[func]"], tmp_path)
 
@@ -195,11 +208,14 @@ def test_materialize_rewrites_multiple_local_project_paths(tmp_path):
     fake_sdist_a.write_bytes(b"fake-sdist-a")
     fake_sdist_b.write_bytes(b"fake-sdist-b")
 
-    with patch.object(
-        _sdist, "_build_sdist", side_effect=[fake_sdist_a, fake_sdist_b]
-    ) as build, patch(
-        "fal.api._sdist._upload_sdist",
-        side_effect=["https://cdn/package-a.tgz", "https://cdn/package-b.tgz"],
+    with (
+        patch.object(
+            _sdist, "_build_sdist", side_effect=[fake_sdist_a, fake_sdist_b]
+        ) as build,
+        patch(
+            "fal.api._sdist._upload_sdist",
+            side_effect=["https://cdn/package-a.tgz", "https://cdn/package-b.tgz"],
+        ),
     ):
         out = _sdist.materialize_local_paths(
             ["./packages/package_a[api]", "./packages/package_b"], tmp_path
@@ -223,8 +239,9 @@ def test_materialize_reuses_sdist_for_same_local_project_path(tmp_path):
     fake_sdist.parent.mkdir()
     fake_sdist.write_bytes(b"fake-sdist-bytes")
 
-    with patch.object(_sdist, "_build_sdist", return_value=fake_sdist) as build, patch(
-        "fal.api._sdist._upload_sdist", return_value="https://cdn/common.tgz"
+    with (
+        patch.object(_sdist, "_build_sdist", return_value=fake_sdist) as build,
+        patch("fal.api._sdist._upload_sdist", return_value="https://cdn/common.tgz"),
     ):
         out = _sdist.materialize_local_paths(
             ["./packages/common[api]", "./packages/common[worker]"], tmp_path
@@ -248,8 +265,9 @@ def test_materialize_reuses_sdist_without_duplicate_progress_events(tmp_path):
     fake_sdist.write_bytes(b"fake-sdist-bytes")
     events: list[tuple[str, dict]] = []
 
-    with patch.object(_sdist, "_build_sdist", return_value=fake_sdist) as build, patch(
-        "fal.api._sdist._upload_sdist", return_value="https://cdn/common.tgz"
+    with (
+        patch.object(_sdist, "_build_sdist", return_value=fake_sdist) as build,
+        patch("fal.api._sdist._upload_sdist", return_value="https://cdn/common.tgz"),
     ):
         out = _sdist.materialize_local_paths(
             ["./packages/common[api]", "./packages/common[worker]"],
@@ -271,9 +289,10 @@ def test_materialize_reuses_sdist_without_duplicate_progress_events(tmp_path):
 
 
 def test_materialize_missing_local_project_path_passthrough(tmp_path):
-    with patch.object(_sdist, "_build_sdist") as build, patch.object(
-        _sdist, "_upload_sdist"
-    ) as upload:
+    with (
+        patch.object(_sdist, "_build_sdist") as build,
+        patch.object(_sdist, "_upload_sdist") as upload,
+    ):
         out = _sdist.materialize_local_paths(["./missing"], tmp_path)
 
     assert out == ["./missing"]
@@ -289,8 +308,9 @@ def test_materialize_preserves_layered_shape(tmp_path):
     fake_sdist.parent.mkdir()
     fake_sdist.write_bytes(b"fake-sdist-bytes")
 
-    with patch.object(_sdist, "_build_sdist", return_value=fake_sdist), patch(
-        "fal.api._sdist._upload_sdist", return_value="https://cdn/simple.tgz"
+    with (
+        patch.object(_sdist, "_build_sdist", return_value=fake_sdist),
+        patch("fal.api._sdist._upload_sdist", return_value="https://cdn/simple.tgz"),
     ):
         out = _sdist.materialize_local_paths([["fal"], [".", "numpy"]], tmp_path)
 
@@ -311,10 +331,13 @@ def test_materialize_reuploads_each_time(tmp_path):
         fake_sdist.write_bytes(b"sdist-bytes")
         return fake_sdist
 
-    with patch.object(_sdist, "_build_sdist", side_effect=build_sdist) as build, patch(
-        "fal.api._sdist._upload_sdist",
-        side_effect=["https://cdn/simple-1.tgz", "https://cdn/simple-2.tgz"],
-    ) as upload:
+    with (
+        patch.object(_sdist, "_build_sdist", side_effect=build_sdist) as build,
+        patch(
+            "fal.api._sdist._upload_sdist",
+            side_effect=["https://cdn/simple-1.tgz", "https://cdn/simple-2.tgz"],
+        ) as upload,
+    ):
         first = _sdist.materialize_local_paths([".[func]"], tmp_path)
         second = _sdist.materialize_local_paths([".[app]"], tmp_path)
 
@@ -335,8 +358,9 @@ def test_materialize_progress_events(tmp_path):
 
     events: list[tuple[str, dict]] = []
 
-    with patch.object(_sdist, "_build_sdist", return_value=fake_sdist), patch(
-        "fal.api._sdist._upload_sdist", return_value="https://cdn/simple.tgz"
+    with (
+        patch.object(_sdist, "_build_sdist", return_value=fake_sdist),
+        patch("fal.api._sdist._upload_sdist", return_value="https://cdn/simple.tgz"),
     ):
         _sdist.materialize_local_paths(
             [".[func]"], tmp_path, on_progress=lambda e, p: events.append((e, p))
@@ -368,9 +392,12 @@ def test_materialize_progress_repeats_after_previous_call(tmp_path):
         fake_sdist.write_bytes(b"x")
         return fake_sdist
 
-    with patch.object(_sdist, "_build_sdist", side_effect=build_sdist), patch(
-        "fal.api._sdist._upload_sdist",
-        side_effect=["https://cdn/simple-1.tgz", "https://cdn/simple-2.tgz"],
+    with (
+        patch.object(_sdist, "_build_sdist", side_effect=build_sdist),
+        patch(
+            "fal.api._sdist._upload_sdist",
+            side_effect=["https://cdn/simple-1.tgz", "https://cdn/simple-2.tgz"],
+        ),
     ):
         _sdist.materialize_local_paths([".[func]"], tmp_path)
         events: list[tuple[str, dict]] = []
@@ -428,9 +455,10 @@ def test_build_sdist_nonzero_exit_raises_and_cleans_up(tmp_path):
         return d
 
     fake_result = type("R", (), {"returncode": 1})()
-    with patch.object(
-        _sdist.tempfile, "mkdtemp", side_effect=_tracking_mkdtemp
-    ), patch.object(_sdist.subprocess, "run", return_value=fake_result):
+    with (
+        patch.object(_sdist.tempfile, "mkdtemp", side_effect=_tracking_mkdtemp),
+        patch.object(_sdist.subprocess, "run", return_value=fake_result),
+    ):
         with pytest.raises(RuntimeError, match=r"sdist build .* failed"):
             _sdist._build_sdist(tmp_path)
 
@@ -451,9 +479,10 @@ def test_build_sdist_missing_artefact_raises_and_cleans_up(tmp_path):
         return d
 
     fake_result = type("R", (), {"returncode": 0})()
-    with patch.object(
-        _sdist.tempfile, "mkdtemp", side_effect=_tracking_mkdtemp
-    ), patch.object(_sdist.subprocess, "run", return_value=fake_result):
+    with (
+        patch.object(_sdist.tempfile, "mkdtemp", side_effect=_tracking_mkdtemp),
+        patch.object(_sdist.subprocess, "run", return_value=fake_result),
+    ):
         with pytest.raises(RuntimeError, match="expected exactly one"):
             _sdist._build_sdist(tmp_path)
 

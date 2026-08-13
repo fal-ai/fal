@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, List
 
 from fal.api import FAL_SERVERLESS_DEFAULT_URL, FalServerlessHost
 from fal.sdk import (
@@ -388,10 +388,10 @@ class SyncServerlessClient:
         - client.deploy()  - corresponds to `fal deploy ...`
     """
 
-    host: Optional[str] = None
-    api_key: Optional[str] = None
-    profile: Optional[str] = None
-    team: Optional[str] = None
+    host: str | None = None
+    api_key: str | None = None
+    profile: str | None = None
+    team: str | None = None
 
     def __post_init__(self) -> None:
         self.apps = AppsNamespace(self)

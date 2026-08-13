@@ -139,7 +139,7 @@ def _collect_proto_imports(
     return known_imports
 
 
-# Use Python3.9 and pip install mypy-protobuf, grpcio-tools and refactor
+# Use Python 3.10+ and install mypy-protobuf, grpcio-tools, and refactor
 # first.
 def main() -> None:
     parser = ArgumentParser()

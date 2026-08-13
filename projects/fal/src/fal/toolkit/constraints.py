@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
-from typing import Any, Optional, TypedDict
+from typing import Any, TypedDict
 
 # Runtime settings (download/processing), not client-checkable limits, so they
 # are never emitted in the ``x-fal`` schema extension.
@@ -42,7 +42,7 @@ def _validate_bounds(config: Any) -> None:
 
 
 def _validate_aspect_ratio_pair(
-    min_aspect_ratio: Optional[float], max_aspect_ratio: Optional[float]
+    min_aspect_ratio: float | None, max_aspect_ratio: float | None
 ) -> None:
     # A single bound is ambiguous since aspect ratio can be read either way.
     if (min_aspect_ratio is None) != (max_aspect_ratio is None):
@@ -61,15 +61,15 @@ class ImageSizeConstraints:
     documentation hints and are not enforced by the SDK.
     """
 
-    min_width: Optional[int] = None
-    min_height: Optional[int] = None
-    max_width: Optional[int] = None
-    max_height: Optional[int] = None
-    min_area: Optional[int] = None
-    max_area: Optional[int] = None
-    multiple_of: Optional[int] = None
-    min_aspect_ratio: Optional[float] = None
-    max_aspect_ratio: Optional[float] = None
+    min_width: int | None = None
+    min_height: int | None = None
+    max_width: int | None = None
+    max_height: int | None = None
+    min_area: int | None = None
+    max_area: int | None = None
+    multiple_of: int | None = None
+    min_aspect_ratio: float | None = None
+    max_aspect_ratio: float | None = None
 
     def __post_init__(self) -> None:
         _validate_bounds(self)
@@ -79,14 +79,14 @@ class ImageSizeConstraints:
 class ImageValidationOptions(TypedDict, total=False):
     """Validation options accepted by input-image helpers."""
 
-    max_file_size: Optional[int]
-    min_width: Optional[int]
-    min_height: Optional[int]
-    max_width: Optional[int]
-    max_height: Optional[int]
-    min_aspect_ratio: Optional[float]
-    max_aspect_ratio: Optional[float]
-    timeout: Optional[float]
+    max_file_size: int | None
+    min_width: int | None
+    min_height: int | None
+    max_width: int | None
+    max_height: int | None
+    min_aspect_ratio: float | None
+    max_aspect_ratio: float | None
+    timeout: float | None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -94,13 +94,13 @@ class ImageValidationConfig:
     """Limits applied to an input image. Surfaced in the schema (``x-fal``); the
     SDK does not enforce them."""
 
-    max_file_size: Optional[int] = None
-    min_width: Optional[int] = None
-    min_height: Optional[int] = None
-    max_width: Optional[int] = None
-    max_height: Optional[int] = None
-    min_aspect_ratio: Optional[float] = None
-    max_aspect_ratio: Optional[float] = None
+    max_file_size: int | None = None
+    min_width: int | None = None
+    min_height: int | None = None
+    max_width: int | None = None
+    max_height: int | None = None
+    min_aspect_ratio: float | None = None
+    max_aspect_ratio: float | None = None
     timeout: float = 20.0
 
     def __post_init__(self) -> None:
@@ -111,21 +111,21 @@ class ImageValidationConfig:
 class VideoValidationOptions(TypedDict, total=False):
     """Validation options accepted by input-video helpers."""
 
-    max_file_size: Optional[int]
-    min_width: Optional[int]
-    min_height: Optional[int]
-    max_width: Optional[int]
-    max_height: Optional[int]
-    min_area: Optional[int]
-    max_area: Optional[int]
-    min_aspect_ratio: Optional[float]
-    max_aspect_ratio: Optional[float]
-    min_frames: Optional[int]
-    max_frames: Optional[int]
-    min_duration: Optional[float]
-    max_duration: Optional[float]
-    min_fps: Optional[float]
-    max_fps: Optional[float]
+    max_file_size: int | None
+    min_width: int | None
+    min_height: int | None
+    max_width: int | None
+    max_height: int | None
+    min_area: int | None
+    max_area: int | None
+    min_aspect_ratio: float | None
+    max_aspect_ratio: float | None
+    min_frames: int | None
+    max_frames: int | None
+    min_duration: float | None
+    max_duration: float | None
+    min_fps: float | None
+    max_fps: float | None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -139,21 +139,21 @@ class VideoValidationConfig:
     such as the download timeout belong to the downloader, not here.
     """
 
-    max_file_size: Optional[int] = None
-    min_width: Optional[int] = None
-    min_height: Optional[int] = None
-    max_width: Optional[int] = None
-    max_height: Optional[int] = None
-    min_area: Optional[int] = None
-    max_area: Optional[int] = None
-    min_aspect_ratio: Optional[float] = None
-    max_aspect_ratio: Optional[float] = None
-    min_frames: Optional[int] = None
-    max_frames: Optional[int] = None
-    min_duration: Optional[float] = None
-    max_duration: Optional[float] = None
-    min_fps: Optional[float] = None
-    max_fps: Optional[float] = None
+    max_file_size: int | None = None
+    min_width: int | None = None
+    min_height: int | None = None
+    max_width: int | None = None
+    max_height: int | None = None
+    min_area: int | None = None
+    max_area: int | None = None
+    min_aspect_ratio: float | None = None
+    max_aspect_ratio: float | None = None
+    min_frames: int | None = None
+    max_frames: int | None = None
+    min_duration: float | None = None
+    max_duration: float | None = None
+    min_fps: float | None = None
+    max_fps: float | None = None
 
     def __post_init__(self) -> None:
         _validate_bounds(self)
@@ -170,14 +170,14 @@ class VideoNormalizationConfig:
     about what will change ("trimmed to 15s"). Areas are per frame, in pixels.
     """
 
-    min_width: Optional[int] = None
-    min_height: Optional[int] = None
-    max_width: Optional[int] = None
-    max_height: Optional[int] = None
-    min_area: Optional[int] = None
-    max_area: Optional[int] = None
-    max_duration: Optional[float] = None
-    fps: Optional[float] = None
+    min_width: int | None = None
+    min_height: int | None = None
+    max_width: int | None = None
+    max_height: int | None = None
+    min_area: int | None = None
+    max_area: int | None = None
+    max_duration: float | None = None
+    fps: float | None = None
 
     def __post_init__(self) -> None:
         _validate_bounds(self)

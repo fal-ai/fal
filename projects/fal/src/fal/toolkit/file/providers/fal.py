@@ -5,12 +5,13 @@ import math
 import os
 import threading
 from base64 import b64encode
+from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from functools import partial
 from pathlib import Path
-from typing import Any, Dict, Generator, Generic, TypeVar
+from typing import Any, Generic, TypeVar
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse, urlunparse
 from urllib.request import Request, urlopen
@@ -558,7 +559,7 @@ class FalFileRepository(FalFileRepositoryBase):
                 object_lifecycle_preference=object_lifecycle_preference,
             )
 
-        headers: Dict[str, str] = {}
+        headers: dict[str, str] = {}
         _object_lifecycle_headers(headers, object_lifecycle_preference)
 
         return self._save(file, "gcs", headers=headers)

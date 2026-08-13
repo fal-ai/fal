@@ -178,8 +178,9 @@ def test_repository_auth_headers_include_cdn_token(repo_cls, token_manager, toke
     cdn_token = "test-cdn-token"
     fake_app = _create_fake_app_with_cdn_token(cdn_token)
 
-    with patch.object(token_manager, "get_token", return_value=token), patch.object(
-        providers, "get_current_app", return_value=fake_app
+    with (
+        patch.object(token_manager, "get_token", return_value=token),
+        patch.object(providers, "get_current_app", return_value=fake_app),
     ):
         repo = repo_cls()
         headers = repo.auth_headers
@@ -218,8 +219,9 @@ def test_repository_auth_headers_no_cdn_token_when_not_present(
     repo_cls, token_manager, token
 ):
     """Repository auth_headers should not include CDN token when not present."""
-    with patch.object(token_manager, "get_token", return_value=token), patch.object(
-        providers, "get_current_app", return_value=None
+    with (
+        patch.object(token_manager, "get_token", return_value=token),
+        patch.object(providers, "get_current_app", return_value=None),
     ):
         repo = repo_cls()
         headers = repo.auth_headers
@@ -234,11 +236,14 @@ def test_fal_file_repository_v3_auth_headers_include_cdn_token():
     cdn_token = "test-cdn-token"
     fake_app = _create_fake_app_with_cdn_token(cdn_token)
 
-    with patch.object(
-        providers,
-        "fetch_auth_credentials",
-        return_value=AuthCredentials("Key", "key_id:key_secret"),
-    ), patch.object(providers, "get_current_app", return_value=fake_app):
+    with (
+        patch.object(
+            providers,
+            "fetch_auth_credentials",
+            return_value=AuthCredentials("Key", "key_id:key_secret"),
+        ),
+        patch.object(providers, "get_current_app", return_value=fake_app),
+    ):
         repo = providers.FalFileRepositoryV3()
         headers = repo.auth_headers
 
@@ -252,11 +257,14 @@ def test_multipart_upload_v3_auth_headers_include_cdn_token():
     cdn_token = "test-cdn-token"
     fake_app = _create_fake_app_with_cdn_token(cdn_token)
 
-    with patch.object(
-        providers,
-        "fetch_auth_credentials",
-        return_value=AuthCredentials("Key", "key_id:key_secret"),
-    ), patch.object(providers, "get_current_app", return_value=fake_app):
+    with (
+        patch.object(
+            providers,
+            "fetch_auth_credentials",
+            return_value=AuthCredentials("Key", "key_id:key_secret"),
+        ),
+        patch.object(providers, "get_current_app", return_value=fake_app),
+    ):
         multipart = providers.MultipartUploadV3("test.txt")
         headers = multipart.auth_headers
 
@@ -267,11 +275,14 @@ def test_multipart_upload_v3_auth_headers_include_cdn_token():
 
 def test_fal_file_repository_v3_auth_headers_with_bearer_credentials():
     """FalFileRepositoryV3 forwards a bearer token verbatim as `Bearer <jwt>`."""
-    with patch.object(
-        providers,
-        "fetch_auth_credentials",
-        return_value=AuthCredentials("Bearer", "jwt-token"),
-    ), patch.object(providers, "get_current_app", return_value=None):
+    with (
+        patch.object(
+            providers,
+            "fetch_auth_credentials",
+            return_value=AuthCredentials("Bearer", "jwt-token"),
+        ),
+        patch.object(providers, "get_current_app", return_value=None),
+    ):
         repo = providers.FalFileRepositoryV3()
         headers = repo.auth_headers
 
@@ -289,9 +300,10 @@ def test_internal_multipart_upload_v3_auth_headers_include_cdn_token():
         expires_at=datetime.now(timezone.utc),
     )
 
-    with patch.object(
-        providers.fal_v3_token_manager, "get_token", return_value=token
-    ), patch.object(providers, "get_current_app", return_value=fake_app):
+    with (
+        patch.object(providers.fal_v3_token_manager, "get_token", return_value=token),
+        patch.object(providers, "get_current_app", return_value=fake_app),
+    ):
         multipart = providers.InternalMultipartUploadV3("test.txt")
         headers = multipart.auth_headers
 

@@ -5,7 +5,8 @@ import re
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Pattern, Tuple
+from re import Pattern
+from typing import TYPE_CHECKING, Any
 
 import httpx
 from rich.tree import Tree
@@ -34,15 +35,15 @@ WINDOWS_PATHS = os.name == "nt"
 
 @dataclass
 class FileSyncOptions:
-    files_list: List[str]
-    files_ignore: List[Pattern]
-    files_context_dir: Optional[str]
+    files_list: list[str]
+    files_ignore: list[Pattern]
+    files_context_dir: str | None
 
     @classmethod
     def from_options(cls, options: "Options") -> "FileSyncOptions":
         # Container files
         if options.environment.get("kind") == "container":
-            image_dict: Dict[str, Any] = options.environment.get("image", {})
+            image_dict: dict[str, Any] = options.environment.get("image", {})
             files_list = image_dict.get("docker_files_list", [])
             files_ignore = image_dict.get("docker_ignore", [])
             files_context_dir = image_dict.get("docker_context_dir")
@@ -117,9 +118,7 @@ def compute_hash(file_path: Path, mode: int) -> str:
     return file_hash.hexdigest()
 
 
-def _get_script_dir(
-    base_path_str: str, files_context_dir: Optional[str] = None
-) -> Path:
+def _get_script_dir(base_path_str: str, files_context_dir: str | None = None) -> Path:
     base_path = Path(base_path_str).resolve()
 
     if base_path.is_dir():
@@ -138,13 +137,13 @@ def _get_script_dir(
 
 
 def normalize_path(
-    path_str: str, base_path_str: str, files_context_dir: Optional[str] = None
-) -> Tuple[str, str]:
+    path_str: str, base_path_str: str, files_context_dir: str | None = None
+) -> tuple[str, str]:
     context_dir = _get_script_dir(base_path_str, files_context_dir)
     return _normalize_path(path_str, context_dir)
 
 
-def _normalize_path(path_str: str, context_dir: Path) -> Tuple[str, str]:
+def _normalize_path(path_str: str, context_dir: Path) -> tuple[str, str]:
     path = Path(path_str)
 
     absolute_path = (
@@ -160,7 +159,7 @@ def _normalize_path(path_str: str, context_dir: Path) -> Tuple[str, str]:
     return absolute_path.as_posix(), relative_path
 
 
-def _lexical_path(path_str: str, context_dir: Path) -> Tuple[Path, str]:
+def _lexical_path(path_str: str, context_dir: Path) -> tuple[Path, str]:
     path = Path(path_str)
     lexical_path = path if path.is_absolute() else context_dir / path
 
@@ -220,7 +219,7 @@ class FileMetadata:
             absolute_path=absolute,
         )
 
-    def to_dict(self) -> Dict[str, str]:
+    def to_dict(self) -> dict[str, str]:
         return {
             "size": str(self.size),
             "mtime": str(self.mtime),
@@ -267,7 +266,7 @@ class FileSync:
         return response
 
     def _should_ignore_explicit_path(
-        self, path: Path, relative_path: str, patterns: List[re.Pattern]
+        self, path: Path, relative_path: str, patterns: list[re.Pattern]
     ) -> bool:
         has_symlink = _has_symlink(path)
         if has_symlink:
@@ -287,9 +286,9 @@ class FileSync:
         root: Path,
         lexical_root: str,
         context_dir: Path,
-        patterns: List[re.Pattern],
-    ) -> List[FileMetadata]:
-        files: List[FileMetadata] = []
+        patterns: list[re.Pattern],
+    ) -> list[FileMetadata]:
+        files: list[FileMetadata] = []
 
         for current, _, filenames in os.walk(root, followlinks=False):
             current_path = Path(current)
@@ -318,11 +317,11 @@ class FileSync:
 
     def collect_files(
         self,
-        paths: List[str],
-        files_context_dir: Optional[str] = None,
-        files_ignore: Optional[List[re.Pattern]] = None,
-    ) -> List[FileMetadata]:
-        collected_files: List[FileMetadata] = []
+        paths: list[str],
+        files_context_dir: str | None = None,
+        files_ignore: list[re.Pattern] | None = None,
+    ) -> list[FileMetadata]:
+        collected_files: list[FileMetadata] = []
         context_dir = _get_script_dir(self.local_file_path, files_context_dir)
         patterns = files_ignore or []
 
@@ -354,7 +353,7 @@ class FileSync:
 
         return collected_files
 
-    def check_hashes_on_server(self, hashes: List[str]) -> List[str]:
+    def check_hashes_on_server(self, hashes: list[str]) -> list[str]:
         try:
             response = self._request(
                 "POST", "/files/missing_hashes", json={"hashes": hashes}
@@ -386,22 +385,22 @@ class FileSync:
         except Exception as e:
             raise AppFileUploadException(str(e), metadata.relative_path)
 
-    def _matches_patterns(self, relative_path: str, patterns: List[re.Pattern]) -> bool:
+    def _matches_patterns(self, relative_path: str, patterns: list[re.Pattern]) -> bool:
         return any(pattern.search(relative_path) for pattern in patterns)
 
     def sync_files(
         self,
-        paths: List[str],
+        paths: list[str],
         chunk_size: int = MULTIPART_CHUNK_SIZE,
         max_concurrency_uploads: int = DEFAULT_CONCURRENCY_UPLOADS,
-        files_ignore: List[re.Pattern] = [],
-        files_context_dir: Optional[str] = None,
-    ) -> Tuple[List[FileMetadata], List[AppFileUploadException]]:
+        files_ignore: list[re.Pattern] = [],
+        files_context_dir: str | None = None,
+    ) -> tuple[list[FileMetadata], list[AppFileUploadException]]:
         files = self.collect_files(paths, files_context_dir, files_ignore=files_ignore)
 
         # Filter out ignored files
         if files_ignore:
-            filtered_files: List[FileMetadata] = []
+            filtered_files: list[FileMetadata] = []
             for metadata in files:
                 if self._matches_patterns(metadata.relative_path, files_ignore):
                     if flags.DEBUG:
@@ -413,7 +412,7 @@ class FileSync:
             files = filtered_files
 
         # Remove duplicate files by absolute path
-        unique_files: List[FileMetadata] = []
+        unique_files: list[FileMetadata] = []
         seen_paths = set()
         seen_relative_paths = set()
         for metadata in files:
@@ -438,7 +437,7 @@ class FileSync:
         missing_hashes = set(self.check_hashes_on_server(hashes_to_check))
 
         # Categorize based on server response
-        files_to_upload: List[FileMetadata] = []
+        files_to_upload: list[FileMetadata] = []
         for file in unique_files:
             if file.hash in missing_hashes:
                 # No longer missing as we are uploading it
@@ -446,8 +445,8 @@ class FileSync:
                 missing_hashes.remove(file.hash)
                 files_to_upload.append(file)
 
-        uploaded_files: List[Tuple[FileMetadata, str]] = []
-        errors: List[AppFileUploadException] = []
+        uploaded_files: list[tuple[FileMetadata, str]] = []
+        errors: list[AppFileUploadException] = []
         # Upload missing files in parallel with bounded concurrency
         if files_to_upload:
             # Embed it here to be able to pass it to the executor

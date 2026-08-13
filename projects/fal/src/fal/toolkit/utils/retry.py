@@ -4,7 +4,8 @@ import inspect
 import random
 import time
 import traceback
-from typing import Any, Callable, Literal, Optional
+from collections.abc import Callable
+from typing import Any, Literal
 
 BackoffType = Literal["exponential", "fixed"]
 
@@ -15,7 +16,7 @@ def retry(
     max_delay: float = 60.0,
     backoff_type: BackoffType = "exponential",
     jitter: bool = False,
-    should_retry: Optional[Callable[[Exception], bool]] = None,
+    should_retry: Callable[[Exception], bool] | None = None,
 ) -> Callable:
     def _compute_delay(retries: int) -> float:
         if backoff_type == "exponential":

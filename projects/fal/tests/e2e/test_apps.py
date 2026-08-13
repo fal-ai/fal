@@ -4,20 +4,9 @@ import os
 import secrets
 import subprocess
 import time
-from contextlib import contextmanager, suppress
+from collections.abc import AsyncIterator, Callable, Generator, Iterator
+from contextlib import AbstractContextManager, contextmanager, suppress
 from datetime import datetime, timedelta, timezone
-from typing import (
-    AsyncIterator,
-    Callable,
-    ContextManager,
-    Dict,
-    Generator,
-    Iterator,
-    List,
-    Optional,
-    Tuple,
-    Union,
-)
 
 import httpx
 import pytest
@@ -67,7 +56,7 @@ class StatefulInput(BaseModel):
 
 
 class FieldInput(BaseModel):
-    value: Union[int, str, float]
+    value: int | str | float
 
     class Config:
         smart_union = True
@@ -80,7 +69,7 @@ class Output(BaseModel):
 actual_python = active_python()
 
 
-def _auth_headers() -> Dict[str, str]:
+def _auth_headers() -> dict[str, str]:
     key_creds = key_credentials()
     if not key_creds:
         return {}
@@ -621,7 +610,7 @@ class RTOutput(BaseModel):
 
 
 class RTOutputs(BaseModel):
-    texts: List[str]
+    texts: list[str]
 
 
 def json_encode_message(message):
@@ -666,7 +655,7 @@ class RealtimeApp(fal.App, keep_alive=300, max_concurrency=1):
     async def generate_rt_client_streaming(
         self, inputs: AsyncIterator[RTInput]
     ) -> RTOutputs:
-        prompts: List[str] = []
+        prompts: list[str] = []
         async for item in inputs:
             prompts.append(item.prompt)
         return RTOutputs(texts=prompts)
@@ -717,14 +706,14 @@ def register_app(
     make_tmp_app_name: Callable[[str], str],
 ) -> Callable[
     [
-        Union[api.ServedIsolatedFunction, api.IsolatedFunction],
+        api.ServedIsolatedFunction | api.IsolatedFunction,
         str,
     ],
-    ContextManager[Tuple[str, str]],
+    AbstractContextManager[tuple[str, str]],
 ]:
     @contextmanager
     def _register_app(
-        app: Union[api.ServedIsolatedFunction, api.IsolatedFunction],
+        app: api.ServedIsolatedFunction | api.IsolatedFunction,
         suffix: str = "",
     ):
         app_alias = make_tmp_app_name(suffix)
@@ -1248,7 +1237,7 @@ def test_app_client_async(test_sleep_app: str):
     handle = apps.submit(test_sleep_app, arguments={"wait_time": 5})
 
     for event in handle.iter_events(logs=True):
-        assert isinstance(event, (apps.Queued, apps.InProgress))
+        assert isinstance(event, apps.Queued | apps.InProgress)
         if isinstance(event, apps.InProgress) and event.logs:
             logs = [log["message"] for log in event.logs]
             assert "sleeping..." in logs
@@ -1314,7 +1303,7 @@ def test_traceback_logs(test_exception_app: AppClient, rest_client: Client):
 
 
 def test_app_openapi_spec_metadata(
-    base_app: Tuple[str, str], user: User, rest_client: Client
+    base_app: tuple[str, str], user: User, rest_client: Client
 ):
     app_alias, _ = base_app
     app_user_id = user.username
@@ -1425,7 +1414,7 @@ def test_app_deploy_scale(host: api.FalServerlessHost, register_app):
             assert found.max_concurrency == 2
 
 
-def test_app_update_app(base_app: Tuple[str, str]):
+def test_app_update_app(base_app: tuple[str, str]):
     app_alias, app_revision = base_app
 
     host: api.FalServerlessHost = addition_app.host  # type: ignore
@@ -1475,7 +1464,7 @@ def test_app_update_app(base_app: Tuple[str, str]):
         assert res.max_multiplexing == new_max_multiplexing
 
 
-def test_app_set_delete_alias(base_app: Tuple[str, str]):
+def test_app_set_delete_alias(base_app: tuple[str, str]):
     app_alias, app_revision = base_app
 
     host: api.FalServerlessHost = addition_app.host  # type: ignore
@@ -2065,7 +2054,7 @@ def test_container_build_args_app_client(test_container_build_args_app: str):
 class HintsApp(fal.App, keep_alive=300, max_concurrency=1):
     machine_type = "S"
 
-    def provide_hints(self) -> List[str]:
+    def provide_hints(self) -> list[str]:
         return ["é", "😀"]
 
     @fal.endpoint("/add")
@@ -2168,10 +2157,10 @@ def test_runner_machine_type(host: api.FalServerlessHost, test_sleep_app: str):
 
 
 class RequestContextOutput(BaseModel):
-    request_id_from_context: Optional[str]
-    endpoint_from_context: Optional[str]
-    lifecycle_preference_from_context: Optional[dict]
-    request_id_from_header: Optional[str]
+    request_id_from_context: str | None
+    endpoint_from_context: str | None
+    lifecycle_preference_from_context: dict | None
+    request_id_from_header: str | None
 
 
 def _external_get_request_context() -> dict:

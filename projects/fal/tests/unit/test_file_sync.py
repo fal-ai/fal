@@ -623,8 +623,9 @@ def test_sync_files_basic_workflow(file_sync, temp_dir):
     fs = FileSync(str(Path(temp_dir) / "app.py"))
 
     # Mock server to indicate all files need upload
-    with patch.object(fs, "check_hashes_on_server") as mock_check, patch.object(
-        fs, "upload_file_multipart", return_value="test_etag"
+    with (
+        patch.object(fs, "check_hashes_on_server") as mock_check,
+        patch.object(fs, "upload_file_multipart", return_value="test_etag"),
     ):
         # Make server say all hashes are missing (need upload)
         mock_check.side_effect = lambda hashes: hashes

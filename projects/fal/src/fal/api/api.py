@@ -8,6 +8,7 @@ import sys
 import threading
 import warnings
 from collections import defaultdict
+from collections.abc import Callable, Iterable, Iterator
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field, replace
@@ -19,15 +20,11 @@ from queue import Queue
 from typing import (
     TYPE_CHECKING,
     Any,
-    Callable,
     ClassVar,
-    Dict,
+    Concatenate,
     Generic,
-    Iterable,
-    Iterator,
     Literal,
     NamedTuple,
-    Optional,
     TypeVar,
     cast,
     get_type_hints,
@@ -50,7 +47,7 @@ from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 from pydantic import __version__ as pydantic_version
 from starlette.websockets import WebSocket
-from typing_extensions import Concatenate, ParamSpec
+from typing_extensions import ParamSpec
 
 import fal.flags as flags
 from fal._serialization import include_module, include_modules_from, patch_pickle
@@ -97,7 +94,7 @@ logger = get_logger(__name__)
 ArgsT = ParamSpec("ArgsT")
 ReturnT = TypeVar("ReturnT", covariant=True)  # noqa: PLC0105
 
-BasicConfig = Dict[str, Any]
+BasicConfig = dict[str, Any]
 
 
 def merge_basic_config(target: BasicConfig, incoming: BasicConfig) -> None:
@@ -930,7 +927,7 @@ class FalServerlessHost(Host):
     local_file_path: str = ""
     local_project_root: str = ""
     credentials: Credentials = field(default_factory=get_credentials)
-    environment_name: Optional[str] = None
+    environment_name: str | None = None
     requirements_context_dir: str = ""
 
     _lock: threading.Lock = field(default_factory=threading.Lock, init=False)
@@ -1084,18 +1081,18 @@ class FalServerlessHost(Host):
         func: Callable[ArgsT, ReturnT] | None,
         options: Options,
         *,
-        application_name: Optional[str] = None,
-        application_auth_mode: Optional[AuthModeLiteral] = None,
-        source_code: Optional[str] = None,
-        metadata: Optional[dict[str, Any]] = None,
+        application_name: str | None = None,
+        application_auth_mode: AuthModeLiteral | None = None,
+        source_code: str | None = None,
+        metadata: dict[str, Any] | None = None,
         deployment_strategy: DeploymentStrategyLiteral,
         scale: bool = True,
-        environment_name: Optional[str] = None,
+        environment_name: str | None = None,
         result_handler: ResultHandler | None = None,
         entrypoint: str | None = None,
         build_environment: bool | None = None,
         attach_to_deployment: bool | None = None,
-    ) -> Optional[RegisterApplicationResult]:
+    ) -> RegisterApplicationResult | None:
         options = self.prepare_options(options, func=func)
         environment_options = options.environment
         if build_environment is False:
@@ -2339,15 +2336,7 @@ class BaseServable:
 
         @_app.exception_handler(Exception)
         async def traceback_logging_exception_handler(request: Request, exc: Exception):
-            _, MINOR, *_ = sys.version_info
-
-            # traceback.format_exception() has a different signature in Python >=3.10
-            if MINOR >= 10:
-                formatted_exception = traceback.format_exception(exc)  # type: ignore
-            else:
-                formatted_exception = traceback.format_exception(
-                    type(exc), exc, exc.__traceback__
-                )
+            formatted_exception = traceback.format_exception(exc)
 
             print(
                 json.dumps({"traceback": "".join(formatted_exception[::-1])}),
@@ -2675,9 +2664,9 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
         exposed_port: int | None = None
         exposed_metrics_port: int | None = None
         if self._supports_local_serve_options():
-            exposed_port = cast(Optional[int], call_kwargs.pop("exposed_port", None))
+            exposed_port = cast(int | None, call_kwargs.pop("exposed_port", None))
             exposed_metrics_port = cast(
-                Optional[int], call_kwargs.pop("exposed_metrics_port", None)
+                int | None, call_kwargs.pop("exposed_metrics_port", None)
             )
         return self._run_local(
             args=args,
@@ -2697,7 +2686,8 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
         import asyncio  # noqa: PLC0415
         import inspect  # noqa: PLC0415
         import os  # noqa: PLC0415
-        from typing import Awaitable, cast  # noqa: PLC0415
+        from collections.abc import Awaitable  # noqa: PLC0415
+        from typing import cast  # noqa: PLC0415
 
         if kwargs is None:
             kwargs = {}
@@ -2870,15 +2860,9 @@ class IsolatedFunction(Generic[ArgsT, ReturnT]):
             return self.raw_func
 
 
-if sys.version_info <= (3, 10):
-    compatible_class = IsolatedFunction[Literal[None], None]  # type: ignore
-else:
-    compatible_class = IsolatedFunction[[], None]
-
-
 class ServedIsolatedFunction(
     Generic[ArgsT, ReturnT],
-    compatible_class,  # type: ignore
+    IsolatedFunction[[], None],
 ):
     # Class for type hinting purposes only.
     @overload  # type: ignore[override,no-overload-impl]

@@ -20,7 +20,7 @@ dynamic = ["version"]
 description = "fal is an easy-to-use Serverless Python Framework"
 authors = [{ name = "Features & Labels <support@fal.ai>"}]
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 dependencies = [
     "isolate[build]>=0.26.9,<0.27.0",
     "isolate-proto>=0.34.1,<1",
@@ -37,13 +37,7 @@ dependencies = [
     "portalocker>=2.7.0,<3",
     "rich>=13.3.2,<15",
     "rich_argparse",
-    # argcomplete 3.7.1 annotates `str | bytes` in a class body while still
-    # declaring requires-python >=3.8, so importing it raises TypeError on 3.8/3.9
-    # -- and `fal.cli.parser` imports it at module scope, which takes the whole CLI
-    # down. Drop the upper bound once a fixed release is out (or 3.7.1 is yanked).
-    # See https://github.com/kislyuk/argcomplete/issues/559
-    "argcomplete>=3.1.0,<4; python_version >= '3.10'",
-    "argcomplete>=3.1.0,!=3.7.1,<4; python_version < '3.10'",
+    "argcomplete>=3.1.0,<4",
     "packaging>=21.3",
     "pathspec>=0.11.1,<1",
     "pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*",
@@ -61,8 +55,6 @@ dependencies = [
     "dateparser>=1.2.0,<2",
     "types-dateparser>=1.2.0,<2",
     "tuspy==1.1.0",
-    # For 3.9 and earlier, importlib-metadata's newer versions are included in the standard library.
-    'importlib-metadata>=4.4; python_version < "3.10"',
     "msgpack>=1.0.7,<2",
     "websockets>=12.0",
     "pillow>=10.2.0,<13",
@@ -112,10 +104,16 @@ isolate-proto = "2100-01-01T00:00:00Z"
 fal = "fal.cli:main"
 
 [tool.ruff]
-target-version = "py38"
+target-version = "py310"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "PLC", "PLE", "PLW", "I", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+# The namespace classes here each define a `list` method, which shadows the
+# builtin for every annotation after it in the class body -- `list[AliasInfo]`
+# resolves to the method, not the type. Keep `typing.List` in this file.
+"src/fal/api/client.py" = ["UP006", "UP035"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["fal"]

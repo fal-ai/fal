@@ -30,7 +30,7 @@ jobs:
 
       - uses: actions/setup-python@e9aba2c848f5ebd159c070c61ea2c4e2b122355e # v2.3.4
         with:
-          python-version: "3.9"
+          python-version: "3.10"
 
       - name: Parse tag
         id: parse
@@ -63,7 +63,9 @@ jobs:
   # about now: the dependency bounds are open, so the installed tree is a
   # function of when the job runs. fal 1.79.0 shipped from a commit whose last
   # CI run was green 12.5 hours earlier, by which point argcomplete 3.7.1 had
-  # broken the CLI on 3.8/3.9.
+  # broken the CLI on the then-supported 3.8/3.9. Those versions are gone, but
+  # the failure mode -- a dependency released between the last green run and the
+  # release -- is not.
   # `inputs.skip_tests` and not `github.event.inputs.skip_tests`: the latter is
   # always a string, and any non-empty string is truthy in an expression, so
   # `!github.event.inputs.skip_tests` would be false even for "false" and would
@@ -98,10 +100,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 3.8 and 3.9 are where the dependency markers diverge from 3.10+, and
-        # where the argcomplete 3.7.1 break landed; 3.13 covers current
-        # resolution. All three projects declare requires-python >=3.8.
-        python: ["3.8", "3.9", "3.13"]
+        # Exercise both the minimum supported Python and a current dependency
+        # resolution against the built artifact.
+        python: ["3.10", "3.13"]
     steps:
       - name: Download dist
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0

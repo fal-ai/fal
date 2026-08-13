@@ -2,7 +2,7 @@ import hashlib
 import os
 import posixpath
 from functools import cached_property
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from fsspec import AbstractFileSystem
 
@@ -30,9 +30,9 @@ class FalFileSystem(AbstractFileSystem):
     def __init__(
         self,
         *,
-        host: Optional[str] = None,
-        team: Optional[str] = None,
-        profile: Optional[str] = None,
+        host: str | None = None,
+        team: str | None = None,
+        profile: str | None = None,
         **kwargs,
     ):
         self.host = host

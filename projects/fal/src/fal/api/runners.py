@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING
 
 from fal.sdk import FalServerlessClient, RunnerInfo
 
@@ -12,8 +12,8 @@ if TYPE_CHECKING:
 
 
 def list_runners(
-    client: SyncServerlessClient, *, since: Optional[datetime] = None
-) -> List[RunnerInfo]:
+    client: SyncServerlessClient, *, since: datetime | None = None
+) -> list[RunnerInfo]:
     with FalServerlessClient(client._grpc_host, client._credentials).connect() as conn:
         return conn.list_runners(start_time=since)
 

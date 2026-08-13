@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from fal.sdk import KeyScope, UserKeyInfo
@@ -17,7 +17,7 @@ def create_key(
         return conn.create_user_key(scope, description)
 
 
-def list_keys(client: SyncServerlessClient) -> List[UserKeyInfo]:
+def list_keys(client: SyncServerlessClient) -> list[UserKeyInfo]:
     from fal.sdk import FalServerlessClient
 
     with FalServerlessClient(client._grpc_host, client._credentials).connect() as conn:

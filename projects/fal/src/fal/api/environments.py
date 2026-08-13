@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING
 
 from .api import _handle_grpc_error
 
@@ -23,7 +23,7 @@ def create_environment(
 
 
 @_handle_grpc_error()
-def list_environments(client: SyncServerlessClient) -> List[EnvironmentInfo]:
+def list_environments(client: SyncServerlessClient) -> list[EnvironmentInfo]:
     from fal.sdk import FalServerlessClient
 
     with FalServerlessClient(client._grpc_host, client._credentials).connect() as conn:

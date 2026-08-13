@@ -1,5 +1,5 @@
 import json
-from typing import Any, Dict, Optional
+from typing import Any
 from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request
@@ -22,14 +22,14 @@ class KVStore:
         self.db_name = db_name
 
     @property
-    def auth_headers(self) -> Dict[str, str]:
+    def auth_headers(self) -> dict[str, str]:
         token = fal_v3_token_manager.get_token()
         return {
             "Authorization": f"{token.token_type} {token.token}",
             "User-Agent": USER_AGENT,
         }
 
-    def get(self, key: str) -> Optional[str]:
+    def get(self, key: str) -> str | None:
         """Retrieve a value from the key-value store.
 
         Args:
@@ -48,7 +48,7 @@ class KVStore:
 
         return response["value"]
 
-    def set(self, key: str, value: str, ttl: Optional[int] = None) -> None:
+    def set(self, key: str, value: str, ttl: int | None = None) -> None:
         """Store a value in the key-value store.
 
         Args:
@@ -85,8 +85,8 @@ class KVStore:
         self,
         method: str,
         path: str,
-        data: Optional[bytes] = None,
-    ) -> Optional[Dict[str, Any]]:
+        data: bytes | None = None,
+    ) -> dict[str, Any] | None:
         headers = {
             **self.auth_headers,
             "Accept": "application/json",

@@ -250,9 +250,10 @@ def _download_file_python(
         received_size = 0
         total_size = 0
 
-        with urlopen(request, timeout=30) as response, open(
-            temp_path, "wb"
-        ) as temp_file:
+        with (
+            urlopen(request, timeout=30) as response,
+            open(temp_path, "wb") as temp_file,
+        ):
             total_size = int(response.headers.get("content-length", total_size))
             while data := response.read(64 * ONE_MB):
                 temp_file.write(data)

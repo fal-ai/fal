@@ -2,7 +2,6 @@ import argparse
 import os
 import sys
 from datetime import datetime, timedelta
-from typing import Optional
 
 import argcomplete
 import rich_argparse
@@ -62,7 +61,7 @@ class DictAction(argparse.Action):
 class SinceAction(argparse.Action):
     LIMIT_LEEWAY = timedelta(minutes=1)
 
-    def _parse_since(self, value: str) -> Optional[datetime]:
+    def _parse_since(self, value: str) -> datetime | None:
         import dateparser
 
         return dateparser.parse(

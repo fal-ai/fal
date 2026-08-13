@@ -105,7 +105,7 @@ def _docstring_nodes(tree: ast.AST) -> set[int]:
     node_ids = set()
     for node in ast.walk(tree):
         if not isinstance(
-            node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+            node, ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef
         ):
             continue
         if not node.body:

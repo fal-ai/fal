@@ -3,7 +3,7 @@ from __future__ import annotations
 import copy
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any, Optional, get_args
+from typing import Any, get_args
 
 from fal.api import Options
 from fal.container import ContainerImage, _validate_command_override
@@ -28,17 +28,17 @@ VALID_RETRY_CONDITIONS = set(get_args(RetryConditionLiteral))
 
 @dataclass(frozen=True)
 class AppData:
-    ref: Optional[str] = None
-    python_entry_point: Optional[str] = None
-    auth: Optional[AuthModeLiteral] = None
-    deployment_strategy: Optional[DeploymentStrategyLiteral] = None
+    ref: str | None = None
+    python_entry_point: str | None = None
+    auth: AuthModeLiteral | None = None
+    deployment_strategy: DeploymentStrategyLiteral | None = None
     reset_scale: bool = False
     attach_to_deployment: bool | None = None
-    team: Optional[str] = None
-    name: Optional[str] = None
+    team: str | None = None
+    name: str | None = None
     options: Options = field(default_factory=Options)
-    message: Optional[str] = None
-    annotations: Optional[dict[str, str]] = None
+    message: str | None = None
+    annotations: dict[str, str] | None = None
 
 
 def get_client(host: str, team: str | None = None):
@@ -101,12 +101,12 @@ def get_app_data_from_toml(
             project_root, _ = find_project_root(None)
             app_ref = str(project_root / app_ref)
 
-    app_auth: Optional[AuthModeLiteral] = app_data.pop("auth", None)
-    app_deployment_strategy: Optional[DeploymentStrategyLiteral] = app_data.pop(
+    app_auth: AuthModeLiteral | None = app_data.pop("auth", None)
+    app_deployment_strategy: DeploymentStrategyLiteral | None = app_data.pop(
         "deployment_strategy", None
     )
-    app_team: Optional[str] = app_data.pop("team", None)
-    app_name_value: Optional[str] = app_data.pop("name", None)
+    app_team: str | None = app_data.pop("team", None)
+    app_name_value: str | None = app_data.pop("name", None)
     if app_name_value is None:
         app_name_value = app_name
 

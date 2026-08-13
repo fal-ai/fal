@@ -4,7 +4,7 @@ import io
 from functools import wraps
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import TYPE_CHECKING, Literal, Optional, Union
+from typing import TYPE_CHECKING, Literal
 from urllib.parse import urlparse
 
 from fastapi import Request
@@ -55,7 +55,7 @@ IMAGE_SIZE_PRESETS: dict[ImageSizePreset, ImageSize] = {
     "landscape_16_9": ImageSize(width=1024, height=576),
 }
 
-ImageSizeInput = Union[ImageSize, ImageSizePreset]
+ImageSizeInput = ImageSize | ImageSizePreset
 
 
 def get_image_size(source: ImageSizeInput) -> ImageSize:
@@ -70,8 +70,8 @@ def get_image_size(source: ImageSizeInput) -> ImageSize:
 @wraps(Field)
 def ImageSizeField(
     *args,
-    constraints: Optional[ImageSizeConstraints] = None,
-    ui: Optional[dict] = None,
+    constraints: ImageSizeConstraints | None = None,
+    ui: dict | None = None,
     **kwargs,
 ):
     """A ``Field`` for an ``image_size`` input that documents its size limits.
@@ -142,12 +142,12 @@ class Image(File):
     Represents an image file.
     """
 
-    width: Optional[int] = Field(
+    width: int | None = Field(
         None,
         description="The width of the image in pixels.",
         examples=[1024],
     )
-    height: Optional[int] = Field(
+    height: int | None = Field(
         None, description="The height of the image in pixels.", examples=[1024]
     )
 
@@ -168,12 +168,13 @@ class Image(File):
         size: ImageSize | None = None,
         file_name: str | None = None,
         repository: FileRepository | RepositoryId = DEFAULT_REPOSITORY,
-        fallback_repository: Optional[
-            FileRepository | RepositoryId | list[FileRepository | RepositoryId]
-        ] = FALLBACK_REPOSITORY,
-        request: Optional[Request] = None,
-        save_kwargs: Optional[dict] = None,
-        fallback_save_kwargs: Optional[dict] = None,
+        fallback_repository: FileRepository
+        | RepositoryId
+        | list[FileRepository | RepositoryId]
+        | None = FALLBACK_REPOSITORY,
+        request: Request | None = None,
+        save_kwargs: dict | None = None,
+        fallback_save_kwargs: dict | None = None,
     ) -> Image:
         obj = super().from_bytes(
             data,
@@ -196,12 +197,13 @@ class Image(File):
         format: ImageFormat | None = None,
         file_name: str | None = None,
         repository: FileRepository | RepositoryId = DEFAULT_REPOSITORY,
-        fallback_repository: Optional[
-            FileRepository | RepositoryId | list[FileRepository | RepositoryId]
-        ] = FALLBACK_REPOSITORY,
-        request: Optional[Request] = None,
-        save_kwargs: Optional[dict] = None,
-        fallback_save_kwargs: Optional[dict] = None,
+        fallback_repository: FileRepository
+        | RepositoryId
+        | list[FileRepository | RepositoryId]
+        | None = FALLBACK_REPOSITORY,
+        request: Request | None = None,
+        save_kwargs: dict | None = None,
+        fallback_save_kwargs: dict | None = None,
     ) -> Image:
         size = ImageSize(width=pil_image.width, height=pil_image.height)
         if format is None:

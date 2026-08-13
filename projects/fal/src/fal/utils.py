@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from fal.api.api import _uses_isolate, merge_basic_config
 from fal.sdk import AuthModeLiteral
@@ -86,9 +86,7 @@ def _find_target(
     return target, function_name, None, function_name
 
 
-def _apply_toml_app_file_options(
-    app_cls: type[App], options: Optional[Options]
-) -> None:
+def _apply_toml_app_file_options(app_cls: type[App], options: Options | None) -> None:
     if options is None:
         return
 
@@ -119,7 +117,7 @@ def load_function_from(
     function_name: str | None = None,
     *,
     force_env_build: bool = False,
-    options: Optional[Options] = None,
+    options: Options | None = None,
     app_name: str | None = None,
     app_auth: AuthModeLiteral | None = None,
     limit_max_requests: int | None = None,
@@ -242,7 +240,7 @@ def _load_from_python_entry_point(
     host: FalServerlessHost,
     python_entry_point: str,
     *,
-    options: Optional[Options] = None,
+    options: Options | None = None,
     app_name: str | None = None,
     app_auth: AuthModeLiteral | None = None,
 ) -> LoadedFunction:
@@ -285,7 +283,7 @@ _MISSING = object()
 
 
 def _toml_host_keys_overriding_app_defaults(
-    app_cls: type[App], base_app_cls: type[App], options: Optional[Options]
+    app_cls: type[App], base_app_cls: type[App], options: Options | None
 ) -> set[str]:
     if options is None:
         return set()

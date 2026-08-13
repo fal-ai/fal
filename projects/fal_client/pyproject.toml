@@ -15,7 +15,7 @@ dynamic = ["version"]
 description = "Python client for fal.ai"
 readme = "README.md"
 authors = [{ name = "Features & Labels <support@fal.ai>" }]
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 dependencies = [
     "aiofiles>=24.1.0,<26",
     "asyncstdlib>=3.12.5,<4",

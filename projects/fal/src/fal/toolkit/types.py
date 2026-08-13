@@ -1,8 +1,9 @@
 import re
 import tempfile
+from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Dict, Generator, Union
+from typing import Any
 
 import pydantic
 from pydantic.utils import update_not_none
@@ -48,7 +49,7 @@ class DataUri(DownloadFileMixin, str):
                 "strip_whitespace": True,
             }
 
-        def __get_pydantic_json_schema__(cls, core_schema, handler) -> Dict[str, Any]:
+        def __get_pydantic_json_schema__(cls, core_schema, handler) -> dict[str, Any]:
             json_schema = handler(core_schema)
             json_schema.update(format="data-uri")
             return json_schema
@@ -76,7 +77,7 @@ class DataUri(DownloadFileMixin, str):
             return cls(value)
 
         @classmethod
-        def __modify_schema__(cls, field_schema: Dict[str, Any]) -> None:
+        def __modify_schema__(cls, field_schema: dict[str, Any]) -> None:
             update_not_none(field_schema, format="data-uri")
 
 
@@ -92,7 +93,7 @@ class HttpsUrl(DownloadFileMixin, str):
                 "strip_whitespace": True,
             }
 
-        def __get_pydantic_json_schema__(cls, core_schema, handler) -> Dict[str, Any]:
+        def __get_pydantic_json_schema__(cls, core_schema, handler) -> dict[str, Any]:
             json_schema = handler(core_schema)
             json_schema.update(format="https-url")
             return json_schema
@@ -124,7 +125,7 @@ class HttpsUrl(DownloadFileMixin, str):
             return cls(value)
 
         @classmethod
-        def __modify_schema__(cls, field_schema: Dict[str, Any]) -> None:
+        def __modify_schema__(cls, field_schema: dict[str, Any]) -> None:
             update_not_none(field_schema, format="https-url")
 
 
@@ -136,5 +137,5 @@ class ImageDataUri(DownloadImageMixin, DataUri):
     pass
 
 
-FileInput = Union[HttpsUrl, DataUri]
-ImageInput = Union[ImageHttpsUrl, ImageDataUri]
+FileInput = HttpsUrl | DataUri
+ImageInput = ImageHttpsUrl | ImageDataUri

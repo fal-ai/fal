@@ -6,8 +6,9 @@ import json
 import logging
 import typing
 from collections import deque
+from collections.abc import Callable
 from contextlib import suppress
-from typing import Any, Callable
+from typing import Any
 
 from fastapi import WebSocket, WebSocketDisconnect
 

@@ -5,10 +5,10 @@ import shlex
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Literal, Optional, Union
+from typing import Literal
 
 Builder = Literal["depot", "service", "worker"]
-CommandOverride = Union[str, List[str]]
+CommandOverride = str | list[str]
 BUILDERS = {"depot", "service", "worker"}
 DEFAULT_COMPRESSION: str = "gzip"
 DEFAULT_FORCE_COMPRESSION: bool = False
@@ -31,7 +31,7 @@ DEFAULT_DOCKERIGNORE_PATTERNS = [
 ]
 
 
-def _validate_command_override(name: str, value: Optional[CommandOverride]) -> None:
+def _validate_command_override(name: str, value: CommandOverride | None) -> None:
     if value is None:
         return
     if isinstance(value, str):
@@ -48,19 +48,19 @@ class ContainerImage:
     """
 
     dockerfile_str: str
-    build_args: Dict[str, str] = field(default_factory=dict)
-    registries: Dict[str, Dict[str, str]] = field(default_factory=dict)
-    builder: Optional[Builder] = field(default=None)
+    build_args: dict[str, str] = field(default_factory=dict)
+    registries: dict[str, dict[str, str]] = field(default_factory=dict)
+    builder: Builder | None = field(default=None)
     compression: str = DEFAULT_COMPRESSION
     force_compression: bool = DEFAULT_FORCE_COMPRESSION
-    secrets: Dict[str, str] = field(default_factory=dict)
-    entrypoint: Optional[CommandOverride] = None
-    cmd: Optional[CommandOverride] = None
-    use_isolate: Optional[bool] = None
+    secrets: dict[str, str] = field(default_factory=dict)
+    entrypoint: CommandOverride | None = None
+    cmd: CommandOverride | None = None
+    use_isolate: bool | None = None
     # Build context directory
     context_dir: os.PathLike = field(default=Path.cwd())
-    dockerignore: Optional[List[str]] = field(default=None)
-    dockerignore_path: Optional[os.PathLike] = field(default=None)
+    dockerignore: list[str] | None = field(default=None)
+    dockerignore_path: os.PathLike | None = field(default=None)
 
     def __post_init__(self) -> None:
         # Validate dockerfile first
@@ -139,7 +139,7 @@ class ContainerImage:
             image["use_isolate"] = self.use_isolate
         return image
 
-    def get_copy_add_sources(self) -> List[str]:
+    def get_copy_add_sources(self) -> list[str]:
         """
         Get list of src paths/patterns from COPY/ADD commands. This method only
         parses the Dockerfile - it doesn't access the filesystem.
@@ -153,8 +153,8 @@ class ContainerImage:
 
     def add_dockerignore(
         self,
-        patterns: Optional[List[str]] = None,
-        path: Optional[os.PathLike] = None,
+        patterns: list[str] | None = None,
+        path: os.PathLike | None = None,
     ) -> None:
         """Add or update dockerignore patterns.
 
@@ -191,11 +191,11 @@ class ContainerImage:
 
 @dataclass
 class DockerignoreHandler:
-    context_dir: Optional[os.PathLike] = None
-    dockerignore: Optional[List[str]] = None
-    dockerignore_path: Optional[os.PathLike] = None
+    context_dir: os.PathLike | None = None
+    dockerignore: list[str] | None = None
+    dockerignore_path: os.PathLike | None = None
 
-    def _read_dockerignore_file(self, path: Path) -> List[str]:
+    def _read_dockerignore_file(self, path: Path) -> list[str]:
         with open(path) as f:
             lines = f.read().splitlines()
 
@@ -206,7 +206,7 @@ class DockerignoreHandler:
             if (stripped := line.strip()) and not stripped.startswith("#")
         ]
 
-    def get_patterns(self) -> List[str]:
+    def get_patterns(self) -> list[str]:
         """
         Get list of ignore patterns.
 
@@ -243,7 +243,7 @@ class DockerignoreHandler:
         # Fallback to defaults
         return DEFAULT_DOCKERIGNORE_PATTERNS
 
-    def get_regex_patterns(self) -> List[str]:
+    def get_regex_patterns(self) -> list[str]:
         from pathspec.patterns.gitwildmatch import GitWildMatchPattern  # noqa: PLC0415
 
         patterns = self.get_patterns()
@@ -264,7 +264,7 @@ class DockerfileParser:
     def __post_init__(self) -> None:
         self.normalized_content = re.sub(r"\\\n\s*", " ", self.content)
 
-    def parse_copy_add_sources(self) -> List[str]:
+    def parse_copy_add_sources(self) -> list[str]:
         """
         Parse COPY and ADD commands to extract source paths.
             - Skips COPY --from=... (multi-stage builds)
@@ -276,7 +276,7 @@ class DockerfileParser:
         Returns:
             List of source paths/patterns referenced in COPY/ADD commands.
         """
-        sources: List[str] = []
+        sources: list[str] = []
 
         # Regex to match COPY or ADD instructions
         instruction_pattern = re.compile(
@@ -308,7 +308,7 @@ class DockerfileParser:
 
         return True
 
-    def _parse_instruction_args(self, args_str: str, instruction: str) -> List[str]:
+    def _parse_instruction_args(self, args_str: str, instruction: str) -> list[str]:
         """
         Parse arguments from COPY/ADD instruction.
 
@@ -319,7 +319,7 @@ class DockerfileParser:
         Returns:
             List of valid source paths
         """
-        src_paths: List[str] = []
+        src_paths: list[str] = []
 
         try:
             # Remove flags from the args string first

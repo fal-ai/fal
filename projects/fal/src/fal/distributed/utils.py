@@ -8,7 +8,7 @@ import warnings
 from collections.abc import Callable
 from io import BytesIO
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     import torch.multiprocessing as mp
@@ -250,7 +250,7 @@ def encode_text_event(
     return f"data: {json.dumps(formatted)}\n\n".encode()
 
 
-def distributed_deserialize(serialized: Union[bytes, str]) -> Any:
+def distributed_deserialize(serialized: bytes | str) -> Any:
     """
     Deserializes a JSON string to an object.
     :param serialized: The serialized JSON string.
@@ -270,9 +270,9 @@ def wrap_distributed_worker(
     master_addr: str,
     master_port: int,
     timeout: int,
-    cwd: Optional[Union[str, Path]],
-    args: Tuple[Any],
-    kwargs: Dict[str, Any],
+    cwd: str | Path | None,
+    args: tuple[Any],
+    kwargs: dict[str, Any],
 ) -> None:
     """
     Worker function for distributed training or inference.
@@ -320,7 +320,7 @@ def launch_distributed_processes(
     master_addr: str = "127.0.0.1",
     master_port: int = 29500,
     timeout: int = 1800,
-    cwd: Optional[Union[str, Path]] = None,
+    cwd: str | Path | None = None,
     *args: Any,
     **kwargs: Any,
 ) -> "mp.ProcessContext":
@@ -378,12 +378,12 @@ class KeepAliveTimer:
     Call a function after a certain amount of time to keep the worker alive.
     """
 
-    timer: Optional[threading.Timer]
+    timer: threading.Timer | None
 
     def __init__(
         self,
         func: Callable,
-        timeout: Union[int, float],
+        timeout: int | float,
         start: bool = False,
         *args: Any,
         **kwargs: Any,

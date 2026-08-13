@@ -7,12 +7,13 @@ import signal
 import struct
 import sys
 from collections import deque
+from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from http import HTTPStatus
 from queue import Empty, Queue
 from threading import Thread
-from typing import TYPE_CHECKING, Iterator, List
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from openapi_fal_rest.client import Client
@@ -30,7 +31,7 @@ from fal.sdk import ReplaceState, RunnerInfo, RunnerState
 from .parser import FalClientParser, SinceAction, get_output_parser
 
 
-def runners_table(runners: List[RunnerInfo]):
+def runners_table(runners: list[RunnerInfo]):
     from rich.table import Table
 
     table = Table()

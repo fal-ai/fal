@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from base64 import b64encode
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -168,7 +168,7 @@ class MockRepository(FileRepository):
         self,
         name: str,
         should_fail: bool = False,
-        failure_exception: Optional[Exception] = None,
+        failure_exception: Exception | None = None,
     ):
         self.name = name
         self.should_fail = should_fail
@@ -392,11 +392,11 @@ class TestTryWithFallback:
         repo1 = MockRepository("repo1", should_fail=True)
         repo2 = MockRepository("repo2", should_fail=False)
 
-        with patch(
-            "fal.toolkit.file.file.get_builtin_repository"
-        ) as mock_get_repo, patch(
-            "fal.toolkit.file.file.traceback.print_exc"
-        ) as mock_traceback, patch("builtins.print") as mock_print:
+        with (
+            patch("fal.toolkit.file.file.get_builtin_repository") as mock_get_repo,
+            patch("fal.toolkit.file.file.traceback.print_exc") as mock_traceback,
+            patch("builtins.print") as mock_print,
+        ):
             mock_get_repo.side_effect = [repo1, repo2]
 
             result = _try_with_fallback(
@@ -479,9 +479,10 @@ class TestContextBasedLifecyclePreference:
         )()
         mock_app = type("MockApp", (), {"current_request": mock_request_context})()
 
-        with patch(
-            "fal.toolkit.file.file.get_current_app", return_value=mock_app
-        ), patch("fal.toolkit.file.file._try_with_fallback") as mock_try:
+        with (
+            patch("fal.toolkit.file.file.get_current_app", return_value=mock_app),
+            patch("fal.toolkit.file.file._try_with_fallback") as mock_try,
+        ):
             mock_try.return_value = "https://example.com/file.bin"
 
             File.from_bytes(b"test data", repository="in_memory")
@@ -509,12 +510,14 @@ class TestContextBasedLifecyclePreference:
         )()
         mock_app = type("MockApp", (), {"current_request": mock_request_context})()
 
-        with patch(
-            "fal.toolkit.file.file.get_current_app", return_value=mock_app
-        ), patch(
-            "fal.toolkit.file.file.request_lifecycle_preference",
-            return_value=request_preference,
-        ), patch("fal.toolkit.file.file._try_with_fallback") as mock_try:
+        with (
+            patch("fal.toolkit.file.file.get_current_app", return_value=mock_app),
+            patch(
+                "fal.toolkit.file.file.request_lifecycle_preference",
+                return_value=request_preference,
+            ),
+            patch("fal.toolkit.file.file._try_with_fallback") as mock_try,
+        ):
             mock_try.return_value = "https://example.com/file.bin"
 
             File.from_bytes(b"test data", repository="in_memory", request=mock_request)

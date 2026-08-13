@@ -8,7 +8,6 @@ import sys
 import time
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass
-from functools import partial
 from pathlib import Path
 from threading import Lock
 from typing import Callable, Optional, TypeVar
@@ -121,12 +120,7 @@ def _resolve_env_or_colab_auth(force_user_auth: bool) -> Optional[AuthCredential
 async def _run_sync_in_thread(
     func: Callable[..., _T], *args: object, **kwargs: object
 ) -> _T:
-    # Python 3.8 compatibility: asyncio.to_thread was added in 3.9.
-    if hasattr(asyncio, "to_thread"):
-        return await asyncio.to_thread(func, *args, **kwargs)
-
-    loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(None, partial(func, *args, **kwargs))
+    return await asyncio.to_thread(func, *args, **kwargs)
 
 
 @contextmanager

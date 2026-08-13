@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from mimetypes import guess_extension, guess_type
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal
 from uuid import uuid4
 
 
@@ -43,7 +43,7 @@ class FileRepository:
         multipart_threshold: int | None = None,
         multipart_chunk_size: int | None = None,
         multipart_max_concurrency: int | None = None,
-        object_lifecycle_preference: Optional[dict[str, str]] = None,
+        object_lifecycle_preference: dict[str, str] | None = None,
     ) -> str:
         raise NotImplementedError()
 
@@ -55,7 +55,7 @@ class FileRepository:
         multipart_threshold: int | None = None,
         multipart_chunk_size: int | None = None,
         multipart_max_concurrency: int | None = None,
-        object_lifecycle_preference: Optional[dict[str, str]] = None,
+        object_lifecycle_preference: dict[str, str] | None = None,
     ) -> tuple[str, FileData | None]:
         if multipart:
             raise NotImplementedError()

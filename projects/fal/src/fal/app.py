@@ -8,9 +8,10 @@ import re
 import sys
 import threading
 import time
+from collections.abc import Callable
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass, field
-from typing import Any, Callable, ClassVar, Optional
+from typing import Any, ClassVar
 
 import fastapi
 import grpc.aio as async_grpc
@@ -549,11 +550,11 @@ class App(BaseServable):
     """
 
     requirements: ClassVar[list[str] | list[list[str]]] = []  # type: ignore[assignment]
-    requirements_context_dir: ClassVar[Optional[str]] = None
+    requirements_context_dir: ClassVar[str | None] = None
     local_python_modules: ClassVar[list[str]] = []
     machine_type: ClassVar[str | list[str]] = "S"
     num_gpus: ClassVar[int | None] = None
-    regions: ClassVar[Optional[list[str]]] = None
+    regions: ClassVar[list[str] | None] = None
     host_kwargs: ClassVar[dict[str, Any]] = {
         "_scheduler": "nomad",
         "_scheduler_options": {
@@ -563,28 +564,28 @@ class App(BaseServable):
         "keep_alive": 60,
     }
     _explicit_host_kwargs: ClassVar[set[str]] = set()
-    app_name: ClassVar[Optional[str]] = None
-    app_auth: ClassVar[Optional[AuthModeLiteral]] = None
+    app_name: ClassVar[str | None] = None
+    app_auth: ClassVar[AuthModeLiteral | None] = None
     app_files: ClassVar[list[str]] = []
     app_files_ignore: ClassVar[list[str]] = DEFAULT_APP_FILES_IGNORE
-    app_files_context_dir: ClassVar[Optional[str]] = None
-    request_timeout: ClassVar[Optional[int]] = None
-    startup_timeout: ClassVar[Optional[int]] = None
-    metrics_port: ClassVar[Optional[int]] = None
-    min_concurrency: ClassVar[Optional[int]] = None
-    max_concurrency: ClassVar[Optional[int]] = None
-    concurrency_buffer: ClassVar[Optional[int]] = None
-    concurrency_buffer_perc: ClassVar[Optional[int]] = None
-    scaling_delay: ClassVar[Optional[int]] = None
-    max_multiplexing: ClassVar[Optional[int]] = None
-    kind: ClassVar[Optional[str]] = None
-    image: ClassVar[Optional[ContainerImage]] = None
-    local_file_path: ClassVar[Optional[str]] = None
-    skip_retry_conditions: ClassVar[Optional[list[RetryConditionLiteral]]] = None
-    retry_config: ClassVar[Optional[RetryConfig | RetryConfigDict]] = None
-    termination_grace_period_seconds: ClassVar[Optional[int]] = None
-    secrets: ClassVar[Optional[list[str]]] = None
-    data_mounts: ClassVar[Optional[list[str]]] = None
+    app_files_context_dir: ClassVar[str | None] = None
+    request_timeout: ClassVar[int | None] = None
+    startup_timeout: ClassVar[int | None] = None
+    metrics_port: ClassVar[int | None] = None
+    min_concurrency: ClassVar[int | None] = None
+    max_concurrency: ClassVar[int | None] = None
+    concurrency_buffer: ClassVar[int | None] = None
+    concurrency_buffer_perc: ClassVar[int | None] = None
+    scaling_delay: ClassVar[int | None] = None
+    max_multiplexing: ClassVar[int | None] = None
+    kind: ClassVar[str | None] = None
+    image: ClassVar[ContainerImage | None] = None
+    local_file_path: ClassVar[str | None] = None
+    skip_retry_conditions: ClassVar[list[RetryConditionLiteral] | None] = None
+    retry_config: ClassVar[RetryConfig | RetryConfigDict | None] = None
+    termination_grace_period_seconds: ClassVar[int | None] = None
+    secrets: ClassVar[list[str] | None] = None
+    data_mounts: ClassVar[list[str] | None] = None
 
     isolate_channel: async_grpc.Channel | None = None
 
@@ -747,7 +748,7 @@ class App(BaseServable):
         return AppSpawnInfo(app.spawn())
 
     @classmethod
-    def get_health_check_config(cls) -> Optional[ApplicationHealthCheckConfig]:
+    def get_health_check_config(cls) -> ApplicationHealthCheckConfig | None:
         health_check_path: str | None = None
         health_check: HealthCheck | None = None
 

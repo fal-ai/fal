@@ -1,12 +1,13 @@
+from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict, Optional, Sequence, Tuple, Union
+from typing import Any
 
 import tomli
 
 
 @lru_cache
-def _load_toml(path: Union[Path, str]) -> Dict[str, Any]:
+def _load_toml(path: Path | str) -> dict[str, Any]:
     with open(path, "rb") as f:
         return tomli.load(f)
 
@@ -17,7 +18,7 @@ def _cached_resolve(path: Path) -> Path:
 
 
 @lru_cache
-def find_project_root(srcs: Optional[Sequence[str]]) -> Tuple[Path, str]:
+def find_project_root(srcs: Sequence[str] | None) -> tuple[Path, str]:
     """Return a directory containing .git, or pyproject.toml.
 
     That directory will be a common parent of all files and directories
@@ -59,8 +60,8 @@ def find_project_root(srcs: Optional[Sequence[str]]) -> Tuple[Path, str]:
 
 
 def find_pyproject_toml(
-    path_search_start: Optional[Tuple[str, ...]] = None,
-) -> Optional[str]:
+    path_search_start: tuple[str, ...] | None = None,
+) -> str | None:
     """Find the absolute filepath to a pyproject.toml if it exists"""
     path_project_root, _ = find_project_root(path_search_start)
     path_pyproject_toml = path_project_root / "pyproject.toml"
@@ -69,13 +70,13 @@ def find_pyproject_toml(
         return str(path_pyproject_toml)
 
 
-def parse_pyproject_toml(path_config: str) -> Dict[str, Any]:
+def parse_pyproject_toml(path_config: str) -> dict[str, Any]:
     """Parse a pyproject toml file, pulling out relevant parts for fal.
 
     If parsing fails, will raise a tomli.TOMLDecodeError.
     """
     pyproject_toml = _load_toml(path_config)
-    config: Dict[str, Any] = pyproject_toml.get("tool", {}).get("fal", {})
+    config: dict[str, Any] = pyproject_toml.get("tool", {}).get("fal", {})
     config = {k.replace("--", "").replace("-", "_"): v for k, v in config.items()}
 
     return config

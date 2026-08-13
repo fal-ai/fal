@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import pickle
-from typing import Any, Callable, ForwardRef
+from collections.abc import Callable
+from typing import Any, ForwardRef
 
 import cloudpickle
 

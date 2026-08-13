@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from fal.api._sdist import ProgressCallback
 from fal.sdk import AuthModeLiteral, DeploymentStrategyLiteral
@@ -243,7 +243,7 @@ def _prepare_deployment_from_reference(
     app_ref: tuple[str | Path | None, str | None],
     app_data: AppData,
     force_env_build: bool,
-    environment_name: Optional[str] = None,
+    environment_name: str | None = None,
 ) -> PreparedDeployment:
     from fal.api import FalServerlessError
     from fal.utils import load_function_from
@@ -297,7 +297,7 @@ def _deploy_from_reference(
     app_ref: tuple[str | Path | None, str | None],
     app_data: AppData,
     force_env_build: bool,
-    environment_name: Optional[str] = None,
+    environment_name: str | None = None,
     result_handler: ResultHandler | None = None,
     build_result_handler: ResultHandler | None = None,
 ) -> DeploymentResult:

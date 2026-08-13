@@ -1,13 +1,14 @@
 from __future__ import annotations
 
+import graphlib
 import json
 import webbrowser
 from argparse import ArgumentParser
 from collections import Counter
+from collections.abc import Iterator
 from dataclasses import dataclass, field
-from typing import Any, Dict, Iterator, List, Union, cast
+from typing import Any, Union, cast
 
-import graphlib
 import rich
 from openapi_fal_rest.api.workflows import (
     create_workflow as publish_workflow,
@@ -20,8 +21,8 @@ import fal
 from fal import flags
 from fal.exceptions import FalServerlessException
 
-JSONType = Union[Dict[str, Any], List[Any], str, int, float, bool, None, "Leaf"]
-SchemaType = Dict[str, Any]
+JSONType = Union[dict[str, Any], list[Any], str, int, float, bool, None, "Leaf"]
+SchemaType = dict[str, Any]
 
 VARIABLE_PREFIX = "$"
 INPUT_VARIABLE_NAME = "input"
