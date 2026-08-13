@@ -11,6 +11,11 @@ on:
         description: "Existing release tag (see create-release workflow)"
         required: true
         type: string
+      skip_tests:
+        description: "Emergency: publish without re-running unit tests"
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   build:
@@ -53,10 +58,103 @@ jobs:
           name: dist
           path: projects/${{ steps.parse.outputs.name }}/dist
 
+  # Re-run the unit suite against the commit being released, resolving
+  # dependencies fresh. A green run from earlier in the day is not a statement
+  # about now: the dependency bounds are open, so the installed tree is a
+  # function of when the job runs. fal 1.79.0 shipped from a commit whose last
+  # CI run was green 12.5 hours earlier, by which point argcomplete 3.7.1 had
+  # broken the CLI on 3.8/3.9.
+  # `inputs.skip_tests` and not `github.event.inputs.skip_tests`: the latter is
+  # always a string, and any non-empty string is truthy in an expression, so
+  # `!github.event.inputs.skip_tests` would be false even for "false" and would
+  # silently disable this gate on every dispatch. `inputs` honours the declared
+  # boolean type, and is empty (falsy) on a `release` event, which keeps the
+  # automatic path gated with no way to bypass it.
+  unit-tests:
+    if: ${{ needs.build.outputs.name == 'fal' && !inputs.skip_tests }}
+    needs: build
+    uses: ./.github/workflows/fal-unit-tests.yml
+
+  # `unit-tests` installs the source tree (`pip install -e projects/fal`), so
+  # nothing above ever installs the artifact `pypi-publish` is about to upload.
+  # A wheel is a filtered copy of the source plus generated metadata, and the
+  # filter and the generation are both places to lose something: a subpackage
+  # missing from the packaging config, a data file not included, a broken
+  # console-script entry point, or a dependency marker that did not make it into
+  # METADATA. An editable install finds all of that on disk regardless, so the
+  # suite stays green and the breakage ships. This installs the built wheel with
+  # no checkout on the runner — site-packages is the only place the package can
+  # come from — and runs it.
+  wheel-smoke:
+    name: smoke (py ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    needs: [build, unit-tests]
+    if: >-
+      ${{ !cancelled()
+        && !inputs.skip_tests
+        && needs.build.result == 'success'
+        && (needs['unit-tests'].result == 'success' || needs['unit-tests'].result == 'skipped') }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.8 and 3.9 are where the dependency markers diverge from 3.10+, and
+        # where the argcomplete 3.7.1 break landed; 3.13 covers current
+        # resolution. All three projects declare requires-python >=3.8.
+        python: ["3.8", "3.9", "3.13"]
+    steps:
+      - name: Download dist
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: dist
+          path: dist
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install the built wheel
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install dist/*.whl
+
+      - name: Import the installed package
+        env:
+          NAME: ${{ needs.build.outputs.name }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          set -euo pipefail
+          python -c "
+          import importlib, importlib.metadata as md, os
+          name = os.environ['NAME']
+          importlib.import_module(name)
+          installed = md.version(name)
+          print(f'{name} {installed} installed from wheel and imports')
+          expected = os.environ['VERSION']
+          if installed != expected:
+              print(f'::warning::wheel is version {installed}, tag says {expected}')
+          "
+
+      - name: Run the CLI entry point
+        if: ${{ needs.build.outputs.name == 'fal' }}
+        run: |
+          set -euo pipefail
+          fal --version
+          fal --help > /dev/null
+
   pypi-publish:
     name: Upload release to PyPI
     runs-on: ubuntu-latest
-    needs: build
+    needs: [build, unit-tests, wheel-smoke]
+    # `unit-tests` is skipped for non-fal projects (isolate_proto, fal_client),
+    # both are skipped by `skip_tests`, and a skipped dependency would otherwise
+    # skip this job too.
+    if: >-
+      ${{ !cancelled()
+        && needs.build.result == 'success'
+        && (needs['unit-tests'].result == 'success' || needs['unit-tests'].result == 'skipped')
+        && (needs['wheel-smoke'].result == 'success' || needs['wheel-smoke'].result == 'skipped') }}
     environment:
       name: pypi
       url: https://pypi.org/p/${{ needs.build.outputs.name }}
@@ -72,9 +170,17 @@ jobs:
       - name: Publish package distributions to PyPI
         uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # v1.14.0
 
+  # Gated on the same terms as pypi-publish. Without this the container would
+  # run in parallel with the suite and could push ghcr.io/fal-ai/fal:latest from
+  # a build the gate had just blocked from PyPI.
   release-container:
-    if: ${{ needs.build.outputs.name == 'fal' }}
+    needs: [build, unit-tests, wheel-smoke]
+    if: >-
+      ${{ !cancelled()
+        && needs.build.outputs.name == 'fal'
+        && needs.build.result == 'success'
+        && (needs['unit-tests'].result == 'success' || needs['unit-tests'].result == 'skipped')
+        && (needs['wheel-smoke'].result == 'success' || needs['wheel-smoke'].result == 'skipped') }}
     uses: ./.github/workflows/container.yml
-    needs: build
     with:
       version: ${{ needs.build.outputs.version }}

@@ -16,6 +16,7 @@ def test_run():
     assert args.func == _run
     assert args.func_ref == ("/my/path.py", "myfunc")
     assert args.machine_type is None
+    assert args.forward_compat is False
     assert args.limit_max_requests is None
     assert args.exposed_port is None
     assert args.exposed_metrics_port is None
@@ -46,6 +47,13 @@ def test_run_with_machine_type():
     assert args.func == _run
     assert args.func_ref == ("/my/path.py", "myfunc")
     assert args.machine_type == "GPU-H100"
+
+
+def test_run_with_forward_compat():
+    args = parse_args(["run", "/my/path.py::myfunc", "--forward-compat"])
+    assert args.func == _run
+    assert args.func_ref == ("/my/path.py", "myfunc")
+    assert args.forward_compat is True
 
 
 def test_run_with_limit_max_requests():
@@ -171,6 +179,7 @@ def mock_args(
     no_cache: bool = False,
     auth: Optional[str] = "public",
     machine_type: Optional[str] = None,
+    forward_compat: bool = False,
     limit_max_requests: Optional[int] = None,
     local: bool = False,
     exposed_port: Optional[int] = None,
@@ -187,6 +196,7 @@ def mock_args(
     args.app_name = None
     args.env = None
     args.machine_type = machine_type
+    args.forward_compat = forward_compat
     args.limit_max_requests = limit_max_requests
     args.local = local
     args.exposed_port = exposed_port
@@ -463,6 +473,33 @@ def test_run_applies_machine_type_override(mock_load_function_from, mock_create_
     _run(args)
 
     assert loaded.function.options.host["machine_type"] == "GPU-H100"
+
+
+@patch("fal.api.client.SyncServerlessClient._create_host")
+@patch("fal.utils.load_function_from")
+def test_run_applies_forward_compat_scheduler_option(
+    mock_load_function_from, mock_create_host
+):
+    host = mocked_fal_serverless_host("my-host")
+    mock_create_host.return_value = host
+
+    loaded = mocked_loaded_function(
+        options=Options(host={"_scheduler_options": {"storage_region": "us-east"}})
+    )
+    mock_load_function_from.return_value = loaded
+
+    args = mock_args(
+        func_ref=("/my/path.py", "myfunc"),
+        host="my-host",
+        forward_compat=True,
+    )
+
+    _run(args)
+
+    assert loaded.function.options.host["_scheduler_options"] == {
+        "storage_region": "us-east",
+        "forward_compat": True,
+    }
 
 
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")

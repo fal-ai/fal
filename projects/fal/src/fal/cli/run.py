@@ -80,6 +80,11 @@ def _run(args):
     isolated_function = loaded.function
     if args.machine_type is not None:
         isolated_function.options.host["machine_type"] = args.machine_type
+    if args.forward_compat:
+        isolated_function.options.host["_scheduler_options"] = {
+            **(isolated_function.options.host.get("_scheduler_options") or {}),
+            "forward_compat": True,
+        }
 
     if not args.local:
         from ._result_handlers import PrepareRequirementsCallback
@@ -205,6 +210,11 @@ def add_parser(main_subparsers, parents):
         "--machine-type",
         type=str,
         help="Machine type to use for this run.",
+    )
+    parser.add_argument(
+        "--forward-compat",
+        action="store_true",
+        help="Run on test nodes carrying upcoming node changes.",
     )
     parser.add_argument(
         "--limit-max-requests",
