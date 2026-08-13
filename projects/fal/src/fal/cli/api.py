@@ -121,7 +121,9 @@ def queue_run(model_id: str, params: dict):
                     subtitle=request_id,
                     subtitle_align="right",
                 )
-                logs_panel = Panel("\n".join(logs[-10:]), title="Logs")
+                # Text(), not a markup string: a log line holding "[/]" or
+                # "[gw0]" would otherwise raise MarkupError or be swallowed.
+                logs_panel = Panel(Text("\n".join(logs[-10:])), title="Logs")
 
                 live.update(Group(status_panel, logs_panel))
                 live.refresh()
@@ -161,14 +163,20 @@ def queue_run(model_id: str, params: dict):
 
         if new_count:
             target_console.print(
-                Panel("\n".join(logs[-new_count:]), title="Logs", border_style="red")
+                Panel(
+                    Text("\n".join(logs[-new_count:])),
+                    title="Logs",
+                    border_style="red",
+                )
             )
 
-        target_console.print(
-            f"{get_cross_icon(target_console)} Request {handle.request_id} failed "
+        summary = Text.from_markup(f"{get_cross_icon(target_console)} ")
+        summary.append(
+            f"Request {handle.request_id} failed "
             f"with HTTP {exc.response.status_code}: "
             f"{error or _response_detail(exc.response)}"
         )
+        target_console.print(summary)
         return 1
 
 

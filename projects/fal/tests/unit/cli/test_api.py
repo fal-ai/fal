@@ -80,9 +80,10 @@ def _failing_queue(**kwargs):
     kwargs.setdefault(
         "status_logs", [_log("starting up"), _log(json.dumps({"traceback": TRACEBACK}))]
     )
-    return FakeQueue(
-        response=httpx.Response(500, json={"detail": "Internal Server Error"}), **kwargs
+    kwargs.setdefault(
+        "response", httpx.Response(500, json={"detail": "Internal Server Error"})
     )
+    return FakeQueue(**kwargs)
 
 
 def test_failed_request_reports_detail_and_exits_nonzero(run_api):
@@ -133,6 +134,22 @@ def test_logs_are_not_duplicated_across_polls(run_api):
     _, out = run_api(queue)
 
     assert out.count("starting up") == 1
+
+
+def test_square_brackets_in_logs_and_detail_survive(run_api):
+    # Rich parses markup in a plain string: "[/]" raises MarkupError and
+    # "[gw0]" is swallowed as a style tag.
+    queue = _failing_queue(
+        status_logs=[_log("worker [gw0] died"), _log("expected [/] token")],
+        response=httpx.Response(500, json={"detail": "bad [/] input"}),
+    )
+
+    code, out = run_api(queue)
+
+    assert code == 1
+    assert "[gw0]" in out
+    assert "expected [/] token" in out
+    assert "bad [/] input" in out
 
 
 def test_format_log_unwraps_traceback_envelope():
