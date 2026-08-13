@@ -340,17 +340,17 @@ class File(BaseModel):
         upload_policy = get_upload_policy(request)
         if upload_policy is not None:
             file_size = file_path.stat().st_size
-            # Same rule the repository path uses for whether it keeps the bytes,
-            # so .as_bytes() does not start failing just because a policy header
-            # was sent.
-            chunked = (
+            # The upload-policy path is always a single S3 POST (<=5 GB), never a
+            # multipart upload; this flag only picks how the payload is held for
+            # it. Same threshold as the repository path, so .as_bytes() stays
+            # consistent.
+            stage_to_disk = (
                 multipart
                 if multipart is not None
                 else file_size > MultipartUploadV3.MULTIPART_THRESHOLD
             )
-            if chunked:
-                # Large output: stage on disk and stream it in the background
-                # rather than holding the whole payload resident.
+            if stage_to_disk:
+                # Stage and stream in the background, off the request thread.
                 url = upload_path_with_policy(
                     upload_policy, file_path, file_path.name, content_type
                 )

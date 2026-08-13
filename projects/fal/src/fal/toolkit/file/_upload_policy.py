@@ -403,7 +403,8 @@ def _current_request() -> Any:
 def get_upload_policy(request: Any = None) -> UploadPolicy | None:
     """The policy for the in-flight request, or ``None``.
 
-    Read lazily rather than in middleware, matching the registry.
+    The middleware parses and caches the policy upfront; this reads that cache,
+    falling back to header parsing only for a bare request (see the inline note).
 
     ``current_request`` is a ContextVar, propagated by ``fal.compat.run_in_thread``
     (so the async constructors resolve). An app's own ``ThreadPoolExecutor`` and
@@ -462,10 +463,11 @@ def _prepare_upload(
             "must not contain a path separator"
         )
 
-    # Re-validated rather than assumed: the upload_* entry points are exported,
-    # so a caller can hand-build an UploadPolicy that never went through
-    # parse_upload_policy. The URL allowlist (SSRF) and the key template must
-    # hold regardless of how the policy got here.
+    # Not a re-parse of the header: the middleware already parsed it upfront and
+    # rejected a malformed policy before generation. This re-checks only the URL
+    # allowlist (SSRF) and key template because the upload_* entry points are
+    # exported -- a caller can hand-build an UploadPolicy that never went through
+    # parse_upload_policy, and those two must hold however it got here.
     _validate_policy_url(policy.url)
     fields = dict(policy.fields)
     key_template = _require_key_template(fields)
@@ -511,22 +513,24 @@ def _should_retry(exc: Exception, deadline: float) -> bool:
 
 
 def _s3_error_code(response: httpx.Response) -> str:
-    """The ``<Code>`` from an S3 error body, or nothing.
+    """The ``<Code>`` from an S3 error body, or ``""``.
 
-    Deliberately not the whole body. The destination is caller-chosen, so its
-    response is foreign text that ends up in the app's logs -- which fal returns
-    to the request's own caller. S3's error XML carries ``BucketName``,
-    ``RequestId`` and ``HostId``; the error code alone is what's diagnostic.
+    Only the code, never the whole body: S3's error XML carries ``BucketName``,
+    ``RequestId`` and ``HostId``, and the code alone is what's diagnostic. It
+    feeds the server-side log, not the caller-facing exception.
     """
     match = _S3_ERROR_CODE_RE.search((response.text or "")[:4096])
-    return f" {match.group(1)}." if match else ""
+    return match.group(1) if match else ""
 
 
 def _new_client() -> httpx.Client:
     return httpx.Client(timeout=UPLOAD_POLICY_TIMEOUT, follow_redirects=False)
 
 
-def _attempt_upload(post: Callable[[httpx.Client], httpx.Response]) -> None:
+def _attempt_upload(
+    post: Callable[[httpx.Client], httpx.Response],
+    request_id: str | None = None,
+) -> None:
     """One upload, with retries. Raises ``UploadPolicyError`` on failure.
 
     The client is built per upload, not at module scope: this module is
@@ -559,14 +563,27 @@ def _attempt_upload(post: Callable[[httpx.Client], httpx.Response]) -> None:
                 time.sleep(delay * random.uniform(0.5, 1.5))
                 delay = min(delay * 2, _MAX_DELAY)
 
+    # Keep the message generic: this runs fire-and-forget (_run swallows the
+    # exception; the detail is logged just below), and the exported upload_* entry
+    # points mean caller-chosen foreign text -- status line, reason phrase, error
+    # body -- must not be baked into it.
     if isinstance(last, httpx.HTTPStatusError):
+        status = last.response.status_code
+        logger.warning(
+            "upload policy upload failed",
+            request_id=request_id,
+            status=status,
+            s3_error=_s3_error_code(last.response) or None,
+        )
         raise UploadPolicyError(
-            f"Upload via {UPLOAD_POLICY_KEY} failed. "
-            f"Status {last.response.status_code}: "
-            f"{httpx.codes.get_reason_phrase(last.response.status_code)}."
-            f"{_s3_error_code(last.response)}"
+            f"Upload via {UPLOAD_POLICY_KEY} failed with status {status}."
         ) from last
-    raise UploadPolicyError(f"Upload via {UPLOAD_POLICY_KEY} failed: {last}") from last
+    logger.warning(
+        "upload policy upload failed",
+        request_id=request_id,
+        error=str(last),
+    )
+    raise UploadPolicyError(f"Upload via {UPLOAD_POLICY_KEY} failed.") from last
 
 
 # --- background execution ---------------------------------------------
@@ -577,8 +594,8 @@ def _attempt_upload(post: Callable[[httpx.Client], httpx.Response]) -> None:
 # Two independent bounds on queued work: a thread count (fds and OS threads,
 # both paths) and a byte total (RAM). in-memory uploads count against the byte
 # total -- from_bytes, and small from_path outputs, which the caller keeps
-# resident in File.file_data anyway; only large chunked from_path streams a
-# disk-staged file and stays budget-free. Refused rather than queued when full;
+# resident in File.file_data anyway; only large from_path outputs stream a
+# disk-staged file and stay budget-free. Refused rather than queued when full;
 # waiting would put back the runner-hold that backgrounding exists to avoid.
 UPLOAD_POLICY_MAX_PENDING = 64
 UPLOAD_POLICY_MAX_PENDING_BYTES = 512 * 1024 * 1024
@@ -613,13 +630,17 @@ def _submit(
     def _run() -> None:
         global _pending_bytes  # noqa: PLW0603 -- module-level queue budget
         try:
-            _attempt_upload(post)
+            _attempt_upload(post, request_id)
+        except UploadPolicyError:
+            # Expected failure, already logged in _attempt_upload. Swallowed so a
+            # daemon-thread traceback doesn't hit stdout and mis-file under the
+            # in-flight request (often a different tenant).
+            pass
         except Exception as exc:
-            # structlog, not print(): the log context is process-wide, so stdout
-            # from this thread is filed under whichever request is in flight --
-            # frequently a different tenant. structlog drops it unless debugging.
+            # structlog, not print(): same stdout-attribution reason as above.
+            # structlog drops it unless debugging.
             logger.warning(
-                "upload policy upload failed",
+                "upload policy upload crashed",
                 request_id=request_id,
                 error=str(exc),
             )
@@ -697,6 +718,12 @@ def drain(timeout: float | None = UPLOAD_POLICY_DRAIN_TIMEOUT) -> None:
     deadline = None if timeout is None else time.monotonic() + timeout
     with _state_lock:
         threads = list(_inflight)
+    if threads:
+        logger.info(
+            "upload policy draining in-flight uploads",
+            pending=len(threads),
+            timeout=timeout,
+        )
     for thread in threads:
         if not thread.ident:
             continue  # never started; joining would raise
@@ -707,6 +734,15 @@ def drain(timeout: float | None = UPLOAD_POLICY_DRAIN_TIMEOUT) -> None:
         if remaining <= 0:
             break
         thread.join(remaining)
+    # Daemon threads: anything still running is dropped when the process exits.
+    # Log it so a customer's "my output never arrived" has a breadcrumb.
+    still_running = [thread for thread in threads if thread.is_alive()]
+    if still_running:
+        logger.warning(
+            "upload policy drain left uploads unfinished at shutdown",
+            unfinished=len(still_running),
+            timeout=timeout,
+        )
 
 
 def _current_request_id() -> str | None:

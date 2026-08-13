@@ -257,9 +257,9 @@ class TestUploadFailureSurfacing:
         assert response.status_code == 424
         assert response.json() == {"detail": "bucket said no"}
 
-    def test_reports_the_s3_error_code_but_not_the_whole_body(self, monkeypatch):
-        """The destination is caller-chosen, so its response body is foreign
-        text that would otherwise land in logs."""
+    def test_the_message_carries_only_the_status_no_foreign_text(self):
+        """The message reflects nothing but the bare status -- no S3 code, no
+        body identifiers."""
         body = (
             "<Error><Code>AccessDenied</Code><BucketName>fal-internal</BucketName>"
             "<RequestId>ABC123</RequestId><HostId>SECRET==</HostId></Error>"
@@ -274,12 +274,35 @@ class TestUploadFailureSurfacing:
             up._attempt_upload(fake_post)
 
         message = str(excinfo.value)
-        assert "AccessDenied" in message
-        for secret in ("fal-internal", "ABC123", "SECRET=="):
-            assert secret not in message
+        assert message == f"Upload via {UPLOAD_POLICY_KEY} failed with status 403."
+        for foreign in ("AccessDenied", "fal-internal", "ABC123", "SECRET=="):
+            assert foreign not in message
+
+    def test_the_diagnostic_detail_lands_in_the_server_side_log(self, monkeypatch):
+        """The other half of the relocation: what the message drops, the log must
+        keep, or a debugger is left with only a bare status."""
+        events = MagicMock()
+        monkeypatch.setattr(up, "logger", events)
+
+        def fake_post(client):
+            return httpx.Response(
+                403,
+                text="<Error><Code>AccessDenied</Code></Error>",
+                request=httpx.Request("POST", VALID_POLICY.url),
+            )
+
+        with pytest.raises(UploadPolicyError):
+            up._attempt_upload(fake_post)
+
+        assert any(
+            call.kwargs.get("status") == 403
+            and call.kwargs.get("s3_error") == "AccessDenied"
+            for call in events.warning.call_args_list
+        )
 
     def test_does_not_echo_the_destinations_reason_phrase(self):
-        """httpx takes reason_phrase off the wire, not from a status table."""
+        """httpx takes reason_phrase off the wire, so a destination could smuggle
+        bytes into it; the message must not reflect it."""
 
         def fake_post(client):
             return httpx.Response(
@@ -292,7 +315,9 @@ class TestUploadFailureSurfacing:
             up._attempt_upload(fake_post)
 
         assert "LEAKED-SECRET" not in str(excinfo.value)
-        assert "Forbidden" in str(excinfo.value)
+        assert str(excinfo.value) == (
+            f"Upload via {UPLOAD_POLICY_KEY} failed with status 403."
+        )
 
     @pytest.mark.parametrize(
         ("body", "expected"),
@@ -307,20 +332,12 @@ class TestUploadFailureSurfacing:
         ids=["empty code", "digit-bearing code", "code past the scan window"],
     )
     def test_error_code_extraction_edges(self, body, expected):
-        def fake_post(client):
-            return httpx.Response(
-                403, text=body, request=httpx.Request("POST", VALID_POLICY.url)
-            )
-
-        with pytest.raises(UploadPolicyError) as excinfo:
-            up._attempt_upload(fake_post)
-
-        message = str(excinfo.value)
-        if expected:
-            assert expected in message
-        else:
-            # No dangling " ." and no leaked body.
-            assert message.endswith("Forbidden.")
+        # Extraction is unit-tested directly: the code feeds the server-side log,
+        # not the caller-facing message.
+        response = httpx.Response(
+            403, text=body, request=httpx.Request("POST", VALID_POLICY.url)
+        )
+        assert up._s3_error_code(response) == expected
 
 
 class TestPrepareUpload:
@@ -672,6 +689,48 @@ class TestBackgroundMachinery:
         release.set()
         drain(timeout=10)
 
+    def test_drain_logs_uploads_it_abandons_at_shutdown(self, monkeypatch):
+        """A runner can be killed before drain finishes; the abandoned uploads
+        must leave a breadcrumb for when a customer reports a missing output."""
+        release = threading.Event()
+        events = MagicMock()
+        monkeypatch.setattr(up, "logger", events)
+
+        def fake_post(url, **kwargs):
+            release.wait(timeout=10)
+            return httpx.Response(204, request=httpx.Request("POST", url))
+
+        monkeypatch.setattr(up, "_new_client", lambda: _StubClient(fake_post))
+        upload_bytes_with_policy(VALID_POLICY, "cat.png", b"bytes", "image/png")
+        drain(timeout=0.1)
+
+        warned = [call for call in events.warning.call_args_list if call.args]
+        assert any(
+            "unfinished" in call.args[0] and call.kwargs.get("unfinished") == 1
+            for call in warned
+        )
+
+        release.set()
+        drain(timeout=10)
+
+    def test_drain_does_not_warn_when_uploads_finish(self, monkeypatch):
+        """The abandoned-upload warning must fire on a real timeout only, not on
+        every clean shutdown."""
+        events = MagicMock()
+        monkeypatch.setattr(up, "logger", events)
+
+        def fake_post(url, **kwargs):
+            return httpx.Response(204, request=httpx.Request("POST", url))
+
+        monkeypatch.setattr(up, "_new_client", lambda: _StubClient(fake_post))
+        upload_bytes_with_policy(VALID_POLICY, "cat.png", b"bytes", "image/png")
+        drain(timeout=5)
+
+        assert not any(
+            call.args and "unfinished" in call.args[0]
+            for call in events.warning.call_args_list
+        )
+
     def test_fork_reset_returns_the_queue_budget(self, monkeypatch):
         """A forked child inherits the spent budget but none of the threads
         that would return it, so uploads would refuse forever. The reset also
@@ -787,8 +846,13 @@ class TestBackgroundMachinery:
         def fake_post(client):
             raise httpx.ConnectError("no route")
 
-        with pytest.raises(UploadPolicyError, match="no route"):
+        with pytest.raises(UploadPolicyError) as excinfo:
             up._attempt_upload(fake_post)
+
+        # Wrapped, but the transport error's text (which can carry the
+        # caller-chosen host) stays out of the message and only the cause holds it.
+        assert str(excinfo.value) == f"Upload via {UPLOAD_POLICY_KEY} failed."
+        assert isinstance(excinfo.value.__cause__, httpx.ConnectError)
 
     def test_stops_retrying_once_the_total_deadline_passes(self, monkeypatch):
         calls = []
