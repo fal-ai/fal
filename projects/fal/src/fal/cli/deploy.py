@@ -196,7 +196,6 @@ def _render_deploy_result(
                 "The rollout is still in progress: the new revision already "
                 "receives traffic while its runners start up, and a failed rollout "
                 "is not rolled back automatically.",
-                style="dim",
             )
         else:
             check_icon = get_check_icon(args.console)
