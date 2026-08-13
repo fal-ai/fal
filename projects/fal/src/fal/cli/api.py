@@ -1,5 +1,7 @@
+import json
 import re
 
+import httpx
 import rich
 
 from fal import flags
@@ -18,9 +20,9 @@ def _api(args):
     )
 
     if args.model_id.endswith("/stream"):
-        stream_run(args.model_id, params)
+        return stream_run(args.model_id, params)
     else:
-        queue_run(args.model_id, params)
+        return queue_run(args.model_id, params)
 
 
 def stream_run(model_id: str, params: dict):
@@ -37,6 +39,39 @@ def stream_run(model_id: str, params: dict):
                 rich.print(line.decode())
 
 
+def _format_log(log: dict) -> str:
+    """Render a log entry.
+
+    An app that lets an exception escape an endpoint logs it as a one-line
+    ``{"traceback": ...}`` envelope (see ``fal.api.api``); unwrap it so the
+    traceback reads as a traceback instead of an escaped JSON blob.
+    """
+    message = log.get("message", str(log))
+
+    try:
+        payload = json.loads(message)
+    except (TypeError, ValueError):
+        return message
+
+    if isinstance(payload, dict) and "traceback" in payload:
+        return str(payload["traceback"]).rstrip()
+
+    return message
+
+
+def _response_detail(response: httpx.Response) -> str:
+    try:
+        body = response.json()
+    except ValueError:
+        return response.text.strip()
+
+    if isinstance(body, dict) and "detail" in body:
+        detail = body["detail"]
+        return detail if isinstance(detail, str) else json.dumps(detail)
+
+    return response.text.strip()
+
+
 def queue_run(model_id: str, params: dict):
     from rich.console import Group
     from rich.live import Live
@@ -45,6 +80,7 @@ def queue_run(model_id: str, params: dict):
 
     import fal.apps
     from fal.console.icons import (  # noqa: PLC0415
+        get_cross_icon,
         get_status_done_icon,
         get_status_progress_icon,
         get_status_queued_icon,
@@ -57,6 +93,13 @@ def queue_run(model_id: str, params: dict):
     status_progress_icon = get_status_progress_icon(target_console)
     status_done_icon = get_status_done_icon(target_console)
 
+    # A status response carries every log entry emitted so far, so only the
+    # ones past what we already hold are new.
+    def consume_logs(entries) -> int:
+        new_entries = (entries or [])[len(logs) :]
+        logs.extend(_format_log(entry) for entry in new_entries)
+        return len(new_entries)
+
     try:
         with Live(auto_refresh=False, console=target_console) as live:
             for event in handle.iter_events(logs=True):
@@ -67,9 +110,7 @@ def queue_run(model_id: str, params: dict):
                     )
                 elif isinstance(event, fal.apps.InProgress):
                     status = Text(f"{status_progress_icon} In Progress", style="blue")
-                    if event.logs:
-                        logs.extend(log.get("message", str(log)) for log in event.logs)
-                        logs = logs[-10:]  # Keep only last 10 logs
+                    consume_logs(event.logs)
                 else:
                     status = Text(f"{status_done_icon} Done", style="green")
 
@@ -80,7 +121,7 @@ def queue_run(model_id: str, params: dict):
                     subtitle=request_id,
                     subtitle_align="right",
                 )
-                logs_panel = Panel("\n".join(logs), title="Logs")
+                logs_panel = Panel("\n".join(logs[-10:]), title="Logs")
 
                 live.update(Group(status_panel, logs_panel))
                 live.refresh()
@@ -103,6 +144,32 @@ def queue_run(model_id: str, params: dict):
         rich.print("[yellow]Cancelling request...[/yellow]")
         handle.cancel()
         rich.print("[green]Request cancelled.[/green]")
+    except httpx.HTTPStatusError as exc:
+        # An app that fails answers with a generic detail and logs the reason,
+        # and iter_events returns before the terminal status, so the batch of
+        # logs that explains the failure is only reachable from here.
+        error = None
+        new_count = 0
+        try:
+            final_status = handle.status(logs=True)
+        except httpx.HTTPError:
+            pass
+        else:
+            if isinstance(final_status, fal.apps.Completed):
+                new_count = consume_logs(final_status.logs)
+                error = final_status.error or final_status.error_type
+
+        if new_count:
+            target_console.print(
+                Panel("\n".join(logs[-new_count:]), title="Logs", border_style="red")
+            )
+
+        target_console.print(
+            f"{get_cross_icon(target_console)} Request {handle.request_id} failed "
+            f"with HTTP {exc.response.status_code}: "
+            f"{error or _response_detail(exc.response)}"
+        )
+        return 1
 
 
 def add_parser(main_subparsers, parents):
