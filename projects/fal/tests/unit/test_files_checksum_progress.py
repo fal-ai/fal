@@ -89,9 +89,7 @@ def _put_multipart(big_file, progress, monkeypatch, etag=None):
     return digest, uploaded
 
 
-def test_checksum_progress_is_visible_before_hashing_finishes(
-    big_file, monkeypatch
-):
+def test_checksum_progress_is_visible_before_hashing_finishes(big_file, monkeypatch):
     """Regression for SERV-1567.
 
     Before the fix the whole file was hashed before the first ``add_task``, so a
