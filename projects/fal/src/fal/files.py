@@ -18,11 +18,19 @@ if TYPE_CHECKING:
     import httpx
 
 
-def _compute_md5(lpath, chunk_size=8192):
+# Chunk size for the pre-upload checksum. MD5 is a streaming hash, so this does
+# not change the digest; it only bounds how often ``on_chunk`` fires. Hashing a
+# 20GB file in 8KiB chunks would call back 2.6M times.
+_MD5_CHUNK_SIZE = 4 * 1024 * 1024
+
+
+def _compute_md5(lpath, chunk_size=_MD5_CHUNK_SIZE, on_chunk=None):
     hasher = hashlib.md5()
     with open(lpath, "rb") as fobj:
         for chunk in iter(lambda: fobj.read(chunk_size), b""):
             hasher.update(chunk)
+            if on_chunk is not None:
+                on_chunk(len(chunk))
     return hasher.hexdigest()
 
 
@@ -153,7 +161,15 @@ class FalFileSystem(AbstractFileSystem):
             fobj.write(response.content)
 
     def _put_file_multipart(self, lpath, rpath, size, progress):
-        md5 = _compute_md5(lpath)
+        # Rich renders nothing until the first task exists, so this task has to be
+        # added before hashing starts. Otherwise a large file leaves the terminal
+        # completely blank for the whole checksum phase and looks hung.
+        checksum_task = progress.add_task(
+            f"{os.path.basename(lpath)} (checksum)", total=size
+        )
+        md5 = _compute_md5(
+            lpath, on_chunk=lambda read: progress.advance(checksum_task, read)
+        )
 
         num_parts = max(1, (size + MULTIPART_CHUNK_SIZE - 1) // MULTIPART_CHUNK_SIZE)
         task = progress.add_task(f"{os.path.basename(lpath)}", total=num_parts)
