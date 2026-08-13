@@ -31,7 +31,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Iterator
 from enum import Enum, auto
-from typing import Any, NamedTuple, Union
+from typing import Any, NamedTuple, Type, Union
 
 EMPTY_STRING = ""
 HIGHLIGHTER = "^"
@@ -301,7 +301,7 @@ def assert_cant_happen():
     raise ValueError("Unexpected value")
 
 
-JSONType = type[Union[dict, list, int, float, str]]
+JSONType = Type[Union[dict, list, int, float, str]]
 JSON_TYPE_MAPPING = {
     dict: "object",
     list: "array",
