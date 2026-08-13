@@ -3,6 +3,7 @@ import os
 import re
 import shlex
 import sys
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Literal, Optional, Union
@@ -244,15 +245,17 @@ class DockerignoreHandler:
         return DEFAULT_DOCKERIGNORE_PATTERNS
 
     def get_regex_patterns(self) -> List[str]:
+        # Deprecated alias on pathspec 1.x; kept deliberately (see fal/sync.py).
         from pathspec.patterns.gitwildmatch import GitWildMatchPattern  # noqa: PLC0415
 
         patterns = self.get_patterns()
         regex_patterns = []
-        for pattern in patterns:
-            # Convert ignore patterns to regex, this way we can use `re` at runtime.
-            regex, _ = GitWildMatchPattern.pattern_to_regex(pattern)
-            if regex:
-                regex_patterns.append(regex)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            for pattern in patterns:
+                regex, _ = GitWildMatchPattern.pattern_to_regex(pattern)
+                if regex:
+                    regex_patterns.append(regex)
         return regex_patterns
 
 
