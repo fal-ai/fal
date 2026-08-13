@@ -62,7 +62,7 @@ def _deploy(args):
     deploy_check_source = _resolve_deploy_check_source(args, client)
     if deploy_check_source is not None:
         # The pre-deploy summary already shows the resolved app name.
-        res = deploy_with_check(
+        res, is_first_deploy = deploy_with_check(
             args,
             client,
             app_ref,
@@ -115,7 +115,7 @@ def _deploy(args):
             )
             raise
 
-    _render_deploy_result(args, res)
+    _render_deploy_result(args, res, is_first_deploy=is_first_deploy, team=team)
 
 
 def _resolve_team_and_app_ref(args) -> tuple[str | None, tuple[str | None, str | None]]:
@@ -138,31 +138,89 @@ def _resolve_team_and_app_ref(args) -> tuple[str | None, tuple[str | None, str |
     return team, app_ref
 
 
-def _render_deploy_result(args, res) -> None:
+def _apps_command_hint(
+    command: str, environment_name: str | None, team: str | None
+) -> str:
+    # `fal apps ...` does not re-resolve the team or environment from
+    # pyproject.toml, so hints have to carry what this deploy resolved.
+    hint = f"fal apps {command}"
+    if environment_name:
+        hint += f" --env {environment_name}"
+    if team:
+        hint += f" --team {team}"
+    return hint
+
+
+def _render_deploy_result(
+    args, res, *, is_first_deploy: bool = False, team: str | None = None
+) -> None:
     app_id = res.revision
     resolved_app_name = res.app_name
 
+    # --detach only stops the CLI from following the rollout; the deployment is
+    # still in progress when the command returns. A first deployment has no
+    # revision to roll out from, so the flag is a no-op there.
+    detached = args.attach_to_deployment is False and not is_first_deploy
+
     if args.output == "json":
         args.console.print(
-            json.dumps({"revision": app_id, "app_name": resolved_app_name})
+            json.dumps(
+                {
+                    "revision": app_id,
+                    "app_name": resolved_app_name,
+                    "status": "rolling_out" if detached else "deployed",
+                }
+            )
         )
     elif args.output == "pretty":
         from rich.text import Text
 
-        from fal.console.icons import get_check_icon, get_section_icon
+        from fal.console.icons import (
+            get_check_icon,
+            get_section_icon,
+            get_status_progress_icon,
+        )
         from fal.console.rules import print_rule
         from fal.flags import URL_OUTPUT
 
-        check_icon = get_check_icon(args.console)
         section_icon = get_section_icon(args.console)
-        args.console.print(
-            f"{check_icon} Deployed successfully",
-            style="bold green",
-        )
+        if detached:
+            progress_icon = get_status_progress_icon(args.console)
+            args.console.print(
+                f"{progress_icon} Deployment started (detached)",
+                style="bold yellow",
+            )
+            # A detached rolling deployment moves the alias first and brings the
+            # new revision's runners up afterwards, with no automatic rollback.
+            args.console.print(
+                "The rollout is still in progress: the new revision already "
+                "receives traffic while its runners start up, and a failed rollout "
+                "is not rolled back automatically.",
+            )
+        else:
+            check_icon = get_check_icon(args.console)
+            args.console.print(
+                f"{check_icon} Deployed successfully",
+                style="bold green",
+            )
         args.console.print("")
 
         # Build panel content with grouped sections
         lines = Text()
+
+        if detached:
+            lines.append(f"{section_icon} Status: rolling out ", style="bold")
+            lines.append(f"(revision {app_id})\n", style="dim")
+            progress_hint = _apps_command_hint(
+                f"runners {resolved_app_name}", args.env, team
+            )
+            rollback_hint = _apps_command_hint(
+                f"set-rev {resolved_app_name} <revision>", args.env, team
+            )
+            lines.append("  Progress:  ", style="dim")
+            lines.append(f"{progress_hint}\n", style="cyan")
+            lines.append("  Roll back: ", style="dim")
+            lines.append(f"{rollback_hint}\n\n", style="cyan")
 
         # Auth mode section
         AUTH_EXPLANATIONS = {
@@ -198,9 +256,10 @@ def _render_deploy_result(args, res) -> None:
             lines.append(f"  {res.log_url}", style="cyan")
 
         title = Text(resolved_app_name, style="bold")
-        print_rule(args.console, title, style="green")
+        rule_style = "yellow" if detached else "green"
+        print_rule(args.console, title, style=rule_style)
         args.console.print(lines)
-        print_rule(args.console, "", style="green")
+        print_rule(args.console, "", style=rule_style)
 
         # Reminder about scaling parameter inheritance
         if not args.app_scale_settings:
@@ -292,7 +351,7 @@ def add_parser(main_subparsers, parents):
         action="store_true",
         dest="attach_to_deployment",
         help=(
-            "Attach to the deployment process. "
+            "Attach to the deployment process and wait for the rollout to finish. "
             "Only applies when --strategy is rolling (the default)."
         ),
     )
@@ -301,8 +360,10 @@ def add_parser(main_subparsers, parents):
         action="store_false",
         dest="attach_to_deployment",
         help=(
-            "Do not attach to the deployment process. "
-            "Only applies when --strategy is rolling (the default)."
+            "Do not attach to the deployment process: return as soon as the new "
+            "revision is registered, while the rollout continues in the background. "
+            "Only applies when --strategy is rolling (the default), and has no "
+            "effect on the first deployment of an app (nothing to roll out from)."
         ),
     )
     parser.set_defaults(attach_to_deployment=None)
