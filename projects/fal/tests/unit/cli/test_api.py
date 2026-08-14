@@ -130,6 +130,30 @@ def test_failed_request_shows_app_traceback(run_api):
     assert '{"traceback"' not in out
 
 
+def test_long_traceback_is_truncated_from_the_tail(run_api):
+    # A real fal.App traceback runs to hundreds of framework frames; the cause
+    # is logged first, so the tail is what gets dropped.
+    long_traceback = "ModuleNotFoundError: No module named 'torch'\n" + "\n".join(
+        f"  frame {i}" for i in range(200)
+    )
+    queue = _failing_queue(
+        # The traceback is logged as the request dies, so it arrives with the
+        # terminal status rather than during the poll loop.
+        status_logs=[
+            _log("starting up"),
+            _log(json.dumps({"traceback": long_traceback})),
+        ],
+    )
+
+    code, out = run_api(queue)
+
+    assert code == 1
+    assert "ModuleNotFoundError: No module named 'torch'" in out
+    assert "frame 0" in out
+    assert "frame 199" not in out
+    assert "more lines" in out
+
+
 def test_failed_request_prefers_gateway_error(run_api):
     queue = _failing_queue(
         status_logs=[_log("starting up")],

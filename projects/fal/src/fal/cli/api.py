@@ -9,6 +9,11 @@ from fal import flags
 # = or := only
 KV_SPLIT_RE = re.compile(r"(=|:=)")
 
+# An unhandled app error is logged as one entry holding the whole traceback,
+# and fal.App runs endpoints under starlette/anyio, so that entry routinely
+# runs to hundreds of lines of framework frames.
+_FAILURE_LOG_LINES = 40
+
 
 def _api(args):
     """Handle the api command execution."""
@@ -174,8 +179,14 @@ def queue_run(model_id: str, params: dict):
         if completed:
             new_lines = consume_logs(final_status.logs)
             if new_lines:
+                # A logged traceback reads cause-first, so the tail is the
+                # framework frames -- the safe end to cut.
+                body = "\n".join(new_lines).splitlines()
+                shown = body[:_FAILURE_LOG_LINES]
+                if len(body) > len(shown):
+                    shown.append(f"... {len(body) - len(shown)} more lines")
                 target_console.print(
-                    Panel(Text("\n".join(new_lines)), title="Logs", border_style="red")
+                    Panel(Text("\n".join(shown)), title="Logs", border_style="red")
                 )
 
         detail = _response_detail(exc.response)
