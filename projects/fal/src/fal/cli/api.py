@@ -93,12 +93,22 @@ def queue_run(model_id: str, params: dict):
     status_progress_icon = get_status_progress_icon(target_console)
     status_done_icon = get_status_done_icon(target_console)
 
-    # A status response carries every log entry emitted so far, so only the
-    # ones past what we already hold are new.
-    def consume_logs(entries) -> int:
-        new_entries = (entries or [])[len(logs) :]
-        logs.extend(_format_log(entry) for entry in new_entries)
-        return len(new_entries)
+    # A status response returns the entries inside a moving time window, not a
+    # growing prefix, so identity decides what is new -- a positional cursor
+    # stops advancing once the window slides past what we already hold.
+    seen = set()
+
+    def consume_logs(entries) -> list:
+        new_lines = []
+        for entry in entries or []:
+            key = (entry.get("timestamp"), entry.get("message"))
+            if key in seen:
+                continue
+            seen.add(key)
+            new_lines.append(_format_log(entry))
+
+        logs.extend(new_lines)
+        return new_lines
 
     try:
         with Live(auto_refresh=False, console=target_console) as live:
@@ -134,7 +144,7 @@ def queue_run(model_id: str, params: dict):
                     f"{header}: {value}"
                     for header, value in response.headers.multi_items()
                 )
-                headers_panel = Panel(headers, title="Headers")
+                headers_panel = Panel(Text(headers), title="Headers")
 
                 body = rich.pretty.Pretty(response.json())
                 live.update(Group(headers_panel, body))
@@ -147,35 +157,38 @@ def queue_run(model_id: str, params: dict):
         handle.cancel()
         rich.print("[green]Request cancelled.[/green]")
     except httpx.HTTPStatusError as exc:
-        # An app that fails answers with a generic detail and logs the reason,
-        # and iter_events returns before the terminal status, so the batch of
-        # logs that explains the failure is only reachable from here.
-        error = None
-        new_count = 0
+        # This also catches a status poll failing mid-flight, where the request
+        # itself may be fine, so re-read the status: only it can say whether the
+        # request finished. An app that fails answers with a generic detail and
+        # logs the reason, and iter_events returns before the terminal status,
+        # so the logs that explain the failure are only reachable here too.
+        final_status = None
         try:
             final_status = handle.status(logs=True)
         except httpx.HTTPError:
             pass
-        else:
-            if isinstance(final_status, fal.apps.Completed):
-                new_count = consume_logs(final_status.logs)
-                error = final_status.error or final_status.error_type
 
-        if new_count:
-            target_console.print(
-                Panel(
-                    Text("\n".join(logs[-new_count:])),
-                    title="Logs",
-                    border_style="red",
+        detail = _response_detail(exc.response)
+        summary = Text.from_markup(f"{get_cross_icon(target_console)} ")
+
+        if isinstance(final_status, fal.apps.Completed):
+            new_lines = consume_logs(final_status.logs)
+            if new_lines:
+                target_console.print(
+                    Panel(Text("\n".join(new_lines)), title="Logs", border_style="red")
                 )
+            summary.append(
+                f"Request {handle.request_id} failed "
+                f"with HTTP {exc.response.status_code}: "
+                f"{final_status.error or final_status.error_type or detail}"
+            )
+        else:
+            summary.append(
+                f"Could not read request {handle.request_id} "
+                f"(HTTP {exc.response.status_code}: {detail}). "
+                "It may still be running -- check its status before resubmitting."
             )
 
-        summary = Text.from_markup(f"{get_cross_icon(target_console)} ")
-        summary.append(
-            f"Request {handle.request_id} failed "
-            f"with HTTP {exc.response.status_code}: "
-            f"{error or _response_detail(exc.response)}"
-        )
         target_console.print(summary)
         return 1
 
