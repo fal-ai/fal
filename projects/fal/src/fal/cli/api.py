@@ -175,9 +175,11 @@ def queue_run(model_id: str, params: dict):
         except httpx.HTTPError:
             pass
 
-        completed = isinstance(final_status, fal.apps.Completed)
-        if completed:
-            new_lines = consume_logs(final_status.logs)
+        completed = (
+            final_status if isinstance(final_status, fal.apps.Completed) else None
+        )
+        if completed is not None:
+            new_lines = consume_logs(completed.logs)
             if new_lines:
                 # A logged traceback reads cause-first, so the tail is the
                 # framework frames -- the safe end to cut.
@@ -192,8 +194,12 @@ def queue_run(model_id: str, params: dict):
         detail = _response_detail(exc.response)
         summary = Text.from_markup(f"{get_cross_icon(target_console)} ")
 
-        if completed or not from_poll:
-            error = final_status.error or final_status.error_type if completed else None
+        if completed is not None or not from_poll:
+            error = (
+                completed.error or completed.error_type
+                if completed is not None
+                else None
+            )
             summary.append(
                 f"Request {handle.request_id} failed "
                 f"with HTTP {exc.response.status_code}: {error or detail}"
