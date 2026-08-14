@@ -203,6 +203,22 @@ def test_already_seen_logs_are_not_reprinted_on_failure(run_api):
     assert out.count("still going") == 1
 
 
+def test_failure_is_reported_even_when_the_status_reread_fails(run_api):
+    # The result endpoint answered, so the request is finished however the
+    # follow-up status call goes.
+    queue = _failing_queue(
+        status_logs=[_log("starting up")],
+        poll_failures=[(2, httpx.Response(503, text="upstream unavailable"))],
+        in_progress_polls=0,
+    )
+
+    code, out = run_api(queue)
+
+    assert code == 1
+    assert f"Request {REQUEST_ID} failed with HTTP 500" in out
+    assert "may still be running" not in out
+
+
 def test_transient_poll_failure_does_not_claim_the_request_failed(run_api):
     # A 503 from one status poll says nothing about the request itself.
     queue = _failing_queue(

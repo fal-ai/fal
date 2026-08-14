@@ -157,30 +157,35 @@ def queue_run(model_id: str, params: dict):
         handle.cancel()
         rich.print("[green]Request cancelled.[/green]")
     except httpx.HTTPStatusError as exc:
-        # This also catches a status poll failing mid-flight, where the request
-        # itself may be fine, so re-read the status: only it can say whether the
-        # request finished. An app that fails answers with a generic detail and
-        # logs the reason, and iter_events returns before the terminal status,
-        # so the logs that explain the failure are only reachable here too.
+        # This arm also sees a status poll fail mid-flight. The result endpoint
+        # answering at all means the request reached a terminal state; a failed
+        # poll says nothing about the request, so fall back to re-reading the
+        # status there. That re-read also carries the logs explaining an app
+        # failure, which iter_events returns too early to have seen.
+        from_poll = exc.request.url.path.rstrip("/").endswith("/status")
+
         final_status = None
         try:
             final_status = handle.status(logs=True)
         except httpx.HTTPError:
             pass
 
-        detail = _response_detail(exc.response)
-        summary = Text.from_markup(f"{get_cross_icon(target_console)} ")
-
-        if isinstance(final_status, fal.apps.Completed):
+        completed = isinstance(final_status, fal.apps.Completed)
+        if completed:
             new_lines = consume_logs(final_status.logs)
             if new_lines:
                 target_console.print(
                     Panel(Text("\n".join(new_lines)), title="Logs", border_style="red")
                 )
+
+        detail = _response_detail(exc.response)
+        summary = Text.from_markup(f"{get_cross_icon(target_console)} ")
+
+        if completed or not from_poll:
+            error = final_status.error or final_status.error_type if completed else None
             summary.append(
                 f"Request {handle.request_id} failed "
-                f"with HTTP {exc.response.status_code}: "
-                f"{final_status.error or final_status.error_type or detail}"
+                f"with HTTP {exc.response.status_code}: {error or detail}"
             )
         else:
             summary.append(
