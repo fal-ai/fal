@@ -113,7 +113,9 @@ def deploy_with_check(
     prepare_options_handler: ProgressCallback | None = None,
     message: str | None = None,
     annotations: dict[str, str] | None = None,
-) -> DeploymentResult:
+) -> tuple[DeploymentResult, bool]:
+    """Deploy after the pre-deploy summary. Returns the result and whether this
+    was the app's first deployment."""
     from fal.api import deploy as deploy_api
     from fal.api.deploy import _validate_attach_to_deployment
 
@@ -153,12 +155,13 @@ def deploy_with_check(
         assume_yes=args.yes,
     )
     try:
-        return deploy_api.execute_prepared_deployment(
+        result = deploy_api.execute_prepared_deployment(
             prepared,
             result_handler=result_handler,
             build_result_handler=build_result_handler,
             prepare_options_handler=prepare_options_handler,
         )
+        return result, is_first_deploy
     except Exception:
         print_deploy_failure_nudge(
             args.console, run_hint, already_nudged=is_first_deploy
@@ -206,8 +209,10 @@ def is_first_deployment(
 ) -> bool:
     """Best-effort check for whether ``app_name`` has no production alias yet.
 
-    Returns ``False`` (i.e. does not nudge) if the status can't be determined,
-    so a flaky lookup never blocks or misleads a deploy.
+    Drives the first-deploy nudge and the post-deploy summary (a first deploy
+    has no revision to roll out from, so ``--detach`` is a no-op there).
+    Returns ``False`` if the status can't be determined, so a flaky lookup
+    never blocks a deploy and never hides an in-progress rollout.
     """
     if not app_name:
         return False
