@@ -1178,6 +1178,7 @@ class FalServerlessConnection:
         function: Callable[..., ResultT] | None,
         environments: list[isolate_proto.EnvironmentDefinition],
         *,
+        health_check_config: ApplicationHealthCheckConfig | None = None,
         serialization_method: str = _DEFAULT_SERIALIZATION_METHOD,
         machine_requirements: MachineRequirements | None = None,
         setup_function: Callable[[], InputT] | None = None,
@@ -1242,6 +1243,11 @@ class FalServerlessConnection:
             if application_name
             else None
         )
+        wrapped_health_check_config = (
+            _health_check_config_to_proto(health_check_config)
+            if health_check_config
+            else None
+        )
         request = isolate_proto.HostedRun(
             environments=environments,
             machine_requirements=wrapped_requirements,
@@ -1255,6 +1261,7 @@ class FalServerlessConnection:
                 else None
             ),
             data_mounts=data_mounts or [],
+            health_check_config=wrapped_health_check_config,
         )
         if entrypoint is not None:
             request.entrypoint = entrypoint

@@ -1612,6 +1612,43 @@ def test_data_mounts_run_sends_to_connection():
     assert call_kwargs["data_mounts"] == ["/data"]
 
 
+def test_health_check_config_run_sends_to_connection():
+    from fal.api.api import FalServerlessHost, Options, ResultHandler
+    from fal.sdk import ApplicationHealthCheckConfig, HostedRunState
+
+    host = FalServerlessHost()
+    health_check_config = ApplicationHealthCheckConfig(
+        path="/ready",
+        start_period_seconds=None,
+        timeout_seconds=None,
+        failure_threshold=None,
+        call_regularly=None,
+    )
+    options = Options(host={"health_check_config": health_check_config})
+
+    connection = MagicMock()
+    connection.define_environment.return_value = object()
+    partial_result = MagicMock()
+    partial_result.status.state = HostedRunState.SUCCESS
+    partial_result.result = "ok"
+    connection.run.return_value = iter([partial_result])
+
+    with patch.object(
+        FalServerlessHost, "_connection", new_callable=PropertyMock
+    ) as mock_connection:
+        mock_connection.return_value = connection
+        host._run(
+            lambda: "ok",
+            options,
+            args=(),
+            kwargs={},
+            result_handler=ResultHandler(),
+        )
+
+    _, call_kwargs = connection.run.call_args
+    assert call_kwargs["health_check_config"] is health_check_config
+
+
 def test_build_environment_raises_on_internal_failure():
     from fal.api.api import FalServerlessHost, InternalFalServerlessError, Options
     from fal.sdk import BuildEnvironmentResult, HostedRunState, HostedRunStatus

@@ -294,6 +294,31 @@ def test_connection_run_allows_no_isolate_container_without_callable():
 
     assert stub.run_request is not None
     assert stub.run_request.WhichOneof("callable") is None
+    assert not stub.run_request.HasField("health_check_config")
+
+
+def test_connection_run_forwards_health_check_config():
+    connection = FalServerlessConnection("api.alpha.fal.ai", MagicMock())
+    stub = RecordingStub()
+    connection._stub = stub  # type: ignore[assignment]
+    environment = connection.define_environment("virtualenv")
+
+    list(
+        connection.run(
+            lambda: None,
+            [environment],
+            health_check_config=ApplicationHealthCheckConfig(
+                path="/ready",
+                start_period_seconds=None,
+                timeout_seconds=None,
+                failure_threshold=None,
+                call_regularly=None,
+            ),
+        )
+    )
+
+    assert stub.run_request is not None
+    assert stub.run_request.health_check_config.path == "/ready"
 
 
 def test_connection_run_rejects_isolate_container_without_callable():
