@@ -1,11 +1,19 @@
 from __future__ import annotations
 
+import argparse
 import json
 from http import HTTPStatus
 
 import httpx
 
 from .parser import FalClientParser, get_output_parser
+
+
+def _positive_int(value: str) -> int:
+    parsed = int(value)
+    if parsed < 1:
+        raise argparse.ArgumentTypeError("must be a positive integer")
+    return parsed
 
 
 def _queue_size(args):
@@ -63,15 +71,17 @@ def _queue_flush(args):
 
     client = SyncServerlessClient(host=args.host, team=args.team)._create_rest_client()
     user = _get_user(client)
-    caller_user_id = args.caller_user_id
+    params = {}
+    if args.caller_user_id:
+        params["caller_user_id"] = args.caller_user_id
+    if args.limit is not None:
+        params["limit"] = args.limit
 
     url = f"{client.base_url}/applications/{user.username}/{args.app_name}/queue"
     headers = client.get_headers()
 
     with httpx.Client(base_url=client.base_url, headers=headers, timeout=300) as c:
-        resp = c.delete(
-            url, params={"caller_user_id": caller_user_id} if caller_user_id else None
-        )
+        resp = c.delete(url, params=params or None)
 
     if resp.status_code != HTTPStatus.OK:
         try:
@@ -118,7 +128,7 @@ def add_parser(main_subparsers, parents):
     )
     size_parser.set_defaults(func=_queue_size)
 
-    flush_help = "Flush all pending requests in an application queue."
+    flush_help = "Flush pending requests in an application queue."
     flush_parser = subparsers.add_parser(
         "flush",
         description=flush_help,
@@ -129,13 +139,17 @@ def add_parser(main_subparsers, parents):
         "app_name",
         help="Application name.",
     )
-    flush_parser.add_argument(
+    flush_filter = flush_parser.add_mutually_exclusive_group()
+    flush_filter.add_argument(
         "--caller-user-id",
         default=None,
         type=str,
-        help=(
-            "Only flush requests from this user ID. "
-            "If not provided, all requests will be flushed."
-        ),
+        help="Only flush requests from this user ID.",
+    )
+    flush_filter.add_argument(
+        "--limit",
+        default=None,
+        type=_positive_int,
+        help="Flush only the first N pending requests.",
     )
     flush_parser.set_defaults(func=_queue_flush)
