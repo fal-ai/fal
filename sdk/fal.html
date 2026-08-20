@@ -1174,18 +1174,18 @@
 and configuration. The App class handles model loading, request routing,
 and lifecycle management.</p>
 <p class="rubric">Example</p>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="k">class</span><span class="w"> </span><span class="nc">TextToImage</span><span class="p">(</span><span class="n">fal</span><span class="o">.</span><span class="n">App</span><span class="p">,</span> <span class="n">machine_type</span><span class="o">=</span><span class="s2">&quot;GPU&quot;</span><span class="p">):</span>
-<span class="gp">... </span>    <span class="n">requirements</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;diffusers&quot;</span><span class="p">,</span> <span class="s2">&quot;torch&quot;</span><span class="p">]</span>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="k">class</span><span class="w"> </span><span class="nc">TextToImage</span><span class="p">(</span><span class="n">fal</span><span class="o">.</span><span class="n">App</span><span class="p">,</span> <span class="n">machine_type</span><span class="o">=</span><span class="s2">"GPU"</span><span class="p">):</span>
+<span class="gp">... </span>    <span class="n">requirements</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"diffusers"</span><span class="p">,</span> <span class="s2">"torch"</span><span class="p">]</span>
 <span class="gp">...</span>
 <span class="gp">... </span>    <span class="k">def</span><span class="w"> </span><span class="nf">setup</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="gp">... </span>        <span class="bp">self</span><span class="o">.</span><span class="n">pipe</span> <span class="o">=</span> <span class="n">StableDiffusionPipeline</span><span class="o">.</span><span class="n">from_pretrained</span><span class="p">(</span>
-<span class="gp">... </span>            <span class="s2">&quot;runwayml/stable-diffusion-v1-5&quot;</span>
+<span class="gp">... </span>            <span class="s2">"runwayml/stable-diffusion-v1-5"</span>
 <span class="gp">... </span>        <span class="p">)</span>
 <span class="gp">...</span>
-<span class="gp">... </span>    <span class="nd">@fal</span><span class="o">.</span><span class="n">endpoint</span><span class="p">(</span><span class="s2">&quot;/&quot;</span><span class="p">)</span>
+<span class="gp">... </span>    <span class="nd">@fal</span><span class="o">.</span><span class="n">endpoint</span><span class="p">(</span><span class="s2">"/"</span><span class="p">)</span>
 <span class="gp">... </span>    <span class="k">def</span><span class="w"> </span><span class="nf">generate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">prompt</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
 <span class="gp">... </span>        <span class="n">image</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">pipe</span><span class="p">(</span><span class="n">prompt</span><span class="p">)</span><span class="o">.</span><span class="n">images</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
-<span class="gp">... </span>        <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;url&quot;</span><span class="p">:</span> <span class="n">fal</span><span class="o">.</span><span class="n">toolkit</span><span class="o">.</span><span class="n">upload_image</span><span class="p">(</span><span class="n">image</span><span class="p">)}</span>
+<span class="gp">... </span>        <span class="k">return</span> <span class="p">{</span><span class="s2">"url"</span><span class="p">:</span> <span class="n">fal</span><span class="o">.</span><span class="n">toolkit</span><span class="o">.</span><span class="n">upload_image</span><span class="p">(</span><span class="n">image</span><span class="p">)}</span>
 </pre></div>
 </div>
 <dl class="py attribute">
@@ -4807,18 +4807,18 @@ into a tree of Leaf objects.</p>
 and configuration. The App class handles model loading, request routing,
 and lifecycle management.</p>
 <p class="rubric">Example</p>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="k">class</span><span class="w"> </span><span class="nc">TextToImage</span><span class="p">(</span><span class="n">fal</span><span class="o">.</span><span class="n">App</span><span class="p">,</span> <span class="n">machine_type</span><span class="o">=</span><span class="s2">&quot;GPU&quot;</span><span class="p">):</span>
-<span class="gp">... </span>    <span class="n">requirements</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;diffusers&quot;</span><span class="p">,</span> <span class="s2">&quot;torch&quot;</span><span class="p">]</span>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="k">class</span><span class="w"> </span><span class="nc">TextToImage</span><span class="p">(</span><span class="n">fal</span><span class="o">.</span><span class="n">App</span><span class="p">,</span> <span class="n">machine_type</span><span class="o">=</span><span class="s2">"GPU"</span><span class="p">):</span>
+<span class="gp">... </span>    <span class="n">requirements</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"diffusers"</span><span class="p">,</span> <span class="s2">"torch"</span><span class="p">]</span>
 <span class="gp">...</span>
 <span class="gp">... </span>    <span class="k">def</span><span class="w"> </span><span class="nf">setup</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="gp">... </span>        <span class="bp">self</span><span class="o">.</span><span class="n">pipe</span> <span class="o">=</span> <span class="n">StableDiffusionPipeline</span><span class="o">.</span><span class="n">from_pretrained</span><span class="p">(</span>
-<span class="gp">... </span>            <span class="s2">&quot;runwayml/stable-diffusion-v1-5&quot;</span>
+<span class="gp">... </span>            <span class="s2">"runwayml/stable-diffusion-v1-5"</span>
 <span class="gp">... </span>        <span class="p">)</span>
 <span class="gp">...</span>
-<span class="gp">... </span>    <span class="nd">@fal</span><span class="o">.</span><span class="n">endpoint</span><span class="p">(</span><span class="s2">&quot;/&quot;</span><span class="p">)</span>
+<span class="gp">... </span>    <span class="nd">@fal</span><span class="o">.</span><span class="n">endpoint</span><span class="p">(</span><span class="s2">"/"</span><span class="p">)</span>
 <span class="gp">... </span>    <span class="k">def</span><span class="w"> </span><span class="nf">generate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">prompt</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
 <span class="gp">... </span>        <span class="n">image</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">pipe</span><span class="p">(</span><span class="n">prompt</span><span class="p">)</span><span class="o">.</span><span class="n">images</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
-<span class="gp">... </span>        <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;url&quot;</span><span class="p">:</span> <span class="n">fal</span><span class="o">.</span><span class="n">toolkit</span><span class="o">.</span><span class="n">upload_image</span><span class="p">(</span><span class="n">image</span><span class="p">)}</span>
+<span class="gp">... </span>        <span class="k">return</span> <span class="p">{</span><span class="s2">"url"</span><span class="p">:</span> <span class="n">fal</span><span class="o">.</span><span class="n">toolkit</span><span class="o">.</span><span class="n">upload_image</span><span class="p">(</span><span class="n">image</span><span class="p">)}</span>
 </pre></div>
 </div>
 <dl class="py attribute">

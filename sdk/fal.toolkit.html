@@ -262,7 +262,7 @@ if detection fails.</p>
 </dl>
 <p class="rubric">Example</p>
 <div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">gpu_type</span> <span class="o">=</span> <span class="n">get_gpu_type</span><span class="p">()</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Running on: </span><span class="si">{</span><span class="n">gpu_type</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Running on: </span><span class="si">{</span><span class="n">gpu_type</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 <span class="go">Running on: H100</span>
 </pre></div>
 </div>
@@ -289,7 +289,7 @@ if detection fails.</p>
 </dd>
 </dl>
 <p class="rubric">Example</p>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">dir_hash</span> <span class="o">=</span> <span class="n">load_inductor_cache</span><span class="p">(</span><span class="s2">&quot;flux/2&quot;</span><span class="p">)</span>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">dir_hash</span> <span class="o">=</span> <span class="n">load_inductor_cache</span><span class="p">(</span><span class="s2">"flux/2"</span><span class="p">)</span>
 <span class="go">Found compilation cache at /data/inductor-caches/H100/flux/2.zip, unpacking...</span>
 <span class="go">Cache unpacked successfully.</span>
 </pre></div>
@@ -318,7 +318,7 @@ load_inductor_cache)</p></li>
 </dd>
 </dl>
 <p class="rubric">Example</p>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">sync_inductor_cache</span><span class="p">(</span><span class="s2">&quot;flux/2&quot;</span><span class="p">,</span> <span class="n">dir_hash</span><span class="p">)</span>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">sync_inductor_cache</span><span class="p">(</span><span class="s2">"flux/2"</span><span class="p">,</span> <span class="n">dir_hash</span><span class="p">)</span>
 <span class="go">No changes in the cache dir, skipping sync.</span>
 <span class="go"># or</span>
 <span class="go">Changes detected in the cache dir, syncing...</span>
@@ -344,7 +344,7 @@ The cache is loaded on entry and synced on exit (even if an exception occurs).</
 </dd>
 </dl>
 <p class="rubric">Example</p>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="k">with</span> <span class="n">synchronized_inductor_cache</span><span class="p">(</span><span class="s2">&quot;mymodel/v1&quot;</span><span class="p">):</span>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="k">with</span> <span class="n">synchronized_inductor_cache</span><span class="p">(</span><span class="s2">"mymodel/v1"</span><span class="p">):</span>
 <span class="gp">... </span>    <span class="bp">self</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="p">)</span>
 <span class="gp">... </span>    <span class="bp">self</span><span class="o">.</span><span class="n">warmup</span><span class="p">()</span>  <span class="c1"># Compilation happens here</span>
 <span class="go"># Cache is automatically synced after the with block</span>
@@ -2773,7 +2773,7 @@ if detection fails.</p>
 </dl>
 <p class="rubric">Example</p>
 <div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">gpu_type</span> <span class="o">=</span> <span class="n">get_gpu_type</span><span class="p">()</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Running on: </span><span class="si">{</span><span class="n">gpu_type</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Running on: </span><span class="si">{</span><span class="n">gpu_type</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 <span class="go">Running on: H100</span>
 </pre></div>
 </div>
@@ -2810,7 +2810,7 @@ if detection fails.</p>
 </dd>
 </dl>
 <p class="rubric">Example</p>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">dir_hash</span> <span class="o">=</span> <span class="n">load_inductor_cache</span><span class="p">(</span><span class="s2">&quot;flux/2&quot;</span><span class="p">)</span>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">dir_hash</span> <span class="o">=</span> <span class="n">load_inductor_cache</span><span class="p">(</span><span class="s2">"flux/2"</span><span class="p">)</span>
 <span class="go">Found compilation cache at /data/inductor-caches/H100/flux/2.zip, unpacking...</span>
 <span class="go">Cache unpacked successfully.</span>
 </pre></div>
@@ -2839,7 +2839,7 @@ load_inductor_cache)</p></li>
 </dd>
 </dl>
 <p class="rubric">Example</p>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">sync_inductor_cache</span><span class="p">(</span><span class="s2">&quot;flux/2&quot;</span><span class="p">,</span> <span class="n">dir_hash</span><span class="p">)</span>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">sync_inductor_cache</span><span class="p">(</span><span class="s2">"flux/2"</span><span class="p">,</span> <span class="n">dir_hash</span><span class="p">)</span>
 <span class="go">No changes in the cache dir, skipping sync.</span>
 <span class="go"># or</span>
 <span class="go">Changes detected in the cache dir, syncing...</span>
@@ -2865,7 +2865,7 @@ The cache is loaded on entry and synced on exit (even if an exception occurs).</
 </dd>
 </dl>
 <p class="rubric">Example</p>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="k">with</span> <span class="n">synchronized_inductor_cache</span><span class="p">(</span><span class="s2">&quot;mymodel/v1&quot;</span><span class="p">):</span>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="k">with</span> <span class="n">synchronized_inductor_cache</span><span class="p">(</span><span class="s2">"mymodel/v1"</span><span class="p">):</span>
 <span class="gp">... </span>    <span class="bp">self</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="p">)</span>
 <span class="gp">... </span>    <span class="bp">self</span><span class="o">.</span><span class="n">warmup</span><span class="p">()</span>  <span class="c1"># Compilation happens here</span>
 <span class="go"># Cache is automatically synced after the with block</span>
