@@ -328,6 +328,26 @@ def test_print_error_renders_with_cp1252_output() -> None:
     assert b"Check the logs" in result.stdout
 
 
+def test_main_ignores_incomplete_argcomplete_environment(tmp_path) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text("check_updates = false\n")
+    env = os.environ.copy()
+    env["FAL_CONFIG_PATH"] = str(config_path)
+    env["_ARGCOMPLETE"] = "1"
+    env.pop("COMP_LINE", None)
+    env.pop("COMP_POINT", None)
+
+    result = subprocess.run(
+        [sys.executable, "-m", "fal", "--definitely-invalid"],
+        capture_output=True,
+        env=env,
+        check=False,
+    )
+
+    assert result.returncode == 2
+    assert b"error:" in result.stderr
+
+
 def test_main_prints_deploy_failure_reason_and_logs_link(monkeypatch) -> None:
     """isolate-cloud#8647 (CLI boundary): a failed deploy comes back as a
     grpc.RpcError whose details() carry the categorized reason + logs link; main()
