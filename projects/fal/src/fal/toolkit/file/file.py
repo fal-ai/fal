@@ -24,6 +24,11 @@ from pydantic import BaseModel, Field
 
 from fal.compat import run_in_thread
 from fal.ref import get_current_app
+from fal.toolkit.file._upload_policy import (
+    get_upload_policy,
+    upload_bytes_with_policy,
+    upload_path_with_policy,
+)
 from fal.toolkit.file.providers.fal import (
     # Re-exported for backwards compatibility; both resolve to FalFileRepositoryV3.
     FalCDNFileRepository,  # noqa: F401
@@ -31,6 +36,7 @@ from fal.toolkit.file.providers.fal import (
     FalFileRepositoryV2,  # noqa: F401
     FalFileRepositoryV3,
     InMemoryRepository,
+    MultipartUploadV3,
 )
 from fal.toolkit.file.providers.gcp import GoogleStorageRepository
 from fal.toolkit.file.providers.r2 import R2Repository
@@ -236,6 +242,21 @@ class File(BaseModel):
 
         fdata = FileData(data, content_type, file_name)
 
+        # A caller's policy overrides an explicitly passed `repository`, matching
+        # the registry. See fal.toolkit.file._upload_policy.
+        upload_policy = get_upload_policy(request)
+        if upload_policy is not None:
+            url = upload_bytes_with_policy(
+                upload_policy, fdata.file_name, data, fdata.content_type
+            )
+            return cls(
+                url=url,
+                content_type=fdata.content_type,
+                file_name=fdata.file_name,
+                file_size=len(data),
+                file_data=data,
+            )
+
         if request:
             object_lifecycle_preference = request_lifecycle_preference(request)
         else:
@@ -315,6 +336,39 @@ class File(BaseModel):
         fallback_save_kwargs = fallback_save_kwargs or {}
 
         content_type = content_type or "application/octet-stream"
+
+        upload_policy = get_upload_policy(request)
+        if upload_policy is not None:
+            file_size = file_path.stat().st_size
+            # The upload-policy path is always a single S3 POST (<=5 GB), never a
+            # multipart upload; this flag only picks how the payload is held for
+            # it. Same threshold as the repository path, so .as_bytes() stays
+            # consistent.
+            stage_to_disk = (
+                multipart
+                if multipart is not None
+                else file_size > MultipartUploadV3.MULTIPART_THRESHOLD
+            )
+            if stage_to_disk:
+                # Stage and stream in the background, off the request thread.
+                url = upload_path_with_policy(
+                    upload_policy, file_path, file_path.name, content_type
+                )
+                file_data = None
+            else:
+                # Reusing these bytes for file_data avoids a second full read
+                # and the staging copy for the common small-output case.
+                file_data = file_path.read_bytes()
+                url = upload_bytes_with_policy(
+                    upload_policy, file_path.name, file_data, content_type
+                )
+            return cls(
+                url=url,
+                file_data=file_data,
+                content_type=content_type,
+                file_name=file_path.name,
+                file_size=file_size,
+            )
 
         if request:
             object_lifecycle_preference = request_lifecycle_preference(request)
