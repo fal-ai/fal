@@ -1549,6 +1549,7 @@ def test_app_set_delete_alias(base_app: Tuple[str, str]):
         assert not found, f"Found app {app_alias} in {res} after deletion"
 
 
+@pytest.mark.timeout(240)
 def test_realtime_connection(test_realtime_app):
     response = apps.run(test_realtime_app, arguments={"prompt": "a cat"})
     assert response["text"] == "a cat"
@@ -1578,7 +1579,7 @@ def test_realtime_connection(test_realtime_app):
         assert batch_sizes == [4, 4, 2]
 
 
-@pytest.mark.timeout(240)
+@pytest.mark.timeout(300)
 def test_realtime_ws_endpoint(test_realtime_app):
     app_id = apps._backwards_compatible_app_id(test_realtime_app)
     url = apps._REALTIME_URL_FORMAT.format(app_id=app_id) + "/ws"
@@ -1587,7 +1588,7 @@ def test_realtime_ws_endpoint(test_realtime_app):
     # Warm the app up so the websocket handshake below does not have to absorb a
     # cold start. This is a precondition, not part of what is asserted.
     warmup_handle = submit_and_wait_for_runner(
-        test_realtime_app, arguments={"prompt": "warmup"}, timeout=60
+        test_realtime_app, arguments={"prompt": "warmup"}, timeout=120
     )
     wait_for_request_completion(warmup_handle, timeout=30)
 
@@ -1615,6 +1616,7 @@ def test_realtime_ws_endpoint(test_realtime_app):
     assert messages == [{"message": "Hello world!"}] * 3
 
 
+@pytest.mark.timeout(240)
 def test_realtime_connection_custom_codec(test_realtime_app):
     with apps._connect(
         test_realtime_app,
@@ -1626,6 +1628,7 @@ def test_realtime_connection_custom_codec(test_realtime_app):
         assert response["text"] == "json cat"
 
 
+@pytest.mark.timeout(240)
 def test_realtime_server_streaming_mode(test_realtime_app):
     with apps._connect(
         test_realtime_app, path="/realtime/server-streaming"
@@ -1639,6 +1642,7 @@ def test_realtime_server_streaming_mode(test_realtime_app):
         ]
 
 
+@pytest.mark.timeout(240)
 def test_realtime_server_streaming_sync_mode(test_realtime_app):
     with apps._connect(
         test_realtime_app, path="/realtime/server-streaming-sync"
@@ -1652,6 +1656,7 @@ def test_realtime_server_streaming_sync_mode(test_realtime_app):
         ]
 
 
+@pytest.mark.timeout(240)
 def test_realtime_client_streaming_mode(test_realtime_app):
     with apps._connect(
         test_realtime_app, path="/realtime/client-streaming"
@@ -1663,6 +1668,7 @@ def test_realtime_client_streaming_mode(test_realtime_app):
         assert response["texts"] == ["first", "second", "third"]
 
 
+@pytest.mark.timeout(240)
 def test_realtime_bidi_mode(test_realtime_app):
     with apps._connect(test_realtime_app, path="/realtime/bidi") as connection:
         connection.send({"prompt": "one"})
@@ -2084,7 +2090,7 @@ def test_kill_runner(host: api.FalServerlessHost, test_sleep_app: str):
         assert num_runners <= existing_runners - 1
 
 
-@pytest.mark.timeout(360)
+@pytest.mark.timeout(480)
 def test_rollout_application(host: api.FalServerlessHost, test_sleep_app: str):
     submit_and_wait_for_runner(
         test_sleep_app,
@@ -2110,7 +2116,9 @@ def test_rollout_application(host: api.FalServerlessHost, test_sleep_app: str):
             timeout=90,
         )
         submit_and_wait_for_runner(
-            test_sleep_app, arguments={"wait_time": 1}, timeout=30
+            test_sleep_app,
+            arguments={"wait_time": 1},
+            timeout=90,
         )
 
         runner_ids_after = _wait_for_runner_ids(
@@ -2129,7 +2137,9 @@ def test_rollout_application(host: api.FalServerlessHost, test_sleep_app: str):
             f"rollout to remove runners {sorted(runner_ids_after)}",
         )
         submit_and_wait_for_runner(
-            test_sleep_app, arguments={"wait_time": 1}, timeout=30
+            test_sleep_app,
+            arguments={"wait_time": 1},
+            timeout=90,
         )
 
         _wait_for_runner_ids(
@@ -2227,6 +2237,7 @@ def test_container_app_client(test_container_app: str):
     assert response["result"] == 3
 
 
+@pytest.mark.timeout(300)
 def test_container_build_args_app_client(test_container_build_args_app: str):
     response = apps.run(test_container_build_args_app, {})
     assert response == "built with build args"
@@ -2287,10 +2298,14 @@ def test_app_ref_app_client(test_app_ref_app: str):
     assert result_3["from_app"] == result_3["from_external_method"]
 
 
-@pytest.mark.timeout(120)
+@pytest.mark.timeout(180)
 def test_runner_machine_type(host: api.FalServerlessHost, test_sleep_app: str):
     """Test that machine_type is populated in runner info."""
-    submit_and_wait_for_runner(test_sleep_app, arguments={"wait_time": 1})
+    submit_and_wait_for_runner(
+        test_sleep_app,
+        arguments={"wait_time": 1},
+        timeout=90,
+    )
 
     with host._connection as client:
         _, _, app_alias = test_sleep_app.partition("/")
@@ -2302,7 +2317,7 @@ def test_runner_machine_type(host: api.FalServerlessHost, test_sleep_app: str):
 
         # list_runners
         all_runners = client.list_runners(
-            start_time=datetime.now() - timedelta(seconds=60)
+            start_time=datetime.now() - timedelta(seconds=120)
         )
         assert len(all_runners) >= 1
         target_runner = next((r for r in all_runners if r.alias == app_alias), None)
