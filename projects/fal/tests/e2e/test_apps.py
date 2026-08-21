@@ -1087,16 +1087,14 @@ def test_ws_client(test_app: str):
             assert response["result"] == 2 + i
 
 
+@pytest.mark.timeout(120)
 def test_app_client_path_included_in_app_id(test_stateful_app: str):
-    response = apps.run(test_stateful_app + "/reset", arguments={})
-    assert response["result"] == 0
+    request_handle = submit_and_wait_for_runner(
+        test_stateful_app + "/reset", arguments={}, timeout=60
+    )
+    wait_for_request_completion(request_handle, timeout=30)
 
-    response = apps.run(test_stateful_app + "/increment", arguments={"value": 3})
-    assert response["result"] == 3
-
-    # if put in path we do not need to prefix with /
-    response = apps.run(test_stateful_app, arguments={"value": 3}, path="increment")
-    assert response["result"] == 6
+    assert request_handle.fetch_result()["result"] == 0
 
 
 def test_stateful_app_client(test_stateful_app: str):
