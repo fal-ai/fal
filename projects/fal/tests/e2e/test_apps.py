@@ -16,10 +16,12 @@ from typing import (
     Iterator,
     List,
     Optional,
+    Protocol,
     Set,
     Tuple,
     Union,
 )
+from urllib.parse import urlparse
 
 import httpx
 import pytest
@@ -723,21 +725,180 @@ def user(rest_client: Client) -> Generator[User, None, None]:
     yield user
 
 
+_READINESS_PATH = "/tests-non-existing-router"
+_FAL_APP_READINESS_DETAIL = f"Path {_READINESS_PATH} not found"
+_FASTAPI_READINESS_DETAIL = "Not Found"
+
+
+def _response_detail(response: httpx.Response) -> Optional[str]:
+    try:
+        detail = response.json().get("detail")
+    except (ValueError, AttributeError):
+        return None
+
+    return detail if isinstance(detail, str) else None
+
+
+def _is_runner_readiness_response(
+    response: httpx.Response,
+    expected_detail: str,
+) -> bool:
+    return response.status_code == 404 and _response_detail(response) == expected_detail
+
+
+def _sleep_before_readiness_retry(deadline: float, delay: float) -> float:
+    sleep_for = min(delay, max(0, deadline - time.monotonic()))
+    if sleep_for:
+        time.sleep(sleep_for)
+    return min(delay * 2, 5)
+
+
+def _wait_for_run_gateway(
+    run_url: str,
+    deadline: float,
+    expected_detail: str,
+) -> None:
+    readiness_url = f"{run_url.rstrip('/')}{_READINESS_PATH}"
+    last_result = None
+    retry_delay = 0.1
+
+    with httpx.Client(headers=get_credentials().to_headers()) as client:
+        while time.monotonic() < deadline:
+            remaining = deadline - time.monotonic()
+            try:
+                response = client.get(readiness_url, timeout=remaining)
+            except httpx.RequestError as exc:
+                last_result = repr(exc)
+            else:
+                if response.status_code in (401, 403):
+                    response.raise_for_status()
+                if _is_runner_readiness_response(response, expected_detail):
+                    return
+                last_result = f"{response.status_code}: {response.text}"
+            retry_delay = _sleep_before_readiness_retry(deadline, retry_delay)
+
+    raise AssertionError(
+        f"Timed out waiting for {run_url} to become available. "
+        f"Last result: {last_result}"
+    )
+
+
+def _wait_for_queue_gateway(
+    queue_url: str,
+    deadline: float,
+    expected_detail: str,
+) -> None:
+    parsed_queue_url = urlparse(queue_url)
+    configured_queue_url = urlparse(apps._QUEUE_URL_FORMAT.format(app_id=""))
+    if (
+        parsed_queue_url.scheme,
+        parsed_queue_url.netloc,
+    ) != (
+        configured_queue_url.scheme,
+        configured_queue_url.netloc,
+    ):
+        raise AssertionError(
+            f"Registered queue URL {queue_url} does not use the configured queue "
+            f"origin {configured_queue_url.scheme}://{configured_queue_url.netloc}"
+        )
+
+    app_id = parsed_queue_url.path.strip("/")
+    last_result = None
+    retry_delay = 0.1
+
+    while time.monotonic() < deadline:
+        try:
+            handle = apps.submit(app_id, arguments={}, path=_READINESS_PATH)
+        except HTTPStatusError as exc:
+            if exc.response.status_code in (401, 403):
+                raise
+            last_result = f"{exc.response.status_code}: {exc.response.text}"
+        except httpx.RequestError as exc:
+            last_result = repr(exc)
+        else:
+            request_completed = False
+            while time.monotonic() < deadline:
+                remaining = deadline - time.monotonic()
+                try:
+                    wait_for_request_completion(handle, timeout=remaining)
+                except HTTPStatusError as exc:
+                    if exc.response.status_code in (401, 403):
+                        raise
+                    last_result = f"{exc.response.status_code}: {exc.response.text}"
+                except httpx.RequestError as exc:
+                    last_result = repr(exc)
+                except AssertionError as exc:
+                    last_result = repr(exc)
+                    break
+                else:
+                    request_completed = True
+                    break
+                retry_delay = _sleep_before_readiness_retry(deadline, retry_delay)
+
+            if request_completed:
+                while time.monotonic() < deadline:
+                    try:
+                        response = handle.fetch_raw_response()
+                    except HTTPStatusError as exc:
+                        if exc.response.status_code in (401, 403):
+                            raise
+                        if _is_runner_readiness_response(exc.response, expected_detail):
+                            return
+                        last_result = f"{exc.response.status_code}: {exc.response.text}"
+                        break
+                    except httpx.RequestError as exc:
+                        last_result = repr(exc)
+                        retry_delay = _sleep_before_readiness_retry(
+                            deadline, retry_delay
+                        )
+                    else:
+                        last_result = f"unexpected success: {response.status_code}: {response.text}"
+                        break
+
+        retry_delay = _sleep_before_readiness_retry(deadline, retry_delay)
+
+    raise AssertionError(
+        f"Timed out waiting for {queue_url} to become available. "
+        f"Last result: {last_result}"
+    )
+
+
+def _wait_for_registered_app(
+    run_url: str,
+    queue_url: str,
+    *,
+    expected_detail: str,
+    timeout: float = 120,
+) -> None:
+    """Wait for both gateways to observe and dispatch a newly registered alias."""
+    deadline = time.monotonic() + timeout
+    _wait_for_run_gateway(run_url, deadline, expected_detail)
+    _wait_for_queue_gateway(queue_url, deadline, expected_detail)
+
+
+class RegisterApp(Protocol):
+    def __call__(
+        self,
+        app: Union[api.ServedIsolatedFunction, api.IsolatedFunction],
+        suffix: str = "",
+        *,
+        wait_for_ready: bool = True,
+        readiness_detail: str = _FAL_APP_READINESS_DETAIL,
+    ) -> ContextManager[Tuple[str, str]]: ...
+
+
 @pytest.fixture()
 def register_app(
     host: api.FalServerlessHost,
     make_tmp_app_name: Callable[[str], str],
-) -> Callable[
-    [
-        Union[api.ServedIsolatedFunction, api.IsolatedFunction],
-        str,
-    ],
-    ContextManager[Tuple[str, str]],
-]:
+) -> RegisterApp:
     @contextmanager
     def _register_app(
         app: Union[api.ServedIsolatedFunction, api.IsolatedFunction],
         suffix: str = "",
+        *,
+        wait_for_ready: bool = True,
+        readiness_detail: str = _FAL_APP_READINESS_DETAIL,
     ):
         app_alias = make_tmp_app_name(suffix)
         result = host.register(
@@ -754,6 +915,12 @@ def register_app(
         app_revision = result.result.application_id
 
         try:
+            if wait_for_ready:
+                _wait_for_registered_app(
+                    result.service_urls.run,
+                    result.service_urls.queue,
+                    expected_detail=readiness_detail,
+                )
             yield app_alias, app_revision
         finally:
             with host._connection as client:
@@ -766,7 +933,7 @@ def register_app(
 def base_app(register_app):
     # running apps without aliases is no longer supported
     # so we need to create an alias for the app
-    with register_app(addition_app, "base") as (
+    with register_app(addition_app, "base", wait_for_ready=False) as (
         app_alias,
         app_revision,
     ):
@@ -808,7 +975,11 @@ def test_greet_server_app(
     user: User,
     register_app,
 ):
-    with register_app(greet_server_app, "greet-server") as (app_alias, _):
+    with register_app(
+        greet_server_app,
+        "greet-server",
+        readiness_detail=_FASTAPI_READINESS_DETAIL,
+    ) as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
 
@@ -817,7 +988,11 @@ def test_custom_health_path_app(
     user: User,
     register_app,
 ):
-    with register_app(custom_health_path_app, "custom-health") as (app_alias, _):
+    with register_app(
+        custom_health_path_app,
+        "custom-health",
+        readiness_detail=_FASTAPI_READINESS_DETAIL,
+    ) as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
 
@@ -826,7 +1001,11 @@ def test_health_override_fn(
     user: User,
     register_app,
 ):
-    with register_app(health_override_fn, "health-override-fn") as (app_alias, _):
+    with register_app(
+        health_override_fn,
+        "health-override-fn",
+        readiness_detail=_FASTAPI_READINESS_DETAIL,
+    ) as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
 
@@ -845,7 +1024,10 @@ def test_fastapi_app(
     user: User,
     register_app,
 ):
-    with register_app(calculator_app, "fastapi") as (app_alias, _):
+    with register_app(calculator_app, "fastapi", wait_for_ready=False) as (
+        app_alias,
+        _,
+    ):
         yield f"{user.username}/{app_alias}"
 
 
@@ -1162,9 +1344,9 @@ def test_app_disconnect_behavior(test_cancellable_app: str):
 
     with pytest.raises(HTTPStatusError) as e:
         request_handle.fetch_result()
-    assert (
-        e.value.response.status_code == 504
-    ), "Expected Gateway Timeout even though the app handled it"
+    assert e.value.response.status_code == 504, (
+        "Expected Gateway Timeout even though the app handled it"
+    )
 
     request_handle = submit_and_wait_for_runner(
         test_cancellable_app,
@@ -1184,9 +1366,9 @@ def test_app_disconnect_behavior(test_cancellable_app: str):
     wait_for_request_completion(request_handle, timeout=30)
     with pytest.raises(HTTPStatusError) as e:
         request_handle.fetch_result()
-    assert (
-        e.value.response.status_code == 504
-    ), "Expected Gateway Timeout when the app did not handle the disconnect"
+    assert e.value.response.status_code == 504, (
+        "Expected Gateway Timeout when the app did not handle the disconnect"
+    )
 
 
 @pytest.mark.timeout(240)
@@ -1230,9 +1412,9 @@ def test_start_timeout_queue_blocking(test_queue_blocking_app: str):
             if primary_error is None:
                 raise
 
-    assert (
-        exc_info.value.status_code == 504
-    ), f"Expected 504 timeout, got {exc_info.value.status_code}"
+    assert exc_info.value.status_code == 504, (
+        f"Expected 504 timeout, got {exc_info.value.status_code}"
+    )
 
     timeout_type = exc_info.value.response_headers.get("x-fal-request-timeout-type")
     assert timeout_type == "user", f"Expected 'user' timeout type, got {timeout_type}"
@@ -1316,12 +1498,12 @@ def test_traceback_logs(test_exception_app: AppClient, rest_client: Client):
         assert len(logs) > 0
         for log in logs:
             assert log["message"].count("\n") > 1, "Logs should be multi-line"
-            assert (
-                '{"traceback":' not in log["message"]
-            ), "Logs should not be JSON-wrapped"
-            assert (
-                "this app is designed to fail" in log["message"]
-            ), "Logs should contain the traceback message"
+            assert '{"traceback":' not in log["message"], (
+                "Logs should not be JSON-wrapped"
+            )
+            assert "this app is designed to fail" in log["message"], (
+                "Logs should contain the traceback message"
+            )
 
 
 def test_app_openapi_spec_metadata(
@@ -1350,15 +1532,15 @@ def test_app_no_serve_spec_metadata(test_fastapi_app: str, rest_client: Client):
         app_alias_or_id=app_id, app_user_id=user_id, client=rest_client
     )
 
-    assert (
-        res.status_code == 200
-    ), f"Failed to fetch metadata for app {test_fastapi_app}"
+    assert res.status_code == 200, (
+        f"Failed to fetch metadata for app {test_fastapi_app}"
+    )
     assert res.parsed, f"Failed to parse metadata for app {test_fastapi_app}"
 
     metadata = res.parsed.to_dict()
-    assert (
-        "openapi" not in metadata
-    ), f"openapi should not be present in metadata {metadata}"
+    assert "openapi" not in metadata, (
+        f"openapi should not be present in metadata {metadata}"
+    )
 
 
 def test_404_response(test_app: str, request: pytest.FixtureRequest):
@@ -1427,7 +1609,10 @@ def _wait_for_alias_configuration(
 def test_app_deploy_scale(host: api.FalServerlessHost, register_app):
     from dataclasses import replace
 
-    with register_app(addition_app, "deploy-scale") as (app_alias, _):
+    with register_app(addition_app, "deploy-scale", wait_for_ready=False) as (
+        app_alias,
+        _,
+    ):
         options = replace(
             addition_app.options,
             host={
@@ -2168,8 +2353,9 @@ def test_rollout_application(host: api.FalServerlessHost, test_sleep_app: str):
         runner_ids_after = _wait_for_runner_ids(
             client,
             app_alias,
-            lambda runner_ids: bool(runner_ids)
-            and runner_ids_before.isdisjoint(runner_ids),
+            lambda runner_ids: (
+                bool(runner_ids) and runner_ids_before.isdisjoint(runner_ids)
+            ),
             f"a new runner after replacing {sorted(runner_ids_before)}",
         )
 
@@ -2189,8 +2375,9 @@ def test_rollout_application(host: api.FalServerlessHost, test_sleep_app: str):
         _wait_for_runner_ids(
             client,
             app_alias,
-            lambda runner_ids: bool(runner_ids)
-            and runner_ids_after.isdisjoint(runner_ids),
+            lambda runner_ids: (
+                bool(runner_ids) and runner_ids_after.isdisjoint(runner_ids)
+            ),
             f"a new runner after replacing {sorted(runner_ids_after)}",
         )
 
@@ -2267,9 +2454,9 @@ def test_exec_runner(host: api.FalServerlessHost, test_sleep_app: str):
 
         try:
             stdout, stderr = proc.communicate(timeout=10)
-            assert (
-                b"hello" in stdout
-            ), f"Expected 'hello' in output, got: {stdout.decode()}"
+            assert b"hello" in stdout, (
+                f"Expected 'hello' in output, got: {stdout.decode()}"
+            )
         finally:
             if proc.poll() is None:
                 proc.kill()
