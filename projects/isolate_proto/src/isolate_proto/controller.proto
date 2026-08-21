@@ -433,6 +433,13 @@ message UpdateApplicationResult {
 message ListApplicationsRequest {
     optional string application_name = 1;
     optional string environment_name = 2;
+    // Maximum number of revisions to return. The server clamps this to its own
+    // ceiling and applies a default when unset, so a client that omits it still
+    // cannot request an unbounded result set.
+    optional int32 page_size = 3;
+    // Opaque cursor taken from a previous response's `next_page_token`. Treat it
+    // as a black box; the encoding is a server implementation detail.
+    optional string page_token = 4;
 }
 
 message ApplicationInfo {
@@ -455,6 +462,10 @@ message ApplicationInfo {
 
 message ListApplicationsResult {
     repeated ApplicationInfo applications = 1;
+    // Cursor for the next page, absent on the last page. Callers that page must
+    // stop when this is unset rather than when a page comes back short: the
+    // server may return fewer rows than `page_size` and still have more.
+    optional string next_page_token = 2;
 }
 
 message DeleteApplicationRequest {
