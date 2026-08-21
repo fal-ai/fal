@@ -537,3 +537,77 @@ def test_register_rejects_empty_retry_config():
                 retry_config=RetryConfig(),
             )
         )
+
+
+class PagingListApplicationsStub:
+    """Serves a fixed sequence of pages and records the requests it received."""
+
+    def __init__(self, pages):
+        self._pages = list(pages)
+        self.requests = []
+
+    def ListApplications(self, request):
+        self.requests.append(request)
+        return self._pages[len(self.requests) - 1]
+
+
+def _page(application_ids, next_page_token=None):
+    result = isolate_proto.ListApplicationsResult(
+        applications=[
+            isolate_proto.ApplicationInfo(application_id=app_id)
+            for app_id in application_ids
+        ]
+    )
+    if next_page_token is not None:
+        result.next_page_token = next_page_token
+    return result
+
+
+def test_list_applications_follows_pagination_until_token_absent():
+    connection = FalServerlessConnection("api.alpha.fal.ai", MagicMock())
+    stub = PagingListApplicationsStub(
+        [
+            _page(["a", "b"], next_page_token="cursor-1"),
+            # A short page is not the last page -- only an absent token is.
+            _page(["c"], next_page_token="cursor-2"),
+            _page(["d"]),
+        ]
+    )
+    connection._stub = stub  # type: ignore[assignment]
+
+    apps = connection.list_applications()
+
+    assert [app.application_id for app in apps] == ["a", "b", "c", "d"]
+    assert len(stub.requests) == 3
+    assert stub.requests[0].HasField("page_token") is False
+    assert stub.requests[1].page_token == "cursor-1"
+    assert stub.requests[2].page_token == "cursor-2"
+
+
+def test_list_applications_forwards_page_size_and_omits_it_when_unset():
+    connection = FalServerlessConnection("api.alpha.fal.ai", MagicMock())
+    stub = PagingListApplicationsStub([_page(["a"]), _page(["a"])])
+    connection._stub = stub  # type: ignore[assignment]
+
+    connection.list_applications(page_size=250)
+    assert stub.requests[0].page_size == 250
+
+    connection.list_applications()
+    assert stub.requests[1].HasField("page_size") is False
+
+
+def test_list_applications_stops_when_server_repeats_the_cursor():
+    connection = FalServerlessConnection("api.alpha.fal.ai", MagicMock())
+    stub = PagingListApplicationsStub(
+        [
+            _page(["a"], next_page_token="stuck"),
+            # A server that keeps returning the same cursor must not spin us.
+            _page(["b"], next_page_token="stuck"),
+        ]
+    )
+    connection._stub = stub  # type: ignore[assignment]
+
+    apps = connection.list_applications()
+
+    assert [app.application_id for app in apps] == ["a", "b"]
+    assert len(stub.requests) == 2
