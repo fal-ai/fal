@@ -3,6 +3,7 @@ import json
 import os
 import secrets
 import subprocess
+import sys
 import time
 from contextlib import contextmanager, suppress
 from datetime import datetime, timedelta, timezone
@@ -1183,6 +1184,7 @@ def test_app_disconnect_behavior(test_cancellable_app: str):
     ), "Expected Gateway Timeout when the app did not handle the disconnect"
 
 
+@pytest.mark.timeout(180)
 def test_start_timeout_queue_blocking(test_queue_blocking_app: str):
     """
     Test that start_timeout correctly times out a request waiting in queue.
@@ -1197,41 +1199,40 @@ def test_start_timeout_queue_blocking(test_queue_blocking_app: str):
     import fal_client
     from fal_client.client import FalClientHTTPError
 
-    # Send a long-running request that will occupy the only slot
-    # (max_concurrency=1, max_multiplexing=1)
-    # Use 10 seconds to ensure it blocks long enough for the second request to timeout
-    first_handle = apps.submit(test_queue_blocking_app, arguments={"wait_time": 10})
+    # The app is max_concurrency=1, max_multiplexing=1, so this request occupies
+    # the only slot and anything else has to wait in the queue.
+    first_handle = submit_and_wait_for_runner(
+        test_queue_blocking_app,
+        arguments={"wait_time": 10},
+        require_in_progress=True,
+        timeout=60,
+    )
 
-    # Wait for the first request to start processing
-    while True:
-        status = first_handle.status()
-        if isinstance(status, apps.InProgress):
-            break
-        elif isinstance(status, apps.Queued):
-            time.sleep(0.1)
-        else:
-            raise Exception(f"Unexpected status for first request: {status}")
+    try:
+        with pytest.raises(FalClientHTTPError) as exc_info:
+            fal_client.subscribe(
+                test_queue_blocking_app,
+                arguments={"wait_time": 1},
+                start_timeout=5,
+                client_timeout=20,
+            )
+    finally:
+        # Preserve the subscription failure; cleanup still fails a healthy path.
+        primary_error = sys.exc_info()[1]
+        try:
+            wait_for_request_completion(first_handle, timeout=30)
+        except Exception:
+            if primary_error is None:
+                raise
 
-    # Now send a second request with a short start_timeout
-    # This should fail because it will timeout waiting in the queue
-    with pytest.raises(FalClientHTTPError) as exc_info:
-        fal_client.subscribe(
-            test_queue_blocking_app,
-            arguments={"wait_time": 1},
-            start_timeout=5,
-        )
-
-    # Should get a 504 timeout error
     assert (
         exc_info.value.status_code == 504
     ), f"Expected 504 timeout, got {exc_info.value.status_code}"
 
-    # Verify the timeout type header indicates it was a user timeout
     timeout_type = exc_info.value.response_headers.get("x-fal-request-timeout-type")
     assert timeout_type == "user", f"Expected 'user' timeout type, got {timeout_type}"
 
-    # First request should complete successfully
-    result = first_handle.get()
+    result = first_handle.fetch_result()
     assert result == {"slept": True}, f"First request should succeed, got {result}"
 
 
