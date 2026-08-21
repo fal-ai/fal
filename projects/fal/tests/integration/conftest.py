@@ -6,7 +6,7 @@ import pytest
 # pyproject.toml has to cover provisioning, execution and assertions at once and
 # routinely runs out during provisioning alone. Give the whole directory a
 # safety net instead; tests needing a different budget set their own
-# @pytest.mark.timeout, which is left untouched.
+# @pytest.mark.timeout, which is left untouched..
 DEFAULT_REMOTE_TIMEOUT = 180
 
 _INTEGRATION_DIR = Path(__file__).parent
