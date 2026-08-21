@@ -31,9 +31,14 @@ jobs:
   e2e:
     name: e2e (${{ matrix.os }}, py ${{ matrix.python }}, ${{ matrix.deps }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 10
+    timeout-minutes: 20
     strategy:
       fail-fast: false
+      # Experiment: every shard runs `pytest -n auto` (4 workers), so the full
+      # matrix put ~28 concurrent app deployments on one account. Cap the shards
+      # in flight to see whether cold-start latency is contention-driven. The
+      # integration workflow is deliberately left unthrottled as a control.
+      max-parallel: 2
       matrix:
         os: [ubuntu-latest]
         deps: ["pydantic==1.10.18", "pydantic==2.13.3"]

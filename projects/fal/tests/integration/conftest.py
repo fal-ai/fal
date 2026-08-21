@@ -13,9 +13,9 @@ _INTEGRATION_DIR = Path(__file__).parent
 
 
 def pytest_collection_modifyitems(items):
-    for item in items:
+    for _item in items:
         # The hook receives every collected item, not just this directory's.
-        if _INTEGRATION_DIR not in Path(str(item.fspath)).parents:
+        if _INTEGRATION_DIR not in Path(str(_item.fspath)).parents:
             continue
-        if item.get_closest_marker("timeout") is None:
-            item.add_marker(pytest.mark.timeout(DEFAULT_REMOTE_TIMEOUT))
+        if _item.get_closest_marker("timeout") is None:
+            _item.add_marker(pytest.mark.timeout(DEFAULT_REMOTE_TIMEOUT))

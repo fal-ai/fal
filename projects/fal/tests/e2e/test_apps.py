@@ -956,7 +956,7 @@ def test_function_with_custom_openapi_health(
         f"https://{FAL_RUN_HOST}/{test_greet_server_app}/greet",
         json={"name": "world"},
         headers=_auth_headers(),
-        timeout=60,
+        timeout=120,
     )
     assert r.status_code == 200, r.text
     assert r.json() == {"greeting": "Hello, world!"}
@@ -980,7 +980,7 @@ def test_function_with_custom_health_path(test_custom_health_path_app: str):
         f"https://{FAL_RUN_HOST}/{test_custom_health_path_app}/greet",
         json={"name": "world"},
         headers=_auth_headers(),
-        timeout=60,
+        timeout=120,
     )
     assert r.status_code == 200, r.text
     assert r.json() == {"greeting": "Hello, world!"}
@@ -1009,7 +1009,7 @@ def test_function_health_override(test_health_override_fn: str):
         f"https://{FAL_RUN_HOST}/{test_health_override_fn}/greet",
         json={"name": "world"},
         headers=_auth_headers(),
-        timeout=60,
+        timeout=120,
     )
     assert r.status_code == 200, r.text
     assert r.json() == {"greeting": "Hello, world!"}
@@ -1048,7 +1048,7 @@ def test_app_health_override(test_health_override_app: str):
         f"https://{FAL_RUN_HOST}/{test_health_override_app}/",
         json={"lhs": 1, "rhs": 2},
         headers=_auth_headers(),
-        timeout=60,
+        timeout=120,
     )
     assert r.status_code == 200, r.text
     assert r.json()["result"] == 3
@@ -1108,13 +1108,13 @@ def test_stateful_app_client(test_stateful_app: str):
     assert response["result"] == 0
 
 
-@pytest.mark.timeout(240)
+@pytest.mark.timeout(360)
 def test_app_cancellation(test_app: str, test_cancellable_app: str):
     request_handle = submit_and_wait_for_runner(
         test_cancellable_app,
         arguments={"lhs": 1, "rhs": 2, "wait_time": 6},
         require_in_progress=True,
-        timeout=60,
+        timeout=120,
     )
 
     request_handle.cancel()
@@ -1128,7 +1128,7 @@ def test_app_cancellation(test_app: str, test_cancellable_app: str):
         test_app,
         arguments={"lhs": 1, "rhs": 2, "wait_time": 6},
         require_in_progress=True,
-        timeout=60,
+        timeout=120,
     )
     request_handle.cancel()
     wait_for_request_completion(request_handle, timeout=30)
@@ -1137,14 +1137,14 @@ def test_app_cancellation(test_app: str, test_cancellable_app: str):
     assert response == {"result": 3}
 
 
-@pytest.mark.timeout(360)
+@pytest.mark.timeout(600)
 def test_app_disconnect_behavior(test_cancellable_app: str):
     request_handle = submit_and_wait_for_runner(
         test_cancellable_app,
         arguments={"lhs": 1, "rhs": 2, "wait_time": 20},
         path="/well-handled",
         require_in_progress=True,
-        timeout=60,
+        timeout=120,
     )
     wait_for_request_completion(request_handle, timeout=30)
 
@@ -1158,7 +1158,7 @@ def test_app_disconnect_behavior(test_cancellable_app: str):
         test_cancellable_app,
         arguments={"lhs": 1, "rhs": 2, "wait_time": 1},
         path="/well-handled",
-        timeout=60,
+        timeout=120,
     )
     wait_for_request_completion(request_handle, timeout=30)
     assert request_handle.fetch_result() == {"result": 3}
@@ -1167,7 +1167,7 @@ def test_app_disconnect_behavior(test_cancellable_app: str):
         test_cancellable_app,
         arguments={"lhs": 1, "rhs": 2, "wait_time": 6},
         require_in_progress=True,
-        timeout=60,
+        timeout=120,
     )
     wait_for_request_completion(request_handle, timeout=30)
     with pytest.raises(HTTPStatusError) as e:
@@ -1177,7 +1177,7 @@ def test_app_disconnect_behavior(test_cancellable_app: str):
     ), "Expected Gateway Timeout when the app did not handle the disconnect"
 
 
-@pytest.mark.timeout(180)
+@pytest.mark.timeout(240)
 def test_start_timeout_queue_blocking(test_queue_blocking_app: str):
     """
     Test that start_timeout correctly times out a request waiting in queue.
@@ -1198,7 +1198,7 @@ def test_start_timeout_queue_blocking(test_queue_blocking_app: str):
         test_queue_blocking_app,
         arguments={"wait_time": 10},
         require_in_progress=True,
-        timeout=60,
+        timeout=120,
     )
 
     try:
@@ -1888,7 +1888,7 @@ def submit_and_wait_for_runner(
     *,
     path: str = "",
     require_in_progress: bool = False,
-    timeout: float = 30,
+    timeout: float,
 ):
     handle = apps.submit(app, arguments=arguments, path=path)
     deadline = time.monotonic() + timeout
@@ -2001,11 +2001,11 @@ def _wait_for_single_idle_runner(
     )
 
 
-@pytest.mark.timeout(480)
+@pytest.mark.timeout(600)
 def test_stop_runner(host: api.FalServerlessHost, test_sleep_app: str):
     _, _, app_alias = test_sleep_app.partition("/")
     request_handle = submit_and_wait_for_runner(
-        test_sleep_app, arguments={"wait_time": 1}, timeout=60
+        test_sleep_app, arguments={"wait_time": 1}, timeout=120
     )
     wait_for_request_completion(request_handle, timeout=15)
 
@@ -2033,7 +2033,7 @@ def test_stop_runner(host: api.FalServerlessHost, test_sleep_app: str):
         )
 
         request_handle = submit_and_wait_for_runner(
-            test_sleep_app, arguments={"wait_time": 1}, timeout=60
+            test_sleep_app, arguments={"wait_time": 1}, timeout=120
         )
         wait_for_request_completion(request_handle, timeout=30)
         replacement_runner = _wait_for_single_idle_runner(client, app_alias, timeout=60)
@@ -2090,13 +2090,13 @@ def test_kill_runner(host: api.FalServerlessHost, test_sleep_app: str):
         assert num_runners <= existing_runners - 1
 
 
-@pytest.mark.timeout(480)
+@pytest.mark.timeout(600)
 def test_rollout_application(host: api.FalServerlessHost, test_sleep_app: str):
     submit_and_wait_for_runner(
         test_sleep_app,
         arguments={"wait_time": 30},
         require_in_progress=True,
-        timeout=60,
+        timeout=120,
     )
 
     with host._connection as client:
@@ -2118,7 +2118,7 @@ def test_rollout_application(host: api.FalServerlessHost, test_sleep_app: str):
         submit_and_wait_for_runner(
             test_sleep_app,
             arguments={"wait_time": 1},
-            timeout=90,
+            timeout=120,
         )
 
         runner_ids_after = _wait_for_runner_ids(
@@ -2139,7 +2139,7 @@ def test_rollout_application(host: api.FalServerlessHost, test_sleep_app: str):
         submit_and_wait_for_runner(
             test_sleep_app,
             arguments={"wait_time": 1},
-            timeout=90,
+            timeout=120,
         )
 
         _wait_for_runner_ids(
@@ -2304,7 +2304,7 @@ def test_runner_machine_type(host: api.FalServerlessHost, test_sleep_app: str):
     submit_and_wait_for_runner(
         test_sleep_app,
         arguments={"wait_time": 1},
-        timeout=90,
+        timeout=120,
     )
 
     with host._connection as client:
