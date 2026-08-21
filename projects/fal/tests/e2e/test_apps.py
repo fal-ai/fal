@@ -1087,17 +1087,11 @@ def test_ws_client(test_app: str):
             assert response["result"] == 2 + i
 
 
-@pytest.mark.timeout(120)
-def test_app_client_path_included_in_app_id(test_stateful_app: str):
-    request_handle = submit_and_wait_for_runner(
-        test_stateful_app + "/reset", arguments={}, timeout=60
-    )
-    wait_for_request_completion(request_handle, timeout=30)
-
-    assert request_handle.fetch_result()["result"] == 0
-
-
+@pytest.mark.timeout(180)
 def test_stateful_app_client(test_stateful_app: str):
+    response = apps.run(test_stateful_app + "/reset", arguments={})
+    assert response["result"] == 0
+
     response = apps.run(test_stateful_app, arguments={}, path="/reset")
     assert response["result"] == 0
 
@@ -1584,17 +1578,36 @@ def test_realtime_connection(test_realtime_app):
         assert batch_sizes == [4, 4, 2]
 
 
+@pytest.mark.timeout(240)
 def test_realtime_ws_endpoint(test_realtime_app):
     app_id = apps._backwards_compatible_app_id(test_realtime_app)
     url = apps._REALTIME_URL_FORMAT.format(app_id=app_id) + "/ws"
     creds = get_credentials()
 
-    with ws_client.connect(
-        url, additional_headers=creds.to_headers(), open_timeout=90
-    ) as ws:
+    # Warm the app up so the websocket handshake below does not have to absorb a
+    # cold start. This is a precondition, not part of what is asserted.
+    warmup_handle = submit_and_wait_for_runner(
+        test_realtime_app, arguments={"prompt": "warmup"}, timeout=60
+    )
+    wait_for_request_completion(warmup_handle, timeout=30)
+
+    try:
+        connection = ws_client.connect(
+            url, additional_headers=creds.to_headers(), open_timeout=30
+        )
+    except TimeoutError as exc:
+        raise AssertionError("Timed out opening the websocket connection") from exc
+
+    with connection as ws:
         messages = []
-        for _ in range(3):
-            payload = ws.recv()
+        for message_index in range(3):
+            timeout = 30 if message_index == 0 else 10
+            try:
+                payload = ws.recv(timeout=timeout)
+            except TimeoutError as exc:
+                raise AssertionError(
+                    f"Timed out waiting for websocket message {message_index + 1}/3"
+                ) from exc
             if isinstance(payload, bytes):
                 payload = payload.decode("utf-8")
             messages.append(json.loads(payload))
