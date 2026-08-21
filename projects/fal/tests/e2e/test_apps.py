@@ -15,6 +15,7 @@ from typing import (
     Iterator,
     List,
     Optional,
+    Set,
     Tuple,
     Union,
 )
@@ -45,7 +46,12 @@ from fal.exceptions import (
 )
 from fal.exceptions.gpu import _CUDA_OOM_MESSAGE, _GPU_ERROR_STATUS_CODE
 from fal.ref import get_current_app
-from fal.sdk import ApplicationHealthCheckConfig, RunnerState, get_credentials
+from fal.sdk import (
+    ApplicationHealthCheckConfig,
+    RunnerInfo,
+    RunnerState,
+    get_credentials,
+)
 from fal.toolkit.utils.endpoint import cancel_on_disconnect
 from fal.workflows import Workflow
 
@@ -1108,42 +1114,32 @@ def test_stateful_app_client(test_stateful_app: str):
     assert response["result"] == 0
 
 
+@pytest.mark.timeout(240)
 def test_app_cancellation(test_app: str, test_cancellable_app: str):
-    request_handle = apps.submit(
-        test_cancellable_app, arguments={"lhs": 1, "rhs": 2, "wait_time": 6}
+    request_handle = submit_and_wait_for_runner(
+        test_cancellable_app,
+        arguments={"lhs": 1, "rhs": 2, "wait_time": 6},
+        require_in_progress=True,
+        timeout=60,
     )
 
-    while True:
-        status = request_handle.status()
-        time.sleep(0.05)
-        if isinstance(status, apps.InProgress):
-            # The app is running
-            break
-
-    # cancel the request
     request_handle.cancel()
+    wait_for_request_completion(request_handle, timeout=30)
 
-    # should still finish successfully and return 499
     with pytest.raises(HTTPStatusError) as e:
-        request_handle.get()
+        request_handle.fetch_result()
     assert e.value.response.status_code == 499
 
-    # normal app should just ignore the cancellation
-    request_handle = apps.submit(
-        test_app, arguments={"lhs": 1, "rhs": 2, "wait_time": 6}
+    request_handle = submit_and_wait_for_runner(
+        test_app,
+        arguments={"lhs": 1, "rhs": 2, "wait_time": 6},
+        require_in_progress=True,
+        timeout=60,
     )
-
-    while True:
-        status = request_handle.status()
-        time.sleep(0.05)
-        if isinstance(status, apps.InProgress):
-            # The app is running
-            break
-
-    # cancel the request
     request_handle.cancel()
+    wait_for_request_completion(request_handle, timeout=30)
 
-    response = request_handle.get()
+    response = request_handle.fetch_result()
     assert response == {"result": 3}
 
 
@@ -1819,21 +1815,96 @@ def test_field_exception_default_billable_units(test_exception_app: AppClient):
         assert "x-fal-billable-units" not in response.headers
 
 
-def submit_and_wait_for_runner(app: str, arguments: dict = {}, *, path: str = ""):
+def submit_and_wait_for_runner(
+    app: str,
+    arguments: dict = {},
+    *,
+    path: str = "",
+    require_in_progress: bool = False,
+    timeout: float = 30,
+):
     handle = apps.submit(app, arguments=arguments, path=path)
+    deadline = time.monotonic() + timeout
+    last_status = None
+    expected_status = "InProgress" if require_in_progress else "InProgress or Completed"
 
-    while True:
-        status = handle.status()
-        if isinstance(status, apps.InProgress) or isinstance(status, apps.Completed):
-            break
-        elif isinstance(status, apps.Queued):
+    while time.monotonic() < deadline:
+        last_status = handle.status()
+        if isinstance(last_status, apps.InProgress):
+            return handle
+        if isinstance(last_status, apps.Completed):
+            if require_in_progress:
+                raise AssertionError(
+                    f"App completed before reaching InProgress: {last_status}"
+                )
+            return handle
+        if isinstance(last_status, apps.Queued):
             time.sleep(0.1)
-        else:
-            raise Exception(f"Failed to start the app: {status}")
+            continue
+        raise AssertionError(f"Failed to start the app: {last_status}")
 
-    return handle
+    raise AssertionError(
+        f"Timed out after {timeout}s waiting for the app to reach {expected_status}. "
+        f"Last status: {last_status}"
+    )
 
 
+def wait_for_request_completion(
+    handle: apps.RequestHandle,
+    *,
+    timeout: float = 30,
+) -> apps.Completed:
+    deadline = time.monotonic() + timeout
+    last_status = None
+
+    while time.monotonic() < deadline:
+        last_status = handle.status()
+        if isinstance(last_status, apps.Completed):
+            return last_status
+        time.sleep(0.1)
+
+    raise AssertionError(
+        f"Timed out after {timeout}s waiting for request {handle.request_id} "
+        f"to complete. Last status: {last_status}"
+    )
+
+
+_TERMINAL_RUNNER_STATES = {RunnerState.DEAD, RunnerState.TERMINATED}
+
+
+def _non_terminal_runner_ids(runners: List[RunnerInfo]) -> Set[str]:
+    return {
+        runner.runner_id
+        for runner in runners
+        if runner.state not in _TERMINAL_RUNNER_STATES
+    }
+
+
+def _wait_for_runner_ids(
+    client: api.FalServerlessConnection,
+    app_alias: str,
+    condition: Callable[[Set[str]], bool],
+    description: str,
+    *,
+    timeout: float = 30,
+) -> Set[str]:
+    deadline = time.monotonic() + timeout
+    last_runners = []
+
+    while time.monotonic() < deadline:
+        last_runners = client.list_alias_runners(app_alias)
+        runner_ids = _non_terminal_runner_ids(last_runners)
+        if condition(runner_ids):
+            return runner_ids
+        time.sleep(0.5)
+
+    raise AssertionError(
+        f"Timed out waiting for {description} on {app_alias}. "
+        f"Last runners: {last_runners}"
+    )
+
+
+@pytest.mark.timeout(180)
 def test_stop_runner(host: api.FalServerlessHost, test_sleep_app: str):
     # Submit a runner and wait for it to be idle
     submit_and_wait_for_runner(test_sleep_app, arguments={"wait_time": 1})
@@ -1934,41 +2005,61 @@ def test_kill_runner(host: api.FalServerlessHost, test_sleep_app: str):
         assert num_runners <= existing_runners - 1
 
 
+@pytest.mark.timeout(360)
 def test_rollout_application(host: api.FalServerlessHost, test_sleep_app: str):
-    handle = apps.submit(test_sleep_app, arguments={"wait_time": 30})
-
-    while True:
-        status = handle.status()
-        if isinstance(status, apps.InProgress):
-            break
-        elif isinstance(status, apps.Queued):
-            time.sleep(1)
-        else:
-            raise Exception(f"Failed to start the app: {status}")
+    submit_and_wait_for_runner(
+        test_sleep_app,
+        arguments={"wait_time": 30},
+        require_in_progress=True,
+        timeout=60,
+    )
 
     with host._connection as client:
         _, _, app_alias = test_sleep_app.partition("/")
         runners_before = client.list_alias_runners(app_alias)
-        assert len(runners_before) == 1
-        runner_id_before = runners_before[0].runner_id
+        runner_ids_before = _non_terminal_runner_ids(runners_before)
+        assert len(runner_ids_before) == 1, runners_before
 
         client.rollout_application(app_alias, force=True)
+        _wait_for_runner_ids(
+            client,
+            app_alias,
+            runner_ids_before.isdisjoint,
+            f"rollout to remove runners {sorted(runner_ids_before)}",
+            # The runner is mid-request here, so it has to drain the 30s sleep
+            # before it can terminate.
+            timeout=90,
+        )
+        submit_and_wait_for_runner(
+            test_sleep_app, arguments={"wait_time": 1}, timeout=30
+        )
 
-        time.sleep(15)
-
-        runners_after = client.list_alias_runners(app_alias)
-        runner_ids_after = {r.runner_id for r in runners_after}
-
-        assert runner_id_before not in runner_ids_after
+        runner_ids_after = _wait_for_runner_ids(
+            client,
+            app_alias,
+            lambda runner_ids: bool(runner_ids)
+            and runner_ids_before.isdisjoint(runner_ids),
+            f"a new runner after replacing {sorted(runner_ids_before)}",
+        )
 
         client.rollout_application(app_alias, force=True)
+        _wait_for_runner_ids(
+            client,
+            app_alias,
+            runner_ids_after.isdisjoint,
+            f"rollout to remove runners {sorted(runner_ids_after)}",
+        )
+        submit_and_wait_for_runner(
+            test_sleep_app, arguments={"wait_time": 1}, timeout=30
+        )
 
-        time.sleep(3)
-
-        runners_final = client.list_alias_runners(app_alias)
-        runner_ids_final = {r.runner_id for r in runners_final}
-
-        assert not runner_ids_after.intersection(runner_ids_final)
+        _wait_for_runner_ids(
+            client,
+            app_alias,
+            lambda runner_ids: bool(runner_ids)
+            and runner_ids_after.isdisjoint(runner_ids),
+            f"a new runner after replacing {sorted(runner_ids_after)}",
+        )
 
 
 def test_shell_runner(host: api.FalServerlessHost, test_sleep_app: str):
@@ -2145,6 +2236,7 @@ def test_app_ref_app_client(test_app_ref_app: str):
     assert result_3["from_app"] == result_3["from_external_method"]
 
 
+@pytest.mark.timeout(120)
 def test_runner_machine_type(host: api.FalServerlessHost, test_sleep_app: str):
     """Test that machine_type is populated in runner info."""
     submit_and_wait_for_runner(test_sleep_app, arguments={"wait_time": 1})
