@@ -48,6 +48,7 @@ from fal.exceptions import (
 from fal.exceptions.gpu import _CUDA_OOM_MESSAGE, _GPU_ERROR_STATUS_CODE
 from fal.ref import get_current_app
 from fal.sdk import (
+    AliasInfo,
     ApplicationHealthCheckConfig,
     RunnerInfo,
     RunnerState,
@@ -1375,6 +1376,48 @@ def test_404_billable_units(test_exception_app: AppClient):
         assert response.headers.get("x-fal-billable-units") == "0"
 
 
+def _wait_for_alias_configuration(
+    client: api.FalServerlessConnection,
+    app_alias: str,
+    *,
+    revision: str,
+    max_multiplexing: Optional[int] = None,
+    max_concurrency: Optional[int] = None,
+    timeout: float = 60,
+) -> AliasInfo:
+    # Only the values passed in are waited on. Values that are expected to stay
+    # unchanged must be asserted on the result instead: waiting for them would
+    # return on the first matching sample and miss a later wrong update.
+    expected = {
+        field: value
+        for field, value in (
+            ("revision", revision),
+            ("max_multiplexing", max_multiplexing),
+            ("max_concurrency", max_concurrency),
+        )
+        if value is not None
+    }
+    deadline = time.monotonic() + timeout
+    last_alias = None
+
+    while time.monotonic() < deadline:
+        aliases = client.list_aliases()
+        last_alias = next(
+            (alias for alias in aliases if alias.alias == app_alias), None
+        )
+        if last_alias is not None and all(
+            getattr(last_alias, field) == value for field, value in expected.items()
+        ):
+            return last_alias
+        time.sleep(0.5)
+
+    raise AssertionError(
+        f"Timed out after {timeout}s waiting for {app_alias} to reach {expected}. "
+        f"Last alias: {last_alias}"
+    )
+
+
+@pytest.mark.timeout(300)
 def test_app_deploy_scale(host: api.FalServerlessHost, register_app):
     from dataclasses import replace
 
@@ -1402,18 +1445,15 @@ def test_app_deploy_scale(host: api.FalServerlessHost, register_app):
         app_revision = result.result.application_id
 
         with host._connection as client:
-            res = client.list_aliases()
-            found = next(filter(lambda alias: alias.alias == app_alias, res), None)
-            assert found, f"Could not find app {app_alias} in {res}"
-            assert found.revision == app_revision
             # multiplexing is revision-specific
-            assert (
-                found.max_multiplexing == 3
-            ), "Expected max_multiplexing to have changed"
-            # max_concurrency is alias-specific
-            assert (
-                found.max_concurrency == 1
-            ), "Expected max_concurrency to stay the same"
+            alias = _wait_for_alias_configuration(
+                client,
+                app_alias,
+                revision=app_revision,
+                max_multiplexing=3,
+            )
+            # max_concurrency is alias-specific, so scale=False must leave it alone
+            assert alias.max_concurrency == 1, alias
 
         result = addition_app.host.register(**kwargs, scale=True)
         assert result
@@ -1422,13 +1462,13 @@ def test_app_deploy_scale(host: api.FalServerlessHost, register_app):
         app_revision = result.result.application_id
 
         with host._connection as client:
-            res = client.list_aliases()
-            found = next(filter(lambda alias: alias.alias == app_alias, res), None)
-            assert found, f"Could not find app {app_alias} in {res}"
-            assert found.revision == app_revision
-            # when scaling, all values are updated
-            assert found.max_multiplexing == 3
-            assert found.max_concurrency == 2
+            _wait_for_alias_configuration(
+                client,
+                app_alias,
+                revision=app_revision,
+                max_multiplexing=3,
+                max_concurrency=2,
+            )
 
 
 def test_app_update_app(base_app: Tuple[str, str]):
