@@ -549,6 +549,10 @@ class CancellableApp(fal.App, keep_alive=300, max_concurrency=1, request_timeout
         return Output(result=0)
 
 
+class ClientCancellationApp(CancellableApp, request_timeout=30):
+    """Give client cancellation time to arrive before application timeout."""
+
+
 class HealthCheckApp(fal.App, keep_alive=300, max_concurrency=1, request_timeout=4):
     @fal.endpoint("/")
     def run(self, input: Input) -> Output:
@@ -872,6 +876,16 @@ def test_cancellable_app(
 
 
 @pytest.fixture()
+def test_client_cancellation_app(
+    user: User,
+    register_app,
+):
+    cancellation_app = wrap_app(ClientCancellationApp)
+    with register_app(cancellation_app, "client-cancellation") as (app_alias, _):
+        yield f"{user.username}/{app_alias}"
+
+
+@pytest.fixture()
 def test_exception_app():
     with AppClient.connect(ExceptionApp) as client:
         yield client
@@ -1109,10 +1123,10 @@ def test_stateful_app_client(test_stateful_app: str):
 
 
 @pytest.mark.timeout(360)
-def test_app_cancellation(test_app: str, test_cancellable_app: str):
+def test_app_cancellation(test_app: str, test_client_cancellation_app: str):
     request_handle = submit_and_wait_for_runner(
-        test_cancellable_app,
-        arguments={"lhs": 1, "rhs": 2, "wait_time": 6},
+        test_client_cancellation_app,
+        arguments={"lhs": 1, "rhs": 2, "wait_time": 20},
         require_in_progress=True,
         timeout=120,
     )
