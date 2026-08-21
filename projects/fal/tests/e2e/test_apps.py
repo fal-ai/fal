@@ -1913,56 +1913,74 @@ def _wait_for_runner_ids(
     )
 
 
-@pytest.mark.timeout(180)
+def _wait_for_single_idle_runner(
+    client: api.FalServerlessConnection,
+    app_alias: str,
+    *,
+    timeout: float = 30,
+) -> RunnerInfo:
+    deadline = time.monotonic() + timeout
+    last_runners = []
+
+    while time.monotonic() < deadline:
+        last_runners = client.list_alias_runners(app_alias)
+        active_runners = [
+            runner
+            for runner in last_runners
+            if runner.state not in _TERMINAL_RUNNER_STATES
+        ]
+        if (
+            len(active_runners) == 1
+            and active_runners[0].state in {RunnerState.RUNNING, RunnerState.IDLE}
+            and active_runners[0].in_flight_requests == 0
+        ):
+            return active_runners[0]
+        time.sleep(0.5)
+
+    raise AssertionError(
+        f"Timed out after {timeout}s waiting for one idle runner on {app_alias}. "
+        f"Last runners: {last_runners}"
+    )
+
+
+@pytest.mark.timeout(480)
 def test_stop_runner(host: api.FalServerlessHost, test_sleep_app: str):
-    # Submit a runner and wait for it to be idle
-    submit_and_wait_for_runner(test_sleep_app, arguments={"wait_time": 1})
-    original_runner_id = None
+    _, _, app_alias = test_sleep_app.partition("/")
+    request_handle = submit_and_wait_for_runner(
+        test_sleep_app, arguments={"wait_time": 1}, timeout=60
+    )
+    wait_for_request_completion(request_handle, timeout=15)
 
     with host._connection as client:
-        timeout = 30
-        start_time = time.time()
-        while True:
-            _, _, app_alias = test_sleep_app.partition("/")
-            runners = client.list_alias_runners(app_alias)
-            assert len(runners) == 1
+        original_runner = _wait_for_single_idle_runner(client, app_alias)
 
-            if runners[0].in_flight_requests == 0:
-                original_runner_id = runners[0].runner_id
-                break
-            elif time.time() - start_time > timeout:
-                raise Exception(f"Timeout waiting for runner to be idle: {runners[0]}")
-            time.sleep(1)
+        request_handle = submit_and_wait_for_runner(
+            test_sleep_app, arguments={"wait_time": 1}, timeout=60
+        )
+        wait_for_request_completion(request_handle, timeout=15)
+        reused_runner = _wait_for_single_idle_runner(client, app_alias)
+        assert reused_runner.runner_id == original_runner.runner_id
 
-    # Because the runner is not requested to be stopped, it should be reused
-    submit_and_wait_for_runner(test_sleep_app, arguments={"wait_time": 1})
-
-    with host._connection as client:
-        _, _, app_alias = test_sleep_app.partition("/")
-        runners = client.list_alias_runners(app_alias)
-        assert len(runners) == 1
-
-    # Request to stop the runner
-    with host._connection as client:
         with pytest.raises(Exception) as e:
             client.stop_runner("1234567890")
-
         assert "not found" in str(e).lower()
 
-        _, _, app_alias = test_sleep_app.partition("/")
-        runners = client.list_alias_runners(app_alias)
-        assert len(runners) == 1
+        client.stop_runner(original_runner.runner_id)
+        _wait_for_runner_ids(
+            client,
+            app_alias,
+            lambda runner_ids: original_runner.runner_id not in runner_ids,
+            f"runner {original_runner.runner_id} to stop",
+            timeout=60,
+        )
 
-        client.stop_runner(runners[0].runner_id)
+        request_handle = submit_and_wait_for_runner(
+            test_sleep_app, arguments={"wait_time": 1}, timeout=60
+        )
+        wait_for_request_completion(request_handle, timeout=30)
+        replacement_runner = _wait_for_single_idle_runner(client, app_alias, timeout=60)
 
-    # Because the runner is requested to be stopped,
-    # it should not be reused and a new runner should be created
-    submit_and_wait_for_runner(test_sleep_app, arguments={"wait_time": 1})
-
-    with host._connection as client:
-        runners = client.list_alias_runners(app_alias)
-        assert original_runner_id is not None
-        assert any(runner.runner_id != original_runner_id for runner in runners)
+        assert replacement_runner.runner_id != original_runner.runner_id
 
 
 def test_kill_runner(host: api.FalServerlessHost, test_sleep_app: str):
