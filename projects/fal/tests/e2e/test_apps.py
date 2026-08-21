@@ -1143,35 +1143,44 @@ def test_app_cancellation(test_app: str, test_cancellable_app: str):
     assert response == {"result": 3}
 
 
-def test_app_disconnect_behavior(test_app: str, test_cancellable_app: str):
+@pytest.mark.timeout(360)
+def test_app_disconnect_behavior(test_cancellable_app: str):
+    request_handle = submit_and_wait_for_runner(
+        test_cancellable_app,
+        arguments={"lhs": 1, "rhs": 2, "wait_time": 20},
+        path="/well-handled",
+        require_in_progress=True,
+        timeout=60,
+    )
+    wait_for_request_completion(request_handle, timeout=30)
+
     with pytest.raises(HTTPStatusError) as e:
-        apps.run(
-            test_cancellable_app,
-            arguments={"lhs": 1, "rhs": 2, "wait_time": 6},
-            path="/well-handled",
-        )
+        request_handle.fetch_result()
     assert (
         e.value.response.status_code == 504
     ), "Expected Gateway Timeout even though the app handled it"
 
-    # and running it again shows the app "handled" it
-    response = apps.run(
+    request_handle = submit_and_wait_for_runner(
         test_cancellable_app,
         arguments={"lhs": 1, "rhs": 2, "wait_time": 1},
         path="/well-handled",
+        timeout=60,
     )
-    assert response == {"result": 3}
+    wait_for_request_completion(request_handle, timeout=30)
+    assert request_handle.fetch_result() == {"result": 3}
 
-    # vs on an unhandled one
-
+    request_handle = submit_and_wait_for_runner(
+        test_cancellable_app,
+        arguments={"lhs": 1, "rhs": 2, "wait_time": 6},
+        require_in_progress=True,
+        timeout=60,
+    )
+    wait_for_request_completion(request_handle, timeout=30)
     with pytest.raises(HTTPStatusError) as e:
-        apps.run(
-            test_cancellable_app,
-            arguments={"lhs": 1, "rhs": 2, "wait_time": 6},
-        )
+        request_handle.fetch_result()
     assert (
         e.value.response.status_code == 504
-    ), "Expected Gateway Timeout even though the app handled it"
+    ), "Expected Gateway Timeout when the app did not handle the disconnect"
 
 
 def test_start_timeout_queue_blocking(test_queue_blocking_app: str):
