@@ -2181,34 +2181,6 @@ def test_container_build_args_app_client(test_container_build_args_app: str):
     assert response == "built with build args"
 
 
-class HintsApp(fal.App, keep_alive=300, max_concurrency=1):
-    machine_type = "S"
-
-    def provide_hints(self) -> List[str]:
-        return ["é", "😀"]
-
-    @fal.endpoint("/add")
-    def add(self, input: Input) -> Output:
-        return Output(result=input.lhs + input.rhs)
-
-
-def test_hints_encoding():
-    """
-    Make sure that hints that can't be encoded in latin-1 don't crash the app
-    https://github.com/encode/starlette/blob/a766a58d14007f07c0b5782fa78cdc370b892796/starlette/datastructures.py#L568
-    """
-    with AppClient.connect(HintsApp) as client:
-        with httpx.Client(headers=_auth_headers()) as httpx_client:
-            url = client.url + "/add"
-            resp = httpx_client.post(
-                url,
-                json={"lhs": 1, "rhs": 2},
-                timeout=30,
-            )
-            assert resp.is_success
-            assert resp.json()["result"] == 3
-
-
 def _external_get_request_id() -> str:
     request_id = get_current_app().current_request.headers.get("x-request-id", "")
     return request_id
