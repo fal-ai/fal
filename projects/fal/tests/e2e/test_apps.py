@@ -1131,8 +1131,7 @@ def test_app_cancellation(test_app: str, test_client_cancellation_app: str):
         timeout=120,
     )
 
-    request_handle.cancel()
-    wait_for_request_completion(request_handle, timeout=30)
+    cancel_and_wait_for_request_completion(request_handle, timeout=30)
 
     with pytest.raises(HTTPStatusError) as e:
         request_handle.fetch_result()
@@ -1144,8 +1143,7 @@ def test_app_cancellation(test_app: str, test_client_cancellation_app: str):
         require_in_progress=True,
         timeout=120,
     )
-    request_handle.cancel()
-    wait_for_request_completion(request_handle, timeout=30)
+    cancel_and_wait_for_request_completion(request_handle, timeout=30)
 
     response = request_handle.fetch_result()
     assert response == {"result": 3}
@@ -1364,6 +1362,8 @@ def test_app_no_serve_spec_metadata(test_fastapi_app: str, rest_client: Client):
 
 
 def test_404_response(test_app: str, request: pytest.FixtureRequest):
+    assert apps.run(test_app, arguments={"lhs": 1, "rhs": 2}) == {"result": 3}
+
     with pytest.raises(HTTPStatusError, match="Path /.*other not found"):
         apps.run(test_app, path="/other", arguments={"lhs": 1, "rhs": 2})
 
@@ -1947,6 +1947,36 @@ def wait_for_request_completion(
     raise AssertionError(
         f"Timed out after {timeout}s waiting for request {handle.request_id} "
         f"to complete. Last status: {last_status}"
+    )
+
+
+def cancel_and_wait_for_request_completion(
+    handle: apps.RequestHandle,
+    *,
+    timeout: float = 30,
+) -> apps.Completed:
+    deadline = time.monotonic() + timeout
+    last_status = None
+
+    while time.monotonic() < deadline:
+        try:
+            handle.cancel()
+        except HTTPStatusError:
+            last_status = handle.status()
+            if isinstance(last_status, apps.Completed):
+                return last_status
+            raise
+
+        retry_deadline = min(deadline, time.monotonic() + 1)
+        while time.monotonic() < retry_deadline:
+            last_status = handle.status()
+            if isinstance(last_status, apps.Completed):
+                return last_status
+            time.sleep(0.1)
+
+    raise AssertionError(
+        f"Timed out after {timeout}s cancelling request {handle.request_id}. "
+        f"Last status: {last_status}"
     )
 
 
