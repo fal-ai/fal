@@ -2452,6 +2452,29 @@ def test_openapi_websocket_barebones_has_no_realtime_marker(isolate_agent_env):
     assert "post" not in spec["paths"]["/ws"]
 
 
+@pytest.mark.asyncio
+async def test_hints_encoding(isolate_agent_env):
+    import httpx
+
+    class HintsApp(App):
+        def provide_hints(self) -> list[str]:
+            return ["é", "😀"]
+
+        @endpoint("/echo")
+        def echo(self, input: InputModel) -> OutputModel:
+            return OutputModel(result=input.prompt)
+
+    transport = httpx.ASGITransport(app=HintsApp()._build_app())
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://testserver"
+    ) as client:
+        response = await client.post("/echo", json={"prompt": "hello"})
+
+    assert response.status_code == 200
+    assert response.json() == {"result": "hello"}
+    assert response.headers["x-fal-runner-hints"] == "é"
+
+
 def test_websocket_endpoint_requires_websocket_annotation(isolate_agent_env):
     class MissingWebSocketAnnotationApp(App):
         @endpoint("/ws", is_websocket=True)

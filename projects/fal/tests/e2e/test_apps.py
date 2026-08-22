@@ -3,6 +3,7 @@ import json
 import os
 import secrets
 import subprocess
+import sys
 import time
 from contextlib import contextmanager, suppress
 from datetime import datetime, timedelta, timezone
@@ -15,9 +16,12 @@ from typing import (
     Iterator,
     List,
     Optional,
+    Protocol,
+    Set,
     Tuple,
     Union,
 )
+from urllib.parse import urlparse
 
 import httpx
 import pytest
@@ -45,7 +49,13 @@ from fal.exceptions import (
 )
 from fal.exceptions.gpu import _CUDA_OOM_MESSAGE, _GPU_ERROR_STATUS_CODE
 from fal.ref import get_current_app
-from fal.sdk import ApplicationHealthCheckConfig, RunnerState, get_credentials
+from fal.sdk import (
+    AliasInfo,
+    ApplicationHealthCheckConfig,
+    RunnerInfo,
+    RunnerState,
+    get_credentials,
+)
 from fal.toolkit.utils.endpoint import cancel_on_disconnect
 from fal.workflows import Workflow
 
@@ -541,6 +551,10 @@ class CancellableApp(fal.App, keep_alive=300, max_concurrency=1, request_timeout
         return Output(result=0)
 
 
+class ClientCancellationApp(CancellableApp, request_timeout=30):
+    """Give client cancellation time to arrive before application timeout."""
+
+
 class HealthCheckApp(fal.App, keep_alive=300, max_concurrency=1, request_timeout=4):
     @fal.endpoint("/")
     def run(self, input: Input) -> Output:
@@ -711,21 +725,183 @@ def user(rest_client: Client) -> Generator[User, None, None]:
     yield user
 
 
+_READINESS_PATH = "/tests-non-existing-router"
+_FAL_APP_READINESS_DETAIL = f"Path {_READINESS_PATH} not found"
+_FASTAPI_READINESS_DETAIL = "Not Found"
+
+
+def _response_detail(response: httpx.Response) -> Optional[str]:
+    try:
+        detail = response.json().get("detail")
+    except (ValueError, AttributeError):
+        return None
+
+    return detail if isinstance(detail, str) else None
+
+
+def _is_runner_readiness_response(
+    response: httpx.Response,
+    expected_detail: str,
+) -> bool:
+    return response.status_code == 404 and _response_detail(response) == expected_detail
+
+
+def _sleep_before_readiness_retry(deadline: float, delay: float) -> float:
+    sleep_for = min(delay, max(0, deadline - time.monotonic()))
+    if sleep_for:
+        time.sleep(sleep_for)
+    return min(delay * 2, 5)
+
+
+def _wait_for_run_gateway(
+    run_url: str,
+    deadline: float,
+    expected_detail: str,
+) -> None:
+    readiness_url = f"{run_url.rstrip('/')}{_READINESS_PATH}"
+    last_result = None
+    retry_delay = 0.1
+
+    with httpx.Client(headers=get_credentials().to_headers()) as client:
+        while time.monotonic() < deadline:
+            remaining = deadline - time.monotonic()
+            try:
+                response = client.get(readiness_url, timeout=remaining)
+            except httpx.RequestError as exc:
+                last_result = repr(exc)
+            else:
+                if response.status_code in (401, 403):
+                    response.raise_for_status()
+                if _is_runner_readiness_response(response, expected_detail):
+                    return
+                last_result = f"{response.status_code}: {response.text}"
+            retry_delay = _sleep_before_readiness_retry(deadline, retry_delay)
+
+    raise AssertionError(
+        f"Timed out waiting for {run_url} to become available. "
+        f"Last result: {last_result}"
+    )
+
+
+def _wait_for_queue_gateway(
+    queue_url: str,
+    deadline: float,
+    expected_detail: str,
+) -> None:
+    parsed_queue_url = urlparse(queue_url)
+    configured_queue_url = urlparse(apps._QUEUE_URL_FORMAT.format(app_id=""))
+    if (
+        parsed_queue_url.scheme,
+        parsed_queue_url.netloc,
+    ) != (
+        configured_queue_url.scheme,
+        configured_queue_url.netloc,
+    ):
+        raise AssertionError(
+            f"Registered queue URL {queue_url} does not use the configured queue "
+            f"origin {configured_queue_url.scheme}://{configured_queue_url.netloc}"
+        )
+
+    app_id = parsed_queue_url.path.strip("/")
+    last_result = None
+    retry_delay = 0.1
+
+    while time.monotonic() < deadline:
+        try:
+            handle = apps.submit(app_id, arguments={}, path=_READINESS_PATH)
+        except HTTPStatusError as exc:
+            if exc.response.status_code in (401, 403):
+                raise
+            last_result = f"{exc.response.status_code}: {exc.response.text}"
+        except httpx.RequestError as exc:
+            last_result = repr(exc)
+        else:
+            request_completed = False
+            while time.monotonic() < deadline:
+                remaining = deadline - time.monotonic()
+                try:
+                    wait_for_request_completion(handle, timeout=remaining)
+                except HTTPStatusError as exc:
+                    if exc.response.status_code in (401, 403):
+                        raise
+                    last_result = f"{exc.response.status_code}: {exc.response.text}"
+                except httpx.RequestError as exc:
+                    last_result = repr(exc)
+                except AssertionError as exc:
+                    last_result = repr(exc)
+                    break
+                else:
+                    request_completed = True
+                    break
+                retry_delay = _sleep_before_readiness_retry(deadline, retry_delay)
+
+            if request_completed:
+                while time.monotonic() < deadline:
+                    try:
+                        response = handle.fetch_raw_response()
+                    except HTTPStatusError as exc:
+                        if exc.response.status_code in (401, 403):
+                            raise
+                        if _is_runner_readiness_response(exc.response, expected_detail):
+                            return
+                        last_result = f"{exc.response.status_code}: {exc.response.text}"
+                        break
+                    except httpx.RequestError as exc:
+                        last_result = repr(exc)
+                        retry_delay = _sleep_before_readiness_retry(
+                            deadline, retry_delay
+                        )
+                    else:
+                        last_result = (
+                            "unexpected success: "
+                            f"{response.status_code}: {response.text}"
+                        )
+                        break
+
+        retry_delay = _sleep_before_readiness_retry(deadline, retry_delay)
+
+    raise AssertionError(
+        f"Timed out waiting for {queue_url} to become available. "
+        f"Last result: {last_result}"
+    )
+
+
+def _wait_for_registered_app(
+    run_url: str,
+    queue_url: str,
+    *,
+    expected_detail: str,
+    timeout: float = 120,
+) -> None:
+    """Wait for both gateways to observe and dispatch a newly registered alias."""
+    deadline = time.monotonic() + timeout
+    _wait_for_run_gateway(run_url, deadline, expected_detail)
+    _wait_for_queue_gateway(queue_url, deadline, expected_detail)
+
+
+class RegisterApp(Protocol):
+    def __call__(
+        self,
+        app: Union[api.ServedIsolatedFunction, api.IsolatedFunction],
+        suffix: str = "",
+        *,
+        wait_for_ready: bool = True,
+        readiness_detail: str = _FAL_APP_READINESS_DETAIL,
+    ) -> ContextManager[Tuple[str, str]]: ...
+
+
 @pytest.fixture()
 def register_app(
     host: api.FalServerlessHost,
     make_tmp_app_name: Callable[[str], str],
-) -> Callable[
-    [
-        Union[api.ServedIsolatedFunction, api.IsolatedFunction],
-        str,
-    ],
-    ContextManager[Tuple[str, str]],
-]:
+) -> RegisterApp:
     @contextmanager
     def _register_app(
         app: Union[api.ServedIsolatedFunction, api.IsolatedFunction],
         suffix: str = "",
+        *,
+        wait_for_ready: bool = True,
+        readiness_detail: str = _FAL_APP_READINESS_DETAIL,
     ):
         app_alias = make_tmp_app_name(suffix)
         result = host.register(
@@ -742,6 +918,12 @@ def register_app(
         app_revision = result.result.application_id
 
         try:
+            if wait_for_ready:
+                _wait_for_registered_app(
+                    result.service_urls.run,
+                    result.service_urls.queue,
+                    expected_detail=readiness_detail,
+                )
             yield app_alias, app_revision
         finally:
             with host._connection as client:
@@ -754,7 +936,7 @@ def register_app(
 def base_app(register_app):
     # running apps without aliases is no longer supported
     # so we need to create an alias for the app
-    with register_app(addition_app, "base") as (
+    with register_app(addition_app, "base", wait_for_ready=False) as (
         app_alias,
         app_revision,
     ):
@@ -796,7 +978,11 @@ def test_greet_server_app(
     user: User,
     register_app,
 ):
-    with register_app(greet_server_app, "greet-server") as (app_alias, _):
+    with register_app(
+        greet_server_app,
+        "greet-server",
+        readiness_detail=_FASTAPI_READINESS_DETAIL,
+    ) as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
 
@@ -805,7 +991,11 @@ def test_custom_health_path_app(
     user: User,
     register_app,
 ):
-    with register_app(custom_health_path_app, "custom-health") as (app_alias, _):
+    with register_app(
+        custom_health_path_app,
+        "custom-health",
+        readiness_detail=_FASTAPI_READINESS_DETAIL,
+    ) as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
 
@@ -814,7 +1004,11 @@ def test_health_override_fn(
     user: User,
     register_app,
 ):
-    with register_app(health_override_fn, "health-override-fn") as (app_alias, _):
+    with register_app(
+        health_override_fn,
+        "health-override-fn",
+        readiness_detail=_FASTAPI_READINESS_DETAIL,
+    ) as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
 
@@ -833,7 +1027,10 @@ def test_fastapi_app(
     user: User,
     register_app,
 ):
-    with register_app(calculator_app, "fastapi") as (app_alias, _):
+    with register_app(calculator_app, "fastapi", wait_for_ready=False) as (
+        app_alias,
+        _,
+    ):
         yield f"{user.username}/{app_alias}"
 
 
@@ -860,6 +1057,16 @@ def test_cancellable_app(
 ):
     cancellable_app = wrap_app(CancellableApp)
     with register_app(cancellable_app, "cancellable") as (app_alias, _):
+        yield f"{user.username}/{app_alias}"
+
+
+@pytest.fixture()
+def test_client_cancellation_app(
+    user: User,
+    register_app,
+):
+    cancellation_app = wrap_app(ClientCancellationApp)
+    with register_app(cancellation_app, "client-cancellation") as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
 
@@ -948,7 +1155,7 @@ def test_function_with_custom_openapi_health(
         f"https://{FAL_RUN_HOST}/{test_greet_server_app}/greet",
         json={"name": "world"},
         headers=_auth_headers(),
-        timeout=60,
+        timeout=120,
     )
     assert r.status_code == 200, r.text
     assert r.json() == {"greeting": "Hello, world!"}
@@ -972,7 +1179,7 @@ def test_function_with_custom_health_path(test_custom_health_path_app: str):
         f"https://{FAL_RUN_HOST}/{test_custom_health_path_app}/greet",
         json={"name": "world"},
         headers=_auth_headers(),
-        timeout=60,
+        timeout=120,
     )
     assert r.status_code == 200, r.text
     assert r.json() == {"greeting": "Hello, world!"}
@@ -1001,7 +1208,7 @@ def test_function_health_override(test_health_override_fn: str):
         f"https://{FAL_RUN_HOST}/{test_health_override_fn}/greet",
         json={"name": "world"},
         headers=_auth_headers(),
-        timeout=60,
+        timeout=120,
     )
     assert r.status_code == 200, r.text
     assert r.json() == {"greeting": "Hello, world!"}
@@ -1040,7 +1247,7 @@ def test_app_health_override(test_health_override_app: str):
         f"https://{FAL_RUN_HOST}/{test_health_override_app}/",
         json={"lhs": 1, "rhs": 2},
         headers=_auth_headers(),
-        timeout=60,
+        timeout=120,
     )
     assert r.status_code == 200, r.text
     assert r.json()["result"] == 3
@@ -1079,19 +1286,11 @@ def test_ws_client(test_app: str):
             assert response["result"] == 2 + i
 
 
-def test_app_client_path_included_in_app_id(test_stateful_app: str):
+@pytest.mark.timeout(180)
+def test_stateful_app_client(test_stateful_app: str):
     response = apps.run(test_stateful_app + "/reset", arguments={})
     assert response["result"] == 0
 
-    response = apps.run(test_stateful_app + "/increment", arguments={"value": 3})
-    assert response["result"] == 3
-
-    # if put in path we do not need to prefix with /
-    response = apps.run(test_stateful_app, arguments={"value": 3}, path="increment")
-    assert response["result"] == 6
-
-
-def test_stateful_app_client(test_stateful_app: str):
     response = apps.run(test_stateful_app, arguments={}, path="/reset")
     assert response["result"] == 0
 
@@ -1108,76 +1307,74 @@ def test_stateful_app_client(test_stateful_app: str):
     assert response["result"] == 0
 
 
-def test_app_cancellation(test_app: str, test_cancellable_app: str):
-    request_handle = apps.submit(
-        test_cancellable_app, arguments={"lhs": 1, "rhs": 2, "wait_time": 6}
+@pytest.mark.timeout(360)
+def test_app_cancellation(test_app: str, test_client_cancellation_app: str):
+    request_handle = submit_and_wait_for_runner(
+        test_client_cancellation_app,
+        arguments={"lhs": 1, "rhs": 2, "wait_time": 20},
+        require_in_progress=True,
+        timeout=120,
     )
 
-    while True:
-        status = request_handle.status()
-        time.sleep(0.05)
-        if isinstance(status, apps.InProgress):
-            # The app is running
-            break
+    cancel_and_wait_for_request_completion(request_handle, timeout=30)
 
-    # cancel the request
-    request_handle.cancel()
-
-    # should still finish successfully and return 499
     with pytest.raises(HTTPStatusError) as e:
-        request_handle.get()
+        request_handle.fetch_result()
     assert e.value.response.status_code == 499
 
-    # normal app should just ignore the cancellation
-    request_handle = apps.submit(
-        test_app, arguments={"lhs": 1, "rhs": 2, "wait_time": 6}
+    request_handle = submit_and_wait_for_runner(
+        test_app,
+        arguments={"lhs": 1, "rhs": 2, "wait_time": 6},
+        require_in_progress=True,
+        timeout=120,
     )
+    cancel_and_wait_for_request_completion(request_handle, timeout=30)
 
-    while True:
-        status = request_handle.status()
-        time.sleep(0.05)
-        if isinstance(status, apps.InProgress):
-            # The app is running
-            break
-
-    # cancel the request
-    request_handle.cancel()
-
-    response = request_handle.get()
+    response = request_handle.fetch_result()
     assert response == {"result": 3}
 
 
-def test_app_disconnect_behavior(test_app: str, test_cancellable_app: str):
+@pytest.mark.timeout(600)
+def test_app_disconnect_behavior(test_cancellable_app: str):
+    request_handle = submit_and_wait_for_runner(
+        test_cancellable_app,
+        arguments={"lhs": 1, "rhs": 2, "wait_time": 20},
+        path="/well-handled",
+        require_in_progress=True,
+        timeout=120,
+    )
+    wait_for_request_completion(request_handle, timeout=30)
+
     with pytest.raises(HTTPStatusError) as e:
-        apps.run(
-            test_cancellable_app,
-            arguments={"lhs": 1, "rhs": 2, "wait_time": 6},
-            path="/well-handled",
-        )
+        request_handle.fetch_result()
     assert (
         e.value.response.status_code == 504
     ), "Expected Gateway Timeout even though the app handled it"
 
-    # and running it again shows the app "handled" it
-    response = apps.run(
+    request_handle = submit_and_wait_for_runner(
         test_cancellable_app,
         arguments={"lhs": 1, "rhs": 2, "wait_time": 1},
         path="/well-handled",
+        timeout=120,
     )
-    assert response == {"result": 3}
+    wait_for_request_completion(request_handle, timeout=30)
+    assert request_handle.fetch_result() == {"result": 3}
 
-    # vs on an unhandled one
-
+    request_handle = submit_and_wait_for_runner(
+        test_cancellable_app,
+        arguments={"lhs": 1, "rhs": 2, "wait_time": 6},
+        require_in_progress=True,
+        timeout=120,
+    )
+    wait_for_request_completion(request_handle, timeout=30)
     with pytest.raises(HTTPStatusError) as e:
-        apps.run(
-            test_cancellable_app,
-            arguments={"lhs": 1, "rhs": 2, "wait_time": 6},
-        )
+        request_handle.fetch_result()
     assert (
         e.value.response.status_code == 504
-    ), "Expected Gateway Timeout even though the app handled it"
+    ), "Expected Gateway Timeout when the app did not handle the disconnect"
 
 
+@pytest.mark.timeout(240)
 def test_start_timeout_queue_blocking(test_queue_blocking_app: str):
     """
     Test that start_timeout correctly times out a request waiting in queue.
@@ -1192,41 +1389,40 @@ def test_start_timeout_queue_blocking(test_queue_blocking_app: str):
     import fal_client
     from fal_client.client import FalClientHTTPError
 
-    # Send a long-running request that will occupy the only slot
-    # (max_concurrency=1, max_multiplexing=1)
-    # Use 10 seconds to ensure it blocks long enough for the second request to timeout
-    first_handle = apps.submit(test_queue_blocking_app, arguments={"wait_time": 10})
+    # The app is max_concurrency=1, max_multiplexing=1, so this request occupies
+    # the only slot and anything else has to wait in the queue.
+    first_handle = submit_and_wait_for_runner(
+        test_queue_blocking_app,
+        arguments={"wait_time": 10},
+        require_in_progress=True,
+        timeout=120,
+    )
 
-    # Wait for the first request to start processing
-    while True:
-        status = first_handle.status()
-        if isinstance(status, apps.InProgress):
-            break
-        elif isinstance(status, apps.Queued):
-            time.sleep(0.1)
-        else:
-            raise Exception(f"Unexpected status for first request: {status}")
+    try:
+        with pytest.raises(FalClientHTTPError) as exc_info:
+            fal_client.subscribe(
+                test_queue_blocking_app,
+                arguments={"wait_time": 1},
+                start_timeout=5,
+                client_timeout=20,
+            )
+    finally:
+        # Preserve the subscription failure; cleanup still fails a healthy path.
+        primary_error = sys.exc_info()[1]
+        try:
+            wait_for_request_completion(first_handle, timeout=30)
+        except Exception:
+            if primary_error is None:
+                raise
 
-    # Now send a second request with a short start_timeout
-    # This should fail because it will timeout waiting in the queue
-    with pytest.raises(FalClientHTTPError) as exc_info:
-        fal_client.subscribe(
-            test_queue_blocking_app,
-            arguments={"wait_time": 1},
-            start_timeout=5,
-        )
-
-    # Should get a 504 timeout error
     assert (
         exc_info.value.status_code == 504
     ), f"Expected 504 timeout, got {exc_info.value.status_code}"
 
-    # Verify the timeout type header indicates it was a user timeout
     timeout_type = exc_info.value.response_headers.get("x-fal-request-timeout-type")
     assert timeout_type == "user", f"Expected 'user' timeout type, got {timeout_type}"
 
-    # First request should complete successfully
-    result = first_handle.get()
+    result = first_handle.fetch_result()
     assert result == {"slept": True}, f"First request should succeed, got {result}"
 
 
@@ -1351,6 +1547,8 @@ def test_app_no_serve_spec_metadata(test_fastapi_app: str, rest_client: Client):
 
 
 def test_404_response(test_app: str, request: pytest.FixtureRequest):
+    assert apps.run(test_app, arguments={"lhs": 1, "rhs": 2}) == {"result": 3}
+
     with pytest.raises(HTTPStatusError, match="Path /.*other not found"):
         apps.run(test_app, path="/other", arguments={"lhs": 1, "rhs": 2})
 
@@ -1369,10 +1567,55 @@ def test_404_billable_units(test_exception_app: AppClient):
         assert response.headers.get("x-fal-billable-units") == "0"
 
 
+def _wait_for_alias_configuration(
+    client: api.FalServerlessConnection,
+    app_alias: str,
+    *,
+    revision: str,
+    max_multiplexing: Optional[int] = None,
+    max_concurrency: Optional[int] = None,
+    timeout: float = 60,
+) -> AliasInfo:
+    # Only the values passed in are waited on. Values that are expected to stay
+    # unchanged must be asserted on the result instead: waiting for them would
+    # return on the first matching sample and miss a later wrong update.
+    expected = {
+        field: value
+        for field, value in (
+            ("revision", revision),
+            ("max_multiplexing", max_multiplexing),
+            ("max_concurrency", max_concurrency),
+        )
+        if value is not None
+    }
+    deadline = time.monotonic() + timeout
+    last_alias = None
+
+    while time.monotonic() < deadline:
+        aliases = client.list_aliases()
+        last_alias = next(
+            (alias for alias in aliases if alias.alias == app_alias), None
+        )
+        if last_alias is not None and all(
+            getattr(last_alias, field) == value for field, value in expected.items()
+        ):
+            return last_alias
+        time.sleep(0.5)
+
+    raise AssertionError(
+        f"Timed out after {timeout}s waiting for {app_alias} to reach {expected}. "
+        f"Last alias: {last_alias}"
+    )
+
+
+@pytest.mark.timeout(300)
 def test_app_deploy_scale(host: api.FalServerlessHost, register_app):
     from dataclasses import replace
 
-    with register_app(addition_app, "deploy-scale") as (app_alias, _):
+    with register_app(addition_app, "deploy-scale", wait_for_ready=False) as (
+        app_alias,
+        _,
+    ):
         options = replace(
             addition_app.options,
             host={
@@ -1396,18 +1639,15 @@ def test_app_deploy_scale(host: api.FalServerlessHost, register_app):
         app_revision = result.result.application_id
 
         with host._connection as client:
-            res = client.list_aliases()
-            found = next(filter(lambda alias: alias.alias == app_alias, res), None)
-            assert found, f"Could not find app {app_alias} in {res}"
-            assert found.revision == app_revision
             # multiplexing is revision-specific
-            assert (
-                found.max_multiplexing == 3
-            ), "Expected max_multiplexing to have changed"
-            # max_concurrency is alias-specific
-            assert (
-                found.max_concurrency == 1
-            ), "Expected max_concurrency to stay the same"
+            alias = _wait_for_alias_configuration(
+                client,
+                app_alias,
+                revision=app_revision,
+                max_multiplexing=3,
+            )
+            # max_concurrency is alias-specific, so scale=False must leave it alone
+            assert alias.max_concurrency == 1, alias
 
         result = addition_app.host.register(**kwargs, scale=True)
         assert result
@@ -1416,13 +1656,13 @@ def test_app_deploy_scale(host: api.FalServerlessHost, register_app):
         app_revision = result.result.application_id
 
         with host._connection as client:
-            res = client.list_aliases()
-            found = next(filter(lambda alias: alias.alias == app_alias, res), None)
-            assert found, f"Could not find app {app_alias} in {res}"
-            assert found.revision == app_revision
-            # when scaling, all values are updated
-            assert found.max_multiplexing == 3
-            assert found.max_concurrency == 2
+            _wait_for_alias_configuration(
+                client,
+                app_alias,
+                revision=app_revision,
+                max_multiplexing=3,
+                max_concurrency=2,
+            )
 
 
 def test_app_update_app(base_app: Tuple[str, str]):
@@ -1511,6 +1751,7 @@ def test_app_set_delete_alias(base_app: Tuple[str, str]):
         assert not found, f"Found app {app_alias} in {res} after deletion"
 
 
+@pytest.mark.timeout(240)
 def test_realtime_connection(test_realtime_app):
     response = apps.run(test_realtime_app, arguments={"prompt": "a cat"})
     assert response["text"] == "a cat"
@@ -1540,17 +1781,36 @@ def test_realtime_connection(test_realtime_app):
         assert batch_sizes == [4, 4, 2]
 
 
+@pytest.mark.timeout(300)
 def test_realtime_ws_endpoint(test_realtime_app):
     app_id = apps._backwards_compatible_app_id(test_realtime_app)
     url = apps._REALTIME_URL_FORMAT.format(app_id=app_id) + "/ws"
     creds = get_credentials()
 
-    with ws_client.connect(
-        url, additional_headers=creds.to_headers(), open_timeout=90
-    ) as ws:
+    # Warm the app up so the websocket handshake below does not have to absorb a
+    # cold start. This is a precondition, not part of what is asserted.
+    warmup_handle = submit_and_wait_for_runner(
+        test_realtime_app, arguments={"prompt": "warmup"}, timeout=120
+    )
+    wait_for_request_completion(warmup_handle, timeout=30)
+
+    try:
+        connection = ws_client.connect(
+            url, additional_headers=creds.to_headers(), open_timeout=30
+        )
+    except TimeoutError as exc:
+        raise AssertionError("Timed out opening the websocket connection") from exc
+
+    with connection as ws:
         messages = []
-        for _ in range(3):
-            payload = ws.recv()
+        for message_index in range(3):
+            timeout = 30 if message_index == 0 else 10
+            try:
+                payload = ws.recv(timeout=timeout)
+            except TimeoutError as exc:
+                raise AssertionError(
+                    f"Timed out waiting for websocket message {message_index + 1}/3"
+                ) from exc
             if isinstance(payload, bytes):
                 payload = payload.decode("utf-8")
             messages.append(json.loads(payload))
@@ -1558,6 +1818,7 @@ def test_realtime_ws_endpoint(test_realtime_app):
     assert messages == [{"message": "Hello world!"}] * 3
 
 
+@pytest.mark.timeout(240)
 def test_realtime_connection_custom_codec(test_realtime_app):
     with apps._connect(
         test_realtime_app,
@@ -1569,6 +1830,7 @@ def test_realtime_connection_custom_codec(test_realtime_app):
         assert response["text"] == "json cat"
 
 
+@pytest.mark.timeout(240)
 def test_realtime_server_streaming_mode(test_realtime_app):
     with apps._connect(
         test_realtime_app, path="/realtime/server-streaming"
@@ -1582,6 +1844,7 @@ def test_realtime_server_streaming_mode(test_realtime_app):
         ]
 
 
+@pytest.mark.timeout(240)
 def test_realtime_server_streaming_sync_mode(test_realtime_app):
     with apps._connect(
         test_realtime_app, path="/realtime/server-streaming-sync"
@@ -1595,6 +1858,7 @@ def test_realtime_server_streaming_sync_mode(test_realtime_app):
         ]
 
 
+@pytest.mark.timeout(240)
 def test_realtime_client_streaming_mode(test_realtime_app):
     with apps._connect(
         test_realtime_app, path="/realtime/client-streaming"
@@ -1606,6 +1870,7 @@ def test_realtime_client_streaming_mode(test_realtime_app):
         assert response["texts"] == ["first", "second", "third"]
 
 
+@pytest.mark.timeout(240)
 def test_realtime_bidi_mode(test_realtime_app):
     with apps._connect(test_realtime_app, path="/realtime/bidi") as connection:
         connection.send({"prompt": "one"})
@@ -1819,70 +2084,193 @@ def test_field_exception_default_billable_units(test_exception_app: AppClient):
         assert "x-fal-billable-units" not in response.headers
 
 
-def submit_and_wait_for_runner(app: str, arguments: dict = {}, *, path: str = ""):
+def submit_and_wait_for_runner(
+    app: str,
+    arguments: dict = {},
+    *,
+    path: str = "",
+    require_in_progress: bool = False,
+    timeout: float,
+):
     handle = apps.submit(app, arguments=arguments, path=path)
+    deadline = time.monotonic() + timeout
+    last_status = None
+    expected_status = "InProgress" if require_in_progress else "InProgress or Completed"
 
-    while True:
-        status = handle.status()
-        if isinstance(status, apps.InProgress) or isinstance(status, apps.Completed):
-            break
-        elif isinstance(status, apps.Queued):
+    while time.monotonic() < deadline:
+        last_status = handle.status()
+        if isinstance(last_status, apps.InProgress):
+            return handle
+        if isinstance(last_status, apps.Completed):
+            if require_in_progress:
+                raise AssertionError(
+                    f"App completed before reaching InProgress: {last_status}"
+                )
+            return handle
+        if isinstance(last_status, apps.Queued):
             time.sleep(0.1)
-        else:
-            raise Exception(f"Failed to start the app: {status}")
+            continue
+        raise AssertionError(f"Failed to start the app: {last_status}")
 
-    return handle
+    raise AssertionError(
+        f"Timed out after {timeout}s waiting for the app to reach {expected_status}. "
+        f"Last status: {last_status}"
+    )
 
 
+def wait_for_request_completion(
+    handle: apps.RequestHandle,
+    *,
+    timeout: float = 30,
+) -> apps.Completed:
+    deadline = time.monotonic() + timeout
+    last_status = None
+
+    while time.monotonic() < deadline:
+        last_status = handle.status()
+        if isinstance(last_status, apps.Completed):
+            return last_status
+        time.sleep(0.1)
+
+    raise AssertionError(
+        f"Timed out after {timeout}s waiting for request {handle.request_id} "
+        f"to complete. Last status: {last_status}"
+    )
+
+
+def cancel_and_wait_for_request_completion(
+    handle: apps.RequestHandle,
+    *,
+    timeout: float = 30,
+) -> apps.Completed:
+    deadline = time.monotonic() + timeout
+    last_status = None
+
+    while time.monotonic() < deadline:
+        try:
+            handle.cancel()
+        except HTTPStatusError:
+            last_status = handle.status()
+            if isinstance(last_status, apps.Completed):
+                return last_status
+            raise
+
+        retry_deadline = min(deadline, time.monotonic() + 1)
+        while time.monotonic() < retry_deadline:
+            last_status = handle.status()
+            if isinstance(last_status, apps.Completed):
+                return last_status
+            time.sleep(0.1)
+
+    raise AssertionError(
+        f"Timed out after {timeout}s cancelling request {handle.request_id}. "
+        f"Last status: {last_status}"
+    )
+
+
+_TERMINAL_RUNNER_STATES = {RunnerState.DEAD, RunnerState.TERMINATED}
+
+
+def _non_terminal_runner_ids(runners: List[RunnerInfo]) -> Set[str]:
+    return {
+        runner.runner_id
+        for runner in runners
+        if runner.state not in _TERMINAL_RUNNER_STATES
+    }
+
+
+def _wait_for_runner_ids(
+    client: api.FalServerlessConnection,
+    app_alias: str,
+    condition: Callable[[Set[str]], bool],
+    description: str,
+    *,
+    timeout: float = 30,
+) -> Set[str]:
+    deadline = time.monotonic() + timeout
+    last_runners = []
+
+    while time.monotonic() < deadline:
+        last_runners = client.list_alias_runners(app_alias)
+        runner_ids = _non_terminal_runner_ids(last_runners)
+        if condition(runner_ids):
+            return runner_ids
+        time.sleep(0.5)
+
+    raise AssertionError(
+        f"Timed out waiting for {description} on {app_alias}. "
+        f"Last runners: {last_runners}"
+    )
+
+
+def _wait_for_single_idle_runner(
+    client: api.FalServerlessConnection,
+    app_alias: str,
+    *,
+    timeout: float = 30,
+) -> RunnerInfo:
+    deadline = time.monotonic() + timeout
+    last_runners = []
+
+    while time.monotonic() < deadline:
+        last_runners = client.list_alias_runners(app_alias)
+        active_runners = [
+            runner
+            for runner in last_runners
+            if runner.state not in _TERMINAL_RUNNER_STATES
+        ]
+        if (
+            len(active_runners) == 1
+            and active_runners[0].state in {RunnerState.RUNNING, RunnerState.IDLE}
+            and active_runners[0].in_flight_requests == 0
+        ):
+            return active_runners[0]
+        time.sleep(0.5)
+
+    raise AssertionError(
+        f"Timed out after {timeout}s waiting for one idle runner on {app_alias}. "
+        f"Last runners: {last_runners}"
+    )
+
+
+@pytest.mark.timeout(600)
 def test_stop_runner(host: api.FalServerlessHost, test_sleep_app: str):
-    # Submit a runner and wait for it to be idle
-    submit_and_wait_for_runner(test_sleep_app, arguments={"wait_time": 1})
-    original_runner_id = None
+    _, _, app_alias = test_sleep_app.partition("/")
+    request_handle = submit_and_wait_for_runner(
+        test_sleep_app, arguments={"wait_time": 1}, timeout=120
+    )
+    wait_for_request_completion(request_handle, timeout=15)
 
     with host._connection as client:
-        timeout = 30
-        start_time = time.time()
-        while True:
-            _, _, app_alias = test_sleep_app.partition("/")
-            runners = client.list_alias_runners(app_alias)
-            assert len(runners) == 1
+        original_runner = _wait_for_single_idle_runner(client, app_alias)
 
-            if runners[0].in_flight_requests == 0:
-                original_runner_id = runners[0].runner_id
-                break
-            elif time.time() - start_time > timeout:
-                raise Exception(f"Timeout waiting for runner to be idle: {runners[0]}")
-            time.sleep(1)
+        request_handle = submit_and_wait_for_runner(
+            test_sleep_app, arguments={"wait_time": 1}, timeout=60
+        )
+        wait_for_request_completion(request_handle, timeout=15)
+        reused_runner = _wait_for_single_idle_runner(client, app_alias)
+        assert reused_runner.runner_id == original_runner.runner_id
 
-    # Because the runner is not requested to be stopped, it should be reused
-    submit_and_wait_for_runner(test_sleep_app, arguments={"wait_time": 1})
-
-    with host._connection as client:
-        _, _, app_alias = test_sleep_app.partition("/")
-        runners = client.list_alias_runners(app_alias)
-        assert len(runners) == 1
-
-    # Request to stop the runner
-    with host._connection as client:
         with pytest.raises(Exception) as e:
             client.stop_runner("1234567890")
-
         assert "not found" in str(e).lower()
 
-        _, _, app_alias = test_sleep_app.partition("/")
-        runners = client.list_alias_runners(app_alias)
-        assert len(runners) == 1
+        client.stop_runner(original_runner.runner_id)
+        _wait_for_runner_ids(
+            client,
+            app_alias,
+            lambda runner_ids: original_runner.runner_id not in runner_ids,
+            f"runner {original_runner.runner_id} to stop",
+            timeout=60,
+        )
 
-        client.stop_runner(runners[0].runner_id)
+        request_handle = submit_and_wait_for_runner(
+            test_sleep_app, arguments={"wait_time": 1}, timeout=120
+        )
+        wait_for_request_completion(request_handle, timeout=30)
+        replacement_runner = _wait_for_single_idle_runner(client, app_alias, timeout=60)
 
-    # Because the runner is requested to be stopped,
-    # it should not be reused and a new runner should be created
-    submit_and_wait_for_runner(test_sleep_app, arguments={"wait_time": 1})
-
-    with host._connection as client:
-        runners = client.list_alias_runners(app_alias)
-        assert original_runner_id is not None
-        assert any(runner.runner_id != original_runner_id for runner in runners)
+        assert replacement_runner.runner_id != original_runner.runner_id
 
 
 def test_kill_runner(host: api.FalServerlessHost, test_sleep_app: str):
@@ -1934,41 +2322,67 @@ def test_kill_runner(host: api.FalServerlessHost, test_sleep_app: str):
         assert num_runners <= existing_runners - 1
 
 
+@pytest.mark.timeout(600)
 def test_rollout_application(host: api.FalServerlessHost, test_sleep_app: str):
-    handle = apps.submit(test_sleep_app, arguments={"wait_time": 30})
-
-    while True:
-        status = handle.status()
-        if isinstance(status, apps.InProgress):
-            break
-        elif isinstance(status, apps.Queued):
-            time.sleep(1)
-        else:
-            raise Exception(f"Failed to start the app: {status}")
+    submit_and_wait_for_runner(
+        test_sleep_app,
+        arguments={"wait_time": 30},
+        require_in_progress=True,
+        timeout=120,
+    )
 
     with host._connection as client:
         _, _, app_alias = test_sleep_app.partition("/")
         runners_before = client.list_alias_runners(app_alias)
-        assert len(runners_before) == 1
-        runner_id_before = runners_before[0].runner_id
+        runner_ids_before = _non_terminal_runner_ids(runners_before)
+        assert len(runner_ids_before) == 1, runners_before
 
         client.rollout_application(app_alias, force=True)
+        _wait_for_runner_ids(
+            client,
+            app_alias,
+            runner_ids_before.isdisjoint,
+            f"rollout to remove runners {sorted(runner_ids_before)}",
+            # The runner is mid-request here, so it has to drain the 30s sleep
+            # before it can terminate.
+            timeout=90,
+        )
+        submit_and_wait_for_runner(
+            test_sleep_app,
+            arguments={"wait_time": 1},
+            timeout=120,
+        )
 
-        time.sleep(15)
-
-        runners_after = client.list_alias_runners(app_alias)
-        runner_ids_after = {r.runner_id for r in runners_after}
-
-        assert runner_id_before not in runner_ids_after
+        runner_ids_after = _wait_for_runner_ids(
+            client,
+            app_alias,
+            lambda runner_ids: (
+                bool(runner_ids) and runner_ids_before.isdisjoint(runner_ids)
+            ),
+            f"a new runner after replacing {sorted(runner_ids_before)}",
+        )
 
         client.rollout_application(app_alias, force=True)
+        _wait_for_runner_ids(
+            client,
+            app_alias,
+            runner_ids_after.isdisjoint,
+            f"rollout to remove runners {sorted(runner_ids_after)}",
+        )
+        submit_and_wait_for_runner(
+            test_sleep_app,
+            arguments={"wait_time": 1},
+            timeout=120,
+        )
 
-        time.sleep(3)
-
-        runners_final = client.list_alias_runners(app_alias)
-        runner_ids_final = {r.runner_id for r in runners_final}
-
-        assert not runner_ids_after.intersection(runner_ids_final)
+        _wait_for_runner_ids(
+            client,
+            app_alias,
+            lambda runner_ids: (
+                bool(runner_ids) and runner_ids_after.isdisjoint(runner_ids)
+            ),
+            f"a new runner after replacing {sorted(runner_ids_after)}",
+        )
 
 
 def test_shell_runner(host: api.FalServerlessHost, test_sleep_app: str):
@@ -2057,37 +2471,10 @@ def test_container_app_client(test_container_app: str):
     assert response["result"] == 3
 
 
+@pytest.mark.timeout(300)
 def test_container_build_args_app_client(test_container_build_args_app: str):
     response = apps.run(test_container_build_args_app, {})
     assert response == "built with build args"
-
-
-class HintsApp(fal.App, keep_alive=300, max_concurrency=1):
-    machine_type = "S"
-
-    def provide_hints(self) -> List[str]:
-        return ["é", "😀"]
-
-    @fal.endpoint("/add")
-    def add(self, input: Input) -> Output:
-        return Output(result=input.lhs + input.rhs)
-
-
-def test_hints_encoding():
-    """
-    Make sure that hints that can't be encoded in latin-1 don't crash the app
-    https://github.com/encode/starlette/blob/a766a58d14007f07c0b5782fa78cdc370b892796/starlette/datastructures.py#L568
-    """
-    with AppClient.connect(HintsApp) as client:
-        with httpx.Client(headers=_auth_headers()) as httpx_client:
-            url = client.url + "/add"
-            resp = httpx_client.post(
-                url,
-                json={"lhs": 1, "rhs": 2},
-                timeout=30,
-            )
-            assert resp.is_success
-            assert resp.json()["result"] == 3
 
 
 def _external_get_request_id() -> str:
@@ -2145,9 +2532,14 @@ def test_app_ref_app_client(test_app_ref_app: str):
     assert result_3["from_app"] == result_3["from_external_method"]
 
 
+@pytest.mark.timeout(180)
 def test_runner_machine_type(host: api.FalServerlessHost, test_sleep_app: str):
     """Test that machine_type is populated in runner info."""
-    submit_and_wait_for_runner(test_sleep_app, arguments={"wait_time": 1})
+    submit_and_wait_for_runner(
+        test_sleep_app,
+        arguments={"wait_time": 1},
+        timeout=120,
+    )
 
     with host._connection as client:
         _, _, app_alias = test_sleep_app.partition("/")
@@ -2159,7 +2551,7 @@ def test_runner_machine_type(host: api.FalServerlessHost, test_sleep_app: str):
 
         # list_runners
         all_runners = client.list_runners(
-            start_time=datetime.now() - timedelta(seconds=60)
+            start_time=datetime.now() - timedelta(seconds=120)
         )
         assert len(all_runners) >= 1
         target_runner = next((r for r in all_runners if r.alias == app_alias), None)

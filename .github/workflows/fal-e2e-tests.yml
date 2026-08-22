@@ -31,9 +31,10 @@ jobs:
   e2e:
     name: e2e (${{ matrix.os }}, py ${{ matrix.python }}, ${{ matrix.deps }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 10
+    timeout-minutes: 20
     strategy:
       fail-fast: false
+      max-parallel: 3
       matrix:
         os: [ubuntu-latest]
         deps: ["pydantic==1.10.18", "pydantic==2.13.3"]
