@@ -852,7 +852,10 @@ def _wait_for_queue_gateway(
                             deadline, retry_delay
                         )
                     else:
-                        last_result = f"unexpected success: {response.status_code}: {response.text}"
+                        last_result = (
+                            "unexpected success: "
+                            f"{response.status_code}: {response.text}"
+                        )
                         break
 
         retry_delay = _sleep_before_readiness_retry(deadline, retry_delay)
@@ -1344,9 +1347,9 @@ def test_app_disconnect_behavior(test_cancellable_app: str):
 
     with pytest.raises(HTTPStatusError) as e:
         request_handle.fetch_result()
-    assert e.value.response.status_code == 504, (
-        "Expected Gateway Timeout even though the app handled it"
-    )
+    assert (
+        e.value.response.status_code == 504
+    ), "Expected Gateway Timeout even though the app handled it"
 
     request_handle = submit_and_wait_for_runner(
         test_cancellable_app,
@@ -1366,9 +1369,9 @@ def test_app_disconnect_behavior(test_cancellable_app: str):
     wait_for_request_completion(request_handle, timeout=30)
     with pytest.raises(HTTPStatusError) as e:
         request_handle.fetch_result()
-    assert e.value.response.status_code == 504, (
-        "Expected Gateway Timeout when the app did not handle the disconnect"
-    )
+    assert (
+        e.value.response.status_code == 504
+    ), "Expected Gateway Timeout when the app did not handle the disconnect"
 
 
 @pytest.mark.timeout(240)
@@ -1412,9 +1415,9 @@ def test_start_timeout_queue_blocking(test_queue_blocking_app: str):
             if primary_error is None:
                 raise
 
-    assert exc_info.value.status_code == 504, (
-        f"Expected 504 timeout, got {exc_info.value.status_code}"
-    )
+    assert (
+        exc_info.value.status_code == 504
+    ), f"Expected 504 timeout, got {exc_info.value.status_code}"
 
     timeout_type = exc_info.value.response_headers.get("x-fal-request-timeout-type")
     assert timeout_type == "user", f"Expected 'user' timeout type, got {timeout_type}"
@@ -1498,12 +1501,12 @@ def test_traceback_logs(test_exception_app: AppClient, rest_client: Client):
         assert len(logs) > 0
         for log in logs:
             assert log["message"].count("\n") > 1, "Logs should be multi-line"
-            assert '{"traceback":' not in log["message"], (
-                "Logs should not be JSON-wrapped"
-            )
-            assert "this app is designed to fail" in log["message"], (
-                "Logs should contain the traceback message"
-            )
+            assert (
+                '{"traceback":' not in log["message"]
+            ), "Logs should not be JSON-wrapped"
+            assert (
+                "this app is designed to fail" in log["message"]
+            ), "Logs should contain the traceback message"
 
 
 def test_app_openapi_spec_metadata(
@@ -1532,15 +1535,15 @@ def test_app_no_serve_spec_metadata(test_fastapi_app: str, rest_client: Client):
         app_alias_or_id=app_id, app_user_id=user_id, client=rest_client
     )
 
-    assert res.status_code == 200, (
-        f"Failed to fetch metadata for app {test_fastapi_app}"
-    )
+    assert (
+        res.status_code == 200
+    ), f"Failed to fetch metadata for app {test_fastapi_app}"
     assert res.parsed, f"Failed to parse metadata for app {test_fastapi_app}"
 
     metadata = res.parsed.to_dict()
-    assert "openapi" not in metadata, (
-        f"openapi should not be present in metadata {metadata}"
-    )
+    assert (
+        "openapi" not in metadata
+    ), f"openapi should not be present in metadata {metadata}"
 
 
 def test_404_response(test_app: str, request: pytest.FixtureRequest):
@@ -2454,9 +2457,9 @@ def test_exec_runner(host: api.FalServerlessHost, test_sleep_app: str):
 
         try:
             stdout, stderr = proc.communicate(timeout=10)
-            assert b"hello" in stdout, (
-                f"Expected 'hello' in output, got: {stdout.decode()}"
-            )
+            assert (
+                b"hello" in stdout
+            ), f"Expected 'hello' in output, got: {stdout.decode()}"
         finally:
             if proc.poll() is None:
                 proc.kill()
