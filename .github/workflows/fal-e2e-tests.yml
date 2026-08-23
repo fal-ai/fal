@@ -74,4 +74,4 @@ jobs:
           FAL_GRPC_HOST: api.alpha.fal.ai
           FAL_REST_HOST: rest.fal.ai
           FAL_RUN_HOST: fal.run
-        run: pytest -n auto -v projects/fal/tests/e2e
+        run: pytest -n auto --dist loadgroup -v projects/fal/tests/e2e

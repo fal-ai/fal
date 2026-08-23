@@ -541,25 +541,6 @@ class CancellableApp(fal.App, keep_alive=300, max_concurrency=1, request_timeout
         return Output(result=0)
 
 
-class HealthCheckApp(fal.App, keep_alive=300, max_concurrency=1, request_timeout=4):
-    @fal.endpoint("/")
-    def run(self, input: Input) -> Output:
-        time.sleep(input.wait_time)
-        return Output(result=input.lhs + input.rhs)
-
-    @fal.endpoint(
-        "/health",
-        health_check=fal.HealthCheck(
-            start_period_seconds=10,
-            timeout_seconds=10,
-            failure_threshold=3,
-            call_regularly=True,
-        ),
-    )
-    def health(self) -> Output:
-        return Output(result=0)
-
-
 class HealthOverrideApp(fal.App, keep_alive=300, max_concurrency=1):
     """fal.App declaring health at /ready with a broken default /health.
 
@@ -711,7 +692,7 @@ def user(rest_client: Client) -> Generator[User, None, None]:
     yield user
 
 
-@pytest.fixture()
+@pytest.fixture(scope="module")
 def register_app(
     host: api.FalServerlessHost,
     make_tmp_app_name: Callable[[str], str],
@@ -761,7 +742,7 @@ def base_app(register_app):
         yield app_alias, app_revision
 
 
-@pytest.fixture()
+@pytest.fixture(scope="module")
 def test_app(
     user: User,
     register_app,
@@ -837,7 +818,7 @@ def test_fastapi_app(
         yield f"{user.username}/{app_alias}"
 
 
-@pytest.fixture()
+@pytest.fixture(scope="module")
 def test_stateful_app(
     user: User,
     register_app,
@@ -845,12 +826,6 @@ def test_stateful_app(
     stateful_app = wrap_app(StatefulAdditionApp)
     with register_app(stateful_app, "stateful") as (app_alias, _):
         yield f"{user.username}/{app_alias}"
-
-
-@pytest.fixture()
-def test_pydantic_validation_error():
-    with AppClient.connect(StatefulAdditionApp) as client:
-        yield client
 
 
 @pytest.fixture()
@@ -863,20 +838,10 @@ def test_cancellable_app(
         yield f"{user.username}/{app_alias}"
 
 
-@pytest.fixture()
+@pytest.fixture(scope="module")
 def test_exception_app():
     with AppClient.connect(ExceptionApp) as client:
         yield client
-
-
-@pytest.fixture()
-def test_health_check_app(
-    user: User,
-    register_app,
-):
-    health_check_app = wrap_app(HealthCheckApp)
-    with register_app(health_check_app, "health-check") as (app_alias, _):
-        yield f"{user.username}/{app_alias}"
 
 
 @pytest.fixture()
@@ -899,7 +864,7 @@ def test_queue_blocking_app(
         yield f"{user.username}/{app_alias}"
 
 
-@pytest.fixture()
+@pytest.fixture(scope="module")
 def test_realtime_app(
     user: User,
     register_app,
@@ -909,13 +874,14 @@ def test_realtime_app(
         yield f"{user.username}/{app_alias}"
 
 
-def test_broken_app_failure(host: api.FalServerlessHost, user: User):
+def test_broken_app_failure():
     with pytest.raises(FalServerlessException) as e:
         wrap_app(BrokenApp)
 
     assert "Failed to generate OpenAPI" in str(e)
 
 
+@pytest.mark.xdist_group(name="addition-app")
 def test_app_client(test_app: str):
     response = apps.run(test_app, arguments={"lhs": 1, "rhs": 2})
     assert response["result"] == 3
@@ -1064,6 +1030,7 @@ def test_app_health_override(test_health_override_app: str):
     assert r.status_code == 502, r.text
 
 
+@pytest.mark.xdist_group(name="addition-app")
 def test_ws_client(test_app: str):
     with apps.ws(test_app) as connection:
         for i in range(3):
@@ -1079,6 +1046,7 @@ def test_ws_client(test_app: str):
             assert response["result"] == 2 + i
 
 
+@pytest.mark.xdist_group(name="stateful-app")
 def test_app_client_path_included_in_app_id(test_stateful_app: str):
     response = apps.run(test_stateful_app + "/reset", arguments={})
     assert response["result"] == 0
@@ -1091,6 +1059,7 @@ def test_app_client_path_included_in_app_id(test_stateful_app: str):
     assert response["result"] == 6
 
 
+@pytest.mark.xdist_group(name="stateful-app")
 def test_stateful_app_client(test_stateful_app: str):
     response = apps.run(test_stateful_app, arguments={}, path="/reset")
     assert response["result"] == 0
@@ -1108,6 +1077,7 @@ def test_stateful_app_client(test_stateful_app: str):
     assert response["result"] == 0
 
 
+@pytest.mark.xdist_group(name="addition-app")
 def test_app_cancellation(test_app: str, test_cancellable_app: str):
     request_handle = apps.submit(
         test_cancellable_app, arguments={"lhs": 1, "rhs": 2, "wait_time": 6}
@@ -1147,7 +1117,7 @@ def test_app_cancellation(test_app: str, test_cancellable_app: str):
     assert response == {"result": 3}
 
 
-def test_app_disconnect_behavior(test_app: str, test_cancellable_app: str):
+def test_app_disconnect_behavior(test_cancellable_app: str):
     with pytest.raises(HTTPStatusError) as e:
         apps.run(
             test_cancellable_app,
@@ -1278,6 +1248,7 @@ def test_app_client_async(test_sleep_app: str):
 @pytest.mark.xfail(
     reason="Temporary disabled while investigating backend issue. Ping @efiop"
 )
+@pytest.mark.xdist_group(name="exception-app")
 def test_traceback_logs(test_exception_app: AppClient, rest_client: Client):
     date = (
         datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=1)
@@ -1313,11 +1284,9 @@ def test_traceback_logs(test_exception_app: AppClient, rest_client: Client):
             ), "Logs should contain the traceback message"
 
 
-def test_app_openapi_spec_metadata(
-    base_app: Tuple[str, str], user: User, rest_client: Client
-):
-    app_alias, _ = base_app
-    app_user_id = user.username
+@pytest.mark.xdist_group(name="addition-app")
+def test_app_openapi_spec_metadata(test_app: str, rest_client: Client):
+    app_user_id, _, app_alias = test_app.partition("/")
     res = app_metadata.sync_detailed(
         app_alias_or_id=app_alias, app_user_id=app_user_id, client=rest_client
     )
@@ -1350,11 +1319,13 @@ def test_app_no_serve_spec_metadata(test_fastapi_app: str, rest_client: Client):
     ), f"openapi should not be present in metadata {metadata}"
 
 
-def test_404_response(test_app: str, request: pytest.FixtureRequest):
+@pytest.mark.xdist_group(name="addition-app")
+def test_404_response(test_app: str):
     with pytest.raises(HTTPStatusError, match="Path /.*other not found"):
         apps.run(test_app, path="/other", arguments={"lhs": 1, "rhs": 2})
 
 
+@pytest.mark.xdist_group(name="exception-app")
 def test_404_billable_units(test_exception_app: AppClient):
     """Test that 404 responses include x-fal-billable-units: 0 header."""
     with httpx.Client(headers=_auth_headers()) as httpx_client:
@@ -1511,6 +1482,7 @@ def test_app_set_delete_alias(base_app: Tuple[str, str]):
         assert not found, f"Found app {app_alias} in {res} after deletion"
 
 
+@pytest.mark.xdist_group(name="realtime-app")
 def test_realtime_connection(test_realtime_app):
     response = apps.run(test_realtime_app, arguments={"prompt": "a cat"})
     assert response["text"] == "a cat"
@@ -1540,6 +1512,7 @@ def test_realtime_connection(test_realtime_app):
         assert batch_sizes == [4, 4, 2]
 
 
+@pytest.mark.xdist_group(name="realtime-app")
 def test_realtime_ws_endpoint(test_realtime_app):
     app_id = apps._backwards_compatible_app_id(test_realtime_app)
     url = apps._REALTIME_URL_FORMAT.format(app_id=app_id) + "/ws"
@@ -1558,6 +1531,7 @@ def test_realtime_ws_endpoint(test_realtime_app):
     assert messages == [{"message": "Hello world!"}] * 3
 
 
+@pytest.mark.xdist_group(name="realtime-app")
 def test_realtime_connection_custom_codec(test_realtime_app):
     with apps._connect(
         test_realtime_app,
@@ -1569,6 +1543,7 @@ def test_realtime_connection_custom_codec(test_realtime_app):
         assert response["text"] == "json cat"
 
 
+@pytest.mark.xdist_group(name="realtime-app")
 def test_realtime_server_streaming_mode(test_realtime_app):
     with apps._connect(
         test_realtime_app, path="/realtime/server-streaming"
@@ -1582,6 +1557,7 @@ def test_realtime_server_streaming_mode(test_realtime_app):
         ]
 
 
+@pytest.mark.xdist_group(name="realtime-app")
 def test_realtime_server_streaming_sync_mode(test_realtime_app):
     with apps._connect(
         test_realtime_app, path="/realtime/server-streaming-sync"
@@ -1595,6 +1571,7 @@ def test_realtime_server_streaming_sync_mode(test_realtime_app):
         ]
 
 
+@pytest.mark.xdist_group(name="realtime-app")
 def test_realtime_client_streaming_mode(test_realtime_app):
     with apps._connect(
         test_realtime_app, path="/realtime/client-streaming"
@@ -1606,6 +1583,7 @@ def test_realtime_client_streaming_mode(test_realtime_app):
         assert response["texts"] == ["first", "second", "third"]
 
 
+@pytest.mark.xdist_group(name="realtime-app")
 def test_realtime_bidi_mode(test_realtime_app):
     with apps._connect(test_realtime_app, path="/realtime/bidi") as connection:
         connection.send({"prompt": "one"})
@@ -1622,6 +1600,7 @@ def delete_workflow_on_exit(client: httpx.Client, workflow_url: str):
         client.delete(workflow_url)
 
 
+@pytest.mark.xdist_group(name="addition-app")
 def test_workflows(test_app: str, rest_client: Client):
     workflow = Workflow(
         name="test_workflow_" + secrets.token_hex(),
@@ -1671,6 +1650,7 @@ def test_workflows(test_app: str, rest_client: Client):
             assert data["result"] == 10
 
 
+@pytest.mark.xdist_group(name="exception-app")
 def test_app_exceptions(test_exception_app: AppClient):
     with pytest.raises(AppClientError) as app_exc:
         test_exception_app.app_exception({})
@@ -1703,9 +1683,12 @@ def test_app_exceptions(test_exception_app: AppClient):
     assert _CUDA_OOM_MESSAGE in cuda_exc.value.message
 
 
-def test_pydantic_validation_billing(test_pydantic_validation_error: AppClient):
-    with httpx.Client(headers=_auth_headers()) as httpx_client:
-        url = test_pydantic_validation_error.url + "/increment"
+@pytest.mark.xdist_group(name="stateful-app")
+def test_pydantic_validation_billing(test_stateful_app: str):
+    from fal.flags import FAL_RUN_HOST
+
+    with httpx.Client(headers=get_credentials().to_headers()) as httpx_client:
+        url = f"https://{FAL_RUN_HOST}/{test_stateful_app}/increment"
         response = httpx_client.post(
             url,
             json={"value": "this-is-not-an-integer"},
@@ -1716,6 +1699,7 @@ def test_pydantic_validation_billing(test_pydantic_validation_error: AppClient):
         assert response.headers.get("x-fal-billable-units") == "0"
 
 
+@pytest.mark.xdist_group(name="exception-app")
 def test_field_exception_billing(test_exception_app: AppClient):
     with httpx.Client(headers=_auth_headers()) as httpx_client:
         url = test_exception_app.url + "/field-exception"
@@ -1731,6 +1715,7 @@ def test_field_exception_billing(test_exception_app: AppClient):
         assert not hasattr(response.headers, "x-fal-billable-units")
 
 
+@pytest.mark.xdist_group(name="exception-app")
 def test_field_exception_int_billable_units_formatting(test_exception_app: AppClient):
     """Test that int billable_units are formatted without decimal places."""
     with httpx.Client(headers=_auth_headers()) as httpx_client:
@@ -1745,6 +1730,7 @@ def test_field_exception_int_billable_units_formatting(test_exception_app: AppCl
         assert response.headers.get("x-fal-billable-units") == "42"
 
 
+@pytest.mark.xdist_group(name="exception-app")
 def test_field_exception_float_billable_units_formatting(test_exception_app: AppClient):
     """Test that float billable_units are formatted with 8 decimal places."""
     with httpx.Client(headers=_auth_headers()) as httpx_client:
@@ -1759,6 +1745,7 @@ def test_field_exception_float_billable_units_formatting(test_exception_app: App
         assert response.headers.get("x-fal-billable-units") == "3.14159265"
 
 
+@pytest.mark.xdist_group(name="exception-app")
 def test_field_exception_scientific_notation_small(test_exception_app: AppClient):
     """Test that small scientific notation values are properly formatted."""
     with httpx.Client(headers=_auth_headers()) as httpx_client:
@@ -1774,6 +1761,7 @@ def test_field_exception_scientific_notation_small(test_exception_app: AppClient
         assert response.headers.get("x-fal-billable-units") == "0.00001230"
 
 
+@pytest.mark.xdist_group(name="exception-app")
 def test_field_exception_scientific_notation_large(test_exception_app: AppClient):
     """Test that large scientific notation values are properly formatted."""
     with httpx.Client(headers=_auth_headers()) as httpx_client:
@@ -1789,6 +1777,7 @@ def test_field_exception_scientific_notation_large(test_exception_app: AppClient
         assert response.headers.get("x-fal-billable-units") == "12300000000.00000000"
 
 
+@pytest.mark.xdist_group(name="exception-app")
 def test_field_exception_invalid_billable_units(test_exception_app: AppClient):
     """Test that invalid billable_units (non-numeric string) raises an error."""
     with httpx.Client(headers=_auth_headers()) as httpx_client:
@@ -1804,6 +1793,7 @@ def test_field_exception_invalid_billable_units(test_exception_app: AppClient):
         assert response.status_code == 500
 
 
+@pytest.mark.xdist_group(name="exception-app")
 def test_field_exception_default_billable_units(test_exception_app: AppClient):
     """Test that when billable_units is not set (None), no header is included."""
     with httpx.Client(headers=_auth_headers()) as httpx_client:
@@ -2211,7 +2201,7 @@ class RequestContextApp(fal.App, keep_alive=300, max_concurrency=1, max_multiple
         )
 
 
-@pytest.fixture()
+@pytest.fixture(scope="module")
 def test_request_context_app(
     user: User,
     register_app,
@@ -2222,6 +2212,7 @@ def test_request_context_app(
         yield f"{user.username}/{app_alias}"
 
 
+@pytest.mark.xdist_group(name="request-context-app")
 def test_request_context_fields_populated(test_request_context_app: str):
     """Test that request context fields are properly populated."""
 
@@ -2234,6 +2225,7 @@ def test_request_context_fields_populated(test_request_context_app: str):
     assert result["request_id_from_context"] == result["request_id_from_header"]
 
 
+@pytest.mark.xdist_group(name="request-context-app")
 def test_request_context_isolation_with_multiplexing(test_request_context_app: str):
     """Test that request context is properly isolated between concurrent requests.
 

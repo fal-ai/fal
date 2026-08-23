@@ -418,7 +418,7 @@ def test_big_message(isolated_client):
     # try doubling that.
     data_length = 8 * (1024**2)
 
-    @isolated_client("virtualenv", machine_type="M")
+    @isolated_client("virtualenv", machine_type="M", keep_alive=10)
     def big_return_function(data_length):
         return b"0" * data_length
 
@@ -429,7 +429,7 @@ def test_big_message(isolated_client):
 def test_futures(isolated_client):
     from concurrent.futures import wait
 
-    @isolated_client("virtualenv")
+    @isolated_client("virtualenv", keep_alive=10)
     def regular_function(n):
         return n * 2
 
