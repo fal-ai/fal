@@ -16,12 +16,11 @@ from fal.toolkit.file import File
 PACKAGE_NAME = "fall"
 
 
-def git_revision_short_hash() -> str:
-    return (
-        subprocess.check_output(["git", "rev-parse", "--short", "HEAD"])
-        .decode("ascii")
-        .strip()
-    )
+GIT_REVISION_SHORT_HASH = (
+    subprocess.check_output(["git", "rev-parse", "--short", "HEAD"])
+    .decode("ascii")
+    .strip()
+)
 
 
 @pytest.mark.xfail(reason="Temporary mismatch due to grpc version updates. Ping @efiop")
@@ -55,20 +54,24 @@ def test_regular_function(isolated_client):
     assert mult(5, 2) == 10
 
 
+@pytest.mark.timeout(180)
+@pytest.mark.xdist_group(name="container-builds")
 def test_regular_function_in_a_container(isolated_client):
-    @isolated_client("container")
+    @isolated_client("container", keep_alive=10)
     def regular_function():
         return 42
 
     assert regular_function() == 42
 
-    @isolated_client("container")
+    @isolated_client("container", keep_alive=10)
     def mult(a, b):
         return a * b
 
     assert mult(5, 2) == 10
 
 
+@pytest.mark.timeout(180)
+@pytest.mark.xdist_group(name="container-builds")
 def test_container_no_venv(isolated_client):
     actual_python = active_python()
 
@@ -87,6 +90,8 @@ def test_container_no_venv(isolated_client):
     assert myfunc() == 42
 
 
+@pytest.mark.timeout(180)
+@pytest.mark.xdist_group(name="container-builds")
 def test_container_venv(isolated_client):
     actual_python = active_python()
 
@@ -108,6 +113,8 @@ def test_container_venv(isolated_client):
 
 
 @pytest.mark.flaky(max_runs=3)
+@pytest.mark.timeout(180)
+@pytest.mark.xdist_group(name="container-builds")
 def test_regular_function_in_a_container_with_custom_image(isolated_client):
     actual_python = active_python()
 
@@ -116,7 +123,7 @@ def test_regular_function_in_a_container_with_custom_image(isolated_client):
         image=ContainerImage.from_dockerfile_str(
             f"""
             FROM python:{actual_python}-slim
-            # {git_revision_short_hash()}
+            # {GIT_REVISION_SHORT_HASH}
             RUN env
             """
         ),
@@ -129,7 +136,7 @@ def test_regular_function_in_a_container_with_custom_image(isolated_client):
     @isolated_client(
         "container",
         image=ContainerImage.from_dockerfile_str(
-            f"FROM python:{actual_python}-slim\n# {git_revision_short_hash()}"
+            f"FROM python:{actual_python}-slim\n# {GIT_REVISION_SHORT_HASH}"
         ),
     )
     def mult(a, b):
@@ -516,6 +523,7 @@ def test_cached_function(isolated_client, capsys, monkeypatch):
     assert out.count("computing") == 1
 
 
+@pytest.mark.timeout(120)
 def test_pydantic_serialization(isolated_client):
     from pydantic import BaseModel, Field
 
