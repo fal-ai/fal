@@ -2282,14 +2282,11 @@ class AppRefOutput(BaseModel):
     from_external_method: str
 
 
-CONCURRENT_REQUESTS = 3
-
-
 class AppRefApp(
     fal.App,
     keep_alive=300,
     max_concurrency=1,
-    max_multiplexing=CONCURRENT_REQUESTS,
+    max_multiplexing=3,
 ):
     machine_type = "XS"
 
@@ -2302,7 +2299,7 @@ class AppRefApp(
         request_id = request.headers.get("x-request-id", "")
 
         self.concurrent_requests += 1
-        if self.concurrent_requests == CONCURRENT_REQUESTS:
+        if self.concurrent_requests == self.max_multiplexing:
             self.requests_ready.set()
         await asyncio.wait_for(self.requests_ready.wait(), timeout=30)
 
@@ -2395,7 +2392,7 @@ class RequestContextApp(
     fal.App,
     keep_alive=300,
     max_concurrency=1,
-    max_multiplexing=CONCURRENT_REQUESTS,
+    max_multiplexing=3,
 ):
     """App to test request context fields are properly populated."""
 
@@ -2411,7 +2408,7 @@ class RequestContextApp(
     ) -> RequestContextOutput:
         if input.synchronize:
             self.concurrent_requests += 1
-            if self.concurrent_requests == CONCURRENT_REQUESTS:
+            if self.concurrent_requests == self.max_multiplexing:
                 self.requests_ready.set()
             await asyncio.wait_for(self.requests_ready.wait(), timeout=30)
 
