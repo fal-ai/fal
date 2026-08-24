@@ -168,6 +168,73 @@ def _wait_for_alias_runners(
     )
 
 
+def _wait_for_alias_revision(
+    client,
+    app_alias: str,
+    app_revision: str,
+    *,
+    timeout: float = 60,
+):
+    def fetch_alias():
+        return next(
+            (alias for alias in client.list_aliases() if alias.alias == app_alias),
+            None,
+        )
+
+    return _wait_until(
+        fetch_alias,
+        lambda alias: alias is not None and alias.revision == app_revision,
+        timeout=timeout,
+        interval=0.5,
+        description=f"alias {app_alias} to point to revision {app_revision}",
+    )
+
+
+def _wait_for_queue_alias(
+    app_alias: str,
+    queue_url: str,
+    *,
+    timeout: float = 60,
+):
+    with httpx.Client(headers=_auth_headers()) as client:
+
+        def queue_recognizes_alias():
+            # Alias resolution precedes validation of this query parameter, whose
+            # invalid value makes the gateway return before enqueuing a request.
+            response = client.post(
+                queue_url,
+                params={"fal_max_queue_length": "readiness-probe"},
+                json={},
+            )
+            if response.status_code == 404:
+                detail = response.json().get("detail", "")
+                missing_alias_details = {
+                    f"Application {app_alias!r} not found",
+                    f'Application "{app_alias}" not found',
+                }
+                if detail in missing_alias_details:
+                    return False
+
+            if response.status_code != 400:
+                response.raise_for_status()
+                raise AssertionError(f"Unexpected queue readiness response: {response}")
+
+            data = response.json()
+            if data.get("request_id") is not None or not data.get("error", "").startswith(
+                "Invalid fal_max_queue_length"
+            ):
+                raise AssertionError(f"Unexpected queue readiness response: {data}")
+            return True
+
+        _wait_until(
+            queue_recognizes_alias,
+            bool,
+            timeout=timeout,
+            interval=0.5,
+            description=f"queue gateway to recognize alias {app_alias}",
+        )
+
+
 GIT_REVISION_SHORT_HASH = (
     subprocess.check_output(["git", "rev-parse", "--short", "HEAD"])
     .decode("ascii")
@@ -801,6 +868,9 @@ def register_app(
         app_revision = result.result.application_id
 
         try:
+            with host._connection as client:
+                _wait_for_alias_revision(client, app_alias, app_revision)
+            _wait_for_queue_alias(app_alias, result.service_urls.queue)
             yield app_alias, app_revision
         finally:
             with host._connection as client:
@@ -1422,10 +1492,7 @@ def test_app_deploy_scale(host: api.FalServerlessHost, register_app):
         app_revision = result.result.application_id
 
         with host._connection as client:
-            res = client.list_aliases()
-            found = next(filter(lambda alias: alias.alias == app_alias, res), None)
-            assert found, f"Could not find app {app_alias} in {res}"
-            assert found.revision == app_revision
+            found = _wait_for_alias_revision(client, app_alias, app_revision)
             # multiplexing is revision-specific
             assert (
                 found.max_multiplexing == 3
@@ -1442,10 +1509,7 @@ def test_app_deploy_scale(host: api.FalServerlessHost, register_app):
         app_revision = result.result.application_id
 
         with host._connection as client:
-            res = client.list_aliases()
-            found = next(filter(lambda alias: alias.alias == app_alias, res), None)
-            assert found, f"Could not find app {app_alias} in {res}"
-            assert found.revision == app_revision
+            found = _wait_for_alias_revision(client, app_alias, app_revision)
             # when scaling, all values are updated
             assert found.max_multiplexing == 3
             assert found.max_concurrency == 2
