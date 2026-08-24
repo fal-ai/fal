@@ -18,6 +18,7 @@ from fal.toolkit.file.file import (
     _try_with_fallback,
     get_builtin_repository,
 )
+from fal.toolkit.file.providers.s3 import S3Repository
 from fal.toolkit.file.types import FileData, FileRepository
 
 
@@ -416,6 +417,41 @@ class TestTryWithFallback:
         print_call_args = mock_print.call_args[0][0]
         assert "Failed to save to repository repo1" in print_call_args
         assert "falling back to repo2" in print_call_args
+
+    def test_failure_message_never_carries_repository_credentials(self):
+        """S3Repository, R2Repository and GoogleStorageRepository are dataclasses
+        holding credentials, so formatting the object would print
+        aws_secret_access_key or gcp_account_json to the runner's stdout. Only
+        the type name may appear."""
+        secret = "wJalrXUtnFEMI-SECRET"
+        primary = S3Repository(
+            bucket_name="b", aws_access_key_id="AKIA-ID", aws_secret_access_key=secret
+        )
+        fallback = MockRepository("fallback", should_fail=False)
+
+        with patch(
+            "fal.toolkit.file.file.get_builtin_repository"
+        ) as mock_get_repo, patch("fal.toolkit.file.file.traceback.print_exc"), patch(
+            "builtins.print"
+        ) as mock_print:
+            mock_get_repo.side_effect = [
+                MockRepository("primary", should_fail=True),
+                fallback,
+            ]
+
+            _try_with_fallback(
+                func="save",
+                args=[FileData(b"test_data", "text/plain", "test.txt")],
+                repository=primary,
+                fallback_repository=fallback,
+                save_kwargs={},
+                fallback_save_kwargs={},
+            )
+
+        message = mock_print.call_args[0][0]
+        assert secret not in message
+        assert "AKIA-ID" not in message
+        assert "S3Repository" in message
 
 
 # ============================================================================

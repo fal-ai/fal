@@ -25,6 +25,8 @@ from pydantic import BaseModel, Field
 from fal.compat import run_in_thread
 from fal.ref import get_current_app
 from fal.toolkit.file._upload_policy import (
+    UPLOAD_POLICY_KEY,
+    UploadPolicyInputError,
     get_upload_policy,
     upload_bytes_with_policy,
     upload_path_with_policy,
@@ -80,6 +82,42 @@ FALLBACK_REPOSITORY: list[FileRepository | RepositoryId] = ["fal"]
 OBJECT_LIFECYCLE_PREFERENCE_KEY = "x-fal-object-lifecycle-preference"
 
 
+# get_builtin_repository folds both deprecated ids onto fal_v3, so all three name
+# the default destination.
+_DEFAULT_REPOSITORY_IDS = frozenset({DEFAULT_REPOSITORY, "fal_v2", "cdn"})
+# By name, not by isinstance: `fal` is registered pickle-by-value
+# (_serialization.include_module("fal")), so on a runner the class object here and
+# the one an app's own import produced are different objects and isinstance would
+# reject a genuinely default repository. FalFileRepositoryV2 and
+# FalCDNFileRepository are aliases of the same class, so one name covers all three.
+_DEFAULT_REPOSITORY_TYPES = frozenset({"FalFileRepositoryV3"})
+
+
+def _is_default_repository(repository: FileRepository | RepositoryId) -> bool:
+    if isinstance(repository, str):
+        return repository in _DEFAULT_REPOSITORY_IDS
+    return type(repository).__name__ in _DEFAULT_REPOSITORY_TYPES
+
+
+def _require_no_repository_conflict(
+    repository: FileRepository | RepositoryId,
+) -> None:
+    """An app that named a destination other than the default has said where its
+    output belongs, often a fal-owned bucket its own catalogue reads back from.
+    Refuse rather than move someone else's artifacts."""
+    if _is_default_repository(repository):
+        return
+    # Never repr() the repository here. GoogleStorageRepository and R2Repository
+    # are dataclasses whose fields carry credentials, and this message reaches
+    # the caller verbatim through AppException's handler.
+    named = repository if isinstance(repository, str) else type(repository).__name__
+    raise UploadPolicyInputError(
+        f"Invalid {UPLOAD_POLICY_KEY}: this output is written to {named}, which a "
+        "caller-supplied upload policy cannot override. Remove the header to use "
+        "the destination the app chose."
+    )
+
+
 @wraps(Field)
 def FileField(*args, **kwargs):
     if IS_PYDANTIC_V2:
@@ -103,6 +141,12 @@ def FileField(*args, **kwargs):
         ui.setdefault("field", "file")
         kwargs["ui"] = ui
     return Field(*args, **kwargs)
+
+
+def _repo_label(repo: FileRepository | RepositoryId) -> str:
+    # Never format the object: S3Repository, R2Repository and
+    # GoogleStorageRepository are dataclasses holding credentials.
+    return repo if isinstance(repo, str) else type(repo).__name__
 
 
 def _try_with_fallback(
@@ -136,8 +180,8 @@ def _try_with_fallback(
 
             traceback.print_exc()
             print(
-                f"Failed to {func} to repository {repo}: {exc}, "
-                f"falling back to {attempts[idx + 1][0]}"
+                f"Failed to {func} to repository {_repo_label(repo)}: {exc}, "
+                f"falling back to {_repo_label(attempts[idx + 1][0])}"
             )
 
 
@@ -242,10 +286,12 @@ class File(BaseModel):
 
         fdata = FileData(data, content_type, file_name)
 
-        # A caller's policy overrides an explicitly passed `repository`, matching
-        # the registry. See fal.toolkit.file._upload_policy.
+        # A caller's policy takes precedence over the default destination, but
+        # never over one the app named explicitly. See
+        # fal.toolkit.file._upload_policy.
         upload_policy = get_upload_policy(request)
         if upload_policy is not None:
+            _require_no_repository_conflict(repository)
             url = upload_bytes_with_policy(
                 upload_policy, fdata.file_name, data, fdata.content_type
             )
@@ -339,6 +385,7 @@ class File(BaseModel):
 
         upload_policy = get_upload_policy(request)
         if upload_policy is not None:
+            _require_no_repository_conflict(repository)
             file_size = file_path.stat().st_size
             # The upload-policy path is always a single S3 POST (<=5 GB), never a
             # multipart upload; this flag only picks how the payload is held for

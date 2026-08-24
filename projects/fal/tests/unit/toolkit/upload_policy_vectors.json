@@ -3,7 +3,24 @@
     "Accept/reject decisions shared with registry/cdn.py for the",
     "x-app-fal-upload-policy header. Sections are registry's enforcement stages;",
     "the SDK enforces all of them at parse. sdk_only marks a real divergence.",
-    "Divergences that are not expressible as a header are in the release plan doc."
+    "Two divergences are not expressible as a header, so they live here rather",
+    "than as rows: (1) registry answers a malformed policy with a pydantic body,",
+    "loc ['body'], while the SDK returns {'detail': message} -- a header names no",
+    "body field, so there is no location to report; (2) the SDK bills zero only",
+    "for what is knowable before inference (the header itself, rejected in the",
+    "request-context middleware). What only the finished output reveals -- its",
+    "size, its file name, the finalized Content-Type -- is a 422 billed at the",
+    "endpoint's default, because the GPU work really happened. Both are pinned by",
+    "tests in test_file_upload_policy.py::TestMiddleware.",
+    "The reject cases are hand-written from registry's implementation. The accept",
+    "cases are not authoritative: TestRealPresignedPostShapes regenerates them",
+    "from boto3's generate_presigned_post, which is what a caller actually sends.",
+    "Add an accept case here only if boto3 can emit it.",
+    "An accept row means the header parses, never that S3 would store the object:",
+    "an unsigned policy, or a field the signed policy's conditions do not cover,",
+    "is a 403 from S3 that no test here can see. The upload section is not run by",
+    "the vector loop at all (no header); each of its rows names the test that",
+    "pins it."
   ],
   "parse": [
     {
@@ -18,8 +35,9 @@
     },
     {
       "name": "valid global endpoint",
-      "header": "{\"url\": \"https://s3.amazonaws.com/\", \"fields\": {\"key\": \"${filename}\"}}",
-      "accepted": true
+      "header": "{\"url\": \"https://s3.amazonaws.com/bucket/\", \"fields\": {\"key\": \"${filename}\"}}",
+      "accepted": true,
+      "note": "boto3 emits this for a us-east-1 bucket with path addressing. The bucket must be in the path: S3 answers 405 MethodNotAllowed to a POST at the bucket-less service root. A bucket in another region answers 301 PermanentRedirect, which the upload treats as terminal."
     },
     {
       "name": "valid china partition",
@@ -132,13 +150,15 @@
       "name": "accept transfer acceleration",
       "header": "{\"url\": \"https://bucket.s3-accelerate.amazonaws.com/\", \"fields\": {\"key\": \"u/${filename}\"}}",
       "accepted": true,
-      "sdk_only": true
+      "sdk_only": true,
+      "note": "Divergence in the accepting direction: registry rejects this. Its host check needs a literal '.s3.' or an 's3.' prefix, and 's3-accelerate' has neither, so the same policy 422s on a hosted endpoint and uploads from an SDK app."
     },
     {
       "name": "accept legacy dash-region",
-      "header": "{\"url\": \"https://s3-us-west-2.amazonaws.com/\", \"fields\": {\"key\": \"u/${filename}\"}}",
+      "header": "{\"url\": \"https://s3-us-west-2.amazonaws.com/bucket/\", \"fields\": {\"key\": \"u/${filename}\"}}",
       "accepted": true,
-      "sdk_only": true
+      "sdk_only": true,
+      "note": "Path style, so the bucket is a path segment. Verified against S3: a POST to the bucket-less endpoint is 405 MethodNotAllowed for every bucket. Divergence in the accepting direction, as with acceleration: registry's host check rejects 's3-us-west-2' because it requires a literal '.s3.' or an 's3.' prefix."
     },
     {
       "name": "reject credentials embedded in the url",
@@ -155,6 +175,13 @@
       "message": "must not start with",
       "sdk_only": true,
       "note": "S3 stores the slash literally but URL resolution drops it, so registry returns a URL naming a different object."
+    },
+    {
+      "name": "accept key template with an interior empty segment",
+      "header": "{\"url\": \"https://bkt.s3.us-east-1.amazonaws.com/\", \"fields\": {\"key\": \"u//${filename}\"}}",
+      "accepted": true,
+      "sdk_only": true,
+      "note": "Deliberate, and the opposite of the leading-slash row above. Verified against real S3 unauthenticated: a GET on 'zz//x' at noaa-goes16 and sentinel-cogs answers NoSuchKey echoing Key='zz//x', so S3 does not collapse the segment and the key is stored literally. RFC 3986 resolution collapses '.' and '..' and leaves empty segments alone, and httpx, urllib, requests and curl all put '/u//<key>' on the wire verbatim, so the access URL names exactly the object that was written. Rejecting it would 422 a destination that works, and collapsing it instead is not safe either, because the caller's signed condition may be a prefix that includes the doubled slash."
     },
     {
       "name": "reject lone surrogate in a field name",
@@ -204,18 +231,149 @@
       "note": "%2f decodes to '/', so a%2f..%2fb normalizes to a/../b -> b; the check splits on both / and \\ after unquoting."
     },
     {
-      "name": "accept url whose path segment merely starts with a dot",
-      "header": "{\"url\": \"https://bkt.s3.us-east-1.amazonaws.com/%2efile/\", \"fields\": {\"key\": \"u/${filename}\"}}",
+      "name": "must not over-reject a bucket name that merely starts with a dot",
+      "header": "{\"url\": \"https://s3.us-east-1.amazonaws.com/%2efile/\", \"fields\": {\"key\": \"u/${filename}\"}}",
       "accepted": true,
       "sdk_only": true,
-      "note": "%2efile decodes to '.file', not a bare dot segment, so it must not be over-rejected."
+      "note": "%2efile decodes to '.file', not a bare dot segment, so the dot-segment check must not fire. Path style, so the one segment is the bucket. A decoder guard, not a destination: S3 routes it (404 NoSuchBucket, not 405) but bucket naming forbids a leading dot, so no such bucket can exist."
     },
     {
-      "name": "accept url with a benign encoded slash in the path",
+      "name": "reject an encoded slash that smuggles a second path segment",
       "header": "{\"url\": \"https://bkt.s3.us-east-1.amazonaws.com/a%2fb/\", \"fields\": {\"key\": \"u/${filename}\"}}",
+      "accepted": false,
+      "message": "must point at the bucket root",
+      "sdk_only": true,
+      "note": "%2f decodes to '/', so this is one segment to urlparse and two to every client. Rejected on depth rather than traversal; the sibling row above is what pins that the decode does not over-reject."
+    },
+    {
+      "name": "reject a dotted bucket addressed virtual-hosted",
+      "header": "{\"url\": \"https://my.dotted.bucket.s3.us-east-1.amazonaws.com/\", \"fields\": {\"key\": \"u/${filename}\"}}",
+      "accepted": false,
+      "message": "path style",
+      "sdk_only": true,
+      "note": "Verified against S3: the TLS handshake fails with 'no alternative certificate subject name matches target host name', because the wildcard certificate covers one label. boto3 switches dotted buckets to path style for this reason. Registry accepts this and produces an upload that can never connect."
+    },
+    {
+      "name": "reject a dotted bucket wearing an mrap-shaped name at a regional endpoint",
+      "header": "{\"url\": \"https://evil.mrap.accesspoint.s3.us-east-1.amazonaws.com/\", \"fields\": {\"key\": \"u/${filename}\"}}",
+      "accepted": false,
+      "message": "path style",
+      "sdk_only": true,
+      "note": "A real Multi-Region Access Point alias is exempt from the dotted-bucket rule because it has no path-style form, but only under s3-global.amazonaws.com. At a regional endpoint this is an ordinary dotted bucket and fails TLS the same way."
+    },
+    {
+      "name": "reject a url with an empty interior path segment",
+      "header": "{\"url\": \"https://s3.us-east-1.amazonaws.com//bucket\", \"fields\": {\"key\": \"u/${filename}\"}}",
+      "accepted": false,
+      "message": "empty path segments",
+      "sdk_only": true,
+      "note": "The doubled slash survives the non-empty filter, so the depth check counts one segment while the access URL carries the empty one and names nothing. A leading %2f decodes to the same thing."
+    },
+    {
+      "name": "reject a url with a percent-encoded leading slash",
+      "header": "{\"url\": \"https://s3.us-east-1.amazonaws.com/%2fbucket\", \"fields\": {\"key\": \"u/${filename}\"}}",
+      "accepted": false,
+      "message": "empty path segments",
+      "sdk_only": true
+    },
+    {
+      "name": "reject a url with a percent-encoded trailing slash",
+      "header": "{\"url\": \"https://s3.us-east-1.amazonaws.com/bucket%2f\", \"fields\": {\"key\": \"u/${filename}\"}}",
+      "accepted": false,
+      "message": "empty path segments",
+      "sdk_only": true,
+      "note": "A literal trailing slash is fine because _prepare_upload rstrips it; %2f it cannot, so the access URL would carry 'bucket%2f/' and the POST goes to a bucket named 'bucket/'."
+    },
+    {
+      "name": "reject a url whose depth hides behind a path parameter",
+      "header": "{\"url\": \"https://bkt.s3.us-east-1.amazonaws.com/;extra\", \"fields\": {\"key\": \"u/${filename}\"}}",
+      "accepted": false,
+      "message": "must point at the bucket root",
+      "sdk_only": true,
+      "note": "urlparse strips ';params' off the last segment, so the depth check would read a path the wire never sees. Checked with urlsplit, which does not."
+    },
+    {
+      "name": "must not over-reject a multi-region access point alias",
+      "header": "{\"url\": \"https://mfzwi23gnjvgw.mrap.accesspoint.s3-global.amazonaws.com/\", \"fields\": {\"key\": \"u/${filename}\"}}",
       "accepted": true,
       "sdk_only": true,
-      "note": "a%2fb decodes to ordinary segments 'a'/'b', so the decode-then-split must not over-reject."
+      "note": "An MRAP alias carries dots in the host label but is served under *.mrap.accesspoint.s3-global.amazonaws.com and has no path-style form, so the dotted-bucket rule must not fire. The reject row above pins that the exemption does not leak to other endpoints."
+    },
+    {
+      "name": "must not over-reject an s3 on outposts access point",
+      "header": "{\"url\": \"https://my-ap-123456789012.op-0.s3-outposts.us-east-1.amazonaws.com/\", \"fields\": {\"key\": \"u/${filename}\"}}",
+      "accepted": true,
+      "sdk_only": true,
+      "note": "generate_presigned_post emits exactly this for an outposts ARN. The bucket label always carries a dot and Outposts is virtual-hosted only, so the dotted-bucket rule must not fire and there would be no path-style workaround if it did."
+    },
+    {
+      "name": "reject a three-label bucket at the outposts endpoint",
+      "header": "{\"url\": \"https://a.b.c.s3-outposts.us-east-1.amazonaws.com/\", \"fields\": {\"key\": \"u/${filename}\"}}",
+      "accepted": false,
+      "message": "path style",
+      "sdk_only": true,
+      "note": "The outposts exemption is shaped <ap>.<outpost-id>, two labels. Anything else in that zone is an ordinary dotted bucket and fails TLS the same way."
+    },
+    {
+      "name": "reject a virtual-hosted url with a path below the bucket",
+      "header": "{\"url\": \"https://bkt.s3.us-east-1.amazonaws.com/prefix/\", \"fields\": {\"key\": \"u/${filename}\"}}",
+      "accepted": false,
+      "message": "must point at the bucket root",
+      "sdk_only": true,
+      "note": "Verified against S3: a POST anywhere below the bucket root is 405 MethodNotAllowed, and the access URL would name an object that was never stored."
+    },
+    {
+      "name": "reject a path style url with a segment below the bucket",
+      "header": "{\"url\": \"https://s3.us-east-1.amazonaws.com/bucket/extra/\", \"fields\": {\"key\": \"u/${filename}\"}}",
+      "accepted": false,
+      "message": "must point at the bucket root",
+      "sdk_only": true
+    },
+    {
+      "name": "reject a path style url that names no bucket",
+      "header": "{\"url\": \"https://s3.amazonaws.com/\", \"fields\": {\"key\": \"u/${filename}\"}}",
+      "accepted": false,
+      "message": "must name a bucket",
+      "sdk_only": true,
+      "note": "A pre-signed POST needs the bucket in the host or the path. Verified against S3: the bucket-less service root answers 405 MethodNotAllowed for every bucket, so accepting this can only ever produce a dead upload."
+    },
+    {
+      "name": "reject the hyphen-joined s3 privatelink zone",
+      "header": "{\"url\": \"https://s3-vpce.amazonaws.com/bucket/\", \"fields\": {\"key\": \"u/${filename}\"}}",
+      "accepted": false,
+      "message": "must be an HTTPS S3 upload URL",
+      "sdk_only": true,
+      "note": "The region group admits a bare 'vpce' on either separator, so the zone is denied by label, not by dotted suffix. NXDOMAIN today, so this is hardening rather than a live SSRF."
+    },
+    {
+      "name": "reject url with a tab inside the host",
+      "header": "{\"url\": \"https://bkt.s3.us-east-1.amazon\\taws.com/\", \"fields\": {\"key\": \"u/${filename}\"}}",
+      "accepted": false,
+      "message": "control characters",
+      "sdk_only": true,
+      "note": "urlsplit strips tab, CR and LF from anywhere in a URL, so this parses as a valid S3 host while httpx, which strips nothing, refuses to send it. Accepting it hands the caller an access URL for an upload that cannot happen."
+    },
+    {
+      "name": "reject url with an embedded newline",
+      "header": "{\"url\": \"https://bkt.s3.us-east-1.amazonaws.com/\\n\", \"fields\": {\"key\": \"u/${filename}\"}}",
+      "accepted": false,
+      "message": "control characters",
+      "sdk_only": true
+    },
+    {
+      "name": "reject url with an embedded carriage return",
+      "header": "{\"url\": \"https://bkt.s3.us-east-1.amazonaws.com/\\r\", \"fields\": {\"key\": \"u/${filename}\"}}",
+      "accepted": false,
+      "message": "control characters",
+      "sdk_only": true
+    },
+    {
+      "name": "reject url with a leading space",
+      "header": "{\"url\": \" https://bkt.s3.us-east-1.amazonaws.com/\", \"fields\": {\"key\": \"u/${filename}\"}}",
+      "accepted": false,
+      "message": "control characters",
+      "sdk_only": true,
+      "note": "urlsplit trims leading control-or-space, so the scheme check passes; httpx then raises UnsupportedProtocol, which is an httpx.HTTPError and so was retried for the full backoff before this check existed."
     }
   ],
   "prepare": [
@@ -297,7 +455,62 @@
       "accepted": false,
       "message": "CR/LF",
       "sdk_only": true,
-      "note": "Folding is strip+lower; registry folds with lower() only, so a padded name skips its CRLF check."
+      "note": "Folding is NFKC + zero-width strip + strip + lower; registry folds with lower() only, so a padded name skips its CRLF check."
+    },
+    {
+      "name": "reject a zero-width-padded content-type field name",
+      "header": "{\"url\": \"https://bkt.s3.us-east-1.amazonaws.com/\", \"fields\": {\"key\": \"u/${filename}\", \"Content-Type\\u200b\": \"image/png\"}}",
+      "accepted": false,
+      "message": "would not treat it as that field",
+      "sdk_only": true,
+      "note": "Reads as content-type to the fold, so honouring it would skip the injection, and travels as 'Content-Type<ZWSP>' on the wire, which no signed condition covers. S3 then refuses the POST while the caller holds a 200 and a dead URL. Registry folds with lower() only, so it injects a real field and sends the lookalike alongside it: same 403, same silent outcome."
+    },
+    {
+      "name": "reject an NFKC-equivalent content-type field name",
+      "header": "{\"url\": \"https://bkt.s3.us-east-1.amazonaws.com/\", \"fields\": {\"key\": \"u/${filename}\", \"Content-\\uff34ype\": \"image/png\"}}",
+      "accepted": false,
+      "message": "would not treat it as that field",
+      "sdk_only": true,
+      "note": "Full-width T folds to ASCII under NFKC but is a different byte string to S3. The reject is the same class as the zero-width row; the case-variant rows above pin that an ordinary 'Content-Type' or 'content-type' still passes."
+    },
+    {
+      "name": "reject nul in content-type field",
+      "header": "{\"url\": \"https://bkt.s3.us-east-1.amazonaws.com/\", \"fields\": {\"key\": \"u/${filename}\", \"Content-Type\": \"image/png\\u0000\"}}",
+      "accepted": false,
+      "message": "control character",
+      "sdk_only": true,
+      "note": "The part Content-Type is written to the wire verbatim, so CR/LF is not the only character that matters: a NUL terminates the value for some parsers between here and S3."
+    },
+    {
+      "name": "reject next-line in content-type field",
+      "header": "{\"url\": \"https://bkt.s3.us-east-1.amazonaws.com/\", \"fields\": {\"key\": \"u/${filename}\", \"Content-Type\": \"image/png\\u0085X-Evil: 1\"}}",
+      "accepted": false,
+      "message": "control character",
+      "sdk_only": true,
+      "note": "U+0085 NEL is a line break to some header parsers, and it is not CR or LF."
+    },
+    {
+      "name": "reject unicode line separator in content-type field",
+      "header": "{\"url\": \"https://bkt.s3.us-east-1.amazonaws.com/\", \"fields\": {\"key\": \"u/${filename}\", \"Content-Type\": \"image/png\\u2028X-Evil: 1\"}}",
+      "accepted": false,
+      "message": "control character",
+      "sdk_only": true
+    },
+    {
+      "name": "reject duplicate key fields hidden by a zero-width character",
+      "header": "{\"url\": \"https://bkt.s3.us-east-1.amazonaws.com/\", \"fields\": {\"key\": \"u/${filename}\", \"key\\u200b\": \"fixed/overwrite.png\"}}",
+      "accepted": false,
+      "message": "duplicate 'key' fields",
+      "sdk_only": true,
+      "note": "Invisible to whoever reads the policy, so a plain strip+lower fold treats it as a second field: it would go on the wire un-substituted and every output in the request would collide on one object."
+    },
+    {
+      "name": "reject duplicate key fields hidden by fullwidth characters",
+      "header": "{\"url\": \"https://bkt.s3.us-east-1.amazonaws.com/\", \"fields\": {\"key\": \"u/${filename}\", \"\\uff4b\\uff45\\uff59\": \"fixed/overwrite.png\"}}",
+      "accepted": false,
+      "message": "duplicate 'key' fields",
+      "sdk_only": true,
+      "note": "NFKC folds fullwidth to ASCII, which is how S3 and a human reader both see one field."
     }
   ],
   "upload": [
@@ -314,26 +527,25 @@
       "accepted": false,
       "message": "exceeds",
       "sdk_only": true,
-      "note": "Checked against the file size, not the header. SDK 422; registry 200 + dead upload."
+      "note": "Checked against the file size, not the header, so it is asserted by test_oversized_payload_is_rejected_synchronously and test_oversized_file_is_rejected_synchronously rather than the vector loop. Registry checks the size too, inside upload_blob before the POST (registry/tests/test_async_cdn.py:1702-1745 pins it for the async and sync paths), so this is a status divergence at most, not a missing check. [UNVERIFIED] whether the app layer still turns that into a 200."
     },
     {
       "name": "upload failure",
       "accepted": false,
-      "sdk_only": true,
-      "note": "SDK is synchronous and fails the request; registry returns 200 and a URL that never resolves. The agreed direction is for registry to converge on the SDK's behaviour."
+      "note": "NOT a divergence, which is why this row carries no sdk_only. Both sides return 200 with a URL that never resolves: the SDK's POST is backgrounded and _submit swallows UploadPolicyError once the response has gone out. The only difference is the record left behind: the SDK writes one upload_policy_failure JSON line to the runner's stdout, carrying request_id, status and the S3 error code, while registry logs a structlog warning. Asserted by TestUploadFailureSurfacing, which exercises _attempt_upload directly because the error cannot reach the caller."
     },
     {
       "name": "303 success_action_redirect",
       "accepted": true,
       "sdk_only": true,
-      "note": "S3 answers 303 after storing when the policy carries success_action_redirect. The SDK treats it as success; registry's raise_for_status makes it a background failure."
+      "note": "S3 answers 303 after storing when the policy carries success_action_redirect. The SDK treats it as success; registry's raise_for_status makes it a background failure. Asserted by test_303_is_success_not_failure."
     },
     {
       "name": "file name containing a path separator",
       "accepted": false,
       "message": "path separator",
       "sdk_only": true,
-      "note": "Not header-driven: comes from the app's file name. Client-side URL normalisation would collapse it, so the stored key and the returned URL would disagree."
+      "note": "Not header-driven: comes from the app's file name, so it is asserted by test_rejects_path_separators_in_the_file_name. Client-side URL normalisation would collapse it, so the stored key and the returned URL would disagree."
     }
   ]
 }

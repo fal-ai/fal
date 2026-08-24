@@ -21,6 +21,12 @@ here must tolerate a 404 window and get a permanently dead URL if the upload
 fails. There is no fallback to the fal CDN -- a caller who asked for their own
 bucket must not silently get fal-owned storage.
 
+That guarantee is enforced, not assumed: the header is only honored where the
+policy is parsed, so ``App`` refuses a WebSocket handshake carrying it rather
+than let that surface write to fal storage (see
+``fal.app._RejectUploadPolicyOnWebSocket``). A plain ``serve=True`` function is
+the one surface that still ignores it, having no request context to reject from.
+
 ``tests/unit/toolkit/upload_policy_vectors.json`` pins the decisions this shares
 with the registry, and lists the divergences.
 """
@@ -34,96 +40,107 @@ import re
 import shutil
 import threading
 import time
+import unicodedata
+
+# Qualified, never ``from urllib.parse import urlsplit``: urlsplit is an
+# lru_cache wrapper, which cloudpickle cannot pickle by reference, so a module
+# registered pickle-by-value ends up carrying urllib.parse's privates and fails
+# to deserialize on a runner with a different CPython patch release.
+import urllib.parse
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Any, Callable, List, Tuple, Union
-from urllib.parse import quote, unquote, urlparse
+from typing import TYPE_CHECKING, Any, Callable, List, Tuple, Union
 from uuid import uuid4
 
-import httpx
-
-from fal.exceptions import AppException, FieldException
-from fal.logging import get_logger
+from fal.exceptions import AppException
 from fal.ref import get_current_app
 from fal.toolkit.exceptions import FileUploadException
 
-logger = get_logger(__name__)
+if TYPE_CHECKING:
+    # Annotations only, and the block never executes, so `httpx` is not bound at
+    # module scope and cannot reach a pickle. See _new_client for why that matters.
+    import httpx
 
 UPLOAD_POLICY_KEY = "x-app-fal-upload-policy"
 UPLOAD_POLICY_FILENAME_PLACEHOLDER = "${filename}"
 # S3 browser-POST uploads are a single request capped at 5 GB.
 UPLOAD_POLICY_MAX_BYTES = 5 * 1024 * 1024 * 1024
 
-# Per socket operation, not a wall-clock cap: a destination trickling bytes
-# under the read timeout is bounded by neither this nor the deadline below.
-UPLOAD_POLICY_TIMEOUT = httpx.Timeout(300.0, connect=10.0)
+# Per socket operation, not wall-clock. The socket value is httpx's first
+# positional, so it covers write too, which is the operative one for a 5 GB
+# push. Plain floats, not an httpx.Timeout: _new_client reads these as globals,
+# and an instance would pickle by reference and drag httpx in at load time.
+UPLOAD_POLICY_TIMEOUT_SOCKET = 300.0
+UPLOAD_POLICY_TIMEOUT_CONNECT = 10.0
 # Bounds retries of one file, checked between attempts. Not a per-request cap.
 UPLOAD_POLICY_TOTAL_DEADLINE = 300.0
 # How long teardown waits for in-flight uploads before abandoning them.
 UPLOAD_POLICY_DRAIN_TIMEOUT = 5.0
-
-# Same retry shape the registry uses for this POST.
 _MAX_ATTEMPTS = 5
 _BASE_DELAY = 1
 _MAX_DELAY = 30
 
 _S3_ERROR_CODE_RE = re.compile(r"<Code>([A-Za-z0-9]{1,64})</Code>")
 
+# urlsplit silently strips ASCII tab, CR and LF from anywhere in a URL and trims
+# leading C0-or-space, so a URL carrying them validates as its stripped form and
+# is then refused by httpx, which strips nothing. The upload dies on the first
+# attempt with the caller already holding a success URL, so reject them here.
+_URL_FORBIDDEN_RE = re.compile(r"[\x00-\x20\x7f-\x9f\u2028\u2029]")
+# Long enough for any real presigned POST endpoint; short enough that a header
+# cannot carry a megabyte of URL into every log line and error body.
+_URL_MAX_LENGTH = 2048
+
+# A multipart part's Content-Type is written to the wire verbatim, so every
+# character a header parser may treat as a delimiter has to go, not just CR/LF.
+# NEL (U+0085) and LS/PS (U+2028/9) are line breaks to some parsers.
+_CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f\u2028\u2029]")
+
+# S3 folds field names on case and surrounding space. These are invisible or
+# compatibility-equivalent, so a name carrying them is the same field to a human
+# reader and a different one to a naive comparison: exactly how a second "key"
+# slips past duplicate detection.
+_ZERO_WIDTH_RE = re.compile(r"[\u00ad\u200b-\u200f\u2060\ufeff]")
+
 _UNSET = object()
 
-_ERROR_TYPE = "input_value_error"
-_ERROR_DOC_URL = f"https://docs.fal.ai/errors#{_ERROR_TYPE}"
-
-# Anchored so that only a real S3 endpoint matches. An unanchored ".s3." test
-# also admits S3 PrivateLink names (``vpce-….s3.<region>.vpce.amazonaws.com``),
-# whose zone is publicly delegated and resolves to a *caller-chosen* VPC CIDR --
-# i.e. arbitrary RFC1918 target selection through the allowlist that exists to
-# prevent exactly that. The registry's copy is still unanchored and needs the
-# same fix.
-# The qualifier list is explicit rather than a wildcard label, so the regex
-# rejects the two-label vpce forms (…s3.<region>.vpce.amazonaws.com); the
-# single-label form (s3.vpce.amazonaws.com) is caught by the denylist in
-# _is_s3_upload_policy_host.
+# Anchored: an unanchored ".s3." also admits PrivateLink names
+# (vpce-….s3.<region>.vpce.amazonaws.com), whose zone resolves to a
+# caller-chosen VPC CIDR, i.e. RFC1918 target selection through the allowlist.
+# The single-label vpce forms still match here and are denied by label in
+# _match_s3_host. The bucket group is captured because its presence is what
+# separates virtual-hosted addressing (path must be empty) from path style
+# (bucket is the first segment).
 _S3_HOST_RE = re.compile(
-    r"(?:[a-z0-9][a-z0-9.-]*\.)?"  # optional bucket
-    r"s3(?:express-[a-z0-9-]+)?"  # S3 Express glues the az on with no separator
+    r"(?P<bucket>[a-z0-9][a-z0-9.-]*\.)?"  # optional bucket
+    r"(?P<endpoint>s3(?:express-[a-z0-9-]+)?"  # Express glues the az on, no sep
     r"(?:[.-](?:dualstack|accelerate|accesspoint|object-lambda|outposts"
     r"|fips|website))?"  # optional qualifier
     r"(?:[.-][a-z0-9-]+)?"  # optional region
-    r"\.amazonaws\.com(?:\.cn)?"
+    r"\.amazonaws\.com(?:\.cn)?)"
 )
 
 
-class UploadPolicyInputError(FieldException):
-    """Malformed policy header. 422, with registry's body shape."""
+class UploadPolicyInputError(AppException):
+    """Malformed policy header, or a policy the output cannot be sent through.
+
+    Deliberately not a ``FieldException``: that type's whole payload is
+    ``loc: ["body", field]`` and this validates a header, so the body is just
+    ``{"detail": message}``. 422 rather than 424 because nothing was attempted
+    against the caller's bucket.
+
+    Billing follows where it surfaces: the middleware answers a bad header
+    before inference and bills zero, while anything ``_prepare_upload`` can only
+    discover once the output exists is billed.
+    """
 
     def __init__(self, message: str) -> None:
-        super().__init__(
-            field=UPLOAD_POLICY_KEY,
-            message=message,
-            status_code=422,
-            type=_ERROR_TYPE,
-        )
-        # FieldException is kw-only, so Exception.args stays empty and str(exc)
-        # would render as "" in tracebacks/logs without this.
+        AppException.__init__(self, message=message, status_code=422)
+        # Dataclass exception, so Exception.args stays empty and str(exc) would
+        # render as "" in tracebacks and logs without this.
         self.args = (message,)
-
-    def to_pydantic_format(self) -> dict[str, list[dict]]:
-        # Matches registry's InputValueError exactly: loc is ["body"] with no
-        # field element, plus the url/input keys.
-        return {
-            "detail": [
-                {
-                    "loc": ["body"],
-                    "msg": self.message,
-                    "type": self.type,
-                    "url": _ERROR_DOC_URL,
-                    "input": None,
-                }
-            ]
-        }
 
 
 class UploadPolicyError(FileUploadException, AppException):
@@ -159,25 +176,40 @@ class UploadPolicy:
     fields: dict[str, PolicyFieldValue]
 
 
-def _is_s3_upload_policy_host(host: str) -> bool:
-    """Whether ``host`` is an S3 endpoint we will POST caller data to.
+def _match_s3_host(host: str) -> re.Match[str] | None:
+    """The allowlist match for ``host``, or ``None``. The ``bucket`` group tells
+    callers whether the bucket is in the host, which bounds the path.
 
-    Anchored allowlist; see ``_S3_HOST_RE`` for why. The region label is not
-    validated, so an unreachable name under AWS DNS passes -- validating it
-    would break the first customer in a newly launched region, which is worse.
+    Anchored; see ``_S3_HOST_RE`` for why. The region label is not validated, so
+    an unreachable name under AWS DNS passes -- validating it would break the
+    first customer in a newly launched region, which is worse.
+
+    Callers need the match itself, not just a verdict: the ``bucket`` group
+    decides how deep a path the URL may carry.
     """
-    # Reject the S3 PrivateLink zone outright. Its DNS is publicly delegated and
-    # resolves to a caller-chosen VPC CIDR (RFC1918) -- the SSRF this allowlist
-    # exists to block -- and the regex's region label would otherwise admit a
-    # bare "vpce" (e.g. s3.vpce.amazonaws.com).
-    if host.endswith(".vpce.amazonaws.com") or host.endswith(".vpce.amazonaws.com.cn"):
-        return False
-    return bool(_S3_HOST_RE.fullmatch(host))
+    match = _S3_HOST_RE.fullmatch(host)
+    if match is None:
+        return None
+    # Reject the S3 PrivateLink zone. Its DNS is publicly delegated and resolves
+    # to a caller-chosen VPC CIDR (RFC1918), which is the SSRF this allowlist
+    # exists to block. Checked by label on the endpoint only, so a bucket that is
+    # legitimately named "vpce-something" is still allowed to upload.
+    endpoint = match.group("endpoint")
+    if "vpce" in re.split(r"[.-]", endpoint):
+        return None
+    return match
 
 
 def _reserved_name(name: str) -> str:
-    """Fold a field name the way S3 matches them: case- and space-insensitive."""
-    return name.strip().lower()
+    """Fold a field name for reserved-name matching.
+
+    S3 folds case and surrounding space. This also folds NFKC and strips
+    zero-width characters, which is stricter than S3 and therefore fails closed:
+    a name that looks identical to whoever reads the policy cannot pass duplicate
+    detection and go on the wire un-substituted.
+    """
+    folded = unicodedata.normalize("NFKC", name)
+    return _ZERO_WIDTH_RE.sub("", folded).strip().lower()
 
 
 def _require_encodable(what: str, value: str) -> None:
@@ -200,18 +232,34 @@ def _require_encodable(what: str, value: str) -> None:
 def _validate_policy_url(url: str) -> None:
     """Reject any destination that is not an HTTPS S3 endpoint on port 443."""
     _require_encodable("'url'", url)
+    if len(url) > _URL_MAX_LENGTH:
+        raise UploadPolicyInputError(
+            f"Invalid {UPLOAD_POLICY_KEY} 'url': longer than "
+            f"{_URL_MAX_LENGTH} characters"
+        )
+    # Checked on the raw string: by the time urlsplit has run, a URL carrying
+    # these looks clean. See _URL_FORBIDDEN_RE.
+    if _URL_FORBIDDEN_RE.search(url):
+        raise UploadPolicyInputError(
+            f"Invalid {UPLOAD_POLICY_KEY} 'url': must not contain control "
+            "characters or spaces"
+        )
     try:
-        parsed_url = urlparse(url)
+        # urlsplit, not urlparse: urlparse strips ";params" off the last path
+        # segment, so the checks below would read a path the wire never sees and
+        # ".../;extra" would pass as the bucket root.
+        parsed_url = urllib.parse.urlsplit(url)
         host = (parsed_url.hostname or "").lower().rstrip(".")
         port = parsed_url.port
     except ValueError as exc:
-        # urlparse raises on, among others, hostnames that change under NFKC
+        # urlsplit raises on, among others, hostnames that change under NFKC
         # normalization. Bad client input, not a server fault.
         raise UploadPolicyInputError(
             f"Invalid {UPLOAD_POLICY_KEY} 'url': could not be parsed ({exc})"
         ) from exc
 
-    if parsed_url.scheme.lower() != "https" or not _is_s3_upload_policy_host(host):
+    host_match = _match_s3_host(host)
+    if parsed_url.scheme.lower() != "https" or host_match is None:
         raise UploadPolicyInputError(
             f"Invalid {UPLOAD_POLICY_KEY} 'url': must be an HTTPS S3 upload URL"
         )
@@ -226,11 +274,69 @@ def _validate_policy_url(url: str) -> None:
     # A '.'/'..' segment here collapses under URL resolution, so the returned
     # access URL would name a different object. Decode first and treat "\" as "/"
     # (browsers do): else "%2e", "%2f", or "\" smuggle traversal past the check.
-    decoded_path = unquote(parsed_url.path).replace("\\", "/")
-    if any(seg in (".", "..") for seg in decoded_path.split("/")):
+    decoded_path = urllib.parse.unquote(parsed_url.path).replace("\\", "/")
+    raw_segments = decoded_path.split("/")
+    segments = [segment for segment in raw_segments if segment]
+    if any(seg in (".", "..") for seg in segments):
         raise UploadPolicyInputError(
             f"Invalid {UPLOAD_POLICY_KEY} 'url': must not contain '.' or '..' "
             "path segments"
+        )
+    # An empty interior segment survives that filter ("//bucket", or a leading
+    # "%2f"), and _prepare_upload appends the key to policy.url as given, so the
+    # access URL would carry the doubled slash too and name nothing. A real
+    # trailing "/" is the one empty tail that is fine, because _prepare_upload
+    # rstrips it; a percent-encoded one it cannot.
+    interior = raw_segments[1:-1] if parsed_url.path.endswith("/") else raw_segments[1:]
+    if "" in interior:
+        raise UploadPolicyInputError(
+            f"Invalid {UPLOAD_POLICY_KEY} 'url': must not contain empty path segments"
+        )
+    # A pre-signed POST addresses a bucket, never a key: S3 answers 405
+    # MethodNotAllowed to a POST at any deeper path, and _prepare_upload appends
+    # the key to this URL, so a deeper path also returns an access URL naming an
+    # object that was never stored. Virtual-hosted names the bucket in the host,
+    # so its path must be empty; path style carries exactly the bucket.
+    bucket_label = host_match.group("bucket")
+    if bucket_label:
+        if segments:
+            raise UploadPolicyInputError(
+                f"Invalid {UPLOAD_POLICY_KEY} 'url': must point at the bucket "
+                f"root, not {decoded_path!r}"
+            )
+        # The wildcard certificate covers one label, so a dotted bucket cannot be
+        # reached virtual-hosted over HTTPS: the handshake fails on a subject-name
+        # mismatch and the upload dies behind a 200. boto3 switches such buckets
+        # to path style.
+        #
+        # MRAP and S3 on Outposts mint dotted names with no path-style form, so
+        # the rule cannot apply there. Both are matched on the endpoint *and* the
+        # label shape, so a bucket merely named "evil.mrap.accesspoint" in a
+        # regular zone is still rejected.
+        bucket = bucket_label.rstrip(".")
+        endpoint = host_match.group("endpoint")
+        dotted_by_design = (
+            endpoint == "s3-global.amazonaws.com"
+            and re.fullmatch(r"[a-z0-9-]+\.mrap\.accesspoint", bucket) is not None
+        ) or (
+            endpoint.startswith("s3-outposts.")
+            and re.fullmatch(r"[a-z0-9-]+\.[a-z0-9-]+", bucket) is not None
+        )
+        if "." in bucket and not dotted_by_design:
+            raise UploadPolicyInputError(
+                f"Invalid {UPLOAD_POLICY_KEY} 'url': bucket {bucket!r} contains "
+                "a dot, so it must be addressed path style; virtual-hosted "
+                "HTTPS cannot match it"
+            )
+    elif not segments:
+        raise UploadPolicyInputError(
+            f"Invalid {UPLOAD_POLICY_KEY} 'url': must name a bucket, either in "
+            "the host or as the first path segment"
+        )
+    elif len(segments) > 1:
+        raise UploadPolicyInputError(
+            f"Invalid {UPLOAD_POLICY_KEY} 'url': must point at the bucket root, "
+            f"not {decoded_path!r}"
         )
     if "?" in url or "#" in url:
         # The access URL is built by appending the key, so a query or fragment
@@ -241,12 +347,19 @@ def _validate_policy_url(url: str) -> None:
 
 
 def _validate_multipart_value(name: str, value: str) -> None:
-    # Load-bearing. httpx percent-encodes field *names* and filenames, but
-    # writes field values and a part's Content-Type verbatim. Values are safe
-    # only because the boundary is unguessable; a Content-Type is a real header,
-    # so a CRLF here injects headers into the part.
+    # httpx percent-encodes field *names* and filenames, but writes field values
+    # and a part's Content-Type verbatim. Values are safe only because the
+    # boundary is unguessable; a Content-Type is a real header, so a CRLF here
+    # injects headers into the part.
     if "\r" in value or "\n" in value:
         raise UploadPolicyInputError(f"Invalid multipart {name}: contains CR/LF")
+    # CR/LF is the only sequence that injects a header outright, but a bare NUL,
+    # VT, FF, NEL or LS/PS is a line break or a terminator to some parser between
+    # here and S3, and none of them belong in a media type.
+    if _CONTROL_RE.search(value):
+        raise UploadPolicyInputError(
+            f"Invalid multipart {name}: contains a control character"
+        )
 
 
 def _headers_get(headers: Mapping[str, Any] | None, key: str) -> Any:
@@ -326,8 +439,8 @@ def parse_upload_policy(headers: Mapping[str, Any] | None) -> UploadPolicy | Non
         # string breaks the JSON encoder and turns this 422 into a 500.
         _require_encodable("field name", name)
 
-        # key and Content-Type must be real strings -- they are compared and
-        # substituted, not just forwarded, and registry requires the same.
+        # key and Content-Type must be real strings: they are compared and
+        # substituted, not just forwarded.
         strict = _reserved_name(name) in ("key", "content-type")
         if isinstance(value, (dict, set)) or (strict and not isinstance(value, str)):
             raise UploadPolicyInputError(
@@ -369,6 +482,18 @@ def parse_upload_policy(headers: Mapping[str, Any] | None) -> UploadPolicy | Non
         if _reserved_name(name) == "content-type":
             _validate_multipart_value("content type", value)
 
+    # A name that folds to a reserved field but is not that field to S3 cannot be
+    # honoured: it travels as written, where no signed condition covers it, while
+    # also suppressing the injection or substitution the real name triggers. The
+    # key path fails closed the same way, by looking up the exact name.
+    for name in validated:
+        reserved = _reserved_name(name)
+        if reserved in ("key", "content-type") and name.lower() != reserved:
+            raise UploadPolicyInputError(
+                f"Invalid {UPLOAD_POLICY_KEY} header: fields.{name!r} reads as "
+                f"{reserved!r} but S3 would not treat it as that field"
+            )
+
     return UploadPolicy(url=url, fields=validated)
 
 
@@ -384,8 +509,7 @@ def _require_key_template(fields: dict[str, PolicyFieldValue]) -> str:
             f"{UPLOAD_POLICY_FILENAME_PLACEHOLDER!r}"
         )
     # S3 stores these literally, but URL path resolution collapses them, so the
-    # URL we return would name a different object -- a 200 with a dead URL, the
-    # exact failure this module exists to avoid.
+    # access URL would name a different object than the one stored.
     segments = key_template.split("/")
     if key_template.startswith("/") or "." in segments or ".." in segments:
         raise UploadPolicyInputError(
@@ -403,13 +527,11 @@ def _current_request() -> Any:
 def get_upload_policy(request: Any = None) -> UploadPolicy | None:
     """The policy for the in-flight request, or ``None``.
 
-    The middleware parses and caches the policy upfront; this reads that cache,
-    falling back to header parsing only for a bare request (see the inline note).
-
-    ``current_request`` is a ContextVar, propagated by ``fal.compat.run_in_thread``
-    (so the async constructors resolve). An app's own ``ThreadPoolExecutor`` and
-    WebSocket/realtime endpoints (no HTTP middleware) don't see it -- output goes
-    to the fal CDN. Both are documented as unsupported.
+    Reads the cache the middleware fills, falling back to header parsing only
+    for a bare request. ``current_request`` is a ContextVar, so an app's own
+    ``ThreadPoolExecutor`` does not see it and output there goes to the fal CDN,
+    documented as unsupported. WebSocket endpoints never reach this:
+    ``fal.app._RejectUploadPolicyOnWebSocket`` refuses the handshake.
     """
     if request is None:
         request = _current_request()
@@ -428,12 +550,9 @@ def get_upload_policy(request: Any = None) -> UploadPolicy | None:
 
 
 def _validate_size(nbytes: int) -> None:
-    # This and the other checks in _prepare_upload run inside from_bytes/from_path,
-    # i.e. after the generation. They raise UploadPolicyInputError (422), which
-    # bills the caller by default -- intended: the GPU work was done, and only
-    # the output size / filename / signed Content-Type, none knowable earlier,
-    # is wrong. Pre-generation malformed headers are caught in the middleware and
-    # billed zero.
+    # Reached after the generation, so billed at the endpoint's default rather
+    # than zeroed: the output's size, name and signed Content-Type are not
+    # knowable up front. A malformed header is, and the middleware bills it zero.
     if nbytes > UPLOAD_POLICY_MAX_BYTES:
         raise UploadPolicyInputError(
             f"Upload via {UPLOAD_POLICY_KEY} is {nbytes} bytes, which exceeds the "
@@ -463,11 +582,9 @@ def _prepare_upload(
             "must not contain a path separator"
         )
 
-    # Not a re-parse of the header: the middleware already parsed it upfront and
-    # rejected a malformed policy before generation. This re-checks only the URL
-    # allowlist (SSRF) and key template because the upload_* entry points are
-    # exported -- a caller can hand-build an UploadPolicy that never went through
-    # parse_upload_policy, and those two must hold however it got here.
+    # Not a re-parse: the middleware already rejected a malformed policy before
+    # generation. Re-checked here because upload_* is exported, so a caller can
+    # hand-build an UploadPolicy that never passed parse_upload_policy.
     _validate_policy_url(policy.url)
     fields = dict(policy.fields)
     key_template = _require_key_template(fields)
@@ -490,7 +607,7 @@ def _prepare_upload(
             f"{content_type!r}; a signed Content-Type cannot be changed"
         )
 
-    encoded_key = quote(final_key.lstrip("/"), safe="/~")
+    encoded_key = urllib.parse.quote(final_key.lstrip("/"), safe="/~")
     access_url = f"{policy.url.rstrip('/')}/{encoded_key}"
     return access_url, fields
 
@@ -502,6 +619,8 @@ def _should_retry(exc: Exception, deadline: float) -> bool:
     mismatch) is rejected identically every time, and a 301 means a wrong-region
     bucket -- ``follow_redirects`` is off, and retrying resolves neither.
     """
+    import httpx  # noqa: PLC0415 -- see _new_client
+
     if time.monotonic() >= deadline:
         return False
     if isinstance(exc, httpx.HTTPStatusError):
@@ -524,7 +643,53 @@ def _s3_error_code(response: httpx.Response) -> str:
 
 
 def _new_client() -> httpx.Client:
-    return httpx.Client(timeout=UPLOAD_POLICY_TIMEOUT, follow_redirects=False)
+    # Local, not module scope: `fal` is pickled by value, so a module-level
+    # import becomes a load-time requirement of every isolated environment and
+    # any @fal.function returning a File fails to deserialize. The noqa is
+    # legitimate here: PLC0415 is enforced on this file to stop lazy imports of
+    # `fal` itself, which may be absent on a runner. httpx is a declared
+    # dependency, kept in SERVE_REQUIREMENTS, so on a served app, the only place
+    # this runs, the import cannot fail.
+    import httpx  # noqa: PLC0415
+
+    return httpx.Client(
+        timeout=httpx.Timeout(
+            UPLOAD_POLICY_TIMEOUT_SOCKET, connect=UPLOAD_POLICY_TIMEOUT_CONNECT
+        ),
+        follow_redirects=False,
+    )
+
+
+@dataclass
+class _UploadFailure:
+    """One shape for every *upload* failure record, so its JSON has a fixed key
+    set. The other records here (cleanup, drain) carry their own fields."""
+
+    request_id: str | None
+    status: int | None = None
+    s3_error: str | None = None
+    error: str | None = None
+    error_type: str | None = None
+
+
+def report_json_line(event: str, **fields: Any) -> None:
+    """Write one JSON record to the runner's stdout, or nothing.
+
+    ``fal.logging`` is not an option: its processor raises ``DropEvent`` unless
+    ``set_debug_logging(True)``, which has no callers. Serialize before writing
+    and write once, since ``print(obj)`` emits text and newline separately and a
+    concurrent write from the request thread would split the record.
+    """
+    try:
+        print(json.dumps({event: fields}) + "\n", end="", flush=True)
+    except Exception:
+        pass
+
+
+def _report_failure(failure: _UploadFailure) -> None:
+    """Record a failed upload. Only bounded fields we produced go in, never the
+    S3 response body, which carries the caller's bucket name and host id."""
+    report_json_line("upload_policy_failure", **asdict(failure))
 
 
 def _attempt_upload(
@@ -533,16 +698,14 @@ def _attempt_upload(
 ) -> None:
     """One upload, with retries. Raises ``UploadPolicyError`` on failure.
 
-    The client is built per upload, not at module scope: this module is
-    cloudpickled by value (``include_module("fal")``) and a live ``httpx.Client``
-    holds an unpicklable ``SSLContext``, so a module global would make ``File``
-    unserializable. One client per file still reuses the connection across that
-    file's retries.
-
-    Hand-rolled, not ``fal.toolkit.utils.retry``: that decorator prints progress
-    and tracebacks to stdout, and on this background thread that output would be
-    filed under whichever request is in flight (see ``_submit``).
+    The client is built per upload: this module is cloudpickled by value and a
+    live ``httpx.Client`` holds an unpicklable ``SSLContext``, so a module global
+    would make ``File`` unserializable. Hand-rolled rather than
+    ``fal.toolkit.utils.retry``, whose stdout output would be filed under
+    whichever request happens to be in flight.
     """
+    import httpx  # noqa: PLC0415 -- see _new_client
+
     deadline = time.monotonic() + UPLOAD_POLICY_TOTAL_DEADLINE
     delay = _BASE_DELAY
 
@@ -564,25 +727,22 @@ def _attempt_upload(
                 delay = min(delay * 2, _MAX_DELAY)
 
     # Keep the message generic: this runs fire-and-forget (_run swallows the
-    # exception; the detail is logged just below), and the exported upload_* entry
-    # points mean caller-chosen foreign text -- status line, reason phrase, error
-    # body -- must not be baked into it.
+    # exception; the detail is reported just below), and the exported upload_*
+    # entry points mean caller-chosen foreign text -- status line, reason phrase,
+    # error body -- must not be baked into it.
     if isinstance(last, httpx.HTTPStatusError):
         status = last.response.status_code
-        logger.warning(
-            "upload policy upload failed",
-            request_id=request_id,
-            status=status,
-            s3_error=_s3_error_code(last.response) or None,
+        _report_failure(
+            _UploadFailure(
+                request_id=request_id,
+                status=status,
+                s3_error=_s3_error_code(last.response) or None,
+            )
         )
         raise UploadPolicyError(
             f"Upload via {UPLOAD_POLICY_KEY} failed with status {status}."
         ) from last
-    logger.warning(
-        "upload policy upload failed",
-        request_id=request_id,
-        error=str(last),
-    )
+    _report_failure(_UploadFailure(request_id=request_id, error=str(last)))
     raise UploadPolicyError(f"Upload via {UPLOAD_POLICY_KEY} failed.") from last
 
 
@@ -591,12 +751,10 @@ def _attempt_upload(
 # concurrent.futures joins them at exit with no timeout, so a stalled
 # destination would block interpreter exit indefinitely.
 
-# Two independent bounds on queued work: a thread count (fds and OS threads,
-# both paths) and a byte total (RAM). in-memory uploads count against the byte
-# total -- from_bytes, and small from_path outputs, which the caller keeps
-# resident in File.file_data anyway; only large from_path outputs stream a
-# disk-staged file and stay budget-free. Refused rather than queued when full;
-# waiting would put back the runner-hold that backgrounding exists to avoid.
+# Two bounds on queued work: a thread count (fds, OS threads) and a byte total
+# (RAM). Only large from_path outputs stream a disk-staged file and stay
+# budget-free. Refused rather than queued when full; waiting would restore the
+# runner-hold that backgrounding exists to avoid.
 UPLOAD_POLICY_MAX_PENDING = 64
 UPLOAD_POLICY_MAX_PENDING_BYTES = 512 * 1024 * 1024
 
@@ -632,17 +790,19 @@ def _submit(
         try:
             _attempt_upload(post, request_id)
         except UploadPolicyError:
-            # Expected failure, already logged in _attempt_upload. Swallowed so a
-            # daemon-thread traceback doesn't hit stdout and mis-file under the
-            # in-flight request (often a different tenant).
+            # Expected failure, already reported by _attempt_upload as one JSON
+            # line. Swallowed so a multi-line traceback does not follow it: these
+            # records do land on whichever request's stdout is open, so each one
+            # carries its own request_id to be re-attributed later.
             pass
         except Exception as exc:
-            # structlog, not print(): same stdout-attribution reason as above.
-            # structlog drops it unless debugging.
-            logger.warning(
-                "upload policy upload crashed",
-                request_id=request_id,
-                error=str(exc),
+            # A bug here, not a rejected upload, so it carries the type.
+            _report_failure(
+                _UploadFailure(
+                    request_id=request_id,
+                    error=str(exc),
+                    error_type=type(exc).__name__,
+                )
             )
         finally:
             # After every attempt, not each one: a retry reopens the staged file.
@@ -678,11 +838,9 @@ def _submit(
     try:
         thread.start()
     except RuntimeError as exc:
-        # "can't start new thread" -- a runner out of thread capacity. Return
-        # the budget (else it leaks) and drop the never-started thread (else
-        # drain() would raise joining it, escaping the lifespan and skipping
-        # teardown). Surface it as the same 424 the queue-full refusal uses,
-        # since it is the same "not keeping up" condition -- not a 500.
+        # Runner out of thread capacity. Return the budget and drop the
+        # never-started thread, else drain() raises joining it and skips
+        # teardown. Same 424 as the queue-full refusal: not keeping up, not a 500.
         with _state_lock:
             _inflight.discard(thread)
             _pending_bytes -= nbytes
@@ -701,10 +859,8 @@ def _safe_cleanup(cleanup: Callable[[], None] | None, request_id: str | None) ->
     try:
         cleanup()
     except Exception as exc:
-        logger.warning(
-            "upload policy staged-file cleanup failed",
-            request_id=request_id,
-            error=str(exc),
+        report_json_line(
+            "upload_policy_cleanup_failed", request_id=request_id, error=str(exc)
         )
 
 
@@ -718,12 +874,6 @@ def drain(timeout: float | None = UPLOAD_POLICY_DRAIN_TIMEOUT) -> None:
     deadline = None if timeout is None else time.monotonic() + timeout
     with _state_lock:
         threads = list(_inflight)
-    if threads:
-        logger.info(
-            "upload policy draining in-flight uploads",
-            pending=len(threads),
-            timeout=timeout,
-        )
     for thread in threads:
         if not thread.ident:
             continue  # never started; joining would raise
@@ -735,12 +885,14 @@ def drain(timeout: float | None = UPLOAD_POLICY_DRAIN_TIMEOUT) -> None:
             break
         thread.join(remaining)
     # Daemon threads: anything still running is dropped when the process exits.
-    # Log it so a customer's "my output never arrived" has a breadcrumb.
+    # Reported so a customer's "my output never arrived" has a breadcrumb, with
+    # the pending count as its denominator.
     still_running = [thread for thread in threads if thread.is_alive()]
     if still_running:
-        logger.warning(
-            "upload policy drain left uploads unfinished at shutdown",
+        report_json_line(
+            "upload_policy_abandoned_at_shutdown",
             unfinished=len(still_running),
+            pending=len(threads),
             timeout=timeout,
         )
 

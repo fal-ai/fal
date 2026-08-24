@@ -13,7 +13,7 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 
-from fal.exceptions import AppException
+from fal.exceptions import AppException, FieldException
 from fal.toolkit.exceptions import FileUploadException
 from fal.toolkit.file import _upload_policy as up
 from fal.toolkit.file._upload_policy import (
@@ -27,7 +27,12 @@ from fal.toolkit.file._upload_policy import (
     upload_path_with_policy,
 )
 
-VECTORS = json.loads((Path(__file__).parent / "upload_policy_vectors.json").read_text())
+# encoding is explicit: JSON is UTF-8 by spec, but read_text() defaults to the
+# platform encoding, which is cp1252 on the Windows runner and fails collection
+# the moment a vector carries a non-ASCII character.
+VECTORS = json.loads(
+    (Path(__file__).parent / "upload_policy_vectors.json").read_text(encoding="utf-8")
+)
 HEADER_VECTORS = [
     case for case in VECTORS["parse"] + VECTORS["prepare"] if "header" in case
 ]
@@ -129,19 +134,28 @@ class TestHostAllowlist:
             "s3.us-west-1.amazonaws.com",
             "bucket.s3.us-west-1.amazonaws.com",
             "bucket.s3.dualstack.us-west-1.amazonaws.com",
+            # A dotted bucket is fine at the host-predicate level; it is
+            # _validate_policy_url that rejects it, because the TLS handshake,
+            # not the allowlist, is what a dotted bucket fails.
             "my.dotted.bucket.s3.us-east-1.amazonaws.com",
             "bucket.s3.cn-north-1.amazonaws.com.cn",
             "bucket.s3-accelerate.amazonaws.com",
             "s3-us-west-2.amazonaws.com",
-            # generate_presigned_post emits these for an access-point ARN and
-            # for S3 Express; rejecting them turns away valid destinations.
+            # Emitted by generate_presigned_post; see
+            # TestRealPresignedPostShapes, which generates rather than asserts.
+            "s3express-control.us-east-1.amazonaws.com",
+            "my-ap-123456789012.op-0.s3-outposts.us-east-1.amazonaws.com",
+            # Not reachable through generate_presigned_post today (botocore
+            # raises "Access points are not supported for this operation"), but
+            # allowed so that a caller who builds the policy by hand, or a
+            # botocore that later supports it, is not turned away.
             "my-ap-123456.s3-accesspoint.us-east-1.amazonaws.com",
             "bkt--use1-az4--x-s3.s3express-use1-az4.us-east-1.amazonaws.com",
             "bucket.s3-object-lambda.us-east-1.amazonaws.com",
         ],
     )
     def test_accepts_real_s3_endpoints(self, host):
-        assert up._is_s3_upload_policy_host(host)
+        assert up._match_s3_host(host) is not None
 
     @pytest.mark.parametrize(
         "host",
@@ -157,17 +171,221 @@ class TestHostAllowlist:
             "s3.amazonaws.com.cn.evil.com",
             "s3.us-east-1.vpce.amazonaws.com",
             # Single-label vpce forms: the regex region group admits a bare
-            # "vpce", so the explicit zone denylist -- not the regex -- rejects
-            # these.
+            # "vpce" on either separator, so the zone is denied by label in
+            # _match_s3_host, not by the regex and not by a dotted suffix.
             "s3.vpce.amazonaws.com",
+            "s3-vpce.amazonaws.com",
+            "s3-vpce.amazonaws.com.cn",
             "bucket.s3.vpce.amazonaws.com",
             "bucket.s3.accesspoint.vpce.amazonaws.com",
+            "bucket.s3express-vpce.amazonaws.com",
             # "$" would match before a trailing newline; the anchor is fullmatch.
             "s3.amazonaws.com\n",
         ],
     )
     def test_rejects_everything_else(self, host):
-        assert not up._is_s3_upload_policy_host(host)
+        assert up._match_s3_host(host) is None
+
+    @pytest.mark.parametrize(
+        "host",
+        [
+            # The vpce denial is by label on the endpoint, so a bucket whose own
+            # name contains the label is still a legitimate destination.
+            "vpce-backups.s3.us-east-1.amazonaws.com",
+            "vpce.s3.us-east-1.amazonaws.com",
+        ],
+    )
+    def test_the_vpce_denial_does_not_reach_the_bucket_name(self, host):
+        assert up._match_s3_host(host) is not None
+
+    @pytest.mark.parametrize(
+        "host,expected_bucket",
+        [
+            ("bucket.s3.us-west-1.amazonaws.com", "bucket."),
+            ("my.dotted.bucket.s3.us-east-1.amazonaws.com", "my.dotted.bucket."),
+            ("s3.us-west-1.amazonaws.com", None),
+            ("s3-us-west-2.amazonaws.com", None),
+            ("s3express-control.us-east-1.amazonaws.com", None),
+            # A bucket really can be named "s3".
+            ("s3.s3.us-west-1.amazonaws.com", "s3."),
+        ],
+    )
+    def test_the_bucket_group_decides_the_addressing_style(self, host, expected_bucket):
+        """Whether the bucket is in the host is what bounds the path, so a
+        mis-detected style would either reject a real endpoint or accept a URL
+        pointing below the bucket."""
+        match = up._match_s3_host(host)
+
+        assert match is not None
+        assert match.group("bucket") == expected_bucket
+
+    def test_a_url_longer_than_the_cap_is_rejected(self):
+        """Not a vector: a 2 KB literal in the decision table would bury the
+        rows around it, and no real endpoint is anywhere near the cap."""
+        host = "b" * (up._URL_MAX_LENGTH + 1) + ".s3.us-east-1.amazonaws.com"
+        header = json.dumps(
+            {"url": f"https://{host}/", "fields": {"key": "u/${filename}"}}
+        )
+
+        with pytest.raises(UploadPolicyInputError, match="longer than"):
+            parse_upload_policy({UPLOAD_POLICY_KEY: header})
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://my.dotted.bucket.s3.us-east-1.amazonaws.com/",
+            "https://a.b.s3.dualstack.us-west-2.amazonaws.com/",
+        ],
+    )
+    def test_a_dotted_bucket_cannot_be_virtual_hosted(self, url):
+        """Verified against S3: the handshake fails with "no alternative
+        certificate subject name matches target host name", because the wildcard
+        covers one label. Path style is the only way to reach such a bucket."""
+        header = json.dumps({"url": url, "fields": {"key": "u/${filename}"}})
+
+        with pytest.raises(UploadPolicyInputError, match="path style"):
+            parse_upload_policy({UPLOAD_POLICY_KEY: header})
+
+    def test_a_dotted_bucket_is_fine_path_style(self):
+        header = json.dumps(
+            {
+                "url": "https://s3.us-east-1.amazonaws.com/my.dotted.bucket/",
+                "fields": {"key": "u/${filename}"},
+            }
+        )
+
+        assert parse_upload_policy({UPLOAD_POLICY_KEY: header}) is not None
+
+
+# region, s3 config, signature version. Covers both addressing styles, both
+# signature versions, the accelerate/dualstack/China variants, and a directory
+# bucket.
+PRESIGNED_POST_SHAPES = [
+    ("virtual-hosted", "us-west-1", {}, None),
+    ("virtual-hosted sigv4", "us-west-2", {}, "s3v4"),
+    ("path style", "us-west-1", {"addressing_style": "path"}, None),
+    ("path style sigv4", "us-east-1", {"addressing_style": "path"}, "s3v4"),
+    ("eu-central-1", "eu-central-1", {}, "s3v4"),
+    ("ap-southeast-2", "ap-southeast-2", {}, "s3v4"),
+    ("china", "cn-north-1", {}, "s3v4"),
+    ("china northwest", "cn-northwest-1", {}, "s3v4"),
+    ("accelerate", "us-west-2", {"use_accelerate_endpoint": True}, "s3v4"),
+    ("dualstack", "us-west-2", {"use_dualstack_endpoint": True}, "s3v4"),
+    (
+        "dualstack path style",
+        "us-west-2",
+        {"use_dualstack_endpoint": True, "addressing_style": "path"},
+        "s3v4",
+    ),
+]
+
+
+def _presigned_post(region, s3_config, signature_version, tmp_path, monkeypatch):
+    """A real ``generate_presigned_post`` result.
+
+    Signing is local, so this reaches no AWS endpoint and needs no real
+    credentials. The env is pinned so a developer's own profile, region or
+    instance metadata cannot change what is generated.
+    """
+    boto3 = pytest.importorskip("boto3")
+    Config = pytest.importorskip("botocore.config").Config
+
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "AKIAIOSFODNN7EXAMPLE")
+    monkeypatch.setenv(
+        "AWS_SECRET_ACCESS_KEY", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+    )
+    monkeypatch.setenv("AWS_EC2_METADATA_DISABLED", "true")
+    monkeypatch.setenv("AWS_CONFIG_FILE", str(tmp_path / "absent-config"))
+    monkeypatch.setenv("AWS_SHARED_CREDENTIALS_FILE", str(tmp_path / "absent-creds"))
+    monkeypatch.delenv("AWS_PROFILE", raising=False)
+
+    config_kwargs = {"s3": s3_config} if s3_config else {}
+    if signature_version:
+        config_kwargs["signature_version"] = signature_version
+    client = boto3.client("s3", region_name=region, config=Config(**config_kwargs))
+    return client.generate_presigned_post("bucket", "uploads/${filename}")
+
+
+class TestRealPresignedPostShapes:
+    """The accept side of the decision table, generated instead of written.
+
+    A hand-written endpoint can be an S3-shaped hostname AWS never mints, which
+    would make the allowlist look covered while leaving a real destination
+    rejected. So the accepted URLs are taken from botocore's own endpoint
+    resolution: whatever ``generate_presigned_post`` emits is exactly what a
+    caller puts in the header, and all of it must parse.
+    """
+
+    @pytest.mark.parametrize(
+        "region,s3_config,signature_version",
+        [shape[1:] for shape in PRESIGNED_POST_SHAPES],
+        ids=[shape[0] for shape in PRESIGNED_POST_SHAPES],
+    )
+    def test_every_generated_policy_parses(
+        self, region, s3_config, signature_version, tmp_path, monkeypatch
+    ):
+        policy = _presigned_post(
+            region, s3_config, signature_version, tmp_path, monkeypatch
+        )
+        header = json.dumps({"url": policy["url"], "fields": policy["fields"]})
+
+        parsed = parse_upload_policy({UPLOAD_POLICY_KEY: header})
+
+        assert parsed is not None
+        assert parsed.url == policy["url"]
+        assert parsed.fields == policy["fields"]
+
+    def test_a_directory_bucket_parses(self, tmp_path, monkeypatch):
+        """S3 Express resolves to a different endpoint than the regional one."""
+        boto3 = pytest.importorskip("boto3")
+        Config = pytest.importorskip("botocore.config").Config
+
+        monkeypatch.setenv("AWS_ACCESS_KEY_ID", "AKIAIOSFODNN7EXAMPLE")
+        monkeypatch.setenv(
+            "AWS_SECRET_ACCESS_KEY", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+        )
+        client = boto3.client(
+            "s3", region_name="us-east-1", config=Config(signature_version="s3v4")
+        )
+        policy = client.generate_presigned_post(
+            "bkt--use1-az4--x-s3", "uploads/${filename}"
+        )
+        header = json.dumps({"url": policy["url"], "fields": policy["fields"]})
+
+        assert parse_upload_policy({UPLOAD_POLICY_KEY: header}) is not None
+
+    @pytest.mark.parametrize(
+        "signature_version,signed_field",
+        [(None, "signature"), ("s3v4", "x-amz-signature")],
+        ids=["sigv2", "sigv4"],
+    )
+    def test_signed_fields_reach_s3_untouched(
+        self, signature_version, signed_field, tmp_path, monkeypatch
+    ):
+        """A rewritten signed field is a 403 from S3, so _prepare_upload may
+        only fill in the key and an absent Content-Type."""
+        policy = _presigned_post(
+            "us-west-2", {}, signature_version, tmp_path, monkeypatch
+        )
+        parsed = parse_upload_policy(
+            {
+                UPLOAD_POLICY_KEY: json.dumps(
+                    {"url": policy["url"], "fields": policy["fields"]}
+                )
+            }
+        )
+        assert parsed is not None
+
+        _, fields = up._prepare_upload(parsed, "cat.png", "image/png")
+
+        assert signed_field in policy["fields"], "boto3 changed its field names"
+        for name, value in policy["fields"].items():
+            if name == "key":
+                continue
+            assert fields[name] == value
+        assert fields["key"].endswith("-cat.png")
+        assert fields["key"].startswith("uploads/")
+        assert fields["Content-Type"] == "image/png"
 
 
 class TestErrorShape:
@@ -177,21 +395,30 @@ class TestErrorShape:
 
         assert excinfo.value.status_code == 422
 
-    def test_body_matches_registrys_exactly(self):
-        """Callers parse these bodies; two shapes for one header is a break."""
+    def test_carries_the_message_and_no_invented_location(self):
+        """The policy arrives in a header, so there is no body field to name.
+
+        Registry answers this same header with a pydantic-shaped
+        ``loc: ["body"]``; a plain message is the deliberate divergence, and
+        there is nothing else on the exception for a caller to read.
+        """
         with pytest.raises(UploadPolicyInputError) as excinfo:
             parse_upload_policy({UPLOAD_POLICY_KEY: "{not json"})
 
-        detail = excinfo.value.to_pydantic_format()["detail"]
-        assert len(detail) == 1
-        assert detail[0]["loc"] == ["body"]
-        assert detail[0]["type"] == "input_value_error"
-        assert detail[0]["input"] is None
-        assert detail[0]["url"].endswith("#input_value_error")
-        assert "not valid JSON" in detail[0]["msg"]
+        assert "not valid JSON" in excinfo.value.message
+        assert not hasattr(excinfo.value, "to_pydantic_format")
+        assert not hasattr(excinfo.value, "field")
+
+    def test_is_not_a_field_exception(self):
+        """FieldException's whole payload is loc: ["body", field]. Inheriting it
+        for a header error, then overriding that away, is what this guards."""
+        assert not issubclass(UploadPolicyInputError, FieldException)
+        assert isinstance(
+            UploadPolicyInputError("boom"), AppException
+        ), "shares AppException's handler, so the body needs no rendering here"
 
     def test_str_is_not_empty(self):
-        """A dataclass exception with no args logs as '' in tracebacks."""
+        """The message has to survive into tracebacks and logs."""
         assert "not valid JSON" in str(
             UploadPolicyInputError("Invalid header: not valid JSON")
         )
@@ -218,9 +445,8 @@ class TestErrorShape:
         with pytest.raises(UploadPolicyInputError) as excinfo:
             parse_upload_policy({UPLOAD_POLICY_KEY: header})
 
-        json.dumps(excinfo.value.to_pydantic_format(), ensure_ascii=False).encode(
-            "utf-8"
-        )
+        body = {"detail": excinfo.value.message}
+        json.dumps(body, ensure_ascii=False).encode("utf-8")
 
 
 class TestUploadFailureSurfacing:
@@ -278,11 +504,13 @@ class TestUploadFailureSurfacing:
         for foreign in ("AccessDenied", "fal-internal", "ABC123", "SECRET=="):
             assert foreign not in message
 
-    def test_the_diagnostic_detail_lands_in_the_server_side_log(self, monkeypatch):
-        """The other half of the relocation: what the message drops, the log must
-        keep, or a debugger is left with only a bare status."""
-        events = MagicMock()
-        monkeypatch.setattr(up, "logger", events)
+    def test_the_diagnostic_detail_lands_in_the_server_side_record(self, capsys):
+        """The other half of the relocation: what the message drops, the record
+        must keep, or a debugger is left with only a bare status.
+
+        The record goes to stdout rather than structlog, whose processor drops
+        the event unless debug logging is on and nothing turns it on.
+        """
 
         def fake_post(client):
             return httpx.Response(
@@ -294,11 +522,14 @@ class TestUploadFailureSurfacing:
         with pytest.raises(UploadPolicyError):
             up._attempt_upload(fake_post)
 
-        assert any(
-            call.kwargs.get("status") == 403
-            and call.kwargs.get("s3_error") == "AccessDenied"
-            for call in events.warning.call_args_list
-        )
+        records = [
+            json.loads(line)["upload_policy_failure"]
+            for line in capsys.readouterr().out.strip().splitlines()
+            if "upload_policy_failure" in line
+        ]
+        assert len(records) == 1
+        assert records[0]["status"] == 403
+        assert records[0]["s3_error"] == "AccessDenied"
 
     def test_does_not_echo_the_destinations_reason_phrase(self):
         """httpx takes reason_phrase off the wire, so a destination could smuggle
@@ -360,6 +591,25 @@ class TestPrepareUpload:
         _, fields = up._prepare_upload(VALID_POLICY, "cat.png", "image/png")
 
         assert fields["Content-Type"] == "image/png"
+
+    @pytest.mark.parametrize(
+        "lookalike", ["Content-Type\u200b", "Content-\uff34ype", " Content-Type"]
+    )
+    def test_a_lookalike_name_cannot_suppress_the_injection(self, lookalike):
+        """The reserved-name fold is stricter than S3's, so a name can read as
+        Content-Type here and travel as something else on the wire. Honouring it
+        would skip the injection and send a field no signed condition covers, so
+        S3 refuses the POST and the caller keeps a 200 and a dead URL. Refused at
+        parse instead, which is where the caller can still see it."""
+        header = json.dumps(
+            {
+                "url": VALID_POLICY.url,
+                "fields": {"key": "u/${filename}", lookalike: "image/png"},
+            }
+        )
+
+        with pytest.raises(UploadPolicyInputError, match="would not treat it"):
+            parse_upload_policy({UPLOAD_POLICY_KEY: header})
 
     def test_rejects_mismatched_explicit_content_type(self):
         """Overwriting a signed field would earn an opaque 403 from S3."""
@@ -514,6 +764,18 @@ class TestUploadBytes:
         with up._new_client() as client:
             assert client.follow_redirects is False
 
+    def test_client_carries_the_configured_timeout(self):
+        """The timeout is assembled from two floats inside _new_client now, since
+        a module-level httpx.Timeout would put httpx in the pickle. Swapping the
+        two arguments would leave every other test green."""
+        with up._new_client() as client:
+            assert client.timeout == httpx.Timeout(
+                up.UPLOAD_POLICY_TIMEOUT_SOCKET,
+                connect=up.UPLOAD_POLICY_TIMEOUT_CONNECT,
+            )
+            assert client.timeout.connect == 10.0
+            assert client.timeout.read == 300.0
+
     def test_a_failed_upload_does_not_fail_the_request(self, monkeypatch):
         """Registry parity, and the accepted cost of backgrounding: the caller
         already has the URL, so the object simply never appears."""
@@ -530,12 +792,18 @@ class TestUploadBytes:
         assert url.startswith("https://bucket.s3.us-west-1.amazonaws.com/")
 
     @pytest.mark.parametrize("status", [403, 503])
-    def test_a_background_failure_is_not_printed_to_stdout(
+    def test_a_background_failure_is_reported_without_foreign_text(
         self, monkeypatch, capsys, status
     ):
-        """Runner stdout is attributed to whichever request is in flight, and
-        that is frequently a different tenant. The structlog logger drops the
-        event unless debug logging is on; print() would not."""
+        """The caller already has a 200, so this record is the only evidence the
+        upload died. It goes to stdout as one JSON line; see report_json_line for
+        why that channel and not structlog.
+
+        Two things must hold. The line lands on whichever request's stdout is
+        open, so it carries its own request_id and can be re-attributed rather
+        than read as belonging to that request. And only bounded fields we
+        produced go in: the S3 body carries the caller's bucket name.
+        """
 
         def fake_post(url, **kwargs):
             return httpx.Response(
@@ -551,8 +819,24 @@ class TestUploadBytes:
 
         captured = capsys.readouterr()
         combined = captured.out + captured.err
+        reports = [
+            json.loads(line)["upload_policy_failure"]
+            for line in captured.out.strip().splitlines()
+            if "upload_policy_failure" in line
+        ]
+
+        assert len(reports) == 1
+        # A fixed key set, so whoever greps these gets one schema rather than
+        # three shapes under one name.
+        assert reports[0] == {
+            "request_id": None,
+            "status": status,
+            "s3_error": "AccessDenied",
+            "error": None,
+            "error_type": None,
+        }
+        # The body itself never leaves the process.
         assert "tenant-a-secret" not in combined
-        assert "AccessDenied" not in combined
         # fal.toolkit.utils.retry prints "Retrying N of M" and a traceback; a
         # retryable status must not route through it.
         assert "Retrying" not in combined
@@ -689,12 +973,14 @@ class TestBackgroundMachinery:
         release.set()
         drain(timeout=10)
 
-    def test_drain_logs_uploads_it_abandons_at_shutdown(self, monkeypatch):
+    def test_drain_reports_uploads_it_abandons_at_shutdown(self, monkeypatch, capsys):
         """A runner can be killed before drain finishes; the abandoned uploads
-        must leave a breadcrumb for when a customer reports a missing output."""
+        must leave a breadcrumb for when a customer reports a missing output.
+
+        On stdout, not structlog: that sink drops the event unless debug logging
+        is on, and nothing turns it on, so the breadcrumb would not exist.
+        """
         release = threading.Event()
-        events = MagicMock()
-        monkeypatch.setattr(up, "logger", events)
 
         def fake_post(url, **kwargs):
             release.wait(timeout=10)
@@ -704,20 +990,19 @@ class TestBackgroundMachinery:
         upload_bytes_with_policy(VALID_POLICY, "cat.png", b"bytes", "image/png")
         drain(timeout=0.1)
 
-        warned = [call for call in events.warning.call_args_list if call.args]
-        assert any(
-            "unfinished" in call.args[0] and call.kwargs.get("unfinished") == 1
-            for call in warned
-        )
+        records = [
+            json.loads(line)["upload_policy_abandoned_at_shutdown"]
+            for line in capsys.readouterr().out.strip().splitlines()
+            if "upload_policy_abandoned_at_shutdown" in line
+        ]
+        assert [record["unfinished"] for record in records] == [1]
 
         release.set()
         drain(timeout=10)
 
-    def test_drain_does_not_warn_when_uploads_finish(self, monkeypatch):
-        """The abandoned-upload warning must fire on a real timeout only, not on
+    def test_drain_is_quiet_when_uploads_finish(self, monkeypatch, capsys):
+        """The abandoned-upload record must fire on a real timeout only, not on
         every clean shutdown."""
-        events = MagicMock()
-        monkeypatch.setattr(up, "logger", events)
 
         def fake_post(url, **kwargs):
             return httpx.Response(204, request=httpx.Request("POST", url))
@@ -726,10 +1011,7 @@ class TestBackgroundMachinery:
         upload_bytes_with_policy(VALID_POLICY, "cat.png", b"bytes", "image/png")
         drain(timeout=5)
 
-        assert not any(
-            call.args and "unfinished" in call.args[0]
-            for call in events.warning.call_args_list
-        )
+        assert "upload_policy_abandoned_at_shutdown" not in capsys.readouterr().out
 
     def test_fork_reset_returns_the_queue_budget(self, monkeypatch):
         """A forked child inherits the spent budget but none of the threads
