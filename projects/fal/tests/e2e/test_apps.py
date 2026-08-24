@@ -190,6 +190,54 @@ def _wait_for_alias_revision(
     )
 
 
+def _is_alias_not_found_response(response: httpx.Response, app_alias: str) -> bool:
+    if response.status_code != 404:
+        return False
+
+    try:
+        detail = response.json().get("detail", "")
+    except ValueError:
+        return False
+    return detail in {
+        f"Application {app_alias!r} not found",
+        f'Application "{app_alias}" not found',
+    }
+
+
+def _wait_for_stable_alias(
+    fetch_response: Callable[[float], Optional[httpx.Response]],
+    app_alias: str,
+    *,
+    timeout: float,
+    description: str,
+    stable_for: float = 5,
+) -> httpx.Response:
+    # One updated replica can succeed while another still has stale alias state.
+    deadline = time.monotonic() + timeout
+    recognized_at = None
+    response = None
+
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise AssertionError(f"Timed out waiting for {description}: {response!r}")
+
+        response = fetch_response(remaining)
+        if time.monotonic() >= deadline:
+            raise AssertionError(f"Timed out waiting for {description}: {response!r}")
+        if response is None or _is_alias_not_found_response(response, app_alias):
+            recognized_at = None
+        elif recognized_at is None:
+            recognized_at = time.monotonic()
+        elif time.monotonic() - recognized_at >= stable_for:
+            return response
+
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise AssertionError(f"Timed out waiting for {description}: {response!r}")
+        time.sleep(min(0.5, remaining))
+
+
 def _wait_for_queue_alias(
     app_alias: str,
     queue_url: str,
@@ -198,40 +246,57 @@ def _wait_for_queue_alias(
 ):
     with httpx.Client(headers=_auth_headers()) as client:
 
-        def queue_recognizes_alias():
+        def fetch_response(remaining: float):
             # Alias resolution precedes validation of this query parameter, whose
             # invalid value makes the gateway return before enqueuing a request.
             response = client.post(
                 queue_url,
                 params={"fal_max_queue_length": "readiness-probe"},
                 json={},
+                timeout=min(5, remaining),
             )
-            if response.status_code == 404:
-                detail = response.json().get("detail", "")
-                missing_alias_details = {
-                    f"Application {app_alias!r} not found",
-                    f'Application "{app_alias}" not found',
-                }
-                if detail in missing_alias_details:
-                    return False
+            if _is_alias_not_found_response(response, app_alias):
+                return response
 
             if response.status_code != 400:
                 response.raise_for_status()
                 raise AssertionError(f"Unexpected queue readiness response: {response}")
 
             data = response.json()
-            if data.get("request_id") is not None or not data.get("error", "").startswith(
+            error = data.get("error", "")
+            if data.get("request_id") is not None or not error.startswith(
                 "Invalid fal_max_queue_length"
             ):
                 raise AssertionError(f"Unexpected queue readiness response: {data}")
-            return True
+            return response
 
-        _wait_until(
-            queue_recognizes_alias,
-            bool,
+        _wait_for_stable_alias(
+            fetch_response,
+            app_alias,
             timeout=timeout,
-            interval=0.5,
             description=f"queue gateway to recognize alias {app_alias}",
+        )
+
+
+def _wait_for_run_alias(
+    app_alias: str,
+    run_url: str,
+    *,
+    timeout: float = 60,
+):
+    with httpx.Client(headers=_auth_headers()) as client:
+
+        def fetch_response(remaining: float):
+            try:
+                return client.get(f"{run_url}/health", timeout=min(5, remaining))
+            except httpx.TimeoutException:
+                return None
+
+        _wait_for_stable_alias(
+            fetch_response,
+            app_alias,
+            timeout=timeout,
+            description=f"run gateway to recognize alias {app_alias}",
         )
 
 
@@ -871,6 +936,7 @@ def register_app(
             with host._connection as client:
                 _wait_for_alias_revision(client, app_alias, app_revision)
             _wait_for_queue_alias(app_alias, result.service_urls.queue)
+            _wait_for_run_alias(app_alias, result.service_urls.run)
             yield app_alias, app_revision
         finally:
             with host._connection as client:
@@ -954,15 +1020,6 @@ def test_health_override_app(
 ):
     health_override_app = wrap_app(HealthOverrideApp)
     with register_app(health_override_app, "health-override-app") as (app_alias, _):
-        yield f"{user.username}/{app_alias}"
-
-
-@pytest.fixture()
-def test_fastapi_app(
-    user: User,
-    register_app,
-):
-    with register_app(calculator_app, "fastapi") as (app_alias, _):
         yield f"{user.username}/{app_alias}"
 
 
@@ -1426,22 +1483,49 @@ def test_app_openapi_spec_metadata(test_app: str, rest_client: Client):
         assert key in openapi_spec, f"{key} key missing from openapi {openapi_spec}"
 
 
-def test_app_no_serve_spec_metadata(test_fastapi_app: str, rest_client: Client):
+def test_app_no_serve_spec_metadata(
+    host: api.FalServerlessHost,
+    user: User,
+    rest_client: Client,
+    make_tmp_app_name: Callable[[str], str],
+):
     # We do not store the openapi spec for apps that do not use serve=True
-    user_id, _, app_id = test_fastapi_app.partition("/")
-    res = app_metadata.sync_detailed(
-        app_alias_or_id=app_id, app_user_id=user_id, client=rest_client
+    app_alias = make_tmp_app_name("fastapi")
+    result = host.register(
+        func=calculator_app.func,
+        options=calculator_app.options,
+        application_name=app_alias,
+        application_auth_mode="private",
+        deployment_strategy="recreate",
     )
 
-    assert (
-        res.status_code == 200
-    ), f"Failed to fetch metadata for app {test_fastapi_app}"
-    assert res.parsed, f"Failed to parse metadata for app {test_fastapi_app}"
+    assert result
+    assert result.result
 
-    metadata = res.parsed.to_dict()
-    assert (
-        "openapi" not in metadata
-    ), f"openapi should not be present in metadata {metadata}"
+    try:
+        with host._connection as client:
+            _wait_for_alias_revision(client, app_alias, result.result.application_id)
+
+        res = app_metadata.sync_detailed(
+            app_alias_or_id=app_alias,
+            app_user_id=user.username,
+            client=rest_client,
+        )
+
+        assert (
+            res.status_code == 200
+        ), f"Failed to fetch metadata for app {user.username}/{app_alias}"
+        assert (
+            res.parsed
+        ), f"Failed to parse metadata for app {user.username}/{app_alias}"
+
+        metadata = res.parsed.to_dict()
+        assert (
+            "openapi" not in metadata
+        ), f"openapi should not be present in metadata {metadata}"
+    finally:
+        with host._connection as client:
+            client.delete_alias(app_alias)
 
 
 @pytest.mark.xdist_group(name="addition-app")
