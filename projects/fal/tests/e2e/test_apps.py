@@ -278,26 +278,71 @@ def _wait_for_queue_alias(
         )
 
 
-def _wait_for_run_alias(
-    app_alias: str,
-    run_url: str,
-    *,
-    timeout: float = 60,
-):
-    with httpx.Client(headers=_auth_headers()) as client:
+def _wait_for_app_ready(queue_url: str, *, timeout: float = 60):
+    import fal_client
 
-        def fetch_response(remaining: float):
-            try:
-                return client.get(f"{run_url}/health", timeout=min(5, remaining))
-            except httpx.TimeoutException:
-                return None
+    application = httpx.URL(queue_url).path.lstrip("/")
+    deadline = time.monotonic() + timeout
+    fal_client_instance = fal_client.SyncClient(default_timeout=timeout)
+    handle = None
+    terminal = False
 
-        _wait_for_stable_alias(
-            fetch_response,
-            app_alias,
-            timeout=timeout,
-            description=f"run gateway to recognize alias {app_alias}",
+    def remaining_time():
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise AssertionError(
+                f"Timed out waiting for app readiness probe for {application}"
+            )
+        return remaining
+
+    try:
+        handle = fal_client_instance.submit(
+            application,
+            arguments={},
+            path="health",
+            start_timeout=timeout,
         )
+
+        with httpx.Client(headers=_auth_headers()) as client:
+            while True:
+                remaining = remaining_time()
+
+                try:
+                    response = client.get(
+                        handle.status_url,
+                        params={"logs": False},
+                        timeout=min(5, remaining),
+                    )
+                except httpx.TransportError:
+                    time.sleep(min(0.1, remaining_time()))
+                    continue
+
+                retryable_status = response.status_code in {408, 409, 429}
+                retryable_ingress_error = (
+                    response.status_code in {502, 503, 504}
+                    and "x-fal-request-id" not in response.headers
+                    and "nginx" in response.text
+                )
+                if retryable_status or retryable_ingress_error:
+                    time.sleep(min(0.1, remaining_time()))
+                    continue
+
+                response.raise_for_status()
+                status = response.json()
+                terminal = status["status"] == "COMPLETED"
+
+                remaining = remaining_time()
+
+                if terminal:
+                    assert status.get("error") is None, status["error"]
+                    return
+
+                time.sleep(min(0.1, remaining))
+    finally:
+        if handle is not None and not terminal:
+            with suppress(Exception):
+                with httpx.Client(headers=_auth_headers()) as client:
+                    client.put(handle.cancel_url, timeout=5).raise_for_status()
 
 
 GIT_REVISION_SHORT_HASH = (
@@ -936,7 +981,7 @@ def register_app(
             with host._connection as client:
                 _wait_for_alias_revision(client, app_alias, app_revision)
             _wait_for_queue_alias(app_alias, result.service_urls.queue)
-            _wait_for_run_alias(app_alias, result.service_urls.run)
+            _wait_for_app_ready(result.service_urls.queue)
             yield app_alias, app_revision
         finally:
             with host._connection as client:
