@@ -16,6 +16,7 @@ from typing import (
     Iterator,
     List,
     Optional,
+    Protocol,
     Tuple,
     TypeVar,
     Union,
@@ -278,71 +279,42 @@ def _wait_for_queue_alias(
         )
 
 
-def _wait_for_app_ready(queue_url: str, *, timeout: float = 60):
-    import fal_client
-
-    application = httpx.URL(queue_url).path.lstrip("/")
+def _wait_for_app_ready(
+    app_alias: str,
+    run_url: str,
+    *,
+    path: str = "/health",
+    timeout: float = 60,
+):
     deadline = time.monotonic() + timeout
-    fal_client_instance = fal_client.SyncClient(default_timeout=timeout)
-    handle = None
-    terminal = False
+    response = None
 
-    def remaining_time():
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            raise AssertionError(
-                f"Timed out waiting for app readiness probe for {application}"
-            )
-        return remaining
-
-    try:
-        handle = fal_client_instance.submit(
-            application,
-            arguments={},
-            path="health",
-            start_timeout=timeout,
-        )
-
-        with httpx.Client(headers=_auth_headers()) as client:
-            while True:
-                remaining = remaining_time()
-
-                try:
-                    response = client.get(
-                        handle.status_url,
-                        params={"logs": False},
-                        timeout=min(5, remaining),
-                    )
-                except httpx.TransportError:
-                    time.sleep(min(0.1, remaining_time()))
-                    continue
-
-                retryable_status = response.status_code in {408, 409, 429}
-                retryable_ingress_error = (
-                    response.status_code in {502, 503, 504}
-                    and "x-fal-request-id" not in response.headers
-                    and "nginx" in response.text
+    with httpx.Client(headers=_auth_headers()) as client:
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise AssertionError(
+                    f"Timed out waiting for app readiness for {app_alias}: {response!r}"
                 )
-                if retryable_status or retryable_ingress_error:
-                    time.sleep(min(0.1, remaining_time()))
-                    continue
 
-                response.raise_for_status()
-                status = response.json()
-                terminal = status["status"] == "COMPLETED"
+            try:
+                response = client.get(f"{run_url}{path}", timeout=remaining)
+            except httpx.TransportError:
+                time.sleep(min(0.1, max(0, deadline - time.monotonic())))
+                continue
 
-                remaining = remaining_time()
+            alias_not_found = _is_alias_not_found_response(response, app_alias)
+            retryable_status = response.status_code in {408, 409, 429}
+            retryable_ingress_error = (
+                response.status_code in {502, 503, 504}
+                and "x-fal-request-id" not in response.headers
+            )
+            if alias_not_found or retryable_status or retryable_ingress_error:
+                time.sleep(min(0.5, max(0, deadline - time.monotonic())))
+                continue
 
-                if terminal:
-                    assert status.get("error") is None, status["error"]
-                    return
-
-                time.sleep(min(0.1, remaining))
-    finally:
-        if handle is not None and not terminal:
-            with suppress(Exception):
-                with httpx.Client(headers=_auth_headers()) as client:
-                    client.put(handle.cancel_url, timeout=5).raise_for_status()
+            response.raise_for_status()
+            return
 
 
 GIT_REVISION_SHORT_HASH = (
@@ -947,21 +919,25 @@ def user(rest_client: Client) -> Generator[User, None, None]:
     yield user
 
 
+class RegisterApp(Protocol):
+    def __call__(
+        self,
+        app: Union[api.ServedIsolatedFunction, api.IsolatedFunction],
+        suffix: str = "",
+        readiness_path: str = "/health",
+    ) -> ContextManager[Tuple[str, str]]: ...
+
+
 @pytest.fixture(scope="module")
 def register_app(
     host: api.FalServerlessHost,
     make_tmp_app_name: Callable[[str], str],
-) -> Callable[
-    [
-        Union[api.ServedIsolatedFunction, api.IsolatedFunction],
-        str,
-    ],
-    ContextManager[Tuple[str, str]],
-]:
+) -> RegisterApp:
     @contextmanager
     def _register_app(
         app: Union[api.ServedIsolatedFunction, api.IsolatedFunction],
         suffix: str = "",
+        readiness_path: str = "/health",
     ):
         app_alias = make_tmp_app_name(suffix)
         result = host.register(
@@ -981,7 +957,11 @@ def register_app(
             with host._connection as client:
                 _wait_for_alias_revision(client, app_alias, app_revision)
             _wait_for_queue_alias(app_alias, result.service_urls.queue)
-            _wait_for_app_ready(result.service_urls.queue)
+            _wait_for_app_ready(
+                app_alias,
+                result.service_urls.run,
+                path=readiness_path,
+            )
             yield app_alias, app_revision
         finally:
             with host._connection as client:
@@ -1045,7 +1025,10 @@ def test_custom_health_path_app(
     user: User,
     register_app,
 ):
-    with register_app(custom_health_path_app, "custom-health") as (app_alias, _):
+    with register_app(custom_health_path_app, "custom-health", "/ready") as (
+        app_alias,
+        _,
+    ):
         yield f"{user.username}/{app_alias}"
 
 
@@ -1054,7 +1037,10 @@ def test_health_override_fn(
     user: User,
     register_app,
 ):
-    with register_app(health_override_fn, "health-override-fn") as (app_alias, _):
+    with register_app(health_override_fn, "health-override-fn", "/ready") as (
+        app_alias,
+        _,
+    ):
         yield f"{user.username}/{app_alias}"
 
 
@@ -1064,7 +1050,10 @@ def test_health_override_app(
     register_app,
 ):
     health_override_app = wrap_app(HealthOverrideApp)
-    with register_app(health_override_app, "health-override-app") as (app_alias, _):
+    with register_app(health_override_app, "health-override-app", "/ready") as (
+        app_alias,
+        _,
+    ):
         yield f"{user.username}/{app_alias}"
 
 
@@ -2331,9 +2320,9 @@ class AppRefApp(
     fal.App,
     keep_alive=300,
     max_concurrency=1,
-    max_multiplexing=3,
 ):
     machine_type = "XS"
+    max_multiplexing = 3
 
     async def setup(self):
         self.concurrent_requests = 0
@@ -2437,11 +2426,11 @@ class RequestContextApp(
     fal.App,
     keep_alive=300,
     max_concurrency=1,
-    max_multiplexing=3,
 ):
     """App to test request context fields are properly populated."""
 
     machine_type = "XS"
+    max_multiplexing = 3
 
     async def setup(self):
         self.concurrent_requests = 0
