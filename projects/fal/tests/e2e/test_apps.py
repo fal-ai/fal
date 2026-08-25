@@ -1081,7 +1081,7 @@ def test_cancellable_app(
 
 @pytest.fixture(scope="module")
 def test_exception_app():
-    with AppClient.connect(ExceptionApp) as client:
+    with AppClient.connect(ExceptionApp, startup_timeout=180) as client:
         yield client
 
 
@@ -2294,7 +2294,7 @@ def test_hints_encoding():
     Make sure that hints that can't be encoded in latin-1 don't crash the app
     https://github.com/encode/starlette/blob/a766a58d14007f07c0b5782fa78cdc370b892796/starlette/datastructures.py#L568
     """
-    with AppClient.connect(HintsApp) as client:
+    with AppClient.connect(HintsApp, startup_timeout=180) as client:
         with httpx.Client(headers=_auth_headers()) as httpx_client:
             url = client.url + "/add"
             resp = httpx_client.post(

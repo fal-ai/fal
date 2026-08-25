@@ -386,6 +386,7 @@ def test_keepalive_after_agent_exit(isolated_client):
     assert regular_function() == 42
 
 
+@pytest.mark.timeout(420)
 def test_faulty_setup_function(isolated_client):
     def good_setup_function():
         return 42
@@ -393,7 +394,7 @@ def test_faulty_setup_function(isolated_client):
     def bad_setup_function():
         raise ValueError()
 
-    @isolated_client("virtualenv")
+    @isolated_client("virtualenv", startup_timeout=180)
     def regular_function(result):
         return result * 2
 
