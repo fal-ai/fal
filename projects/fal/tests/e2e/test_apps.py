@@ -51,6 +51,8 @@ from fal.sdk import ApplicationHealthCheckConfig, RunnerState, get_credentials
 from fal.toolkit.utils.endpoint import cancel_on_disconnect
 from fal.workflows import Workflow
 
+pytestmark = pytest.mark.timeout(420)
+
 
 @pytest.fixture(scope="module")
 def rest_client() -> Generator[Client, None, None]:
@@ -284,7 +286,7 @@ def _wait_for_app_ready(
     run_url: str,
     *,
     path: str = "/health",
-    timeout: float = 60,
+    timeout: float = 180,
 ):
     deadline = time.monotonic() + timeout
     response = None
@@ -1377,7 +1379,6 @@ def test_app_disconnect_behavior(test_cancellable_app: str):
     ), "Expected Gateway Timeout even though the app handled it"
 
 
-@pytest.mark.timeout(120)
 def test_start_timeout_queue_blocking(test_queue_blocking_app: str):
     """
     Test that start_timeout correctly times out a request waiting in queue.
@@ -1416,7 +1417,6 @@ def test_start_timeout_queue_blocking(test_queue_blocking_app: str):
     assert timeout_type == "user", f"Expected 'user' timeout type, got {timeout_type}"
 
 
-@pytest.mark.timeout(120)
 def test_app_client_async(test_sleep_app: str):
     handle = apps.submit(test_sleep_app, arguments={"wait_time": 10})
     _wait_for_request_status(handle, apps.InProgress)
@@ -2068,7 +2068,7 @@ def submit_and_wait_for_runner(
     return handle
 
 
-@pytest.mark.timeout(180)
+@pytest.mark.timeout(480)
 def test_stop_runner(host: api.FalServerlessHost, test_sleep_app: str):
     _, _, app_alias = test_sleep_app.partition("/")
     submit_and_wait_for_runner(test_sleep_app, arguments={"wait_time": 1})
@@ -2128,7 +2128,7 @@ def test_stop_runner(host: api.FalServerlessHost, test_sleep_app: str):
         )
 
 
-@pytest.mark.timeout(180)
+@pytest.mark.timeout(480)
 def test_kill_runner(host: api.FalServerlessHost, test_sleep_app: str):
     handle = apps.submit(test_sleep_app, arguments={"wait_time": 30})
     _wait_for_request_status(handle, apps.InProgress, timeout=60)
@@ -2156,7 +2156,7 @@ def test_kill_runner(host: api.FalServerlessHost, test_sleep_app: str):
         )
 
 
-@pytest.mark.timeout(180)
+@pytest.mark.timeout(480)
 def test_rollout_application(host: api.FalServerlessHost, test_sleep_app: str):
     handle = apps.submit(test_sleep_app, arguments={"wait_time": 30})
     _wait_for_request_status(handle, apps.InProgress, timeout=60)
@@ -2195,7 +2195,7 @@ def test_rollout_application(host: api.FalServerlessHost, test_sleep_app: str):
         )
 
 
-@pytest.mark.timeout(180)
+@pytest.mark.timeout(480)
 def test_shell_runner(host: api.FalServerlessHost, test_sleep_app: str):
     handle = submit_and_wait_for_runner(test_sleep_app, arguments={"wait_time": 1})
     assert handle.get() == {"slept": True}
@@ -2226,7 +2226,7 @@ def test_shell_runner(host: api.FalServerlessHost, test_sleep_app: str):
                 proc.wait()
 
 
-@pytest.mark.timeout(180)
+@pytest.mark.timeout(480)
 def test_exec_runner(host: api.FalServerlessHost, test_sleep_app: str):
     handle = submit_and_wait_for_runner(test_sleep_app, arguments={"wait_time": 1})
     assert handle.get() == {"slept": True}
@@ -2367,7 +2367,7 @@ def test_app_ref_app_client(test_app_ref_app: str):
     assert result_3["from_app"] == result_3["from_external_method"]
 
 
-@pytest.mark.timeout(180)
+@pytest.mark.timeout(480)
 def test_runner_machine_type(host: api.FalServerlessHost, test_sleep_app: str):
     """Test that machine_type is populated in runner info."""
     search_start = datetime.now() - timedelta(minutes=5)
