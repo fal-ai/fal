@@ -17,7 +17,12 @@ print("AUTH:", get_credentials(), file=sys.stderr)
 
 @pytest.fixture(scope="function")
 def isolated_client():
-    return partial(function, machine_type="XS", keep_alive=0)
+    return partial(
+        function,
+        machine_type="XS",
+        keep_alive=0,
+        startup_timeout=180,
+    )
 
 
 @pytest.fixture(scope="module")

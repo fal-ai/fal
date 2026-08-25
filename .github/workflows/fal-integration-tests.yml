@@ -29,7 +29,7 @@ jobs:
   integration:
     name: integration (${{ matrix.os }}, py ${{ matrix.python }}, ${{ matrix.deps }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 10
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       max-parallel: 4

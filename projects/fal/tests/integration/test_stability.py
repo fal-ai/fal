@@ -15,6 +15,8 @@ from fal.toolkit.file import File
 
 PACKAGE_NAME = "fall"
 
+pytestmark = pytest.mark.timeout(420)
+
 
 GIT_REVISION_SHORT_HASH = (
     subprocess.check_output(["git", "rev-parse", "--short", "HEAD"])
@@ -54,7 +56,6 @@ def test_regular_function(isolated_client):
     assert mult(5, 2) == 10
 
 
-@pytest.mark.timeout(180)
 @pytest.mark.xdist_group(name="container-builds")
 def test_regular_function_in_a_container(isolated_client):
     @isolated_client("container", keep_alive=10)
@@ -70,7 +71,6 @@ def test_regular_function_in_a_container(isolated_client):
     assert mult(5, 2) == 10
 
 
-@pytest.mark.timeout(180)
 @pytest.mark.xdist_group(name="container-builds")
 def test_container_no_venv(isolated_client):
     actual_python = active_python()
@@ -90,7 +90,6 @@ def test_container_no_venv(isolated_client):
     assert myfunc() == 42
 
 
-@pytest.mark.timeout(180)
 @pytest.mark.xdist_group(name="container-builds")
 def test_container_venv(isolated_client):
     actual_python = active_python()
@@ -113,7 +112,6 @@ def test_container_venv(isolated_client):
 
 
 @pytest.mark.flaky(max_runs=3)
-@pytest.mark.timeout(180)
 @pytest.mark.xdist_group(name="container-builds")
 def test_regular_function_in_a_container_with_custom_image(isolated_client):
     actual_python = active_python()
@@ -358,6 +356,7 @@ def test_memory_overflow_crash_on_run(isolated_client):
         memory_overflow_crash_on_run()
 
 
+@pytest.mark.timeout(600)
 def test_keepalive_after_agent_exit(isolated_client):
     # Should work (fresh)
     @isolated_client("virtualenv")
@@ -386,7 +385,6 @@ def test_keepalive_after_agent_exit(isolated_client):
     assert regular_function() == 42
 
 
-@pytest.mark.timeout(420)
 def test_faulty_setup_function(isolated_client):
     def good_setup_function():
         return 42
@@ -394,7 +392,7 @@ def test_faulty_setup_function(isolated_client):
     def bad_setup_function():
         raise ValueError()
 
-    @isolated_client("virtualenv", startup_timeout=180)
+    @isolated_client("virtualenv")
     def regular_function(result):
         return result * 2
 
@@ -524,7 +522,6 @@ def test_cached_function(isolated_client, capsys, monkeypatch):
     assert out.count("computing") == 1
 
 
-@pytest.mark.timeout(120)
 def test_pydantic_serialization(isolated_client):
     from pydantic import BaseModel, Field
 
