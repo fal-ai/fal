@@ -426,7 +426,23 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
         raise MeteredFetchError("Metered endpoint returned an unexpected redirect")
 
 
-_OPENER = urllib.request.build_opener(_NoRedirect())
+#: Test seam only: tests inject a fake opener here. Deliberately ``None`` in
+#: production — a constructed ``OpenerDirector`` holds an ``SSLContext``
+#: (Python 3.12+), which is unpicklable, and the whole ``fal`` package is
+#: cloudpickled by value to runners at deploy, so a module-level opener fails
+#: every deploy of an app that references this module.
+_OPENER: Any = None
+
+
+def _opener() -> urllib.request.OpenerDirector:
+    """Return the injected test opener, or build one per request.
+
+    Credential mints happen at most once per cache TTL, so per-call
+    construction costs nothing measurable.
+    """
+    if _OPENER is not None:
+        return _OPENER
+    return urllib.request.build_opener(_NoRedirect())
 
 
 def _http_json(url: str, *, method: str, body: bytes | None, kind: str) -> Any:
@@ -444,7 +460,7 @@ def _http_json(url: str, *, method: str, body: bytes | None, kind: str) -> Any:
         headers["Content-Type"] = "application/json"
     request = urllib.request.Request(url, data=body, method=method, headers=headers)
     try:
-        with _OPENER.open(request, timeout=HTTP_TIMEOUT_SECONDS) as response:
+        with _opener().open(request, timeout=HTTP_TIMEOUT_SECONDS) as response:
             raw = response.read(MAX_RESPONSE_BYTES + 1)
     except MeteredFetchError:
         raise
