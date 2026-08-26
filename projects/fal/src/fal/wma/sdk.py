@@ -4,7 +4,14 @@ This is an experimental API: it may change in a minor release. See the
 ``fal.wma`` package docstring for the session protocol and lifecycle.
 """
 
-from __future__ import annotations
+# NO ``from __future__ import annotations`` here, deliberately: fal apps are
+# cloudpickled to runners, and cloudpickle ships only the globals referenced
+# by CODE. Stringified annotations (PEP 563) then arrive as ForwardRefs whose
+# names (``Optional``, model classes, ...) are missing from the reconstructed
+# globals, and FastAPI's dependency resolution fails at the first request
+# with a PydanticUserError. Annotations below are real objects, evaluated at
+# def time, using ``typing`` forms (3.8-safe) or explicit strings where a
+# runtime subscript would not be.
 
 import asyncio
 import inspect
@@ -23,6 +30,8 @@ from typing import (
     Literal,
     Optional,
     Protocol,
+    Tuple,
+    Union,
 )
 
 from fastapi import Body, Header, HTTPException
@@ -59,8 +68,8 @@ START_SESSION_PATH = "/start-session"
 FAL_BILLING_HEADER = "x-fal-billable-units"
 FAL_BILLING_WEBHOOK_HEADER = "x-fal-billable-units-webhook"
 
-_CLOSE_TASKS: set[asyncio.Task[Any]] = set()
-_SESSION_TASKS: set[asyncio.Task[Any]] = set()
+_CLOSE_TASKS: "set[asyncio.Task[Any]]" = set()
+_SESSION_TASKS: "set[asyncio.Task[Any]]" = set()
 logger = logging.getLogger(__name__)
 
 _BILLING_REST_CLIENT: Any = None
@@ -116,14 +125,14 @@ class SessionParams(Dict[str, Any]):
         super().__init__(*args, **kwargs)
         self._push: Callable[[dict[str, Any]], Any] | None = None
 
-    def _bind(self, push: Callable[[dict[str, Any]], Any]) -> None:
+    def _bind(self, push: Callable[[Dict[str, Any]], Any]) -> None:
         self._push = push
 
     def _sync(self) -> None:
         if self._push is not None:
             self._push(dict(self))
 
-    def _merge_from_client(self, params: dict[str, Any]) -> None:
+    def _merge_from_client(self, params: Dict[str, Any]) -> None:
         super().update(params)
 
     def __setitem__(self, key: str, value: Any) -> None:
@@ -152,12 +161,12 @@ class SessionParams(Dict[str, Any]):
         self._sync()
         return result
 
-    def popitem(self) -> tuple[str, Any]:
+    def popitem(self) -> Tuple[str, Any]:
         result = super().popitem()
         self._sync()
         return result
 
-    def __ior__(self, other: Any) -> SessionParams:  # type: ignore[misc, override]
+    def __ior__(self, other: Any) -> "SessionParams":  # type: ignore[misc, override]
         super().update(other)
         self._sync()
         return self
@@ -175,8 +184,8 @@ class Session:
         self,
         request: StartSessionRequest,
         *,
-        caller_user_id: str | None = None,
-        request_id: str | None = None,
+        caller_user_id: Optional[str] = None,
+        request_id: Optional[str] = None,
     ) -> None:
         self.id = request.session_id
         self.offer = request
@@ -290,7 +299,7 @@ class Session:
 
     def bind_sender(
         self,
-        sender: Callable[[dict[str, Any]], bool],
+        sender: Callable[[Dict[str, Any]], bool],
         *,
         thread_safe: bool = False,
     ) -> None:
@@ -325,14 +334,14 @@ class Session:
     def on_message(
         self,
         kind: str,
-        handler: Callable[[dict[str, Any]], Any],
+        handler: Callable[[Dict[str, Any]], Any],
         *,
         inline: bool = False,
-    ) -> Callable[[dict[str, Any]], Any]:
+    ) -> Callable[[Dict[str, Any]], Any]:
         self._handlers.setdefault(kind, []).append((handler, inline))
         return handler
 
-    def receive(self, message: dict[str, Any]) -> None:
+    def receive(self, message: Dict[str, Any]) -> None:
         if self._is_closed or not isinstance(message, dict):
             return
         try:
@@ -350,7 +359,7 @@ class Session:
             elif self._dispatch_inline(message):
                 self._loop.call_soon_threadsafe(self._dispatch, message, True)
 
-    def _dispatch_inline(self, message: dict[str, Any]) -> bool:
+    def _dispatch_inline(self, message: Dict[str, Any]) -> bool:
         kind = message.get("type")
         if not isinstance(kind, str):
             return False
@@ -372,7 +381,7 @@ class Session:
                     self._inline_condition.notify_all()
         return any(not inline for _handler, inline in handlers)
 
-    def _dispatch(self, message: dict[str, Any], skip_inline: bool = False) -> None:
+    def _dispatch(self, message: Dict[str, Any], skip_inline: bool = False) -> None:
         if self._is_closed:
             return
         kind = message.get("type")
@@ -396,8 +405,8 @@ class Session:
 
     def _invoke_handler(
         self,
-        handler: Callable[[dict[str, Any]], Any],
-        message: dict[str, Any],
+        handler: Callable[[Dict[str, Any]], Any],
+        message: Dict[str, Any],
     ) -> None:
         try:
             result = handler(message)
@@ -417,7 +426,7 @@ class Session:
             else:
                 self._loop.call_soon_threadsafe(self.create_task, result)
 
-    def send(self, message: dict[str, Any]) -> bool:
+    def send(self, message: Dict[str, Any]) -> bool:
         sender = self._sender
         if sender is None or self._is_closed:
             return False
@@ -436,7 +445,7 @@ class Session:
     def set_response_header(self, name: str, value: str) -> None:
         self.response_headers[name] = value
 
-    def create_task(self, awaitable: Awaitable[Any]) -> asyncio.Task[Any] | None:
+    def create_task(self, awaitable: Awaitable[Any]) -> "Optional[asyncio.Task[Any]]":
         if self._is_closed:
             if inspect.iscoroutine(awaitable):
                 awaitable.close()
@@ -452,7 +461,7 @@ class Session:
         task.add_done_callback(self._task_done)
         return task
 
-    def _task_done(self, task: asyncio.Task[Any]) -> None:
+    def _task_done(self, task: "asyncio.Task[Any]") -> None:
         self._tasks.discard(task)
         if task.cancelled():
             return
@@ -565,19 +574,19 @@ class App(fal.App):
     #: discovery link; :meth:`asyncapi` publishes the live-session contract.
     #: Left unset, the app's OpenAPI document is exactly what it was before
     #: contracts existed.
-    realtime_contract: ClassVar[RealtimeContract | None] = None
+    realtime_contract: ClassVar[Optional[RealtimeContract]] = None
 
     async def create_backend(self, session: Session) -> PeerBackend:
         raise NotImplementedError("WMA App subclasses must implement create_backend()")
 
-    def openapi(self) -> dict[str, Any]:
+    def openapi(self) -> Dict[str, Any]:
         spec = super().openapi()
         contract = type(self).realtime_contract
         if contract is None:
             return spec
         return apply_contract(spec, path=START_SESSION_PATH)
 
-    def asyncapi(self) -> dict[str, Any]:
+    def asyncapi(self) -> Dict[str, Any]:
         """Build the standalone realtime contract paired with ``openapi()``."""
 
         contract = type(self).realtime_contract
@@ -602,7 +611,7 @@ class App(fal.App):
         )
 
     @classmethod
-    def build_metadata(cls) -> dict[str, Any]:
+    def build_metadata(cls) -> Dict[str, Any]:
         """Publish both documents through the deployment metadata channel."""
 
         app = cls(_allow_init=True)
@@ -791,9 +800,9 @@ class AiortcPeer:
         *,
         create_default_channel: bool = True,
         rtc_configuration: Any = None,
-        peer_connection_factory: Callable[[], Any] | None = None,
-        disconnected_grace_seconds: float | None = 0,
-        initial_connect_timeout_seconds: float | None = (
+        peer_connection_factory: Optional[Callable[[], Any]] = None,
+        disconnected_grace_seconds: Optional[float] = 0,
+        initial_connect_timeout_seconds: Optional[float] = (
             INITIAL_CONNECT_TIMEOUT_SECONDS
         ),
     ) -> None:
@@ -881,12 +890,12 @@ class AiortcPeer:
         return SessionAnswer(sdp=answer_sdp)
 
     @property
-    def connection_report_version(self) -> int | None:
+    def connection_report_version(self) -> Optional[int]:
         if self._connection_report is None:
             return None
         return self._connection_report.version
 
-    async def wait_connection_report(self) -> dict[str, str | int]:
+    async def wait_connection_report(self) -> Dict[str, Union[str, int]]:
         observer = self._connection_report
         if observer is None:
             raise RuntimeError("WMA connection reporting is unavailable")
@@ -962,7 +971,7 @@ class AiortcPeer:
             if channel is self._channel:
                 self._closed.set()
 
-    def send(self, message: dict[str, Any]) -> bool:
+    def send(self, message: Dict[str, Any]) -> bool:
         channel = self._channel
         if channel is None or channel.readyState != "open":
             return False

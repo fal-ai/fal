@@ -137,6 +137,20 @@ def test_error_classes_are_publicly_exported():
     assert error.headers["X-Fal-needs-retry"] == "false"
 
 
+def test_endpoint_annotations_survive_cloudpickle():
+    # fal apps are cloudpickled to runners, and cloudpickle ships only the
+    # globals referenced by CODE. Stringified annotations (a `from __future__
+    # import annotations` in sdk.py) become unresolvable ForwardRefs there,
+    # and FastAPI's dependency resolution 500s every /start-session at the
+    # first request. Pin that every endpoint annotation is a def-time object.
+    hints = fal.wma.App.start_session.__annotations__
+    assert hints, "start_session must be annotated"
+    stringified = {k: v for k, v in hints.items() if isinstance(v, str)}
+    assert (
+        not stringified
+    ), f"stringified annotations would break on runners: {stringified}"
+
+
 def test_import_fal_does_not_import_wma():
     # The experimental package must load only on explicit ``import fal.wma``:
     # ``import fal`` stays byte-identical for everyone else.
