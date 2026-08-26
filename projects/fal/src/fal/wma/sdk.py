@@ -50,7 +50,10 @@ from fal.wma.telemetry import (
 
 SSE_KEEPALIVE_INTERVAL = 15
 STREAM_START_TIMEOUT_SECONDS = 5
-DATA_CHANNEL_LABEL = "fal"
+# fal-js creates this channel during offer construction. Keeping the label in
+# one shared protocol constant makes the high-level peer and the published
+# AsyncAPI describe the channel that browsers actually open.
+DATA_CHANNEL_LABEL = "control"
 START_SESSION_PATH = "/start-session"
 
 FAL_BILLING_HEADER = "x-fal-billable-units"
@@ -540,6 +543,13 @@ def _schema_prefix(app_class_name: str) -> str:
 
 class App(fal.App):
     """A WMA app whose one lifecycle endpoint owns a long-lived connection."""
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        # ``fal.App`` stores its resolved name on the class. Without clearing
+        # the intermediate WMA base's inherited value ("app"), every concrete
+        # subclass ignores both ``name=...`` and its own class-derived default.
+        cls.app_name = None
+        super().__init_subclass__(**kwargs)
 
     # ``secrets`` is deliberately NOT overridden here: an explicit ``[]`` is
     # an opt-in to *zero* secrets that every subclass would inherit, silently

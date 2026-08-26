@@ -29,6 +29,19 @@ class EchoWmaApp(fal.wma.App):
         return fal.wma.AiortcPeer(session, lambda _pc: None)
 
 
+def test_wma_subclass_keeps_its_concrete_app_name():
+    class NamedWmaApp(fal.wma.App, name="named-wma"):
+        async def create_backend(self, session):  # pragma: no cover - not run
+            raise NotImplementedError
+
+    class DefaultNamedWmaApp(fal.wma.App):
+        async def create_backend(self, session):  # pragma: no cover - not run
+            raise NotImplementedError
+
+    assert NamedWmaApp.app_name == "named-wma"
+    assert DefaultNamedWmaApp.app_name == "default-named-wma-app"
+
+
 def test_wrap_app_injects_wma_runner_requirements():
     from fal.app import WMA_APP_REQUIREMENTS, wrap_app
 

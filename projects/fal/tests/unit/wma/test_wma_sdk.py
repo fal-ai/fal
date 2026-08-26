@@ -39,7 +39,7 @@ class FakeEmitter:
 
 
 class FakeChannel(FakeEmitter):
-    def __init__(self, ready_state="connecting", label="fal") -> None:
+    def __init__(self, ready_state="connecting", label="control") -> None:
         super().__init__()
         self.readyState = ready_state
         self.label = label
@@ -554,6 +554,7 @@ def test_aiortc_peer_negotiates_and_routes_data_channel(fake_aiortc):
         assert report["ice_protocol"] == "unknown"
         assert report["setup_ms"] >= 0
 
+        assert pc.channel.label == wma_sdk.DATA_CHANNEL_LABEL == "control"
         pc.channel.open()
         assert session.send({"type": "ready"}) is True
         assert json.loads(pc.channel.sent[-1]) == {"type": "ready"}
