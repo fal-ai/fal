@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import inspect
 import os
 import queue
@@ -45,6 +46,9 @@ from fal.toolkit.file import request_lifecycle_preference
 from fal.toolkit.file.providers.fal import _LIFECYCLE_PREFERENCE
 
 REALTIME_APP_REQUIREMENTS = ["websockets", "msgpack"]
+# Injected into the runner env of fal.wma.App subclasses so a WMA app need not
+# declare its own WebRTC stack; an app pinning a compatible aiortc keeps its pin.
+WMA_APP_REQUIREMENTS = ["aiortc>=1.9,<2"]
 REQUEST_ID_KEY = "x-fal-request-id"
 REQUEST_ENDPOINT_KEY = "x-fal-endpoint"
 CDN_TOKEN_KEY = "x-fal-cdn-token"
@@ -134,6 +138,37 @@ async def _set_logger_labels(
         logger.debug("Failed to set logger labels", exc_info=True)
 
 
+def _is_wma_app(cls: type) -> bool:
+    """True when ``cls`` is a ``fal.wma.App`` subclass.
+
+    Checked through ``sys.modules`` so importing ``fal.app`` never imports
+    ``fal.wma`` (the experimental package loads only when the user imports it,
+    and a WMA subclass cannot exist unless they did).
+    """
+    wma_sdk = sys.modules.get("fal.wma.sdk")
+    return wma_sdk is not None and issubclass(cls, wma_sdk.App)
+
+
+_REQUIREMENT_NAME_RE = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9._-]*)")
+
+
+def _declares_requirement(
+    requirements: list[str] | list[list[str]], package: str
+) -> bool:
+    """True when the app's own requirements already pin ``package``."""
+    flat: list[str] = []
+    for entry in requirements:
+        if isinstance(entry, list):
+            flat.extend(entry)
+        else:
+            flat.append(entry)
+    for line in flat:
+        match = _REQUIREMENT_NAME_RE.match(line)
+        if match and match.group(1).replace("_", "-").lower() == package:
+            return True
+    return False
+
+
 def wrap_app(cls: type[App], **kwargs) -> IsolatedFunction:
     include_modules_from(cls)
     limit_max_requests = kwargs.pop("limit_max_requests", None)
@@ -178,16 +213,23 @@ def wrap_app(cls: type[App], **kwargs) -> IsolatedFunction:
     initialize_and_serve._routes = sorted(r.path for r in routes.keys()) or ["/"]  # type: ignore[attr-defined]
     realtime_app = any(route.is_websocket for route in routes)
 
-    kind = cls.host_kwargs.pop("kind", "virtualenv")
+    # Never mutate class attributes here: ``cls.host_kwargs`` and
+    # ``cls.requirements`` are shared class state, and a wrapped copy must not
+    # change what a second ``wrap_app`` of the same class (spawn, run_local,
+    # a later deploy) observes. ``add_requirements`` below extends the
+    # requirements list in place, and popping ``kind`` out of the class dict
+    # would silently turn the second wrap into a virtualenv build.
+    host_kwargs = dict(cls.host_kwargs)
+    kind = host_kwargs.pop("kind", "virtualenv")
 
     wrapper = fal_function(
         kind,
-        requirements=cls.requirements,
+        requirements=copy.copy(cls.requirements),
         local_python_modules=cls.local_python_modules,
         machine_type=cls.machine_type,
         num_gpus=cls.num_gpus,
         regions=cls.regions,
-        **cls.host_kwargs,
+        **host_kwargs,
         **kwargs,
         metadata=metadata,
         exposed_port=8080,
@@ -197,6 +239,11 @@ def wrap_app(cls: type[App], **kwargs) -> IsolatedFunction:
     fn.options.add_requirements(SERVE_REQUIREMENTS)
     if realtime_app:
         fn.options.add_requirements(REALTIME_APP_REQUIREMENTS)
+    if _is_wma_app(cls) and not _declares_requirement(cls.requirements, "aiortc"):
+        # An app that pins its own aiortc keeps that pin: injecting the range
+        # alongside it would either fail resolution (flat requirements) or
+        # override the app's pin as a later layer (layered requirements).
+        fn.options.add_requirements(WMA_APP_REQUIREMENTS)
 
     fn.app_name = cls.app_name
     fn.app_auth = cls.app_auth
