@@ -52,10 +52,13 @@ class InProgress(_Status):
 
 @dataclass
 class Completed(_Status):
-    """Indicates the request has been completed successfully and the result is
-    ready to be retrieved."""
+    """Indicates the request has reached a terminal state and the result is
+    ready to be retrieved. A completed request may still have failed, in which
+    case `error` describes it."""
 
     logs: list[dict[str, Any]] | None = field()
+    error: str | None = None
+    error_type: str | None = None
 
 
 @lru_cache(maxsize=1)
@@ -102,7 +105,11 @@ class RequestHandle:
         data = response.json()
 
         if response.status_code == 200:
-            return Completed(logs=data["logs"])
+            return Completed(
+                logs=data["logs"],
+                error=data.get("error"),
+                error_type=data.get("error_type"),
+            )
 
         if data["status"] == "IN_QUEUE":
             return Queued(position=data["queue_position"])

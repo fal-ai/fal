@@ -172,7 +172,12 @@ class FalParser(argparse.ArgumentParser):
         raise FalParserExit(status)
 
     def parse_args(self, args=None, namespace=None):
-        argcomplete.autocomplete(self)
+        if (
+            "_ARGCOMPLETE" in os.environ
+            and "COMP_LINE" in os.environ
+            and "COMP_POINT" in os.environ
+        ):
+            argcomplete.autocomplete(self)
         args, argv = self.parse_known_args(args, namespace)
         if argv:
             parser = _find_parser(self, getattr(args, "func", None)) or self
