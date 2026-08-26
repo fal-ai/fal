@@ -646,11 +646,21 @@ def test_aiortc_peer_connects_to_real_client_data_channel():
     from aioice import ice
     from aiortc import RTCConfiguration, RTCPeerConnection, RTCSessionDescription
 
+    from fal.wma import _raw
+
     async def scenario():
         original_ice_close = ice.Connection.close
-        # ``iceServers=[]`` (not None) disables aiortc's default Google STUN:
-        # both peers gather host candidates only, so the negotiation stays on
-        # this machine and the unit suite makes no external network calls.
+        original_get_host_addresses = ice.get_host_addresses
+        original_classifier = _raw.is_globally_routable_ip
+        # Zero-network setup: ``iceServers=[]`` (not None) disables aiortc's
+        # default Google STUN, host discovery is pinned to loopback (aioice
+        # excludes 127.0.0.1, and CI runners have no globally routable
+        # interface, so nothing else can pair), and the SSRF candidate filter
+        # is bypassed for this test only — with real classification the
+        # loopback offer would rightly be stripped. The filter's strictness is
+        # pinned separately (TestFilterSdpIceCandidates, the security pins).
+        ice.get_host_addresses = lambda use_ipv4, use_ipv6: ["127.0.0.1"]
+        _raw.is_globally_routable_ip = lambda ip: True
         client = RTCPeerConnection(configuration=RTCConfiguration(iceServers=[]))
         channel = client.createDataChannel("control")
         channel_open = asyncio.Event()
@@ -707,6 +717,8 @@ def test_aiortc_peer_connects_to_real_client_data_channel():
             await client.close()
             await session.close()
             ice.Connection.close = original_ice_close
+            ice.get_host_addresses = original_get_host_addresses
+            _raw.is_globally_routable_ip = original_classifier
 
     asyncio.run(scenario())
 
