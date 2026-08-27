@@ -381,8 +381,7 @@ def _headers_get(headers: Mapping[str, Any] | None, key: str) -> Any:
 def parse_upload_policy(headers: Mapping[str, Any] | None) -> UploadPolicy | None:
     """Parse and validate the policy header.
 
-    Returns ``None`` when the header is absent, or when a stubbed request
-    answers with a stub rather than a string (see below). Raises
+    Returns ``None`` only when the header is absent. Raises
     ``UploadPolicyInputError`` (422) on anything malformed -- including a blank
     value, which is a policy the caller failed to build rather than a request
     to use the fal CDN. Silently falling back there would be the one failure
@@ -392,13 +391,10 @@ def parse_upload_policy(headers: Mapping[str, Any] | None) -> UploadPolicy | Non
     if raw is None:
         return None
     if not isinstance(raw, (str, bytes)):
-        # A stubbed request returns a stub for every header, so this header was
-        # not sent. Any other non-string is real malformed input and must not
-        # silently reach the fal CDN.
-        if type(raw).__module__.startswith("unittest.mock"):
-            return None
         raise UploadPolicyInputError(
-            f"Invalid {UPLOAD_POLICY_KEY} header: must be a string"
+            f"Invalid {UPLOAD_POLICY_KEY} header: must be a string, got "
+            f"{type(raw).__name__}. A stubbed request answers every header with a "
+            "stub: have its headers return None for this one."
         )
 
     try:
@@ -540,8 +536,7 @@ def get_upload_policy(request: Any = None) -> UploadPolicy | None:
         return None
     # Middleware (RequestContext) parses once per request and caches the result
     # here, as None or an UploadPolicy. A bare fastapi Request has no such
-    # attribute and falls through to parsing its headers, as does a stubbed
-    # request, whose stub attribute is neither and whose headers parse to None.
+    # attribute and falls through to parsing its headers.
     cached = getattr(request, "upload_policy", _UNSET)
     if cached is None or isinstance(cached, UploadPolicy):
         return cached

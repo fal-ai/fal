@@ -109,12 +109,13 @@ def test_only_an_absent_header_is_ignored():
 
 
 def test_a_non_string_header_is_rejected_not_ignored():
-    """Only a Mock gets the pass; anything else non-string is real malformed
-    input and must not silently fall through to the fal CDN."""
+    """Non-string values are real malformed input and must not silently fall
+    through to the fal CDN. Matches registry, which has no exemption either."""
     with pytest.raises(UploadPolicyInputError, match="must be a string"):
         parse_upload_policy({UPLOAD_POLICY_KEY: 42})
 
-    assert parse_upload_policy({UPLOAD_POLICY_KEY: MagicMock()}) is None
+    with pytest.raises(UploadPolicyInputError, match="must be a string"):
+        parse_upload_policy({UPLOAD_POLICY_KEY: MagicMock()})
 
 
 def test_header_lookup_is_case_insensitive():

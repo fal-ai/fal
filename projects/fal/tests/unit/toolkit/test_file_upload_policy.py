@@ -281,13 +281,30 @@ async def test_async_constructors_resolve_the_policy_through_the_contextvar(
     assert from_path.url.startswith("https://bucket.s3.us-west-1.amazonaws.com/")
 
 
-def test_a_mock_request_object_is_not_treated_as_a_policy(accepting_s3):
-    """App test suites routinely pass a bare MagicMock as request=."""
+def test_a_mock_request_object_is_a_422(accepting_s3):
+    """A stubbed request answers the header lookup with a stub, which is
+    malformed input. Registry's parse_upload_policy exempts nothing either, so
+    an app test that wants no policy must stub the headers, not the request."""
+    with pytest.raises(UploadPolicyInputError, match="must be a string"):
+        File.from_bytes(
+            b"payload",
+            content_type="text/plain",
+            repository="in_memory",
+            request=MagicMock(),
+        )
+
+    assert not accepting_s3
+
+
+def test_a_request_with_stubbed_headers_has_no_policy(accepting_s3):
+    """The supported way to stub: keyed headers, so the lookup answers None."""
+    request = MagicMock()
+    request.headers.get.return_value = None
     file = File.from_bytes(
         b"payload",
         content_type="text/plain",
         repository="in_memory",
-        request=MagicMock(),
+        request=request,
     )
 
     assert file.url.startswith("data:text/plain;base64,")
