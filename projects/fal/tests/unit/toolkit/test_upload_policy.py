@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import shutil
 import threading
 import time
 from pathlib import Path
@@ -1167,19 +1169,22 @@ class TestUploadPath:
         assert seen["body"] == b"file bytes"
 
     def test_survives_the_caller_deleting_the_file(self, tmp_path, monkeypatch):
-        """The upload outlives the call, and apps routinely delete the temp
-        file they just handed us."""
+        """Apps routinely delete the temp file they just handed us. Gated at
+        client construction, the one point that precedes any staged read."""
         source = tmp_path / "cat.png"
         source.write_bytes(b"file bytes")
         release = threading.Event()
         seen = {}
 
         def fake_post(url, **kwargs):
-            release.wait(timeout=5)
             seen["body"] = kwargs["files"]["file"][1].read()
             return httpx.Response(204, request=httpx.Request("POST", url))
 
-        monkeypatch.setattr(up, "_new_client", lambda: _StubClient(fake_post))
+        def gated_client():
+            release.wait(timeout=5)
+            return _StubClient(fake_post)
+
+        monkeypatch.setattr(up, "_new_client", gated_client)
         upload_path_with_policy(VALID_POLICY, source, "cat.png", "image/png")
         source.unlink()  # gone before the upload has started
         release.set()
@@ -1225,7 +1230,69 @@ class TestUploadPath:
 
         assert staged and not staged[0].exists()
 
-    def test_reopens_the_file_for_each_attempt(self, tmp_path, monkeypatch):
+    @pytest.mark.skipif(
+        os.name == "nt",
+        reason="a delete-pending entry can keep Windows from removing the dir",
+    )
+    def test_survives_the_caller_deleting_the_whole_directory(
+        self, tmp_path, monkeypatch
+    ):
+        """Apps drop the TemporaryDirectory they wrote into as soon as
+        from_path returns. Nothing the POST needs may live under that name."""
+        workdir = tmp_path / "work"
+        workdir.mkdir()
+        source = workdir / "cat.png"
+        source.write_bytes(b"file bytes")
+        release = threading.Event()
+        seen = {}
+
+        def fake_post(url, **kwargs):
+            seen["body"] = kwargs["files"]["file"][1].read()
+            return httpx.Response(204, request=httpx.Request("POST", url))
+
+        def gated_client():
+            release.wait(timeout=5)
+            return _StubClient(fake_post)
+
+        monkeypatch.setattr(up, "_new_client", gated_client)
+        upload_path_with_policy(VALID_POLICY, source, "cat.png", "image/png")
+        shutil.rmtree(workdir)  # gone before the upload has started
+        release.set()
+        drain(timeout=5)
+
+        assert seen["body"] == b"file bytes"
+
+    @pytest.mark.skipif(
+        os.name == "nt",
+        reason="Windows cannot unlink an open file, so it gets delete-on-close",
+    )
+    def test_staged_copy_is_unlinked_before_the_upload_starts(
+        self, tmp_path, monkeypatch
+    ):
+        """Nothing is left on disk to strand up to 5 GB if the runner is
+        SIGKILLed mid-upload; the descriptor still holds the bytes."""
+        source = tmp_path / "cat.png"
+        source.write_bytes(b"file bytes")
+        release = threading.Event()
+        seen = {}
+
+        def fake_post(url, **kwargs):
+            seen["body"] = kwargs["files"]["file"][1].read()
+            return httpx.Response(204, request=httpx.Request("POST", url))
+
+        def gated_client():
+            release.wait(timeout=5)
+            return _StubClient(fake_post)
+
+        monkeypatch.setattr(up, "_new_client", gated_client)
+        upload_path_with_policy(VALID_POLICY, source, "cat.png", "image/png")
+        assert list(tmp_path.iterdir()) == [source]
+        release.set()
+        drain(timeout=5)
+
+        assert seen["body"] == b"file bytes"
+
+    def test_rewinds_the_staged_handle_for_each_attempt(self, tmp_path, monkeypatch):
         source = tmp_path / "cat.png"
         source.write_bytes(b"file bytes")
         bodies = []

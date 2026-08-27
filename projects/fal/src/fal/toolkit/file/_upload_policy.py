@@ -805,7 +805,7 @@ def _submit(
                 )
             )
         finally:
-            # After every attempt, not each one: a retry reopens the staged file.
+            # After every attempt, not each one: a retry rewinds the staged handle.
             _safe_cleanup(cleanup, request_id)
             with _state_lock:
                 _pending_bytes -= nbytes
@@ -937,40 +937,61 @@ def upload_path_with_policy(
     Staged with a copy, not a hardlink: the caller may overwrite the path in
     place (``open(path, "wb")``) before the background upload runs, which a
     shared inode would let corrupt it. A copy snapshots the bytes now.
+
+    The retained handle, not the name, is what the POST reads, because apps
+    routinely drop the ``TemporaryDirectory`` they wrote into the moment
+    ``from_path`` returns; reopening by name would leave a 200 with a dead URL.
+    POSIX unlinks the snapshot as soon as it is staged, so a runner killed
+    during the upload strands nothing.
+    Windows cannot unlink an open file, so there the name lingers until the
+    handle closes; runners are POSIX, so that is a test-only difference.
     """
     _validate_size(file_path.stat().st_size)
     access_url, fields = _prepare_upload(policy, file_name, content_type)
+    request_id = _current_request_id()
 
     # Stage on the source's own volume, not the default temp dir: the payload can
     # be large (up to 5 GB) and belongs next to where it was written rather than
     # on a possibly small /tmp.
-    with NamedTemporaryFile(dir=file_path.parent, delete=False) as handle:
-        staged = Path(handle.name)
+    handle = NamedTemporaryFile(dir=file_path.parent)
+
+    def _cleanup() -> None:
+        try:
+            handle.close()
+        except FileNotFoundError:
+            # Already unlinked, by us below or by a caller that dropped the
+            # directory; the closer unlinks unguarded before 3.12.
+            pass
+
     try:
-        shutil.copyfile(file_path, staged)
+        with open(file_path, "rb") as source:
+            shutil.copyfileobj(source, handle)
+        handle.flush()
+        if os.name != "nt":
+            os.unlink(handle.name)
     except Exception:
-        staged.unlink(missing_ok=True)
+        _safe_cleanup(_cleanup, request_id)
         raise
 
     def _post(client: httpx.Client) -> httpx.Response:
-        # Reopened per attempt; a retry cannot reuse a consumed file object.
-        with open(staged, "rb") as source:
-            return client.post(
-                policy.url,
-                data=fields,
-                files={"file": (file_name, source, content_type)},
-            )
+        # Rewound per attempt: a retry cannot reuse a consumed file object.
+        handle.seek(0)
+        return client.post(
+            policy.url,
+            data=fields,
+            files={"file": (file_name, handle, content_type)},
+        )
 
     try:
         _submit(
             _post,
-            _current_request_id(),
+            request_id,
             # Staged on disk and streamed, so it costs no queue budget.
             nbytes=0,
-            cleanup=lambda: staged.unlink(missing_ok=True),
+            cleanup=_cleanup,
         )
     except Exception:
-        staged.unlink(missing_ok=True)
+        _safe_cleanup(_cleanup, request_id)
         raise
     return access_url
 
