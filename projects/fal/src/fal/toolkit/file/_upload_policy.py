@@ -37,7 +37,6 @@ import json
 import os
 import random
 import re
-import shutil
 import threading
 import time
 import unicodedata
@@ -81,6 +80,8 @@ UPLOAD_POLICY_DRAIN_TIMEOUT = 5.0
 _MAX_ATTEMPTS = 5
 _BASE_DELAY = 1
 _MAX_DELAY = 30
+# Staging copy granularity. The payload reaches 5 GB, so it is never read whole.
+_STAGE_CHUNK_BYTES = 1024 * 1024
 
 _S3_ERROR_CODE_RE = re.compile(r"<Code>([A-Za-z0-9]{1,64})</Code>")
 
@@ -957,8 +958,12 @@ def upload_path_with_policy(
             pass
 
     try:
+        # Chunked by hand rather than shutil.copyfileobj: under the pinned
+        # mypy's typeshed its AnyStr cannot bind through IO, so every call shape
+        # is a type error.
         with open(file_path, "rb") as source:
-            shutil.copyfileobj(source, handle)
+            while chunk := source.read(_STAGE_CHUNK_BYTES):
+                handle.write(chunk)
         handle.flush()
         if os.name != "nt":
             os.unlink(handle.name)
