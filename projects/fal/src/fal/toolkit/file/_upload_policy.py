@@ -381,8 +381,8 @@ def _headers_get(headers: Mapping[str, Any] | None, key: str) -> Any:
 def parse_upload_policy(headers: Mapping[str, Any] | None) -> UploadPolicy | None:
     """Parse and validate the policy header.
 
-    Returns ``None`` when the header is absent, or when its value is not a
-    string at all (see below). Raises
+    Returns ``None`` when the header is absent, or when a stubbed request
+    answers with a stub rather than a string (see below). Raises
     ``UploadPolicyInputError`` (422) on anything malformed -- including a blank
     value, which is a policy the caller failed to build rather than a request
     to use the fal CDN. Silently falling back there would be the one failure
@@ -392,9 +392,9 @@ def parse_upload_policy(headers: Mapping[str, Any] | None) -> UploadPolicy | Non
     if raw is None:
         return None
     if not isinstance(raw, (str, bytes)):
-        # A Mock stands in for a request in app test suites; treating it as a
-        # malformed policy would 422 every one of them. Anything else non-string
-        # is real malformed input and must not silently reach the fal CDN.
+        # A stubbed request returns a stub for every header, so this header was
+        # not sent. Any other non-string is real malformed input and must not
+        # silently reach the fal CDN.
         if type(raw).__module__.startswith("unittest.mock"):
             return None
         raise UploadPolicyInputError(
@@ -540,9 +540,8 @@ def get_upload_policy(request: Any = None) -> UploadPolicy | None:
         return None
     # Middleware (RequestContext) parses once per request and caches the result
     # here, as None or an UploadPolicy. A bare fastapi Request has no such
-    # attribute and falls through to parsing its headers. A Mock answers getattr
-    # with another Mock, which is neither -- also fall through, where its Mock
-    # headers parse to None.
+    # attribute and falls through to parsing its headers, as does a stubbed
+    # request, whose stub attribute is neither and whose headers parse to None.
     cached = getattr(request, "upload_policy", _UNSET)
     if cached is None or isinstance(cached, UploadPolicy):
         return cached
@@ -941,10 +940,9 @@ def upload_path_with_policy(
     The retained handle, not the name, is what the POST reads, because apps
     routinely drop the ``TemporaryDirectory`` they wrote into the moment
     ``from_path`` returns; reopening by name would leave a 200 with a dead URL.
-    POSIX unlinks the snapshot as soon as it is staged, so a runner killed
-    during the upload strands nothing.
-    Windows cannot unlink an open file, so there the name lingers until the
-    handle closes; runners are POSIX, so that is a test-only difference.
+    Runners are POSIX, where the snapshot is unlinked as soon as it is staged,
+    so a runner killed during the upload strands nothing. Windows cannot unlink
+    an open file, so there the name lingers until the handle closes.
     """
     _validate_size(file_path.stat().st_size)
     access_url, fields = _prepare_upload(policy, file_name, content_type)
