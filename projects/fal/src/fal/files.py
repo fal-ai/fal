@@ -153,10 +153,10 @@ class FalFileSystem(AbstractFileSystem):
             fobj.write(response.content)
 
     def _put_file_multipart(self, lpath, rpath, size, progress):
-        md5 = _compute_md5(lpath)
-
         num_parts = max(1, (size + MULTIPART_CHUNK_SIZE - 1) // MULTIPART_CHUNK_SIZE)
-        task = progress.add_task(f"{os.path.basename(lpath)}", total=num_parts)
+        task = progress.add_task("Calculating checksum...", total=num_parts)
+        md5 = _compute_md5(lpath)
+        progress.update(task, description=f"Uploading {os.path.basename(lpath)}")
 
         def on_part_complete(part_number: int):
             progress.advance(task)
