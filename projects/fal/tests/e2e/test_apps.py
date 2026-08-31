@@ -2024,7 +2024,7 @@ def test_exec_runner(host: api.FalServerlessHost, test_sleep_app: str):
         assert len(runners) == 1
         runner_id = runners[0].runner_id
 
-        proc = subprocess.Popen(
+        short_command = subprocess.run(
             [
                 "python",
                 "-m",
@@ -2036,20 +2036,35 @@ def test_exec_runner(host: api.FalServerlessHost, test_sleep_app: str):
                 "echo",
                 "hello",
             ],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
+            timeout=10,
+            check=False,
         )
+        assert short_command.returncode == 0, short_command.stderr.decode()
+        assert b"hello" in short_command.stdout
 
-        try:
-            stdout, stderr = proc.communicate(timeout=10)
-            assert (
-                b"hello" in stdout
-            ), f"Expected 'hello' in output, got: {stdout.decode()}"
-        finally:
-            if proc.poll() is None:
-                proc.kill()
-                proc.wait()
+        long_argument = "x" * 10_000
+        long_command = subprocess.run(
+            [
+                "python",
+                "-m",
+                "fal",
+                "runners",
+                "exec",
+                runner_id,
+                "--",
+                "/usr/bin/env",
+                "python",
+                "-c",
+                "import sys; print(len(sys.argv[1]))",
+                long_argument,
+            ],
+            capture_output=True,
+            timeout=10,
+            check=False,
+        )
+        assert long_command.returncode == 0, long_command.stderr.decode()
+        assert b"10000" in long_command.stdout
 
 
 def test_container_app_client(test_container_app: str):
