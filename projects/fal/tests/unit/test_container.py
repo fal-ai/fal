@@ -1,5 +1,7 @@
 """Tests for fal.container module."""
 
+import re
+import warnings
 from pathlib import Path
 
 import pytest
@@ -593,6 +595,32 @@ class TestContainerImageDockerignore:
         assert len(patterns) > 0
         # Verify they are regex patterns (contain regex syntax)
         assert any("\\.git" in p or "\\.pyc" in p for p in patterns)
+
+    def test_regex_patterns_match_ignored_paths(self):
+        """Compiled patterns should match ignored paths and skip kept ones."""
+        img = ContainerImage(
+            dockerfile_str="FROM python:3.11",
+            dockerignore=["*.pyc", "node_modules/"],
+        )
+        compiled = [re.compile(p) for p in img._dockerignore]
+
+        def is_ignored(path: str) -> bool:
+            # Mirrors how file_sync.py applies these patterns at upload time.
+            return any(c.search(path) for c in compiled)
+
+        assert is_ignored("x/y.pyc")
+        assert is_ignored("node_modules/pkg/index.js")
+        assert not is_ignored("src/main.py")
+
+    def test_regex_pattern_generation_emits_no_warnings(self):
+        """The deprecated pathspec alias must not leak warnings to -W error users."""
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            img = ContainerImage(
+                dockerfile_str="FROM python:3.11",
+                dockerignore=["*.pyc"],
+            )
+            assert img._dockerignore
 
     def test_loads_dockerignore_file(self, tmp_path: Path):
         """Should load and convert patterns from .dockerignore to regex."""
