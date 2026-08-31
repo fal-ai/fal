@@ -2064,7 +2064,7 @@ def test_exec_runner(host: api.FalServerlessHost, test_sleep_app: str):
             check=False,
         )
         assert long_command.returncode == 0, long_command.stderr.decode()
-        assert b"10000" in long_command.stdout
+        assert long_command.stdout.strip() == b"10000"
 
 
 def test_container_app_client(test_container_app: str):
