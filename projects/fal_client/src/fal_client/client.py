@@ -1641,6 +1641,7 @@ class AsyncClient:
         application: str,
         arguments: AnyJSON,
         *,
+        method: str = "POST",
         path: str = "",
         timeout: Optional[Union[int, float]] = None,
         start_timeout: Optional[Union[int, float]] = None,
@@ -1651,6 +1652,7 @@ class AsyncClient:
         specify a subpath when applicable. This method will return the result of the inference call directly.
 
         Args:
+            method: HTTP method to use for the inference request.
             timeout: Client-side HTTP timeout in seconds. Controls how long the HTTP
                 client waits for a response. Defaults to the client's default_timeout.
             start_timeout: Server-side request timeout in seconds. Limits total time spent
@@ -1675,7 +1677,7 @@ class AsyncClient:
 
         response = await _async_maybe_retry_request(
             client,
-            "POST",
+            method,
             url,
             json=arguments,
             timeout=timeout,
@@ -2171,6 +2173,7 @@ class SyncClient:
         application: str,
         arguments: AnyJSON,
         *,
+        method: str = "POST",
         path: str = "",
         timeout: Optional[Union[int, float]] = None,
         start_timeout: Optional[Union[int, float]] = None,
@@ -2180,6 +2183,7 @@ class SyncClient:
         """Run an application with the given arguments (which will be JSON serialized).
 
         Args:
+            method: HTTP method to use for the inference request.
             timeout: Client-side HTTP timeout in seconds. Controls how long the HTTP
                 client waits for a response. Defaults to the client's default_timeout.
             start_timeout: Server-side request timeout in seconds. Limits total time spent
@@ -2201,7 +2205,7 @@ class SyncClient:
 
         response = _maybe_retry_request(
             self._client,
-            "POST",
+            method,
             url,
             json=arguments,
             timeout=timeout,
