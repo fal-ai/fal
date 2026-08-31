@@ -2056,7 +2056,7 @@ def test_exec_runner(host: api.FalServerlessHost, test_sleep_app: str):
                 "/usr/bin/env",
                 "python",
                 "-c",
-                "import sys; print(len(sys.argv[1]))",
+                'import sys; print(len(sys.argv), sys.argv[1] == "x" * 10_000)',
                 long_argument,
             ],
             capture_output=True,
@@ -2064,7 +2064,7 @@ def test_exec_runner(host: api.FalServerlessHost, test_sleep_app: str):
             check=False,
         )
         assert long_command.returncode == 0, long_command.stderr.decode()
-        assert long_command.stdout.strip() == b"10000"
+        assert long_command.stdout.strip() == b"2 True"
 
 
 def test_container_app_client(test_container_app: str):
