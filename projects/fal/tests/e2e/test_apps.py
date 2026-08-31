@@ -207,78 +207,49 @@ def _is_alias_not_found_response(response: httpx.Response, app_alias: str) -> bo
     }
 
 
-def _wait_for_stable_alias(
-    fetch_response: Callable[[float], Optional[httpx.Response]],
-    app_alias: str,
-    *,
-    timeout: float,
-    description: str,
-    stable_for: float = 5,
-) -> httpx.Response:
-    # One updated replica can succeed while another still has stale alias state.
-    deadline = time.monotonic() + timeout
-    recognized_at = None
-    response = None
-
-    while True:
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            raise AssertionError(f"Timed out waiting for {description}: {response!r}")
-
-        response = fetch_response(remaining)
-        if time.monotonic() >= deadline:
-            raise AssertionError(f"Timed out waiting for {description}: {response!r}")
-        if response is None or _is_alias_not_found_response(response, app_alias):
-            recognized_at = None
-        elif recognized_at is None:
-            recognized_at = time.monotonic()
-        elif time.monotonic() - recognized_at >= stable_for:
-            return response
-
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            raise AssertionError(f"Timed out waiting for {description}: {response!r}")
-        time.sleep(min(0.5, remaining))
-
-
 def _wait_for_queue_alias(
     app_alias: str,
     queue_url: str,
     *,
     timeout: float = 60,
 ):
-    with httpx.Client(headers=_auth_headers()) as client:
+    deadline = time.monotonic() + timeout
+    response = None
+    not_found_count = 0
 
-        def fetch_response(remaining: float):
-            # Alias resolution precedes validation of this query parameter, whose
-            # invalid value makes the gateway return before enqueuing a request.
+    with httpx.Client(headers=_auth_headers()) as client:
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise AssertionError(
+                    f"Timed out waiting for queue gateway to recognize {app_alias}; "
+                    f"404 responses={not_found_count}; last_response={response!r}"
+                )
+
             response = client.post(
                 queue_url,
-                params={"fal_max_queue_length": "readiness-probe"},
+                # A zero limit always returns 429 after alias resolution and before
+                # enqueueing because queue lengths cannot be negative.
+                params={"fal_max_queue_length": "0"},
                 json={},
                 timeout=min(5, remaining),
             )
             if _is_alias_not_found_response(response, app_alias):
-                return response
+                not_found_count += 1
+                time.sleep(min(0.5, max(0, deadline - time.monotonic())))
+                continue
 
-            if response.status_code != 400:
+            if response.status_code != 429:
                 response.raise_for_status()
                 raise AssertionError(f"Unexpected queue readiness response: {response}")
 
             data = response.json()
             error = data.get("error", "")
             if data.get("request_id") is not None or not error.startswith(
-                "Invalid fal_max_queue_length"
+                "Queue is too long"
             ):
                 raise AssertionError(f"Unexpected queue readiness response: {data}")
-            return response
-
-        _wait_for_stable_alias(
-            fetch_response,
-            app_alias,
-            timeout=timeout,
-            description=f"queue gateway to recognize alias {app_alias}",
-        )
+            return
 
 
 def _wait_for_app_ready(
