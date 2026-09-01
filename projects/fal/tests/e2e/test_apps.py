@@ -1684,10 +1684,13 @@ def test_app_set_delete_alias(base_app: Tuple[str, str]):
         assert res == app_revision
 
     with host._connection as client:
-        # Get the registered values
-        res = client.list_aliases()
-        found = next(filter(lambda alias: alias.alias == app_alias, res), None)
-        assert not found, f"Found app {app_alias} in {res} after deletion"
+        _wait_until(
+            client.list_aliases,
+            lambda aliases: all(alias.alias != app_alias for alias in aliases),
+            timeout=30,
+            interval=0.5,
+            description=f"alias {app_alias} deletion",
+        )
 
 
 @pytest.mark.xdist_group(name="realtime-app")
