@@ -191,17 +191,19 @@ def test_sync_client_run_with_headers():
         assert call_kwargs["headers"]["X-Trace-Id"] == "123"
 
 
-def test_sync_client_run_with_method():
+@pytest.mark.parametrize("method", ["GET", "get"])
+def test_sync_client_run_with_method(method):
     with patch("fal_client.client._maybe_retry_request") as mock_request:
         mock_response = Mock()
         mock_response.json.return_value = {"status": "ok"}
         mock_request.return_value = mock_response
 
         client = SyncClient(key="test-key")
-        result = client.run("test-app", {}, path="/health", method="GET")
+        result = client.run("test-app", {}, path="/health", method=method)
 
         assert result == {"status": "ok"}
-        assert mock_request.call_args.args[1] == "GET"
+        assert mock_request.call_args.args[1] == method
+        assert mock_request.call_args.kwargs["json"] is None
 
 
 def test_sync_client_run_defaults_to_post():
@@ -213,6 +215,7 @@ def test_sync_client_run_defaults_to_post():
         SyncClient(key="test-key").run("test-app", {"input": "data"})
 
         assert mock_request.call_args.args[1] == "POST"
+        assert mock_request.call_args.kwargs["json"] == {"input": "data"}
 
 
 def test_sync_client_run_with_headers_and_hint():
@@ -773,7 +776,8 @@ async def test_async_client_run_with_headers():
 
 
 @pytest.mark.asyncio
-async def test_async_client_run_with_method():
+@pytest.mark.parametrize("method", ["GET", "get"])
+async def test_async_client_run_with_method(method):
     with patch(
         "fal_client.client._async_maybe_retry_request", new_callable=AsyncMock
     ) as mock_request:
@@ -782,10 +786,11 @@ async def test_async_client_run_with_method():
         mock_request.return_value = mock_response
 
         client = AsyncClient(key="test-key")
-        result = await client.run("test-app", {}, path="/health", method="GET")
+        result = await client.run("test-app", {}, path="/health", method=method)
 
         assert result == {"status": "ok"}
-        assert mock_request.call_args.args[1] == "GET"
+        assert mock_request.call_args.args[1] == method
+        assert mock_request.call_args.kwargs["json"] is None
 
 
 @pytest.mark.asyncio
@@ -800,6 +805,7 @@ async def test_async_client_run_defaults_to_post():
         await AsyncClient(key="test-key").run("test-app", {"input": "data"})
 
         assert mock_request.call_args.args[1] == "POST"
+        assert mock_request.call_args.kwargs["json"] == {"input": "data"}
 
 
 @pytest.mark.asyncio

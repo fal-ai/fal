@@ -1679,7 +1679,7 @@ class AsyncClient:
             client,
             method,
             url,
-            json=arguments,
+            json=arguments if method.upper() != "GET" else None,
             timeout=timeout,
             headers=_headers,
         )
@@ -2207,7 +2207,7 @@ class SyncClient:
             self._client,
             method,
             url,
-            json=arguments,
+            json=arguments if method.upper() != "GET" else None,
             timeout=timeout,
             headers=_headers,
         )
