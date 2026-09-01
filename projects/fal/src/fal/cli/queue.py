@@ -63,15 +63,17 @@ def _queue_flush(args):
 
     client = SyncServerlessClient(host=args.host, team=args.team)._create_rest_client()
     user = _get_user(client)
-    caller_user_id = args.caller_user_id
+    params = {}
+    if args.caller_user_id:
+        params["caller_user_id"] = args.caller_user_id
+    if args.older_than is not None:
+        params["older_than"] = args.older_than
 
     url = f"{client.base_url}/applications/{user.username}/{args.app_name}/queue"
     headers = client.get_headers()
 
     with httpx.Client(base_url=client.base_url, headers=headers, timeout=300) as c:
-        resp = c.delete(
-            url, params={"caller_user_id": caller_user_id} if caller_user_id else None
-        )
+        resp = c.delete(url, params=params or None)
 
     if resp.status_code != HTTPStatus.OK:
         try:
@@ -137,5 +139,11 @@ def add_parser(main_subparsers, parents):
             "Only flush requests from this user ID. "
             "If not provided, all requests will be flushed."
         ),
+    )
+    flush_parser.add_argument(
+        "--older-than",
+        default=None,
+        type=str,
+        help="Only flush requests older than this duration.",
     )
     flush_parser.set_defaults(func=_queue_flush)
