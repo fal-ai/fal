@@ -191,6 +191,33 @@ def test_sync_client_run_with_headers():
         assert call_kwargs["headers"]["X-Trace-Id"] == "123"
 
 
+@pytest.mark.parametrize("method", ["GET", "get"])
+def test_sync_client_run_with_method(method):
+    with patch("fal_client.client._maybe_retry_request") as mock_request:
+        mock_response = Mock()
+        mock_response.json.return_value = {"status": "ok"}
+        mock_request.return_value = mock_response
+
+        client = SyncClient(key="test-key")
+        result = client.run("test-app", {}, path="/health", method=method)
+
+        assert result == {"status": "ok"}
+        assert mock_request.call_args.args[1] == method
+        assert mock_request.call_args.kwargs["json"] is None
+
+
+def test_sync_client_run_defaults_to_post():
+    with patch("fal_client.client._maybe_retry_request") as mock_request:
+        mock_response = Mock()
+        mock_response.json.return_value = {"result": "success"}
+        mock_request.return_value = mock_response
+
+        SyncClient(key="test-key").run("test-app", {"input": "data"})
+
+        assert mock_request.call_args.args[1] == "POST"
+        assert mock_request.call_args.kwargs["json"] == {"input": "data"}
+
+
 def test_sync_client_run_with_headers_and_hint():
     """Test that custom headers are merged with hint header"""
     with patch("fal_client.client._maybe_retry_request") as mock_request:
@@ -746,6 +773,39 @@ async def test_async_client_run_with_headers():
         assert "headers" in call_kwargs
         assert call_kwargs["headers"]["X-Custom-Header"] == "test-value"
         assert call_kwargs["headers"]["X-Trace-Id"] == "123"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("method", ["GET", "get"])
+async def test_async_client_run_with_method(method):
+    with patch(
+        "fal_client.client._async_maybe_retry_request", new_callable=AsyncMock
+    ) as mock_request:
+        mock_response = Mock()
+        mock_response.json.return_value = {"status": "ok"}
+        mock_request.return_value = mock_response
+
+        client = AsyncClient(key="test-key")
+        result = await client.run("test-app", {}, path="/health", method=method)
+
+        assert result == {"status": "ok"}
+        assert mock_request.call_args.args[1] == method
+        assert mock_request.call_args.kwargs["json"] is None
+
+
+@pytest.mark.asyncio
+async def test_async_client_run_defaults_to_post():
+    with patch(
+        "fal_client.client._async_maybe_retry_request", new_callable=AsyncMock
+    ) as mock_request:
+        mock_response = Mock()
+        mock_response.json.return_value = {"result": "success"}
+        mock_request.return_value = mock_response
+
+        await AsyncClient(key="test-key").run("test-app", {"input": "data"})
+
+        assert mock_request.call_args.args[1] == "POST"
+        assert mock_request.call_args.kwargs["json"] == {"input": "data"}
 
 
 @pytest.mark.asyncio
