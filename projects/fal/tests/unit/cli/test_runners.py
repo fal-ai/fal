@@ -1,15 +1,36 @@
 import json
+import os
+import struct
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from fal.cli.main import parse_args
-from fal.cli.runners import _gpus
+from fal.cli.runners import _get_tty_size, _gpus
+
+if os.name != "nt":
+    import fcntl
+    import termios
 
 _GPUS_PAYLOAD = {
     "gpus": {"H100": 394, "B200": 353, "H200": 334},
     "total": 1120,
 }
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Pseudo-terminals are Unix-only")
+def test_get_tty_size():
+    master_fd, slave_fd = os.openpty()
+    try:
+        fcntl.ioctl(slave_fd, termios.TIOCSWINSZ, struct.pack("HHHH", 40, 120, 0, 0))
+        assert _get_tty_size(slave_fd) == (40, 120)
+    finally:
+        os.close(master_fd)
+        os.close(slave_fd)
+
+
+def test_get_tty_size_fallback():
+    assert _get_tty_size(-1) == (24, 80)
 
 
 def test_gpus_parser_registered():

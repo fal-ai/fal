@@ -4,7 +4,6 @@ import argparse
 import json
 import os
 import signal
-import struct
 import sys
 from collections import deque
 from dataclasses import dataclass
@@ -123,15 +122,12 @@ def runners_requests_table(runners: list[RunnerInfo]):
     return table
 
 
-def _get_tty_size():
+def _get_tty_size(fd: int):
     """Get current terminal dimensions."""
-    import fcntl
-    import termios
-
     try:
-        h, w = struct.unpack("HH", fcntl.ioctl(0, termios.TIOCGWINSZ, b"\0" * 4))[:2]
-        return h, w
-    except (OSError, ValueError):
+        size = os.get_terminal_size(fd)
+        return size.lines, size.columns
+    except OSError:
         return 24, 80  # Fallback to standard size
 
 
@@ -213,7 +209,7 @@ def _shell(args):
         # Send terminal size
         if is_tty:
             msg = isolate_proto.ShellRunnerInput()
-            h, w = _get_tty_size()
+            h, w = _get_tty_size(fd)
             msg.tty_size.height = h
             msg.tty_size.width = w
             yield msg
@@ -229,7 +225,7 @@ def _shell(args):
                 yield isolate_proto.ShellRunnerInput(data=data)
             elif msg_type == "resize":
                 msg = isolate_proto.ShellRunnerInput()
-                h, w = _get_tty_size()
+                h, w = _get_tty_size(fd)
                 msg.tty_size.height = h
                 msg.tty_size.width = w
                 yield msg
