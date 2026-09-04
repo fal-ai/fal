@@ -1725,6 +1725,7 @@ def test_realtime_connection(test_realtime_app):
         assert received_prompts == {str(prompt) for prompt in range(10)}
         assert sum(batch_sizes) == 10
         assert all(1 <= batch_size <= 4 for batch_size in batch_sizes)
+        assert any(batch_size > 1 for batch_size in batch_sizes)
 
 
 @pytest.mark.xdist_group(name="realtime-app")
