@@ -132,28 +132,31 @@ def _get_tty_size(fd: int):
 
 
 def _shell(args):
-    """Execute a command (or interactive shell) on a runner."""
+    """Open an interactive shell on a runner."""
+    return _shell_session(args, command=None, interactive=True)
+
+
+def _exec(args):
+    """Execute a command on a runner."""
+    command = args.command
+    # argparse may leave the -- separator as the first token (Python < 3.12).
+    if command[0] == "--":
+        command = command[1:]
+
+    if not command:
+        args.console.print("[red]Error:[/] No command specified.")
+        return 1
+
+    return _shell_session(args, command=command, interactive=args.interactive)
+
+
+def _shell_session(args, command, interactive):
+    """Stream a shell session on a runner; command=None opens a login shell."""
     import isolate_proto
 
     client = SyncServerlessClient(host=args.host, team=args.team)
     stub = client._create_host()._connection.stub
     runner_id = args.id
-
-    is_exec = hasattr(args, "command")
-
-    if is_exec:
-        command = args.command
-        if command and command[0] == "--":
-            command = command[1:]
-
-        if not command:
-            args.console.print("[red]Error:[/] No command specified.")
-            return 1
-
-        interactive = args.interactive
-    else:
-        command = None
-        interactive = True
 
     if interactive and os.name == "nt":
         args.console.print(
@@ -853,12 +856,14 @@ def _add_exec_parser(subparsers, parents):
         action="store_true",
         help="Allocate a TTY and attach stdin (interactive mode).",
     )
+    # PARSER keeps fal's own flags parseable between the runner id and the
+    # command; REMAINDER would swallow them into the command.
     parser.add_argument(
         "command",
-        nargs=argparse.REMAINDER,
-        help="Command to execute (after --).",
+        nargs=argparse.PARSER,
+        help="Command to execute. Prefix with -- if it starts with a dash.",
     )
-    parser.set_defaults(func=_shell)
+    parser.set_defaults(func=_exec)
 
 
 def add_parser(main_subparsers, parents):
