@@ -14,6 +14,19 @@ from fal.sdk import get_credentials
 print("TARGET:", GRPC_HOST, file=sys.stderr)
 print("AUTH:", get_credentials(), file=sys.stderr)
 
+# Suites that deploy to the platform and wait on cold starts; the package
+# default timeout is sized for unit tests.
+REMOTE_SUITES = {"e2e", "integration"}
+REMOTE_SUITE_TIMEOUT = 300
+
+
+def pytest_collection_modifyitems(items):
+    for item in items:
+        if item.get_closest_marker("timeout"):
+            continue
+        if REMOTE_SUITES & set(item.path.parts):
+            item.add_marker(pytest.mark.timeout(REMOTE_SUITE_TIMEOUT))
+
 
 @pytest.fixture(scope="function")
 def isolated_client():
