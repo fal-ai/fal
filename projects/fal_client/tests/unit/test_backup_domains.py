@@ -295,7 +295,9 @@ async def test_public_connect_timeouts_and_start_timeout(
                 client.run("fal-ai/test", {}, timeout=timeout, start_timeout=30)
             ) == {"ok": True}
         else:
-            await resolve(getattr(client, operation)("fal-ai/test", {}, start_timeout=30))
+            await resolve(
+                getattr(client, operation)("fal-ai/test", {}, start_timeout=30)
+            )
     for request in requests:
         assert request.extensions["timeout"] == {
             "connect": expected_connect,
