@@ -85,6 +85,15 @@ QUEUE_URL_FORMAT = f"https://{FAL_QUEUE_RUN_HOST}/"
 REALTIME_URL_FORMAT = f"wss://{FAL_RUN_HOST}/"
 REST_URL = "https://rest.fal.ai"
 
+_BACKUP_DOMAINS = {
+    "fal.run": "falrun.com",
+    "queue.fal.run": "queue.falrun.com",
+}
+# Ceiling on the connect timeout for HTTP requests to a mapped domain (run,
+# submit, status, result, cancel and stream alike). A shorter caller timeout
+# still wins; a longer one cannot delay falling back to the backup domain.
+_BACKUP_DOMAIN_CONNECT_TIMEOUT = 5.0
+
 CDN_URL = "https://v3.fal.media"
 DEFAULT_UPLOAD_REPOSITORY: UploadRepositoryId = "fal_v3"
 DEFAULT_UPLOAD_FALLBACK_REPOSITORY: list[UploadRepositoryId] = ["fal"]
@@ -988,6 +997,102 @@ class AsyncRealtimeConnection:
         await self.close()
 
 
+def _fallback_url(url: httpx.URL) -> httpx.URL | None:
+    host = _BACKUP_DOMAINS.get(url.host)
+    if host is None:
+        return None
+    return url.copy_with(host=host)
+
+
+def _limit_connect_timeout(request: httpx.Request) -> None:
+    if (
+        request.url.host not in _BACKUP_DOMAINS
+        and request.url.host not in _BACKUP_DOMAINS.values()
+    ):
+        return
+
+    # Per-request timeout=None must not disable detecting an unreachable domain.
+    timeouts = request.extensions.get("timeout", {})
+    connect = timeouts.get("connect")
+    request.extensions["timeout"] = {
+        **timeouts,
+        "connect": min(connect, _BACKUP_DOMAIN_CONNECT_TIMEOUT)
+        if connect is not None
+        else _BACKUP_DOMAIN_CONNECT_TIMEOUT,
+    }
+
+
+def _backup_request(request: httpx.Request) -> httpx.Request | None:
+    url = _fallback_url(request.url)
+    if url is None:
+        return None
+    headers = request.headers.copy()
+    headers["Host"] = url.netloc.decode("ascii")
+    return httpx.Request(
+        request.method,
+        url,
+        headers=headers,
+        stream=request.stream,
+        extensions=request.extensions.copy(),
+    )
+
+
+def _log_backup(primary_host: str, backup_host: str, exc: Exception) -> None:
+    logger.warning(
+        "Connection to %s failed (%s); trying backup domain %s",
+        primary_host,
+        type(exc).__name__,
+        backup_host,
+    )
+
+
+class BackupDomainTransport(httpx.BaseTransport):
+    def __init__(self, *, transport: httpx.BaseTransport | None = None) -> None:
+        # Let HTTPX route each domain through its environment proxy configuration.
+        # Redirects stay with the outer client so fallback only replays one hop.
+        self._client = httpx.Client(transport=transport, follow_redirects=False)
+
+    def handle_request(self, request: httpx.Request) -> httpx.Response:
+        _limit_connect_timeout(request)
+        try:
+            return self._client.send(request, stream=True)
+        except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+            backup = _backup_request(request)
+            if backup is None:
+                raise
+            _log_backup(request.url.host, backup.url.host, exc)
+            try:
+                return self._client.send(backup, stream=True)
+            except (httpx.ConnectError, httpx.ConnectTimeout):
+                # Preserve the primary error's retry policy; retain backup in context.
+                raise exc
+
+    def close(self) -> None:
+        self._client.close()
+
+
+class AsyncBackupDomainTransport(httpx.AsyncBaseTransport):
+    def __init__(self, *, transport: httpx.AsyncBaseTransport | None = None) -> None:
+        self._client = httpx.AsyncClient(transport=transport, follow_redirects=False)
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        _limit_connect_timeout(request)
+        try:
+            return await self._client.send(request, stream=True)
+        except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+            backup = _backup_request(request)
+            if backup is None:
+                raise
+            _log_backup(request.url.host, backup.url.host, exc)
+            try:
+                return await self._client.send(backup, stream=True)
+            except (httpx.ConnectError, httpx.ConnectTimeout):
+                raise exc
+
+    async def aclose(self) -> None:
+        await self._client.aclose()
+
+
 @contextmanager
 def _connect_sync_ws(
     url: str, headers: dict[str, str] | None = None
@@ -1040,10 +1145,12 @@ MAX_DELAY = 30
 RETRY_CODES = [408, 409, 429]
 INGRESS_ERROR_CODES = [502, 503, 504]
 
-# Explicit timeout for queue polling requests (status checks and result fetching).
-# httpx's default timeout (120s) operates at the HTTP protocol layer and can fail
-# to fire when the hang is at the raw SSL socket level (ssl.read()).  Using an
+# Explicit timeout for queue polling requests (status, result and cancel).
+# The client's default timeout (120s) operates at the HTTP protocol layer and can
+# fail to fire when the hang is at the raw SSL socket level (ssl.read()).  Using an
 # httpx.Timeout object with a shorter connect timeout ensures we detect stalls.
+# The backup transport caps connect further on the mapped domains; server-supplied
+# hosts keep the 30s below.
 QUEUE_POLL_TIMEOUT = httpx.Timeout(120.0, connect=30.0)
 DEFAULT_QUEUE_POLL_INTERVAL = 0.1
 
@@ -1598,6 +1705,7 @@ class AsyncClient:
     async def _client(self) -> httpx.AsyncClient:
         auth = await self._auth
         return httpx.AsyncClient(
+            transport=AsyncBackupDomainTransport(),
             headers={
                 "Authorization": auth.header_value,
                 "User-Agent": USER_AGENT,
@@ -1653,8 +1761,9 @@ class AsyncClient:
 
         Args:
             method: HTTP method to use for the inference request.
-            timeout: Client-side HTTP timeout in seconds. Controls how long the HTTP
-                client waits for a response. Defaults to the client's default_timeout.
+            timeout: Client-side HTTP timeout in seconds. Defaults to no client-side
+                read timeout; long generations are unbounded. Connections to mapped
+                primary and backup domains are still capped at 5 seconds.
             start_timeout: Server-side request timeout in seconds. Limits total time spent
                 waiting before processing starts. Does not apply once the application begins processing.
         """
@@ -1703,6 +1812,9 @@ class AsyncClient:
         """Submit an application with the given arguments (which will be JSON serialized). The path parameter can be used to
         specify a subpath when applicable. This method will return a handle to the request that can be used to check the status
         and retrieve the result of the inference call when it is done.
+
+        The submission POST uses the client's default_timeout (120 seconds by
+        default), unlike run(), whose default read timeout is unbounded.
 
         Args:
             start_timeout: Server-side request timeout in seconds. Limits total time spent
@@ -2124,6 +2236,7 @@ class SyncClient:
     def _client(self) -> httpx.Client:
         auth = self._auth
         return httpx.Client(
+            transport=BackupDomainTransport(),
             headers={
                 "Authorization": auth.header_value,
                 "User-Agent": USER_AGENT,
@@ -2184,8 +2297,9 @@ class SyncClient:
 
         Args:
             method: HTTP method to use for the inference request.
-            timeout: Client-side HTTP timeout in seconds. Controls how long the HTTP
-                client waits for a response. Defaults to the client's default_timeout.
+            timeout: Client-side HTTP timeout in seconds. Defaults to no client-side
+                read timeout; long generations are unbounded. Connections to mapped
+                primary and backup domains are still capped at 5 seconds.
             start_timeout: Server-side request timeout in seconds. Limits total time spent
                 waiting before processing starts. Does not apply once the application begins processing.
         """
@@ -2229,6 +2343,9 @@ class SyncClient:
         start_timeout: Optional[Union[int, float]] = None,
     ) -> SyncRequestHandle:
         """Submit an application with the given arguments (which will be JSON serialized).
+
+        The submission POST uses the client's default_timeout (120 seconds by
+        default), unlike run(), whose default read timeout is unbounded.
 
         Args:
             start_timeout: Server-side request timeout in seconds. Limits total time spent
