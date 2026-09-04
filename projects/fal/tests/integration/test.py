@@ -23,6 +23,8 @@ from fal.toolkit.utils.download_utils import _git_rev_parse, _hash_url
 
 EXAMPLE_FILE_URL = "https://raw.githubusercontent.com/fal-ai/fal/main/projects/fal/tests/assets/cat.png"
 
+pytestmark = pytest.mark.timeout(420)
+
 
 @pytest.mark.flaky(max_runs=3)
 def test_isolated(isolated_client: Callable[..., Callable[..., IsolatedFunction]]):
