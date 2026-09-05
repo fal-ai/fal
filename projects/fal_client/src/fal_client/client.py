@@ -1488,6 +1488,12 @@ class SyncRequestHandle(_BaseRequestHandle):
             self.client, "GET", self.response_url, timeout=QUEUE_POLL_TIMEOUT
         )
         _raise_for_status(response)
+        # The result response is the only one that can carry the runner's
+        # re-scoped CDN token: the submit response is written before the runner
+        # has run, so its scope cannot cover the request ids the run ended up
+        # with access to. Adopting it here is what lets a chaining app read the
+        # output it just commissioned once tokens are request-scoped.
+        handle_response_headers(response.headers)
         return response.json()
 
     def cancel(self) -> None:
@@ -1568,6 +1574,9 @@ class AsyncRequestHandle(_BaseRequestHandle):
             timeout=QUEUE_POLL_TIMEOUT,
         )
         _raise_for_status(response)
+        # See the sync ``get`` above: the result response is the only one whose
+        # CDN token reflects the request ids the run actually accumulated.
+        handle_response_headers(response.headers)
         return response.json()
 
     async def cancel(self) -> None:
