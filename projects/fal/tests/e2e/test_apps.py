@@ -7,6 +7,7 @@ import sys
 import time
 from contextlib import contextmanager, suppress
 from datetime import datetime, timedelta, timezone
+from functools import partial
 from typing import (
     AsyncIterator,
     Callable,
@@ -198,13 +199,43 @@ def _is_alias_not_found_response(response: httpx.Response, app_alias: str) -> bo
         return False
 
     try:
-        detail = response.json().get("detail", "")
+        data = response.json()
     except ValueError:
+        return False
+    if not isinstance(data, dict):
+        return False
+    detail = data.get("detail", "")
+    if not isinstance(detail, str):
         return False
     return detail in {
         f"Application {app_alias!r} not found",
         f'Application "{app_alias}" not found',
     }
+
+
+def _submit_with_alias_retry(submit, app_id: str, arguments: dict, *, path: str = ""):
+    # Temporary until queue gateways stop caching alias misses independently.
+    # Retry submission itself: a successful readiness probe can hit another pod.
+    normalized_id = apps._backwards_compatible_app_id(app_id)
+    app_alias = normalized_id.split("/")[1] if "/" in normalized_id else normalized_id
+    deadline = time.monotonic() + 60
+    while True:
+        try:
+            return submit(app_id, arguments, path=path)
+        except HTTPStatusError as exc:
+            if not _is_alias_not_found_response(exc.response, app_alias):
+                raise
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise
+            time.sleep(min(0.5, remaining))
+            if time.monotonic() >= deadline:
+                raise
+
+
+@pytest.fixture(autouse=True)
+def retry_queue_alias_submission(monkeypatch):
+    monkeypatch.setattr(apps, "submit", partial(_submit_with_alias_retry, apps.submit))
 
 
 def _wait_for_queue_alias(
