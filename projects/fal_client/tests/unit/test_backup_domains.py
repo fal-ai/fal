@@ -1,5 +1,6 @@
 import inspect
 import json
+import socket
 from contextlib import asynccontextmanager
 from functools import partial
 
@@ -14,6 +15,7 @@ from fal_client.client import (
     Completed,
     FalClientHTTPError,
     SyncClient,
+    _BACKUP_DOMAINS,
     _fallback_url,
 )
 
@@ -59,6 +61,40 @@ def test_fallback_domains(url, expected):
 
 async def resolve(value):
     return await value if inspect.isawaitable(value) else value
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("asynchronous", [False, True])
+async def test_nonexistent_primary_and_backup_domains(monkeypatch, asynchronous):
+    primary = "wrong.fal.run"
+    backup = "wrong.falrun.com"
+    lookups = []
+    monkeypatch.setitem(_BACKUP_DOMAINS, primary, backup)
+    monkeypatch.setattr("fal_client.client.RUN_URL_FORMAT", f"https://{primary}/")
+    monkeypatch.setattr("fal_client.client._get_retry_delay", lambda *args: 0)
+    monkeypatch.setenv("NO_PROXY", "*")
+    monkeypatch.setenv("no_proxy", "*")
+
+    # Keep the real HTTP transport and its DNS-error conversion, without relying
+    # on external DNS or these domains remaining unregistered.
+    def getaddrinfo(host, *args, **kwargs):
+        host = host.decode("ascii") if isinstance(host, bytes) else host
+        lookups.append(host)
+        raise socket.gaierror(socket.EAI_NONAME, "Name or service not known")
+
+    monkeypatch.setattr(socket, "getaddrinfo", getaddrinfo)
+    client = (AsyncClient if asynchronous else SyncClient)(key="test-key")
+    http = await resolve(client._client)
+    try:
+        with pytest.raises(httpx.ConnectError) as exc:
+            await resolve(client.run("fal-ai/test", {}))
+    finally:
+        await resolve(http.aclose() if asynchronous else http.close())
+
+    assert lookups == [primary, backup] * MAX_ATTEMPTS
+    assert exc.value.request.url.host == primary
+    assert isinstance(exc.value.__context__, httpx.ConnectError)
+    assert exc.value.__context__.request.url.host == backup
 
 
 @pytest.mark.asyncio
