@@ -86,8 +86,8 @@ REALTIME_URL_FORMAT = f"wss://{FAL_RUN_HOST}/"
 REST_URL = "https://rest.fal.ai"
 
 _BACKUP_DOMAINS = {
-    "fal.run": "falrun.com",
-    "queue.fal.run": "queue.falrun.com",
+    FAL_RUN_HOST: "falrun.com",
+    FAL_QUEUE_RUN_HOST: "queue.falrun.com",
 }
 # Ceiling on the connect timeout for HTTP requests to a mapped domain (run,
 # submit, status, result, cancel and stream alike). A shorter caller timeout
