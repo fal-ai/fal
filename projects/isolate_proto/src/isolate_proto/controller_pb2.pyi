@@ -1158,20 +1158,37 @@ class ListApplicationsRequest(google.protobuf.message.Message):
 
     APPLICATION_NAME_FIELD_NUMBER: builtins.int
     ENVIRONMENT_NAME_FIELD_NUMBER: builtins.int
+    PAGE_SIZE_FIELD_NUMBER: builtins.int
+    PAGE_TOKEN_FIELD_NUMBER: builtins.int
     application_name: builtins.str
     environment_name: builtins.str
+    page_size: builtins.int
+    """Maximum number of revisions to return. The server clamps this to its own
+    ceiling and applies a default when unset, so a client that omits it still
+    cannot request an unbounded result set.
+    """
+    page_token: builtins.str
+    """Opaque cursor taken from a previous response's `next_page_token`. Treat it
+    as a black box; the encoding is a server implementation detail.
+    """
     def __init__(
         self,
         *,
         application_name: builtins.str | None = ...,
         environment_name: builtins.str | None = ...,
+        page_size: builtins.int | None = ...,
+        page_token: builtins.str | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing_extensions.Literal["_application_name", b"_application_name", "_environment_name", b"_environment_name", "application_name", b"application_name", "environment_name", b"environment_name"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing_extensions.Literal["_application_name", b"_application_name", "_environment_name", b"_environment_name", "application_name", b"application_name", "environment_name", b"environment_name"]) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["_application_name", b"_application_name", "_environment_name", b"_environment_name", "_page_size", b"_page_size", "_page_token", b"_page_token", "application_name", b"application_name", "environment_name", b"environment_name", "page_size", b"page_size", "page_token", b"page_token"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["_application_name", b"_application_name", "_environment_name", b"_environment_name", "_page_size", b"_page_size", "_page_token", b"_page_token", "application_name", b"application_name", "environment_name", b"environment_name", "page_size", b"page_size", "page_token", b"page_token"]) -> None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_application_name", b"_application_name"]) -> typing_extensions.Literal["application_name"] | None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_environment_name", b"_environment_name"]) -> typing_extensions.Literal["environment_name"] | None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_page_size", b"_page_size"]) -> typing_extensions.Literal["page_size"] | None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_page_token", b"_page_token"]) -> typing_extensions.Literal["page_token"] | None: ...
 
 global___ListApplicationsRequest = ListApplicationsRequest
 
@@ -1253,14 +1270,23 @@ class ListApplicationsResult(google.protobuf.message.Message):
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
     APPLICATIONS_FIELD_NUMBER: builtins.int
+    NEXT_PAGE_TOKEN_FIELD_NUMBER: builtins.int
     @property
     def applications(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[global___ApplicationInfo]: ...
+    next_page_token: builtins.str
+    """Cursor for the next page, absent on the last page. Callers that page must
+    stop when this is unset rather than when a page comes back short: the
+    server may return fewer rows than `page_size` and still have more.
+    """
     def __init__(
         self,
         *,
         applications: collections.abc.Iterable[global___ApplicationInfo] | None = ...,
+        next_page_token: builtins.str | None = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing_extensions.Literal["applications", b"applications"]) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["_next_page_token", b"_next_page_token", "next_page_token", b"next_page_token"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["_next_page_token", b"_next_page_token", "applications", b"applications", "next_page_token", b"next_page_token"]) -> None: ...
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_next_page_token", b"_next_page_token"]) -> typing_extensions.Literal["next_page_token"] | None: ...
 
 global___ListApplicationsResult = ListApplicationsResult
 

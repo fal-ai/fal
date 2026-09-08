@@ -248,3 +248,29 @@ def test_register_application_private_logs_presence():
     )
     assert request_with_private_logs_true.HasField("private_logs") is True
     assert request_with_private_logs_true.private_logs is True
+
+
+def test_list_applications_pagination_presence():
+    # Presence matters here: the server has to tell "client did not ask" (apply
+    # the default page size) from "client explicitly asked for 0".
+    request = isolate_proto.ListApplicationsRequest()
+    assert request.HasField("page_size") is False
+    assert request.HasField("page_token") is False
+
+    request.page_size = 0
+    assert request.HasField("page_size") is True
+    assert request.page_size == 0
+
+    paged = isolate_proto.ListApplicationsRequest(page_size=100, page_token="abc")
+    assert paged.page_size == 100
+    assert paged.page_token == "abc"
+
+
+def test_list_applications_result_next_page_token_presence():
+    # An absent token means "last page", which is distinct from an empty token.
+    result = isolate_proto.ListApplicationsResult()
+    assert result.HasField("next_page_token") is False
+
+    result.next_page_token = "cursor"
+    assert result.HasField("next_page_token") is True
+    assert result.next_page_token == "cursor"
