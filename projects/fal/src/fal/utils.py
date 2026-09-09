@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
 
@@ -55,7 +56,10 @@ def _find_target(
     fal_apps = {
         obj_name: obj
         for obj_name, obj in module.items()
-        if isinstance(obj, type) and issubclass(obj, fal.App) and obj is not fal.App
+        if isinstance(obj, type)
+        and issubclass(obj, fal.App)
+        and obj is not fal.App
+        and not _is_abstract_app_base(obj)
     }
 
     if len(fal_apps) == 1:
@@ -111,6 +115,13 @@ def _apply_toml_app_file_options(
     if app_files_context_dir is not None:
         app_cls.app_files_context_dir = app_files_context_dir
         app_cls.host_kwargs["app_files_context_dir"] = app_files_context_dir
+
+
+def _is_abstract_app_base(obj: type) -> bool:
+    """True for re-exported abstract bases (e.g. ``fal.wma.App``) that a user
+    file may import without intending to deploy them."""
+    wma_sdk = sys.modules.get("fal.wma.sdk")
+    return wma_sdk is not None and obj is wma_sdk.App
 
 
 def load_function_from(
