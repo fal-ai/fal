@@ -5,13 +5,19 @@ from __future__ import annotations
 import pytest
 
 from fal_client._headers import (
+    MAX_TAG_KEY_LENGTH,
+    MAX_TAG_PAIRS,
+    MAX_TAG_VALUE_LENGTH,
+    MAX_TAGS_TOTAL_BYTES,
     MIN_REQUEST_TIMEOUT_SECONDS,
     QUEUE_PRIORITY_HEADER,
     REQUEST_TIMEOUT_HEADER,
     RUNNER_HINT_HEADER,
+    TAGS_HEADER,
     add_fal_app_context_headers,
     add_hint_header,
     add_priority_header,
+    add_tags_header,
     add_timeout_header,
     set_get_current_app,
 )
@@ -140,6 +146,134 @@ class TestAddPriorityHeader:
 
         with pytest.raises(ValueError):
             add_priority_header("", headers)  # type: ignore[arg-type]
+
+
+class TestAddTagsHeader:
+    """Tests for add_tags_header function."""
+
+    def test_packs_pairs_into_one_header(self) -> None:
+        """Tags are packed into a single comma-separated header."""
+        headers: dict[str, str] = {}
+        add_tags_header({"team": "design", "env": "prod"}, headers)
+
+        assert headers[TAGS_HEADER] == "team=design,env=prod"
+
+    def test_no_header_for_empty_tags(self) -> None:
+        """An empty mapping adds no header."""
+        headers: dict[str, str] = {}
+        add_tags_header({}, headers)
+
+        assert TAGS_HEADER not in headers
+
+    def test_lowercases_keys_and_trims(self) -> None:
+        """Keys are lowercased and both sides are trimmed."""
+        headers: dict[str, str] = {}
+        add_tags_header({" Team ": " design "}, headers)
+
+        assert headers[TAGS_HEADER] == "team=design"
+
+    def test_last_wins_on_duplicate_keys(self) -> None:
+        """Keys that collide after lowercasing keep the last value."""
+        headers: dict[str, str] = {}
+        add_tags_header({"team": "design", "TEAM": "eng"}, headers)
+
+        assert headers[TAGS_HEADER] == "team=eng"
+
+    def test_allows_empty_value(self) -> None:
+        """An empty value is a valid pair, matching the server's parser."""
+        headers: dict[str, str] = {}
+        add_tags_header({"team": ""}, headers)
+
+        assert headers[TAGS_HEADER] == "team="
+
+    def test_preserves_existing_headers(self) -> None:
+        """Adding the tags header preserves existing headers."""
+        headers: dict[str, str] = {"X-Existing": "value"}
+        add_tags_header({"env": "prod"}, headers)
+
+        assert headers["X-Existing"] == "value"
+        assert headers[TAGS_HEADER] == "env=prod"
+
+    @pytest.mark.parametrize(
+        "key", ["", " ", "team!", "team space", "tea,m", "team=x", "\u00e9quipe"]
+    )
+    def test_raises_for_invalid_key(self, key: str) -> None:
+        """Keys outside [a-z0-9._-] are rejected."""
+        headers: dict[str, str] = {}
+
+        with pytest.raises(ValueError, match="Tag key must be non-empty"):
+            add_tags_header({key: "prod"}, headers)
+
+    @pytest.mark.parametrize("value", ["a,b", "line\nbreak", "tab\there", "caf\u00e9"])
+    def test_raises_for_invalid_value(self, value: str) -> None:
+        """Values with commas, control chars, or non-ASCII are rejected."""
+        headers: dict[str, str] = {}
+
+        with pytest.raises(ValueError, match="Tag value must be printable ASCII"):
+            add_tags_header({"env": value}, headers)
+
+    def test_raises_for_too_many_pairs(self) -> None:
+        """More than MAX_TAG_PAIRS tags is rejected."""
+        headers: dict[str, str] = {}
+        tags = {f"key{index}": "value" for index in range(MAX_TAG_PAIRS + 1)}
+
+        with pytest.raises(ValueError, match="At most"):
+            add_tags_header(tags, headers)
+
+    def test_allows_exactly_max_pairs(self) -> None:
+        """Exactly MAX_TAG_PAIRS tags is allowed."""
+        headers: dict[str, str] = {}
+        tags = {f"key{index}": "value" for index in range(MAX_TAG_PAIRS)}
+
+        add_tags_header(tags, headers)
+
+        assert headers[TAGS_HEADER].count(",") == MAX_TAG_PAIRS - 1
+
+    def test_raises_for_long_key(self) -> None:
+        """A key over MAX_TAG_KEY_LENGTH is rejected."""
+        headers: dict[str, str] = {}
+
+        with pytest.raises(ValueError, match="Tag key must be at most"):
+            add_tags_header({"k" * (MAX_TAG_KEY_LENGTH + 1): "prod"}, headers)
+
+    def test_raises_for_long_value(self) -> None:
+        """A value over MAX_TAG_VALUE_LENGTH is rejected."""
+        headers: dict[str, str] = {}
+
+        with pytest.raises(ValueError, match="Tag value must be at most"):
+            add_tags_header({"env": "v" * (MAX_TAG_VALUE_LENGTH + 1)}, headers)
+
+    def test_raises_over_total_byte_budget(self) -> None:
+        """The key+value byte budget is enforced across all pairs."""
+        headers: dict[str, str] = {}
+        # 5 pairs of 4 + 250 bytes = 1270 bytes, over the 1 KB budget.
+        tags = {f"key{index}": "v" * 250 for index in range(5)}
+
+        with pytest.raises(ValueError, match=f"at most {MAX_TAGS_TOTAL_BYTES} bytes"):
+            add_tags_header(tags, headers)
+
+    def test_raises_for_reserved_key(self) -> None:
+        """The fal.* namespace is reserved for the platform."""
+        headers: dict[str, str] = {}
+
+        with pytest.raises(ValueError, match="are reserved"):
+            add_tags_header({"fal.endpoint": "x"}, headers)
+
+    def test_raises_for_non_string_pair(self) -> None:
+        """Non-string keys or values are rejected."""
+        headers: dict[str, str] = {}
+
+        with pytest.raises(ValueError, match="must be strings"):
+            add_tags_header({"attempt": 2}, headers)  # type: ignore[dict-item]
+
+    def test_no_header_when_validation_fails(self) -> None:
+        """A rejected mapping leaves the headers untouched."""
+        headers: dict[str, str] = {}
+
+        with pytest.raises(ValueError):
+            add_tags_header({"env": "prod", "bad key": "x"}, headers)
+
+        assert headers == {}
 
 
 class _FakeRequest:

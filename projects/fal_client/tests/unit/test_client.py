@@ -242,6 +242,81 @@ def test_sync_client_run_with_headers_and_hint():
         assert call_kwargs["headers"]["X-Custom-Header"] == "test-value"
 
 
+def test_sync_client_run_with_tags():
+    """Test that tags are packed into the X-Fal-Tags header in run()"""
+    with patch("fal_client.client._maybe_retry_request") as mock_request:
+        mock_response = Mock()
+        mock_response.json.return_value = {"result": "success"}
+        mock_request.return_value = mock_response
+
+        client = SyncClient(key="test-key")
+
+        client.run(
+            "test-app",
+            {"input": "data"},
+            tags={"team": "design", "env": "prod"},
+            headers={"X-Custom": "value"},
+        )
+
+        call_kwargs = mock_request.call_args[1]
+        assert call_kwargs["headers"]["X-Fal-Tags"] == "team=design,env=prod"
+        assert call_kwargs["headers"]["X-Custom"] == "value"
+
+
+def test_sync_client_run_with_invalid_tags_raises():
+    """Test that invalid tags are rejected before the request is made"""
+    with patch("fal_client.client._maybe_retry_request") as mock_request:
+        client = SyncClient(key="test-key")
+
+        with pytest.raises(ValueError, match="Tag key"):
+            client.run("test-app", {"input": "data"}, tags={"bad key": "value"})
+
+        mock_request.assert_not_called()
+
+
+def test_sync_client_stream_with_tags():
+    """Test that tags are packed into the X-Fal-Tags header in stream()"""
+    with patch("fal_client.client.connect_sse") as mock_connect_sse:
+        events = Mock()
+        events.response.headers = {}
+        events.iter_sse.return_value = iter([])
+        mock_connect_sse.return_value.__enter__ = Mock(return_value=events)
+        mock_connect_sse.return_value.__exit__ = Mock(return_value=False)
+
+        client = SyncClient(key="test-key")
+        assert list(client.stream("test-app", {}, tags={"env": "prod"})) == []
+
+        call_kwargs = mock_connect_sse.call_args[1]
+        assert call_kwargs["headers"]["X-Fal-Tags"] == "env=prod"
+
+
+def test_sync_client_subscribe_with_tags():
+    """Test that tags reach the submit request in subscribe()"""
+    with patch("fal_client.client._maybe_retry_request") as mock_request:
+        submit_response = Mock()
+        submit_response.json.return_value = {
+            "request_id": "req-123",
+            "response_url": "http://response",
+            "status_url": "http://status",
+            "cancel_url": "http://cancel",
+        }
+
+        status_response = Mock()
+        status_response.json.return_value = {"status": "COMPLETED", "logs": []}
+
+        result_response = Mock()
+        result_response.json.return_value = {"result": "done"}
+
+        mock_request.side_effect = [submit_response, status_response, result_response]
+
+        client = SyncClient(key="test-key")
+        result = client.subscribe("test-app", {"input": "data"}, tags={"env": "prod"})
+
+        assert result == {"result": "done"}
+        first_call_kwargs = mock_request.call_args_list[0][1]
+        assert first_call_kwargs["headers"]["X-Fal-Tags"] == "env=prod"
+
+
 def test_sync_client_submit_with_headers():
     """Test that custom headers are passed through in submit()"""
     with patch("fal_client.client._maybe_retry_request") as mock_request:
@@ -1278,6 +1353,33 @@ async def test_async_upload_respects_repository_order():
         mock_request.call_args_list[0][0][2]
         == f"{REST_URL}/storage/upload/initiate?storage_type=gcs"
     )
+
+
+@pytest.mark.asyncio
+async def test_async_client_submit_with_tags():
+    """Test that tags are packed into the X-Fal-Tags header in submit()"""
+    with patch(
+        "fal_client.client._async_maybe_retry_request", new_callable=AsyncMock
+    ) as mock_request:
+        mock_response = Mock()
+        mock_response.json.return_value = {
+            "request_id": "req-123",
+            "response_url": "http://response",
+            "status_url": "http://status",
+            "cancel_url": "http://cancel",
+        }
+        mock_request.return_value = mock_response
+
+        client = AsyncClient(key="test-key")
+
+        await client.submit(
+            "test-app",
+            {"input": "data"},
+            tags={"team": "design"},
+        )
+
+        call_kwargs = mock_request.call_args[1]
+        assert call_kwargs["headers"]["X-Fal-Tags"] == "team=design"
 
 
 @pytest.mark.asyncio
