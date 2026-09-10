@@ -1914,6 +1914,7 @@ class ShellRunnerInput(google.protobuf.message.Message):
     CLOSE_FIELD_NUMBER: builtins.int
     TTY_SIZE_FIELD_NUMBER: builtins.int
     COMMAND_FIELD_NUMBER: builtins.int
+    TTY_FIELD_NUMBER: builtins.int
     runner_id: builtins.str
     data: builtins.bytes
     close: builtins.bool
@@ -1921,6 +1922,10 @@ class ShellRunnerInput(google.protobuf.message.Message):
     def tty_size(self) -> global___TerminalSize: ...
     @property
     def command(self) -> google.protobuf.internal.containers.RepeatedScalarFieldContainer[builtins.str]: ...
+    tty: builtins.bool
+    """Whether the command runs under a pseudo-terminal. Only read from the
+    first message. Unset means true, so older clients keep their PTY.
+    """
     def __init__(
         self,
         *,
@@ -1929,9 +1934,13 @@ class ShellRunnerInput(google.protobuf.message.Message):
         close: builtins.bool = ...,
         tty_size: global___TerminalSize | None = ...,
         command: collections.abc.Iterable[builtins.str] | None = ...,
+        tty: builtins.bool | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing_extensions.Literal["_tty_size", b"_tty_size", "tty_size", b"tty_size"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing_extensions.Literal["_tty_size", b"_tty_size", "close", b"close", "command", b"command", "data", b"data", "runner_id", b"runner_id", "tty_size", b"tty_size"]) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["_tty", b"_tty", "_tty_size", b"_tty_size", "tty", b"tty", "tty_size", b"tty_size"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["_tty", b"_tty", "_tty_size", b"_tty_size", "close", b"close", "command", b"command", "data", b"data", "runner_id", b"runner_id", "tty", b"tty", "tty_size", b"tty_size"]) -> None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_tty", b"_tty"]) -> typing_extensions.Literal["tty"] | None: ...
+    @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_tty_size", b"_tty_size"]) -> typing_extensions.Literal["tty_size"] | None: ...
 
 global___ShellRunnerInput = ShellRunnerInput
@@ -1943,19 +1952,28 @@ class ShellRunnerOutput(google.protobuf.message.Message):
     DATA_FIELD_NUMBER: builtins.int
     CLOSE_FIELD_NUMBER: builtins.int
     EXIT_CODE_FIELD_NUMBER: builtins.int
+    STREAM_FIELD_NUMBER: builtins.int
     data: builtins.bytes
     close: builtins.bool
     exit_code: builtins.int
+    stream: builtins.int
+    """Which stream `data` came from: 1 = stdout, 2 = stderr. Unset means
+    stdout, so older servers that never set it read as stdout.
+    """
     def __init__(
         self,
         *,
         data: builtins.bytes = ...,
         close: builtins.bool = ...,
         exit_code: builtins.int | None = ...,
+        stream: builtins.int | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing_extensions.Literal["_exit_code", b"_exit_code", "exit_code", b"exit_code"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing_extensions.Literal["_exit_code", b"_exit_code", "close", b"close", "data", b"data", "exit_code", b"exit_code"]) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["_exit_code", b"_exit_code", "_stream", b"_stream", "exit_code", b"exit_code", "stream", b"stream"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["_exit_code", b"_exit_code", "_stream", b"_stream", "close", b"close", "data", b"data", "exit_code", b"exit_code", "stream", b"stream"]) -> None: ...
+    @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_exit_code", b"_exit_code"]) -> typing_extensions.Literal["exit_code"] | None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_stream", b"_stream"]) -> typing_extensions.Literal["stream"] | None: ...
 
 global___ShellRunnerOutput = ShellRunnerOutput
 
