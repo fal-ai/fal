@@ -173,7 +173,10 @@ def _deployed_app_playground_url(url: str) -> str | None:
         return url
 
     decoded_segments = [urllib.parse.unquote(segment) for segment in endpoint_segments]
-    if decoded_segments[-1] in _UNTESTABLE_PLAYGROUND_SUFFIXES:
+    if (
+        len(decoded_segments) > 2
+        and decoded_segments[-1] in _UNTESTABLE_PLAYGROUND_SUFFIXES
+    ):
         return None
 
     owner, app_name = decoded_segments[:2]

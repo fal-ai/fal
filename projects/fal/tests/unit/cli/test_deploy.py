@@ -648,7 +648,7 @@ def mock_args(
     return args
 
 
-@pytest.mark.parametrize("app_alias", ["image-app", "image-app--staging"])
+@pytest.mark.parametrize("app_alias", ["image-app", "image-app--staging", "health"])
 def test_deploy_output_links_testable_routes_to_the_owning_app_playground(
     monkeypatch, app_alias
 ):
