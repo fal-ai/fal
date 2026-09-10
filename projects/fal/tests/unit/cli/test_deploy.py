@@ -9,7 +9,7 @@ from rich.console import Console
 from fal.api import Options
 from fal.api.api import IsolatedFunction
 from fal.cli._utils import AppData
-from fal.cli.deploy import _deploy
+from fal.cli.deploy import _deploy, _render_deploy_result
 from fal.cli.deploy_check import (
     _build_deployment_check_summary,
     _diff_table,
@@ -646,6 +646,60 @@ def mock_args(
     args.annotation = annotation
 
     return args
+
+
+@pytest.mark.parametrize("app_alias", ["image-app", "image-app--staging", "health"])
+def test_deploy_output_links_testable_routes_to_the_owning_app_playground(
+    monkeypatch, app_alias
+):
+    monkeypatch.setattr("fal.flags.URL_OUTPUT", "playground")
+    origin = "https://shark.fal.dev"
+    app_model_path = f"{origin}/models/team-owner/{app_alias}"
+    result = SimpleNamespace(
+        revision="rev",
+        app_name="image-app",
+        auth_mode="private",
+        urls={
+            "playground": {
+                "/": f"{app_model_path}/",
+                "/v2/generate": f"{app_model_path}/v2/generate",
+                "/stream": f"{app_model_path}/stream",
+                "/ws": f"{app_model_path}/ws",
+                "/realtime": f"{app_model_path}/realtime",
+                "/sse": f"{app_model_path}/sse",
+                "/health": f"{app_model_path}/health",
+                "/v2/generate/cancel": f"{app_model_path}/v2/generate/cancel",
+                "/stream/cancel": f"{app_model_path}/stream/cancel",
+                "/object_info": f"{app_model_path}/object_info",
+            },
+            "sync": {},
+            "async": {},
+        },
+        log_url=f"{origin}/logs/rev",
+    )
+    args = mock_args(app_ref=("app.py", "App"))
+    args.console = Console(
+        record=True, width=240, force_terminal=False, color_system=None
+    )
+
+    _render_deploy_result(args, result)
+
+    rendered_urls = [
+        line.strip()
+        for line in args.console.export_text().splitlines()
+        if line.strip().startswith("https://")
+    ]
+    app_playground = (
+        f"{origin}/dashboard/apps/team-owner/{app_alias}/testing/playground"
+    )
+    assert rendered_urls == [
+        f"{app_playground}?endpoint=team-owner%2F{app_alias}",
+        f"{app_playground}?endpoint=team-owner%2F{app_alias}%2Fv2%2Fgenerate",
+        f"{app_playground}?endpoint=team-owner%2F{app_alias}%2Fstream",
+        f"{app_playground}?endpoint=team-owner%2F{app_alias}%2Fws",
+        f"{app_playground}?endpoint=team-owner%2F{app_alias}%2Frealtime",
+        f"{app_playground}?endpoint=team-owner%2F{app_alias}%2Fsse",
+    ]
 
 
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
