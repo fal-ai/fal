@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from urllib.parse import quote, unquote, urlsplit, urlunsplit
 
 from fal.api.client import SyncServerlessClient
 
@@ -151,6 +152,40 @@ def _apps_command_hint(
     return hint
 
 
+_UNTESTABLE_PLAYGROUND_SUFFIXES = {"cancel", "health", "object_info"}
+
+
+def _deployed_app_playground_url(url: str) -> str | None:
+    """Map a server-provided model URL to its owning app's Playground tab."""
+    parsed = urlsplit(url)
+    path_segments = parsed.path.split("/")
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.netloc
+        or path_segments[:2] != ["", "models"]
+    ):
+        return url
+
+    endpoint_segments = path_segments[2:]
+    if endpoint_segments and endpoint_segments[-1] == "":
+        endpoint_segments = endpoint_segments[:-1]
+    if len(endpoint_segments) < 2 or any(not segment for segment in endpoint_segments):
+        return url
+
+    decoded_segments = [unquote(segment) for segment in endpoint_segments]
+    if decoded_segments[-1] in _UNTESTABLE_PLAYGROUND_SUFFIXES:
+        return None
+
+    owner, app_name = decoded_segments[:2]
+    formatted_endpoint = "/".join(decoded_segments)
+    path = (
+        f"/dashboard/apps/{quote(owner, safe='')}/{quote(app_name, safe='')}"
+        "/testing/playground"
+    )
+    query = f"endpoint={quote(formatted_endpoint, safe='')}"
+    return urlunsplit((parsed.scheme, parsed.netloc, path, query, ""))
+
+
 def _render_deploy_result(
     args, res, *, is_first_deploy: bool = False, team: str | None = None
 ) -> None:
@@ -237,7 +272,9 @@ def _render_deploy_result(
             lines.append(f"{section_icon} Playground ", style="bold")
             lines.append("(open in browser)\n", style="dim")
             for url in res.urls.get("playground", {}).values():
-                lines.append(f"  {url}\n", style="cyan")
+                app_url = _deployed_app_playground_url(url)
+                if app_url is not None:
+                    lines.append(f"  {app_url}\n", style="cyan")
 
         # API Endpoints section
         if URL_OUTPUT == "all":
