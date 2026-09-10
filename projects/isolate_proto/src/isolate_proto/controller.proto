@@ -645,6 +645,9 @@ message ShellRunnerInput {
     bool close = 3;
     optional TerminalSize tty_size = 4;
     repeated string command = 5;
+    // Whether the command runs under a pseudo-terminal. Only read from the
+    // first message. Unset means true, so older clients keep their PTY.
+    optional bool tty = 6;
 }
 
 message ShellRunnerOutput {
