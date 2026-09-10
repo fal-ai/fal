@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
-from urllib.parse import quote, unquote, urlsplit, urlunsplit
+import urllib.parse
 
 from fal.api.client import SyncServerlessClient
 
@@ -157,7 +157,7 @@ _UNTESTABLE_PLAYGROUND_SUFFIXES = {"cancel", "health", "object_info"}
 
 def _deployed_app_playground_url(url: str) -> str | None:
     """Map a server-provided model URL to its owning app's Playground tab."""
-    parsed = urlsplit(url)
+    parsed = urllib.parse.urlsplit(url)
     path_segments = parsed.path.split("/")
     if (
         parsed.scheme not in {"http", "https"}
@@ -172,18 +172,19 @@ def _deployed_app_playground_url(url: str) -> str | None:
     if len(endpoint_segments) < 2 or any(not segment for segment in endpoint_segments):
         return url
 
-    decoded_segments = [unquote(segment) for segment in endpoint_segments]
+    decoded_segments = [urllib.parse.unquote(segment) for segment in endpoint_segments]
     if decoded_segments[-1] in _UNTESTABLE_PLAYGROUND_SUFFIXES:
         return None
 
     owner, app_name = decoded_segments[:2]
     formatted_endpoint = "/".join(decoded_segments)
     path = (
-        f"/dashboard/apps/{quote(owner, safe='')}/{quote(app_name, safe='')}"
+        f"/dashboard/apps/{urllib.parse.quote(owner, safe='')}"
+        f"/{urllib.parse.quote(app_name, safe='')}"
         "/testing/playground"
     )
-    query = f"endpoint={quote(formatted_endpoint, safe='')}"
-    return urlunsplit((parsed.scheme, parsed.netloc, path, query, ""))
+    query = f"endpoint={urllib.parse.quote(formatted_endpoint, safe='')}"
+    return urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, path, query, ""))
 
 
 def _render_deploy_result(
