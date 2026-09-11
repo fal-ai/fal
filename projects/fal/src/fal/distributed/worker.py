@@ -633,6 +633,9 @@ class DistributedRunner:
                         )
                     await asyncio.sleep(0.5)
                 self.ensure_alive()
+        except asyncio.CancelledError:
+            self.terminate(timeout=timeout)
+            raise
         except Exception as e:
             print(f"[debug] Error during startup: {e}\n{traceback.format_exc()}")
             self.terminate(timeout=timeout)
