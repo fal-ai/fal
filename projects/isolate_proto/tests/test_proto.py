@@ -233,6 +233,28 @@ def test_build_environment_result_construction():
     assert result_with_status.env_id == "abc123"
 
 
+def test_shell_runner_tty_presence_survives_serialization():
+    legacy_request = isolate_proto.ShellRunnerInput(runner_id="runner-id")
+    assert legacy_request.HasField("tty") is False
+
+    request = isolate_proto.ShellRunnerInput(runner_id="runner-id", tty=False)
+    restored = isolate_proto.ShellRunnerInput.FromString(request.SerializeToString())
+
+    assert restored.HasField("tty") is True
+    assert restored.tty is False
+
+
+def test_shell_runner_output_stream_presence_survives_serialization():
+    legacy_output = isolate_proto.ShellRunnerOutput(data=b"output")
+    assert legacy_output.HasField("stream") is False
+
+    output = isolate_proto.ShellRunnerOutput(data=b"error", stream=2)
+    restored = isolate_proto.ShellRunnerOutput.FromString(output.SerializeToString())
+
+    assert restored.HasField("stream") is True
+    assert restored.stream == 2
+
+
 def test_register_application_private_logs_presence():
     request_without_private_logs = isolate_proto.RegisterApplicationRequest()
     assert request_without_private_logs.HasField("private_logs") is False
