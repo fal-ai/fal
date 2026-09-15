@@ -17,6 +17,7 @@ from typing import (
     Optional,
     Protocol,
     Tuple,
+    Union,
 )
 
 from fastapi import Body
@@ -42,6 +43,7 @@ __all__ = [
     "App",
     "DATA_CHANNEL_LABEL",
     "GStreamerPeer",
+    "IceServer",
     "PeerBackend",
     "PipelineSpec",
     "Session",
@@ -76,10 +78,19 @@ if TYPE_CHECKING:
     )
 
 
+class IceServer(BaseModel):
+    urls: Union[str, List[str]]
+    username: Optional[str] = None
+    credential: Optional[str] = None
+
+
 class StartSessionRequest(BaseModel):
     sdp: str
     type: str = "offer"
     session_id: Optional[str] = None
+    ice_servers: List[IceServer] = Field(default_factory=list)
+    ice_status: Optional[str] = None
+    credential_age_seconds: Optional[float] = None
 
 
 class SessionAnswer(BaseModel):
@@ -481,6 +492,21 @@ class App(FalApp):
         )
 
 
+def _aiortc_configuration(ice_servers: List[IceServer]) -> Any:
+    from aiortc import RTCConfiguration, RTCIceServer  # noqa: PLC0415
+
+    return RTCConfiguration(
+        iceServers=[
+            RTCIceServer(
+                urls=server.urls,
+                username=server.username,
+                credential=server.credential,
+            )
+            for server in ice_servers
+        ]
+    )
+
+
 class AiortcPeer:
     """aiortc implementation of the WMA peer backend contract."""
 
@@ -520,6 +546,10 @@ class AiortcPeer:
                 pc = await pc
         elif self._rtc_configuration is not None:
             pc = RTCPeerConnection(configuration=self._rtc_configuration)
+        elif offer.ice_servers:
+            pc = RTCPeerConnection(
+                configuration=_aiortc_configuration(offer.ice_servers)
+            )
         else:
             pc = RTCPeerConnection()
         self._pc = pc

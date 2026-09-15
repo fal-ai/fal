@@ -9,12 +9,38 @@ from contextlib import suppress
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping
+from urllib.parse import quote
 
-from fal.wma import PeerBackend, Session, SessionAnswer, StartSessionRequest
+from fal.wma import IceServer, PeerBackend, Session, SessionAnswer, StartSessionRequest
 
 GI_DIST_PACKAGES = Path("/usr/lib/python3/dist-packages")
 ICE_GATHERING_TIMEOUT_SECONDS = 7
 PROMISE_TIMEOUT_SECONDS = 7
+
+
+def _gstreamer_ice_servers(
+    ice_servers: Iterable[IceServer],
+) -> tuple[list[str], list[str]]:
+    stun_servers = []
+    turn_servers = []
+    for server in ice_servers:
+        urls = [server.urls] if isinstance(server.urls, str) else server.urls
+        for url in urls:
+            scheme, separator, target = url.partition(":")
+            if not separator or scheme not in {"stun", "stuns", "turn", "turns"}:
+                continue
+            if target.startswith("//"):
+                target = target[2:]
+            if scheme.startswith("stun"):
+                stun_servers.append(f"{scheme}://{target}")
+                continue
+            credentials = ""
+            if server.username is not None and server.credential is not None:
+                username = quote(server.username, safe="")
+                credential = quote(server.credential, safe="")
+                credentials = f"{username}:{credential}@"
+            turn_servers.append(f"{scheme}://{credentials}{target}")
+    return stun_servers, turn_servers
 
 
 @dataclass(frozen=True)
@@ -117,6 +143,7 @@ class GStreamerPeer(PeerBackend):
             self._negotiate_sync,
             offer.sdp,
             spec.description,
+            offer.ice_servers,
         )
         self._negotiate_future = future
         try:
@@ -143,7 +170,12 @@ class GStreamerPeer(PeerBackend):
             loop = asyncio.get_running_loop()
             await loop.run_in_executor(None, self._close_sync)
 
-    def _negotiate_sync(self, offer_sdp: str, description: str) -> str:
+    def _negotiate_sync(
+        self,
+        offer_sdp: str,
+        description: str,
+        ice_servers: list[IceServer],
+    ) -> str:
         self._gst, self._gst_sdp, self._gst_webrtc = load_gstreamer()
         self._pipeline = self._gst.parse_launch(description)
         self._webrtc = self._pipeline.get_by_name(self._peer_element)
@@ -151,7 +183,7 @@ class GStreamerPeer(PeerBackend):
             raise RuntimeError(
                 f"GStreamer pipeline has no {self._peer_element!r} element"
             )
-        self._configure_ice_servers()
+        self._configure_ice_servers(ice_servers)
         self._webrtc.connect("on-data-channel", self._on_data_channel)
         self._webrtc.connect(
             "notify::connection-state", self._on_connection_state_changed
@@ -189,11 +221,18 @@ class GStreamerPeer(PeerBackend):
             raise RuntimeError("GStreamer did not produce a local description")
         return local_description.sdp.as_text()
 
-    def _configure_ice_servers(self) -> None:
-        if self._stun_server:
-            self._webrtc.set_property("stun-server", self._stun_server)
-        if self._turn_server:
-            self._webrtc.set_property("turn-server", self._turn_server)
+    def _configure_ice_servers(self, ice_servers: list[IceServer]) -> None:
+        stun_servers, turn_servers = _gstreamer_ice_servers(ice_servers)
+        stun_server = next(iter(stun_servers), self._stun_server)
+        if stun_server:
+            self._webrtc.set_property("stun-server", stun_server)
+
+        if not turn_servers and self._turn_server:
+            turn_servers = [self._turn_server]
+        if turn_servers:
+            self._webrtc.set_property("turn-server", turn_servers[0])
+            for turn_server in turn_servers[1:]:
+                self._webrtc.emit("add-turn-server", turn_server)
 
     def _wait_for_promise(
         self,
