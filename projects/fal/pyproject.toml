@@ -45,7 +45,9 @@ dependencies = [
     "argcomplete>=3.1.0,<4; python_version >= '3.10'",
     "argcomplete>=3.1.0,!=3.7.1,<4; python_version < '3.10'",
     "packaging>=21.3",
-    "pathspec>=0.11.1,<1",
+    # 1.0.0-1.0.3 each ship a crash bug, all fixed by 1.0.4 (#100, #102, #103):
+    # https://github.com/cpburnz/python-pathspec/blob/master/CHANGES.rst
+    "pathspec>=0.11.1,!=1.0.0,!=1.0.1,!=1.0.2,!=1.0.3,<2",
     "pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*",
     # serve=True dependencies
     # FastAPI 0.123.1 fixes the OpenAPI schema remapping issue that blocked 0.119+.
