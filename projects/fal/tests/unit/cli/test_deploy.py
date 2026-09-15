@@ -699,7 +699,35 @@ def test_deploy_output_links_testable_routes_to_the_owning_app_playground(
         f"{app_playground}?endpoint=team-owner%2F{app_alias}%2Fws",
         f"{app_playground}?endpoint=team-owner%2F{app_alias}%2Frealtime",
         f"{app_playground}?endpoint=team-owner%2F{app_alias}%2Fsse",
+        f"{origin}/dashboard/apps/team-owner/{app_alias}",
     ]
+
+
+def test_deploy_output_keeps_utility_only_apps_discoverable(monkeypatch):
+    monkeypatch.setattr("fal.flags.URL_OUTPUT", "playground")
+    result = SimpleNamespace(
+        revision="rev",
+        app_name="image-app",
+        auth_mode="private",
+        urls={
+            "playground": {
+                "/health": "https://fal.ai/models/team-owner/image-app/health",
+            },
+        },
+    )
+    args = mock_args(app_ref=("app.py", "App"))
+    args.console = Console(
+        record=True, width=240, force_terminal=False, color_system=None
+    )
+
+    _render_deploy_result(args, result)
+
+    rendered_urls = [
+        line.strip()
+        for line in args.console.export_text().splitlines()
+        if line.strip().startswith("https://")
+    ]
+    assert rendered_urls == ["https://fal.ai/dashboard/apps/team-owner/image-app"]
 
 
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")

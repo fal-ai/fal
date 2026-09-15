@@ -152,11 +152,11 @@ def _apps_command_hint(
     return hint
 
 
-_UNTESTABLE_PLAYGROUND_SUFFIXES = {"cancel", "health", "object_info"}
+_UTILITY_ENDPOINT_SUFFIXES = {"cancel", "health", "object_info"}
 
 
-def _deployed_app_playground_url(url: str) -> str | None:
-    """Map a server-provided model URL to its owning app's Playground tab."""
+def _deployed_app_urls(url: str) -> tuple[str | None, str | None]:
+    """Return the app overview and, for non-utility routes, its Playground URL."""
     parsed = urllib.parse.urlsplit(url)
     path_segments = parsed.path.split("/")
     if (
@@ -164,30 +164,32 @@ def _deployed_app_playground_url(url: str) -> str | None:
         or not parsed.netloc
         or path_segments[:2] != ["", "models"]
     ):
-        return url
+        return None, url
 
     endpoint_segments = path_segments[2:]
     if endpoint_segments and endpoint_segments[-1] == "":
         endpoint_segments = endpoint_segments[:-1]
     if len(endpoint_segments) < 2 or any(not segment for segment in endpoint_segments):
-        return url
+        return None, url
 
     decoded_segments = [urllib.parse.unquote(segment) for segment in endpoint_segments]
-    if (
-        len(decoded_segments) > 2
-        and decoded_segments[-1] in _UNTESTABLE_PLAYGROUND_SUFFIXES
-    ):
-        return None
-
     owner, app_name = decoded_segments[:2]
-    formatted_endpoint = "/".join(decoded_segments)
-    path = (
+    app_path = (
         f"/dashboard/apps/{urllib.parse.quote(owner, safe='')}"
         f"/{urllib.parse.quote(app_name, safe='')}"
-        "/testing/playground"
     )
+    overview_url = urllib.parse.urlunsplit(
+        (parsed.scheme, parsed.netloc, app_path, "", "")
+    )
+    if len(decoded_segments) > 2 and decoded_segments[-1] in _UTILITY_ENDPOINT_SUFFIXES:
+        return overview_url, None
+
+    formatted_endpoint = "/".join(decoded_segments)
     query = f"endpoint={urllib.parse.quote(formatted_endpoint, safe='')}"
-    return urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, path, query, ""))
+    playground_url = urllib.parse.urlunsplit(
+        (parsed.scheme, parsed.netloc, f"{app_path}/testing/playground", query, "")
+    )
+    return overview_url, playground_url
 
 
 def _render_deploy_result(
@@ -271,14 +273,26 @@ def _render_deploy_result(
         lines.append(f"{section_icon} Auth: {res.auth_mode} ", style="bold")
         lines.append(f"({auth_desc})\n\n", style="dim")
 
-        # Playground section
+        # Browser entry points: inference in Playground, utility API references
+        # in the existing Application Endpoints section of the app overview.
         if URL_OUTPUT != "none":
-            lines.append(f"{section_icon} Playground ", style="bold")
-            lines.append("(open in browser)\n", style="dim")
+            app_overview_url = None
+            playground_started = False
             for url in res.urls.get("playground", {}).values():
-                app_url = _deployed_app_playground_url(url)
-                if app_url is not None:
-                    lines.append(f"  {app_url}\n", style="cyan")
+                overview_url, playground_url = _deployed_app_urls(url)
+                if app_overview_url is None:
+                    app_overview_url = overview_url
+                if playground_url is not None:
+                    if not playground_started:
+                        lines.append(f"{section_icon} Playground ", style="bold")
+                        lines.append("(open in browser)\n", style="dim")
+                        playground_started = True
+                    lines.append(f"  {playground_url}\n", style="cyan")
+
+            if app_overview_url is not None:
+                lines.append(f"\n{section_icon} Application Endpoints ", style="bold")
+                lines.append("(API references)\n", style="dim")
+                lines.append(f"  {app_overview_url}\n", style="cyan")
 
         # API Endpoints section
         if URL_OUTPUT == "all":
