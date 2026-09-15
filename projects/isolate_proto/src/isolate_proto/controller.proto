@@ -645,12 +645,18 @@ message ShellRunnerInput {
     bool close = 3;
     optional TerminalSize tty_size = 4;
     repeated string command = 5;
+    // Whether the command runs under a pseudo-terminal. Only read from the
+    // first message. Unset means true, so older clients keep their PTY.
+    optional bool tty = 6;
 }
 
 message ShellRunnerOutput {
     bytes data = 1;
     bool close = 2;
     optional int32 exit_code = 3;
+    // Which stream `data` came from: 1 = stdout, 2 = stderr. Unset means
+    // stdout, so older servers that never set it read as stdout.
+    optional int32 stream = 4;
 }
 
 message ListEnvironmentsRequest {
