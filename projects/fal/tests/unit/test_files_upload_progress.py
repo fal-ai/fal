@@ -52,8 +52,9 @@ def test_multipart_task_is_sized_in_bytes_and_tracks_the_transfer(
     assert task.description == "Uploading model.bin"
     assert task.total == size
     assert task.completed == size
-    # The symptom being fixed: a single jump from 0 to done.
-    assert progress.completions == [25_000, 60_000_000, size]
+    # The symptom being fixed: a single jump from 0 to done. The trailing
+    # repeat is the end-of-upload settle.
+    assert progress.completions == [25_000, 60_000_000, size, size]
 
 
 def test_multipart_raises_when_the_server_etag_differs_from_the_local_digest(
@@ -144,4 +145,34 @@ def test_empty_file_upload_finishes_the_bar(monkeypatch, tmp_path):
 
     task = progresses[0].tasks[0]
     assert task.total == 1
+    assert task.finished
+
+
+def test_multipart_bar_settles_on_the_full_size_after_a_stale_callback(
+    monkeypatch, tmp_path
+):
+    """Concurrent parts can deliver a lower running total last.
+
+    The tracker computes totals under a lock but invokes the callback outside
+    it, so delivery order is not guaranteed. The bar must still end at the
+    uploaded size rather than wherever the last callback happened to land.
+    """
+    size = 300_000
+    path = tmp_path / "payload.bin"
+    # Highest total delivered mid-stream, a lower one arriving last.
+    fake_multipart(monkeypatch, "etag", "etag", emit=(100_000, size, 200_000))
+
+    progress = RecordingProgress()
+    FalFileSystem._put_file_multipart(
+        SimpleNamespace(_client=object()),
+        str(path),
+        "/data/payload.bin",
+        size,
+        progress,
+    )
+
+    task = progress.tasks[0]
+    assert progress.completions[-2] == 200_000, "expected the stale callback last"
+    assert progress.completions[-1] == size
+    assert task.completed == size
     assert task.finished

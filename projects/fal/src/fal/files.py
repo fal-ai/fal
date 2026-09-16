@@ -161,6 +161,11 @@ class FalFileSystem(AbstractFileSystem):
             lpath, on_bytes_uploaded=on_bytes_uploaded, compute_md5=True
         )
 
+        # Concurrent parts report their running totals outside the tracker lock,
+        # so the last callback to arrive is not necessarily the highest. Settle
+        # the bar on the size that was actually uploaded.
+        progress.update(task, completed=size)
+
         # The digest covers the bytes that were read and sent, so this compares
         # the stored object against the upload rather than against the file on
         # disk; a file that changes mid-upload is caught by the size check in
