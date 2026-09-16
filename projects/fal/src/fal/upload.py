@@ -126,11 +126,16 @@ class BaseMultipartUpload:
         method: str,
         path: str,
         max_retries: int = 3,
+        files_factory: Optional[Callable[[], Dict[str, Any]]] = None,
         **kwargs,
     ) -> httpx.Response:
         last_exception = None
 
         for attempt in range(max_retries):
+            # A single-use body must be rebuilt per attempt: a stream left at
+            # EOF by a failed attempt would otherwise resend nothing.
+            if files_factory is not None:
+                kwargs["files"] = files_factory()
             try:
                 response = self.client.request(method, path, **kwargs)
 
@@ -207,14 +212,23 @@ class BaseMultipartUpload:
         on_progress: Optional[Callable[[int], None]] = None,
     ) -> Dict[str, object]:
         file_name = filename or "chunk"
-        body: Any = data
-        if on_progress is not None:
-            body = ProgressFileReader(io.BytesIO(data), on_progress)
-        response = self._request(
-            "PUT",
-            f"{self.part_url}/{part_number}",
-            files={"file_upload": (file_name, body, "application/octet-stream")},
-        )
+        if on_progress is None:
+            response = self._request(
+                "PUT",
+                f"{self.part_url}/{part_number}",
+                files={"file_upload": (file_name, data, "application/octet-stream")},
+            )
+        else:
+
+            def build_files() -> Dict[str, Any]:
+                reader = ProgressFileReader(io.BytesIO(data), on_progress)
+                return {"file_upload": (file_name, reader, "application/octet-stream")}
+
+            response = self._request(
+                "PUT",
+                f"{self.part_url}/{part_number}",
+                files_factory=build_files,
+            )
         result = response.json()
         part_info = {
             "part_number": result["part_number"],
@@ -246,12 +260,15 @@ class BaseMultipartUpload:
         file_path: str,
         on_part_complete: Optional[Callable[[int], None]] = None,
         on_bytes_uploaded: Optional[Callable[[int], None]] = None,
+        compute_md5: bool = False,
     ) -> str:
         """Upload `file_path` and return the server etag.
 
         `on_part_complete` fires once per finished part. `on_bytes_uploaded`
         fires as the body of each part is handed to the transport, with the
-        running total of payload bytes sent across all parts.
+        running total of payload bytes sent across all parts. `compute_md5`
+        populates `content_md5`; it costs a hash over the whole file, so it is
+        opt-in for callers that verify the etag.
         """
         size = os.path.getsize(file_path)
 
@@ -274,7 +291,8 @@ class BaseMultipartUpload:
                     on_part_complete(1)
                 if on_bytes_uploaded:
                     on_bytes_uploaded(0)
-                self._content_md5 = hashlib.md5(b"").hexdigest()
+                if compute_md5:
+                    self._content_md5 = hashlib.md5(b"").hexdigest()
                 return self.complete()
             except FileExistsError:
                 return ""
@@ -293,7 +311,8 @@ class BaseMultipartUpload:
             maxsize=self.max_concurrency * 2
         )
         read_error: List[Exception] = []
-        hasher = hashlib.md5()
+        hasher = hashlib.md5() if compute_md5 else None
+        bytes_read: List[int] = [0]
 
         def reader_thread():
             """Reads file chunks and puts them in bounded queue"""
@@ -304,7 +323,9 @@ class BaseMultipartUpload:
                         if chunk:
                             # Hashing here rides along with the read the upload
                             # already needs, instead of a second full-file pass.
-                            hasher.update(chunk)
+                            if hasher is not None:
+                                hasher.update(chunk)
+                            bytes_read[0] += len(chunk)
                             chunk_queue.put((part_number, chunk))
                 # Sentinel to signal completion
                 chunk_queue.put(None)
@@ -348,7 +369,17 @@ class BaseMultipartUpload:
             if read_error:
                 raise read_error[0]
 
-            self._content_md5 = hasher.hexdigest()
+            # The part count is fixed from the size sampled before the read, so
+            # a file that changes underneath us would otherwise upload a prefix
+            # and report success.
+            if bytes_read[0] != size:
+                raise RuntimeError(
+                    f"{file_path} changed while uploading: read "
+                    f"{bytes_read[0]} bytes, expected {size}"
+                )
+
+            if hasher is not None:
+                self._content_md5 = hasher.hexdigest()
             return self.complete()
         except FileExistsError:
             return ""

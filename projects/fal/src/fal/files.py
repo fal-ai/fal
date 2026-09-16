@@ -157,8 +157,14 @@ class FalFileSystem(AbstractFileSystem):
             max_concurrency=MULTIPART_MAX_CONCURRENCY,
         )
 
-        etag = multipart.upload_file(lpath, on_bytes_uploaded=on_bytes_uploaded)
+        etag = multipart.upload_file(
+            lpath, on_bytes_uploaded=on_bytes_uploaded, compute_md5=True
+        )
 
+        # The digest covers the bytes that were read and sent, so this compares
+        # the stored object against the upload rather than against the file on
+        # disk; a file that changes mid-upload is caught by the size check in
+        # upload_file instead.
         md5 = multipart.content_md5
         if etag and etag != md5:
             raise RuntimeError(
