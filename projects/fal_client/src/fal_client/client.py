@@ -360,9 +360,9 @@ class MultipartUpload:
             futures = []
             for part_number in range(1, parts + 1):
                 start = (part_number - 1) * multipart.chunk_size
-                data = data[start : start + multipart.chunk_size]
+                chunk = data[start : start + multipart.chunk_size]
                 futures.append(
-                    executor.submit(multipart.upload_part, part_number, data)
+                    executor.submit(multipart.upload_part, part_number, chunk)
                 )
             for future in concurrent.futures.as_completed(futures):
                 future.result()
