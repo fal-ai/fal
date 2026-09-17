@@ -75,7 +75,18 @@ def parse_pyproject_toml(path_config: str) -> Dict[str, Any]:
     If parsing fails, will raise a tomli.TOMLDecodeError.
     """
     pyproject_toml = _load_toml(path_config)
-    config: Dict[str, Any] = pyproject_toml.get("tool", {}).get("fal", {})
-    config = {k.replace("--", "").replace("-", "_"): v for k, v in config.items()}
+    raw_config: Dict[str, Any] = pyproject_toml.get("tool", {}).get("fal", {})
+
+    config: Dict[str, Any] = {}
+    normalized_from: Dict[str, str] = {}
+    for key, value in raw_config.items():
+        normalized_key = key.replace("--", "").replace("-", "_")
+        if normalized_key in normalized_from:
+            raise ValueError(
+                f"{path_config}: [tool.fal] keys {normalized_from[normalized_key]!r} "
+                f"and {key!r} both normalize to {normalized_key!r}. Rename one of them."
+            )
+        normalized_from[normalized_key] = key
+        config[normalized_key] = value
 
     return config
