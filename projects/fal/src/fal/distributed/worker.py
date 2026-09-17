@@ -318,7 +318,10 @@ class DistributedRunner:
             for process in self.context.processes:
                 if process.is_alive():
                     process.terminate()
-                    process.join(timeout=timeout)
+                process.join(timeout=timeout)
+                if process.is_alive():
+                    process.kill()
+                    process.join()
 
         self.close_zmq_socket()
 
@@ -357,6 +360,7 @@ class DistributedRunner:
     def get_zmq_socket(self) -> Socket[Any]:
         """
         Returns the bound ZeroMQ socket, choosing a port when none was configured.
+        Resolves and caches worker_port on the first bind.
         """
         if self.zmq_socket is not None:
             return self.zmq_socket
@@ -587,6 +591,11 @@ class DistributedRunner:
 
         if self.is_alive():
             raise RuntimeError("Distributed processes are already running.")
+
+        if self.context is not None:
+            # A dead rank can leave peers alive. Reap them before replacing context.
+            # Closing the old socket also resets an automatically selected port.
+            self.terminate(timeout=timeout)
 
         self._keepalive_shutdown = False
 
