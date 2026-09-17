@@ -219,9 +219,12 @@ class BaseMultipartUpload:
                 files={"file_upload": (file_name, data, "application/octet-stream")},
             )
         else:
+            # Bound outside the closure: narrowing does not carry into a nested
+            # function, which could be called after the name was rebound.
+            report: Callable[[int], None] = on_progress
 
             def build_files() -> Dict[str, Any]:
-                reader = ProgressFileReader(io.BytesIO(data), on_progress)
+                reader = ProgressFileReader(io.BytesIO(data), report)
                 return {"file_upload": (file_name, reader, "application/octet-stream")}
 
             response = self._request(
