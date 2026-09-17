@@ -176,3 +176,34 @@ def test_multipart_bar_settles_on_the_full_size_after_a_stale_callback(
     assert progress.completions[-1] == size
     assert task.completed == size
     assert task.finished
+
+
+@pytest.mark.parametrize(
+    "filename",
+    ["x[bold]y.bin", "x[not a tag]y.bin", "[bold]lead.bin", "movie[1080p].mkv"],
+    ids=["style-tag", "tag-like-text", "leading-tag", "plain-brackets"],
+)
+def test_bracketed_filename_is_shown_verbatim(monkeypatch, tmp_path, filename):
+    """A task description is parsed as Rich markup.
+
+    Any bracketed span that looks like a tag is dropped from the rendered
+    label, so `x[bold]y.bin` would otherwise be shown as `xy.bin`. A closing
+    tag cannot occur here because `/` is the path separator and
+    `os.path.basename` removes anything before it.
+    """
+    from rich.text import Text
+
+    size = 300_000
+    fake_multipart(monkeypatch, "etag", "etag", emit=(size,))
+
+    progress = RecordingProgress()
+    FalFileSystem._put_file_multipart(
+        SimpleNamespace(_client=object()),
+        str(tmp_path / filename),
+        f"/data/{filename}",
+        size,
+        progress,
+    )
+
+    rendered = Text.from_markup(progress.tasks[0].description).plain
+    assert rendered == f"Uploading {filename}"

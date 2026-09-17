@@ -145,7 +145,12 @@ class FalFileSystem(AbstractFileSystem):
             fobj.write(response.content)
 
     def _put_file_multipart(self, lpath, rpath, size, progress):
-        task = progress.add_task(f"Uploading {os.path.basename(lpath)}", total=size)
+        from rich.markup import escape
+
+        # A task description is parsed as Rich markup, so a name containing
+        # tag-like brackets would be mangled or raise.
+        name = escape(os.path.basename(lpath))
+        task = progress.add_task(f"Uploading {name}", total=size)
 
         def on_bytes_uploaded(uploaded: int):
             progress.update(task, completed=uploaded)
@@ -166,10 +171,10 @@ class FalFileSystem(AbstractFileSystem):
         # the bar on the size that was actually uploaded.
         progress.update(task, completed=size)
 
-        # The digest covers the bytes that were read and sent, so this compares
-        # the stored object against the upload rather than against the file on
-        # disk; a file that changes mid-upload is caught by the size check in
-        # upload_file instead.
+        # The digest is taken from the bytes that were read and sent, so this
+        # compares the stored object against the upload, not against the file on
+        # disk. An edit that changes the file's length fails the byte-count check
+        # in upload_file; one that keeps it identical is not detected here.
         md5 = multipart.content_md5
         if etag and etag != md5:
             raise RuntimeError(
@@ -177,6 +182,7 @@ class FalFileSystem(AbstractFileSystem):
             )
 
     def put_file(self, lpath, rpath, mode="overwrite", **kwargs):
+        from rich.markup import escape
         from rich.progress import (
             BarColumn,
             DownloadColumn,
@@ -203,7 +209,7 @@ class FalFileSystem(AbstractFileSystem):
             else:
                 # A zero total renders as an indeterminate pulse forever.
                 total = size or 1
-                task = progress.add_task(os.path.basename(lpath), total=total)
+                task = progress.add_task(escape(os.path.basename(lpath)), total=total)
                 with open(lpath, "rb") as fobj:
                     reader = ProgressFileReader(
                         fobj,
