@@ -5,8 +5,16 @@ from typing import Any, Dict, Optional, Sequence, Tuple, Union
 import tomli
 
 
-@lru_cache
 def _load_toml(path: Union[Path, str]) -> Dict[str, Any]:
+    # Keyed on mtime as well as path, so an in-place edit within a live
+    # process is picked up instead of serving a stale parse from an earlier
+    # call. mtime_ns comes from a plain, uncached stat() call, so the check
+    # itself is always fresh.
+    return _load_toml_cached(str(path), Path(path).stat().st_mtime_ns)
+
+
+@lru_cache(maxsize=128)
+def _load_toml_cached(path: str, _mtime_ns: int) -> Dict[str, Any]:
     with open(path, "rb") as f:
         return tomli.load(f)
 
@@ -16,8 +24,7 @@ def _cached_resolve(path: Path) -> Path:
     return path.resolve()
 
 
-@lru_cache
-def find_project_root(srcs: Optional[Sequence[str]]) -> Tuple[Path, str]:
+def find_project_root(srcs: Optional[Sequence[str]] = None) -> Tuple[Path, str]:
     """Return a directory containing .git, or pyproject.toml.
 
     That directory will be a common parent of all files and directories
@@ -31,8 +38,17 @@ def find_project_root(srcs: Optional[Sequence[str]]) -> Tuple[Path, str]:
     project root was discovered.
     """
     if not srcs:
-        srcs = [str(_cached_resolve(Path.cwd()))]
+        # cwd-dependent, so this case cannot be cached on a constant key
+        # (see _find_project_root_cached, which only ever sees resolved srcs)
+        resolved_srcs: Tuple[str, ...] = (str(_cached_resolve(Path.cwd())),)
+    else:
+        resolved_srcs = tuple(srcs)
 
+    return _find_project_root_cached(resolved_srcs)
+
+
+@lru_cache
+def _find_project_root_cached(srcs: Tuple[str, ...]) -> Tuple[Path, str]:
     path_srcs = [_cached_resolve(Path(Path.cwd(), src)) for src in srcs]
 
     # A list of lists of parents for each 'src'. 'src' is included as a
