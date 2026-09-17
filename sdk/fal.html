@@ -4212,6 +4212,14 @@ instead of the user provided ones.</p>
 <em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">complete_url</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#fal.upload.BaseMultipartUpload.complete_url" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
+<dl class="py property">
+<dt class="sig sig-object py" id="fal.upload.BaseMultipartUpload.content_md5">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">content_md5</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#fal.upload.BaseMultipartUpload.content_md5" title="Link to this definition">¶</a></dt>
+<dd><p>MD5 of the bytes sent by the last successful <cite>upload_file</cite> call.</p>
+<p><cite>None</cite> until a call has read the file through, so callers must treat a
+missing digest as “not verified” rather than “verified”.</p>
+</dd></dl>
+
 <dl class="py method">
 <dt class="sig sig-object py" id="fal.upload.BaseMultipartUpload.get_complete_payload">
 <span class="sig-name descname"><span class="pre">get_complete_payload</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">parts</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.upload.BaseMultipartUpload.get_complete_payload" title="Link to this definition">¶</a></dt>
@@ -4254,8 +4262,14 @@ instead of the user provided ones.</p>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="fal.upload.BaseMultipartUpload.upload_file">
-<span class="sig-name descname"><span class="pre">upload_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">file_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">on_part_complete</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.upload.BaseMultipartUpload.upload_file" title="Link to this definition">¶</a></dt>
-<dd><dl class="field-list simple">
+<span class="sig-name descname"><span class="pre">upload_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">file_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">on_part_complete</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">on_bytes_uploaded</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">compute_md5</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.upload.BaseMultipartUpload.upload_file" title="Link to this definition">¶</a></dt>
+<dd><p>Upload <cite>file_path</cite> and return the server etag.</p>
+<p><cite>on_part_complete</cite> fires once per finished part. <cite>on_bytes_uploaded</cite>
+fires as the body of each part is handed to the transport, with the
+running total of payload bytes sent across all parts. <cite>compute_md5</cite>
+populates <cite>content_md5</cite>; it costs a hash over the whole file, so it is
+opt-in for callers that verify the etag.</p>
+<dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span></p>
 </dd>
@@ -4292,6 +4306,45 @@ instead of the user provided ones.</p>
 <dt class="sig sig-object py" id="fal.upload.DataFileMultipartUpload.part_url">
 <em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">part_url</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#fal.upload.DataFileMultipartUpload.part_url" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="fal.upload.ProgressFileReader">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.upload.</span></span><span class="sig-name descname"><span class="pre">ProgressFileReader</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fobj</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">on_progress</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.upload.ProgressFileReader" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Read-through view of a binary stream that reports the absolute offset.</p>
+<p>Reporting the offset rather than a delta keeps the count honest across a
+retry, which rewinds the body and resends it from the start.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.upload.ProgressFileReader.read">
+<span class="sig-name descname"><span class="pre">read</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">-1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.upload.ProgressFileReader.read" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bytes</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.upload.ProgressFileReader.seek">
+<span class="sig-name descname"><span class="pre">seek</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">offset</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">whence</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.upload.ProgressFileReader.seek" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.upload.ProgressFileReader.tell">
+<span class="sig-name descname"><span class="pre">tell</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#fal.upload.ProgressFileReader.tell" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
 
 </dd></dl>
 
