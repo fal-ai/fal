@@ -393,7 +393,7 @@ async def test_connect_timeout_is_capped_only_on_mapped_domains(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("asynchronous", [False, True])
-async def test_backup_log_includes_path_but_omits_query_and_credentials(
+async def test_backup_log_includes_encoded_path_but_omits_query_and_credentials(
     make_client, caplog, asynchronous
 ):
     def respond(request):
@@ -404,7 +404,7 @@ async def test_backup_log_includes_path_but_omits_query_and_credentials(
     async with make_client(asynchronous, respond) as client:
         http = await resolve(client._client)
         response = await resolve(
-            http.get("https://fal.run/private-path?fal_jwt_token=secret-token")
+            http.get("https://fal.run/private-path%0Aforged?fal_jwt_token=secret-token")
         )
 
     assert response.url.host == "fal.run"
@@ -414,7 +414,7 @@ async def test_backup_log_includes_path_but_omits_query_and_credentials(
     assert len(records) == 1
     assert records[0].levelname == "WARNING"
     assert records[0].message == (
-        "Connection to fal.run/private-path failed (ConnectTimeout); "
+        "Connection to fal.run/private-path%0Aforged failed (ConnectTimeout); "
         "trying backup domain falrun.com"
     )
 
