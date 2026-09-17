@@ -1037,10 +1037,13 @@ def _backup_request(request: httpx.Request) -> httpx.Request | None:
     )
 
 
-def _log_backup(primary_host: str, backup_host: str, exc: Exception) -> None:
+def _log_backup(
+    primary_host: str, request_path: str, backup_host: str, exc: Exception
+) -> None:
     logger.warning(
-        "Connection to %s failed (%s); trying backup domain %s",
+        "Connection to %s%s failed (%s); trying backup domain %s",
         primary_host,
+        request_path,
         type(exc).__name__,
         backup_host,
     )
@@ -1060,7 +1063,7 @@ class BackupDomainTransport(httpx.BaseTransport):
             backup = _backup_request(request)
             if backup is None:
                 raise
-            _log_backup(request.url.host, backup.url.host, exc)
+            _log_backup(request.url.host, request.url.path, backup.url.host, exc)
             try:
                 return self._client.send(backup, stream=True)
             except (httpx.ConnectError, httpx.ConnectTimeout):
@@ -1083,7 +1086,7 @@ class AsyncBackupDomainTransport(httpx.AsyncBaseTransport):
             backup = _backup_request(request)
             if backup is None:
                 raise
-            _log_backup(request.url.host, backup.url.host, exc)
+            _log_backup(request.url.host, request.url.path, backup.url.host, exc)
             try:
                 return await self._client.send(backup, stream=True)
             except (httpx.ConnectError, httpx.ConnectTimeout):
