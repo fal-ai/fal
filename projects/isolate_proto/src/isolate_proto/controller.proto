@@ -91,6 +91,11 @@ message SecretsConfig {
     repeated string names = 1;
 }
 
+message VolumeMount {
+    string volume_name = 1;
+    string mount_path = 2;
+}
+
 message HostedRun {
     // Environment definitions.
     repeated EnvironmentDefinition environments = 1;
@@ -130,6 +135,8 @@ message HostedRun {
     optional string env_id = 15;
     // Optional health check config for runners
     optional ApplicationHealthCheckConfig health_check_config = 16;
+    // Named data volumes to attach to the run.
+    repeated VolumeMount volumes = 17;
 }
 
 message BuildEnvironmentRequest {
@@ -394,6 +401,8 @@ message RegisterApplicationRequest {
     optional string retry_config = 26;
     // Option to attach to the deployment process
     optional bool attach_to_deployment = 27;
+    // Named data volumes to attach to application runners.
+    repeated VolumeMount volumes = 28;
 }
 
 message RegisterApplicationResultType {
