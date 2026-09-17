@@ -199,6 +199,8 @@ async def test_restart_reaps_surviving_workers_before_spawn(monkeypatch, zmq_con
     survivor = mp.Process(target=time.sleep, args=(60,))
     dead.start()
     survivor.start()
+    survivor_join = MagicMock(wraps=survivor.join)
+    monkeypatch.setattr(survivor, "join", survivor_join)
     runner = DistributedRunner(world_size=2)
     runner.context = SimpleNamespace(processes=[dead, survivor], error_files=[])
     old_socket = runner.get_zmq_socket()
@@ -224,7 +226,8 @@ async def test_restart_reaps_surviving_workers_before_spawn(monkeypatch, zmq_con
         dead.join(timeout=10)
         assert dead.exitcode == 0
         assert survivor.is_alive()
-        await runner.start(timeout=10)
+        await runner.start(timeout=1800)
+        survivor_join.assert_called_once_with(timeout=10)
         assert runner.is_alive()
         assert runner.zmq_socket is new_socket
     finally:
@@ -246,6 +249,33 @@ def test_terminate_kills_worker_that_survives_join_timeout():
 
     process.kill.assert_called_once_with()
     assert process.join.call_args_list == [call(timeout=0), call()]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("error", [asyncio.CancelledError, ValueError])
+async def test_startup_failure_cleanup_uses_shutdown_timeout(
+    monkeypatch, zmq_context, error
+):
+    process = MagicMock()
+    process.is_alive.return_value = True
+    context = SimpleNamespace(processes=[process], error_files=[])
+    monkeypatch.setattr(
+        "fal.distributed.worker.launch_distributed_processes", lambda *a, **kw: context
+    )
+    socket = zmq_context.socket.return_value
+    socket.recv_multipart = AsyncMock(side_effect=error)
+    runner = DistributedRunner()
+
+    expected = (
+        asyncio.CancelledError if error is asyncio.CancelledError else RuntimeError
+    )
+    with pytest.raises(expected):
+        await runner.start(timeout=1800)
+
+    assert process.join.call_args_list == [call(timeout=10), call()]
+    process.kill.assert_called_once_with()
+    socket.close.assert_called_once_with()
+    assert runner.worker_port is None
 
 
 def test_runner_terminate_when_not_started():

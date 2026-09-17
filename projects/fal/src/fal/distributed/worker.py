@@ -585,7 +585,7 @@ class DistributedRunner:
     async def start(self, timeout: int = 1800, **kwargs: Any) -> None:
         """
         Starts the distributed worker processes.
-        :param timeout: The timeout for the distributed processes.
+        :param timeout: Time to wait for readiness, independent of cleanup timeout.
         """
         import zmq
 
@@ -595,7 +595,7 @@ class DistributedRunner:
         if self.context is not None:
             # A dead rank can leave peers alive. Reap them before replacing context.
             # Closing the old socket also resets an automatically selected port.
-            self.terminate(timeout=timeout)
+            self.terminate()
 
         self._keepalive_shutdown = False
 
@@ -643,11 +643,11 @@ class DistributedRunner:
                     await asyncio.sleep(0.5)
                 self.ensure_alive()
         except asyncio.CancelledError:
-            self.terminate(timeout=timeout)
+            self.terminate()
             raise
         except Exception as e:
             print(f"[debug] Error during startup: {e}\n{traceback.format_exc()}")
-            self.terminate(timeout=timeout)
+            self.terminate()
             raise RuntimeError("Failed to start distributed processes.") from e
 
         print("[debug] All workers are ready and running.")
