@@ -525,6 +525,28 @@ class KeyScope(enum.Enum):
             raise ValueError(f"Unknown KeyScope: {proto}")
 
 
+class KeyPreset(enum.Enum):
+    """A keys-v2 policy preset to mint a key with."""
+
+    FULL = "FULL"
+    API = "API"
+
+    @staticmethod
+    def from_scope(scope: KeyScope) -> KeyPreset:
+        if scope is KeyScope.ADMIN:
+            return KeyPreset.FULL
+        else:
+            return KeyPreset.API
+
+    def to_scope(self) -> KeyScope:
+        # Presets ride on the deprecated scope field until the server accepts
+        # policy_preset; the server reads ADMIN as FULL and API as API.
+        if self is KeyPreset.FULL:
+            return KeyScope.ADMIN
+        else:
+            return KeyScope.API
+
+
 class DeploymentStrategy(enum.Enum):
     RECREATE = "recreate"
     ROLLING = "rolling"

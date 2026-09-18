@@ -1,15 +1,73 @@
+import sys
+
 from fal.api.client import SyncServerlessClient
-from fal.sdk import KeyScope
+from fal.sdk import KeyPreset, KeyScope
 
 from .parser import FalClientParser
 
+PRESET_DESCRIPTIONS = {
+    KeyPreset.FULL: "Full access to everything in your account.",
+    KeyPreset.API: "Run models and upload files.",
+}
+
+
+def _prompt_preset(args) -> KeyPreset:
+    """Prompt the user to select a key preset. Returns the chosen preset."""
+    from rich.prompt import Prompt
+    from rich.style import Style
+    from rich.table import Table
+
+    if not sys.stdin.isatty() or not args.console.is_terminal:
+        raise ValueError(
+            "Picking a key preset requires interactive input. "
+            "Re-run with --preset to pick one non-interactively."
+        )
+
+    args.console.print("Create a key\n")
+
+    presets = list(KeyPreset)
+    table = Table(border_style=Style(frame=False), show_header=False)
+    table.add_column("#")
+    table.add_column("Preset")
+    table.add_column("Description")
+
+    for idx, preset in enumerate(presets, 1):
+        table.add_row(f"  {idx}", preset.value, PRESET_DESCRIPTIONS[preset])
+
+    args.console.print(table)
+
+    indices = [str(i) for i in range(1, len(presets) + 1)]
+    preset_names = [preset.value for preset in presets]
+    choice = Prompt.ask(
+        "Select a preset",
+        choices=indices + preset_names,
+        default=KeyPreset.API.value,
+        show_choices=False,
+    )
+
+    if choice in preset_names:
+        return KeyPreset(choice)
+    else:
+        return presets[int(choice) - 1]
+
+
+def _resolve_preset(args) -> KeyPreset:
+    if args.preset:
+        return KeyPreset(args.preset)
+    elif args.scope:
+        return KeyPreset.from_scope(KeyScope(args.scope))
+    else:
+        return _prompt_preset(args)
+
 
 def _create(args):
+    preset = _resolve_preset(args)
     client = SyncServerlessClient(host=args.host, team=args.team)
-    parsed_scope = KeyScope(args.scope)
-    key_id, key_secret = client.keys.create(scope=parsed_scope, description=args.desc)
+    key_id, key_secret = client.keys.create(
+        scope=preset.to_scope(), description=args.desc
+    )
     args.console.print(
-        f"Generated key id and key secret, with the scope `{args.scope}`.\n"
+        f"Generated key id and key secret, with the preset `{preset.value}`.\n"
         "This is the only time the secret will be visible.\n"
         "You will need to generate a new key pair if you lose access to this "
         "secret."
@@ -25,14 +83,21 @@ def _add_create_parser(subparsers, parents):
         help=create_help,
         parents=parents,
     )
-    parser.add_argument(
+    # Without either flag the preset is picked interactively.
+    permissions = parser.add_mutually_exclusive_group()
+    permissions.add_argument(
+        "--preset",
+        choices=[preset.value for preset in KeyPreset],
+        help="The permission preset of the key.",
+    )
+    permissions.add_argument(
         "--scope",
-        required=True,
         choices=[KeyScope.ADMIN.value, KeyScope.API.value],
-        help="The privilage scope of the key.",
+        help="Deprecated, use --preset. The privilage scope of the key.",
     )
     parser.add_argument(
         "--desc",
+        "--alias",
         help='Key description (e.g. "My Test Key")',
     )
     parser.set_defaults(func=_create)
