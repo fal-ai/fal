@@ -492,7 +492,8 @@ class BuildEnvironmentResult:
 class UserKeyInfo:
     key_id: str
     created_at: datetime
-    scope: KeyScope
+    # None when the key's permissions have no v1 scope equivalent.
+    scope: KeyScope | None
     alias: str
 
 
@@ -513,7 +514,7 @@ class KeyScope(enum.Enum):
     @staticmethod
     def from_proto(
         proto: isolate_proto.CreateUserKeyRequest.Scope.ValueType | None,
-    ) -> KeyScope:
+    ) -> KeyScope | None:
         if proto is None:
             return KeyScope.API
 
@@ -522,7 +523,9 @@ class KeyScope(enum.Enum):
         elif proto is isolate_proto.CreateUserKeyRequest.Scope.API:
             return KeyScope.API
         else:
-            raise ValueError(f"Unknown KeyScope: {proto}")
+            # A key minted from a preset with no v1 scope equivalent. Listing
+            # must survive it rather than fail for every key in the account.
+            return None
 
 
 class KeyPreset(enum.Enum):
@@ -530,6 +533,8 @@ class KeyPreset(enum.Enum):
 
     FULL = "FULL"
     API = "API"
+    DEPLOY = "DEPLOY"
+    READONLY = "READONLY"
 
     @staticmethod
     def from_scope(scope: KeyScope) -> KeyPreset:
@@ -537,14 +542,6 @@ class KeyPreset(enum.Enum):
             return KeyPreset.FULL
         else:
             return KeyPreset.API
-
-    def to_scope(self) -> KeyScope:
-        # Presets ride on the deprecated scope field until the server accepts
-        # policy_preset; the server reads ADMIN as FULL and API as API.
-        if self is KeyPreset.FULL:
-            return KeyScope.ADMIN
-        else:
-            return KeyScope.API
 
 
 class DeploymentStrategy(enum.Enum):
@@ -886,14 +883,13 @@ class FalServerlessConnection:
         self._stub = isolate_proto.IsolateControllerStub(channel)
         return self._stub
 
-    def create_user_key(self, scope: KeyScope, alias: str | None) -> tuple[str, str]:
-        scope_proto = (
-            isolate_proto.CreateUserKeyRequest.Scope.ADMIN
-            if scope is KeyScope.ADMIN
-            else isolate_proto.CreateUserKeyRequest.Scope.API
+    def create_user_key(self, preset: KeyPreset, alias: str | None) -> tuple[str, str]:
+        # policy_preset and the deprecated scope are mutually exclusive on the
+        # wire, so name the preset and leave scope unset. DEPLOY and READONLY
+        # have no scope equivalent and are only expressible this way.
+        request = isolate_proto.CreateUserKeyRequest(
+            policy_preset=preset.value, alias=alias
         )
-
-        request = isolate_proto.CreateUserKeyRequest(scope=scope_proto, alias=alias)
         response = self.stub.CreateUserKey(request)
         return response.key_id, response.key_secret
 
