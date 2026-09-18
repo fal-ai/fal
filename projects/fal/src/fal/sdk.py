@@ -492,7 +492,8 @@ class BuildEnvironmentResult:
 class UserKeyInfo:
     key_id: str
     created_at: datetime
-    scope: KeyScope
+    # None when the key's permissions have no v1 scope equivalent.
+    scope: KeyScope | None
     alias: str
 
 
@@ -513,7 +514,7 @@ class KeyScope(enum.Enum):
     @staticmethod
     def from_proto(
         proto: isolate_proto.CreateUserKeyRequest.Scope.ValueType | None,
-    ) -> KeyScope:
+    ) -> KeyScope | None:
         if proto is None:
             return KeyScope.API
 
@@ -522,7 +523,9 @@ class KeyScope(enum.Enum):
         elif proto is isolate_proto.CreateUserKeyRequest.Scope.API:
             return KeyScope.API
         else:
-            raise ValueError(f"Unknown KeyScope: {proto}")
+            # A key minted from a preset with no v1 scope equivalent. Listing
+            # must survive it rather than fail for every key in the account.
+            return None
 
 
 class KeyPreset(enum.Enum):
@@ -530,6 +533,8 @@ class KeyPreset(enum.Enum):
 
     FULL = "FULL"
     API = "API"
+    DEPLOY = "DEPLOY"
+    READONLY = "READONLY"
 
     @staticmethod
     def from_scope(scope: KeyScope) -> KeyPreset:
@@ -886,7 +891,8 @@ class FalServerlessConnection:
             )
 
         # policy_preset and the deprecated scope are mutually exclusive on the
-        # wire, so set the preset and leave scope unset.
+        # wire, so name the preset and leave scope unset. DEPLOY and READONLY
+        # have no scope equivalent and are only expressible this way.
         request = isolate_proto.CreateUserKeyRequest(
             policy_preset=preset.value, alias=alias
         )

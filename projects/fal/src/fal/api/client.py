@@ -273,7 +273,7 @@ class KeysNamespace:
             Tuple of (key_id, key_secret).
         """
         if preset is not None and scope is not None:
-            raise ValueError("Pass exactly one of preset or scope.")
+            raise ValueError("Pass either preset or the deprecated scope, not both.")
 
         if scope is not None:
             warnings.warn(
@@ -284,7 +284,7 @@ class KeysNamespace:
             preset = KeyPreset.from_scope(scope)
 
         if preset is None:
-            raise ValueError("A preset is required.")
+            raise ValueError("A preset is required to create a key.")
 
         return keys_api.create_key(self.client, preset=preset, description=description)
 
