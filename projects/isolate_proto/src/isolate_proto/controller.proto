@@ -172,11 +172,35 @@ message CreateUserKeyRequest {
         API = 1;
     }
 
-    // privilege scope of the key
-    Scope scope = 1;
+    // privilege scope of the key. Deprecated in favour of policy_preset/policy;
+    // the server maps ADMIN to the FULL preset and API to the API preset.
+    // Optional so the server can tell an explicit ADMIN apart from an unset
+    // scope; a pre-v2 client leaves it off the wire and still means ADMIN.
+    optional Scope scope = 1 [deprecated = true];
 
     // optional alias of the key
     optional string alias = 2;
+
+    // Name of a keys-v2 policy preset to mint the key with (e.g. "FULL",
+    // "API"). The non-deprecated way to ask for an admin-equivalent key.
+    optional string policy_preset = 5;
+
+    // Inline policy, for callers that need a permission set no preset covers.
+    optional KeyPolicy policy = 6;
+
+    // Field 7 is held for the next v2 policy field; do not assign it to
+    // anything else.
+
+    // At most one of policy, policy_preset or the deprecated scope may be set;
+    // the server rejects a request that sets more than one, and otherwise
+    // honours them in that order of precedence.
+}
+
+// Inline policy for a created key. Restrictions and richer policy shapes are
+// deferred; only a permission list is supported for now.
+message KeyPolicy {
+    // Permissions granted to the key, e.g. "serverless:apps:run".
+    repeated string permissions = 1;
 }
 
 message CreateUserKeyResponse {
