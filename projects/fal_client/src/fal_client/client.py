@@ -1022,10 +1022,10 @@ def _limit_connect_timeout(request: httpx.Request) -> None:
     }
 
 
-def _backup_request(request: httpx.Request) -> httpx.Request | None:
+def _backup_request(request: httpx.Request) -> httpx.Request:
     url = _fallback_url(request.url)
     if url is None:
-        return None
+        raise
     headers = request.headers.copy()
     headers["Host"] = url.netloc.decode("ascii")
     return httpx.Request(
@@ -1060,8 +1060,6 @@ class BackupDomainTransport(httpx.BaseTransport):
             return self._client.send(request, stream=True)
         except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
             backup = _backup_request(request)
-            if backup is None:
-                raise
             _log_backup(request.url, backup.url.host, exc)
             try:
                 return self._client.send(backup, stream=True)
@@ -1083,8 +1081,6 @@ class AsyncBackupDomainTransport(httpx.AsyncBaseTransport):
             return await self._client.send(request, stream=True)
         except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
             backup = _backup_request(request)
-            if backup is None:
-                raise
             _log_backup(request.url, backup.url.host, exc)
             try:
                 return await self._client.send(backup, stream=True)
