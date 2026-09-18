@@ -6,7 +6,7 @@ from fal.sdk import KeyPreset, KeyScope
 from .parser import FalClientParser
 
 PRESET_DESCRIPTIONS = {
-    KeyPreset.FULL: "Full access, the equivalent of an admin key.",
+    KeyPreset.FULL: "Full access to everything in your account.",
     KeyPreset.API: "Run models and upload files.",
 }
 
@@ -18,11 +18,10 @@ def _prompt_preset(args) -> KeyPreset:
     from rich.table import Table
 
     if not sys.stdin.isatty() or not args.console.is_terminal:
-        args.console.print(
+        raise ValueError(
             "Picking a key preset requires interactive input. "
             "Re-run with --preset to pick one non-interactively."
         )
-        raise SystemExit(1)
 
     args.console.print("Create a key\n")
 
