@@ -1,11 +1,13 @@
 import concurrent.futures
+import hashlib
+import io
 import logging
 import math
 import os
 import queue
 import time
 from threading import Lock, Thread
-from typing import Any, Callable, Dict, List, Optional, Tuple, cast
+from typing import Any, BinaryIO, Callable, Dict, List, Optional, Tuple, cast
 
 import httpx
 
@@ -16,6 +18,55 @@ logger = logging.getLogger(__name__)
 MULTIPART_CHUNK_SIZE = 10 * 1024 * 1024  # 10MB per part
 MULTIPART_MAX_CONCURRENCY = 10
 MULTIPART_THRESHOLD = 10 * 1024 * 1024  # 10MB
+
+
+class ProgressFileReader:
+    """Read-through view of a binary stream that reports the absolute offset.
+
+    Reporting the offset rather than a delta keeps the count honest across a
+    retry, which rewinds the body and resends it from the start.
+    """
+
+    def __init__(
+        self,
+        fobj: BinaryIO,
+        on_progress: Callable[[int], None],
+    ) -> None:
+        self._fobj = fobj
+        self._on_progress = on_progress
+
+    def read(self, size: int = -1) -> bytes:
+        chunk = self._fobj.read(size)
+        self._on_progress(self._fobj.tell())
+        return chunk
+
+    def seek(self, offset: int, whence: int = os.SEEK_SET) -> int:
+        return self._fobj.seek(offset, whence)
+
+    def tell(self) -> int:
+        return self._fobj.tell()
+
+
+class _BytesUploadedTracker:
+    """Folds concurrent per-part offsets into one cumulative byte count.
+
+    The total is recomputed from the latest offset of every part rather than
+    accumulated, so a rewound part cannot inflate it.
+    """
+
+    def __init__(self, on_bytes_uploaded: Callable[[int], None]) -> None:
+        self._on_bytes_uploaded = on_bytes_uploaded
+        self._offsets: Dict[int, int] = {}
+        self._lock = Lock()
+
+    def for_part(self, part_number: int) -> Callable[[int], None]:
+        def report(offset: int) -> None:
+            with self._lock:
+                self._offsets[part_number] = offset
+                total = sum(self._offsets.values())
+            self._on_bytes_uploaded(total)
+
+        return report
 
 
 class BaseMultipartUpload:
@@ -31,6 +82,16 @@ class BaseMultipartUpload:
         self._upload_id: Optional[str] = None
         self._parts: List[Dict[str, object]] = []
         self._parts_lock = Lock()
+        self._content_md5: Optional[str] = None
+
+    @property
+    def content_md5(self) -> Optional[str]:
+        """MD5 of the bytes sent by the last successful `upload_file` call.
+
+        `None` until a call has read the file through, so callers must treat a
+        missing digest as "not verified" rather than "verified".
+        """
+        return self._content_md5
 
     @property
     def upload_id(self) -> str:
@@ -65,11 +126,16 @@ class BaseMultipartUpload:
         method: str,
         path: str,
         max_retries: int = 3,
+        files_factory: Optional[Callable[[], Dict[str, Any]]] = None,
         **kwargs,
     ) -> httpx.Response:
         last_exception = None
 
         for attempt in range(max_retries):
+            # A single-use body must be rebuilt per attempt: a stream left at
+            # EOF by a failed attempt would otherwise resend nothing.
+            if files_factory is not None:
+                kwargs["files"] = files_factory()
             try:
                 response = self.client.request(method, path, **kwargs)
 
@@ -139,14 +205,33 @@ class BaseMultipartUpload:
         return self.upload_id
 
     def _upload_part(
-        self, part_number: int, data: bytes, filename: str = ""
+        self,
+        part_number: int,
+        data: bytes,
+        filename: str = "",
+        on_progress: Optional[Callable[[int], None]] = None,
     ) -> Dict[str, object]:
         file_name = filename or "chunk"
-        response = self._request(
-            "PUT",
-            f"{self.part_url}/{part_number}",
-            files={"file_upload": (file_name, data, "application/octet-stream")},
-        )
+        if on_progress is None:
+            response = self._request(
+                "PUT",
+                f"{self.part_url}/{part_number}",
+                files={"file_upload": (file_name, data, "application/octet-stream")},
+            )
+        else:
+            # Bound outside the closure: narrowing does not carry into a nested
+            # function, which could be called after the name was rebound.
+            report: Callable[[int], None] = on_progress
+
+            def build_files() -> Dict[str, Any]:
+                reader = ProgressFileReader(io.BytesIO(data), report)
+                return {"file_upload": (file_name, reader, "application/octet-stream")}
+
+            response = self._request(
+                "PUT",
+                f"{self.part_url}/{part_number}",
+                files_factory=build_files,
+            )
         result = response.json()
         part_info = {
             "part_number": result["part_number"],
@@ -177,8 +262,24 @@ class BaseMultipartUpload:
         self,
         file_path: str,
         on_part_complete: Optional[Callable[[int], None]] = None,
+        on_bytes_uploaded: Optional[Callable[[int], None]] = None,
+        compute_md5: bool = False,
     ) -> str:
+        """Upload `file_path` and return the server etag.
+
+        `on_part_complete` fires once per finished part. `on_bytes_uploaded`
+        fires as the body of each part is handed to the transport, with the
+        running total of payload bytes sent across all parts. `compute_md5`
+        populates `content_md5`; it costs a hash over the whole file, so it is
+        opt-in for callers that verify the etag.
+        """
         size = os.path.getsize(file_path)
+
+        tracker = (
+            _BytesUploadedTracker(on_bytes_uploaded)
+            if on_bytes_uploaded is not None
+            else None
+        )
 
         # Handle empty files specially - upload single empty part
         if size == 0:
@@ -191,6 +292,10 @@ class BaseMultipartUpload:
                 self._upload_part(1, b"")
                 if on_part_complete:
                     on_part_complete(1)
+                if on_bytes_uploaded:
+                    on_bytes_uploaded(0)
+                if compute_md5:
+                    self._content_md5 = hashlib.md5(b"").hexdigest()
                 return self.complete()
             except FileExistsError:
                 return ""
@@ -209,6 +314,8 @@ class BaseMultipartUpload:
             maxsize=self.max_concurrency * 2
         )
         read_error: List[Exception] = []
+        hasher = hashlib.md5() if compute_md5 else None
+        bytes_read: List[int] = [0]
 
         def reader_thread():
             """Reads file chunks and puts them in bounded queue"""
@@ -217,6 +324,11 @@ class BaseMultipartUpload:
                     for part_number in range(1, num_parts + 1):
                         chunk = f.read(self.chunk_size)
                         if chunk:
+                            # Hashing here rides along with the read the upload
+                            # already needs, instead of a second full-file pass.
+                            if hasher is not None:
+                                hasher.update(chunk)
+                            bytes_read[0] += len(chunk)
                             chunk_queue.put((part_number, chunk))
                 # Sentinel to signal completion
                 chunk_queue.put(None)
@@ -243,6 +355,9 @@ class BaseMultipartUpload:
                         self._upload_part,
                         part_number,
                         chunk,
+                        on_progress=(
+                            tracker.for_part(part_number) if tracker else None
+                        ),
                     )
                     futures.append((part_number, future))
 
@@ -257,6 +372,17 @@ class BaseMultipartUpload:
             if read_error:
                 raise read_error[0]
 
+            # The part count is fixed from the size sampled before the read, so
+            # a file that changes underneath us would otherwise upload a prefix
+            # and report success.
+            if bytes_read[0] != size:
+                raise RuntimeError(
+                    f"{file_path} changed while uploading: read "
+                    f"{bytes_read[0]} bytes, expected {size}"
+                )
+
+            if hasher is not None:
+                self._content_md5 = hasher.hexdigest()
             return self.complete()
         except FileExistsError:
             return ""
