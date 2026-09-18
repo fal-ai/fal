@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import sys
 
 from fal.api.client import SyncServerlessClient
@@ -13,8 +15,11 @@ PRESET_DESCRIPTIONS = {
 }
 
 
-def _prompt_preset(args) -> KeyPreset:
-    """Prompt the user to select a key preset. Returns the chosen preset."""
+CUSTOM_CHOICE = "CUSTOM"
+
+
+def _prompt_grant(args) -> tuple[KeyPreset | None, list[str] | None]:
+    """Prompt for a preset or a custom permission list. Exactly one is set."""
     from rich.prompt import Prompt
     from rich.style import Style
     from rich.table import Table
@@ -36,39 +41,80 @@ def _prompt_preset(args) -> KeyPreset:
     for idx, preset in enumerate(presets, 1):
         table.add_row(f"  {idx}", preset.value, PRESET_DESCRIPTIONS[preset])
 
+    table.add_row(
+        f"  {len(presets) + 1}", CUSTOM_CHOICE, "Pick the permissions yourself."
+    )
     args.console.print(table)
 
-    indices = [str(i) for i in range(1, len(presets) + 1)]
+    indices = [str(i) for i in range(1, len(presets) + 2)]
     preset_names = [preset.value for preset in presets]
     choice = Prompt.ask(
-        "Select a preset",
-        choices=indices + preset_names,
+        "Select permissions - pick a preset, or CUSTOM to choose your own",
+        choices=indices + preset_names + [CUSTOM_CHOICE],
         default=KeyPreset.API.value,
         show_choices=False,
         case_sensitive=False,
     )
 
-    if choice.upper() in preset_names:
-        return KeyPreset(choice.upper())
+    if choice.isdigit():
+        index = int(choice) - 1
+        if index == len(presets):
+            return None, _prompt_permissions(args)
+        return presets[index], None
+    elif choice.upper() == CUSTOM_CHOICE:
+        return None, _prompt_permissions(args)
     else:
-        return presets[int(choice) - 1]
+        return KeyPreset(choice.upper()), None
 
 
-def _resolve_preset(args) -> KeyPreset:
+def _prompt_permissions(args) -> list[str]:
+    """Prompt for a permission list. The server is what validates the names."""
+    from rich.prompt import Prompt
+
+    while True:
+        answer = Prompt.ask(
+            "Permissions (comma separated, e.g. models:requests:submit)"
+        )
+        permissions = _split_permissions([answer])
+        if permissions:
+            return permissions
+
+        args.console.print("[red]Enter at least one permission.[/]")
+
+
+def _split_permissions(values: list[str]) -> list[str]:
+    """Flatten repeated --permission flags, each of which may be a list."""
+    return [
+        permission.strip()
+        for value in values
+        for permission in value.split(",")
+        if permission.strip()
+    ]
+
+
+def _resolve_grant(args) -> tuple[KeyPreset | None, list[str] | None]:
     if args.preset:
-        return KeyPreset(args.preset)
+        return KeyPreset(args.preset), None
+    elif args.permission:
+        permissions = _split_permissions(args.permission)
+        if not permissions:
+            raise ValueError("--permission needs at least one permission name.")
+        return None, permissions
     elif args.scope:
-        return KeyPreset.from_scope(KeyScope(args.scope))
+        return KeyPreset.from_scope(KeyScope(args.scope)), None
     else:
-        return _prompt_preset(args)
+        return _prompt_grant(args)
 
 
 def _create(args):
-    preset = _resolve_preset(args)
+    preset, permissions = _resolve_grant(args)
     client = SyncServerlessClient(host=args.host, team=args.team)
-    key_id, key_secret = client.keys.create(preset=preset, description=args.desc)
+    key_id, key_secret = client.keys.create(
+        preset=preset, permissions=permissions, description=args.desc
+    )
+    granted = preset.value if preset else ", ".join(permissions or [])
     args.console.print(
-        f"Generated key id and key secret, with the preset `{preset.value}`.\n"
+        f"Generated key id and key secret, with `{granted}`.\n"
         "This is the only time the secret will be visible.\n"
         "You will need to generate a new key pair if you lose access to this "
         "secret."
@@ -90,6 +136,13 @@ def _add_create_parser(subparsers, parents):
         "--preset",
         choices=[preset.value for preset in KeyPreset],
         help="The permission preset of the key.",
+    )
+    permissions.add_argument(
+        "--permission",
+        action="append",
+        metavar="PERMISSION",
+        help="Grant an explicit permission instead of a preset. Repeatable, "
+        "and accepts a comma separated list.",
     )
     permissions.add_argument(
         "--scope",
