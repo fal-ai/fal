@@ -9,12 +9,16 @@ if TYPE_CHECKING:
 
 
 def create_key(
-    client: SyncServerlessClient, *, preset: KeyPreset, description: str | None = None
+    client: SyncServerlessClient,
+    *,
+    preset: KeyPreset | None = None,
+    permissions: List[str] | None = None,
+    description: str | None = None,
 ) -> tuple[str, str]:
     from fal.sdk import FalServerlessClient
 
     with FalServerlessClient(client._grpc_host, client._credentials).connect() as conn:
-        return conn.create_user_key(preset, description)
+        return conn.create_user_key(preset, description, permissions)
 
 
 def list_keys(client: SyncServerlessClient) -> List[UserKeyInfo]:

@@ -1,6 +1,12 @@
 import pytest
 
-from fal.cli.keys import PRESET_DESCRIPTIONS, _create, _list, _revoke
+from fal.cli.keys import (
+    PRESET_DESCRIPTIONS,
+    _create,
+    _list,
+    _revoke,
+    _split_permissions,
+)
 from fal.cli.main import parse_args
 from fal.cli.parser import FalParserExit
 from fal.sdk import KeyPreset, KeyScope
@@ -74,3 +80,26 @@ def test_revoke():
 def test_unknown_scope_lists_as_scopeless():
     # A key minted from DEPLOY/READONLY has no v1 scope; listing must not fail.
     assert KeyScope.from_proto(99) is None  # type: ignore[arg-type]
+
+
+def test_create_with_permissions():
+    args = parse_args(
+        ["keys", "create", "--permission", "models:list,serverless:files:read"]
+    )
+    assert args.permission == ["models:list,serverless:files:read"]
+    assert _split_permissions(args.permission) == [
+        "models:list",
+        "serverless:files:read",
+    ]
+
+
+def test_create_with_repeated_permission_flags():
+    args = parse_args(
+        ["keys", "create", "--permission", "models:list", "--permission", "keys:read"]
+    )
+    assert _split_permissions(args.permission) == ["models:list", "keys:read"]
+
+
+def test_create_rejects_permission_and_preset():
+    with pytest.raises(FalParserExit):
+        parse_args(["keys", "create", "--permission", "models:list", "--preset", "API"])
