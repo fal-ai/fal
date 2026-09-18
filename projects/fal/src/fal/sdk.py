@@ -883,13 +883,34 @@ class FalServerlessConnection:
         self._stub = isolate_proto.IsolateControllerStub(channel)
         return self._stub
 
-    def create_user_key(self, preset: KeyPreset, alias: str | None) -> tuple[str, str]:
-        # policy_preset and the deprecated scope are mutually exclusive on the
-        # wire, so name the preset and leave scope unset. DEPLOY and READONLY
+    def create_user_key(
+        self,
+        preset: KeyPreset | None,
+        alias: str | None,
+        permissions: list[str] | None = None,
+    ) -> tuple[str, str]:
+        if (preset is None) == (permissions is None):
+            raise ValueError("Pass exactly one of preset or permissions.")
+
+        if preset is not None and not isinstance(preset, KeyPreset):
+            raise TypeError(
+                f"Expected a KeyPreset, got {type(preset).__name__}. "
+                "Map a KeyScope with KeyPreset.from_scope()."
+            )
+
+        # policy, policy_preset and the deprecated scope are mutually exclusive
+        # on the wire, so set one and leave scope unset. DEPLOY and READONLY
         # have no scope equivalent and are only expressible this way.
-        request = isolate_proto.CreateUserKeyRequest(
-            policy_preset=preset.value, alias=alias
-        )
+        if permissions is not None:
+            request = isolate_proto.CreateUserKeyRequest(
+                policy=isolate_proto.KeyPolicy(permissions=permissions), alias=alias
+            )
+        else:
+            assert preset is not None
+            request = isolate_proto.CreateUserKeyRequest(
+                policy_preset=preset.value, alias=alias
+            )
+
         response = self.stub.CreateUserKey(request)
         return response.key_id, response.key_secret
 
