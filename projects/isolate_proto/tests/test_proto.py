@@ -328,3 +328,29 @@ def test_register_application_private_logs_presence():
     )
     assert request_with_private_logs_true.HasField("private_logs") is True
     assert request_with_private_logs_true.private_logs is True
+
+
+def test_create_user_key_v2_policy_fields():
+    request = isolate_proto.CreateUserKeyRequest(alias="ci")
+    assert request.HasField("scope") is False
+    assert request.HasField("policy_preset") is False
+    assert request.HasField("policy") is False
+
+    admin_request = isolate_proto.CreateUserKeyRequest(
+        scope=isolate_proto.CreateUserKeyRequest.ADMIN
+    )
+    round_tripped = isolate_proto.CreateUserKeyRequest.FromString(
+        admin_request.SerializeToString()
+    )
+    assert round_tripped.HasField("scope") is True
+    assert round_tripped.scope == isolate_proto.CreateUserKeyRequest.ADMIN
+
+    preset_request = isolate_proto.CreateUserKeyRequest(policy_preset="FULL")
+    assert preset_request.HasField("policy_preset") is True
+    assert preset_request.policy_preset == "FULL"
+
+    policy_request = isolate_proto.CreateUserKeyRequest(
+        policy=isolate_proto.KeyPolicy(permissions=["serverless:apps:run"])
+    )
+    assert policy_request.HasField("policy") is True
+    assert list(policy_request.policy.permissions) == ["serverless:apps:run"]
