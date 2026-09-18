@@ -8,6 +8,8 @@ from .parser import FalClientParser
 PRESET_DESCRIPTIONS = {
     KeyPreset.FULL: "Full access to everything in your account.",
     KeyPreset.API: "Run models and upload files.",
+    KeyPreset.DEPLOY: "Deploy apps and upload files.",
+    KeyPreset.READONLY: "Read models, apps and logs.",
 }
 
 
@@ -43,10 +45,11 @@ def _prompt_preset(args) -> KeyPreset:
         choices=indices + preset_names,
         default=KeyPreset.API.value,
         show_choices=False,
+        case_sensitive=False,
     )
 
-    if choice in preset_names:
-        return KeyPreset(choice)
+    if choice.upper() in preset_names:
+        return KeyPreset(choice.upper())
     else:
         return presets[int(choice) - 1]
 
@@ -63,9 +66,7 @@ def _resolve_preset(args) -> KeyPreset:
 def _create(args):
     preset = _resolve_preset(args)
     client = SyncServerlessClient(host=args.host, team=args.team)
-    key_id, key_secret = client.keys.create(
-        scope=preset.to_scope(), description=args.desc
-    )
+    key_id, key_secret = client.keys.create(preset=preset, description=args.desc)
     args.console.print(
         f"Generated key id and key secret, with the preset `{preset.value}`.\n"
         "This is the only time the secret will be visible.\n"
@@ -114,7 +115,7 @@ def _list(args):
             {
                 "key_id": key.key_id,
                 "created_at": str(key.created_at),
-                "scope": str(key.scope.value),
+                "scope": key.scope.value if key.scope else None,
                 "description": key.alias,
             }
             for key in keys
@@ -133,7 +134,7 @@ def _list(args):
             table.add_row(
                 key.key_id,
                 str(key.created_at),
-                str(key.scope.value),
+                key.scope.value if key.scope else "-",
                 key.alias,
             )
 
