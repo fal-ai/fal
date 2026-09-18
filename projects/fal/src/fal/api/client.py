@@ -259,6 +259,7 @@ class KeysNamespace:
         self,
         *,
         preset: KeyPreset | None = None,
+        permissions: List[str] | None = None,
         scope: KeyScope | None = None,
         description: str | None = None,
     ) -> tuple[str, str]:
@@ -266,14 +267,15 @@ class KeysNamespace:
 
         Args:
             preset: Permission preset to mint the key with.
+            permissions: Explicit permission list, for a key no preset covers.
             scope: Deprecated, use preset. Mapped to its equivalent preset.
             description: Optional description for the key.
 
         Returns:
             Tuple of (key_id, key_secret).
         """
-        if preset is not None and scope is not None:
-            raise ValueError("Pass either preset or the deprecated scope, not both.")
+        if sum(x is not None for x in (preset, permissions, scope)) > 1:
+            raise ValueError("Pass exactly one of preset, permissions or scope.")
 
         if scope is not None:
             warnings.warn(
@@ -283,10 +285,15 @@ class KeysNamespace:
             )
             preset = KeyPreset.from_scope(scope)
 
-        if preset is None:
-            raise ValueError("A preset is required to create a key.")
+        if preset is None and permissions is None:
+            raise ValueError("A preset or a permission list is required.")
 
-        return keys_api.create_key(self.client, preset=preset, description=description)
+        return keys_api.create_key(
+            self.client,
+            preset=preset,
+            permissions=permissions,
+            description=description,
+        )
 
     def list(self) -> List[UserKeyInfo]:
         """List all API keys."""
