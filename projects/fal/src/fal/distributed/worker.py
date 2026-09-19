@@ -235,7 +235,7 @@ class DistributedRunner:
         master_addr: str = "127.0.0.1",
         master_port: int = 29500,
         worker_addr: str = "127.0.0.1",
-        worker_port: int = 54923,
+        worker_port: Optional[int] = None,
         timeout: int = 86400,  # 24 hours
         keepalive_payload: dict[str, Any] = {},
         keepalive_interval: Optional[Union[int, float]] = None,
@@ -248,6 +248,7 @@ class DistributedRunner:
         self.master_port = master_port
         self.worker_addr = worker_addr
         self.worker_port = worker_port
+        self._auto_worker_port = worker_port is None
         self.timeout = timeout
         self.cwd = cwd
         self.zmq_socket = None
@@ -317,7 +318,12 @@ class DistributedRunner:
             for process in self.context.processes:
                 if process.is_alive():
                     process.terminate()
-                    process.join(timeout=timeout)
+                process.join(timeout=timeout)
+                if process.is_alive():
+                    process.kill()
+                    process.join()
+
+        self.close_zmq_socket()
 
     def gather_errors(self) -> list[Exception]:
         """
@@ -353,9 +359,8 @@ class DistributedRunner:
 
     def get_zmq_socket(self) -> Socket[Any]:
         """
-        Returns a ZeroMQ socket of the specified type.
-        :param socket_type: The type of the ZeroMQ socket.
-        :return: A ZeroMQ socket.
+        Returns the bound ZeroMQ socket, choosing a port when none was configured.
+        Resolves and caches worker_port on the first bind.
         """
         if self.zmq_socket is not None:
             return self.zmq_socket
@@ -365,7 +370,17 @@ class DistributedRunner:
 
         context = zmq.asyncio.Context()
         socket = context.socket(zmq.ROUTER)
-        socket.bind(f"tcp://{self.worker_addr}:{self.worker_port}")
+        try:
+            if self.worker_port is None:
+                self.worker_port = socket.bind_to_random_port(
+                    f"tcp://{self.worker_addr}"
+                )
+            else:
+                socket.bind(f"tcp://{self.worker_addr}:{self.worker_port}")
+        except Exception:
+            socket.close()
+            context.term()
+            raise
         self.zmq_socket = socket
         return socket
 
@@ -382,6 +397,8 @@ class DistributedRunner:
                     f"{traceback.format_exc()}"
                 )
             self.zmq_socket = None
+            if self._auto_worker_port:
+                self.worker_port = None
 
     def run(self, **kwargs: Any) -> None:
         """
@@ -568,28 +585,39 @@ class DistributedRunner:
     async def start(self, timeout: int = 1800, **kwargs: Any) -> None:
         """
         Starts the distributed worker processes.
-        :param timeout: The timeout for the distributed processes.
+        :param timeout: Time to wait for readiness, independent of cleanup timeout.
         """
         import zmq
 
         if self.is_alive():
             raise RuntimeError("Distributed processes are already running.")
 
+        if self.context is not None:
+            # A dead rank can leave peers alive. Reap them before replacing context.
+            # Closing the old socket also resets an automatically selected port.
+            self.terminate()
+
         self._keepalive_shutdown = False
 
-        self.context = launch_distributed_processes(
-            self.run,
-            world_size=self.world_size,
-            master_addr=self.master_addr,
-            master_port=self.master_port,
-            timeout=self.timeout,
-            cwd=self.cwd,
-            **kwargs,
-        )
-
         try:
-            ready_workers: set[int] = set()
             socket = self.get_zmq_socket()
+            # Keep the bound socket alive, but out of self while spawn pickles self.run.
+            self.zmq_socket = None
+            self.context = None
+            try:
+                self.context = launch_distributed_processes(
+                    self.run,
+                    world_size=self.world_size,
+                    master_addr=self.master_addr,
+                    master_port=self.master_port,
+                    timeout=self.timeout,
+                    cwd=self.cwd,
+                    **kwargs,
+                )
+            finally:
+                self.zmq_socket = socket
+
+            ready_workers: set[int] = set()
             start_time = time.perf_counter()
 
             while len(ready_workers) < self.world_size:
@@ -614,9 +642,12 @@ class DistributedRunner:
                         )
                     await asyncio.sleep(0.5)
                 self.ensure_alive()
+        except asyncio.CancelledError:
+            self.terminate()
+            raise
         except Exception as e:
             print(f"[debug] Error during startup: {e}\n{traceback.format_exc()}")
-            self.terminate(timeout=timeout)
+            self.terminate()
             raise RuntimeError("Failed to start distributed processes.") from e
 
         print("[debug] All workers are ready and running.")
