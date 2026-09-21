@@ -21,6 +21,8 @@ DEFAULT_SOCKET_PATH = "/run/fal-upload/upload.sock"
 
 
 class LocalUploadError(FileUploadException):
+    """A local failure, optionally with an unknown acceptance outcome."""
+
     def __init__(
         self,
         message: str,
@@ -37,6 +39,8 @@ class LocalUploadError(FileUploadException):
 
 @dataclass(frozen=True)
 class AcceptedUpload:
+    """Receipt for durable local acceptance, before CDN completion."""
+
     upload_id: str
     file_url: str
 
@@ -73,6 +77,8 @@ def _upload_info(response: httpx.Response, state: str) -> tuple[str, str]:
 
 
 class LocalUploader:
+    """Upload over a Unix socket without retries; scope connections with ``with``."""
+
     def __init__(
         self,
         socket_path: str | None = None,
@@ -156,6 +162,7 @@ class LocalUploader:
         return AcceptedUpload(*_upload_info(response, "accepted_local"))
 
     def begin_stream(self, file_name: str, headers: dict[str, str]) -> UploadSession:
+        """Reserve a URL for a body whose final size is not yet known."""
         response = self._request(
             "POST",
             "/upload-sessions",
@@ -195,6 +202,7 @@ class UploadSession:
             pass
 
     def send_body(self, body: bytes | Iterable[bytes]) -> None:
+        """Send the sole body without accepting it; abort if the producer fails."""
         if self._closed or self._body_sent:
             raise ValueError("A session accepts exactly one body")
         try:
@@ -205,6 +213,7 @@ class UploadSession:
         self._body_sent = True
 
     def finish(self, size_bytes: int) -> AcceptedUpload:
+        """Validate the final byte count and wait for durable local acceptance."""
         if self._closed or not self._body_sent:
             raise ValueError("Finish requires a successfully received body")
         _validate_size(size_bytes)
@@ -220,6 +229,7 @@ class UploadSession:
         return accepted
 
     def abort(self) -> None:
+        """Discard unfinished work; an upload already accepted cannot be undone."""
         if not self._closed:
             self._closed = True
             self._client._request("DELETE", self._path, 202)

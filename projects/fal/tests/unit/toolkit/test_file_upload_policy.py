@@ -91,7 +91,7 @@ def repository_spy(monkeypatch):
     """Fails loudly if anything reaches a fal storage repository."""
     calls: list[str] = []
 
-    def fake_try_with_fallback(func, *args, **kwargs):
+    def fake_save_with_repository(func, *args, **kwargs):
         calls.append(func)
         raise AssertionError(
             f"fal CDN repository was used ({func}); the policy path must not "
@@ -99,7 +99,7 @@ def repository_spy(monkeypatch):
         )
 
     monkeypatch.setattr(
-        "fal.toolkit.file.file._try_with_fallback", fake_try_with_fallback
+        "fal.toolkit.file.file._save_with_repository", fake_save_with_repository
     )
     return calls
 

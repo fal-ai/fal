@@ -15,7 +15,7 @@ from fal.toolkit.file.file import (
     File,
     GoogleStorageRepository,
     _get_object_lifecycle_preference_from_context,
-    _try_with_fallback,
+    _save_with_repository,
     get_builtin_repository,
 )
 from fal.toolkit.file.providers.s3 import S3Repository
@@ -194,8 +194,8 @@ class MockRepository(FileRepository):
         )
 
 
-class TestTryWithFallback:
-    """Test cases for the _try_with_fallback function"""
+class TestSaveWithRepository:
+    """Test cases for the _save_with_repository function"""
 
     def test_success_on_first_attempt(self):
         """Test successful execution on the first repository"""
@@ -204,7 +204,7 @@ class TestTryWithFallback:
         with patch(
             "fal.toolkit.file.file.get_builtin_repository", return_value=mock_repo
         ):
-            result = _try_with_fallback(
+            result = _save_with_repository(
                 func="save",
                 args=[FileData(b"test_data", "text/plain", "test.txt")],
                 repository="primary",
@@ -225,7 +225,7 @@ class TestTryWithFallback:
         with patch("fal.toolkit.file.file.get_builtin_repository") as mock_get_repo:
             mock_get_repo.side_effect = [primary_repo, fallback_repo]
 
-            result = _try_with_fallback(
+            result = _save_with_repository(
                 func="save",
                 args=[FileData(b"test_data", "text/plain", "test.txt")],
                 repository="primary",
@@ -249,7 +249,7 @@ class TestTryWithFallback:
         with patch("fal.toolkit.file.file.get_builtin_repository") as mock_get_repo:
             mock_get_repo.side_effect = [repo1, repo2, repo3]
 
-            result = _try_with_fallback(
+            result = _save_with_repository(
                 func="save",
                 args=[FileData(b"test_data", "text/plain", "test.txt")],
                 repository="repo1",
@@ -272,7 +272,7 @@ class TestTryWithFallback:
             mock_get_repo.side_effect = [repo1, repo2]
 
             with pytest.raises(Exception, match="Mock failure for repo2"):
-                _try_with_fallback(
+                _save_with_repository(
                     func="save",
                     args=[FileData(b"test_data", "text/plain", "test.txt")],
                     repository="repo1",
@@ -287,7 +287,7 @@ class TestTryWithFallback:
 
         with patch("fal.toolkit.file.file.get_builtin_repository", return_value=repo):
             with pytest.raises(Exception, match="Mock failure for primary"):
-                _try_with_fallback(
+                _save_with_repository(
                     func="save",
                     args=[FileData(b"test_data", "text/plain", "test.txt")],
                     repository="primary",
@@ -304,7 +304,7 @@ class TestTryWithFallback:
         with patch(
             "fal.toolkit.file.file.get_builtin_repository", return_value=mock_repo
         ):
-            result = _try_with_fallback(
+            result = _save_with_repository(
                 func="save_file",
                 args=[test_path],
                 repository="primary",
@@ -333,7 +333,7 @@ class TestTryWithFallback:
         with patch("fal.toolkit.file.file.get_builtin_repository") as mock_get_repo:
             mock_get_repo.side_effect = [repo1, repo2]
 
-            result = _try_with_fallback(
+            result = _save_with_repository(
                 func="save",
                 args=[FileData(b"test_data", "text/plain", "test.txt")],
                 repository="repo1",
@@ -350,7 +350,7 @@ class TestTryWithFallback:
 
         with patch("fal.toolkit.file.file.get_builtin_repository", return_value=repo):
             with pytest.raises(Exception, match="Mock failure for primary"):
-                _try_with_fallback(
+                _save_with_repository(
                     func="save",
                     args=[FileData(b"test_data", "text/plain", "test.txt")],
                     repository="primary",
@@ -367,7 +367,7 @@ class TestTryWithFallback:
         with patch(
             "fal.toolkit.file.file.get_builtin_repository", return_value=mock_repo
         ):
-            result1 = _try_with_fallback(
+            result1 = _save_with_repository(
                 func="save",
                 args=[FileData(b"test_data", "text/plain", "test.txt")],
                 repository="test_repo",
@@ -377,7 +377,7 @@ class TestTryWithFallback:
             )
 
         # Test with repository object
-        result2 = _try_with_fallback(
+        result2 = _save_with_repository(
             func="save",
             args=[FileData(b"test_data", "text/plain", "test.txt")],
             repository=mock_repo,
@@ -401,7 +401,7 @@ class TestTryWithFallback:
         ) as mock_traceback, patch("builtins.print") as mock_print:
             mock_get_repo.side_effect = [repo1, repo2]
 
-            result = _try_with_fallback(
+            result = _save_with_repository(
                 func="save",
                 args=[FileData(b"test_data", "text/plain", "test.txt")],
                 repository="repo1",
@@ -439,7 +439,7 @@ class TestTryWithFallback:
                 fallback,
             ]
 
-            _try_with_fallback(
+            _save_with_repository(
                 func="save",
                 args=[FileData(b"test_data", "text/plain", "test.txt")],
                 repository=primary,
@@ -518,7 +518,7 @@ class TestContextBasedLifecyclePreference:
 
         with patch(
             "fal.toolkit.file.file.get_current_app", return_value=mock_app
-        ), patch("fal.toolkit.file.file._try_with_fallback") as mock_try:
+        ), patch("fal.toolkit.file.file._save_with_repository") as mock_try:
             mock_try.return_value = "https://example.com/file.bin"
 
             File.from_bytes(b"test data", repository="in_memory")
@@ -558,7 +558,7 @@ class TestContextBasedLifecyclePreference:
         ), patch(
             "fal.toolkit.file.file.request_lifecycle_preference",
             return_value=request_preference,
-        ), patch("fal.toolkit.file.file._try_with_fallback") as mock_try:
+        ), patch("fal.toolkit.file.file._save_with_repository") as mock_try:
             mock_try.return_value = "https://example.com/file.bin"
 
             File.from_bytes(b"test data", repository="in_memory", request=mock_request)

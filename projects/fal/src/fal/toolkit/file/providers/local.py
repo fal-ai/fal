@@ -45,6 +45,8 @@ def _headers(
 
 
 class LocalFileRepository(FileRepository):
+    """Hand uploads to the node-local service and wait for durable acceptance."""
+
     def save(
         self,
         data: FileData,
@@ -54,6 +56,7 @@ class LocalFileRepository(FileRepository):
         multipart_max_concurrency: int | None = None,
         object_lifecycle_preference: dict[str, str] | None = None,
     ) -> str:
+        """Return the accepted URL; the service completes the CDN transfer."""
         headers = _headers(data.content_type, object_lifecycle_preference)
         with LocalUploader() as client:
             return client.upload(
@@ -70,14 +73,17 @@ class LocalFileRepository(FileRepository):
         multipart_max_concurrency: int | None = None,
         object_lifecycle_preference: dict[str, str] | None = None,
     ) -> tuple[str, FileData | None]:
+        """Stream the file, retaining bytes only for the legacy non-multipart case."""
         headers = _headers(content_type, object_lifecycle_preference)
         file_name = Path(file_path).name
         with open(file_path, "rb") as source:
             size = os.fstat(source.fileno()).st_size
             if multipart is None:
                 threshold = multipart_threshold or MultipartUploadV3.MULTIPART_THRESHOLD
-                multipart = size > threshold
-            retained = None if multipart else BytesIO()
+                retain_data = size <= threshold
+            else:
+                retain_data = not multipart
+            retained = BytesIO() if retain_data else None
 
             def body() -> Iterator[bytes]:
                 while chunk := source.read(_READ_SIZE):

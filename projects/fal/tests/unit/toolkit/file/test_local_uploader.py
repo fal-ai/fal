@@ -198,20 +198,57 @@ def test_token_only_does_not_fabricate_settings(monkeypatch, local_upload):
 
 
 @pytest.mark.parametrize("status", [401, 413, 503, 307])
-def test_errors_do_not_retry_or_fall_back(monkeypatch, local_upload, transport, status):
+@pytest.mark.parametrize("selection", ["env", "explicit", "fallback"])
+@pytest.mark.parametrize("from_path", [False, True])
+def test_errors_do_not_retry_or_fall_back(
+    monkeypatch, local_upload, transport, tmp_path, status, selection, from_path
+):
     requests = transport(
         lambda request: httpx.Response(
             status, headers={"location": "http://elsewhere"}, text="secret"
         )
     )
+    method = "save_file" if from_path else "save"
     fallback = Mock()
-    monkeypatch.setattr(remote.FalFileRepository, "save", fallback)
+    monkeypatch.setattr(remote.FalFileRepository, method, fallback)
+    kwargs = {}
+    if selection != "env":
+        monkeypatch.delenv("FAL_USE_LOCAL_UPLOADER")
+        kwargs["repository"] = local.LocalFileRepository()
+    if selection == "fallback":
+        primary = Mock(side_effect=RuntimeError("Remote upload failed"))
+        monkeypatch.setattr(remote.FalFileRepositoryV3, method, primary)
+        kwargs = {
+            "repository": "fal_v3",
+            "fallback_repository": [local.LocalFileRepository(), "fal"],
+        }
     with pytest.raises(LocalUploadError) as caught:
-        files.File.from_bytes(b"hi")
+        if from_path:
+            path = tmp_path / "file.txt"
+            path.write_bytes(b"hi")
+            files.File.from_path(path, **kwargs)
+        else:
+            files.File.from_bytes(b"hi", **kwargs)
     assert caught.value.status_code == status
     assert "secret" not in str(caught.value)
     assert len(requests) == 1
     fallback.assert_not_called()
+    if selection == "fallback":
+        primary.assert_called_once()
+
+
+def test_explicit_local_auth_failure_does_not_fall_back(monkeypatch, local_upload):
+    monkeypatch.delenv("FAL_USE_LOCAL_UPLOADER")
+    monkeypatch.setattr(remote, "get_current_app", lambda: None)
+    monkeypatch.setattr(
+        local, "fetch_auth_credentials", Mock(side_effect=UnauthenticatedException())
+    )
+    fallback = Mock()
+    monkeypatch.setattr(remote.FalFileRepository, "save", fallback)
+    with pytest.raises(local.FileUploadException, match="requires fal credentials"):
+        files.File.from_bytes(b"hi", repository=local.LocalFileRepository())
+    fallback.assert_not_called()
+    assert not local_upload
 
 
 @pytest.mark.parametrize(
