@@ -93,7 +93,7 @@ def _add_create_parser(subparsers, parents):
     permissions.add_argument(
         "--scope",
         choices=[KeyScope.ADMIN.value, KeyScope.API.value],
-        help="Deprecated, use --preset. The privilage scope of the key.",
+        help="Deprecated, use --preset. The privilege scope of the key.",
     )
     parser.add_argument(
         "--desc",

@@ -526,7 +526,7 @@ class KeyScope(enum.Enum):
 
 
 class KeyPreset(enum.Enum):
-    """A keys-v2 policy preset to mint a key with."""
+    """A permission preset to mint a key with."""
 
     FULL = "FULL"
     API = "API"
