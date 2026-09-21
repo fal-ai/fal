@@ -91,6 +91,11 @@ message SecretsConfig {
     repeated string names = 1;
 }
 
+message VolumeMount {
+    string volume_name = 1;
+    string mount_path = 2;
+}
+
 message HostedRun {
     // Environment definitions.
     repeated EnvironmentDefinition environments = 1;
@@ -130,6 +135,8 @@ message HostedRun {
     optional string env_id = 15;
     // Optional health check config for runners
     optional ApplicationHealthCheckConfig health_check_config = 16;
+    // Named data volumes to attach to the run.
+    repeated VolumeMount volumes = 17;
 }
 
 message BuildEnvironmentRequest {
@@ -165,11 +172,31 @@ message CreateUserKeyRequest {
         API = 1;
     }
 
-    // privilege scope of the key
-    Scope scope = 1;
+    // privilege scope of the key. Deprecated in favour of policy_preset/policy;
+    // ADMIN maps to the FULL preset and API to the API preset. An unset scope
+    // also means ADMIN, which is what pre-v2 clients send.
+    optional Scope scope = 1 [deprecated = true];
 
     // optional alias of the key
     optional string alias = 2;
+
+    // Name of the policy preset to mint the key with (e.g. "FULL", "API").
+    optional string policy_preset = 5;
+
+    // Inline policy, for callers that need a permission set no preset covers.
+    optional KeyPolicy policy = 6;
+
+    // Field 7 is held for the next policy field.
+
+    // At most one of policy, policy_preset or scope may be set; precedence is
+    // policy, then policy_preset, then scope.
+}
+
+// Inline policy for a created key; only a permission list for now.
+// Fields 2 and 3 are held for restrictions and attributes.
+message KeyPolicy {
+    // Permissions granted to the key, e.g. "serverless:apps:run".
+    repeated string permissions = 1;
 }
 
 message CreateUserKeyResponse {
@@ -394,6 +421,8 @@ message RegisterApplicationRequest {
     optional string retry_config = 26;
     // Option to attach to the deployment process
     optional bool attach_to_deployment = 27;
+    // Named data volumes to attach to application runners.
+    repeated VolumeMount volumes = 28;
 }
 
 message RegisterApplicationResultType {
@@ -645,12 +674,18 @@ message ShellRunnerInput {
     bool close = 3;
     optional TerminalSize tty_size = 4;
     repeated string command = 5;
+    // Whether the command runs under a pseudo-terminal. Only read from the
+    // first message. Unset means true, so older clients keep their PTY.
+    optional bool tty = 6;
 }
 
 message ShellRunnerOutput {
     bytes data = 1;
     bool close = 2;
     optional int32 exit_code = 3;
+    // Which stream `data` came from: 1 = stdout, 2 = stderr. Unset means
+    // stdout, so older servers that never set it read as stdout.
+    optional int32 stream = 4;
 }
 
 message ListEnvironmentsRequest {

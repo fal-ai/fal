@@ -121,6 +121,10 @@ SERVE_REQUIREMENTS = [
     "structlog",
     "tomli",
     "tomli-w",
+    # toolkit's upload-policy path POSTs outputs to a caller's bucket from the
+    # runner. Floor covers the Client(follow_redirects=) API it uses (httpx
+    # 0.20); left uncapped so a customer's own newer httpx pin still wins.
+    "httpx>=0.20",
 ]
 
 

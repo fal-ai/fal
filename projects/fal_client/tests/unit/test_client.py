@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 import time
 import json
 from contextlib import asynccontextmanager, contextmanager
@@ -21,6 +22,7 @@ from fal_client.client import (
     FalClientHTTPError,
     FalClientTimeoutError,
     InProgress,
+    MultipartUpload,
     Queued,
     RealtimeConnection,
     RealtimeError,
@@ -189,6 +191,33 @@ def test_sync_client_run_with_headers():
         assert "headers" in call_kwargs
         assert call_kwargs["headers"]["X-Custom-Header"] == "test-value"
         assert call_kwargs["headers"]["X-Trace-Id"] == "123"
+
+
+@pytest.mark.parametrize("method", ["GET", "get"])
+def test_sync_client_run_with_method(method):
+    with patch("fal_client.client._maybe_retry_request") as mock_request:
+        mock_response = Mock()
+        mock_response.json.return_value = {"status": "ok"}
+        mock_request.return_value = mock_response
+
+        client = SyncClient(key="test-key")
+        result = client.run("test-app", {}, path="/health", method=method)
+
+        assert result == {"status": "ok"}
+        assert mock_request.call_args.args[1] == method
+        assert mock_request.call_args.kwargs["json"] is None
+
+
+def test_sync_client_run_defaults_to_post():
+    with patch("fal_client.client._maybe_retry_request") as mock_request:
+        mock_response = Mock()
+        mock_response.json.return_value = {"result": "success"}
+        mock_request.return_value = mock_response
+
+        SyncClient(key="test-key").run("test-app", {"input": "data"})
+
+        assert mock_request.call_args.args[1] == "POST"
+        assert mock_request.call_args.kwargs["json"] == {"input": "data"}
 
 
 def test_sync_client_run_with_headers_and_hint():
@@ -749,6 +778,39 @@ async def test_async_client_run_with_headers():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("method", ["GET", "get"])
+async def test_async_client_run_with_method(method):
+    with patch(
+        "fal_client.client._async_maybe_retry_request", new_callable=AsyncMock
+    ) as mock_request:
+        mock_response = Mock()
+        mock_response.json.return_value = {"status": "ok"}
+        mock_request.return_value = mock_response
+
+        client = AsyncClient(key="test-key")
+        result = await client.run("test-app", {}, path="/health", method=method)
+
+        assert result == {"status": "ok"}
+        assert mock_request.call_args.args[1] == method
+        assert mock_request.call_args.kwargs["json"] is None
+
+
+@pytest.mark.asyncio
+async def test_async_client_run_defaults_to_post():
+    with patch(
+        "fal_client.client._async_maybe_retry_request", new_callable=AsyncMock
+    ) as mock_request:
+        mock_response = Mock()
+        mock_response.json.return_value = {"result": "success"}
+        mock_request.return_value = mock_response
+
+        await AsyncClient(key="test-key").run("test-app", {"input": "data"})
+
+        assert mock_request.call_args.args[1] == "POST"
+        assert mock_request.call_args.kwargs["json"] == {"input": "data"}
+
+
+@pytest.mark.asyncio
 async def test_async_client_resolves_auth_when_no_key():
     auth = Mock(header_value="Key resolved-auth", scheme="Key", token="resolved-auth")
 
@@ -1036,6 +1098,45 @@ async def test_async_multipart_save_file_uses_aiofiles(tmp_path):
     second_file.read.assert_awaited_once_with(2)
     mock_upload_part.assert_has_awaits([call(1, b"ab"), call(2, b"cd")], any_order=True)
     mock_complete.assert_awaited_once_with()
+
+
+def test_multipart_save_uploads_every_part_in_full():
+    payload = bytes(range(256)) * 4
+    chunk_size = 100
+    uploaded = {}
+    lock = threading.Lock()
+
+    def upload_part(self, part_number: int, data: bytes) -> None:
+        with lock:
+            uploaded[part_number] = data
+
+    with patch.object(MultipartUpload, "create"), patch.object(
+        MultipartUpload,
+        "upload_part",
+        new=upload_part,
+    ), patch.object(
+        MultipartUpload,
+        "complete",
+        return_value="https://file",
+    ):
+        url = MultipartUpload.save(
+            client=Mock(),
+            token_manager=Mock(),
+            file_name="upload.bin",
+            data=payload,
+            chunk_size=chunk_size,
+            max_concurrency=4,
+        )
+
+    assert url == "https://file"
+
+    expected = [
+        payload[start : start + chunk_size]
+        for start in range(0, len(payload), chunk_size)
+    ]
+    assert sorted(uploaded) == list(range(1, len(expected) + 1))
+    assert [uploaded[n] for n in sorted(uploaded)] == expected
+    assert b"".join(uploaded[n] for n in sorted(uploaded)) == payload
 
 
 @pytest.mark.asyncio

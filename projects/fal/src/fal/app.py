@@ -14,6 +14,7 @@ from typing import Any, Callable, ClassVar, Optional
 
 import fastapi
 import grpc.aio as async_grpc
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from fal._serialization import include_modules_from
 from fal._typing import EndpointT
@@ -28,6 +29,7 @@ from fal.api import (
     function as fal_function,
 )
 from fal.auth import key_credentials
+from fal.compat import run_in_thread
 from fal.container import ContainerImage
 from fal.exceptions import FalServerlessException, RequestCancelledException
 from fal.logging import get_logger
@@ -42,6 +44,13 @@ from fal.sdk import (
     RetryConfigDict,
 )
 from fal.toolkit.file import request_lifecycle_preference
+from fal.toolkit.file._upload_policy import (
+    UPLOAD_POLICY_KEY,
+    UploadPolicy,
+    UploadPolicyInputError,
+    parse_upload_policy,
+)
+from fal.toolkit.file._upload_policy import drain as drain_upload_policies
 from fal.toolkit.file.providers.fal import _LIFECYCLE_PREFERENCE
 
 REALTIME_APP_REQUIREMENTS = ["websockets", "msgpack"]
@@ -461,12 +470,54 @@ def _print_python_packages() -> None:
     print("[debug] Python packages installed:", ", ".join(packages))
 
 
+_UPLOAD_POLICY_KEY_BYTES = UPLOAD_POLICY_KEY.encode()
+
+
+class _RejectUploadPolicyOnWebSocket:
+    """Refuse a WebSocket handshake carrying an upload policy.
+
+    The policy is parsed by an ``@app.middleware("http")``, and Starlette
+    implements those as ``BaseHTTPMiddleware``, which never runs for a websocket
+    scope. There would be no request context, so ``get_upload_policy()`` returns
+    ``None`` and the output goes to fal-owned storage behind a 200: the caller
+    asked for their own bucket and silently got ours.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        # .lower(): only uvicorn's wsproto impl lowercases scope header names.
+        # The default ws="auto" resolves to the sansio impl, which passes them
+        # through as sent, so "X-App-Fal-Upload-Policy" would walk straight past
+        # a byte-for-byte comparison and the output would land in fal storage.
+        if scope["type"] == "websocket" and any(
+            name.lower() == _UPLOAD_POLICY_KEY_BYTES
+            for name, _ in scope.get("headers", ())
+        ):
+            # Close without accepting. Per ASGI that rejects the handshake, and
+            # uvicorn renders it as a bare 403 with the code discarded, so 1008
+            # is intent rather than something a caller sees. A 422 denial
+            # response was measured against a deployed app and gained nothing
+            # there: the gateway upgrades before consulting us, so the client
+            # sees 101 and then `1011 "Error while forwarding the request"`
+            # either way, and it logged "ASGI callable returned without
+            # completing handshake" on every rejection. The cost of dropping it
+            # is that `fal run`, served by uvicorn directly, goes from a 422 with
+            # a reason to that bare 403. Surfacing the reason through the gateway
+            # needs a gateway change, not an SDK one.
+            await send({"type": "websocket.close", "code": 1008})
+            return
+        await self.app(scope, receive, send)
+
+
 @dataclass
 class RequestContext:
     request_id: str | None
     endpoint: str | None
     lifecycle_preference: dict[str, str] | None
     headers: dict[str, str]
+    upload_policy: UploadPolicy | None = None
 
 
 class App(BaseServable):
@@ -843,6 +894,9 @@ class App(BaseServable):
             yield
         finally:
             os.environ["FAL_RUNNER_STATE"] = "TERMINATING"
+            # Let backgrounded policy uploads finish, bounded by the drain
+            # timeout so teardown cannot hang.
+            await run_in_thread(drain_upload_policies)
             await _call_any_fn(self.teardown)
 
     @property
@@ -864,6 +918,12 @@ class App(BaseServable):
         """Teardown the application after serving."""
 
     def _add_extra_middlewares(self, app: fastapi.FastAPI):
+        # Raw ASGI, so it sees the websocket scopes that BaseHTTPMiddleware
+        # (everything below) never does. The ignore is mypy resolving Starlette's
+        # _MiddlewareFactory protocol against this class's instance __call__
+        # rather than its constructor; the shape matches CORSMiddleware's.
+        app.add_middleware(_RejectUploadPolicyOnWebSocket)  # type: ignore[arg-type,call-arg]
+
         @app.middleware("http")
         async def provide_hints_headers(request, call_next):
             response = await call_next(request)
@@ -911,11 +971,26 @@ class App(BaseServable):
                 )
                 return await call_next(request)
 
+            try:
+                upload_policy = parse_upload_policy(request.headers)
+            except UploadPolicyInputError as exc:
+                # Middleware sits outside the exception-handler chain, so render
+                # here rather than leaning on AppException's handler. Bill zero
+                # explicitly (as the 404 and RequestValidation handlers do):
+                # this runs before inference, and without the header the
+                # platform charges the endpoint's default.
+                return fastapi.responses.JSONResponse(
+                    {"detail": exc.message},
+                    exc.status_code,
+                    headers={"x-fal-billable-units": "0"},
+                )
+
             context = RequestContext(
                 request_id=request.headers.get(REQUEST_ID_KEY),
                 endpoint=request.headers.get(REQUEST_ENDPOINT_KEY),
                 lifecycle_preference=request_lifecycle_preference(request),
                 headers=dict(request.headers),
+                upload_policy=upload_policy,
             )
 
             token = self._current_request_context.set(context)

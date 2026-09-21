@@ -4,7 +4,6 @@ import argparse
 import json
 import os
 import signal
-import struct
 import sys
 from collections import deque
 from dataclasses import dataclass
@@ -123,41 +122,41 @@ def runners_requests_table(runners: list[RunnerInfo]):
     return table
 
 
-def _get_tty_size():
+def _get_tty_size(fd: int):
     """Get current terminal dimensions."""
-    import fcntl
-    import termios
-
     try:
-        h, w = struct.unpack("HH", fcntl.ioctl(0, termios.TIOCGWINSZ, b"\0" * 4))[:2]
-        return h, w
-    except (OSError, ValueError):
+        size = os.get_terminal_size(fd)
+        return size.lines, size.columns
+    except OSError:
         return 24, 80  # Fallback to standard size
 
 
 def _shell(args):
-    """Execute a command (or interactive shell) on a runner."""
+    """Open an interactive shell on a runner."""
+    return _shell_session(args, command=None, interactive=True)
+
+
+def _exec(args):
+    """Execute a command on a runner."""
+    command = args.command
+    # argparse may leave the -- separator as the first token (Python < 3.12).
+    if command[0] == "--":
+        command = command[1:]
+
+    if not command:
+        args.console.print("[red]Error:[/] No command specified.")
+        return 1
+
+    return _shell_session(args, command=command, interactive=args.interactive)
+
+
+def _shell_session(args, command, interactive):
+    """Stream a shell session on a runner; command=None opens a login shell."""
     import isolate_proto
 
     client = SyncServerlessClient(host=args.host, team=args.team)
     stub = client._create_host()._connection.stub
     runner_id = args.id
-
-    is_exec = hasattr(args, "command")
-
-    if is_exec:
-        command = args.command
-        if command and command[0] == "--":
-            command = command[1:]
-
-        if not command:
-            args.console.print("[red]Error:[/] No command specified.")
-            return 1
-
-        interactive = args.interactive
-    else:
-        command = None
-        interactive = True
 
     if interactive and os.name == "nt":
         args.console.print(
@@ -213,7 +212,7 @@ def _shell(args):
         # Send terminal size
         if is_tty:
             msg = isolate_proto.ShellRunnerInput()
-            h, w = _get_tty_size()
+            h, w = _get_tty_size(fd)
             msg.tty_size.height = h
             msg.tty_size.width = w
             yield msg
@@ -229,7 +228,7 @@ def _shell(args):
                 yield isolate_proto.ShellRunnerInput(data=data)
             elif msg_type == "resize":
                 msg = isolate_proto.ShellRunnerInput()
-                h, w = _get_tty_size()
+                h, w = _get_tty_size(fd)
                 msg.tty_size.height = h
                 msg.tty_size.width = w
                 yield msg
@@ -857,12 +856,14 @@ def _add_exec_parser(subparsers, parents):
         action="store_true",
         help="Allocate a TTY and attach stdin (interactive mode).",
     )
+    # PARSER keeps fal's own flags parseable between the runner id and the
+    # command; REMAINDER would swallow them into the command.
     parser.add_argument(
         "command",
-        nargs=argparse.REMAINDER,
-        help="Command to execute (after --).",
+        nargs=argparse.PARSER,
+        help="Command to execute. Prefix with -- if it starts with a dash.",
     )
-    parser.set_defaults(func=_shell)
+    parser.set_defaults(func=_exec)
 
 
 def add_parser(main_subparsers, parents):
