@@ -398,24 +398,13 @@ class CreateUserKeyRequest(google.protobuf.message.Message):
     POLICY_FIELD_NUMBER: builtins.int
     scope: global___CreateUserKeyRequest.Scope.ValueType
     """privilege scope of the key. Deprecated in favour of policy_preset/policy;
-    the server maps ADMIN to the FULL preset and API to the API preset.
-    Optional so an explicit ADMIN from a v2 client is visible on the wire at
-    all: ADMIN is 0, so without presence it does not serialize. A pre-v2
-    client asking for ADMIN still sends nothing either way, so a request with
-    none of scope/policy_preset/policy set stays wire-identical to a legacy
-    admin request. The server therefore maps absent, like ADMIN, to the FULL
-    preset, and does so permanently rather than only during rollout. That
-    legacy mapping is why this transport does not mirror the REST contract's
-    "exactly one of policy_preset or policy is required" -- an intentional
-    and lasting difference between the two transports, not a transitional
-    one.
+    ADMIN maps to the FULL preset and API to the API preset. An unset scope
+    also means ADMIN, which is what pre-v2 clients send.
     """
     alias: builtins.str
     """optional alias of the key"""
     policy_preset: builtins.str
-    """Name of a keys-v2 policy preset to mint the key with (e.g. "FULL",
-    "API"). The non-deprecated way to ask for an admin-equivalent key.
-    """
+    """Name of the policy preset to mint the key with (e.g. "FULL", "API")."""
     @property
     def policy(self) -> global___KeyPolicy:
         """Inline policy, for callers that need a permission set no preset covers."""
@@ -442,12 +431,8 @@ global___CreateUserKeyRequest = CreateUserKeyRequest
 
 @typing_extensions.final
 class KeyPolicy(google.protobuf.message.Message):
-    """Inline policy for a created key. Restrictions and richer policy shapes are
-    deferred; only a permission list is supported for now. Field 2 is earmarked
-    for restrictions and field 3 for attributes, so this message stays in step
-    with the REST KeyPolicy it mirrors. Note that restrictions is a
-    dict[str, list[str]] there, which a proto map cannot express -- map values
-    may not be repeated -- so it will need a wrapper message.
+    """Inline policy for a created key; only a permission list for now.
+    Fields 2 and 3 are held for restrictions and attributes.
     """
 
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
