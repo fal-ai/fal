@@ -23,6 +23,7 @@ else:
 from pydantic import BaseModel, Field
 
 from fal.compat import run_in_thread
+from fal.flags import bool_envvar
 from fal.ref import get_current_app
 from fal.toolkit.file._upload_policy import (
     UPLOAD_POLICY_KEY,
@@ -41,6 +42,7 @@ from fal.toolkit.file.providers.fal import (
     MultipartUploadV3,
 )
 from fal.toolkit.file.providers.gcp import GoogleStorageRepository
+from fal.toolkit.file.providers.local import LocalFileRepository
 from fal.toolkit.file.providers.r2 import R2Repository
 from fal.toolkit.file.types import FileData, FileRepository, RepositoryId
 from fal.toolkit.utils.download_utils import download_file
@@ -149,7 +151,7 @@ def _repo_label(repo: FileRepository | RepositoryId) -> str:
     return repo if isinstance(repo, str) else type(repo).__name__
 
 
-def _try_with_fallback(
+def _save_with_repository(
     func: str,
     args: list[Any],
     repository: FileRepository | RepositoryId,
@@ -159,6 +161,14 @@ def _try_with_fallback(
     save_kwargs: dict,
     fallback_save_kwargs: dict,
 ) -> Any:
+    """Resolve the upload destination at runtime; local uploads never fall back."""
+    if (
+        isinstance(repository, str)
+        and repository in _DEFAULT_REPOSITORY_IDS
+        and bool_envvar("FAL_USE_LOCAL_UPLOADER")
+    ):
+        repository = LocalFileRepository()
+
     if fallback_repository is None:
         fallback_repository = []
     elif isinstance(fallback_repository, list):
@@ -175,7 +185,8 @@ def _try_with_fallback(
         try:
             return getattr(repo_obj, func)(*args, **kwargs)
         except Exception as exc:
-            if idx >= len(attempts) - 1:
+            # A lost local response may already have accepted work.
+            if isinstance(repo_obj, LocalFileRepository) or idx >= len(attempts) - 1:
                 raise
 
             traceback.print_exc()
@@ -317,7 +328,7 @@ class File(BaseModel):
             "object_lifecycle_preference", object_lifecycle_preference
         )
 
-        url = _try_with_fallback(
+        url = _save_with_repository(
             "save",
             [fdata],
             repository=repository,
@@ -437,7 +448,7 @@ class File(BaseModel):
         save_kwargs.setdefault("content_type", content_type)
         fallback_save_kwargs.setdefault("content_type", content_type)
 
-        url, data = _try_with_fallback(
+        url, data = _save_with_repository(
             "save_file",
             [file_path],
             repository=repository,
