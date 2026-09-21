@@ -172,11 +172,31 @@ message CreateUserKeyRequest {
         API = 1;
     }
 
-    // privilege scope of the key
-    Scope scope = 1;
+    // privilege scope of the key. Deprecated in favour of policy_preset/policy;
+    // ADMIN maps to the FULL preset and API to the API preset. An unset scope
+    // also means ADMIN, which is what pre-v2 clients send.
+    optional Scope scope = 1 [deprecated = true];
 
     // optional alias of the key
     optional string alias = 2;
+
+    // Name of the policy preset to mint the key with (e.g. "FULL", "API").
+    optional string policy_preset = 5;
+
+    // Inline policy, for callers that need a permission set no preset covers.
+    optional KeyPolicy policy = 6;
+
+    // Field 7 is held for the next policy field.
+
+    // At most one of policy, policy_preset or scope may be set; precedence is
+    // policy, then policy_preset, then scope.
+}
+
+// Inline policy for a created key; only a permission list for now.
+// Fields 2 and 3 are held for restrictions and attributes.
+message KeyPolicy {
+    // Permissions granted to the key, e.g. "serverless:apps:run".
+    repeated string permissions = 1;
 }
 
 message CreateUserKeyResponse {
