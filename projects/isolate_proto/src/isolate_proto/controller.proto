@@ -174,8 +174,16 @@ message CreateUserKeyRequest {
 
     // privilege scope of the key. Deprecated in favour of policy_preset/policy;
     // the server maps ADMIN to the FULL preset and API to the API preset.
-    // Optional so the server can tell an explicit ADMIN apart from an unset
-    // scope; a pre-v2 client leaves it off the wire and still means ADMIN.
+    // Optional so an explicit ADMIN from a v2 client is visible on the wire at
+    // all: ADMIN is 0, so without presence it does not serialize. A pre-v2
+    // client asking for ADMIN still sends nothing either way, so a request with
+    // none of scope/policy_preset/policy set stays wire-identical to a legacy
+    // admin request. The server therefore maps absent, like ADMIN, to the FULL
+    // preset, and does so permanently rather than only during rollout
+    // (decision 2026-09-21, PROD-4835). That legacy mapping is why this
+    // transport does not mirror the REST contract's "exactly one of
+    // policy_preset or policy is required" -- an intentional and lasting
+    // difference between the two transports, not a transitional one.
     optional Scope scope = 1 [deprecated = true];
 
     // optional alias of the key
@@ -197,7 +205,11 @@ message CreateUserKeyRequest {
 }
 
 // Inline policy for a created key. Restrictions and richer policy shapes are
-// deferred; only a permission list is supported for now.
+// deferred; only a permission list is supported for now. Field 2 is earmarked
+// for restrictions and field 3 for attributes, so this message stays in step
+// with the REST KeyPolicy it mirrors. Note that restrictions is a
+// dict[str, list[str]] there, which a proto map cannot express -- map values
+// may not be repeated -- so it will need a wrapper message.
 message KeyPolicy {
     // Permissions granted to the key, e.g. "serverless:apps:run".
     repeated string permissions = 1;
