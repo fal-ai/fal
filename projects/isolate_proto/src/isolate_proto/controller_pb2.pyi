@@ -404,11 +404,11 @@ class CreateUserKeyRequest(google.protobuf.message.Message):
     client asking for ADMIN still sends nothing either way, so a request with
     none of scope/policy_preset/policy set stays wire-identical to a legacy
     admin request. The server therefore maps absent, like ADMIN, to the FULL
-    preset, and does so permanently rather than only during rollout
-    (decision 2026-09-21, PROD-4835). That legacy mapping is why this
-    transport does not mirror the REST contract's "exactly one of
-    policy_preset or policy is required" -- an intentional and lasting
-    difference between the two transports, not a transitional one.
+    preset, and does so permanently rather than only during rollout. That
+    legacy mapping is why this transport does not mirror the REST contract's
+    "exactly one of policy_preset or policy is required" -- an intentional
+    and lasting difference between the two transports, not a transitional
+    one.
     """
     alias: builtins.str
     """optional alias of the key"""
