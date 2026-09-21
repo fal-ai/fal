@@ -23,6 +23,7 @@ else:
 from pydantic import BaseModel, Field
 
 from fal.compat import run_in_thread
+from fal.flags import bool_envvar
 from fal.ref import get_current_app
 from fal.toolkit.file._upload_policy import (
     UPLOAD_POLICY_KEY,
@@ -41,6 +42,7 @@ from fal.toolkit.file.providers.fal import (
     MultipartUploadV3,
 )
 from fal.toolkit.file.providers.gcp import GoogleStorageRepository
+from fal.toolkit.file.providers.local import LocalFileRepository
 from fal.toolkit.file.providers.r2 import R2Repository
 from fal.toolkit.file.types import FileData, FileRepository, RepositoryId
 from fal.toolkit.utils.download_utils import download_file
@@ -159,6 +161,15 @@ def _try_with_fallback(
     save_kwargs: dict,
     fallback_save_kwargs: dict,
 ) -> Any:
+    # Resolve on the runner, after upload-policy handling. Keep local failures
+    # outside the fallback loop: a lost response may already have accepted work.
+    if (
+        isinstance(repository, str)
+        and repository in _DEFAULT_REPOSITORY_IDS
+        and bool_envvar("FAL_USE_LOCAL_UPLOADER")
+    ):
+        return getattr(LocalFileRepository(), func)(*args, **save_kwargs)
+
     if fallback_repository is None:
         fallback_repository = []
     elif isinstance(fallback_repository, list):

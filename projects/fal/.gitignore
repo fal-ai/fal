@@ -1,2 +1,3 @@
 /src/fal/_fal_version.py
 /docs/*
+!/docs/local_uploader.rst
