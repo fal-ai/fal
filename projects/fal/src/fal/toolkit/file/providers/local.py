@@ -1,16 +1,15 @@
 """Repository adapter for opt-in, node-local uploads.
 
 The uploader owns remote multipart transfers, concurrency, and retries. The
-existing multipart arguments only determine whether save_file retains bytes in
-the returned FileData, preserving File.as_bytes() behavior.
+multipart arguments only decide whether save_file returns the bytes it sent,
+preserving File.as_bytes() behavior.
 """
 
 from __future__ import annotations
 
 import os
-from io import BytesIO
 from pathlib import Path
-from typing import Iterator
+from typing import Iterable
 
 from fal._user_agent import USER_AGENT
 from fal.auth import fetch_auth_credentials
@@ -44,8 +43,27 @@ def _headers(
     return headers
 
 
+def _upload(
+    file_name: str,
+    body: bytes | Iterable[bytes],
+    size: int,
+    content_type: str,
+    object_lifecycle_preference: dict[str, str] | None,
+) -> str:
+    headers = _headers(content_type, object_lifecycle_preference)
+    with LocalUploader() as client:
+        return client.upload(file_name, body, size, headers).file_url
+
+
 class LocalFileRepository(FileRepository):
-    """Hand uploads to the node-local service and wait for durable acceptance."""
+    """Hand uploads to the node-local service and wait for durable acceptance.
+
+    Cancelling an async wrapper's await does not stop the uploading thread.
+    """
+
+    # A lost response may already have accepted the bytes; trying another
+    # destination could publish them twice.
+    falls_back = False
 
     def save(
         self,
@@ -57,11 +75,13 @@ class LocalFileRepository(FileRepository):
         object_lifecycle_preference: dict[str, str] | None = None,
     ) -> str:
         """Return the accepted URL; the service completes the CDN transfer."""
-        headers = _headers(data.content_type, object_lifecycle_preference)
-        with LocalUploader() as client:
-            return client.upload(
-                data.file_name, data.data, len(data.data), headers
-            ).file_url
+        return _upload(
+            data.file_name,
+            data.data,
+            len(data.data),
+            data.content_type,
+            object_lifecycle_preference,
+        )
 
     def save_file(
         self,
@@ -73,30 +93,25 @@ class LocalFileRepository(FileRepository):
         multipart_max_concurrency: int | None = None,
         object_lifecycle_preference: dict[str, str] | None = None,
     ) -> tuple[str, FileData | None]:
-        """Stream the file, retaining bytes only for the legacy non-multipart case."""
-        headers = _headers(content_type, object_lifecycle_preference)
-        file_name = Path(file_path).name
+        """Stream large files; small ones are read once and returned as FileData."""
+        size = os.path.getsize(file_path)
+        if multipart is None:
+            threshold = multipart_threshold or MultipartUploadV3.MULTIPART_THRESHOLD
+            multipart = size > threshold
+        if not multipart:
+            return super().save_file(
+                file_path,
+                content_type,
+                object_lifecycle_preference=object_lifecycle_preference,
+            )
+
         with open(file_path, "rb") as source:
-            size = os.fstat(source.fileno()).st_size
-            if multipart is None:
-                threshold = multipart_threshold or MultipartUploadV3.MULTIPART_THRESHOLD
-                retain_data = size <= threshold
-            else:
-                retain_data = not multipart
-            retained = BytesIO() if retain_data else None
-
-            def body() -> Iterator[bytes]:
-                while chunk := source.read(_READ_SIZE):
-                    if retained is not None:
-                        retained.write(chunk)
-                    yield chunk
-
-            # Cancelling the async wrapper's await does not stop this thread.
-            with LocalUploader() as client:
-                accepted = client.upload(file_name, body(), size, headers)
-        data = (
-            FileData(retained.getvalue(), content_type, file_name)
-            if retained is not None
-            else None
-        )
-        return accepted.file_url, data
+            body = iter(lambda: source.read(_READ_SIZE), b"")
+            url = _upload(
+                Path(file_path).name,
+                body,
+                size,
+                content_type,
+                object_lifecycle_preference,
+            )
+        return url, None

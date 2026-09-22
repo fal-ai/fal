@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-from contextvars import ContextVar
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -12,6 +11,7 @@ from starlette.requests import Request
 
 from fal.auth import AuthCredentials
 from fal.exceptions.auth import UnauthenticatedException
+from fal.toolkit.file import _local_uploader
 from fal.toolkit.file import file as files
 from fal.toolkit.file._local_uploader import LocalUploader, LocalUploadError
 from fal.toolkit.file._upload_policy import UPLOAD_POLICY_KEY
@@ -38,7 +38,11 @@ def transport(monkeypatch):
             return handler(request)
 
         monkeypatch.setattr(
-            httpx, "HTTPTransport", lambda **kw: httpx.MockTransport(respond)
+            _local_uploader,
+            "_new_client",
+            lambda: httpx.Client(
+                transport=httpx.MockTransport(respond), base_url="http://localhost"
+            ),
         )
         return requests
 
@@ -198,10 +202,10 @@ def test_token_only_does_not_fabricate_settings(monkeypatch, local_upload):
 
 
 @pytest.mark.parametrize("status", [401, 413, 503, 307])
-@pytest.mark.parametrize("selection", ["env", "explicit", "fallback"])
+@pytest.mark.parametrize("explicit", [False, True])
 @pytest.mark.parametrize("from_path", [False, True])
 def test_errors_do_not_retry_or_fall_back(
-    monkeypatch, local_upload, transport, tmp_path, status, selection, from_path
+    monkeypatch, local_upload, transport, tmp_path, status, explicit, from_path
 ):
     requests = transport(
         lambda request: httpx.Response(
@@ -212,29 +216,37 @@ def test_errors_do_not_retry_or_fall_back(
     fallback = Mock()
     monkeypatch.setattr(remote.FalFileRepository, method, fallback)
     kwargs = {}
-    if selection != "env":
+    if explicit:
         monkeypatch.delenv("FAL_USE_LOCAL_UPLOADER")
         kwargs["repository"] = local.LocalFileRepository()
-    if selection == "fallback":
-        primary = Mock(side_effect=RuntimeError("Remote upload failed"))
-        monkeypatch.setattr(remote.FalFileRepositoryV3, method, primary)
-        kwargs = {
-            "repository": "fal_v3",
-            "fallback_repository": [local.LocalFileRepository(), "fal"],
-        }
-    with pytest.raises(LocalUploadError) as caught:
+    with pytest.raises(LocalUploadError, match=f"HTTP {status}") as caught:
         if from_path:
             path = tmp_path / "file.txt"
             path.write_bytes(b"hi")
             files.File.from_path(path, **kwargs)
         else:
             files.File.from_bytes(b"hi", **kwargs)
-    assert caught.value.status_code == status
     assert "secret" not in str(caught.value)
     assert len(requests) == 1
     fallback.assert_not_called()
-    if selection == "fallback":
-        primary.assert_called_once()
+
+
+def test_local_in_fallback_list_does_not_chain(monkeypatch, local_upload, transport):
+    requests = transport(lambda request: httpx.Response(503))
+    monkeypatch.delenv("FAL_USE_LOCAL_UPLOADER")
+    primary = Mock(side_effect=RuntimeError("Remote upload failed"))
+    monkeypatch.setattr(remote.FalFileRepositoryV3, "save", primary)
+    fallback = Mock()
+    monkeypatch.setattr(remote.FalFileRepository, "save", fallback)
+    with pytest.raises(LocalUploadError, match="HTTP 503"):
+        files.File.from_bytes(
+            b"hi",
+            repository="fal_v3",
+            fallback_repository=[local.LocalFileRepository(), "fal"],
+        )
+    primary.assert_called_once()
+    assert len(requests) == 1
+    fallback.assert_not_called()
 
 
 def test_explicit_local_auth_failure_does_not_fall_back(monkeypatch, local_upload):
@@ -279,8 +291,6 @@ def test_connection_failure_outcomes(transport, failure, uncertain):
         b"[]",
         b"{}",
         json.dumps(STARTED).encode(),
-        json.dumps({**ACCEPTED, "file_url": "not a URL"}).encode(),
-        json.dumps({**ACCEPTED, "upload_id": ""}).encode(),
     ],
 )
 def test_invalid_acceptance_is_not_success(transport, body):
@@ -355,15 +365,12 @@ def test_lost_finish_response_does_not_retry_or_mask_error(transport):
 
 @pytest.mark.asyncio
 async def test_async_wrapper_carries_request_context(monkeypatch, local_upload):
-    context = ContextVar("request", default=None)
     request = SimpleNamespace(
         headers={"x-fal-cdn-token": "caller-token"}, request_id="async-id"
     )
-    token = context.set(SimpleNamespace(current_request=request))
-    monkeypatch.setattr(remote, "get_current_app", context.get)
-    try:
-        result = await files.File.from_bytes_async(b"hi")
-    finally:
-        context.reset(token)
+    monkeypatch.setattr(
+        remote, "get_current_app", lambda: SimpleNamespace(current_request=request)
+    )
+    result = await files.File.from_bytes_async(b"hi")
     assert result.url == ACCEPTED["file_url"]
     assert local_upload[0].headers["x-fal-request-id"] == "async-id"

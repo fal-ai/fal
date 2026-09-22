@@ -199,9 +199,8 @@ def test_runner_exit_after_acceptance(uploader, tmp_path, size_mib):
     assert uploader.state["headers"]["Authorization"] == "Key local:test"
     # The retained file claims the sole spool slot. It must not silently route
     # another submission to the legacy uploader.
-    with LocalUploader() as client, pytest.raises(LocalUploadError) as caught:
+    with LocalUploader() as client, pytest.raises(LocalUploadError, match="HTTP 503"):
         client.upload("second", b"hi", 2, {"Authorization": "Key local:test"})
-    assert caught.value.status_code == 503
     uploader.release.set()
     assert uploader.done.wait(10)
     actual = hashlib.sha256()
@@ -230,7 +229,6 @@ def test_incorrect_stream_size_is_rejected(uploader):
         "generated.txt", {"Authorization": "Key local:test"}
     ) as session:
         session.send_body(b"hello")
-        with pytest.raises(LocalUploadError) as caught:
+        with pytest.raises(LocalUploadError, match="HTTP 400"):
             session.finish(4)
-    assert caught.value.status_code == 400
     assert not uploader.done.is_set()

@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Iterable
-from urllib.parse import quote, urlparse
+from urllib.parse import quote
 
 from fal.toolkit.exceptions import FileUploadException
 
@@ -18,20 +18,15 @@ if TYPE_CHECKING:
     import httpx
 
 DEFAULT_SOCKET_PATH = "/run/fal-upload/upload.sock"
+_TIMEOUT = 300
+_CONNECT_TIMEOUT = 5
 
 
 class LocalUploadError(FileUploadException):
     """A local failure, optionally with an unknown acceptance outcome."""
 
-    def __init__(
-        self,
-        message: str,
-        *,
-        acceptance_uncertain: bool = False,
-        status_code: int | None = None,
-    ):
+    def __init__(self, message: str, *, acceptance_uncertain: bool = False):
         self.acceptance_uncertain = acceptance_uncertain
-        self.status_code = status_code
         if acceptance_uncertain:
             message += " Acceptance is uncertain; resubmitting may create another URL."
         super().__init__(message)
@@ -45,29 +40,28 @@ class AcceptedUpload:
     file_url: str
 
 
-def _validate_size(size_bytes: int) -> None:
-    if (
-        isinstance(size_bytes, bool)
-        or not isinstance(size_bytes, int)
-        or not 0 <= size_bytes < 2**64
-    ):
-        raise ValueError("size_bytes must be an unsigned 64-bit integer")
+def _new_client() -> httpx.Client:
+    # Local, not module scope, for the reason given in _upload_policy._new_client.
+    import httpx  # noqa: PLC0415
+
+    # Resolve the socket on the runner, not when serializing the app.
+    socket_path = os.environ.get("CDN_UPLOADER_SOCKET_PATH", DEFAULT_SOCKET_PATH)
+    return httpx.Client(
+        transport=httpx.HTTPTransport(
+            uds=socket_path, verify=False, retries=0, trust_env=False
+        ),
+        base_url="http://localhost",
+        trust_env=False,
+        follow_redirects=False,
+        timeout=httpx.Timeout(_TIMEOUT, connect=_CONNECT_TIMEOUT),
+    )
 
 
 def _upload_info(response: httpx.Response, state: str) -> tuple[str, str]:
     try:
         result = response.json()
-        upload_id = result["upload_id"]
-        file_url = result["file_url"]
-        if (
-            result["state"] == state
-            and isinstance(upload_id, str)
-            and upload_id.strip()
-            and isinstance(file_url, str)
-        ):
-            url = urlparse(file_url)
-            if url.scheme in ("http", "https") and url.netloc:
-                return upload_id, file_url
+        if result["state"] == state:
+            return result["upload_id"], result["file_url"]
     except (ValueError, KeyError, TypeError):
         pass
     raise LocalUploadError(
@@ -79,27 +73,8 @@ def _upload_info(response: httpx.Response, state: str) -> tuple[str, str]:
 class LocalUploader:
     """Upload over a Unix socket without retries; scope connections with ``with``."""
 
-    def __init__(
-        self,
-        socket_path: str | None = None,
-        *,
-        timeout: float = 300,
-    ):
-        import httpx  # noqa: PLC0415 -- plain function runners need no HTTPX
-
-        # Resolve the socket on the runner, not when serializing the app.
-        self._http = httpx.Client(
-            transport=httpx.HTTPTransport(
-                uds=socket_path
-                or os.environ.get("CDN_UPLOADER_SOCKET_PATH", DEFAULT_SOCKET_PATH),
-                retries=0,
-                trust_env=False,
-            ),
-            base_url="http://localhost",
-            trust_env=False,
-            follow_redirects=False,
-            timeout=httpx.Timeout(timeout, connect=5),
-        )
+    def __init__(self):
+        self._http = _new_client()
 
     def __enter__(self) -> LocalUploader:
         return self
@@ -116,7 +91,7 @@ class LocalUploader:
         accepting: bool = False,
         **kwargs: Any,
     ) -> httpx.Response:
-        import httpx  # noqa: PLC0415 -- only required when local upload is enabled
+        import httpx  # noqa: PLC0415 -- see _new_client
 
         try:
             response = self._http.request(method, path, **kwargs)
@@ -131,7 +106,6 @@ class LocalUploader:
         if response.status_code != expected_status:
             raise LocalUploadError(
                 f"Local uploader returned HTTP {response.status_code}.",
-                status_code=response.status_code,
                 # A shutdown or disk failure can leave committed work behind.
                 acceptance_uncertain=accepting
                 and (response.status_code >= 500 or response.is_success),
@@ -146,7 +120,6 @@ class LocalUploader:
         headers: dict[str, str],
     ) -> AcceptedUpload:
         """Wait for the complete known-length body to be durably accepted."""
-        _validate_size(size_bytes)
         response = self._request(
             "POST",
             "/uploads",
@@ -216,7 +189,6 @@ class UploadSession:
         """Validate the final byte count and wait for durable local acceptance."""
         if self._closed or not self._body_sent:
             raise ValueError("Finish requires a successfully received body")
-        _validate_size(size_bytes)
         response = self._client._request(
             "POST",
             self._path + "/finish",

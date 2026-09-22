@@ -18,7 +18,7 @@ import pytest
 
 from fal.compat import run_in_thread
 from fal.toolkit.file import File
-from fal.toolkit.file._local_uploader import LocalUploader, LocalUploadError
+from fal.toolkit.file._local_uploader import LocalUploadError
 from fal.toolkit.file.providers.fal import FalFileRepository
 
 pytestmark = pytest.mark.skipif(
@@ -32,6 +32,7 @@ def uploader(monkeypatch):
     received = threading.Event()
     accept = threading.Event()
     accept.set()
+    responded = threading.Event()
 
     class Handler(BaseHTTPRequestHandler):
         def do_POST(self):
@@ -51,6 +52,7 @@ def uploader(monkeypatch):
             self.send_header("Content-Length", str(len(payload)))
             self.end_headers()
             self.wfile.write(payload)
+            responded.set()
 
         def log_message(self, *args):
             pass
@@ -65,7 +67,7 @@ def uploader(monkeypatch):
             monkeypatch.setenv("CDN_UPLOADER_SOCKET_PATH", path)
             monkeypatch.setenv("FAL_KEY", "local:test")
             try:
-                yield requests, received, accept
+                yield requests, received, accept, responded
             finally:
                 accept.set()
                 server.shutdown()
@@ -76,7 +78,7 @@ def test_real_socket_ignores_http_proxy(uploader, monkeypatch):
     monkeypatch.setenv("HTTP_PROXY", "http://127.0.0.1:1")
     monkeypatch.setenv("SSL_CERT_FILE", "/nonexistent/certificate.pem")
     result = File.from_bytes(b"hello", file_name="hello.txt")
-    requests, _, _ = uploader
+    requests, _, _, _ = uploader
     assert result.url == "https://fal.media/file.bin"
     assert requests[0][1] == b"hello"
     assert requests[0][0]["Authorization"] == "Key local:test"
@@ -132,23 +134,11 @@ def test_serialized_sdk_reads_runner_environment(uploader, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_cancelled_await_does_not_cancel_or_retry_submission(
-    uploader, monkeypatch, tmp_path
-):
-    requests, received, accept = uploader
+async def test_cancelled_await_does_not_cancel_or_retry_submission(uploader, tmp_path):
+    requests, received, accept, responded = uploader
     accept.clear()
     path = tmp_path / "source.bin"
     path.write_bytes(b"hello")
-    finished = threading.Event()
-    original = LocalUploader.upload
-
-    def upload(*args, **kwargs):
-        try:
-            return original(*args, **kwargs)
-        finally:
-            finished.set()
-
-    monkeypatch.setattr(LocalUploader, "upload", upload)
     task = asyncio.create_task(File.from_path_async(path, multipart=True))
     try:
         assert await run_in_thread(received.wait, 10)
@@ -159,6 +149,6 @@ async def test_cancelled_await_does_not_cancel_or_retry_submission(
         path.unlink()  # worker still owns the open source handle
     finally:
         accept.set()
-        assert await run_in_thread(finished.wait, 10)
+        assert await run_in_thread(responded.wait, 10)
     assert len(requests) == 1
     assert requests[0][1] == b"hello"

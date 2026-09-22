@@ -72,6 +72,10 @@ def get_builtin_repository(id: RepositoryId | FileRepository) -> FileRepository:
         )
         id = "fal_v3"
 
+    # Read on the runner at upload time, never when serializing the app.
+    if id == "fal_v3" and bool_envvar("FAL_USE_LOCAL_UPLOADER"):
+        return LocalFileRepository()
+
     if id not in BUILT_IN_REPOSITORIES.keys():
         raise ValueError(f'"{id}" is not a valid built-in file repository')
     return BUILT_IN_REPOSITORIES[id]()
@@ -151,7 +155,7 @@ def _repo_label(repo: FileRepository | RepositoryId) -> str:
     return repo if isinstance(repo, str) else type(repo).__name__
 
 
-def _save_with_repository(
+def _try_with_fallback(
     func: str,
     args: list[Any],
     repository: FileRepository | RepositoryId,
@@ -161,14 +165,6 @@ def _save_with_repository(
     save_kwargs: dict,
     fallback_save_kwargs: dict,
 ) -> Any:
-    """Resolve the upload destination at runtime; local uploads never fall back."""
-    if (
-        isinstance(repository, str)
-        and repository in _DEFAULT_REPOSITORY_IDS
-        and bool_envvar("FAL_USE_LOCAL_UPLOADER")
-    ):
-        repository = LocalFileRepository()
-
     if fallback_repository is None:
         fallback_repository = []
     elif isinstance(fallback_repository, list):
@@ -185,8 +181,7 @@ def _save_with_repository(
         try:
             return getattr(repo_obj, func)(*args, **kwargs)
         except Exception as exc:
-            # A lost local response may already have accepted work.
-            if isinstance(repo_obj, LocalFileRepository) or idx >= len(attempts) - 1:
+            if not repo_obj.falls_back or idx >= len(attempts) - 1:
                 raise
 
             traceback.print_exc()
@@ -328,7 +323,7 @@ class File(BaseModel):
             "object_lifecycle_preference", object_lifecycle_preference
         )
 
-        url = _save_with_repository(
+        url = _try_with_fallback(
             "save",
             [fdata],
             repository=repository,
@@ -448,7 +443,7 @@ class File(BaseModel):
         save_kwargs.setdefault("content_type", content_type)
         fallback_save_kwargs.setdefault("content_type", content_type)
 
-        url, data = _save_with_repository(
+        url, data = _try_with_fallback(
             "save_file",
             [file_path],
             repository=repository,
