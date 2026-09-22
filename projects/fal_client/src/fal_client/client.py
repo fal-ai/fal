@@ -24,6 +24,7 @@ from typing import (
     Awaitable,
     Dict,
     Iterator,
+    Mapping,
     TYPE_CHECKING,
     Optional,
     Literal,
@@ -52,6 +53,7 @@ from fal_client._headers import (
     add_priority_header,
     add_timeout_header,
     add_hint_header,
+    add_tags_header,
     add_fal_app_context_headers,
     handle_response_headers,
     REQUEST_TIMEOUT_TYPE_HEADER,
@@ -1752,6 +1754,7 @@ class AsyncClient:
         timeout: Optional[Union[int, float]] = None,
         start_timeout: Optional[Union[int, float]] = None,
         hint: str | None = None,
+        tags: Optional[Mapping[str, str]] = None,
         headers: dict[str, str] = {},
     ) -> AnyJSON:
         """Run an application with the given arguments (which will be JSON serialized). The path parameter can be used to
@@ -1764,6 +1767,8 @@ class AsyncClient:
                 primary and backup domains are still capped at 5 seconds.
             start_timeout: Server-side request timeout in seconds. Limits total time spent
                 waiting before processing starts. Does not apply once the application begins processing.
+            tags: Tags to attach to the request, as a key to value mapping. Sent
+                as one packed X-Fal-Tags header; invalid or over-limit tags raise.
         """
 
         client = await self._client
@@ -1779,6 +1784,9 @@ class AsyncClient:
 
         if start_timeout is not None:
             add_timeout_header(start_timeout, _headers)
+
+        if tags is not None:
+            add_tags_header(tags, _headers)
 
         add_fal_app_context_headers(_headers)
 
@@ -1804,6 +1812,7 @@ class AsyncClient:
         hint: str | None = None,
         webhook_url: str | None = None,
         priority: Optional[Priority] = None,
+        tags: Optional[Mapping[str, str]] = None,
         headers: dict[str, str] = {},
         start_timeout: Optional[Union[int, float]] = None,
     ) -> AsyncRequestHandle:
@@ -1818,6 +1827,8 @@ class AsyncClient:
             start_timeout: Server-side request timeout in seconds. Limits total time spent
                 waiting before processing starts (includes queue wait, retries, and
                 routing). Does not apply once the application begins processing.
+            tags: Tags to attach to the request, as a key to value mapping. Sent
+                as one packed X-Fal-Tags header; invalid or over-limit tags raise.
         """
 
         client = await self._client
@@ -1839,6 +1850,9 @@ class AsyncClient:
 
         if start_timeout is not None:
             add_timeout_header(start_timeout, _headers)
+
+        if tags is not None:
+            add_tags_header(tags, _headers)
 
         add_fal_app_context_headers(_headers)
 
@@ -1874,6 +1888,7 @@ class AsyncClient:
         on_enqueue: Optional[Callable[[str], None | Awaitable[None]]] = None,
         on_queue_update: Optional[Callable[[Status], None | Awaitable[None]]] = None,
         priority: Optional[Priority] = None,
+        tags: Optional[Mapping[str, str]] = None,
         headers: dict[str, str] = {},
         start_timeout: Optional[Union[int, float]] = None,
         client_timeout: Optional[Union[int, float]] = None,
@@ -1909,6 +1924,7 @@ class AsyncClient:
                 path=path,
                 hint=hint,
                 priority=priority,
+                tags=tags,
                 headers=headers,
                 start_timeout=start_timeout,
             )
@@ -1972,6 +1988,7 @@ class AsyncClient:
         *,
         path: str = "/stream",
         timeout: float | None = None,
+        tags: Optional[Mapping[str, str]] = None,
         headers: dict[str, str] = {},
     ) -> AsyncIterator[dict[str, Any]]:
         """Stream the output of an application with the given arguments (which will be JSON serialized). This is only supported
@@ -1987,6 +2004,10 @@ class AsyncClient:
             url += "/" + path.lstrip("/")
 
         _headers: dict[str, str] = {**headers}
+
+        if tags is not None:
+            add_tags_header(tags, _headers)
+
         add_fal_app_context_headers(_headers)
 
         async with aconnect_sse(
@@ -2289,6 +2310,7 @@ class SyncClient:
         timeout: Optional[Union[int, float]] = None,
         start_timeout: Optional[Union[int, float]] = None,
         hint: str | None = None,
+        tags: Optional[Mapping[str, str]] = None,
         headers: dict[str, str] = {},
     ) -> AnyJSON:
         """Run an application with the given arguments (which will be JSON serialized).
@@ -2300,6 +2322,8 @@ class SyncClient:
                 primary and backup domains are still capped at 5 seconds.
             start_timeout: Server-side request timeout in seconds. Limits total time spent
                 waiting before processing starts. Does not apply once the application begins processing.
+            tags: Tags to attach to the request, as a key to value mapping. Sent
+                as one packed X-Fal-Tags header; invalid or over-limit tags raise.
         """
 
         url = RUN_URL_FORMAT + application
@@ -2312,6 +2336,9 @@ class SyncClient:
 
         if start_timeout is not None:
             add_timeout_header(start_timeout, _headers)
+
+        if tags is not None:
+            add_tags_header(tags, _headers)
 
         add_fal_app_context_headers(_headers)
 
@@ -2337,6 +2364,7 @@ class SyncClient:
         hint: str | None = None,
         webhook_url: str | None = None,
         priority: Optional[Priority] = None,
+        tags: Optional[Mapping[str, str]] = None,
         headers: dict[str, str] = {},
         start_timeout: Optional[Union[int, float]] = None,
     ) -> SyncRequestHandle:
@@ -2349,6 +2377,8 @@ class SyncClient:
             start_timeout: Server-side request timeout in seconds. Limits total time spent
                 waiting before processing starts (includes queue wait, retries, and
                 routing). Does not apply once the application begins processing.
+            tags: Tags to attach to the request, as a key to value mapping. Sent
+                as one packed X-Fal-Tags header; invalid or over-limit tags raise.
         """
 
         url = QUEUE_URL_FORMAT + application
@@ -2368,6 +2398,9 @@ class SyncClient:
 
         if start_timeout is not None:
             add_timeout_header(start_timeout, _headers)
+
+        if tags is not None:
+            add_tags_header(tags, _headers)
 
         add_fal_app_context_headers(_headers)
 
@@ -2403,6 +2436,7 @@ class SyncClient:
         on_enqueue: Optional[Callable[[str], None]] = None,
         on_queue_update: Optional[Callable[[Status], None]] = None,
         priority: Optional[Priority] = None,
+        tags: Optional[Mapping[str, str]] = None,
         headers: dict[str, str] = {},
         start_timeout: Optional[Union[int, float]] = None,
         client_timeout: Optional[Union[int, float]] = None,
@@ -2438,6 +2472,7 @@ class SyncClient:
                 path=path,
                 hint=hint,
                 priority=priority,
+                tags=tags,
                 headers=headers,
                 start_timeout=start_timeout,
             )
@@ -2494,6 +2529,7 @@ class SyncClient:
         *,
         path: str = "/stream",
         timeout: float | None = None,
+        tags: Optional[Mapping[str, str]] = None,
         headers: dict[str, str] = {},
     ) -> Iterator[dict[str, Any]]:
         """Stream the output of an application with the given arguments (which will be JSON serialized). This is only supported
@@ -2508,6 +2544,10 @@ class SyncClient:
             url += "/" + path.lstrip("/")
 
         _headers: dict[str, str] = {**headers}
+
+        if tags is not None:
+            add_tags_header(tags, _headers)
+
         add_fal_app_context_headers(_headers)
 
         with connect_sse(
