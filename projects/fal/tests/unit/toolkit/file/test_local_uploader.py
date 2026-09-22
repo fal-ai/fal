@@ -325,6 +325,38 @@ def test_stream_requires_body_then_explicit_finish(transport):
     assert json.loads(requests[2].content) == {"size_bytes": 5}
 
 
+def test_repository_stream_counts_bytes_and_carries_metadata(
+    monkeypatch, local_upload, transport
+):
+    requests = transport(session_response)
+    request = SimpleNamespace(headers={"x-fal-cdn-token": "token"}, request_id="rid")
+    monkeypatch.setattr(
+        remote, "get_current_app", lambda: SimpleNamespace(current_request=request)
+    )
+    url = local.LocalFileRepository().save_stream(
+        iter([b"he", b"llo"]), "generated.txt", "text/plain"
+    )
+    assert url == ACCEPTED["file_url"]
+    assert [r.method for r in requests] == ["POST", "PUT", "POST"]
+    assert requests[0].headers["authorization"] == "Key test:key"
+    assert requests[0].headers["x-fal-request-id"] == "rid"
+    assert requests[0].headers["content-type"] == "text/plain"
+    assert requests[1].content == b"hello"
+    assert json.loads(requests[2].content) == {"size_bytes": 5}
+
+
+def test_repository_stream_producer_failure_aborts(local_upload, transport):
+    requests = transport(session_response)
+
+    def generate():
+        yield b"partial"
+        raise RuntimeError("encoder died")
+
+    with pytest.raises(RuntimeError, match="encoder died"):
+        local.LocalFileRepository().save_stream(generate(), "clip.mp4", "video/mp4")
+    assert [r.method for r in requests] == ["POST", "DELETE"]
+
+
 @pytest.mark.parametrize("failure", [RuntimeError, asyncio.CancelledError])
 def test_producer_failure_aborts_without_finish(transport, failure):
     requests = transport(session_response)

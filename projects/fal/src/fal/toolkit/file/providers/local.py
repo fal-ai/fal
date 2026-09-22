@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Iterator
 
 from fal._user_agent import USER_AGENT
 from fal.auth import fetch_auth_credentials
@@ -115,3 +115,29 @@ class LocalFileRepository(FileRepository):
                 object_lifecycle_preference,
             )
         return url, None
+
+    def save_stream(
+        self,
+        chunks: Iterable[bytes],
+        file_name: str,
+        content_type: str,
+        object_lifecycle_preference: dict[str, str] | None = None,
+    ) -> str:
+        """Upload output whose size is unknown until the producer is exhausted.
+
+        The URL is accepted only after the uploader has confirmed the full byte
+        count; a producer that raises aborts the upload instead.
+        """
+        headers = _headers(content_type, object_lifecycle_preference)
+        size = 0
+
+        def counted() -> Iterator[bytes]:
+            nonlocal size
+            for chunk in chunks:
+                size += len(chunk)
+                yield chunk
+
+        with LocalUploader() as client:
+            with client.begin_stream(file_name, headers) as session:
+                session.send_body(counted())
+                return session.finish(size).file_url
