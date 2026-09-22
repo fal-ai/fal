@@ -79,6 +79,20 @@ def test_existing_calls_select_local(local_upload, repository, file_type):
     assert request.headers["authorization"] == "Key test:key"
 
 
+@pytest.mark.parametrize(
+    "file_name,header",
+    [
+        ("plain (1) 100%.txt", "plain (1) 100%.txt"),
+        ("vidéo.mp4", "vid%C3%A9o.mp4"),
+        ("日本語.png", "%E6%97%A5%E6%9C%AC%E8%AA%9E.png"),
+        ("new\nline.txt", "new%0Aline.txt"),
+    ],
+)
+def test_file_names_travel_in_the_header(local_upload, file_name, header):
+    files.File.from_bytes(b"hi", file_name=file_name)
+    assert local_upload[0].headers["x-fal-file-name"] == header
+
+
 @pytest.mark.parametrize("flag", [None, "0", "false", ""])
 def test_disabled_uses_unchanged_repository(monkeypatch, local_upload, flag):
     if flag is None:

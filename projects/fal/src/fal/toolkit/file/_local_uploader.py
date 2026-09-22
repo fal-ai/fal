@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 DEFAULT_SOCKET_PATH = "/run/fal-upload/upload.sock"
 _TIMEOUT = 300
 _CONNECT_TIMEOUT = 5
+_PRINTABLE_ASCII = "".join(map(chr, range(0x20, 0x7F)))
 
 
 class LocalUploadError(FileUploadException):
@@ -38,6 +39,16 @@ class AcceptedUpload:
 
     upload_id: str
     file_url: str
+
+
+def _header_file_name(file_name: str) -> str:
+    """Percent-encode only what cannot travel in an HTTP header.
+
+    Header values are ASCII: httpx refuses to encode anything else, and both the
+    uploader and the CDN reject it. Printable ASCII names pass unchanged, as the
+    Rust client sends them.
+    """
+    return quote(file_name, safe=_PRINTABLE_ASCII)
 
 
 def _new_client() -> httpx.Client:
@@ -127,7 +138,7 @@ class LocalUploader:
             accepting=True,
             headers={
                 **headers,
-                "X-Fal-File-Name": file_name,
+                "X-Fal-File-Name": _header_file_name(file_name),
                 "Content-Length": str(size_bytes),
             },
             content=body,
@@ -140,7 +151,7 @@ class LocalUploader:
             "POST",
             "/upload-sessions",
             201,
-            headers={**headers, "X-Fal-File-Name": file_name},
+            headers={**headers, "X-Fal-File-Name": _header_file_name(file_name)},
         )
         upload_id, file_url = _upload_info(response, "receiving")
         return UploadSession(self, upload_id, file_url)
