@@ -11,6 +11,8 @@ from pydantic import __version__ as pydantic_version
 
 from fal.toolkit import Image
 
+pytestmark = pytest.mark.timeout(420)
+
 
 @overload
 def get_image(as_bytes: Literal[False] = False) -> PILImage.Image: ...
