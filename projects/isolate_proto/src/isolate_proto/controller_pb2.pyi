@@ -394,21 +394,61 @@ class CreateUserKeyRequest(google.protobuf.message.Message):
 
     SCOPE_FIELD_NUMBER: builtins.int
     ALIAS_FIELD_NUMBER: builtins.int
+    POLICY_PRESET_FIELD_NUMBER: builtins.int
+    POLICY_FIELD_NUMBER: builtins.int
     scope: global___CreateUserKeyRequest.Scope.ValueType
-    """privilege scope of the key"""
+    """privilege scope of the key. Deprecated in favour of policy_preset/policy;
+    ADMIN maps to the FULL preset and API to the API preset. An unset scope
+    also means ADMIN, which is what pre-v2 clients send.
+    """
     alias: builtins.str
     """optional alias of the key"""
+    policy_preset: builtins.str
+    """Name of the policy preset to mint the key with (e.g. "FULL", "API")."""
+    @property
+    def policy(self) -> global___KeyPolicy:
+        """Inline policy, for callers that need a permission set no preset covers."""
     def __init__(
         self,
         *,
-        scope: global___CreateUserKeyRequest.Scope.ValueType = ...,
+        scope: global___CreateUserKeyRequest.Scope.ValueType | None = ...,
         alias: builtins.str | None = ...,
+        policy_preset: builtins.str | None = ...,
+        policy: global___KeyPolicy | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing_extensions.Literal["_alias", b"_alias", "alias", b"alias"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing_extensions.Literal["_alias", b"_alias", "alias", b"alias", "scope", b"scope"]) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["_alias", b"_alias", "_policy", b"_policy", "_policy_preset", b"_policy_preset", "_scope", b"_scope", "alias", b"alias", "policy", b"policy", "policy_preset", b"policy_preset", "scope", b"scope"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["_alias", b"_alias", "_policy", b"_policy", "_policy_preset", b"_policy_preset", "_scope", b"_scope", "alias", b"alias", "policy", b"policy", "policy_preset", b"policy_preset", "scope", b"scope"]) -> None: ...
+    @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_alias", b"_alias"]) -> typing_extensions.Literal["alias"] | None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_policy", b"_policy"]) -> typing_extensions.Literal["policy"] | None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_policy_preset", b"_policy_preset"]) -> typing_extensions.Literal["policy_preset"] | None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["_scope", b"_scope"]) -> typing_extensions.Literal["scope"] | None: ...
 
 global___CreateUserKeyRequest = CreateUserKeyRequest
+
+@typing_extensions.final
+class KeyPolicy(google.protobuf.message.Message):
+    """Inline policy for a created key; only a permission list for now.
+    Fields 2 and 3 are held for restrictions and attributes.
+    """
+
+    DESCRIPTOR: google.protobuf.descriptor.Descriptor
+
+    PERMISSIONS_FIELD_NUMBER: builtins.int
+    @property
+    def permissions(self) -> google.protobuf.internal.containers.RepeatedScalarFieldContainer[builtins.str]:
+        """Permissions granted to the key, e.g. "serverless:apps:run"."""
+    def __init__(
+        self,
+        *,
+        permissions: collections.abc.Iterable[builtins.str] | None = ...,
+    ) -> None: ...
+    def ClearField(self, field_name: typing_extensions.Literal["permissions", b"permissions"]) -> None: ...
+
+global___KeyPolicy = KeyPolicy
 
 @typing_extensions.final
 class CreateUserKeyResponse(google.protobuf.message.Message):
