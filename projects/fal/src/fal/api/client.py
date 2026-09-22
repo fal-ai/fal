@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, List, Optional
 
@@ -8,6 +9,7 @@ from fal.sdk import (
     AliasInfo,
     Credentials,
     EnvironmentInfo,
+    KeyPreset,
     KeyScope,
     RunnerInfo,
     ServerlessSecret,
@@ -247,25 +249,44 @@ class KeysNamespace:
 
         client = SyncServerlessClient()
         keys = client.keys.list()
-        key_id, key_secret = client.keys.create(scope="admin")
+        key_id, key_secret = client.keys.create(preset=KeyPreset.FULL)
     """
 
     def __init__(self, client: SyncServerlessClient):
         self.client = client
 
     def create(
-        self, *, scope: KeyScope, description: str | None = None
+        self,
+        *,
+        preset: KeyPreset | None = None,
+        scope: KeyScope | None = None,
+        description: str | None = None,
     ) -> tuple[str, str]:
         """Create a new API key.
 
         Args:
-            scope: Key scope (e.g., "admin").
+            preset: Permission preset to mint the key with.
+            scope: Deprecated, use preset. Mapped to its equivalent preset.
             description: Optional description for the key.
 
         Returns:
             Tuple of (key_id, key_secret).
         """
-        return keys_api.create_key(self.client, scope=scope, description=description)
+        if preset is not None and scope is not None:
+            raise ValueError("Pass exactly one of preset or scope.")
+
+        if scope is not None:
+            warnings.warn(
+                "keys.create(scope=...) is deprecated, use keys.create(preset=...).",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            preset = KeyPreset.from_scope(scope)
+
+        if preset is None:
+            raise ValueError("A preset is required.")
+
+        return keys_api.create_key(self.client, preset=preset, description=description)
 
     def list(self) -> List[UserKeyInfo]:
         """List all API keys."""

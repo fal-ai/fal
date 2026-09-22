@@ -525,6 +525,20 @@ class KeyScope(enum.Enum):
             raise ValueError(f"Unknown KeyScope: {proto}")
 
 
+class KeyPreset(enum.Enum):
+    """A permission preset to mint a key with."""
+
+    FULL = "FULL"
+    API = "API"
+
+    @staticmethod
+    def from_scope(scope: KeyScope) -> KeyPreset:
+        if scope is KeyScope.ADMIN:
+            return KeyPreset.FULL
+        else:
+            return KeyPreset.API
+
+
 class DeploymentStrategy(enum.Enum):
     RECREATE = "recreate"
     ROLLING = "rolling"
@@ -864,14 +878,18 @@ class FalServerlessConnection:
         self._stub = isolate_proto.IsolateControllerStub(channel)
         return self._stub
 
-    def create_user_key(self, scope: KeyScope, alias: str | None) -> tuple[str, str]:
-        scope_proto = (
-            isolate_proto.CreateUserKeyRequest.Scope.ADMIN
-            if scope is KeyScope.ADMIN
-            else isolate_proto.CreateUserKeyRequest.Scope.API
-        )
+    def create_user_key(self, preset: KeyPreset, alias: str | None) -> tuple[str, str]:
+        if not isinstance(preset, KeyPreset):
+            raise TypeError(
+                f"Expected a KeyPreset, got {type(preset).__name__}. "
+                "Map a KeyScope with KeyPreset.from_scope()."
+            )
 
-        request = isolate_proto.CreateUserKeyRequest(scope=scope_proto, alias=alias)
+        # policy_preset and the deprecated scope are mutually exclusive on the
+        # wire, so set the preset and leave scope unset.
+        request = isolate_proto.CreateUserKeyRequest(
+            policy_preset=preset.value, alias=alias
+        )
         response = self.stub.CreateUserKey(request)
         return response.key_id, response.key_secret
 
