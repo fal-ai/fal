@@ -115,3 +115,32 @@ def test_queue_run_does_not_resubmit_after_acceptance(queue_client):
         apps.run("owner/model", {})
     assert [request.method for request in requests] == ["POST", "GET", "GET"]
     assert now[0] == 0
+
+
+def test_workflow_retry_has_a_deadline(queue_client):
+    error = {
+        "type": "error",
+        "message": "Error while running app 'owner/model'",
+        "error": {
+            "status": 404,
+            "body": {"detail": 'Application "model" not found'},
+        },
+    }
+    responses, requests, now = queue_client
+    for index in range(120):
+        responses.extend(
+            [
+                httpx.Response(200, json={"request_id": str(index)}),
+                httpx.Response(200, json={"logs": []}),
+                httpx.Response(404, json=error),
+            ]
+        )
+    last_response = responses[-1]
+    with pytest.raises(httpx.HTTPStatusError) as exc:
+        e2e_apps._retry_workflow_alias_miss(
+            lambda: apps.run("workflows/owner/workflow", {"lhs": 2, "rhs": 3}),
+            app_id="owner/model",
+        )
+    assert exc.value.response is last_response
+    assert now[0] == 60
+    assert len(requests) == 360

@@ -1891,10 +1891,51 @@ def test_workflows(test_app: str, rest_client: Client):
         with delete_workflow_on_exit(
             client, rest_client.base_url + "/workflows/" + workflow_id
         ):
-            data = fal.apps.run(
-                "workflows/" + workflow_id, arguments={"lhs": 2, "rhs": 3}
+            # Replaying this arithmetic workflow is safe if a node misses the alias.
+            data = _retry_workflow_alias_miss(
+                lambda: fal.apps.run(
+                    "workflows/" + workflow_id, arguments={"lhs": 2, "rhs": 3}
+                ),
+                app_id=test_app,
             )
             assert data["result"] == 10
+
+
+def _retry_workflow_alias_miss(run: Callable[[], T], *, app_id: str) -> T:
+    # Temporary until workflow node submissions consistently resolve new aliases.
+    # Callers must ensure the entire operation is safe to replay.
+    app_alias = app_id.split("/")[1]
+    deadline = time.monotonic() + 60
+    while True:
+        try:
+            return run()
+        except HTTPStatusError as exc:
+            try:
+                data = exc.response.json()
+            except ValueError:
+                data = None
+            if exc.response.status_code != 404 or not isinstance(data, dict):
+                raise
+            error = data.get("error")
+            if (
+                data.get("type") != "error"
+                or data.get("message") != f"Error while running app {app_id!r}"
+                or not isinstance(error, dict)
+                or error.get("status") != 404
+            ):
+                raise
+            body = error.get("body")
+            if not isinstance(body, dict) or body.get("detail") not in (
+                f"Application {app_alias!r} not found",
+                f'Application "{app_alias}" not found',
+            ):
+                raise
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise
+            time.sleep(min(0.5, remaining))
+            if time.monotonic() >= deadline:
+                raise
 
 
 @pytest.mark.xdist_group(name="exception-app")
