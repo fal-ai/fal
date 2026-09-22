@@ -1,7 +1,12 @@
 import asyncio
-from unittest.mock import AsyncMock, MagicMock
+import multiprocessing
+import time
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
+import zmq
+import zmq.asyncio
 
 from fal.distributed.utils import distributed_serialize
 from fal.distributed.worker import (
@@ -131,16 +136,146 @@ def test_runner_gather_errors_when_no_errors():
     assert errors == []
 
 
-def test_runner_zmq_socket_cleanup():
-    """Test that ZMQ socket can be safely closed multiple times."""
-    runner = DistributedRunner(SimpleWorker, world_size=1)
-    assert runner.zmq_socket is None
+@pytest.fixture
+def zmq_context(monkeypatch):
+    context = MagicMock()
+    context.socket.return_value.bind_to_random_port.return_value = 55002
+    monkeypatch.setattr(zmq.asyncio, "Context", lambda: context)
+    return context
 
-    runner.close_zmq_socket()  # Should not crash even if None
-    assert runner.zmq_socket is None
 
-    runner.close_zmq_socket()  # Should not crash if called again
+@pytest.mark.parametrize("worker_port", [None, 55001])
+def test_runner_worker_port_lifecycle(zmq_context, worker_port):
+    runner = (
+        DistributedRunner()
+        if worker_port is None
+        else DistributedRunner(worker_port=worker_port)
+    )
+    socket = runner.get_zmq_socket()
+    assert runner.get_zmq_socket() is socket
+    if worker_port is None:
+        assert runner.worker_port == 55002
+        socket.bind_to_random_port.assert_called_once_with("tcp://127.0.0.1")
+        socket.bind.assert_not_called()
+    else:
+        assert runner.worker_port == 55001
+        socket.bind.assert_called_once_with("tcp://127.0.0.1:55001")
+        socket.bind_to_random_port.assert_not_called()
+
+    runner.close_zmq_socket()
+    runner.close_zmq_socket()
+    socket.close.assert_called_once_with()
     assert runner.zmq_socket is None
+    assert runner.worker_port == worker_port
+
+
+@pytest.mark.parametrize("worker_port", [None, 55001])
+def test_runner_bind_failure_does_not_fall_back(zmq_context, worker_port):
+    socket = zmq_context.socket.return_value
+    socket.bind.side_effect = zmq.ZMQError(zmq.EADDRINUSE)
+    socket.bind_to_random_port.side_effect = zmq.ZMQError(zmq.EADDRINUSE)
+    runner = (
+        DistributedRunner()
+        if worker_port is None
+        else DistributedRunner(worker_port=worker_port)
+    )
+
+    with pytest.raises(zmq.ZMQError) as error:
+        runner.get_zmq_socket()
+
+    assert error.value.errno == zmq.EADDRINUSE
+    assert runner.zmq_socket is None
+    assert runner.worker_port == worker_port
+    socket.close.assert_called_once_with()
+    zmq_context.term.assert_called_once_with()
+    if worker_port is not None:
+        socket.bind_to_random_port.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_restart_reaps_surviving_workers_before_spawn(monkeypatch, zmq_context):
+    mp = multiprocessing.get_context("spawn")
+    dead = mp.Process(target=int)
+    survivor = mp.Process(target=time.sleep, args=(60,))
+    dead.start()
+    survivor.start()
+    survivor_join = MagicMock(wraps=survivor.join)
+    monkeypatch.setattr(survivor, "join", survivor_join)
+    runner = DistributedRunner(world_size=2)
+    runner.context = SimpleNamespace(processes=[dead, survivor], error_files=[])
+    old_socket = runner.get_zmq_socket()
+    new_socket = MagicMock()
+    new_socket.bind_to_random_port.return_value = 55003
+    new_socket.recv_multipart = AsyncMock(
+        side_effect=[(b"0", b"READY"), (b"1", b"READY")]
+    )
+    zmq_context.socket.return_value = new_socket
+
+    def spawn(func, **kwargs):
+        assert not dead.is_alive()
+        assert not survivor.is_alive()
+        assert survivor.exitcode is not None
+        old_socket.close.assert_called_once_with()
+        assert runner.worker_port == 55003
+        assert runner.zmq_socket is None
+        assert runner.context is None
+        return SimpleNamespace(processes=[MagicMock(), MagicMock()], error_files=[])
+
+    monkeypatch.setattr("fal.distributed.worker.launch_distributed_processes", spawn)
+    try:
+        dead.join(timeout=10)
+        assert dead.exitcode == 0
+        assert survivor.is_alive()
+        await runner.start(timeout=1800)
+        survivor_join.assert_called_once_with(timeout=10)
+        assert runner.is_alive()
+        assert runner.zmq_socket is new_socket
+    finally:
+        runner.close_zmq_socket()
+        for process in (dead, survivor):
+            if process.is_alive():
+                process.kill()
+            process.join(timeout=10)
+            process.close()
+
+
+def test_terminate_kills_worker_that_survives_join_timeout():
+    process = MagicMock()
+    process.is_alive.side_effect = [True, True]
+    runner = DistributedRunner()
+    runner.context = SimpleNamespace(processes=[process])
+
+    runner.terminate(timeout=0)
+
+    process.kill.assert_called_once_with()
+    assert process.join.call_args_list == [call(timeout=0), call()]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("error", [asyncio.CancelledError, ValueError])
+async def test_startup_failure_cleanup_uses_shutdown_timeout(
+    monkeypatch, zmq_context, error
+):
+    process = MagicMock()
+    process.is_alive.return_value = True
+    context = SimpleNamespace(processes=[process], error_files=[])
+    monkeypatch.setattr(
+        "fal.distributed.worker.launch_distributed_processes", lambda *a, **kw: context
+    )
+    socket = zmq_context.socket.return_value
+    socket.recv_multipart = AsyncMock(side_effect=error)
+    runner = DistributedRunner()
+
+    expected = (
+        asyncio.CancelledError if error is asyncio.CancelledError else RuntimeError
+    )
+    with pytest.raises(expected):
+        await runner.start(timeout=1800)
+
+    assert process.join.call_args_list == [call(timeout=10), call()]
+    process.kill.assert_called_once_with()
+    socket.close.assert_called_once_with()
+    assert runner.worker_port is None
 
 
 def test_runner_terminate_when_not_started():
