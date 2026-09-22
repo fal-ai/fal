@@ -104,14 +104,17 @@ class LocalUploader:
     ) -> httpx.Response:
         import httpx  # noqa: PLC0415 -- see _new_client
 
+        # Name the failure class but drop its text, which can carry credentials
+        # or signed URLs.
         try:
             response = self._http.request(method, path, **kwargs)
-        except (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout):
-            raise LocalUploadError("Cannot connect to the local uploader.") from None
-        except httpx.RequestError:
-            # Transport errors can contain credentials or signed URLs.
+        except (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout) as exc:
             raise LocalUploadError(
-                "Local uploader connection was interrupted.",
+                f"Cannot connect to the local uploader ({type(exc).__name__})."
+            ) from None
+        except httpx.RequestError as exc:
+            raise LocalUploadError(
+                f"Local uploader connection was interrupted ({type(exc).__name__}).",
                 acceptance_uncertain=accepting,
             ) from None
         if response.status_code != expected_status:

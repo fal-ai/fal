@@ -294,6 +294,7 @@ def test_connection_failure_outcomes(transport, failure, uncertain):
     with LocalUploader() as client, pytest.raises(LocalUploadError) as caught:
         client.upload("file", b"hi", 2, {})
     assert caught.value.acceptance_uncertain is uncertain
+    assert failure.__name__ in str(caught.value)
     assert "secret" not in str(caught.value)
     assert len(requests) == 1
 
