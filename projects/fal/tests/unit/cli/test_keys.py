@@ -1,5 +1,17 @@
-from fal.cli.keys import _create, _list, _revoke
+from types import SimpleNamespace
+
+import pytest
+
+from fal.cli.keys import (
+    PRESET_DESCRIPTIONS,
+    _create,
+    _list,
+    _revoke,
+    _split_permissions,
+)
 from fal.cli.main import parse_args
+from fal.cli.parser import FalParserExit
+from fal.sdk import KeyPreset, KeyScope
 
 
 def test_create():
@@ -18,6 +30,64 @@ def test_create():
     assert args.desc == "My test key"
 
 
+def test_create_with_preset():
+    args = parse_args(
+        [
+            "keys",
+            "create",
+            "--preset",
+            "API",
+            "--alias",
+            "ci-deploy",
+        ]
+    )
+    assert args.func == _create
+    assert args.preset == "API"
+    assert args.desc == "ci-deploy"
+
+
+def test_create_rejects_preset_and_scope():
+    with pytest.raises(FalParserExit):
+        parse_args(["keys", "create", "--preset", "API", "--scope", "ADMIN"])
+
+
+def test_preset_scope_mapping():
+    assert KeyPreset.from_scope(KeyScope.ADMIN) == KeyPreset.FULL
+    assert KeyPreset.from_scope(KeyScope.API) == KeyPreset.API
+
+
+def test_create_sends_the_preset_and_no_scope():
+    # An old server reads an unset scope as admin, so a preset must never fall
+    # back to the deprecated field -- it goes out as policy_preset or not at all.
+    from fal.sdk import FalServerlessConnection
+
+    captured = {}
+
+    class _Stub:
+        def CreateUserKey(self, request):
+            captured["request"] = request
+            return SimpleNamespace(key_id="id", key_secret="secret")
+
+    conn = object.__new__(FalServerlessConnection)
+    conn._stub = _Stub()
+    conn.create_user_key(KeyPreset.FULL, "ci")
+
+    assert captured["request"].policy_preset == "FULL"
+    assert captured["request"].HasField("scope") is False
+
+
+def test_create_accepts_v2_only_presets():
+    for preset in ("DEPLOY", "READONLY"):
+        args = parse_args(["keys", "create", "--preset", preset])
+        assert args.preset == preset
+
+
+def test_every_preset_has_a_description():
+    # The interactive picker indexes this by preset, so a new preset without a
+    # description would raise a KeyError mid-prompt.
+    assert set(PRESET_DESCRIPTIONS) == set(KeyPreset)
+
+
 def test_list():
     args = parse_args(["keys", "list"])
     assert args.func == _list
@@ -27,3 +97,31 @@ def test_revoke():
     args = parse_args(["keys", "revoke", "my-key"])
     assert args.func == _revoke
     assert args.key_id == "my-key"
+
+
+def test_unknown_scope_lists_as_scopeless():
+    # A key minted from DEPLOY/READONLY has no v1 scope; listing must not fail.
+    assert KeyScope.from_proto(99) is None  # type: ignore[arg-type]
+
+
+def test_create_with_permissions():
+    args = parse_args(
+        ["keys", "create", "--permission", "models:list,serverless:files:read"]
+    )
+    assert args.permission == ["models:list,serverless:files:read"]
+    assert _split_permissions(args.permission) == [
+        "models:list",
+        "serverless:files:read",
+    ]
+
+
+def test_create_with_repeated_permission_flags():
+    args = parse_args(
+        ["keys", "create", "--permission", "models:list", "--permission", "keys:read"]
+    )
+    assert _split_permissions(args.permission) == ["models:list", "keys:read"]
+
+
+def test_create_rejects_permission_and_preset():
+    with pytest.raises(FalParserExit):
+        parse_args(["keys", "create", "--permission", "models:list", "--preset", "API"])
