@@ -455,6 +455,11 @@ def _build_deployment_check_summary(
                     )
                 )
 
+    strategy = prepared.app_data.deployment_strategy or "rolling"
+    attach_to_deployment = prepared.app_data.attach_to_deployment
+    if attach_to_deployment is None and strategy == "rolling":
+        attach_to_deployment = True
+
     return DeploymentCheckSummary(
         source=source,
         app_name=prepared.loaded.app_name or prepared.display_name,
@@ -463,8 +468,8 @@ def _build_deployment_check_summary(
         current_revision=production_alias.revision if production_alias else None,
         current_auth_mode=production_alias.auth_mode if production_alias else None,
         next_auth_mode=prepared.loaded.app_auth or "private",
-        strategy=prepared.app_data.deployment_strategy or "rolling",
-        attach_to_deployment=prepared.app_data.attach_to_deployment,
+        strategy=strategy,
+        attach_to_deployment=attach_to_deployment,
         force_env_build=force_env_build,
         effective_changes=effective_changes,
         effective_scale_values=effective_scale_values,
