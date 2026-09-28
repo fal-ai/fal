@@ -334,13 +334,16 @@ def _sync(
 
     # Download everything first so a registry error changes nothing on disk.
     for skill, _, _, status in plan:
-        if status != "current":
+        if status not in ("current", "unmanaged"):
             registry.download(skill)
 
     changes = []
     for skill, skills_dir, agents, status in plan:
         if status == "current":
             action = "unchanged"
+        elif status == "unmanaged":
+            # Never replace a skill that fal did not install.
+            action = "skipped (not installed by fal)"
         else:
             write_skill(skill, registry.download(skill), skills_dir)
             action = "installed" if status == "missing" else "updated"
@@ -425,16 +428,16 @@ def _remove_skills(args):
     for skills_dir, agents in _resolve_targets(args, list(AGENTS)).items():
         for name in names:
             path = _skill_dir(skills_dir, name)
-            if path.exists() or _is_link(path):
+            if not (path.exists() or _is_link(path)):
+                continue
+            if (path / MARKER).is_file():
                 _remove(path)
-                changes.append(
-                    {
-                        "skill": name,
-                        "path": str(path),
-                        "agents": agents,
-                        "action": "removed",
-                    }
-                )
+                action = "removed"
+            else:
+                action = "skipped (not installed by fal)"
+            changes.append(
+                {"skill": name, "path": str(path), "agents": agents, "action": action}
+            )
     _print_changes(args, changes, "No matching skills are installed.")
 
 
