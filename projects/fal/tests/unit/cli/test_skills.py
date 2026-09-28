@@ -368,6 +368,26 @@ def test_update_leaves_a_users_own_same_named_skill_alone(registry, env):
     assert rows[0]["installed"] == {str(own.parent): "unmanaged"}
 
 
+@pytest.mark.parametrize("command", [["install"], ["install", "--all"], ["remove"]])
+def test_a_users_own_same_named_skill_is_never_replaced(registry, env, command):
+    _, project = env
+    own = project / ".claude" / "skills" / "fal-serverless"
+    own.mkdir(parents=True)
+    (own / "SKILL.md").write_text("mine\n")
+    (own / "notes.md").write_text("notes\n")
+    argv = ["skills", *command, "-a", "claude-code"]
+    if command == ["remove"]:
+        argv.insert(2, "fal-serverless")
+
+    changes = _run_json(argv)
+
+    assert {c["skill"]: c["action"] for c in changes}["fal-serverless"] == (
+        "skipped (not installed by fal)"
+    )
+    assert sorted(p.name for p in own.iterdir()) == ["SKILL.md", "notes.md"]
+    assert (own / "SKILL.md").read_text() == "mine\n"
+
+
 def test_update_downloads_each_skill_once(registry, env):
     _run(["skills", "install", "-a", "universal", "-a", "claude-code"])
     registry.add("fal-serverless", {"SKILL.md": "v2\n"})
