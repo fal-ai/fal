@@ -2439,6 +2439,47 @@ def test_openapi_websocket_realtime_metadata_and_schemas(isolate_agent_env):
     )
 
 
+@pytest.mark.asyncio
+async def test_realtime_batches_queued_inputs():
+    import asyncio
+    from collections import deque
+
+    from fal.api import RouteSignature
+    from fal.realtime import _mirror_output
+
+    queue = deque(InputModel(prompt=str(index)) for index in range(5))
+    batches = []
+    sent_messages = []
+
+    class RecordingWebSocket:
+        async def send_bytes(self, message):
+            sent_messages.append(message)
+
+    async def generate_batch(_, input, *inputs):
+        batch = [input, *inputs]
+        batches.append([item.prompt for item in batch])
+        if sum(len(batch) for batch in batches) == 5:
+            queue.append(None)
+        return {"results": [item.prompt for item in batch]}
+
+    await _mirror_output(
+        None,
+        queue,
+        RecordingWebSocket(),
+        func=generate_batch,
+        route_signature=RouteSignature(
+            path="/realtime",
+            buffering=10,
+            max_batch_size=3,
+        ),
+        encode_message=lambda output: repr(output).encode(),
+        input_ready=asyncio.Event(),
+    )
+
+    assert batches == [["0", "1", "2"], ["3", "4"]]
+    assert len(sent_messages) == 2
+
+
 def test_openapi_websocket_barebones_has_no_realtime_marker(isolate_agent_env):
     app = RealtimeApp()
     spec = app.openapi()
