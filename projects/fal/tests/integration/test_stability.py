@@ -15,13 +15,14 @@ from fal.toolkit.file import File
 
 PACKAGE_NAME = "fall"
 
+pytestmark = pytest.mark.timeout(420)
 
-def git_revision_short_hash() -> str:
-    return (
-        subprocess.check_output(["git", "rev-parse", "--short", "HEAD"])
-        .decode("ascii")
-        .strip()
-    )
+
+GIT_REVISION_SHORT_HASH = (
+    subprocess.check_output(["git", "rev-parse", "--short", "HEAD"])
+    .decode("ascii")
+    .strip()
+)
 
 
 @pytest.mark.xfail(reason="Temporary mismatch due to grpc version updates. Ping @efiop")
@@ -55,20 +56,22 @@ def test_regular_function(isolated_client):
     assert mult(5, 2) == 10
 
 
+@pytest.mark.xdist_group(name="container-builds")
 def test_regular_function_in_a_container(isolated_client):
-    @isolated_client("container")
+    @isolated_client("container", keep_alive=10)
     def regular_function():
         return 42
 
     assert regular_function() == 42
 
-    @isolated_client("container")
+    @isolated_client("container", keep_alive=10)
     def mult(a, b):
         return a * b
 
     assert mult(5, 2) == 10
 
 
+@pytest.mark.xdist_group(name="container-builds")
 def test_container_no_venv(isolated_client):
     actual_python = active_python()
 
@@ -87,6 +90,7 @@ def test_container_no_venv(isolated_client):
     assert myfunc() == 42
 
 
+@pytest.mark.xdist_group(name="container-builds")
 def test_container_venv(isolated_client):
     actual_python = active_python()
 
@@ -108,6 +112,7 @@ def test_container_venv(isolated_client):
 
 
 @pytest.mark.flaky(max_runs=3)
+@pytest.mark.xdist_group(name="container-builds")
 def test_regular_function_in_a_container_with_custom_image(isolated_client):
     actual_python = active_python()
 
@@ -116,7 +121,7 @@ def test_regular_function_in_a_container_with_custom_image(isolated_client):
         image=ContainerImage.from_dockerfile_str(
             f"""
             FROM python:{actual_python}-slim
-            # {git_revision_short_hash()}
+            # {GIT_REVISION_SHORT_HASH}
             RUN env
             """
         ),
@@ -129,7 +134,7 @@ def test_regular_function_in_a_container_with_custom_image(isolated_client):
     @isolated_client(
         "container",
         image=ContainerImage.from_dockerfile_str(
-            f"FROM python:{actual_python}-slim\n# {git_revision_short_hash()}"
+            f"FROM python:{actual_python}-slim\n# {GIT_REVISION_SHORT_HASH}"
         ),
     )
     def mult(a, b):
@@ -351,6 +356,7 @@ def test_memory_overflow_crash_on_run(isolated_client):
         memory_overflow_crash_on_run()
 
 
+@pytest.mark.timeout(600)
 def test_keepalive_after_agent_exit(isolated_client):
     # Should work (fresh)
     @isolated_client("virtualenv")
@@ -418,7 +424,7 @@ def test_big_message(isolated_client):
     # try doubling that.
     data_length = 8 * (1024**2)
 
-    @isolated_client("virtualenv", machine_type="M")
+    @isolated_client("virtualenv", machine_type="M", keep_alive=10)
     def big_return_function(data_length):
         return b"0" * data_length
 
@@ -429,7 +435,7 @@ def test_big_message(isolated_client):
 def test_futures(isolated_client):
     from concurrent.futures import wait
 
-    @isolated_client("virtualenv")
+    @isolated_client("virtualenv", keep_alive=10)
     def regular_function(n):
         return n * 2
 

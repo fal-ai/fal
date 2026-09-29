@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -133,17 +133,14 @@ def test_environment_created_at_timestamp(
     client: SyncServerlessClient, test_env_name: str
 ):
     """Test that created_at timestamp is properly set."""
-    # Create environment
+    earliest_created_at = datetime.now(timezone.utc) - timedelta(minutes=1)
     env = client.environments.create(test_env_name)
+    latest_created_at = datetime.now(timezone.utc) + timedelta(minutes=1)
 
     try:
         assert env.created_at is not None
-        # Check that it's a datetime object
         assert isinstance(env.created_at, datetime)
-        # Check that it's recent (within last minute)
-        now = datetime.now(timezone.utc)
-        time_diff = (now - env.created_at).total_seconds()
-        assert -60 <= time_diff < 60, f"Created time seems wrong: {time_diff}s ago"
+        assert earliest_created_at <= env.created_at <= latest_created_at
 
     finally:
         client.environments.delete(test_env_name)
