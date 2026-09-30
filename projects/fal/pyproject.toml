@@ -111,6 +111,11 @@ isolate-proto = "2100-01-01T00:00:00Z"
 [project.scripts]
 fal = "fal.cli:main"
 
+[project.urls]
+Homepage = "https://fal.ai"
+Documentation = "https://fal.ai/docs"
+Source = "https://github.com/fal-ai/fal"
+
 [tool.ruff]
 target-version = "py38"
 
