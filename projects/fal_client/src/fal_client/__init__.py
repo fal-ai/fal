@@ -1,5 +1,10 @@
 from fal_client._version import __version__, version_tuple
 from fal_client._headers import set_get_current_app
+from fal_client._validation import (
+    clear_schema_cache,
+    fetch_required_arguments,
+    fetch_required_arguments_async,
+)
 from fal_client.client import (
     AsyncClient,
     AsyncRealtimeConnection,
@@ -12,6 +17,7 @@ from fal_client.client import (
     FalClientError,
     FalClientHTTPError,
     FalClientTimeoutError,
+    MissingRequiredArguments,
     ObjectExpiration,
     StorageACL,
     StorageACLDecision,
@@ -27,6 +33,9 @@ from fal_client.client import (
 __all__ = [
     "__version__",
     "version_tuple",
+    "clear_schema_cache",
+    "fetch_required_arguments",
+    "fetch_required_arguments_async",
     "SyncClient",
     "AsyncClient",
     "RealtimeConnection",
@@ -38,6 +47,7 @@ __all__ = [
     "FalClientError",
     "FalClientHTTPError",
     "FalClientTimeoutError",
+    "MissingRequiredArguments",
     "ObjectExpiration",
     "StorageACL",
     "StorageACLDecision",
