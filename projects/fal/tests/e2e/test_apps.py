@@ -1936,16 +1936,7 @@ def test_kill_runner(host: api.FalServerlessHost, test_sleep_app: str):
 
 @pytest.mark.timeout(180)
 def test_rollout_application(host: api.FalServerlessHost, test_sleep_app: str):
-    handle = apps.submit(test_sleep_app, arguments={"wait_time": 30})
-
-    while True:
-        status = handle.status()
-        if isinstance(status, apps.InProgress):
-            break
-        elif isinstance(status, apps.Queued):
-            time.sleep(1)
-        else:
-            raise Exception(f"Failed to start the app: {status}")
+    _submit_and_wait_in_progress(test_sleep_app)
 
     with host._connection as client:
         _, _, app_alias = test_sleep_app.partition("/")
@@ -1955,12 +1946,27 @@ def test_rollout_application(host: api.FalServerlessHost, test_sleep_app: str):
 
         client.rollout_application(app_alias, force=True)
         _wait_until_replaced(client, app_alias, {runner_id_before})
-        runner_ids_after = _wait_for_ready_runners(
+
+        # A rollout without traffic may not start a new runner, so send one.
+        _submit_and_wait_in_progress(test_sleep_app)
+        runner_ids_after = _wait_for_running_runners(
             client, app_alias, exclude={runner_id_before}
         )
 
         client.rollout_application(app_alias, force=True)
         _wait_until_replaced(client, app_alias, runner_ids_after)
+
+
+def _submit_and_wait_in_progress(app_id: str) -> None:
+    handle = apps.submit(app_id, arguments={"wait_time": 30})
+    while True:
+        status = handle.status()
+        if isinstance(status, apps.InProgress):
+            return
+        elif isinstance(status, apps.Queued):
+            time.sleep(1)
+        else:
+            raise Exception(f"Failed to start the app: {status}")
 
 
 _REPLACED_STATES = {
@@ -1989,20 +1995,19 @@ def _wait_until_replaced(client, app_alias: str, runner_ids: set[str]) -> None:
         time.sleep(0.5)
 
 
-def _wait_for_ready_runners(client, app_alias: str, exclude: set[str]) -> set[str]:
-    deadline = time.time() + 60
+def _wait_for_running_runners(client, app_alias: str, exclude: set[str]) -> set[str]:
+    deadline = time.time() + 30
     while True:
         runners = client.list_alias_runners(app_alias)
-        ready = {
+        running = {
             runner.runner_id
             for runner in runners
-            if runner.runner_id not in exclude
-            and runner.state in (RunnerState.IDLE, RunnerState.RUNNING)
+            if runner.runner_id not in exclude and runner.state == RunnerState.RUNNING
         }
-        if ready:
-            return ready
+        if running:
+            return running
         if time.time() > deadline:
-            raise AssertionError(f"No replacement runner became ready: {runners}")
+            raise AssertionError(f"No new runner is serving requests: {runners}")
         time.sleep(0.5)
 
 
