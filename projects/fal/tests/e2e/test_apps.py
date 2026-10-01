@@ -1947,7 +1947,7 @@ def test_rollout_application(host: api.FalServerlessHost, test_sleep_app: str):
         client.rollout_application(app_alias, force=True)
         _wait_until_replaced(client, app_alias, {runner_id_before})
 
-        # A rollout without traffic may not start a new runner, so send one.
+        # A forced rollout only kills runners, so send a request to start a new one.
         _submit_and_wait_in_progress(test_sleep_app)
         runner_ids_after = _wait_for_running_runners(
             client, app_alias, exclude={runner_id_before}
