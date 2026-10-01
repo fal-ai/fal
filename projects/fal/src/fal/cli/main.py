@@ -23,6 +23,7 @@ from . import (
     run,
     runners,
     secrets,
+    skills,
     teams,
 )
 from .debug import debugtools, get_debug_parser
@@ -67,6 +68,7 @@ def _get_main_parser() -> argparse.ArgumentParser:
         runners,
         teams,
         files,
+        skills,
         completion,
     ]:
         cmd.add_parser(subparsers, parents)
