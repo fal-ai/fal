@@ -1934,6 +1934,7 @@ def test_kill_runner(host: api.FalServerlessHost, test_sleep_app: str):
         assert num_runners <= existing_runners - 1
 
 
+@pytest.mark.timeout(180)
 def test_rollout_application(host: api.FalServerlessHost, test_sleep_app: str):
     handle = apps.submit(test_sleep_app, arguments={"wait_time": 30})
 
@@ -1953,31 +1954,55 @@ def test_rollout_application(host: api.FalServerlessHost, test_sleep_app: str):
         runner_id_before = runners_before[0].runner_id
 
         client.rollout_application(app_alias, force=True)
-
-        runners_after = _wait_until_not_running(client, app_alias, {runner_id_before})
-        runner_ids_after = {r.runner_id for r in runners_after} - {runner_id_before}
+        _wait_until_replaced(client, app_alias, {runner_id_before})
+        runner_ids_after = _wait_for_ready_runners(
+            client, app_alias, exclude={runner_id_before}
+        )
 
         client.rollout_application(app_alias, force=True)
+        _wait_until_replaced(client, app_alias, runner_ids_after)
 
-        _wait_until_not_running(client, app_alias, runner_ids_after)
+
+_REPLACED_STATES = {
+    RunnerState.DRAINING,
+    RunnerState.TERMINATING,
+    RunnerState.TERMINATED,
+    RunnerState.DEAD,
+}
 
 
-def _wait_until_not_running(client, app_alias: str, runner_ids: set[str]):
-    timeout = 20
-    start_time = time.time()
+def _wait_until_replaced(client, app_alias: str, runner_ids: set[str]) -> None:
+    deadline = time.time() + 30
     while True:
         runners = client.list_alias_runners(app_alias)
-        still_running = runner_ids & {
+        remaining = {
             runner.runner_id
             for runner in runners
-            if runner.state == RunnerState.RUNNING
+            if runner.runner_id in runner_ids and runner.state not in _REPLACED_STATES
         }
-        if not still_running:
-            return runners
-        if time.time() - start_time > timeout:
+        if not remaining:
+            return
+        if time.time() > deadline:
             raise AssertionError(
-                f"Runners {still_running} still running after rollout: {runners}"
+                f"Runners {remaining} not replaced after rollout: {runners}"
             )
+        time.sleep(0.5)
+
+
+def _wait_for_ready_runners(client, app_alias: str, exclude: set[str]) -> set[str]:
+    deadline = time.time() + 60
+    while True:
+        runners = client.list_alias_runners(app_alias)
+        ready = {
+            runner.runner_id
+            for runner in runners
+            if runner.runner_id not in exclude
+            and runner.state in (RunnerState.IDLE, RunnerState.RUNNING)
+        }
+        if ready:
+            return ready
+        if time.time() > deadline:
+            raise AssertionError(f"No replacement runner became ready: {runners}")
         time.sleep(0.5)
 
 
