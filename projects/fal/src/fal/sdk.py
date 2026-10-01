@@ -1136,19 +1136,45 @@ class FalServerlessConnection:
         application_name: str | None = None,
         *,
         environment_name: str | None = None,
+        page_size: int | None = None,
     ) -> list[ApplicationInfo]:
+        """List application revisions, following pagination transparently.
+
+        The server caps how many revisions a single response may carry, so this
+        walks ``next_page_token`` until it is unset. Callers keep the previous
+        "everything" semantics; ``page_size`` only tunes the request size.
+        """
         full_application_name = (
             construct_alias(application_name, environment_name)
             if application_name
             else None
         )
 
-        request = isolate_proto.ListApplicationsRequest(
-            application_name=full_application_name,
-            environment_name=environment_name,
-        )
-        res: isolate_proto.ListApplicationsResult = self.stub.ListApplications(request)
-        return [from_grpc(app) for app in res.applications]
+        applications: list[ApplicationInfo] = []
+        page_token: str | None = None
+        while True:
+            request = isolate_proto.ListApplicationsRequest(
+                application_name=full_application_name,
+                environment_name=environment_name,
+                page_size=page_size,
+                page_token=page_token,
+            )
+            res: isolate_proto.ListApplicationsResult = self.stub.ListApplications(
+                request
+            )
+            applications.extend(from_grpc(app) for app in res.applications)
+
+            # Absence is the only end-of-pages signal -- a short page does not
+            # mean the last page.
+            if not res.HasField("next_page_token"):
+                return applications
+
+            # Guard against a server that keeps handing back the same cursor;
+            # without this a bug there becomes an infinite loop here.
+            if res.next_page_token == page_token:
+                return applications
+
+            page_token = res.next_page_token
 
     def delete_application(
         self,
