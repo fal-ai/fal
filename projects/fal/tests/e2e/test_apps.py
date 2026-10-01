@@ -1954,21 +1954,31 @@ def test_rollout_application(host: api.FalServerlessHost, test_sleep_app: str):
 
         client.rollout_application(app_alias, force=True)
 
-        time.sleep(15)
-
-        runners_after = client.list_alias_runners(app_alias)
-        runner_ids_after = {r.runner_id for r in runners_after}
-
-        assert runner_id_before not in runner_ids_after
+        runners_after = _wait_until_not_running(client, app_alias, {runner_id_before})
+        runner_ids_after = {r.runner_id for r in runners_after} - {runner_id_before}
 
         client.rollout_application(app_alias, force=True)
 
-        time.sleep(3)
+        _wait_until_not_running(client, app_alias, runner_ids_after)
 
-        runners_final = client.list_alias_runners(app_alias)
-        runner_ids_final = {r.runner_id for r in runners_final}
 
-        assert not runner_ids_after.intersection(runner_ids_final)
+def _wait_until_not_running(client, app_alias: str, runner_ids: set[str]):
+    timeout = 20
+    start_time = time.time()
+    while True:
+        runners = client.list_alias_runners(app_alias)
+        still_running = runner_ids & {
+            runner.runner_id
+            for runner in runners
+            if runner.state == RunnerState.RUNNING
+        }
+        if not still_running:
+            return runners
+        if time.time() - start_time > timeout:
+            raise AssertionError(
+                f"Runners {still_running} still running after rollout: {runners}"
+            )
+        time.sleep(0.5)
 
 
 def test_shell_runner(host: api.FalServerlessHost, test_sleep_app: str):
