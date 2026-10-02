@@ -36,6 +36,11 @@ RepositoryId = Literal[
 
 @dataclass
 class FileRepository:
+    # Whether a failed save may be retried at the next fallback repository. A
+    # class attribute, not a type check: `fal` is pickled by value, so isinstance
+    # against these classes is unreliable on a runner.
+    falls_back = True
+
     def save(
         self,
         data: FileData,

@@ -23,6 +23,7 @@ else:
 from pydantic import BaseModel, Field
 
 from fal.compat import run_in_thread
+from fal.flags import bool_envvar
 from fal.ref import get_current_app
 from fal.toolkit.file._upload_policy import (
     UPLOAD_POLICY_KEY,
@@ -41,6 +42,7 @@ from fal.toolkit.file.providers.fal import (
     MultipartUploadV3,
 )
 from fal.toolkit.file.providers.gcp import GoogleStorageRepository
+from fal.toolkit.file.providers.local import LocalFileRepository
 from fal.toolkit.file.providers.r2 import R2Repository
 from fal.toolkit.file.types import FileData, FileRepository, RepositoryId
 from fal.toolkit.utils.download_utils import download_file
@@ -69,6 +71,10 @@ def get_builtin_repository(id: RepositoryId | FileRepository) -> FileRepository:
             stacklevel=2,
         )
         id = "fal_v3"
+
+    # Read on the runner at upload time, never when serializing the app.
+    if id == "fal_v3" and bool_envvar("FAL_USE_LOCAL_UPLOADER"):
+        return LocalFileRepository()
 
     if id not in BUILT_IN_REPOSITORIES.keys():
         raise ValueError(f'"{id}" is not a valid built-in file repository')
@@ -175,7 +181,7 @@ def _try_with_fallback(
         try:
             return getattr(repo_obj, func)(*args, **kwargs)
         except Exception as exc:
-            if idx >= len(attempts) - 1:
+            if not repo_obj.falls_back or idx >= len(attempts) - 1:
                 raise
 
             traceback.print_exc()
