@@ -8,15 +8,18 @@ preserving File.as_bytes() behavior.
 from __future__ import annotations
 
 import os
+import time
 from pathlib import Path
-from typing import Iterable, Iterator
+from tempfile import TemporaryDirectory
+from typing import Callable, Iterable, Iterator, TypeVar
 
 from fal._user_agent import USER_AGENT
 from fal.auth import fetch_auth_credentials
 from fal.exceptions.auth import UnauthenticatedException
 from fal.toolkit.exceptions import FileUploadException
-from fal.toolkit.file._local_uploader import LocalUploader
+from fal.toolkit.file._local_uploader import LocalUploader, LocalUploadRejected
 from fal.toolkit.file.providers.fal import (
+    FalFileRepositoryV3,
     MultipartUploadV3,
     _caller_cdn_header,
     _object_lifecycle_headers,
@@ -24,6 +27,17 @@ from fal.toolkit.file.providers.fal import (
 from fal.toolkit.file.types import FileData, FileRepository
 
 _READ_SIZE = 1024 * 1024
+_RETRY_DELAYS = (0.1, 0.2)
+_T = TypeVar("_T")
+
+
+def _retry_rejections(upload: Callable[[], _T]) -> _T:
+    for delay in _RETRY_DELAYS:
+        try:
+            return upload()
+        except LocalUploadRejected:
+            time.sleep(delay)
+    return upload()
 
 
 def _headers(
@@ -61,8 +75,8 @@ class LocalFileRepository(FileRepository):
     Cancelling an async wrapper's await does not stop the uploading thread.
     """
 
-    # A lost response may already have accepted the bytes; trying another
-    # destination could publish them twice.
+    # Definite rejections use direct CDN here. Other failures must not chain
+    # through File's fallback list, since a lost response can leave accepted work.
     falls_back = False
 
     def save(
@@ -75,13 +89,25 @@ class LocalFileRepository(FileRepository):
         object_lifecycle_preference: dict[str, str] | None = None,
     ) -> str:
         """Return the accepted URL; the service completes the CDN transfer."""
-        return _upload(
-            data.file_name,
-            data.data,
-            len(data.data),
-            data.content_type,
-            object_lifecycle_preference,
-        )
+        try:
+            return _retry_rejections(
+                lambda: _upload(
+                    data.file_name,
+                    data.data,
+                    len(data.data),
+                    data.content_type,
+                    object_lifecycle_preference,
+                )
+            )
+        except LocalUploadRejected:
+            return FalFileRepositoryV3().save(
+                data,
+                multipart=multipart,
+                multipart_threshold=multipart_threshold,
+                multipart_chunk_size=multipart_chunk_size,
+                multipart_max_concurrency=multipart_max_concurrency,
+                object_lifecycle_preference=object_lifecycle_preference,
+            )
 
     def save_file(
         self,
@@ -102,19 +128,40 @@ class LocalFileRepository(FileRepository):
             return super().save_file(
                 file_path,
                 content_type,
+                multipart=False,
+                multipart_threshold=multipart_threshold,
+                multipart_chunk_size=multipart_chunk_size,
+                multipart_max_concurrency=multipart_max_concurrency,
                 object_lifecycle_preference=object_lifecycle_preference,
             )
 
         with open(file_path, "rb") as source:
-            body = iter(lambda: source.read(_READ_SIZE), b"")
-            url = _upload(
-                Path(file_path).name,
-                body,
-                size,
-                content_type,
-                object_lifecycle_preference,
-            )
-        return url, None
+
+            def upload() -> str:
+                source.seek(0)
+                body = iter(lambda: source.read(_READ_SIZE), b"")
+                return _upload(
+                    Path(file_path).name,
+                    body,
+                    size,
+                    content_type,
+                    object_lifecycle_preference,
+                )
+
+            try:
+                return _retry_rejections(upload), None
+            except LocalUploadRejected:
+                pass
+
+        return FalFileRepositoryV3().save_file(
+            file_path,
+            content_type,
+            multipart=multipart,
+            multipart_threshold=multipart_threshold,
+            multipart_chunk_size=multipart_chunk_size,
+            multipart_max_concurrency=multipart_max_concurrency,
+            object_lifecycle_preference=object_lifecycle_preference,
+        )
 
     def save_stream(
         self,
@@ -138,6 +185,23 @@ class LocalFileRepository(FileRepository):
                 yield chunk
 
         with LocalUploader() as client:
-            with client.begin_stream(file_name, headers) as session:
+            try:
+                session = _retry_rejections(
+                    lambda: client.begin_stream(file_name, headers)
+                )
+            except LocalUploadRejected:
+                # Direct CDN needs a known size. Spool only after rejection,
+                # while the producer is still untouched.
+                with TemporaryDirectory() as directory:
+                    path = Path(directory) / Path(file_name).name
+                    with path.open("wb") as target:
+                        for chunk in chunks:
+                            target.write(chunk)
+                    return FalFileRepositoryV3().save_file(
+                        path,
+                        content_type,
+                        object_lifecycle_preference=object_lifecycle_preference,
+                    )[0]
+            with session:
                 session.send_body(counted())
                 return session.finish(size).file_url

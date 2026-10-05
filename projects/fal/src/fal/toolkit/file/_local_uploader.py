@@ -1,8 +1,8 @@
 """Client for the node-local uploader's HTTP API over a Unix socket.
 
-Acceptance is durable on this node, not CDN completion. Submissions are never
-retried: losing a response can leave accepted work, and resending creates a new
-URL. Keep this client scoped to an upload; do not serialize live connections.
+Acceptance is durable on this node, not CDN completion. Only explicit admission
+rejections are safe to replay: losing a response can leave accepted work, and
+resending creates a new URL. Do not serialize live connections.
 """
 
 from __future__ import annotations
@@ -33,6 +33,10 @@ class LocalUploadError(FileUploadException):
         if acceptance_uncertain:
             message += " Acceptance is uncertain; resubmitting may create another URL."
         super().__init__(message)
+
+
+class LocalUploadRejected(LocalUploadError):
+    """The uploader explicitly rejected work before it could be accepted."""
 
 
 @dataclass(frozen=True)
@@ -120,8 +124,16 @@ class LocalUploader:
                 acceptance_uncertain=accepting,
             ) from None
         if response.status_code != expected_status:
+            message = f"Local uploader returned HTTP {response.status_code}."
+            if response.status_code == 503:
+                try:
+                    rejection = response.json().get("rejection")
+                except (ValueError, AttributeError):
+                    rejection = None
+                if rejection in ("queue_full", "draining"):
+                    raise LocalUploadRejected(message)
             raise LocalUploadError(
-                f"Local uploader returned HTTP {response.status_code}.",
+                message,
                 # A shutdown or disk failure can leave committed work behind.
                 acceptance_uncertain=accepting
                 and (response.status_code >= 500 or response.is_success),
