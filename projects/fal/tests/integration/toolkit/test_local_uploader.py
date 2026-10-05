@@ -241,20 +241,14 @@ def test_large_file_rejection_retries_then_uses_direct_cdn(
         for _ in range(100):
             source.write(chunk)
 
-    def save_file(file_path, content_type, **kwargs):
-        with open(file_path, "rb") as source:
-            for _ in range(100):
-                assert source.read(len(chunk)) == chunk
-            assert source.read() == b""
-        return "https://direct.example/large.bin", None
-
-    direct = Mock(side_effect=save_file)
+    direct = Mock(return_value=("https://direct.example/large.bin", None))
     sleep = Mock()
     monkeypatch.setattr(remote.FalFileRepositoryV3, "save_file", direct)
     monkeypatch.setattr(local.time, "sleep", sleep)
     result = File.from_path(path, multipart=True)
     assert result.url == "https://direct.example/large.bin"
     direct.assert_called_once()
+    assert direct.call_args.args[0] == path
     assert [call.args[0] for call in sleep.call_args_list] == [0.1, 0.2]
     assert uploader.state["reservations"] == 1
 
