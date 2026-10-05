@@ -560,6 +560,7 @@ class FalFileRepository(FalFileRepositoryBase):
 
         headers: Dict[str, str] = {}
         _object_lifecycle_headers(headers, object_lifecycle_preference)
+        _caller_cdn_header(headers)
 
         return self._save(file, "gcs", headers=headers)
 

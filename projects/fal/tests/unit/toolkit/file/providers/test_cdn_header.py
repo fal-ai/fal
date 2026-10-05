@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -146,6 +147,77 @@ def test_caller_cdn_header_adds_both_cdn_token_and_request_id():
 
     assert headers["X-Fal-CDN-Token"] == cdn_token
     assert headers["X-Fal-Request-ID"] == request_id
+
+
+@pytest.mark.parametrize(
+    "current_app,lifecycle,expected_token,expected_request_id",
+    [
+        pytest.param(
+            _create_fake_app("caller-b-token", "caller-b-request"),
+            {"initial_acl": {"default": "hide", "rules": []}},
+            "caller-b-token",
+            "caller-b-request",
+            id="caller-context",
+        ),
+        pytest.param(None, None, None, None, id="no-caller-context"),
+    ],
+)
+def test_legacy_gcs_save_forwards_caller_headers_to_initiation_request(
+    current_app, lifecycle, expected_token, expected_request_id
+):
+    initiation_response = Mock()
+    initiation_response.read.return_value = json.dumps(
+        {
+            "upload_url": "https://upload.example/file",
+            "file_url": "https://cdn.example/file",
+        }
+    ).encode()
+
+    with (
+        patch.object(
+            providers,
+            "fetch_auth_credentials",
+            return_value=AuthCredentials("Key", "app-a-key:app-a-secret"),
+        ),
+        patch.object(
+            providers,
+            "get_current_app",
+            return_value=current_app,
+        ),
+        patch.object(
+            providers, "urlopen", side_effect=[initiation_response, Mock()]
+        ) as urlopen,
+    ):
+        file_url = providers.FalFileRepository().save(
+            providers.FileData(b"file", "text/plain", "file.txt"),
+            multipart=False,
+            object_lifecycle_preference=lifecycle,
+        )
+
+    initiation_request = urlopen.call_args_list[0].args[0]
+    assert file_url == "https://cdn.example/file"
+    assert initiation_request.full_url.endswith(
+        "/storage/upload/initiate?storage_type=gcs"
+    )
+    assert initiation_request.get_method() == "POST"
+    assert initiation_request.get_header("Authorization") == (
+        "Key app-a-key:app-a-secret"
+    )
+    assert initiation_request.get_header("X-fal-cdn-token") == expected_token
+    assert initiation_request.get_header("X-fal-request-id") == expected_request_id
+    expected_lifecycle = json.dumps(lifecycle) if lifecycle else None
+    assert (
+        initiation_request.get_header("X-fal-object-lifecycle-preference")
+        == expected_lifecycle
+    )
+    assert initiation_request.get_header("X-fal-object-lifecycle") == expected_lifecycle
+
+    upload_request = urlopen.call_args_list[1].args[0]
+    assert upload_request.full_url == "https://upload.example/file"
+    assert upload_request.get_method() == "PUT"
+    assert upload_request.get_header("Authorization") is None
+    assert upload_request.get_header("X-fal-cdn-token") is None
+    assert upload_request.get_header("X-fal-request-id") is None
 
 
 @pytest.mark.parametrize(
