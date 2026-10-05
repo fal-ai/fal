@@ -28,6 +28,22 @@ ACCEPTED = {
 STARTED = {**ACCEPTED, "upload_id": "session-id", "state": "receiving"}
 
 
+@pytest.mark.parametrize("socket_path", [None, "/tmp/custom-uploader.sock"])
+def test_client_socket_path(monkeypatch, socket_path):
+    monkeypatch.delenv("CDN_UPLOADER_SOCKET_PATH", raising=False)
+    if socket_path is not None:
+        monkeypatch.setenv("CDN_UPLOADER_SOCKET_PATH", socket_path)
+    transport = Mock(wraps=httpx.HTTPTransport)
+    monkeypatch.setattr(httpx, "HTTPTransport", transport)
+
+    with _local_uploader._new_client():
+        pass
+
+    assert transport.call_args.kwargs["uds"] == (
+        socket_path if socket_path is not None else "/run/fal-upload/upload.sock"
+    )
+
+
 @pytest.fixture
 def transport(monkeypatch):
     requests = []
