@@ -1,8 +1,8 @@
 """Repository adapter for opt-in, node-local uploads.
 
-The uploader owns remote multipart transfers, concurrency, and retries. The
-multipart arguments only decide whether save_file returns the bytes it sent,
-preserving File.as_bytes() behavior.
+The uploader owns remote multipart transfers and retries for locally accepted
+files. Definite rejections fall back to direct CDN with the caller's multipart
+settings. Small local uploads retain bytes for File.as_bytes().
 """
 
 from __future__ import annotations
@@ -59,14 +59,17 @@ def _headers(
 
 def _upload(
     file_name: str,
-    body: bytes | Iterable[bytes],
+    body: Callable[[], bytes | Iterable[bytes]],
     size: int,
     content_type: str,
     object_lifecycle_preference: dict[str, str] | None,
 ) -> str:
+    """Upload a body that ``body()`` can replay in full after a rejection."""
     headers = _headers(content_type, object_lifecycle_preference)
     with LocalUploader() as client:
-        return client.upload(file_name, body, size, headers).file_url
+        return _retry_rejections(
+            lambda: client.upload(file_name, body(), size, headers)
+        ).file_url
 
 
 class LocalFileRepository(FileRepository):
@@ -90,14 +93,12 @@ class LocalFileRepository(FileRepository):
     ) -> str:
         """Return the accepted URL; the service completes the CDN transfer."""
         try:
-            return _retry_rejections(
-                lambda: _upload(
-                    data.file_name,
-                    data.data,
-                    len(data.data),
-                    data.content_type,
-                    object_lifecycle_preference,
-                )
+            return _upload(
+                data.file_name,
+                lambda: data.data,
+                len(data.data),
+                data.content_type,
+                object_lifecycle_preference,
             )
         except LocalUploadRejected:
             return FalFileRepositoryV3().save(
@@ -135,33 +136,30 @@ class LocalFileRepository(FileRepository):
                 object_lifecycle_preference=object_lifecycle_preference,
             )
 
-        with open(file_path, "rb") as source:
+        try:
+            with open(file_path, "rb") as source:
 
-            def upload() -> str:
-                source.seek(0)
-                body = iter(lambda: source.read(_READ_SIZE), b"")
+                def body() -> Iterator[bytes]:
+                    source.seek(0)
+                    return iter(lambda: source.read(_READ_SIZE), b"")
+
                 return _upload(
                     Path(file_path).name,
                     body,
                     size,
                     content_type,
                     object_lifecycle_preference,
-                )
-
-            try:
-                return _retry_rejections(upload), None
-            except LocalUploadRejected:
-                pass
-
-        return FalFileRepositoryV3().save_file(
-            file_path,
-            content_type,
-            multipart=multipart,
-            multipart_threshold=multipart_threshold,
-            multipart_chunk_size=multipart_chunk_size,
-            multipart_max_concurrency=multipart_max_concurrency,
-            object_lifecycle_preference=object_lifecycle_preference,
-        )
+                ), None
+        except LocalUploadRejected:
+            return FalFileRepositoryV3().save_file(
+                file_path,
+                content_type,
+                multipart=multipart,
+                multipart_threshold=multipart_threshold,
+                multipart_chunk_size=multipart_chunk_size,
+                multipart_max_concurrency=multipart_max_concurrency,
+                object_lifecycle_preference=object_lifecycle_preference,
+            )
 
     def save_stream(
         self,
@@ -195,8 +193,7 @@ class LocalFileRepository(FileRepository):
                 with TemporaryDirectory() as directory:
                     path = Path(directory) / Path(file_name).name
                     with path.open("wb") as target:
-                        for chunk in chunks:
-                            target.write(chunk)
+                        target.writelines(chunks)
                     return FalFileRepositoryV3().save_file(
                         path,
                         content_type,

@@ -17,12 +17,16 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import Mock
 from urllib.parse import urlparse
 
 import httpx
 import pytest
 
+from fal.toolkit.file import File
 from fal.toolkit.file._local_uploader import LocalUploader, LocalUploadError
+from fal.toolkit.file.providers import fal as remote
+from fal.toolkit.file.providers import local
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("CDN_UPLOADER_TEST_BINARY"),
@@ -221,6 +225,38 @@ def test_generated_stream_is_accepted_only_after_finish(uploader):
         assert accepted.file_url == session.file_url
     assert uploader.done.wait(10)
     assert uploader.state["parts"] == {1: b"hello world"}
+
+
+def test_large_file_rejection_retries_then_uses_direct_cdn(
+    uploader, tmp_path, monkeypatch
+):
+    with LocalUploader() as client:
+        client.upload("first.bin", b"abc", 3, {"Authorization": "Key local:test"})
+    assert uploader.receiving.wait(10)
+    assert not uploader.done.is_set()
+
+    path = tmp_path / "large.bin"
+    chunk = bytes(range(256)) * 4096
+    with path.open("wb") as source:
+        for _ in range(100):
+            source.write(chunk)
+
+    def save_file(file_path, content_type, **kwargs):
+        with open(file_path, "rb") as source:
+            for _ in range(100):
+                assert source.read(len(chunk)) == chunk
+            assert source.read() == b""
+        return "https://direct.example/large.bin", None
+
+    direct = Mock(side_effect=save_file)
+    sleep = Mock()
+    monkeypatch.setattr(remote.FalFileRepositoryV3, "save_file", direct)
+    monkeypatch.setattr(local.time, "sleep", sleep)
+    result = File.from_path(path, multipart=True)
+    assert result.url == "https://direct.example/large.bin"
+    direct.assert_called_once()
+    assert [call.args[0] for call in sleep.call_args_list] == [0.1, 0.2]
+    assert uploader.state["reservations"] == 1
 
 
 def test_incorrect_stream_size_is_rejected(uploader):

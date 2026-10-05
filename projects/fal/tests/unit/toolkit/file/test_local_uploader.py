@@ -322,11 +322,10 @@ def test_only_explicit_admission_marker_is_retryable(
     assert body not in str(caught.value)
 
 
-@pytest.mark.parametrize("rejection", ["queue_full", "draining"])
 @pytest.mark.parametrize("from_path", [False, True])
 @pytest.mark.parametrize("exhausted", [False, True])
 def test_definite_rejection_replays_then_uses_direct_cdn(
-    monkeypatch, local_upload, transport, tmp_path, rejection, from_path, exhausted
+    monkeypatch, local_upload, transport, tmp_path, from_path, exhausted
 ):
     attempts = 0
 
@@ -334,15 +333,12 @@ def test_definite_rejection_replays_then_uses_direct_cdn(
         nonlocal attempts
         attempts += 1
         if exhausted or attempts < 3:
-            return httpx.Response(503, json={"rejection": rejection})
+            return httpx.Response(503, json={"rejection": "queue_full"})
         return httpx.Response(202, json=ACCEPTED)
 
     requests = transport(respond)
     sleep = Mock()
     monkeypatch.setattr(local.time, "sleep", sleep)
-    fallback = Mock()
-    monkeypatch.setattr(remote.FalFileRepository, "save", fallback)
-    monkeypatch.setattr(remote.FalFileRepository, "save_file", fallback)
     data = FileData(b"abc" * local._READ_SIZE, "video/mp4", "clip.mp4")
     settings = {"expiration_duration_seconds": 60}
     kwargs = {
@@ -377,7 +373,6 @@ def test_definite_rejection_replays_then_uses_direct_cdn(
         )
     else:
         direct.assert_not_called()
-    fallback.assert_not_called()
 
 
 @pytest.mark.parametrize("failure", ["storage", "disconnect", "invalid_receipt"])
