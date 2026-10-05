@@ -19,8 +19,7 @@ if TYPE_CHECKING:
 
 # Keep in sync with infra/modules/nomad_jobs/jobs.tf and isolate-cloud's
 # projects/isolate_controller/src/isolate_controller/scheduler/nomad/forger.py.
-DEFAULT_SOCKET_DIR = "/run/fal-upload"
-DEFAULT_SOCKET_PATH = f"{DEFAULT_SOCKET_DIR}/upload.sock"
+DEFAULT_SOCKET_PATH = "/run/fal-upload/upload.sock"
 _TIMEOUT = 300
 _CONNECT_TIMEOUT = 5
 _PRINTABLE_ASCII = "".join(map(chr, range(0x20, 0x7F)))
