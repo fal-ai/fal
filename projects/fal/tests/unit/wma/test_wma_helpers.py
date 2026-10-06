@@ -746,3 +746,52 @@ class TestAioiceOrderlyTeardown:
             assert ice.Connection.close is _future_close  # untouched
         finally:
             ice.Connection.close = original_close
+
+
+def test_dropped_frames_do_not_block_queue_completion():
+    async def scenario():
+        queue = asyncio.Queue(maxsize=1)
+        queue_put_drop_oldest(queue, "old")
+        queue_put_drop_oldest(queue, "new")
+        assert await queue.get() == "new"
+        queue.task_done()
+        await asyncio.wait_for(queue.join(), timeout=0.1)
+
+    asyncio.run(scenario())
+
+
+def test_stale_playout_frames_do_not_mutate_playback_clock(monkeypatch):
+    pytest.importorskip("aiortc")
+    from types import SimpleNamespace
+
+    import numpy as np
+
+    now = [10.0]
+    monkeypatch.setattr(time, "monotonic", lambda: now[0])
+    handed_off = []
+    playout = SimpleNamespace(epoch=1, handoff=handed_off.append)
+    image = np.zeros((4, 4, 3), dtype=np.uint8)
+
+    async def scenario():
+        class Queue(asyncio.Queue):
+            async def get(self):
+                timestamp, pixels, metadata = await super().get()
+                # A stale frame must not start or rebase the clock before the
+                # next item is fetched, even after a long generation stall.
+                if metadata.get("check_clock"):
+                    assert track._started_at == metadata["check_clock"]
+                now[0] = timestamp
+                return timestamp, pixels, metadata
+
+        queue = Queue()
+        track = make_video_queue_track(queue, fps=10, playout=playout)
+        queue.put_nowait((10.0, image, {"epoch": 1}))
+        first = await track.recv()
+        queue.put_nowait((100.0, image, {"epoch": 0}))
+        queue.put_nowait((101.0, image, {"epoch": 1, "check_clock": 10.0}))
+        second = await track.recv()
+        assert first.pts == 0 and second.pts == 9000
+        assert track._started_at == pytest.approx(100.9)
+        assert handed_off == [1, 1]
+
+    asyncio.run(scenario())

@@ -169,6 +169,10 @@ class BatchedFnTrack(_TrackBase):  # type: ignore[valid-type, misc]
         A class serialized with the fallback base keeps that base on a runner.
         Construct the adapter against the runner's installed aiortc at use time.
         """
+        # Keep annotation globals in the shipped function's closure on
+        # Python versions that evaluate nested class annotations immediately.
+        from typing import Any
+
         from aiortc import MediaStreamTrack
         from aiortc.mediastreams import MediaStreamError
 

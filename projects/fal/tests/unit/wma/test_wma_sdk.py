@@ -1198,3 +1198,48 @@ def test_live_billing_floor_rejects_invalid_updates_without_losing_settlement(
             session.minimum_billable_units = 10
 
     asyncio.run(scenario())
+
+
+def test_recursive_close_does_not_deadlock_or_release_concurrent_waiters_early(
+    billing_reports,
+):
+    async def scenario():
+        session = Session(
+            StartSessionRequest(sdp="offer"), request_id=BILLING_REQUEST_ID
+        )
+        session._activate_deferred_billing()
+        cleanup_started = asyncio.Event()
+        finish_cleanup = asyncio.Event()
+        worker_started = asyncio.Event()
+
+        async def worker():
+            worker_started.set()
+            try:
+                await asyncio.Future()
+            finally:
+                await session.close()
+                session.add_billable_units(1)
+
+        async def cleanup():
+            cleanup_started.set()
+            await finish_cleanup.wait()
+            # wait_for creates a child task; direct and child recursive calls
+            # must both recognize the active teardown context.
+            await session.close()
+            await asyncio.wait_for(session.close(), timeout=0.1)
+            session.add_billable_units(2)
+
+        session.create_task(worker())
+        await worker_started.wait()
+        session.defer(cleanup)
+        closing = asyncio.create_task(session.close())
+        await asyncio.wait_for(cleanup_started.wait(), timeout=1)
+        other = asyncio.create_task(session.close())
+        await asyncio.sleep(0)
+        assert not other.done()
+        assert billing_reports == []
+        finish_cleanup.set()
+        await asyncio.wait_for(asyncio.gather(closing, other), timeout=1)
+        assert billing_reports == [(BILLING_REQUEST_ID, 3.0)]
+
+    asyncio.run(scenario())

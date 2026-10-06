@@ -110,6 +110,7 @@ def queue_put_drop_oldest(queue: "asyncio.Queue[Any]", item: Any) -> None:
         except asyncio.QueueFull:
             try:
                 queue.get_nowait()
+                queue.task_done()
             except asyncio.QueueEmpty:  # pragma: no cover - racy fallback
                 continue
 
@@ -531,6 +532,8 @@ def _make_playout_video_queue_track(
                 if playout is not None:
                     push_ts, image, metadata = item
                     item = (push_ts, image)
+                if metadata is not None and metadata["epoch"] != playout.epoch:
+                    continue
                 now = time.monotonic()
                 if isinstance(item, tuple):
                     push_ts, image = item
@@ -540,10 +543,11 @@ def _make_playout_video_queue_track(
                         )
                 else:
                     image = item
-                if self._started_at is None:
-                    self._started_at = now
+                started_at = self._started_at
+                if started_at is None:
+                    started_at = now
                 else:
-                    target = self._started_at + next_pts / VIDEO_CLOCK_RATE
+                    target = started_at + next_pts / VIDEO_CLOCK_RATE
                     delay = target - now
                     if delay > 0:
                         if stats is not None:
@@ -552,13 +556,16 @@ def _make_playout_video_queue_track(
                     elif stats is not None:
                         stats.setdefault("pace_sleep_ms", []).append(0.0)
                     if playout is not None and delay < 0:
-                        self._started_at = now - next_pts / VIDEO_CLOCK_RATE
+                        started_at = now - next_pts / VIDEO_CLOCK_RATE
                 if (
                     playout is not None
                     and metadata is not None
                     and metadata["epoch"] != playout.epoch
                 ):
                     continue
+                # A reset during the pacing sleep also invalidates this item.
+                # Commit clock changes only for frames that will be handed off.
+                self._started_at = started_at
                 self._pts = next_pts
                 break
             # Decoded frames can be views of permuted tensors; av requires

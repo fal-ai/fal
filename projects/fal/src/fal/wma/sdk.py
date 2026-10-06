@@ -214,6 +214,10 @@ class Session:
         self._cleanup: List[Callable[[], Any]] = []
         self._tasks: Set[asyncio.Task] = set()
         self._close_lock = asyncio.Lock()
+        # Resolve this runtime primitive on the destination Python version.
+        from contextvars import ContextVar
+
+        self._closing_context = ContextVar("wma_session_close", default=False)
         self._inline_condition = threading.Condition()
         self._inline_active = 0
         self._closed = asyncio.Event()
@@ -558,75 +562,89 @@ class Session:
         await self._closed.wait()
 
     async def close(self) -> None:
+        # Recursive close from a backend/cleanup (including a child task) must
+        # not wait for the teardown it is currently preventing from finishing.
+        # Unrelated concurrent callers still wait on the lock for settlement.
+        if self._closing_context.get() or (
+            self._is_closed and asyncio.current_task() in self._tasks
+        ):
+            return
         async with self._close_lock:
-            if self._is_closed:
-                return
-            with self._inline_condition:
-                self._is_closed = True
-            self._closed.set()
+            token = self._closing_context.set(True)
+            try:
+                await self._close_once()
+            finally:
+                self._closing_context.reset(token)
 
-            backend = self._backend
-            if backend is not None:
-                with suppress(Exception):
-                    await backend.close()
+    async def _close_once(self) -> None:
+        if self._is_closed:
+            return
+        with self._inline_condition:
+            self._is_closed = True
+        self._closed.set()
 
-            with self._inline_condition:
-                inline_active = self._inline_active != 0
-            if inline_active:
-                await run_in_thread(self._wait_for_inline_handlers)
+        backend = self._backend
+        if backend is not None:
+            with suppress(Exception):
+                await backend.close()
 
-            current = asyncio.current_task()
-            tasks = [task for task in self._tasks if task is not current]
-            for task in tasks:
-                task.cancel()
-            if tasks:
-                await asyncio.gather(*tasks, return_exceptions=True)
+        with self._inline_condition:
+            inline_active = self._inline_active != 0
+        if inline_active:
+            await run_in_thread(self._wait_for_inline_handlers)
 
-            for cleanup in reversed(self._cleanup):
-                try:
-                    result = cleanup()
-                    if inspect.isawaitable(result):
-                        await result
-                except Exception:
-                    logger.warning("WMA deferred cleanup failed", exc_info=True)
-            self._cleanup.clear()
+        current = asyncio.current_task()
+        tasks = [task for task in self._tasks if task is not current]
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
 
-            # Last step of the single close pass: the total is final once
-            # handlers and tasks have stopped, and every teardown path
-            # (client close, WebRTC drop, bridge abort, reaper, watchdog)
-            # funnels through here exactly once.
-            accumulated_units: Union[float, None] = None
-            with self._billable_units_lock:
-                self._billing_finalized = True
-                # The session floor applies only to the deferred close report
-                # — a session that actually started. Sessions billing through
-                # their immediate response headers (setup failures, direct
-                # calls without a gateway request id) keep billing zero.
-                if (
-                    self._deferred_billing
-                    and self._billable_units < self.minimum_billable_units
-                ):
-                    accumulated_units = self._billable_units
-                    self._billable_units = self.minimum_billable_units
-            if accumulated_units is not None:
-                self.billing_debug_print(
-                    "billable units raised to the session minimum",
-                    accumulated_units=accumulated_units,
-                    minimum_billable_units=self.minimum_billable_units,
-                )
-            # ``deferred_report_pending=False`` means the session bills only
-            # through the immediate response headers; no report follows.
+        for cleanup in reversed(self._cleanup):
+            try:
+                result = cleanup()
+                if inspect.isawaitable(result):
+                    await result
+            except Exception:
+                logger.warning("WMA deferred cleanup failed", exc_info=True)
+        self._cleanup.clear()
+
+        # Last step of the single close pass: the total is final once
+        # handlers and tasks have stopped, and every teardown path
+        # (client close, WebRTC drop, bridge abort, reaper, watchdog)
+        # funnels through here exactly once.
+        accumulated_units: Union[float, None] = None
+        with self._billable_units_lock:
+            self._billing_finalized = True
+            # The session floor applies only to the deferred close report
+            # — a session that actually started. Sessions billing through
+            # their immediate response headers (setup failures, direct
+            # calls without a gateway request id) keep billing zero.
+            if (
+                self._deferred_billing
+                and self._billable_units < self.minimum_billable_units
+            ):
+                accumulated_units = self._billable_units
+                self._billable_units = self.minimum_billable_units
+        if accumulated_units is not None:
             self.billing_debug_print(
-                "billing finalized at session close",
-                total_units=self.billable_units,
-                deferred_report_pending=self._deferred_billing,
+                "billable units raised to the session minimum",
+                accumulated_units=accumulated_units,
+                minimum_billable_units=self.minimum_billable_units,
             )
-            await self._report_billable_units()
-            self._backend = None
-            self._sender = None
-            self._handlers.clear()
-            self._channel_open_handlers.clear()
-            self.params._push = None
+        # ``deferred_report_pending=False`` means the session bills only
+        # through the immediate response headers; no report follows.
+        self.billing_debug_print(
+            "billing finalized at session close",
+            total_units=self.billable_units,
+            deferred_report_pending=self._deferred_billing,
+        )
+        await self._report_billable_units()
+        self._backend = None
+        self._sender = None
+        self._handlers.clear()
+        self._channel_open_handlers.clear()
+        self.params._push = None
 
     def _wait_for_inline_handlers(self) -> None:
         with self._inline_condition:
