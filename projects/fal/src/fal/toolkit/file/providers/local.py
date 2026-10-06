@@ -122,6 +122,7 @@ class LocalFileRepository(FileRepository):
             threshold = multipart_threshold or MultipartUploadV3.MULTIPART_THRESHOLD
             multipart = size > threshold
         if not multipart:
+            # self.save handles rejections; forward options to its fallback.
             return super().save_file(
                 file_path,
                 content_type,

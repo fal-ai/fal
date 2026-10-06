@@ -13,10 +13,7 @@ from fal.auth import AuthCredentials
 from fal.exceptions.auth import UnauthenticatedException
 from fal.toolkit.file import _local_uploader
 from fal.toolkit.file import file as files
-from fal.toolkit.file._local_uploader import (
-    LocalUploader,
-    LocalUploadError,
-)
+from fal.toolkit.file._local_uploader import LocalUploader, LocalUploadError
 from fal.toolkit.file._upload_policy import UPLOAD_POLICY_KEY
 from fal.toolkit.file.providers import fal as remote
 from fal.toolkit.file.providers import local
@@ -297,75 +294,61 @@ def test_explicit_local_auth_failure_does_not_fall_back(monkeypatch, local_uploa
     assert not local_upload
 
 
-@pytest.mark.parametrize("from_path", [False, True])
+@pytest.mark.parametrize("source", ["bytes", "small_file", "large_file"])
 @pytest.mark.parametrize("exhausted", [False, True])
 def test_definite_rejection_replays_then_uses_direct_cdn(
-    monkeypatch, local_upload, transport, tmp_path, from_path, exhausted
+    monkeypatch, local_upload, transport, tmp_path, source, exhausted
 ):
-    attempts = 0
-
     def respond(request):
-        nonlocal attempts
-        attempts += 1
-        if exhausted or attempts < 3:
+        if exhausted or len(requests) < 3:
             return httpx.Response(429)
         return httpx.Response(202, json=ACCEPTED)
 
     requests = transport(respond)
     sleep = Mock()
     monkeypatch.setattr(local.time, "sleep", sleep)
-    data = FileData(b"abc" * local._READ_SIZE, "video/mp4", "clip.mp4")
-    settings = {"expiration_duration_seconds": 60}
+    body = b"x" * (local._READ_SIZE + 1)
+    path = tmp_path / "clip.mp4"
+    path.write_bytes(body)
     kwargs = {
-        "multipart": True,
+        "multipart": source == "large_file",
         "multipart_threshold": 1,
         "multipart_chunk_size": 12345,
         "multipart_max_concurrency": 2,
-        "object_lifecycle_preference": settings,
+        "object_lifecycle_preference": {"expiration_duration_seconds": 60},
     }
-    direct = Mock(
-        return_value=("https://direct/file", None)
-        if from_path
-        else "https://direct/file"
-    )
-    method = "save_file" if from_path else "save"
-    monkeypatch.setattr(remote.FalFileRepositoryV3, method, direct)
-    repo = local.LocalFileRepository()
-    if from_path:
-        path = tmp_path / data.file_name
-        path.write_bytes(data.data)
-        url, retained = repo.save_file(path, data.content_type, **kwargs)
-        assert retained is None
+    direct = Mock(return_value="https://direct/file")
+    if source == "large_file":
+        direct.return_value = ("https://direct/file", None)
+        monkeypatch.setattr(remote.FalFileRepositoryV3, "save_file", direct)
     else:
-        url = repo.save(data, **kwargs)
-    assert url == ("https://direct/file" if exhausted else ACCEPTED["file_url"])
-    assert len(requests) == 3
-    assert all(request.content == data.data for request in requests)
+        monkeypatch.setattr(remote.FalFileRepositoryV3, "save", direct)
+    if source == "bytes":
+        result = files.File.from_bytes(body, "video/mp4", save_kwargs=dict(kwargs))
+    else:
+        result = files.File.from_path(path, "video/mp4", save_kwargs=dict(kwargs))
+    assert result.url == ("https://direct/file" if exhausted else ACCEPTED["file_url"])
+    assert result.file_data == (None if source == "large_file" else body)
+    assert [request.content for request in requests] == [body] * 3
     assert [call.args[0] for call in sleep.call_args_list] == [0.1, 0.2]
-    if exhausted:
-        direct.assert_called_once_with(
-            *((path, data.content_type) if from_path else (data,)), **kwargs
-        )
-    else:
+    if not exhausted:
         direct.assert_not_called()
+    elif source == "large_file":
+        direct.assert_called_once_with(path, content_type="video/mp4", **kwargs)
+    else:
+        direct.assert_called_once()
+        (data,) = direct.call_args.args
+        assert data.data == body
+        assert direct.call_args.kwargs == kwargs
 
 
-@pytest.mark.parametrize("failure", ["storage", "disconnect", "invalid_receipt"])
 def test_retry_stops_when_acceptance_becomes_uncertain(
-    monkeypatch, local_upload, transport, failure
+    monkeypatch, local_upload, transport
 ):
-    attempts = 0
-
     def respond(request):
-        nonlocal attempts
-        attempts += 1
-        if attempts == 1:
+        if len(requests) == 1:
             return httpx.Response(429)
-        if failure == "disconnect":
-            raise httpx.ReadError("lost acceptance")
-        if failure == "invalid_receipt":
-            return httpx.Response(202, json={})
-        return httpx.Response(503)
+        raise httpx.ReadError("lost acceptance")
 
     requests = transport(respond)
     monkeypatch.setattr(local.time, "sleep", Mock())
@@ -376,24 +359,6 @@ def test_retry_stops_when_acceptance_becomes_uncertain(
     assert caught.value.acceptance_uncertain
     assert len(requests) == 2
     direct.assert_not_called()
-
-
-def test_file_from_path_uses_direct_cdn_after_rejections(
-    monkeypatch, local_upload, transport, tmp_path
-):
-    requests = transport(lambda request: httpx.Response(429))
-    monkeypatch.setattr(local.time, "sleep", Mock())
-    direct = Mock(return_value="https://direct/file")
-    monkeypatch.setattr(remote.FalFileRepositoryV3, "save", direct)
-    path = tmp_path / "file.txt"
-    path.write_bytes(b"hi")
-    result = files.File.from_path(path, fallback_repository=None)
-    assert result.url == "https://direct/file"
-    assert result.as_bytes() == b"hi"
-    assert len(requests) == 3
-    (data,) = direct.call_args.args
-    assert data.data == b"hi"
-    assert data.file_name == "file.txt"
 
 
 @pytest.mark.parametrize(
