@@ -1,17 +1,17 @@
 """Repository adapter for opt-in, node-local uploads.
 
-The uploader owns remote multipart transfers and retries for locally accepted
-files. Definite rejections fall back to direct CDN with the caller's multipart
-settings. Small local uploads retain bytes for File.as_bytes().
+Definite admission rejections are retried briefly, then sent directly to CDN.
+Accepted uploads remain the uploader's responsibility. Small files retain bytes
+for File.as_bytes().
 """
 
 from __future__ import annotations
 
 import os
 import time
+from functools import wraps
 from pathlib import Path
-from tempfile import TemporaryDirectory
-from typing import Callable, Iterable, Iterator, TypeVar
+from typing import Iterable, Iterator
 
 from fal._user_agent import USER_AGENT
 from fal.auth import fetch_auth_credentials
@@ -27,17 +27,24 @@ from fal.toolkit.file.providers.fal import (
 from fal.toolkit.file.types import FileData, FileRepository
 
 _READ_SIZE = 1024 * 1024
-_RETRY_DELAYS = (0.1, 0.2)
-_T = TypeVar("_T")
 
 
-def _retry_rejections(upload: Callable[[], _T]) -> _T:
-    for delay in _RETRY_DELAYS:
-        try:
-            return upload()
-        except LocalUploadRejected:
-            time.sleep(delay)
-    return upload()
+def _retry_or_fallback(method):
+    """Replay the whole save operation only after a definite rejection."""
+
+    @wraps(method)
+    def save(self, *args, **kwargs):
+        for attempt in range(3):
+            try:
+                return method(self, *args, **kwargs)
+            except LocalUploadRejected:
+                if attempt == 2:
+                    return getattr(FalFileRepositoryV3(), method.__name__)(
+                        *args, **kwargs
+                    )
+                time.sleep(0.1 * (attempt + 1))
+
+    return save
 
 
 def _headers(
@@ -59,17 +66,14 @@ def _headers(
 
 def _upload(
     file_name: str,
-    body: Callable[[], bytes | Iterable[bytes]],
+    body: bytes | Iterable[bytes],
     size: int,
     content_type: str,
     object_lifecycle_preference: dict[str, str] | None,
 ) -> str:
-    """Upload a body that ``body()`` can replay in full after a rejection."""
     headers = _headers(content_type, object_lifecycle_preference)
     with LocalUploader() as client:
-        return _retry_rejections(
-            lambda: client.upload(file_name, body(), size, headers)
-        ).file_url
+        return client.upload(file_name, body, size, headers).file_url
 
 
 class LocalFileRepository(FileRepository):
@@ -78,10 +82,11 @@ class LocalFileRepository(FileRepository):
     Cancelling an async wrapper's await does not stop the uploading thread.
     """
 
-    # Definite rejections use direct CDN here. Other failures must not chain
-    # through File's fallback list, since a lost response can leave accepted work.
+    # A lost response may already have accepted the bytes; trying another
+    # destination could publish them twice.
     falls_back = False
 
+    @_retry_or_fallback
     def save(
         self,
         data: FileData,
@@ -92,24 +97,15 @@ class LocalFileRepository(FileRepository):
         object_lifecycle_preference: dict[str, str] | None = None,
     ) -> str:
         """Return the accepted URL; the service completes the CDN transfer."""
-        try:
-            return _upload(
-                data.file_name,
-                lambda: data.data,
-                len(data.data),
-                data.content_type,
-                object_lifecycle_preference,
-            )
-        except LocalUploadRejected:
-            return FalFileRepositoryV3().save(
-                data,
-                multipart=multipart,
-                multipart_threshold=multipart_threshold,
-                multipart_chunk_size=multipart_chunk_size,
-                multipart_max_concurrency=multipart_max_concurrency,
-                object_lifecycle_preference=object_lifecycle_preference,
-            )
+        return _upload(
+            data.file_name,
+            data.data,
+            len(data.data),
+            data.content_type,
+            object_lifecycle_preference,
+        )
 
+    @_retry_or_fallback
     def save_file(
         self,
         file_path: str | Path,
@@ -136,30 +132,16 @@ class LocalFileRepository(FileRepository):
                 object_lifecycle_preference=object_lifecycle_preference,
             )
 
-        try:
-            with open(file_path, "rb") as source:
-
-                def body() -> Iterator[bytes]:
-                    source.seek(0)
-                    return iter(lambda: source.read(_READ_SIZE), b"")
-
-                return _upload(
-                    Path(file_path).name,
-                    body,
-                    size,
-                    content_type,
-                    object_lifecycle_preference,
-                ), None
-        except LocalUploadRejected:
-            return FalFileRepositoryV3().save_file(
-                file_path,
+        with open(file_path, "rb") as source:
+            body = iter(lambda: source.read(_READ_SIZE), b"")
+            url = _upload(
+                Path(file_path).name,
+                body,
+                size,
                 content_type,
-                multipart=multipart,
-                multipart_threshold=multipart_threshold,
-                multipart_chunk_size=multipart_chunk_size,
-                multipart_max_concurrency=multipart_max_concurrency,
-                object_lifecycle_preference=object_lifecycle_preference,
+                object_lifecycle_preference,
             )
+        return url, None
 
     def save_stream(
         self,
@@ -183,22 +165,6 @@ class LocalFileRepository(FileRepository):
                 yield chunk
 
         with LocalUploader() as client:
-            try:
-                session = _retry_rejections(
-                    lambda: client.begin_stream(file_name, headers)
-                )
-            except LocalUploadRejected:
-                # Direct CDN needs a known size. Spool only after rejection,
-                # while the producer is still untouched.
-                with TemporaryDirectory() as directory:
-                    path = Path(directory) / Path(file_name).name
-                    with path.open("wb") as target:
-                        target.writelines(chunks)
-                    return FalFileRepositoryV3().save_file(
-                        path,
-                        content_type,
-                        object_lifecycle_preference=object_lifecycle_preference,
-                    )[0]
-            with session:
+            with client.begin_stream(file_name, headers) as session:
                 session.send_body(counted())
                 return session.finish(size).file_url

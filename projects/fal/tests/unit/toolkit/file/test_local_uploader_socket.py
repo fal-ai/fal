@@ -39,11 +39,9 @@ def uploader(monkeypatch, request):
             body = self.rfile.read(int(self.headers["Content-Length"]))
             requests.append((dict(self.headers), body))
             if len(requests) <= getattr(request, "param", 0):
-                payload = b'{"rejection":"queue_full"}'
-                self.send_response(503)
-                self.send_header("Content-Length", str(len(payload)))
+                self.send_response(429)
+                self.send_header("Content-Length", "0")
                 self.end_headers()
-                self.wfile.write(payload)
                 return
             received.set()
             if not accept.wait(10):

@@ -16,7 +16,6 @@ from fal.toolkit.file import file as files
 from fal.toolkit.file._local_uploader import (
     LocalUploader,
     LocalUploadError,
-    LocalUploadRejected,
 )
 from fal.toolkit.file._upload_policy import UPLOAD_POLICY_KEY
 from fal.toolkit.file.providers import fal as remote
@@ -261,6 +260,7 @@ def test_errors_do_not_retry_or_fall_back(
         else:
             files.File.from_bytes(b"hi", **kwargs)
     assert "secret" not in str(caught.value)
+    assert caught.value.acceptance_uncertain is (status == 503)
     assert len(requests) == 1
     fallback.assert_not_called()
 
@@ -297,31 +297,6 @@ def test_explicit_local_auth_failure_does_not_fall_back(monkeypatch, local_uploa
     assert not local_upload
 
 
-@pytest.mark.parametrize(
-    "status,body,rejected,uncertain",
-    [
-        (503, '{"rejection":"queue_full"}', True, False),
-        (503, '{"rejection":"draining"}', True, False),
-        (503, '{"detail":"Upload queue is full"}', False, True),
-        (503, '{"rejection":"storage"}', False, True),
-        (503, "[]", False, True),
-        (503, "null", False, True),
-        (503, "broken json", False, True),
-        (502, '{"rejection":"queue_full"}', False, True),
-        (429, '{"rejection":"queue_full"}', False, False),
-    ],
-)
-def test_only_explicit_admission_marker_is_retryable(
-    transport, status, body, rejected, uncertain
-):
-    transport(lambda request: httpx.Response(status, text=body))
-    with LocalUploader() as client, pytest.raises(LocalUploadError) as caught:
-        client.upload("file", b"hi", 2, {})
-    assert isinstance(caught.value, LocalUploadRejected) is rejected
-    assert caught.value.acceptance_uncertain is uncertain
-    assert body not in str(caught.value)
-
-
 @pytest.mark.parametrize("from_path", [False, True])
 @pytest.mark.parametrize("exhausted", [False, True])
 def test_definite_rejection_replays_then_uses_direct_cdn(
@@ -333,7 +308,7 @@ def test_definite_rejection_replays_then_uses_direct_cdn(
         nonlocal attempts
         attempts += 1
         if exhausted or attempts < 3:
-            return httpx.Response(503, json={"rejection": "queue_full"})
+            return httpx.Response(429)
         return httpx.Response(202, json=ACCEPTED)
 
     requests = transport(respond)
@@ -385,7 +360,7 @@ def test_retry_stops_when_acceptance_becomes_uncertain(
         nonlocal attempts
         attempts += 1
         if attempts == 1:
-            return httpx.Response(503, json={"rejection": "queue_full"})
+            return httpx.Response(429)
         if failure == "disconnect":
             raise httpx.ReadError("lost acceptance")
         if failure == "invalid_receipt":
@@ -406,9 +381,7 @@ def test_retry_stops_when_acceptance_becomes_uncertain(
 def test_file_from_path_uses_direct_cdn_after_rejections(
     monkeypatch, local_upload, transport, tmp_path
 ):
-    requests = transport(
-        lambda request: httpx.Response(503, json={"rejection": "draining"})
-    )
+    requests = transport(lambda request: httpx.Response(429))
     monkeypatch.setattr(local.time, "sleep", Mock())
     direct = Mock(return_value="https://direct/file")
     monkeypatch.setattr(remote.FalFileRepositoryV3, "save", direct)
@@ -504,50 +477,6 @@ def test_repository_stream_counts_bytes_and_carries_metadata(
     assert requests[0].headers["content-type"] == "text/plain"
     assert requests[1].content == b"hello"
     assert json.loads(requests[2].content) == {"size_bytes": 5}
-
-
-@pytest.mark.parametrize("exhausted", [False, True])
-def test_stream_rejection_retries_before_consuming_producer(
-    monkeypatch, local_upload, transport, exhausted
-):
-    consumed = False
-    attempts = 0
-
-    def generate():
-        nonlocal consumed
-        consumed = True
-        yield b"hello"
-
-    def respond(request):
-        nonlocal attempts
-        if request.url.path == "/upload-sessions":
-            assert not consumed
-            attempts += 1
-            if exhausted or attempts < 3:
-                return httpx.Response(503, json={"rejection": "queue_full"})
-        return session_response(request)
-
-    requests = transport(respond)
-    monkeypatch.setattr(local.time, "sleep", Mock())
-    settings = {"expiration_duration_seconds": 60}
-
-    def save_file(path, content_type, **kwargs):
-        assert path.name == "clip.mp4"
-        assert path.read_bytes() == b"hello"
-        assert content_type == "video/mp4"
-        assert kwargs == {"object_lifecycle_preference": settings}
-        return "https://direct/file", None
-
-    direct = Mock(side_effect=save_file)
-    monkeypatch.setattr(remote.FalFileRepositoryV3, "save_file", direct)
-    url = local.LocalFileRepository().save_stream(
-        generate(), "clip.mp4", "video/mp4", object_lifecycle_preference=settings
-    )
-    assert url == ("https://direct/file" if exhausted else ACCEPTED["file_url"])
-    assert attempts == 3
-    assert consumed
-    assert len(requests) == (3 if exhausted else 5)
-    assert direct.call_count == int(exhausted)
 
 
 def test_repository_stream_producer_failure_aborts(local_upload, transport):

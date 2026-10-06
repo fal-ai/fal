@@ -125,13 +125,8 @@ class LocalUploader:
             ) from None
         if response.status_code != expected_status:
             message = f"Local uploader returned HTTP {response.status_code}."
-            if response.status_code == 503:
-                try:
-                    rejection = response.json().get("rejection")
-                except (ValueError, AttributeError):
-                    rejection = None
-                if rejection in ("queue_full", "draining"):
-                    raise LocalUploadRejected(message)
+            if response.status_code == 429:
+                raise LocalUploadRejected(message)
             raise LocalUploadError(
                 message,
                 # A shutdown or disk failure can leave committed work behind.
