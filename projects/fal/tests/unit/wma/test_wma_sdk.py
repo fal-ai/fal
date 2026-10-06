@@ -1327,3 +1327,115 @@ def test_cancelled_close_caller_does_not_interrupt_settlement(stage, billing_rep
         assert session._backend is None
 
     asyncio.run(scenario())
+
+
+def test_recovered_cancelled_caller_still_waits_for_settlement(billing_reports):
+    async def scenario():
+        session = Session(
+            StartSessionRequest(sdp="offer"), request_id=BILLING_REQUEST_ID
+        )
+        session._activate_deferred_billing()
+        backend_started = asyncio.Event()
+        finish_backend = asyncio.Event()
+        recovered = asyncio.Event()
+        waiting = asyncio.Event()
+        joined = asyncio.Event()
+
+        class Backend:
+            async def close(self):
+                backend_started.set()
+                await finish_backend.wait()
+
+        session._backend = Backend()
+        session.add_billable_units(1)
+
+        async def caller():
+            waiting.set()
+            try:
+                await asyncio.Future()
+            except asyncio.CancelledError:
+                pass
+            recovered.set()
+            await session.close()
+            joined.set()
+
+        first = asyncio.create_task(session.close())
+        await backend_started.wait()
+        second = asyncio.create_task(caller())
+        await waiting.wait()
+        second.cancel()
+        await recovered.wait()
+        await asyncio.sleep(0)
+        assert not joined.is_set()
+        assert billing_reports == []
+        finish_backend.set()
+        await asyncio.wait_for(asyncio.gather(first, second), timeout=1)
+        assert joined.is_set()
+        assert billing_reports == [(BILLING_REQUEST_ID, 1.0)]
+
+    asyncio.run(scenario())
+
+
+def test_session_task_initiating_close_continues_after_settlement(billing_reports):
+    async def scenario():
+        session = Session(
+            StartSessionRequest(sdp="offer"), request_id=BILLING_REQUEST_ID
+        )
+        session._activate_deferred_billing()
+        continued = []
+
+        async def handler():
+            session.add_billable_units(2)
+            await session.close()
+            assert billing_reports == [(BILLING_REQUEST_ID, 2.0)]
+            continued.append(True)
+
+        task = session.create_task(handler())
+        await asyncio.wait_for(task, timeout=1)
+        assert continued == [True]
+        assert session._close_initiator is None
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("source", ["backend", "cleanup"])
+def test_cancelled_worker_does_not_abort_remaining_teardown(source, billing_reports):
+    async def scenario():
+        session = Session(
+            StartSessionRequest(sdp="offer"), request_id=BILLING_REQUEST_ID
+        )
+        session._activate_deferred_billing()
+        started = asyncio.Event()
+        cleanups = []
+
+        async def worker():
+            started.set()
+            await asyncio.Future()
+
+        task = asyncio.create_task(worker())
+        await started.wait()
+
+        async def join_cancelled_worker():
+            task.cancel()
+            await task
+
+        class Backend:
+            async def close(self):
+                await join_cancelled_worker()
+
+        def finish():
+            cleanups.append(True)
+            session.add_billable_units(3)
+
+        session.defer(finish)
+        if source == "backend":
+            session._backend = Backend()
+        else:
+            session.defer(join_cancelled_worker)
+        await asyncio.wait_for(session.close(), timeout=1)
+        await session.close()
+        assert cleanups == [True]
+        assert billing_reports == [(BILLING_REQUEST_ID, 3.0)]
+        assert session._backend is None
+
+    asyncio.run(scenario())

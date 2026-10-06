@@ -214,6 +214,8 @@ class Session:
         self._cleanup: List[Callable[[], Any]] = []
         self._tasks: Set[asyncio.Task] = set()
         self._close_task: Union[asyncio.Task, None] = None
+        self._close_initiator: Union[asyncio.Task, None] = None
+        self._backend_closing = False
         # Resolve this runtime primitive on the destination Python version.
         from contextvars import ContextVar
 
@@ -568,14 +570,15 @@ class Session:
         # they are unwinding cancellation, awaiting teardown would form a
         # cycle with the backend that cancelled and is joining them.
         current = asyncio.current_task()
-        cancelling = isinstance(sys.exc_info()[1], asyncio.CancelledError) or (
-            current is not None and getattr(current, "cancelling", lambda: 0)()
+        cancelling = self._backend_closing and isinstance(
+            sys.exc_info()[1], asyncio.CancelledError
         )
         if self._closing_context.get() or (
             self._close_task is not None and (current in self._tasks or cancelling)
         ):
             return
         if self._close_task is None:
+            self._close_initiator = current
             self._close_task = asyncio.create_task(self._run_close())
         # One session-owned close pass survives cancellation of any caller;
         # other callers join that same pass through final billing settlement.
@@ -587,6 +590,7 @@ class Session:
             await self._close_once()
         finally:
             self._closing_context.reset(token)
+            self._close_initiator = None
 
     async def _close_once(self) -> None:
         if self._is_closed:
@@ -597,8 +601,12 @@ class Session:
 
         backend = self._backend
         if backend is not None:
-            with suppress(Exception):
-                await backend.close()
+            self._backend_closing = True
+            try:
+                with suppress(Exception, asyncio.CancelledError):
+                    await backend.close()
+            finally:
+                self._backend_closing = False
 
         with self._inline_condition:
             inline_active = self._inline_active != 0
@@ -606,7 +614,11 @@ class Session:
             await run_in_thread(self._wait_for_inline_handlers)
 
         current = asyncio.current_task()
-        tasks = [task for task in self._tasks if task is not current]
+        tasks = [
+            task
+            for task in self._tasks
+            if task is not current and task is not self._close_initiator
+        ]
         for task in tasks:
             task.cancel()
         if tasks:
@@ -617,7 +629,7 @@ class Session:
                 result = cleanup()
                 if inspect.isawaitable(result):
                     await result
-            except Exception:
+            except (Exception, asyncio.CancelledError):
                 logger.warning("WMA deferred cleanup failed", exc_info=True)
         self._cleanup.clear()
 
