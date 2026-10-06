@@ -309,7 +309,7 @@ class Host(Generic[ArgsT, ReturnT]):
     _SUPPORTED_KEYS: ClassVar[frozenset[str]] = frozenset()
     _GATEWAY_KEYS: ClassVar[frozenset[str]] = frozenset({"serve", "exposed_port"})
     _VIRTUALENV_KEYS: ClassVar[frozenset[str]] = frozenset(
-        {"python_version", "requirements", "resolver", "force"}
+        {"python_version", "requirements", "resolver", "compile_bytecode", "force"}
     )
     _CONTAINER_KEYS: ClassVar[frozenset[str]] = frozenset(
         {"image", "python_version", "requirements", "resolver", "force"}
@@ -1558,6 +1558,7 @@ def function(
     *,
     python_version: str | None = None,
     requirements: list[str] | list[list[str]] | None = None,
+    compile_bytecode: bool = False,
     # Common options
     host: LocalHost,
     serve: Literal[False] = False,
@@ -1576,6 +1577,7 @@ def function(
     *,
     python_version: str | None = None,
     requirements: list[str] | list[list[str]] | None = None,
+    compile_bytecode: bool = False,
     # Common options
     host: LocalHost,
     serve: Literal[True],
@@ -1595,6 +1597,7 @@ def function(
     *,
     python_version: str | None = None,
     requirements: list[str] | list[list[str]] | None = None,
+    compile_bytecode: bool = False,
     # Common options
     host: FalServerlessHost | None = None,
     serve: Literal[False] = False,
@@ -1631,6 +1634,7 @@ def function(
     *,
     python_version: str | None = None,
     requirements: list[str] | list[list[str]] | None = None,
+    compile_bytecode: bool = False,
     # Common options
     host: FalServerlessHost | None = None,
     serve: Literal[True],

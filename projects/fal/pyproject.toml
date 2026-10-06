@@ -22,8 +22,8 @@ authors = [{ name = "Features & Labels <support@fal.ai>"}]
 readme = "README.md"
 requires-python = ">=3.8"
 dependencies = [
-    "isolate[build]>=0.26.9,<0.27.0",
     "isolate-proto>=0.34.3,<1",
+    "isolate[build]>=0.26.12,<0.27.0",
     "grpcio>=1.64.0,<2",
     "dill==0.3.7",
     "cloudpickle>=3.0.0,<3.2",
@@ -110,6 +110,11 @@ isolate-proto = "2100-01-01T00:00:00Z"
 
 [project.scripts]
 fal = "fal.cli:main"
+
+[project.urls]
+Homepage = "https://fal.ai"
+Documentation = "https://fal.ai/docs"
+Source = "https://github.com/fal-ai/fal"
 
 [tool.ruff]
 target-version = "py38"

@@ -1,4 +1,3 @@
-import hashlib
 import os
 import posixpath
 from functools import cached_property
@@ -12,18 +11,11 @@ from fal.upload import (
     MULTIPART_MAX_CONCURRENCY,
     MULTIPART_THRESHOLD,
     DataFileMultipartUpload,
+    ProgressFileReader,
 )
 
 if TYPE_CHECKING:
     import httpx
-
-
-def _compute_md5(lpath, chunk_size=8192):
-    hasher = hashlib.md5()
-    with open(lpath, "rb") as fobj:
-        for chunk in iter(lambda: fobj.read(chunk_size), b""):
-            hasher.update(chunk)
-    return hasher.hexdigest()
 
 
 class FalFileSystem(AbstractFileSystem):
@@ -153,13 +145,15 @@ class FalFileSystem(AbstractFileSystem):
             fobj.write(response.content)
 
     def _put_file_multipart(self, lpath, rpath, size, progress):
-        num_parts = max(1, (size + MULTIPART_CHUNK_SIZE - 1) // MULTIPART_CHUNK_SIZE)
-        task = progress.add_task("Calculating checksum...", total=num_parts)
-        md5 = _compute_md5(lpath)
-        progress.update(task, description=f"Uploading {os.path.basename(lpath)}")
+        from rich.markup import escape
 
-        def on_part_complete(part_number: int):
-            progress.advance(task)
+        # A task description is parsed as Rich markup, so a name containing
+        # tag-like brackets would be mangled or raise.
+        name = escape(os.path.basename(lpath))
+        task = progress.add_task(f"Uploading {name}", total=size)
+
+        def on_bytes_uploaded(uploaded: int):
+            progress.update(task, completed=uploaded)
 
         multipart = DataFileMultipartUpload(
             client=self._client,
@@ -168,15 +162,34 @@ class FalFileSystem(AbstractFileSystem):
             max_concurrency=MULTIPART_MAX_CONCURRENCY,
         )
 
-        etag = multipart.upload_file(lpath, on_part_complete=on_part_complete)
+        etag = multipart.upload_file(
+            lpath, on_bytes_uploaded=on_bytes_uploaded, compute_md5=True
+        )
 
+        # Concurrent parts report their running totals outside the tracker lock,
+        # so the last callback to arrive is not necessarily the highest. Settle
+        # the bar on the size that was actually uploaded.
+        progress.update(task, completed=size)
+
+        # The digest is taken from the bytes that were read and sent, so this
+        # compares the stored object against the upload, not against the file on
+        # disk. An edit that changes the file's length fails the byte-count check
+        # in upload_file; one that keeps it identical is not detected here.
+        md5 = multipart.content_md5
         if etag and etag != md5:
             raise RuntimeError(
                 f"MD5 mismatch on {rpath}: {etag} != {md5}, please contact support"
             )
 
     def put_file(self, lpath, rpath, mode="overwrite", **kwargs):
-        from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
+        from rich.markup import escape
+        from rich.progress import (
+            BarColumn,
+            DownloadColumn,
+            Progress,
+            SpinnerColumn,
+            TextColumn,
+        )
 
         if os.path.isdir(lpath):
             return
@@ -189,18 +202,25 @@ class FalFileSystem(AbstractFileSystem):
             TextColumn("[progress.description]{task.description}"),
             BarColumn(),
             TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            DownloadColumn(),
         ) as progress:
             if size > MULTIPART_THRESHOLD:
                 self._put_file_multipart(lpath, abs_rpath, size, progress)
             else:
-                task = progress.add_task(f"{os.path.basename(lpath)}", total=1)
+                # A zero total renders as an indeterminate pulse forever.
+                total = size or 1
+                task = progress.add_task(escape(os.path.basename(lpath)), total=total)
                 with open(lpath, "rb") as fobj:
+                    reader = ProgressFileReader(
+                        fobj,
+                        lambda uploaded: progress.update(task, completed=uploaded),
+                    )
                     self._request(
                         "POST",
                         f"/files/file/local/{abs_rpath}",
-                        files={"file_upload": (posixpath.basename(lpath), fobj)},
+                        files={"file_upload": (posixpath.basename(lpath), reader)},
                     )
-                progress.advance(task)
+                progress.update(task, completed=total)
         self.dircache.clear()
 
     def put_file_from_url(self, url, rpath, mode="overwrite", **kwargs):
