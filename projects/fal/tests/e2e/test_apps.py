@@ -2218,7 +2218,7 @@ def test_rollout_application(host: api.FalServerlessHost, test_sleep_app: str):
         runner_id_before = _active_runners(runners_before)[0].runner_id
 
         client.rollout_application(app_alias, force=True)
-        runners_after = _wait_for_alias_runners(
+        _wait_for_alias_runners(
             client,
             app_alias,
             lambda current: all(
@@ -2227,8 +2227,23 @@ def test_rollout_application(host: api.FalServerlessHost, test_sleep_app: str):
             ),
             timeout=60,
         )
+
+        # A forced rollout only kills runners, so send a request to start a new one.
+        handle = apps.submit(test_sleep_app, arguments={"wait_time": 30})
+        _wait_for_request_status(handle, apps.InProgress, timeout=60)
+        runners_after = _wait_for_alias_runners(
+            client,
+            app_alias,
+            lambda current: any(
+                runner.runner_id != runner_id_before
+                for runner in _active_runners(current)
+            ),
+            timeout=60,
+        )
         runner_ids_after = {
-            runner.runner_id for runner in _active_runners(runners_after)
+            runner.runner_id
+            for runner in _active_runners(runners_after)
+            if runner.runner_id != runner_id_before
         }
 
         client.rollout_application(app_alias, force=True)
