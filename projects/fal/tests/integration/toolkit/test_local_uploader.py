@@ -24,7 +24,11 @@ import httpx
 import pytest
 
 from fal.toolkit.file import File
-from fal.toolkit.file._local_uploader import LocalUploader, LocalUploadError
+from fal.toolkit.file._local_uploader import (
+    LocalUploader,
+    LocalUploadError,
+    LocalUploadRejected,
+)
 from fal.toolkit.file.providers import fal as remote
 from fal.toolkit.file.providers import local
 
@@ -203,7 +207,9 @@ def test_runner_exit_after_acceptance(uploader, tmp_path, size_mib):
     assert uploader.state["headers"]["Authorization"] == "Key local:test"
     # The retained file claims the sole spool slot. It must not silently route
     # another submission to the legacy uploader.
-    with LocalUploader() as client, pytest.raises(LocalUploadError, match="HTTP 503"):
+    with LocalUploader() as client, pytest.raises(
+        LocalUploadRejected, match="HTTP 429"
+    ):
         client.upload("second", b"hi", 2, {"Authorization": "Key local:test"})
     uploader.release.set()
     assert uploader.done.wait(10)
