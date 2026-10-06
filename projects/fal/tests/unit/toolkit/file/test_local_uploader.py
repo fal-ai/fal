@@ -257,6 +257,7 @@ def test_errors_do_not_retry_or_fall_back(
         else:
             files.File.from_bytes(b"hi", **kwargs)
     assert "secret" not in str(caught.value)
+    assert caught.value.acceptance_uncertain is (status == 503)
     assert len(requests) == 1
     fallback.assert_not_called()
 
@@ -291,6 +292,73 @@ def test_explicit_local_auth_failure_does_not_fall_back(monkeypatch, local_uploa
         files.File.from_bytes(b"hi", repository=local.LocalFileRepository())
     fallback.assert_not_called()
     assert not local_upload
+
+
+@pytest.mark.parametrize("source", ["bytes", "small_file", "large_file"])
+@pytest.mark.parametrize("exhausted", [False, True])
+def test_definite_rejection_replays_then_uses_direct_cdn(
+    monkeypatch, local_upload, transport, tmp_path, source, exhausted
+):
+    def respond(request):
+        if exhausted or len(requests) < 3:
+            return httpx.Response(429)
+        return httpx.Response(202, json=ACCEPTED)
+
+    requests = transport(respond)
+    sleep = Mock()
+    monkeypatch.setattr(local.time, "sleep", sleep)
+    body = b"x" * (local._READ_SIZE + 1)
+    path = tmp_path / "clip.mp4"
+    path.write_bytes(body)
+    kwargs = {
+        "multipart": source == "large_file",
+        "multipart_threshold": 1,
+        "multipart_chunk_size": 12345,
+        "multipart_max_concurrency": 2,
+        "object_lifecycle_preference": {"expiration_duration_seconds": 60},
+    }
+    direct = Mock(return_value="https://direct/file")
+    if source == "large_file":
+        direct.return_value = ("https://direct/file", None)
+        monkeypatch.setattr(remote.FalFileRepositoryV3, "save_file", direct)
+    else:
+        monkeypatch.setattr(remote.FalFileRepositoryV3, "save", direct)
+    if source == "bytes":
+        result = files.File.from_bytes(body, "video/mp4", save_kwargs=dict(kwargs))
+    else:
+        result = files.File.from_path(path, "video/mp4", save_kwargs=dict(kwargs))
+    assert result.url == ("https://direct/file" if exhausted else ACCEPTED["file_url"])
+    assert result.file_data == (None if source == "large_file" else body)
+    assert [request.content for request in requests] == [body] * 3
+    assert [call.args[0] for call in sleep.call_args_list] == [0.1, 0.2]
+    if not exhausted:
+        direct.assert_not_called()
+    elif source == "large_file":
+        direct.assert_called_once_with(path, content_type="video/mp4", **kwargs)
+    else:
+        direct.assert_called_once()
+        (data,) = direct.call_args.args
+        assert data.data == body
+        assert direct.call_args.kwargs == kwargs
+
+
+def test_retry_stops_when_acceptance_becomes_uncertain(
+    monkeypatch, local_upload, transport
+):
+    def respond(request):
+        if len(requests) == 1:
+            return httpx.Response(429)
+        raise httpx.ReadError("lost acceptance")
+
+    requests = transport(respond)
+    monkeypatch.setattr(local.time, "sleep", Mock())
+    direct = Mock()
+    monkeypatch.setattr(remote.FalFileRepositoryV3, "save", direct)
+    with pytest.raises(LocalUploadError) as caught:
+        files.File.from_bytes(b"hi")
+    assert caught.value.acceptance_uncertain
+    assert len(requests) == 2
+    direct.assert_not_called()
 
 
 @pytest.mark.parametrize(

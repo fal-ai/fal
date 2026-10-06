@@ -1,13 +1,15 @@
 """Repository adapter for opt-in, node-local uploads.
 
-The uploader owns remote multipart transfers, concurrency, and retries. The
-multipart arguments only decide whether save_file returns the bytes it sent,
-preserving File.as_bytes() behavior.
+Definite admission rejections are retried briefly, then sent directly to CDN.
+Accepted uploads remain the uploader's responsibility. Small files retain bytes
+for File.as_bytes().
 """
 
 from __future__ import annotations
 
 import os
+import time
+from functools import wraps
 from pathlib import Path
 from typing import Iterable, Iterator
 
@@ -15,8 +17,9 @@ from fal._user_agent import USER_AGENT
 from fal.auth import fetch_auth_credentials
 from fal.exceptions.auth import UnauthenticatedException
 from fal.toolkit.exceptions import FileUploadException
-from fal.toolkit.file._local_uploader import LocalUploader
+from fal.toolkit.file._local_uploader import LocalUploader, LocalUploadRejected
 from fal.toolkit.file.providers.fal import (
+    FalFileRepositoryV3,
     MultipartUploadV3,
     _caller_cdn_header,
     _object_lifecycle_headers,
@@ -24,6 +27,24 @@ from fal.toolkit.file.providers.fal import (
 from fal.toolkit.file.types import FileData, FileRepository
 
 _READ_SIZE = 1024 * 1024
+
+
+def _retry_or_fallback(method):
+    """Replay the whole save operation only after a definite rejection."""
+
+    @wraps(method)
+    def save(self, *args, **kwargs):
+        for attempt in range(3):
+            try:
+                return method(self, *args, **kwargs)
+            except LocalUploadRejected:
+                if attempt == 2:
+                    return getattr(FalFileRepositoryV3(), method.__name__)(
+                        *args, **kwargs
+                    )
+                time.sleep(0.1 * (attempt + 1))
+
+    return save
 
 
 def _headers(
@@ -65,6 +86,7 @@ class LocalFileRepository(FileRepository):
     # destination could publish them twice.
     falls_back = False
 
+    @_retry_or_fallback
     def save(
         self,
         data: FileData,
@@ -83,6 +105,7 @@ class LocalFileRepository(FileRepository):
             object_lifecycle_preference,
         )
 
+    @_retry_or_fallback
     def save_file(
         self,
         file_path: str | Path,
@@ -99,9 +122,14 @@ class LocalFileRepository(FileRepository):
             threshold = multipart_threshold or MultipartUploadV3.MULTIPART_THRESHOLD
             multipart = size > threshold
         if not multipart:
+            # self.save handles rejections; forward options to its fallback.
             return super().save_file(
                 file_path,
                 content_type,
+                multipart=False,
+                multipart_threshold=multipart_threshold,
+                multipart_chunk_size=multipart_chunk_size,
+                multipart_max_concurrency=multipart_max_concurrency,
                 object_lifecycle_preference=object_lifecycle_preference,
             )
 

@@ -17,12 +17,16 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import Mock
 from urllib.parse import urlparse
 
 import httpx
 import pytest
 
+from fal.toolkit.file import File
 from fal.toolkit.file._local_uploader import LocalUploader, LocalUploadError
+from fal.toolkit.file.providers import fal as remote
+from fal.toolkit.file.providers import local
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("CDN_UPLOADER_TEST_BINARY"),
@@ -170,7 +174,7 @@ def uploader(monkeypatch):
 
 
 @pytest.mark.parametrize("size_mib", [80, 101])
-def test_runner_exit_after_acceptance(uploader, tmp_path, size_mib):
+def test_runner_exit_after_acceptance(uploader, tmp_path, monkeypatch, size_mib):
     source = tmp_path / "video.bin"
     chunk = bytes(range(256)) * 4096
     digest = hashlib.sha256()
@@ -192,17 +196,24 @@ def test_runner_exit_after_acceptance(uploader, tmp_path, size_mib):
     )
     assert runner.returncode == 0, runner.stderr
     assert b"/file/1" in runner.stdout
+    # The retained file claims the sole spool slot. Another large submission is
+    # definitely rejected, retried, then sent directly to CDN.
+    direct = Mock(return_value=("https://direct.example/video.bin", None))
+    sleep = Mock()
+    monkeypatch.setattr(remote.FalFileRepositoryV3, "save_file", direct)
+    monkeypatch.setattr(local.time, "sleep", sleep)
+    assert File.from_path(source, multipart=True).url == direct.return_value[0]
+    direct.assert_called_once()
+    assert direct.call_args.args[0] == source
+    assert [call.args[0] for call in sleep.call_args_list] == [0.1, 0.2]
     source.unlink()
     assert uploader.receiving.wait(10)
     assert not uploader.done.is_set()  # caller exited while transfer is blocked
     assert uploader.state["multipart"] == (size_mib > 100)
     assert uploader.state["headers"]["Authorization"] == "Key local:test"
-    # The retained file claims the sole spool slot. It must not silently route
-    # another submission to the legacy uploader.
-    with LocalUploader() as client, pytest.raises(LocalUploadError, match="HTTP 503"):
-        client.upload("second", b"hi", 2, {"Authorization": "Key local:test"})
     uploader.release.set()
     assert uploader.done.wait(10)
+    assert uploader.state["reservations"] == 1
     actual = hashlib.sha256()
     for _, part in sorted(uploader.state["parts"].items()):
         actual.update(part)

@@ -27,7 +27,7 @@ pytestmark = pytest.mark.skipif(
 
 
 @pytest.fixture
-def uploader(monkeypatch):
+def uploader(monkeypatch, request):
     requests = []
     received = threading.Event()
     accept = threading.Event()
@@ -38,6 +38,11 @@ def uploader(monkeypatch):
         def do_POST(self):
             body = self.rfile.read(int(self.headers["Content-Length"]))
             requests.append((dict(self.headers), body))
+            if len(requests) <= getattr(request, "param", 0):
+                self.send_response(429)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
             received.set()
             if not accept.wait(10):
                 return
@@ -96,6 +101,7 @@ def test_missing_socket_does_not_use_fallback(monkeypatch):
     fallback.assert_not_called()
 
 
+@pytest.mark.parametrize("uploader", [2], indirect=True)
 def test_serialized_sdk_reads_runner_environment(uploader, tmp_path):
     target = tmp_path / "file.pkl"
     # Serialize in a clean deploy process with the flag OFF. The new runner
@@ -130,7 +136,7 @@ def test_serialized_sdk_reads_runner_environment(uploader, tmp_path):
     )
     assert runner.returncode == 0, runner.stderr
     assert b"https://fal.media/file.bin" in runner.stdout
-    assert uploader[0][0][1] == b"from runner"
+    assert [body for _, body in uploader[0]] == [b"from runner"] * 3
 
 
 @pytest.mark.asyncio
