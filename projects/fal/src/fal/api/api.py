@@ -53,6 +53,7 @@ from starlette.websockets import WebSocket
 from typing_extensions import Concatenate, ParamSpec
 
 import fal.flags as flags
+from fal._estimate import with_estimate_mode
 from fal._serialization import include_module, include_modules_from, patch_pickle
 from fal.api._sdist import ProgressCallback, has_local_path, materialize_local_paths
 from fal.app_files import get_app_files_relative_path, include_app_files_path
@@ -2153,6 +2154,8 @@ class RouteSignature(NamedTuple):
     emit_timings: bool = False
     encode_message: Callable[[Any], bytes] | None = None
     decode_message: Callable[[bytes], Any] | None = None
+    billing: Any = None
+    estimate: Callable[..., Any] | None = None
 
 
 class FalServer(uvicorn.Server):
@@ -2383,9 +2386,16 @@ class BaseServable:
                 self._validate_websocket_endpoint(signature, endpoint)
                 _app.add_websocket_route_with_metadata(signature, endpoint)
             else:
+                handler = (
+                    endpoint
+                    if signature.estimate is None
+                    else with_estimate_mode(
+                        signature.path, endpoint, signature.estimate
+                    )
+                )
                 _app.add_api_route(
                     signature.path,
-                    endpoint,
+                    handler,
                     name=endpoint.__name__,
                     methods=["POST"],
                 )
