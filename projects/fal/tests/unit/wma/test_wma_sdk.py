@@ -1243,3 +1243,87 @@ def test_recursive_close_does_not_deadlock_or_release_concurrent_waiters_early(
         assert billing_reports == [(BILLING_REQUEST_ID, 3.0)]
 
     asyncio.run(scenario())
+
+
+def test_backend_owned_cancelled_task_can_close_session(billing_reports):
+    async def scenario():
+        session = Session(
+            StartSessionRequest(sdp="offer"), request_id=BILLING_REQUEST_ID
+        )
+        session._activate_deferred_billing()
+        started = asyncio.Event()
+
+        async def worker():
+            started.set()
+            try:
+                await asyncio.Future()
+            finally:
+                await session.close()
+                session.add_billable_units(2)
+
+        task = asyncio.create_task(worker())
+        await started.wait()
+
+        class Backend:
+            async def close(self):
+                task.cancel()
+                await asyncio.gather(task, return_exceptions=True)
+
+        session._backend = Backend()
+        await asyncio.wait_for(session.close(), timeout=1)
+        assert task.done()
+        assert billing_reports == [(BILLING_REQUEST_ID, 2.0)]
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("stage", ["backend", "cleanup", "billing"])
+def test_cancelled_close_caller_does_not_interrupt_settlement(stage, billing_reports):
+    async def scenario():
+        session = Session(
+            StartSessionRequest(sdp="offer"), request_id=BILLING_REQUEST_ID
+        )
+        session._activate_deferred_billing()
+        entered = asyncio.Event()
+        release = asyncio.Event()
+        calls = []
+
+        async def pause(name):
+            calls.append(name)
+            if stage == name:
+                entered.set()
+                await release.wait()
+
+        class Backend:
+            async def close(self):
+                await pause("backend")
+
+        async def cleanup():
+            await pause("cleanup")
+            session.add_billable_units(3)
+
+        report = session._report_billable_units
+
+        async def billing():
+            await pause("billing")
+            await report()
+
+        session._backend = Backend()
+        session.defer(cleanup)
+        session._report_billable_units = billing
+        first = asyncio.create_task(session.close())
+        await asyncio.wait_for(entered.wait(), timeout=1)
+        first.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await first
+        second = asyncio.create_task(session.close())
+        await asyncio.sleep(0)
+        assert not second.done()
+        release.set()
+        await asyncio.wait_for(second, timeout=1)
+        await session.close()
+        assert calls == ["backend", "cleanup", "billing"]
+        assert billing_reports == [(BILLING_REQUEST_ID, 3.0)]
+        assert session._backend is None
+
+    asyncio.run(scenario())

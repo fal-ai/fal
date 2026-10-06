@@ -213,7 +213,7 @@ class Session:
         self._backend: Union[PeerBackend, None] = None
         self._cleanup: List[Callable[[], Any]] = []
         self._tasks: Set[asyncio.Task] = set()
-        self._close_lock = asyncio.Lock()
+        self._close_task: Union[asyncio.Task, None] = None
         # Resolve this runtime primitive on the destination Python version.
         from contextvars import ContextVar
 
@@ -562,19 +562,31 @@ class Session:
         await self._closed.wait()
 
     async def close(self) -> None:
-        # Recursive close from a backend/cleanup (including a child task) must
-        # not wait for the teardown it is currently preventing from finishing.
-        # Unrelated concurrent callers still wait on the lock for settlement.
+        import sys
+
+        # Backend-owned tasks may predate teardown and lack its context. If
+        # they are unwinding cancellation, awaiting teardown would form a
+        # cycle with the backend that cancelled and is joining them.
+        current = asyncio.current_task()
+        cancelling = isinstance(sys.exc_info()[1], asyncio.CancelledError) or (
+            current is not None and getattr(current, "cancelling", lambda: 0)()
+        )
         if self._closing_context.get() or (
-            self._is_closed and asyncio.current_task() in self._tasks
+            self._close_task is not None and (current in self._tasks or cancelling)
         ):
             return
-        async with self._close_lock:
-            token = self._closing_context.set(True)
-            try:
-                await self._close_once()
-            finally:
-                self._closing_context.reset(token)
+        if self._close_task is None:
+            self._close_task = asyncio.create_task(self._run_close())
+        # One session-owned close pass survives cancellation of any caller;
+        # other callers join that same pass through final billing settlement.
+        await asyncio.shield(self._close_task)
+
+    async def _run_close(self) -> None:
+        token = self._closing_context.set(True)
+        try:
+            await self._close_once()
+        finally:
+            self._closing_context.reset(token)
 
     async def _close_once(self) -> None:
         if self._is_closed:

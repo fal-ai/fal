@@ -146,7 +146,7 @@ def make_video_queue_track(
     """
     if playout is not None:
         return _make_playout_video_queue_track(
-            frame_queue, fps, stats, playout, on_handoff
+            frame_queue, fps, stats, playout, on_handoff, rebase_after_stall
         )
 
     import time
@@ -496,6 +496,7 @@ def _make_playout_video_queue_track(
     stats: Union[dict, None] = None,
     playout: Any = None,
     on_handoff: Any = None,
+    acknowledge: bool = False,
 ) -> Any:
     """Build an outbound video track fed by ``frame_queue`` of RGB uint8 ndarrays.
 
@@ -528,59 +529,64 @@ def _make_playout_video_queue_track(
             )
             while True:
                 item = await frame_queue.get()
-                metadata = None
-                if playout is not None:
-                    push_ts, image, metadata = item
-                    item = (push_ts, image)
-                if metadata is not None and metadata["epoch"] != playout.epoch:
-                    continue
-                now = time.monotonic()
-                if isinstance(item, tuple):
-                    push_ts, image = item
-                    if stats is not None:
-                        stats.setdefault("queue_age_ms", []).append(
-                            (now - push_ts) * 1000.0
-                        )
-                else:
-                    image = item
-                started_at = self._started_at
-                if started_at is None:
-                    started_at = now
-                else:
-                    target = started_at + next_pts / VIDEO_CLOCK_RATE
-                    delay = target - now
-                    if delay > 0:
+                try:
+                    metadata = None
+                    if playout is not None:
+                        push_ts, image, metadata = item
+                        item = (push_ts, image)
+                    if metadata is not None and metadata["epoch"] != playout.epoch:
+                        continue
+                    now = time.monotonic()
+                    if isinstance(item, tuple):
+                        push_ts, image = item
                         if stats is not None:
-                            stats.setdefault("pace_sleep_ms", []).append(delay * 1000.0)
-                        await asyncio.sleep(delay)
-                    elif stats is not None:
-                        stats.setdefault("pace_sleep_ms", []).append(0.0)
-                    if playout is not None and delay < 0:
-                        started_at = now - next_pts / VIDEO_CLOCK_RATE
-                if (
-                    playout is not None
-                    and metadata is not None
-                    and metadata["epoch"] != playout.epoch
-                ):
-                    continue
-                # A reset during the pacing sleep also invalidates this item.
-                # Commit clock changes only for frames that will be handed off.
-                self._started_at = started_at
-                self._pts = next_pts
-                break
-            # Decoded frames can be views of permuted tensors; av requires
-            # C-contiguous input (no-op when already contiguous).
-            # 2-D arrays are planar yuv420p (H*3/2, W); 3-D arrays are RGB.
-            frame = av.VideoFrame.from_ndarray(
-                np.ascontiguousarray(image),
-                format="yuv420p" if image.ndim == 2 else "rgb24",
-            )
-            frame.pts = self._pts
-            frame.time_base = Fraction(1, VIDEO_CLOCK_RATE)
-            if playout is not None and metadata is not None:
-                playout.handoff(metadata["epoch"])
-                if on_handoff is not None:
-                    on_handoff(metadata, push_ts, time.monotonic())
-            return frame
+                            stats.setdefault("queue_age_ms", []).append(
+                                (now - push_ts) * 1000.0
+                            )
+                    else:
+                        image = item
+                    started_at = self._started_at
+                    if started_at is None:
+                        started_at = now
+                    else:
+                        target = started_at + next_pts / VIDEO_CLOCK_RATE
+                        delay = target - now
+                        if delay > 0:
+                            if stats is not None:
+                                stats.setdefault("pace_sleep_ms", []).append(
+                                    delay * 1000.0
+                                )
+                            await asyncio.sleep(delay)
+                        elif stats is not None:
+                            stats.setdefault("pace_sleep_ms", []).append(0.0)
+                        if playout is not None and delay < 0:
+                            started_at = now - next_pts / VIDEO_CLOCK_RATE
+                    if (
+                        playout is not None
+                        and metadata is not None
+                        and metadata["epoch"] != playout.epoch
+                    ):
+                        continue
+                    # A reset during the pacing sleep also invalidates this item.
+                    # Commit clock changes only for frames that will be handed off.
+                    self._started_at = started_at
+                    self._pts = next_pts
+                    # Decoded frames can be views of permuted tensors; av requires
+                    # C-contiguous input (no-op when already contiguous).
+                    # 2-D arrays are planar yuv420p (H*3/2, W); 3-D arrays are RGB.
+                    frame = av.VideoFrame.from_ndarray(
+                        np.ascontiguousarray(image),
+                        format="yuv420p" if image.ndim == 2 else "rgb24",
+                    )
+                    frame.pts = self._pts
+                    frame.time_base = Fraction(1, VIDEO_CLOCK_RATE)
+                    if playout is not None and metadata is not None:
+                        playout.handoff(metadata["epoch"])
+                        if on_handoff is not None:
+                            on_handoff(metadata, push_ts, time.monotonic())
+                    return frame
+                finally:
+                    if acknowledge:
+                        frame_queue.task_done()
 
     return QueueVideoTrack()

@@ -795,3 +795,37 @@ def test_stale_playout_frames_do_not_mutate_playback_clock(monkeypatch):
         assert handed_off == [1, 1]
 
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("cancel_pacing", [False, True])
+def test_playout_acknowledges_discarded_handed_off_and_cancelled_frames(cancel_pacing):
+    pytest.importorskip("aiortc")
+    from types import SimpleNamespace
+
+    import numpy as np
+
+    async def scenario():
+        queue = asyncio.Queue()
+        handoffs = []
+        playout = SimpleNamespace(epoch=1, handoff=handoffs.append)
+        track = make_video_queue_track(
+            queue, fps=1, playout=playout, rebase_after_stall=True
+        )
+        image = np.zeros((4, 4, 3), dtype=np.uint8)
+        queue.put_nowait((time.monotonic(), image, {"epoch": 0}))
+        queue.put_nowait((time.monotonic(), image, {"epoch": 1}))
+        await track.recv()
+        await asyncio.wait_for(queue.join(), timeout=0.1)
+        assert handoffs == [1]
+        if cancel_pacing:
+            queue.put_nowait((time.monotonic(), image, {"epoch": 1}))
+            pending = asyncio.create_task(track.recv())
+            await asyncio.sleep(0)
+            assert queue.empty() and not pending.done()
+            pending.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await pending
+            await asyncio.wait_for(queue.join(), timeout=0.1)
+            assert handoffs == [1]
+
+    asyncio.run(scenario())
