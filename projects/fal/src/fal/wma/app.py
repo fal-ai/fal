@@ -110,8 +110,8 @@ class TrackEnded(_MediaStreamError):  # type: ignore[valid-type, misc]
 class BatchedFnTrack(_TrackBase):  # type: ignore[valid-type, misc]
     """Buffer frames from ``source``, run ``fn`` per batch, re-emit results.
 
-    Mimics ``fal.wma.BatchedFnTrack``: it decouples the processing cadence
-    from the input frame rate by grouping ``batch_size`` frames per
+    Decouples the processing cadence from the input frame rate by grouping
+    ``batch_size`` frames per
     inference call. ``fn`` receives the frame batch (a list) and may be sync
     or async; it may return a single frame, an iterable of frames (list,
     tuple, generator, or other iterator), or ``None`` (batch consumed
@@ -162,6 +162,36 @@ class BatchedFnTrack(_TrackBase):  # type: ignore[valid-type, misc]
             else:
                 self._output.append(result)
         return self._output.popleft()
+
+    def as_media_stream_track(self) -> Any:
+        """Return an aiortc track, including after shipping without local aiortc.
+
+        A class serialized with the fallback base keeps that base on a runner.
+        Construct the adapter against the runner's installed aiortc at use time.
+        """
+        from aiortc import MediaStreamTrack
+        from aiortc.mediastreams import MediaStreamError
+
+        if isinstance(self, MediaStreamTrack):
+            return self
+        source = self
+
+        class RuntimeTrack(MediaStreamTrack):
+            kind = source.kind
+
+            async def recv(self) -> Any:
+                if self.readyState != "live":
+                    raise MediaStreamError
+                try:
+                    return await source.recv()
+                except TrackEnded as exc:
+                    raise MediaStreamError from exc
+
+            def stop(self) -> None:
+                super().stop()
+                source.stop()
+
+        return RuntimeTrack()
 
     def stop(self) -> None:
         # Marks the track ended (and, with aiortc, emits the `ended` event).
@@ -613,7 +643,12 @@ class RealtimeApp(fal.App):
             RTCSessionDescription(filter_sdp_ice_candidates(offer.sdp), offer.type)
         )
         for track in session.handler.tracks:
-            pc.addTrack(track)
+            media_track = (
+                track.as_media_stream_track()
+                if isinstance(track, BatchedFnTrack)
+                else track
+            )
+            pc.addTrack(media_track)
         answer = await pc.createAnswer()
         await pc.setLocalDescription(answer)
         local = pc.localDescription

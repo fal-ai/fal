@@ -193,21 +193,10 @@ class Session:
         #: Per-app opt-in for billing-event tracing, handed down from
         #: :attr:`App.billing_debug` by ``start_session``.
         self.billing_debug = billing_debug
-        # A misconfigured floor must fail every session loudly at setup, not
-        # corrupt the close report's finite check and void billing silently.
-        minimum = float(minimum_billable_units)
-        if not math.isfinite(minimum) or minimum < 0:
-            raise ValueError(
-                "minimum billable units must be a finite, non-negative number"
-            )
-        #: Floor for the deferred close report, handed down from
-        #: :attr:`App.minimum_billable_units` by ``start_session``. Apps may
-        #: re-stamp it per caller during ``create_backend`` (e.g. a
-        #: per-caller entitlement); settlement reads the live value at close.
-        self.minimum_billable_units = minimum
         self._billable_units = 0.0
         self._billable_units_lock = threading.Lock()
         self._billing_finalized = False
+        self.minimum_billable_units = minimum_billable_units
         self._deferred_billing = False
         self.params = SessionParams()
         self.answer_metadata: Dict[str, Any] = {}
@@ -240,6 +229,28 @@ class Session:
             caller_user_id=self.caller_user_id,
             request_id_header_present=isinstance(request_id, str),
         )
+
+    @property
+    def minimum_billable_units(self) -> float:
+        """Validated settlement floor, adjustable until billing is finalized."""
+        return self._minimum_billable_units
+
+    @minimum_billable_units.setter
+    def minimum_billable_units(self, value: float) -> None:
+        try:
+            minimum = float(value)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise ValueError(
+                "minimum billable units must be a finite, non-negative number"
+            ) from exc
+        if not math.isfinite(minimum) or minimum < 0:
+            raise ValueError(
+                "minimum billable units must be a finite, non-negative number"
+            )
+        with self._billable_units_lock:
+            if self._billing_finalized:
+                raise RuntimeError("billing has already been finalized")
+            self._minimum_billable_units = minimum
 
     def billing_debug_print(self, event: str, **fields: Any) -> None:
         """Print one billing-event trace line when the app opted in.
@@ -1066,6 +1077,11 @@ class AiortcPeer:
             task.cancel()
 
     def _register_channel(self, channel: Any, primary: bool = False) -> None:
+        # Other application channels must neither receive controls nor own the
+        # session lifetime, regardless of which channel opens first.
+        if not primary and channel.label != DATA_CHANNEL_LABEL:
+            return
+
         @channel.on("message")
         def on_message(raw: Any) -> None:
             if isinstance(raw, bytes):

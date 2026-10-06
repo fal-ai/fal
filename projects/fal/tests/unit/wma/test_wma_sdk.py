@@ -1147,3 +1147,54 @@ def test_start_session_fastapi_injects_original_request_and_trusted_headers():
         assert FiniteApp.session.closed.is_set()
 
     asyncio.run(scenario())
+
+
+def test_aiortc_peer_ignores_noncontrol_client_channels(fake_aiortc):
+    async def scenario():
+        session = Session(StartSessionRequest(sdp="v=0 offer"))
+        backend = AiortcPeer(session, lambda pc: None)
+        session.bind_backend(backend)
+        received = []
+        session.on_message("input", received.append)
+        await backend.negotiate(session.offer)
+        pc = FakePC.instances[-1]
+        other = FakeChannel(ready_state="open", label="telemetry")
+        pc.emit("datachannel", other)
+        other.emit("message", '{"type":"input"}')
+        assert not session.send({"type": "ready"})
+        control = FakeChannel(ready_state="open", label="control")
+        pc.emit("datachannel", control)
+        assert session.send({"type": "ready"})
+        assert json.loads(control.sent[-1]) == {"type": "ready"}
+        assert other.sent == [] and received == []
+        other.emit("close")
+        assert not backend._closed.is_set()
+        control.emit("message", '{"type":"input"}')
+        assert received == [{"type": "input"}]
+        control.emit("close")
+        assert backend._closed.is_set()
+        await session.close()
+
+    asyncio.run(scenario())
+
+
+def test_live_billing_floor_rejects_invalid_updates_without_losing_settlement(
+    billing_reports,
+):
+    async def scenario():
+        session = Session(
+            StartSessionRequest(sdp="offer"), request_id=BILLING_REQUEST_ID
+        )
+        session._activate_deferred_billing()
+        session.add_billable_units(2)
+        session.minimum_billable_units = 5
+        for invalid in (float("inf"), float("nan"), -1, "invalid", None):
+            with pytest.raises(ValueError, match="minimum billable units"):
+                session.minimum_billable_units = invalid
+            assert session.minimum_billable_units == 5
+        await session.close()
+        assert billing_reports == [(BILLING_REQUEST_ID, 5.0)]
+        with pytest.raises(RuntimeError, match="finalized"):
+            session.minimum_billable_units = 10
+
+    asyncio.run(scenario())

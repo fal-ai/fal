@@ -348,3 +348,44 @@ class TestTeardown:
             return harness.upstream.closed
 
         assert run(scenario()) is True
+
+
+def test_control_overflow_is_bounded_and_closes_before_negotiation():
+    async def scenario():
+        harness = Harness()
+        harness.relay.max_pending_controls = 2
+        harness.start()
+        for prompt in ("first", "second", "overflow"):
+            await harness.send_input({"prompt": prompt})
+        # The worker is still gated on the answer: overflow must not wait for
+        # queue capacity or a sentinel put, including during cancellation.
+        await asyncio.wait_for(harness._consumer, timeout=2)
+        assert harness.upstream.closed
+        assert harness.upstream.sent == []
+        assert harness.outputs[-1] == {
+            "type": "error",
+            "error": "Too many pending control updates.",
+        }
+
+    run(scenario())
+
+
+def test_control_capacity_does_not_block_signaling_or_reorder_updates():
+    async def scenario():
+        harness = Harness()
+        harness.relay.max_pending_controls = 2
+        harness.start()
+        await harness.send_input({"prompt": "first"})
+        await harness.send_input({"prompt": "second"})
+        await harness.send_input({"type": "offer", "sdp": "offer"})
+        await harness.wait_for(lambda: len(harness.upstream.sent) == 1, "offer")
+        await harness.upstream.push(json.dumps({"type": "answer"}))
+        await harness.wait_for(lambda: len(harness.upstream.sent) == 3, "controls")
+        assert [json.loads(x).get("prompt") for x in harness.upstream.sent] == [
+            None,
+            "first",
+            "second",
+        ]
+        await harness.finish()
+
+    run(scenario())

@@ -234,3 +234,63 @@ assert all(p['in'] == 'header' for p in operation.get('parameters', []))
             check=False,
         )
         assert result.returncode == 0, result.stderr
+
+
+def test_fallback_media_track_survives_shipping_to_aiortc_runner(tmp_path):
+    import pytest
+
+    pytest.importorskip("aiortc")
+    payload = tmp_path / "track.pkl"
+    dump = """
+import sys, cloudpickle
+sys.modules['aiortc'] = None
+from fal._serialization import patch_pickle
+patch_pickle()
+from fal.wma.app import BatchedFnTrack
+with open(sys.argv[1], 'wb') as stream:
+    stream.write(cloudpickle.dumps(BatchedFnTrack))
+"""
+    restore = """
+import sys, asyncio, cloudpickle
+from aiortc import MediaStreamTrack, RTCPeerConnection, RTCConfiguration
+from aiortc.mediastreams import MediaStreamError
+with open(sys.argv[1], 'rb') as stream:
+    Track = cloudpickle.load(stream)
+class Source:
+    stopped = False
+    async def recv(self):
+        return 42
+    def stop(self):
+        self.stopped = True
+async def main():
+    source = Source()
+    track = Track(source, batch_size=1, fn=lambda frames: frames)
+    assert not isinstance(track, MediaStreamTrack)
+    adapted = track.as_media_stream_track()
+    assert isinstance(adapted, MediaStreamTrack)
+    pc = RTCPeerConnection(RTCConfiguration(iceServers=[]))
+    try:
+        assert pc.addTrack(adapted).track is adapted
+        assert await adapted.recv() == 42
+        track.stop()
+        try:
+            await adapted.recv()
+        except MediaStreamError:
+            pass
+        else:
+            raise AssertionError('stopped track must end RTP normally')
+        adapted.stop()
+        assert adapted.readyState == 'ended' and source.stopped
+    finally:
+        await pc.close()
+asyncio.run(main())
+"""
+    for code in (dump, restore):
+        result = subprocess.run(
+            [sys.executable, "-c", code, str(payload)],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr

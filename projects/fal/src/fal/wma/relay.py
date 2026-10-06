@@ -78,6 +78,9 @@ class WebSocketSignalingRelay:
     - ``make_error(message) -> output``: build a client-facing error output.
     - ``bootstrap``: outputs pushed to the client right after the upstream
       connects, before any signaling (e.g. ``ready`` + ``iceServers``).
+    - ``max_pending_controls``: maximum queued controls (default 64). Overflow
+      emits an error and closes the session, without silently dropping updates
+      or blocking signaling behind slow controls.
     - ``connect_upstream`` (optional): override the upstream connection factory;
       must return an object with ``send``/``close`` and async iteration. The
       default connects ``upstream_url`` with the ``websockets`` package.
@@ -106,7 +109,15 @@ class WebSocketSignalingRelay:
         forward_error: str = "Failed to forward the update.",
         control_error: str = "Failed to apply the update.",
         label: str = "wma-relay",
+        max_pending_controls: int = 64,
     ) -> None:
+        if (
+            isinstance(max_pending_controls, bool)
+            or not isinstance(max_pending_controls, int)
+            or max_pending_controls < 1
+        ):
+            raise ValueError("max_pending_controls must be a positive integer")
+        self.max_pending_controls = max_pending_controls
         self.upstream_url = upstream_url
         self.signaling_payload = signaling_payload
         self.control_payload = control_payload
@@ -179,7 +190,7 @@ class WebSocketSignalingRelay:
         # Control messages are applied strictly in order by a single worker, off
         # the signaling path. Signaling (offer / ICE) is sent inline so a slow
         # control-payload build can neither stall it nor reorder later controls.
-        control_queue: asyncio.Queue = asyncio.Queue()
+        control_queue: asyncio.Queue = asyncio.Queue(maxsize=self.max_pending_controls)
         # Control updates are held until the session is negotiated (the upstream
         # answer arrives), so a control payload never reaches the partner before
         # the offer -> answer handshake. The answer is independent of any
@@ -237,7 +248,15 @@ class WebSocketSignalingRelay:
                     # Control update: applied in order by the worker, off the
                     # signaling path. Present independently of signaling.
                     if self.has_control(item):
-                        await control_queue.put(item)
+                        try:
+                            control_queue.put_nowait(item)
+                        except asyncio.QueueFull:
+                            # Reject overload explicitly. Waiting for capacity
+                            # here would also block later offer/ICE messages.
+                            await output_queue.put(
+                                self.make_error("Too many pending control updates.")
+                            )
+                            break
             except Exception as e:
                 self._debug(f"client->upstream error: {e}")
             finally:
@@ -245,7 +264,6 @@ class WebSocketSignalingRelay:
                 # upstream_pump reaches its sentinel and the session tears down
                 # promptly (WebRTC signaling has no client-done message that
                 # makes the partner hang up).
-                await control_queue.put(None)
                 try:
                     await upstream.close()
                 except Exception:
