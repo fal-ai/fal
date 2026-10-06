@@ -9,6 +9,9 @@ With fal, you can build pipelines, serve ML models and scale them up to many use
 
 For full product and platform documentation, see [fal.ai/docs](https://fal.ai/docs/documentation).
 
+For connection-oriented WebRTC apps, see the [fal.wma guide](WMA.md) and
+[CPU echo example](examples/wma_echo.py).
+
 ## Quickstart
 
 Install the package and authenticate:
