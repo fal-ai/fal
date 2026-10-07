@@ -1852,3 +1852,160 @@ def test_setup_cancellation_propagates_after_cleanup(stage, billing_reports):
         assert billing_reports == []
 
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("workers", [1, 4])
+def test_worker_control_handoff_is_bounded_while_loop_is_stalled(workers, monkeypatch):
+    async def scenario():
+        session = Session(StartSessionRequest(sdp="offer"))
+        delivered = []
+        session.bind_sender(lambda message: delivered.append(message["value"]) is None)
+        loop = asyncio.get_running_loop()
+        original = loop.call_soon_threadsafe
+        scheduled = []
+
+        def schedule(callback, *args):
+            scheduled.append(callback)
+            return original(callback, *args)
+
+        monkeypatch.setattr(loop, "call_soon_threadsafe", schedule)
+        results = [[] for _ in range(workers)]
+
+        def submit(index):
+            for value in range(256):
+                message = {"value": (index, value)}
+                results[index].append((message["value"], session.send(message)))
+
+        threads = [
+            threading.Thread(target=submit, args=(index,)) for index in range(workers)
+        ]
+        for thread in threads:
+            thread.start()
+        # Hold the loop still while real worker threads fill the handoff.
+        for thread in threads:
+            thread.join(timeout=2)
+            assert not thread.is_alive()
+        accepted = [value for batch in results for value, sent in batch if sent]
+        assert len(accepted) == 64
+        assert len(scheduled) == 1
+        await asyncio.sleep(0)
+        assert set(delivered) == set(accepted)
+        if workers == 1:
+            assert delivered == accepted
+        result = []
+        thread = threading.Thread(
+            target=lambda: result.append(session.send({"value": "after-drain"}))
+        )
+        thread.start()
+        thread.join(timeout=2)
+        assert result == [True]
+        await asyncio.sleep(0)
+        assert delivered[-1] == "after-drain"
+        await session.close()
+
+    asyncio.run(scenario())
+
+
+def test_worker_control_drain_yields_when_producer_refills():
+    async def scenario():
+        session = Session(StartSessionRequest(sdp="offer"))
+        delivered = []
+        refill = []
+
+        def send(message):
+            delivered.append(message["value"])
+            if message["value"] == "initial":
+
+                def produce():
+                    refill.extend(
+                        session.send({"value": value}) for value in range(256)
+                    )
+
+                thread = threading.Thread(target=produce)
+                thread.start()
+                thread.join(timeout=2)
+                assert not thread.is_alive()
+            return True
+
+        session.bind_sender(send)
+        thread = threading.Thread(target=lambda: session.send({"value": "initial"}))
+        thread.start()
+        thread.join(timeout=2)
+        loop = asyncio.get_running_loop()
+        marker = loop.create_future()
+        loop.call_soon(lambda: marker.set_result(len(delivered)))
+        assert await marker == 64
+        await asyncio.sleep(0)
+        assert sum(refill) == 64
+        assert delivered == ["initial", *range(64)]
+        await session.close()
+
+    asyncio.run(scenario())
+
+
+def test_worker_control_close_discards_pending_messages(monkeypatch):
+    async def scenario():
+        session = Session(StartSessionRequest(sdp="offer"))
+        sent = []
+        session.bind_sender(lambda message: sent.append(message) is None)
+        callbacks = []
+        monkeypatch.setattr(
+            session._loop,
+            "call_soon_threadsafe",
+            lambda callback, *args: callbacks.append(lambda: callback(*args)),
+        )
+        thread = threading.Thread(target=lambda: session.send({"value": "pending"}))
+        thread.start()
+        thread.join(timeout=2)
+        await session.close()
+        for callback in callbacks:
+            callback()
+        assert sent == []
+        assert not session.send({"value": "closed"})
+
+    asyncio.run(scenario())
+
+
+def test_worker_control_sender_error_does_not_stall_handoff():
+    async def scenario():
+        session = Session(StartSessionRequest(sdp="offer"))
+        sent = []
+
+        def sender(message):
+            if message["value"] == 0:
+                raise ValueError("bad control")
+            sent.append(message["value"])
+            return True
+
+        session.bind_sender(sender)
+
+        def produce():
+            for value in range(4):
+                assert session.send({"value": value})
+
+        thread = threading.Thread(target=produce)
+        thread.start()
+        thread.join(timeout=2)
+        await asyncio.sleep(0)
+        assert sent == [1, 2, 3]
+        await session.close()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("pending", [False, True])
+def test_worker_control_send_after_loop_shutdown_returns_false(pending, monkeypatch):
+    async def setup():
+        session = Session(StartSessionRequest(sdp="offer"))
+        session.bind_sender(lambda _message: True)
+        if pending:
+            monkeypatch.setattr(
+                session._loop, "call_soon_threadsafe", lambda *args: None
+            )
+            thread = threading.Thread(target=lambda: session.send({"value": "pending"}))
+            thread.start()
+            thread.join(timeout=2)
+        return session
+
+    session = asyncio.run(setup())
+    assert not session.send({"value": "loop-closed"})

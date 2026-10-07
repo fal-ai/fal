@@ -10,12 +10,14 @@ import json
 import logging
 import math
 import threading
+from collections import deque
 from contextlib import suppress
 from typing import (
     Any,
     Awaitable,
     Callable,
     ClassVar,
+    Deque,
     Dict,
     List,
     Literal,
@@ -54,6 +56,7 @@ SSE_KEEPALIVE_INTERVAL = 15
 STREAM_START_TIMEOUT_SECONDS = 5
 DATA_CHANNEL_LABEL = "control"
 MAX_CONTROL_BUFFER_BYTES = 1024 * 1024
+MAX_PENDING_CONTROL_MESSAGES = 64
 START_SESSION_PATH = "/start-session"
 
 FAL_BILLING_HEADER = "x-fal-billable-units"
@@ -304,6 +307,11 @@ class Session:
         self._channel_is_open = False
         self._sender: Union[Callable[[Dict[str, Any]], bool], None] = None
         self._sender_thread_safe = False
+        self._pending_sends: Deque[
+            Tuple[Callable[[Dict[str, Any]], bool], Dict[str, Any]]
+        ] = deque()
+        self._send_lock = threading.Lock()
+        self._send_scheduled = False
         self._backend: Union[PeerBackend, None] = None
         self._cleanup: List[Callable[[], Any]] = []
         self._tasks: Set[asyncio.Task] = set()
@@ -614,9 +622,47 @@ class Session:
         except RuntimeError:
             running_loop = None
         if not self._sender_thread_safe and running_loop is not self._loop:
-            self._loop.call_soon_threadsafe(sender, message)
+            with self._send_lock:
+                if self._is_closed or self._loop.is_closed():
+                    self._pending_sends.clear()
+                    self._send_scheduled = False
+                    return False
+                if len(self._pending_sends) >= MAX_PENDING_CONTROL_MESSAGES:
+                    return False
+                self._pending_sends.append((sender, message))
+                if not self._send_scheduled:
+                    self._send_scheduled = True
+                    try:
+                        self._loop.call_soon_threadsafe(self._drain_sends)
+                    except RuntimeError:
+                        # The loop may have shut down between the caller's
+                        # last send and this submission.
+                        self._pending_sends.clear()
+                        self._send_scheduled = False
+                        return False
             return True
         return sender(message)
+
+    def _drain_sends(self) -> None:
+        # One callback owns the bounded worker handoff. Limit each batch so a
+        # producer refilling it cannot monopolize the session event loop.
+        for _ in range(MAX_PENDING_CONTROL_MESSAGES):
+            with self._send_lock:
+                if self._is_closed:
+                    self._pending_sends.clear()
+                if not self._pending_sends:
+                    self._send_scheduled = False
+                    return
+                sender, message = self._pending_sends.popleft()
+            try:
+                sender(message)
+            except (Exception, asyncio.CancelledError):
+                logger.warning("WMA queued control send failed", exc_info=True)
+        with self._send_lock:
+            if self._pending_sends:
+                self._loop.call_soon(self._drain_sends)
+            else:
+                self._send_scheduled = False
 
     def defer(self, cleanup: Callable[[], Any]) -> None:
         with self._inline_condition:
@@ -689,6 +735,8 @@ class Session:
             return
         with self._inline_condition:
             self._is_closed = True
+        with self._send_lock:
+            self._pending_sends.clear()
         self._closed.set()
 
         backend = self._backend

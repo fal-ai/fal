@@ -35,8 +35,10 @@ attach a per-session relay subscription when sharing a source across sessions.
 On the session event loop, `session.send(message)` returns `False` when the
 control channel is unavailable or accepting the message would exceed its 1 MiB
 outbound buffer limit. Handle that result by dropping stale updates or retrying
-later. Calls from worker threads schedule delivery on the session loop; their
-return value acknowledges scheduling, not transport acceptance.
+later. Worker threads use a bounded 64-message handoff and return `False` when
+it is full or the session loop has closed. Their `True` result acknowledges
+queue acceptance, not transport acceptance. Pending messages are discarded on
+session close; delivery batches yield so producers cannot starve other loop work.
 
 The WMA bridge forwards one complete offer to `POST /start-session`. The response
 is SSE: an answer, optional bounded connection telemetry, then keepalives. That
