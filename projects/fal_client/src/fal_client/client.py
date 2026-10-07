@@ -31,7 +31,7 @@ from typing import (
     Callable,
     Union,
 )
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit, urlunsplit
 import warnings
 
 import aiofiles
@@ -243,13 +243,18 @@ MULTIPART_CHUNK_SIZE = 10 * 1024 * 1024
 MULTIPART_MAX_CONCURRENCY = 10
 
 
+def _append_url_path(url: str, suffix: str) -> str:
+    parts = urlsplit(url)
+    return urlunsplit(parts._replace(path=parts.path + suffix))
+
+
 class MultipartUpload:
     def __init__(
         self,
         *,
         file_name: str,
         client: httpx.Client,
-        token_manager: CDNTokenManager,
+        token_manager: CDNTokenManager | None,
         chunk_size: int | None = None,
         content_type: str | None = None,
         max_concurrency: int | None = None,
@@ -262,6 +267,7 @@ class MultipartUpload:
         self.max_concurrency = max_concurrency or MULTIPART_MAX_CONCURRENCY
         self._access_url: str | None = None
         self._upload_id: str | None = None
+        self._upload_url: str | None = None
         self._parts: list[dict] = []
 
     @property
@@ -278,6 +284,8 @@ class MultipartUpload:
 
     @property
     def auth_headers(self) -> dict[str, str]:
+        if self._token_manager is None:
+            return {"User-Agent": USER_AGENT}
         token = self._token_manager.get_token()
         return {
             "Authorization": f"{token.token_type} {token.token}",
@@ -287,6 +295,19 @@ class MultipartUpload:
     def create(
         self, object_lifecycle_preference: LifecyclePreferencePayload | None = None
     ):
+        if self._token_manager is None:
+            headers = _storage_upload_headers(None, object_lifecycle_preference)
+            result = _maybe_retry_request(
+                self._client,
+                "POST",
+                f"{REST_URL}/storage/upload/initiate-multipart?storage_type=fal-cdn-v3",
+                json=_storage_upload_payload(self.file_name, self.content_type),
+                headers=headers,
+            ).json()
+            self._access_url = result["file_url"]
+            self._upload_url = result["upload_url"]
+            self._upload_id = urlsplit(self._upload_url).path.rsplit("/", 1)[-1]
+            return
         token = self._token_manager.get_token()
         url = f"{token.base_upload_url}/files/upload/multipart"
         headers = {
@@ -307,12 +328,14 @@ class MultipartUpload:
         self._upload_id = result["uploadId"]
 
     def upload_part(self, part_number: int, data: bytes) -> None:
-        url = f"{self.access_url}/multipart/{self.upload_id}/{part_number}"
+        base_url = self._upload_url or f"{self.access_url}/multipart/{self.upload_id}"
+        url = _append_url_path(base_url, f"/{part_number}")
 
         response = _request(
             self._client,
             "PUT",
             url,
+            auth=None,
             headers={
                 **self.auth_headers,
                 "Content-Type": self.content_type,
@@ -331,11 +354,13 @@ class MultipartUpload:
         )
 
     def complete(self) -> str:
-        url = f"{self.access_url}/multipart/{self.upload_id}/complete"
+        base_url = self._upload_url or f"{self.access_url}/multipart/{self.upload_id}"
+        url = _append_url_path(base_url, "/complete")
         _maybe_retry_request(
             self._client,
             "POST",
             url,
+            auth=None,
             headers=self.auth_headers,
             json={"parts": self._parts},
         )
@@ -346,7 +371,7 @@ class MultipartUpload:
         cls,
         *,
         client: httpx.Client,
-        token_manager: CDNTokenManager,
+        token_manager: CDNTokenManager | None,
         file_name: str,
         data: bytes,
         content_type: str | None = None,
@@ -385,7 +410,7 @@ class MultipartUpload:
         cls,
         *,
         client: httpx.Client,
-        token_manager: CDNTokenManager,
+        token_manager: CDNTokenManager | None,
         file_path: str | Path,
         chunk_size: int | None = None,
         content_type: str | None = None,
@@ -431,7 +456,7 @@ class AsyncMultipartUpload:
         *,
         file_name: str,
         client: httpx.AsyncClient,
-        token_manager: AsyncCDNTokenManager,
+        token_manager: AsyncCDNTokenManager | None,
         chunk_size: int | None = None,
         content_type: str | None = None,
         max_concurrency: int | None = None,
@@ -444,6 +469,7 @@ class AsyncMultipartUpload:
         self.max_concurrency = max_concurrency or MULTIPART_MAX_CONCURRENCY
         self._access_url: str | None = None
         self._upload_id: str | None = None
+        self._upload_url: str | None = None
         self._parts: list[dict] = []
 
     @property
@@ -459,6 +485,8 @@ class AsyncMultipartUpload:
         return self._upload_id
 
     async def get_auth_headers(self) -> dict[str, str]:
+        if self._token_manager is None:
+            return {"User-Agent": USER_AGENT}
         token = await self._token_manager.get_token()
         return {
             "Authorization": f"{token.token_type} {token.token}",
@@ -468,6 +496,21 @@ class AsyncMultipartUpload:
     async def create(
         self, object_lifecycle_preference: LifecyclePreferencePayload | None = None
     ):
+        if self._token_manager is None:
+            headers = _storage_upload_headers(None, object_lifecycle_preference)
+            result = (
+                await _async_maybe_retry_request(
+                    self._client,
+                    "POST",
+                    f"{REST_URL}/storage/upload/initiate-multipart?storage_type=fal-cdn-v3",
+                    json=_storage_upload_payload(self.file_name, self.content_type),
+                    headers=headers,
+                )
+            ).json()
+            self._access_url = result["file_url"]
+            self._upload_url = result["upload_url"]
+            self._upload_id = urlsplit(self._upload_url).path.rsplit("/", 1)[-1]
+            return
         token = await self._token_manager.get_token()
         url = f"{token.base_upload_url}/files/upload/multipart"
         request_headers = {
@@ -489,13 +532,15 @@ class AsyncMultipartUpload:
         self._upload_id = result["uploadId"]
 
     async def upload_part(self, part_number: int, data: bytes) -> None:
-        url = f"{self.access_url}/multipart/{self.upload_id}/{part_number}"
+        base_url = self._upload_url or f"{self.access_url}/multipart/{self.upload_id}"
+        url = _append_url_path(base_url, f"/{part_number}")
         headers = await self.get_auth_headers()
 
         response = await _async_request(
             self._client,
             "PUT",
             url,
+            auth=None,
             headers={
                 **headers,
                 "Content-Type": self.content_type,
@@ -514,12 +559,14 @@ class AsyncMultipartUpload:
         )
 
     async def complete(self) -> str:
-        url = f"{self.access_url}/multipart/{self.upload_id}/complete"
+        base_url = self._upload_url or f"{self.access_url}/multipart/{self.upload_id}"
+        url = _append_url_path(base_url, "/complete")
         headers = await self.get_auth_headers()
         await _async_maybe_retry_request(
             self._client,
             "POST",
             url,
+            auth=None,
             headers=headers,
             json={"parts": self._parts},
         )
@@ -530,7 +577,7 @@ class AsyncMultipartUpload:
         cls,
         *,
         client: httpx.AsyncClient,
-        token_manager: AsyncCDNTokenManager,
+        token_manager: AsyncCDNTokenManager | None,
         file_name: str,
         data: bytes,
         content_type: str | None = None,
@@ -570,7 +617,7 @@ class AsyncMultipartUpload:
         cls,
         *,
         client: httpx.AsyncClient,
-        token_manager: AsyncCDNTokenManager,
+        token_manager: AsyncCDNTokenManager | None,
         file_path: str | Path,
         chunk_size: int | None = None,
         content_type: str | None = None,
@@ -1341,14 +1388,15 @@ def _normalize_upload_lifecycle(
 
 
 def _storage_upload_headers(
-    auth: AuthCredentials,
+    auth: AuthCredentials | None,
     object_lifecycle_preference: LifecyclePreferencePayload | None,
 ) -> dict[str, str]:
     headers = {
-        "Authorization": auth.header_value,
         "Accept": "application/json",
         "Content-Type": "application/json",
     }
+    if auth is not None:
+        headers["Authorization"] = auth.header_value
     _object_lifecycle_headers(headers, object_lifecycle_preference)
     return headers
 
@@ -1392,17 +1440,18 @@ def _storage_upload_payload(file_name: str | None, content_type: str) -> dict[st
 
 def _upload_via_storage(
     client: httpx.Client,
-    auth: AuthCredentials,
+    auth: AuthCredentials | None,
     *,
     data: bytes,
     content_type: str,
     file_name: str | None,
     object_lifecycle_preference: LifecyclePreferencePayload | None = None,
+    storage_type: str = "gcs",
 ) -> str:
     init_response = _maybe_retry_request(
         client,
         "POST",
-        f"{REST_URL}/storage/upload/initiate?storage_type=gcs",
+        f"{REST_URL}/storage/upload/initiate?storage_type={storage_type}",
         json=_storage_upload_payload(file_name, content_type),
         headers=_storage_upload_headers(auth, object_lifecycle_preference),
     )
@@ -1413,6 +1462,7 @@ def _upload_via_storage(
         client,
         "PUT",
         upload_url,
+        auth=None,
         content=data,
         headers={"Content-Type": content_type},
         timeout=None,
@@ -1422,17 +1472,18 @@ def _upload_via_storage(
 
 async def _async_upload_via_storage(
     client: httpx.AsyncClient,
-    auth: AuthCredentials,
+    auth: AuthCredentials | None,
     *,
     data: bytes,
     content_type: str,
     file_name: str | None,
     object_lifecycle_preference: LifecyclePreferencePayload | None = None,
+    storage_type: str = "gcs",
 ) -> str:
     init_response = await _async_maybe_retry_request(
         client,
         "POST",
-        f"{REST_URL}/storage/upload/initiate?storage_type=gcs",
+        f"{REST_URL}/storage/upload/initiate?storage_type={storage_type}",
         json=_storage_upload_payload(file_name, content_type),
         headers=_storage_upload_headers(auth, object_lifecycle_preference),
     )
@@ -1443,6 +1494,7 @@ async def _async_upload_via_storage(
         client,
         "PUT",
         upload_url,
+        auth=None,
         content=data,
         headers={"Content-Type": content_type},
         timeout=None,
@@ -2053,8 +2105,6 @@ class AsyncClient:
         control uploaded object expiration and initial ACL settings.
         """
 
-        token_manager = await self._token_manager
-
         if isinstance(data, str):
             data = data.encode("utf-8")
 
@@ -2063,6 +2113,30 @@ class AsyncClient:
         repository_chain = _normalize_upload_repositories(
             repository, fallback_repository
         )
+        if self.access_token is not None:
+            if repository_chain[0] != "fal_v3":
+                raise ValueError("OAuth uploads require the fal_v3 repository")
+            client = await self._client
+            if len(data) > MULTIPART_THRESHOLD:
+                return await AsyncMultipartUpload.save(
+                    client=client,
+                    token_manager=None,
+                    file_name=file_name or "upload.bin",
+                    data=data,
+                    content_type=content_type,
+                    object_lifecycle_preference=resolved_lifecycle,
+                )
+            return await _async_upload_via_storage(
+                client,
+                None,
+                data=data,
+                content_type=content_type,
+                file_name=file_name,
+                object_lifecycle_preference=resolved_lifecycle,
+                storage_type="fal-cdn-v3",
+            )
+
+        token_manager = await self._token_manager
         if len(data) > MULTIPART_THRESHOLD and repository_chain[0] == "fal_v3":
             if file_name is None:
                 file_name = "upload.bin"
@@ -2147,6 +2221,14 @@ class AsyncClient:
             and repository_chain[0] == "fal_v3"
         ):
             resolved_lifecycle = _normalize_upload_lifecycle(lifecycle)
+            if self.access_token is not None:
+                return await AsyncMultipartUpload.save_file(
+                    file_path=str(path),
+                    client=await self._client,
+                    token_manager=None,
+                    content_type=mime_type,
+                    object_lifecycle_preference=resolved_lifecycle,
+                )
             token_manager = await self._token_manager
             async with self._cdn_client() as client:
                 return await AsyncMultipartUpload.save_file(
@@ -2597,8 +2679,6 @@ class SyncClient:
         control uploaded object expiration and initial ACL settings.
         """
 
-        auth = self._auth
-
         if isinstance(data, str):
             data = data.encode("utf-8")
 
@@ -2607,6 +2687,29 @@ class SyncClient:
         repository_chain = _normalize_upload_repositories(
             repository, fallback_repository
         )
+        if self.access_token is not None:
+            if repository_chain[0] != "fal_v3":
+                raise ValueError("OAuth uploads require the fal_v3 repository")
+            if len(data) > MULTIPART_THRESHOLD:
+                return MultipartUpload.save(
+                    client=self._client,
+                    token_manager=None,
+                    file_name=file_name or "upload.bin",
+                    data=data,
+                    content_type=content_type,
+                    object_lifecycle_preference=resolved_lifecycle,
+                )
+            return _upload_via_storage(
+                self._client,
+                None,
+                data=data,
+                content_type=content_type,
+                file_name=file_name,
+                object_lifecycle_preference=resolved_lifecycle,
+                storage_type="fal-cdn-v3",
+            )
+
+        auth = self._auth
         if len(data) > MULTIPART_THRESHOLD and repository_chain[0] == "fal_v3":
             if file_name is None:
                 file_name = "upload.bin"
@@ -2681,6 +2784,14 @@ class SyncClient:
             and repository_chain[0] == "fal_v3"
         ):
             resolved_lifecycle = _normalize_upload_lifecycle(lifecycle)
+            if self.access_token is not None:
+                return MultipartUpload.save_file(
+                    file_path=str(path),
+                    client=self._client,
+                    token_manager=None,
+                    content_type=mime_type,
+                    object_lifecycle_preference=resolved_lifecycle,
+                )
             client = self._get_cdn_client()
             return MultipartUpload.save_file(
                 file_path=str(path),

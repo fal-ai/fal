@@ -107,3 +107,99 @@ def test_oauth_and_key_cannot_be_combined():
     for cls in (SyncClient, AsyncClient):
         with pytest.raises(ValueError, match="either key or access_token"):
             cls(key="key", access_token="token")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize("multipart", [False, True])
+async def test_oauth_upload_uses_one_object_capability(
+    monkeypatch, tmp_path, asynchronous, multipart
+):
+    import json
+
+    from fal_client.client import FalClientHTTPError, StorageSettings
+
+    monkeypatch.setenv("FAL_KEY", "ambient-key")
+    monkeypatch.setattr(
+        "fal_client.client.MULTIPART_THRESHOLD", 4 if multipart else 100
+    )
+    monkeypatch.setattr("fal_client.client.MULTIPART_CHUNK_SIZE", 4)
+    requests, provider_calls = [], []
+    file_url = "https://v3.fal.media/files/b/test%20file?signature=read-only"
+    upload_path = "/files/b/test%20file" + ("/multipart/upload-id" if multipart else "")
+    upload_url = "https://v3.fal.media" + upload_path + "?signature=upload%2Bsignature"
+    denied = False
+
+    def provider():
+        provider_calls.append(True)
+        return "current-token"
+
+    def respond(request):
+        requests.append(request)
+        if request.url.host == "rest.fal.ai":
+            assert request.url.params["storage_type"] == "fal-cdn-v3"
+            assert request.url.path.endswith(
+                "initiate-multipart" if multipart and not denied else "initiate"
+            )
+            assert request.headers["Authorization"] == "Bearer current-token"
+            assert json.loads(request.content) == {
+                "file_name": "test.txt",
+                "content_type": "text/plain",
+            }
+            assert json.loads(request.headers["X-Fal-Object-Lifecycle-Preference"]) == {
+                "expiration_duration_seconds": 3600
+            }
+            return httpx.Response(
+                403 if denied else 200,
+                json={"file_url": file_url, "upload_url": upload_url},
+            )
+        assert request.url.host == "v3.fal.media"
+        assert "Authorization" not in request.headers
+        assert request.url.params["signature"] == "upload+signature"
+        assert request.url.raw_path.split(b"?", 1)[0].startswith(upload_path.encode())
+        return httpx.Response(
+            200, headers={"etag": "etag-" + request.url.path.rsplit("/", 1)[-1]}
+        )
+
+    transport = (
+        "AsyncBackupDomainTransport" if asynchronous else "BackupDomainTransport"
+    )
+    monkeypatch.setattr(
+        f"fal_client.client.{transport}", lambda: httpx.MockTransport(respond)
+    )
+    client = (AsyncClient if asynchronous else SyncClient)(access_token=provider)
+    http = await resolve(client._client)
+    lifecycle = StorageSettings(expires_in="1h")
+    try:
+        if multipart:
+            path = tmp_path / "test.txt"
+            path.write_bytes(b"abcdefgh")
+            result = await resolve(client.upload_file(path, lifecycle=lifecycle))
+        else:
+            result = await resolve(
+                client.upload(
+                    b"abcdefgh", "text/plain", "test.txt", lifecycle=lifecycle
+                )
+            )
+        assert result == file_url and len(provider_calls) == 1
+        puts = sorted(
+            (r for r in requests if r.method == "PUT"), key=lambda r: r.url.path
+        )
+        assert b"".join(r.content for r in puts) == b"abcdefgh"
+        if multipart:
+            assert requests[-1].url.path.endswith("/complete")
+            assert sorted(
+                json.loads(requests[-1].content)["parts"], key=lambda p: p["partNumber"]
+            ) == [
+                {"partNumber": 1, "etag": "etag-1"},
+                {"partNumber": 2, "etag": "etag-2"},
+            ]
+        denied = True
+        count = len(requests)
+        with pytest.raises(FalClientHTTPError):
+            await resolve(
+                client.upload(b"x", "text/plain", "test.txt", lifecycle=lifecycle)
+            )
+        assert len(requests) == count + 1  # No key-authenticated legacy fallback.
+    finally:
+        await resolve(http.aclose() if asynchronous else http.close())

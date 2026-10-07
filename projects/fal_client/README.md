@@ -60,6 +60,13 @@ cannot be combined. Use queue methods (`submit` and `subscribe`) for delegated
 OAuth execution; synchronous model execution, streaming, realtime, and log access
 are outside the initial delegated API scope.
 
+OAuth clients can use `upload`, `upload_file`, and `upload_image` with the default
+`fal_v3` repository, including multipart uploads for large files. The API creates
+an upload for one object; bytes and multipart completion use only that object's
+signed URL. The returned read URL retains the account's privacy settings and has
+an expiry. OAuth uploads do not fall back to legacy storage or request an
+account-wide CDN token.
+
 ## Uploading files
 
 If the model requires files as input, you can upload them directly to fal's CDN and pass the URLs to the client. Here's an example:
