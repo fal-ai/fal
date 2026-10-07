@@ -294,3 +294,28 @@ asyncio.run(main())
             check=False,
         )
         assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize(
+    "custom_requirements",
+    [
+        ["aiortc @ git+https://example.com/team/aiortc.git@revision"],
+        ["../vendor/aiortc", "aiortc"],
+        [["../vendor/aiortc", "aiortc"]],
+    ],
+)
+def test_wrap_app_respects_explicit_custom_aiortc_requirement(custom_requirements):
+    from fal.app import WMA_APP_REQUIREMENTS, wrap_app
+
+    class CustomWmaApp(fal.wma.App):
+        requirements = custom_requirements
+
+    requirements = wrap_app(CustomWmaApp).options.environment["requirements"]
+    flat = [
+        value
+        for item in requirements
+        for value in (item if isinstance(item, list) else [item])
+    ]
+    assert "aiortc>=1.9,<2" not in flat
+    for requirement in WMA_APP_REQUIREMENTS:
+        assert requirement not in flat

@@ -11,9 +11,16 @@ pip install 'fal[wma]'
 
 Deploy [the CPU echo example](examples/wma_echo.py) with
 `fal deploy examples/wma_echo.py::EchoApp` from this directory. WMA subclasses
-automatically receive `aiortc` in their runner requirements; an explicit app pin
+automatically receive `aiortc` in their runner requirements; an explicit named app pin
 takes precedence. Contract rendering, typed control messages and UI hints require
 Pydantic 2. Core sessions, ICE and billing remain importable with Pydantic 1.
+
+For a custom build, use a named requirement such as
+`aiortc @ git+https://example.com/team/aiortc.git@revision`. When using an
+unnamed local path or archive, also include `"aiortc"` in the app's requirements
+alongside that path. This declares the package without imposing a version range
+and suppresses the SDK's default requirement. The SDK does not inspect arbitrary
+paths or run build backends to discover distribution names.
 
 ## Session lifecycle
 

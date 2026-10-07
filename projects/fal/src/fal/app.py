@@ -164,7 +164,7 @@ _REQUIREMENT_NAME_RE = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9._-]*)")
 def _declares_requirement(
     requirements: list[str] | list[list[str]], package: str
 ) -> bool:
-    """True when the app's own requirements already pin ``package``."""
+    """True when the app explicitly names ``package`` in its requirements."""
     flat: list[str] = []
     for entry in requirements:
         if isinstance(entry, list):
@@ -249,7 +249,7 @@ def wrap_app(cls: type[App], **kwargs) -> IsolatedFunction:
     if realtime_app:
         fn.options.add_requirements(REALTIME_APP_REQUIREMENTS)
     if _is_wma_app(cls) and not _declares_requirement(cls.requirements, "aiortc"):
-        # An app that pins its own aiortc keeps that pin: injecting the range
+        # An app that explicitly names aiortc keeps its requirement: injecting the range
         # alongside it would either fail resolution (flat requirements) or
         # override the app's pin as a later layer (layered requirements).
         fn.options.add_requirements(WMA_APP_REQUIREMENTS)
