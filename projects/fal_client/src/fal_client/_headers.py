@@ -30,7 +30,7 @@ def _current_fal_app_request() -> Optional[Any]:
 MIN_REQUEST_TIMEOUT_SECONDS = 1  # Minimum allowed request timeout in seconds
 
 # Request headers
-REQUEST_TIMEOUT_HEADER = "X-Fal-Request-Timeout"
+REQUEST_TIMEOUT_HEADER = "X-Fal-Request-Start-Timeout"
 REQUEST_TIMEOUT_TYPE_HEADER = "X-Fal-Request-Timeout-Type"
 RUNNER_HINT_HEADER = "X-Fal-Runner-Hint"
 QUEUE_PRIORITY_HEADER = "X-Fal-Queue-Priority"
