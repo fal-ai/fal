@@ -16,7 +16,7 @@ import fastapi
 import grpc.aio as async_grpc
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from fal._estimate import BillingDeclaration
+from fal._billing import BillingDeclaration
 from fal._serialization import include_modules_from
 from fal._typing import EndpointT
 from fal.api import (
@@ -778,19 +778,13 @@ class App(BaseServable):
 
     @classmethod
     def get_billing_components(cls) -> dict[str, dict[str, Any]]:
-        """Billing declarations per endpoint path, kept out of the OpenAPI spec.
-
-        Each entry records whether the endpoint supports estimate mode.
-        """
+        """Billing declarations per endpoint path, kept out of the OpenAPI spec."""
         components: dict[str, dict[str, Any]] = {}
         for _, endpoint in inspect.getmembers(cls, inspect.isfunction):
             signature = getattr(endpoint, "route_signature", None)
             if signature is None or signature.billing is None:
                 continue
-            components[signature.path] = {
-                **signature.billing.declaration(),
-                "estimate": signature.estimate is not None,
-            }
+            components[signature.path] = signature.billing.declaration()
         return dict(sorted(components.items()))
 
     @classmethod
@@ -1113,29 +1107,16 @@ def endpoint(
     is_websocket: bool = False,
     health_check: HealthCheck | None = None,
     billing: BillingDeclaration | None = None,
-    estimate: Callable[..., Any] | None = None,
 ) -> Callable[[EndpointT], EndpointT]:
     """Designate the decorated function as an application endpoint.
 
     ``billing`` declares the components the endpoint reports. It is published
     in deploy metadata under ``billing_components``, not in the OpenAPI spec.
-
-    ``estimate`` is a plain function taking only the endpoint's input model.
-    A request in estimate mode runs it instead of the handler; it is not a
-    separate route and always bills zero units::
-
-        def estimate_edit(input: EditInput) -> EstimatedReport: ...
-
-        class MyApp(fal.App):
-            @fal.endpoint("/edit", billing=EDIT_BILLING, estimate=estimate_edit)
-            def edit(self, input: EditInput) -> EditOutput: ...
     """
     if billing is not None and not isinstance(billing, BillingDeclaration):
         raise TypeError("billing must provide a declaration() method")
-    if (billing is not None or estimate is not None) and is_websocket:
-        raise ValueError("Websocket endpoints cannot declare billing or estimates")
-    if estimate is not None and billing is None:
-        raise ValueError(f"Endpoint {path!r} needs billing=... to have an estimate")
+    if billing is not None and is_websocket:
+        raise ValueError("Websocket endpoints cannot declare billing components")
 
     def marker_fn(callable: EndpointT) -> EndpointT:
         if hasattr(callable, "route_signature"):
@@ -1148,7 +1129,6 @@ def endpoint(
             is_websocket=is_websocket,
             health_check=health_check,
             billing=billing,
-            estimate=estimate,
         )
         return callable
 
