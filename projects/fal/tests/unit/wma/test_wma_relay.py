@@ -9,6 +9,8 @@ import asyncio
 import json
 from typing import Any, List, Union
 
+import pytest
+
 from fal.wma import ControlRejected, WebSocketSignalingRelay
 
 _EOF = object()
@@ -387,5 +389,34 @@ def test_control_capacity_does_not_block_signaling_or_reorder_updates():
             "second",
         ]
         await harness.finish()
+
+    run(scenario())
+
+
+@pytest.mark.parametrize("bootstrap_count", [2, 100])
+def test_slow_output_consumer_backpressures_upstream_and_can_close(bootstrap_count):
+    async def scenario():
+        harness = Harness()
+        harness.relay.bootstrap = [{"type": "ready"}] * bootstrap_count
+        converted = []
+
+        def convert(raw):
+            converted.append(raw)
+            return json.loads(raw)
+
+        harness.relay.from_upstream = convert
+        for i in range(500):
+            await harness.upstream.push(json.dumps({"type": "data", "index": i}))
+        outputs = harness.relay.run(harness._inputs())
+        assert await outputs.__anext__() == {"type": "ready"}
+        for _ in range(10):
+            await asyncio.sleep(0)
+        assert 0 < len(converted) <= max(64, bootstrap_count) + 1
+        before = len(converted)
+        for _ in range(10):
+            await asyncio.sleep(0)
+        assert len(converted) == before
+        await asyncio.wait_for(outputs.aclose(), timeout=1)
+        assert harness.upstream.closed
 
     run(scenario())

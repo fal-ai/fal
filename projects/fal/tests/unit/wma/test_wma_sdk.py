@@ -1614,3 +1614,58 @@ def test_error_echo_accepts_non_json_mapping_keys():
     assert response.status_code == 422
     assert b'"normal":3' in response.body
     assert b"<tuple>" in response.body
+
+
+def test_error_context_is_json_safe():
+    from starlette.responses import JSONResponse
+
+    from fal.wma._errors import Error
+
+    error = InputValueError(
+        errors=[
+            Error(
+                loc=["body"],
+                input=None,
+                msg="bad",
+                type="value_error",
+                ctx={
+                    (1, 2): b"binary",
+                    "float": float("nan"),
+                    "nested": {"inf": float("inf")},
+                },
+            )
+        ]
+    )
+    response = JSONResponse(
+        status_code=error.status_code, content={"detail": error.detail}
+    )
+    assert response.status_code == 422
+    assert b"<tuple>" in response.body
+
+
+@pytest.mark.parametrize(
+    "timeout", [0, -1, float("nan"), float("inf"), -float("inf"), True, "5"]
+)
+def test_initial_connection_timeout_rejects_invalid_configuration(timeout):
+    async def scenario():
+        session = Session(StartSessionRequest(sdp="offer"))
+        with pytest.raises(ValueError, match="finite and positive"):
+            AiortcPeer(
+                session, lambda peer: None, initial_connect_timeout_seconds=timeout
+            )
+        await session.close()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize(
+    "grace", [-1, float("nan"), float("inf"), -float("inf"), True, "5"]
+)
+def test_disconnect_grace_rejects_invalid_configuration(grace):
+    async def scenario():
+        session = Session(StartSessionRequest(sdp="offer"))
+        with pytest.raises(ValueError, match="finite and non-negative"):
+            AiortcPeer(session, lambda peer: None, disconnected_grace_seconds=grace)
+        await session.close()
+
+    asyncio.run(scenario())

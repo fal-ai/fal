@@ -169,7 +169,11 @@ class WebSocketSignalingRelay:
             return
 
         closed_excs = _connection_closed_excs()
-        output_queue: asyncio.Queue = asyncio.Queue()
+        # Bootstrap events must fit before the consumer starts. Subsequent
+        # upstream output is bounded so a slow client backpressures recv().
+        output_queue: asyncio.Queue = asyncio.Queue(
+            maxsize=max(64, len(self.bootstrap))
+        )
 
         # Push the bootstrap events (e.g. ready / iceServers) before any client
         # signaling is answered. These run after the upstream is open but before
@@ -270,6 +274,7 @@ class WebSocketSignalingRelay:
                     pass
 
         async def upstream_pump() -> None:
+            cancelled = False
             try:
                 async for raw in upstream:
                     out = self.from_upstream(raw)
@@ -278,6 +283,9 @@ class WebSocketSignalingRelay:
                         # Session negotiated — release any buffered controls.
                         if not session_ready.is_set() and self.is_session_ready(out):
                             session_ready.set()
+            except asyncio.CancelledError:
+                cancelled = True
+                raise
             except closed_excs as e:
                 # The partner hung up. Log it: a clean close right after the
                 # handshake is otherwise indistinguishable from a client leave.
@@ -286,7 +294,8 @@ class WebSocketSignalingRelay:
                 self._debug(f"upstream->client error: {e}")
             finally:
                 self._debug("upstream stream ended; ending session")
-                await output_queue.put(None)
+                if not cancelled:
+                    await output_queue.put(None)
 
         recv_task = asyncio.create_task(upstream_pump())
         control_task = asyncio.create_task(control_worker())
@@ -298,8 +307,9 @@ class WebSocketSignalingRelay:
                     break
                 yield item
         finally:
-            for task in (send_task, control_task):
+            for task in (send_task, control_task, recv_task):
                 task.cancel()
+            for task in (send_task, control_task, recv_task):
                 try:
                     await task
                 except (asyncio.CancelledError, Exception):
@@ -307,8 +317,4 @@ class WebSocketSignalingRelay:
             try:
                 await upstream.close()
             except Exception:
-                pass
-            try:
-                await recv_task
-            except (asyncio.CancelledError, Exception):
                 pass

@@ -109,7 +109,7 @@ class Error(dict):
             msg=msg,
             type=type,
             url=f"{ERROR_URL}#{type}",
-            ctx=ctx,
+            ctx=json_safe(ctx),
             input=input,
         )
 

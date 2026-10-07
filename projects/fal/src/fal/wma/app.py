@@ -238,15 +238,21 @@ class SessionEventHandler:
         Sync-inline matters for the ``"track"`` event: handlers typically
         call ``add_track`` and must do so before the SDP answer is created.
         """
+        self._dispatch_tasks(event, *args)
+
+    def _dispatch_tasks(self, event: str, *args: Any) -> List[asyncio.Future]:
+        tasks: List[asyncio.Future] = []
         for handler in self._handlers.get(event, []):
             try:
                 result = handler(*args)
-            except Exception:
+            except (Exception, asyncio.CancelledError):
                 logger.exception("wma: %r handler failed", event)
                 continue
             if inspect.isawaitable(result):
                 task = asyncio.ensure_future(result)
                 task.add_done_callback(_log_handler_task_error(event))
+                tasks.append(task)
+        return tasks
 
 
 def _log_handler_task_error(event: str) -> Callable[[asyncio.Task], None]:
@@ -275,6 +281,7 @@ class Session:
     state: Dict[str, Any] = field(default_factory=dict)
     closed: bool = False
     pending: bool = False
+    _close_task: Union[asyncio.Task, None] = field(default=None, init=False, repr=False)
 
 
 class SessionStore:
@@ -441,12 +448,13 @@ class RealtimeApp(fal.App):
         self._wma_sessions = SessionStore(timeout_sec=self.session_timeout_sec)
         self._wma_shutdown = asyncio.Event()
         self._wma_connecting: Set[asyncio.Task] = set()
+        self._wma_finalizers: Set[asyncio.Task] = set()
         self._wma_reaper = asyncio.create_task(self._reap_expired_sessions())
 
     async def teardown(self) -> None:
         self._wma_shutdown.set()
         # Let any expiry batch finish instead of cancelling resource cleanup.
-        await self._wma_reaper
+        await asyncio.shield(self._wma_reaper)
         connecting = list(self._wma_connecting)
         for task in connecting:
             task.cancel()
@@ -454,6 +462,12 @@ class RealtimeApp(fal.App):
             await asyncio.gather(*connecting, return_exceptions=True)
         for session in self._wma_sessions.pop_all():
             await self._finalize_session(session, reason="shutdown")
+        # A close request may have removed its session from the store already.
+        # Its shielded finalizer remains owned by the app until it completes.
+        if self._wma_finalizers:
+            await asyncio.gather(
+                *(asyncio.shield(task) for task in self._wma_finalizers)
+            )
 
     async def on_connect(
         self,
@@ -624,26 +638,37 @@ class RealtimeApp(fal.App):
                 )
 
     async def _finalize_session(self, session: Session, *, reason: str) -> None:
-        if session.closed:
-            return
+        if session._close_task is None:
+            if session.closed:
+                return
+            session._close_task = asyncio.create_task(
+                self._finalize_session_once(session, reason=reason)
+            )
+            self._wma_finalizers.add(session._close_task)
+            session._close_task.add_done_callback(self._wma_finalizers.discard)
+        await asyncio.shield(session._close_task)
+
+    async def _finalize_session_once(self, session: Session, *, reason: str) -> None:
         session.closed = True
-        session.handler.dispatch("close", reason)
+        tasks = session.handler._dispatch_tasks("close", reason)
         for track in session.handler.tracks:
             try:
                 track.stop()
-            except Exception:
+            except (Exception, asyncio.CancelledError):
                 logger.exception("wma: failed to stop track for %s", session.session_id)
         pc = session.state.get("_pc")
         if pc is not None:
             try:
                 await pc.close()
-            except Exception:
+            except (Exception, asyncio.CancelledError):
                 logger.exception(
                     "wma: failed to close peer connection for %s", session.session_id
                 )
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
         try:
             await self.on_disconnect(session, reason)
-        except Exception:
+        except (Exception, asyncio.CancelledError):
             logger.exception(
                 "wma: on_disconnect failed for %s (%s)", session.session_id, reason
             )

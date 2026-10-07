@@ -1075,13 +1075,24 @@ class AiortcPeer:
             raise ValueError(
                 "rtc_configuration and peer_connection_factory are mutually exclusive"
             )
-        if disconnected_grace_seconds is not None and disconnected_grace_seconds < 0:
-            raise ValueError("disconnected_grace_seconds cannot be negative")
-        if (
-            initial_connect_timeout_seconds is not None
-            and initial_connect_timeout_seconds <= 0
+        if disconnected_grace_seconds is not None and (
+            isinstance(disconnected_grace_seconds, bool)
+            or not isinstance(disconnected_grace_seconds, (int, float))
+            or not math.isfinite(disconnected_grace_seconds)
+            or disconnected_grace_seconds < 0
         ):
-            raise ValueError("initial_connect_timeout_seconds must be positive")
+            raise ValueError(
+                "disconnected_grace_seconds must be finite and non-negative"
+            )
+        if initial_connect_timeout_seconds is not None and (
+            isinstance(initial_connect_timeout_seconds, bool)
+            or not isinstance(initial_connect_timeout_seconds, (int, float))
+            or not math.isfinite(initial_connect_timeout_seconds)
+            or initial_connect_timeout_seconds <= 0
+        ):
+            raise ValueError(
+                "initial_connect_timeout_seconds must be finite and positive"
+            )
         self._session = session
         self._on_connect = on_connect
         self._create_default_channel = create_default_channel

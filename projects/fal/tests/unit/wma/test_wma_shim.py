@@ -399,3 +399,59 @@ def test_pending_session_does_not_expire_and_shutdown_releases_resources(
         assert exc.value.status_code == 503
 
     run(scenario())
+
+
+@pytest.mark.parametrize("blocked_phase", ["close_handler", "peer", "disconnect"])
+def test_shutdown_awaits_finalization_after_close_request_is_cancelled(blocked_phase):
+    from fastapi import Response
+
+    from fal.wma.app import SessionRef
+
+    async def scenario():
+        entered = asyncio.Event()
+        release = asyncio.Event()
+        calls = []
+        track = FakeTrack([])
+
+        async def step(phase):
+            calls.append(phase)
+            if blocked_phase == phase:
+                entered.set()
+                await release.wait()
+
+        class App(RealtimeApp):
+            async def on_disconnect(self, session, reason):
+                await step("disconnect")
+
+        class Peer:
+            async def close(self):
+                await step("peer")
+
+        app = App(_allow_init=True)
+        await app.setup()
+        session = app._wma_sessions.create({})
+        session.handler.add_track(track)
+        session.state["_pc"] = Peer()
+
+        @session.handler.on("close")
+        async def on_close(reason):
+            await step("close_handler")
+
+        closing = asyncio.create_task(
+            app.close_session(SessionRef(session_id=session.session_id), Response())
+        )
+        await asyncio.wait_for(entered.wait(), timeout=1)
+        assert len(app._wma_sessions) == 0
+        closing.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await closing
+        shutdown = asyncio.create_task(app.teardown())
+        await asyncio.sleep(0.01)
+        assert not shutdown.done()
+        release.set()
+        await asyncio.wait_for(shutdown, timeout=1)
+        assert sorted(calls) == ["close_handler", "disconnect", "peer"]
+        assert track.stopped
+        assert not app._wma_finalizers
+
+    run(scenario())
