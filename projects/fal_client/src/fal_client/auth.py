@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import inspect
 import os
 import sys
 import time
@@ -11,7 +12,7 @@ from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
 from threading import Lock
-from typing import Callable, Optional, TypeVar
+from typing import AsyncIterator, Awaitable, Callable, Iterator, Optional, TypeVar
 
 import aiofiles
 import aiofiles.os
@@ -79,6 +80,52 @@ class AuthCredentials:
 
     def as_headers(self) -> dict[str, str]:
         return {"Authorization": self.header_value}
+
+
+class _BearerAuth(httpx.Auth):
+    def __init__(self, token: str | Callable[[], str | Awaitable[str]]):
+        self.token = token
+
+    def _authorized_origin(self, request: httpx.Request) -> bool:
+        if (
+            request.url.scheme == "https"
+            and request.url.port in (None, 443)
+            and request.url.host
+            in {
+                "fal.run",
+                "queue.fal.run",
+                "rest.fal.ai",
+                "falrun.com",
+                "queue.falrun.com",
+            }
+        ):
+            return True
+        request.headers.pop("Authorization", None)
+        return False
+
+    def _set_token(self, request: httpx.Request, token: object) -> None:
+        if not isinstance(token, str) or not token or any(c.isspace() for c in token):
+            raise ValueError("access_token must be a nonempty token without whitespace")
+        request.headers["Authorization"] = f"Bearer {token}"
+
+    def sync_auth_flow(self, request: httpx.Request) -> Iterator[httpx.Request]:
+        if self._authorized_origin(request):
+            token = self.token() if callable(self.token) else self.token
+            if inspect.iscoroutine(token):
+                token.close()
+                raise TypeError("SyncClient access_token callback must be synchronous")
+            self._set_token(request, token)
+        yield request
+
+    async def async_auth_flow(
+        self, request: httpx.Request
+    ) -> AsyncIterator[httpx.Request]:
+        if self._authorized_origin(request):
+            token = self.token() if callable(self.token) else self.token
+            if inspect.isawaitable(token):
+                token = await token
+            self._set_token(request, token)
+        yield request
 
 
 FAL_RUN_HOST = os.environ.get("FAL_RUN_HOST", "fal.run")

@@ -42,6 +42,7 @@ from httpx_sse import aconnect_sse, connect_sse
 
 from fal_client.auth import (
     AuthCredentials,
+    _BearerAuth,
     FAL_QUEUE_RUN_HOST,
     FAL_RUN_HOST,
     fetch_auth_credentials,
@@ -1694,22 +1695,33 @@ class AsyncRequestHandle(_BaseRequestHandle):
 class AsyncClient:
     key: str | None = field(default=None, repr=False)
     default_timeout: float = 120.0
+    access_token: str | Callable[[], str | Awaitable[str]] | None = field(
+        default=None, repr=False
+    )
+
+    def __post_init__(self):
+        if self.key is not None and self.access_token is not None:
+            raise ValueError("Set either key or access_token, not both")
 
     @async_cached_property(asyncio.Lock)
     async def _auth(self) -> AuthCredentials:
+        if self.access_token is not None:
+            raise ValueError("This operation does not support access_token")
         if self.key is not None:
             return AuthCredentials("Key", self.key)
         return await fetch_auth_credentials_async()
 
     @async_cached_property(asyncio.Lock)
     async def _client(self) -> httpx.AsyncClient:
-        auth = await self._auth
+        headers = {"User-Agent": USER_AGENT}
+        if self.access_token is None:
+            headers["Authorization"] = (await self._auth).header_value
         return httpx.AsyncClient(
             transport=AsyncBackupDomainTransport(),
-            headers={
-                "Authorization": auth.header_value,
-                "User-Agent": USER_AGENT,
-            },
+            auth=_BearerAuth(self.access_token)
+            if self.access_token is not None
+            else None,
+            headers=headers,
             timeout=self.default_timeout,
         )
 
@@ -2244,22 +2256,31 @@ class AsyncClient:
 class SyncClient:
     key: str | None = field(default=None, repr=False)
     default_timeout: float = 120.0
+    access_token: str | Callable[[], str] | None = field(default=None, repr=False)
+
+    def __post_init__(self):
+        if self.key is not None and self.access_token is not None:
+            raise ValueError("Set either key or access_token, not both")
 
     @cached_property
     def _auth(self) -> AuthCredentials:
+        if self.access_token is not None:
+            raise ValueError("This operation does not support access_token")
         if self.key is None:
             return fetch_auth_credentials()
         return AuthCredentials("Key", self.key)
 
     @cached_property
     def _client(self) -> httpx.Client:
-        auth = self._auth
+        headers = {"User-Agent": USER_AGENT}
+        if self.access_token is None:
+            headers["Authorization"] = self._auth.header_value
         return httpx.Client(
             transport=BackupDomainTransport(),
-            headers={
-                "Authorization": auth.header_value,
-                "User-Agent": USER_AGENT,
-            },
+            auth=_BearerAuth(self.access_token)
+            if self.access_token is not None
+            else None,
+            headers=headers,
             timeout=self.default_timeout,
             follow_redirects=True,
         )

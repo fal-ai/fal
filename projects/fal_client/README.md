@@ -42,6 +42,24 @@ async def main():
 asyncio.run(main())
 ```
 
+## OAuth access tokens
+
+Create a client per signed-in user. Supply an access token or a callback that returns
+its current value; your app handles OAuth authorization and refresh.
+
+```python
+client = fal_client.SyncClient(access_token=get_current_access_token)
+result = client.subscribe("fal-ai/fast-sdxl", arguments={"prompt": "a cute cat"})
+```
+
+`AsyncClient(access_token=...)` also accepts an async callback. The callback runs for
+each API request, including retries and existing handles' status, result, and cancel
+requests. Bearer credentials are sent only to fal's HTTPS API origins. Existing
+`key` and environment authentication work unchanged; `key` and `access_token`
+cannot be combined. Use queue methods (`submit` and `subscribe`) for delegated
+OAuth execution; synchronous model execution, streaming, realtime, and log access
+are outside the initial delegated API scope.
+
 ## Uploading files
 
 If the model requires files as input, you can upload them directly to fal's CDN and pass the URLs to the client. Here's an example:
