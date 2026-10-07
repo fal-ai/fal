@@ -165,6 +165,62 @@ def _send_if_open(channel: Any, payload: str) -> None:
         channel.send(payload)
 
 
+def _task_waits_on(waiter: Any, target: Any) -> bool:
+    """Read asyncio's wait links to identify an actual teardown dependency.
+
+    Supported Python versions expose Task/gather links through _fut_waiter
+    and _children. shield and wait_for wrap those links, so follow their
+    standard-library closure/coroutine references as well. No application
+    fields or cancellation history participate in this decision.
+    """
+    if waiter is None or target is None:
+        return False
+    pending = [waiter]
+    seen: Set[int] = set()
+    while pending:
+        item = pending.pop()
+        if item is target:
+            return True
+        if id(item) in seen:
+            continue
+        seen.add(id(item))
+        if isinstance(item, asyncio.Future) and item.done():
+            continue
+        dependency = getattr(item, "_fut_waiter", None)
+        if dependency is not None:
+            pending.append(dependency)
+        children = getattr(item, "_children", ())
+        if isinstance(children, (list, tuple)):
+            pending.extend(children)
+        if isinstance(item, asyncio.Task):
+            coro: Any = item.get_coro()
+            while coro is not None:
+                code = getattr(coro, "cr_code", None)
+                frame = getattr(coro, "cr_frame", None)
+                if frame is not None:
+                    if code is asyncio.wait_for.__code__:
+                        pending.append(frame.f_locals.get("fut"))
+                    elif code is getattr(
+                        getattr(asyncio.tasks, "_wait", None), "__code__", None
+                    ):
+                        pending.extend(frame.f_locals.get("fs", ()))
+                coro = getattr(coro, "cr_await", None)
+        # A shield Future has no _children link; its own completion callback
+        # retains the inner Future. Restrict inspection to asyncio's callback.
+        for callback, _context in getattr(item, "_callbacks", None) or ():
+            if (
+                getattr(callback, "__module__", None) == "asyncio.tasks"
+                and getattr(callback, "__qualname__", None)
+                == "shield.<locals>._outer_done_callback"
+            ):
+                for name, cell in zip(
+                    callback.__code__.co_freevars, callback.__closure__ or ()
+                ):
+                    if name == "inner":
+                        pending.append(cell.cell_contents)
+    return False
+
+
 class Session:
     """Transport-neutral state and lifecycle for one WMA connection."""
 
@@ -214,8 +270,7 @@ class Session:
         self._cleanup: List[Callable[[], Any]] = []
         self._tasks: Set[asyncio.Task] = set()
         self._close_task: Union[asyncio.Task, None] = None
-        self._close_initiator: Union[asyncio.Task, None] = None
-        self._backend_closing = False
+        self._close_waiters: Set[asyncio.Task] = set()
         # Resolve this runtime primitive on the destination Python version.
         from contextvars import ContextVar
 
@@ -564,25 +619,29 @@ class Session:
         await self._closed.wait()
 
     async def close(self) -> None:
-        import sys
-
-        # Backend-owned tasks may predate teardown and lack its context. If
-        # they are unwinding cancellation, awaiting teardown would form a
-        # cycle with the backend that cancelled and is joining them.
         current = asyncio.current_task()
-        cancelling = self._backend_closing and isinstance(
-            sys.exc_info()[1], asyncio.CancelledError
-        )
-        if self._closing_context.get() or (
-            self._close_task is not None and (current in self._tasks or cancelling)
-        ):
+        # Only a real dependency cycle can bypass settlement. Cancellation
+        # history and task ownership alone say nothing about who awaits whom.
+        if self._closing_context.get() or _task_waits_on(self._close_task, current):
             return
-        if self._close_task is None:
-            self._close_initiator = current
-            self._close_task = asyncio.create_task(self._run_close())
-        # One session-owned close pass survives cancellation of any caller;
-        # other callers join that same pass through final billing settlement.
-        await asyncio.shield(self._close_task)
+        if current is not None:
+            self._close_waiters.add(current)
+        try:
+            if self._close_task is None:
+                self._close_task = asyncio.create_task(self._run_close())
+            # One session-owned close pass survives cancellation of any caller;
+            # other callers join that same pass through final billing settlement.
+            while not self._close_task.done():
+                if _task_waits_on(self._close_task, current):
+                    return
+                # A backend can yield before joining a worker that is already
+                # awaiting close. Recheck that later dependency without
+                # cancelling the shared teardown task when a caller exits.
+                await asyncio.wait([self._close_task], timeout=0.05)
+            await asyncio.shield(self._close_task)
+        finally:
+            if current is not None:
+                self._close_waiters.discard(current)
 
     async def _run_close(self) -> None:
         token = self._closing_context.set(True)
@@ -590,7 +649,6 @@ class Session:
             await self._close_once()
         finally:
             self._closing_context.reset(token)
-            self._close_initiator = None
 
     async def _close_once(self) -> None:
         if self._is_closed:
@@ -601,12 +659,8 @@ class Session:
 
         backend = self._backend
         if backend is not None:
-            self._backend_closing = True
-            try:
-                with suppress(Exception, asyncio.CancelledError):
-                    await backend.close()
-            finally:
-                self._backend_closing = False
+            with suppress(Exception, asyncio.CancelledError):
+                await backend.close()
 
         with self._inline_condition:
             inline_active = self._inline_active != 0
@@ -617,7 +671,7 @@ class Session:
         tasks = [
             task
             for task in self._tasks
-            if task is not current and task is not self._close_initiator
+            if task is not current and task not in self._close_waiters
         ]
         for task in tasks:
             task.cancel()

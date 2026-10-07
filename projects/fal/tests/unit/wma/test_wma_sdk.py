@@ -1245,7 +1245,11 @@ def test_recursive_close_does_not_deadlock_or_release_concurrent_waiters_early(
     asyncio.run(scenario())
 
 
-def test_backend_owned_cancelled_task_can_close_session(billing_reports):
+@pytest.mark.parametrize("join", ["direct", "gather", "shield", "wait_for", "wait"])
+@pytest.mark.parametrize("yield_before_join", [False, True])
+def test_backend_owned_cancelled_task_can_close_session(
+    join, yield_before_join, billing_reports
+):
     async def scenario():
         session = Session(
             StartSessionRequest(sdp="offer"), request_id=BILLING_REQUEST_ID
@@ -1267,7 +1271,18 @@ def test_backend_owned_cancelled_task_can_close_session(billing_reports):
         class Backend:
             async def close(self):
                 task.cancel()
-                await asyncio.gather(task, return_exceptions=True)
+                if yield_before_join:
+                    await asyncio.sleep(0)
+                if join == "direct":
+                    await task
+                elif join == "gather":
+                    await asyncio.gather(task, return_exceptions=True)
+                elif join == "shield":
+                    await asyncio.shield(task)
+                elif join == "wait_for":
+                    await asyncio.wait_for(task, timeout=0.5)
+                else:
+                    await asyncio.wait([task])
 
         session._backend = Backend()
         await asyncio.wait_for(session.close(), timeout=1)
@@ -1393,7 +1408,6 @@ def test_session_task_initiating_close_continues_after_settlement(billing_report
         task = session.create_task(handler())
         await asyncio.wait_for(task, timeout=1)
         assert continued == [True]
-        assert session._close_initiator is None
 
     asyncio.run(scenario())
 
@@ -1437,5 +1451,65 @@ def test_cancelled_worker_does_not_abort_remaining_teardown(source, billing_repo
         assert cleanups == [True]
         assert billing_reports == [(BILLING_REQUEST_ID, 3.0)]
         assert session._backend is None
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("session_owned", [False, True])
+@pytest.mark.parametrize("inside_cancellation", [False, True])
+def test_concurrent_close_waiters_join_settlement(
+    session_owned, inside_cancellation, billing_reports
+):
+    async def scenario():
+        session = Session(
+            StartSessionRequest(sdp="offer"), request_id=BILLING_REQUEST_ID
+        )
+        session._activate_deferred_billing()
+        started = asyncio.Event()
+        release = asyncio.Event()
+        caller_entered = asyncio.Event()
+        caller_waiting = asyncio.Event()
+        finished = []
+
+        class Backend:
+            async def close(self):
+                started.set()
+                await release.wait()
+
+        session._backend = Backend()
+        session.add_billable_units(2)
+
+        async def caller():
+            caller_entered.set()
+            if inside_cancellation:
+                try:
+                    await asyncio.Future()
+                except asyncio.CancelledError:
+                    caller_waiting.set()
+                    await session.close()
+            else:
+                await started.wait()
+                caller_waiting.set()
+                await session.close()
+            assert billing_reports == [(BILLING_REQUEST_ID, 2.0)]
+            finished.append(True)
+
+        second = (
+            session.create_task(caller())
+            if session_owned
+            else asyncio.create_task(caller())
+        )
+        await caller_entered.wait()
+        first = asyncio.create_task(session.close())
+        await started.wait()
+        if inside_cancellation:
+            second.cancel()
+        await caller_waiting.wait()
+        await asyncio.sleep(0)
+        assert not second.done()
+        assert billing_reports == []
+        release.set()
+        await asyncio.wait_for(asyncio.gather(first, second), timeout=1)
+        assert finished == [True]
 
     asyncio.run(scenario())
