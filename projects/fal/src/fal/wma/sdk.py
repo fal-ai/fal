@@ -271,10 +271,6 @@ class Session:
         self._tasks: Set[asyncio.Task] = set()
         self._close_task: Union[asyncio.Task, None] = None
         self._close_waiters: Set[asyncio.Task] = set()
-        # Resolve this runtime primitive on the destination Python version.
-        from contextvars import ContextVar
-
-        self._closing_context = ContextVar("wma_session_close", default=False)
         self._inline_condition = threading.Condition()
         self._inline_active = 0
         self._closed = asyncio.Event()
@@ -622,13 +618,13 @@ class Session:
         current = asyncio.current_task()
         # Only a real dependency cycle can bypass settlement. Cancellation
         # history and task ownership alone say nothing about who awaits whom.
-        if self._closing_context.get() or _task_waits_on(self._close_task, current):
+        if _task_waits_on(self._close_task, current):
             return
         if current is not None:
             self._close_waiters.add(current)
         try:
             if self._close_task is None:
-                self._close_task = asyncio.create_task(self._run_close())
+                self._close_task = asyncio.create_task(self._close_once())
             # One session-owned close pass survives cancellation of any caller;
             # other callers join that same pass through final billing settlement.
             while not self._close_task.done():
@@ -642,13 +638,6 @@ class Session:
         finally:
             if current is not None:
                 self._close_waiters.discard(current)
-
-    async def _run_close(self) -> None:
-        token = self._closing_context.set(True)
-        try:
-            await self._close_once()
-        finally:
-            self._closing_context.reset(token)
 
     async def _close_once(self) -> None:
         if self._is_closed:

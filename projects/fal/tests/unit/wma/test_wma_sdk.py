@@ -1247,8 +1247,9 @@ def test_recursive_close_does_not_deadlock_or_release_concurrent_waiters_early(
 
 @pytest.mark.parametrize("join", ["direct", "gather", "shield", "wait_for", "wait"])
 @pytest.mark.parametrize("yield_before_join", [False, True])
+@pytest.mark.parametrize("phase", ["backend", "cleanup"])
 def test_backend_owned_cancelled_task_can_close_session(
-    join, yield_before_join, billing_reports
+    join, yield_before_join, phase, billing_reports
 ):
     async def scenario():
         session = Session(
@@ -1284,7 +1285,10 @@ def test_backend_owned_cancelled_task_can_close_session(
                 else:
                     await asyncio.wait([task])
 
-        session._backend = Backend()
+        if phase == "backend":
+            session._backend = Backend()
+        else:
+            session.defer(Backend().close)
         await asyncio.wait_for(session.close(), timeout=1)
         assert task.done()
         assert billing_reports == [(BILLING_REQUEST_ID, 2.0)]
@@ -1511,5 +1515,41 @@ def test_concurrent_close_waiters_join_settlement(
         release.set()
         await asyncio.wait_for(asyncio.gather(first, second), timeout=1)
         assert finished == [True]
+
+    asyncio.run(scenario())
+
+
+def test_independent_close_waiter_spawned_by_cleanup_waits_for_settlement(
+    billing_reports,
+):
+    async def scenario():
+        session = Session(
+            StartSessionRequest(sdp="offer"), request_id=BILLING_REQUEST_ID
+        )
+        session._activate_deferred_billing()
+        session.add_billable_units(1)
+        entered = asyncio.Event()
+        release = asyncio.Event()
+        waiters = []
+
+        async def waiter():
+            await session.close()
+            assert billing_reports == [(BILLING_REQUEST_ID, 1.0)]
+
+        def spawn_waiter():
+            waiters.append(asyncio.create_task(waiter()))
+
+        async def blocked_cleanup():
+            entered.set()
+            await release.wait()
+
+        session.defer(blocked_cleanup)
+        session.defer(spawn_waiter)
+        closing = asyncio.create_task(session.close())
+        await entered.wait()
+        await asyncio.sleep(0)
+        assert not waiters[0].done()
+        release.set()
+        await asyncio.wait_for(asyncio.gather(closing, *waiters), timeout=1)
 
     asyncio.run(scenario())
