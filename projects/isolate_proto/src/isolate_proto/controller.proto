@@ -369,6 +369,10 @@ message RegisterApplicationRequest {
         SerializedObject function = 3;
         // A Python entrypoint of the form "module:attr" resolved by the backend.
         string entrypoint = 21;
+        // An existing application, as "owner/app", whose current revision's
+        // callable is reused. The application must be public or shared, and the
+        // revision must be annotated with expose_as_public_template=true.
+        string from_application = 29;
     }
     // Optional setup function to pass as the first argument to the function.
     optional SerializedObject setup_func = 4;

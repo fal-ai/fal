@@ -354,3 +354,15 @@ def test_create_user_key_v2_policy_fields():
     )
     assert policy_request.HasField("policy") is True
     assert list(policy_request.policy.permissions) == ["serverless:apps:run"]
+
+
+def test_register_application_from_application_callable():
+    request = isolate_proto.RegisterApplicationRequest(
+        from_application="fal-ai/hello-world"
+    )
+    round_tripped = isolate_proto.RegisterApplicationRequest.FromString(
+        request.SerializeToString()
+    )
+    assert round_tripped.WhichOneof("callable") == "from_application"
+    assert round_tripped.from_application == "fal-ai/hello-world"
+    assert round_tripped.HasField("function") is False
