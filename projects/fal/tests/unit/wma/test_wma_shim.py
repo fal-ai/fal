@@ -333,3 +333,69 @@ def test_legacy_negotiation_filters_internal_ice_candidates(monkeypatch):
     assert all(
         ip not in offers[0] for ip in ("127.0.0.1", "10.0.0.1", "169.254.169.254")
     )
+
+
+@pytest.mark.parametrize("shutdown_during_connect", [False, True])
+def test_pending_session_does_not_expire_and_shutdown_releases_resources(
+    shutdown_during_connect,
+):
+    from fastapi import Response
+
+    async def scenario():
+        entered = asyncio.Event()
+        release = asyncio.Event()
+        disconnected = []
+        track = FakeTrack([])
+        closed_peers = []
+
+        class Peer:
+            async def close(self):
+                closed_peers.append(True)
+
+        class App(RealtimeApp):
+            async def on_connect(self, event_handler, session_params):
+                event_handler.tracks.append(track)
+                entered.set()
+                await release.wait()
+                return {"ready": True}
+
+            async def on_disconnect(self, session, reason):
+                disconnected.append(reason)
+
+        app = App(_allow_init=True)
+        await app.setup()
+        clock = [0.0]
+        app._wma_sessions = SessionStore(timeout_sec=30, clock=lambda: clock[0])
+        response = Response()
+        connecting = asyncio.create_task(
+            app.start_session(StartSessionRequest(), response, None)
+        )
+        await entered.wait()
+        session = next(iter(app._wma_sessions._sessions.values()))
+        session.state["_pc"] = Peer()
+        clock[0] = 100.0
+        assert app._wma_sessions.pop_expired() == []
+        if shutdown_during_connect:
+            await asyncio.wait_for(app.teardown(), timeout=1)
+            assert connecting.cancelled()
+            assert response.headers["x-fal-billable-units"] == "0"
+            assert disconnected == ["connect-failed"]
+        else:
+            release.set()
+            result = await connecting
+            assert app._wma_sessions.get(result.session_id) is session
+            assert session.last_seen_at == 100.0
+            assert not session.pending
+            assert response.headers["x-fal-billable-units"] == "1"
+            await asyncio.wait_for(app.teardown(), timeout=1)
+            assert disconnected == ["shutdown"]
+        await app.teardown()
+        assert app._wma_reaper.done()
+        assert len(app._wma_sessions) == 0
+        assert track.stopped
+        assert closed_peers == [True]
+        with pytest.raises(Exception) as exc:
+            await app.start_session(StartSessionRequest(), Response(), None)
+        assert exc.value.status_code == 503
+
+    run(scenario())

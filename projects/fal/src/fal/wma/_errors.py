@@ -75,7 +75,12 @@ def json_safe(value: Any) -> Any:
     if isinstance(value, bytes):
         return f"<binary {len(value)} bytes>"
     if isinstance(value, dict):
-        return {json_safe(k): json_safe(v) for k, v in value.items()}
+        return {
+            json_safe(k)
+            if k is None or isinstance(k, (str, bool, int, float))
+            else f"<{type(k).__name__}>": json_safe(v)
+            for k, v in value.items()
+        }
     if isinstance(value, (list, tuple, set)):
         return [json_safe(v) for v in value]
     return f"<{type(value).__name__}>"

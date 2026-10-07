@@ -39,7 +39,7 @@ import time
 import uuid
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Any, Callable, ClassVar, Dict, Iterator, List, Literal, Union
+from typing import Any, Callable, ClassVar, Dict, Iterator, List, Literal, Set, Union
 
 import fastapi
 from fastapi import Response
@@ -274,6 +274,7 @@ class Session:
     # (entitlements, limits, feature gates) belong in this dict.
     state: Dict[str, Any] = field(default_factory=dict)
     closed: bool = False
+    pending: bool = False
 
 
 class SessionStore:
@@ -299,7 +300,7 @@ class SessionStore:
     def __len__(self) -> int:
         return len(self._sessions)
 
-    def create(self, params: SessionParams) -> Session:
+    def create(self, params: SessionParams, *, pending: bool = False) -> Session:
         now = self._clock()
         session = Session(
             session_id=f"sess_{uuid.uuid4().hex}",
@@ -307,12 +308,16 @@ class SessionStore:
             handler=SessionEventHandler(),
             created_at=now,
             last_seen_at=now,
+            pending=pending,
         )
         self._sessions[session.session_id] = session
         return session
 
     def _is_expired(self, session: Session) -> bool:
-        return self._clock() - session.last_seen_at > self._timeout_sec
+        return (
+            not session.pending
+            and self._clock() - session.last_seen_at > self._timeout_sec
+        )
 
     def get(self, session_id: str) -> Union[Session, None]:
         session = self._sessions.get(session_id)
@@ -328,6 +333,15 @@ class SessionStore:
 
     def pop(self, session_id: str) -> Union[Session, None]:
         return self._sessions.pop(session_id, None)
+
+    def activate(self, session: Session) -> None:
+        session.last_seen_at = self._clock()
+        session.pending = False
+
+    def pop_all(self) -> List[Session]:
+        sessions = list(self._sessions.values())
+        self._sessions.clear()
+        return sessions
 
     def pop_expired(self) -> List[Session]:
         expired = [s for s in self._sessions.values() if self._is_expired(s)]
@@ -409,7 +423,7 @@ class CloseSessionResponse(BaseModel):
 
 
 class RealtimeApp(fal.App):
-    """``fal.wma.RealtimeApp`` look-alike built on a naked ``fal.App``.
+    """REST session lifecycle helpers built on ``fal.App``.
 
     Subclasses implement ``on_connect`` (and optionally ``on_disconnect``)
     and inherit the ``/session`` lifecycle endpoints. Regular
@@ -425,7 +439,21 @@ class RealtimeApp(fal.App):
 
     async def setup(self) -> None:
         self._wma_sessions = SessionStore(timeout_sec=self.session_timeout_sec)
+        self._wma_shutdown = asyncio.Event()
+        self._wma_connecting: Set[asyncio.Task] = set()
         self._wma_reaper = asyncio.create_task(self._reap_expired_sessions())
+
+    async def teardown(self) -> None:
+        self._wma_shutdown.set()
+        # Let any expiry batch finish instead of cancelling resource cleanup.
+        await self._wma_reaper
+        connecting = list(self._wma_connecting)
+        for task in connecting:
+            task.cancel()
+        if connecting:
+            await asyncio.gather(*connecting, return_exceptions=True)
+        for session in self._wma_sessions.pop_all():
+            await self._finalize_session(session, reason="shutdown")
 
     async def on_connect(
         self,
@@ -513,7 +541,12 @@ class RealtimeApp(fal.App):
         # Zero by default so a failed session start (bad offer, on_connect
         # error) is never billed; overridden on the success path below.
         response.headers["x-fal-billable-units"] = "0"
-        session = self._wma_sessions.create(dict(request.session_params))
+        if self._wma_shutdown.is_set():
+            raise fastapi.HTTPException(status_code=503, detail="App is shutting down")
+        task = asyncio.current_task()
+        assert task is not None
+        self._wma_connecting.add(task)
+        session = self._wma_sessions.create(dict(request.session_params), pending=True)
         try:
             connection = (
                 await self._invoke_on_connect(
@@ -524,10 +557,17 @@ class RealtimeApp(fal.App):
             answer = None
             if request.offer is not None:
                 answer = await self._negotiate_webrtc(session, request.offer)
+            if self._wma_shutdown.is_set():
+                raise fastapi.HTTPException(
+                    status_code=503, detail="App is shutting down"
+                )
         except BaseException:
             self._wma_sessions.pop(session.session_id)
             await self._finalize_session(session, reason="connect-failed")
             raise
+        finally:
+            self._wma_connecting.discard(task)
+        self._wma_sessions.activate(session)
         response.headers["x-fal-billable-units"] = str(self.session_billable_units)
         return StartSessionResponse(
             session_id=session.session_id,
@@ -563,9 +603,11 @@ class RealtimeApp(fal.App):
 
     async def _reap_expired_sessions(self) -> None:
         interval = max(1.0, min(self.session_timeout_sec / 2, 5.0))
-        while True:
-            await asyncio.sleep(interval)
-            await self._finalize_expired_sessions(self._wma_sessions.pop_expired())
+        while not self._wma_shutdown.is_set():
+            try:
+                await asyncio.wait_for(self._wma_shutdown.wait(), timeout=interval)
+            except asyncio.TimeoutError:
+                await self._finalize_expired_sessions(self._wma_sessions.pop_expired())
 
     async def _finalize_expired_sessions(self, sessions: List[Session]) -> None:
         """Finalize one expiry batch without one session killing the reaper."""

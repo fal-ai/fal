@@ -204,6 +204,48 @@ def _task_waits_on(waiter: Any, target: Any) -> bool:
                         getattr(asyncio.tasks, "_wait", None), "__code__", None
                     ):
                         pending.extend(frame.f_locals.get("fs", ()))
+                    elif frame.f_globals.get(
+                        "__name__"
+                    ) == "asyncio.taskgroups" and getattr(code, "co_name", None) in (
+                        "__aexit__",
+                        "_aexit",
+                    ):
+                        pending.extend(
+                            getattr(frame.f_locals.get("self"), "_tasks", ())
+                        )
+                    elif (
+                        frame.f_globals.get("__name__") == "asyncio.tasks"
+                        and getattr(code, "co_name", None) == "_wait_for_one"
+                    ):
+                        iterator = frame.f_locals.get("self")
+                        if iterator is not None:
+                            pending.extend(getattr(iterator, "_todo", ()))
+                        else:
+                            # Python 3.8-3.12 retain the pending set in the
+                            # completion callback, linked by the same queue.
+                            queue = frame.f_locals.get("done")
+                            for task in asyncio.all_tasks():
+                                for callback, _ in (
+                                    getattr(task, "_callbacks", None) or ()
+                                ):
+                                    if (
+                                        getattr(callback, "__module__", None)
+                                        == "asyncio.tasks"
+                                        and getattr(callback, "__qualname__", None)
+                                        == "as_completed.<locals>._on_completion"
+                                    ):
+                                        cells = dict(
+                                            zip(
+                                                callback.__code__.co_freevars,
+                                                (
+                                                    cell.cell_contents
+                                                    for cell in callback.__closure__
+                                                    or ()
+                                                ),
+                                            )
+                                        )
+                                        if cells.get("done") is queue:
+                                            pending.extend(cells.get("todo", ()))
                 coro = getattr(coro, "cr_await", None)
         # A shield Future has no _children link; its own completion callback
         # retains the inner Future. Restrict inspection to asyncio's callback.
@@ -579,7 +621,12 @@ class Session:
         return sender(message)
 
     def defer(self, cleanup: Callable[[], Any]) -> None:
-        self._cleanup.append(cleanup)
+        with self._inline_condition:
+            if self._is_closed:
+                raise RuntimeError(
+                    "Cannot register cleanup after session closing starts"
+                )
+            self._cleanup.append(cleanup)
 
     def set_response_header(self, name: str, value: str) -> None:
         self.response_headers[name] = value

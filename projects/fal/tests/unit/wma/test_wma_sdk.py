@@ -1245,7 +1245,10 @@ def test_recursive_close_does_not_deadlock_or_release_concurrent_waiters_early(
     asyncio.run(scenario())
 
 
-@pytest.mark.parametrize("join", ["direct", "gather", "shield", "wait_for", "wait"])
+@pytest.mark.parametrize(
+    "join",
+    ["direct", "gather", "shield", "wait_for", "wait", "as_completed", "task_group"],
+)
 @pytest.mark.parametrize("yield_before_join", [False, True])
 @pytest.mark.parametrize("phase", ["backend", "cleanup"])
 def test_backend_owned_cancelled_task_can_close_session(
@@ -1266,7 +1269,14 @@ def test_backend_owned_cancelled_task_can_close_session(
                 await session.close()
                 session.add_billable_units(2)
 
-        task = asyncio.create_task(worker())
+        if join == "task_group":
+            if not hasattr(asyncio, "TaskGroup"):
+                pytest.skip("TaskGroup requires Python 3.11")
+            group = asyncio.TaskGroup()
+            await group.__aenter__()
+            task = group.create_task(worker())
+        else:
+            task = asyncio.create_task(worker())
         await started.wait()
 
         class Backend:
@@ -1282,6 +1292,11 @@ def test_backend_owned_cancelled_task_can_close_session(
                     await asyncio.shield(task)
                 elif join == "wait_for":
                     await asyncio.wait_for(task, timeout=0.5)
+                elif join == "as_completed":
+                    for completed in asyncio.as_completed([task]):
+                        await completed
+                elif join == "task_group":
+                    await group.__aexit__(None, None, None)
                 else:
                     await asyncio.wait([task])
 
@@ -1553,3 +1568,49 @@ def test_independent_close_waiter_spawned_by_cleanup_waits_for_settlement(
         await asyncio.wait_for(asyncio.gather(closing, *waiters), timeout=1)
 
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("phase", ["backend", "cleanup", "finished"])
+def test_defer_rejects_registration_after_close_starts(phase):
+    async def scenario():
+        session = Session(StartSessionRequest(sdp="offer"))
+        calls = []
+
+        async def reject():
+            with pytest.raises(RuntimeError, match="closing starts"):
+                session.defer(lambda: calls.append("late"))
+
+        if phase == "backend":
+
+            class Backend:
+                close = staticmethod(reject)
+
+            session._backend = Backend()
+        elif phase == "cleanup":
+            session.defer(reject)
+        session.defer(lambda: calls.append("registered"))
+        await session.close()
+        if phase == "finished":
+            await reject()
+        assert calls == ["registered"]
+
+    asyncio.run(scenario())
+
+
+def test_error_echo_accepts_non_json_mapping_keys():
+    from starlette.responses import JSONResponse
+
+    error = InputValueError.from_generic_error(
+        "bad input",
+        input={
+            ("nested", 1): {frozenset({2}): b"bytes"},
+            float("nan"): "nan",
+            "normal": 3,
+        },
+    )
+    response = JSONResponse(
+        status_code=error.status_code, content={"detail": error.detail}
+    )
+    assert response.status_code == 422
+    assert b'"normal":3' in response.body
+    assert b"<tuple>" in response.body

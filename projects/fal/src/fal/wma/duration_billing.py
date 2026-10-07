@@ -56,6 +56,7 @@ Usage::
 
 import asyncio
 import json
+import math
 import time
 from contextvars import ContextVar
 from typing import Any, Callable, Union
@@ -154,6 +155,19 @@ def make_duration_billed_handler(  # type: ignore[no-untyped-def]
     unit tests can drive the full lifecycle against a fake WebSocket and a
     fake inner handler.
     """
+    for name, value, allow_zero in (
+        ("update_interval", update_interval, False),
+        ("grace_period", grace_period, True),
+    ):
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(value)
+            or value < 0
+            or (value == 0 and not allow_zero)
+        ):
+            bound = "non-negative" if allow_zero else "positive"
+            raise ValueError(f"{name} must be finite and {bound}")
     _log = log or (lambda msg: print(msg, flush=True))
 
     async def _handler(self, websocket):  # type: ignore[no-untyped-def]

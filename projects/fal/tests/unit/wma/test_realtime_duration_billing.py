@@ -575,3 +575,19 @@ async def test_text_event_flushes_billing_before_abrupt_disconnect() -> None:
     await asyncio.wait_for(_make(handler, clock)(None, ws), timeout=5)
     assert [t for _, t in _timings(ws)] == pytest.approx([0.0, 7.0])
     assert ws.timeline[-1] == ("text", payload)
+
+
+@pytest.mark.parametrize(
+    "name,values",
+    [
+        ("update_interval", [0, -1, float("nan"), float("inf"), -float("inf"), True]),
+        ("grace_period", [-1, float("nan"), float("inf"), -float("inf"), True]),
+    ],
+)
+def test_invalid_timing_configuration_rejected_before_wrapping(name, values):
+    async def inner(self, websocket):
+        pass
+
+    for value in values:
+        with pytest.raises(ValueError, match=name):
+            make_duration_billed_handler(inner, label="test", **{name: value})
