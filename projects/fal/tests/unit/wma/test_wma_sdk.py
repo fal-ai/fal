@@ -6,7 +6,7 @@ import threading
 from types import SimpleNamespace
 
 import pytest
-from fastapi import Request
+from fastapi import HTTPException, Request
 from pydantic import ValidationError
 
 import fal.wma.sdk as wma_sdk
@@ -45,6 +45,7 @@ class FakeChannel(FakeEmitter):
         self.readyState = ready_state
         self.label = label
         self.sent: list[str] = []
+        self.bufferedAmount = 0
 
     def send(self, data) -> None:
         self.sent.append(data)
@@ -68,6 +69,9 @@ class FakePC(FakeEmitter):
     def createDataChannel(self, label):
         self.channel = FakeChannel(label=label)
         return self.channel
+
+    def getSenders(self):
+        return []
 
     async def close(self):
         self.closed = True
@@ -893,7 +897,7 @@ def test_app_setup_failure_never_defers_billing(billing_reports):
 def test_offer_without_media_for_server_tracks_is_a_client_offer_error(monkeypatch):
     """An offer that omits a track the server streams is a 422, not a 500.
 
-    Director's ``on_connect`` adds audio and video tracks before negotiation; a
+    An app's ``on_connect`` adds audio and video tracks before negotiation; a
     client offer with only a data channel leaves those transceivers without an
     ``m=`` section and aiortc's ``setLocalDescription`` raises ``None is not in
     list``. ``negotiate_answer`` must map that to ``ClientOfferError`` (422 at ``sdp``).
@@ -1667,5 +1671,184 @@ def test_disconnect_grace_rejects_invalid_configuration(grace):
         with pytest.raises(ValueError, match="finite and non-negative"):
             AiortcPeer(session, lambda peer: None, disconnected_grace_seconds=grace)
         await session.close()
+
+    asyncio.run(scenario())
+
+
+def test_app_accepts_backend_bound_early_for_cleanup():
+    class EarlyBindingApp(NativeApp):
+        async def create_backend(self, session):
+            backend = await super().create_backend(session)
+            session.bind_backend(backend)
+            return backend
+
+    async def scenario():
+        app = EarlyBindingApp(_allow_init=True)
+        response = await app.start_session(StartSessionRequest(sdp="offer"))
+        await response.body_iterator.__anext__()
+        with pytest.raises(RuntimeError, match="already has"):
+            EarlyBindingApp.session.bind_backend(FakeBackend())
+        await response.body_iterator.aclose()
+        assert EarlyBindingApp.backend.close_calls == 1
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize(
+    "headers,expected",
+    [(None, "0"), ({"X-Fal-Billable-Units": "2", "retry-after": "10"}, "2")],
+)
+def test_http_setup_error_defaults_to_zero_billing(headers, expected, billing_reports):
+    class RejectingApp(NativeApp):
+        async def create_backend(self, session):
+            backend = await super().create_backend(session)
+            session.bind_backend(backend)
+            session.set_response_header("x-extra", "retained")
+            raise HTTPException(503, "Unavailable", headers=headers)
+
+    async def scenario():
+        with pytest.raises(HTTPException) as caught:
+            await RejectingApp(_allow_init=True).start_session(
+                StartSessionRequest(sdp="offer"), x_fal_request_id=BILLING_REQUEST_ID
+            )
+        items = list(caught.value.headers.items())
+        assert [
+            (k.lower(), v) for k, v in items if k.lower() == "x-fal-billable-units"
+        ] == [("x-fal-billable-units", expected)]
+        assert caught.value.headers["x-extra"] == "retained"
+        if headers:
+            assert caught.value.headers["retry-after"] == "10"
+        assert RejectingApp.backend.close_calls == 1
+        assert billing_reports == []
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("value", [object(), float("nan"), float("inf"), -float("inf")])
+@pytest.mark.parametrize("source", ["session", "answer"])
+def test_bad_answer_metadata_fails_before_deferred_billing(
+    value, source, billing_reports
+):
+    class BadMetadataApp(NativeApp):
+        minimum_billable_units = 5
+
+        async def create_backend(self, session):
+            backend = await super().create_backend(session)
+            if source == "session":
+                session.answer_metadata["invalid"] = value
+            else:
+
+                async def negotiate(_offer):
+                    return SessionAnswer(sdp="answer", metadata={"invalid": value})
+
+                backend.negotiate = negotiate
+            return backend
+
+    async def scenario():
+        with pytest.raises(InternalServerError) as caught:
+            await BadMetadataApp(_allow_init=True).start_session(
+                StartSessionRequest(sdp="offer"), x_fal_request_id=BILLING_REQUEST_ID
+            )
+        assert caught.value.headers["x-fal-billable-units"] == "0"
+        assert "x-fal-billable-units-webhook" not in caught.value.headers
+        assert BadMetadataApp.backend.close_calls == 1
+        assert billing_reports == []
+
+    asyncio.run(scenario())
+
+
+def test_aiortc_send_refuses_backlog_and_resumes_after_drain(fake_aiortc):
+    async def scenario():
+        session = Session(StartSessionRequest(sdp="offer"))
+        peer = AiortcPeer(session, lambda _pc: None, create_default_channel=True)
+        session.bind_backend(peer)
+        await peer.negotiate(StartSessionRequest(sdp="v=0 offer"))
+        channel = FakePC.instances[-1].channel
+        channel.open()
+        channel.bufferedAmount = 1024 * 1024
+        assert not session.send({"type": "busy"})
+        assert channel.sent == []
+        channel.bufferedAmount = 0
+        assert not session.send({"type": "large", "data": "x" * (1024 * 1024)})
+        assert channel.sent == []
+        assert session.send({"type": "ready"})
+        assert json.loads(channel.sent[0]) == {"type": "ready"}
+        await session.close()
+
+    asyncio.run(scenario())
+
+
+def test_aiortc_close_stops_source_tracks_once_even_when_one_fails(fake_aiortc):
+    async def scenario():
+        session = Session(StartSessionRequest(sdp="offer"))
+        calls = []
+
+        def stop_broken():
+            calls.append("broken")
+            raise RuntimeError("source teardown failed")
+
+        broken = SimpleNamespace(stop=stop_broken)
+        normal = SimpleNamespace(stop=lambda: calls.append("normal"))
+
+        def configure(pc):
+            pc.getSenders = lambda: [
+                SimpleNamespace(track=t) for t in (broken, normal, normal, None)
+            ]
+
+        peer = AiortcPeer(session, configure)
+        session.bind_backend(peer)
+        await peer.negotiate(StartSessionRequest(sdp="v=0 offer"))
+        pc = FakePC.instances[-1]
+        await session.close()
+        await peer.close()
+        assert calls == ["broken", "normal"]
+        assert pc.closed
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.allow_real_sleep
+def test_aiortc_close_ends_real_outbound_track():
+    aiortc = pytest.importorskip("aiortc")
+
+    async def scenario():
+        session = Session(StartSessionRequest(sdp="offer"))
+        peer = AiortcPeer(session, lambda _pc: None)
+        pc = aiortc.RTCPeerConnection(aiortc.RTCConfiguration(iceServers=[]))
+        track = aiortc.VideoStreamTrack()
+        pc.addTrack(track)
+        peer._pc = pc
+        try:
+            await peer.close()
+            assert track.readyState == "ended"
+        finally:
+            track.stop()
+            await pc.close()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("stage", ["create", "negotiate"])
+def test_setup_cancellation_propagates_after_cleanup(stage, billing_reports):
+    class CancelledApp(NativeApp):
+        async def create_backend(self, session):
+            backend = await super().create_backend(session)
+            session.bind_backend(backend)
+            if stage == "create":
+                raise asyncio.CancelledError()
+
+            async def negotiate(_offer):
+                raise asyncio.CancelledError()
+
+            backend.negotiate = negotiate
+            return backend
+
+    async def scenario():
+        with pytest.raises(asyncio.CancelledError):
+            await CancelledApp(_allow_init=True).start_session(
+                StartSessionRequest(sdp="offer"), x_fal_request_id=BILLING_REQUEST_ID
+            )
+        assert CancelledApp.backend.close_calls == 1
+        assert billing_reports == []
 
     asyncio.run(scenario())

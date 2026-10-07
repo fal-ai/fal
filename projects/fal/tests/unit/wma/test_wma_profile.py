@@ -19,7 +19,7 @@ from tests.unit.wma.test_wma_contract import (
 )
 
 
-# Intentionally unlike Director: nested/escaped pointers, initial value 7,
+# Exercise nested/escaped pointers, initial value 7,
 # and a wire type shared across directions. No app IDs appear in the helpers.
 class Ticket(BaseModel):
     serial: int = Field(ge=7, alias="serial/id~")

@@ -82,6 +82,7 @@ dependencies = [
 wma = [
     "aiortc>=1.9,<2",
     "pydantic>=2,<3",
+    "numpy",
 ]
 docs = [
     "sphinx<8.2.0",

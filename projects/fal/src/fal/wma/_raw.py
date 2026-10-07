@@ -60,7 +60,7 @@ def sse_event(payload: Mapping[str, Any], *, event: Union[str, None] = None) -> 
     if event is not None and ("\n" in event or "\r" in event):
         raise ValueError("SSE event names cannot contain newlines")
     prefix = f"event: {event}\n" if event is not None else ""
-    return f"{prefix}data: {json.dumps(dict(payload))}\n\n"
+    return f"{prefix}data: {json.dumps(dict(payload), allow_nan=False)}\n\n"
 
 
 # ---------------------------------------------------------------------------

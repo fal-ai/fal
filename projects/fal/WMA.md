@@ -28,6 +28,15 @@ Subclass `fal.wma.App` and implement `create_backend(session)`. Return an
 `AiortcPeer` for runner-hosted WebRTC, or a `PeerBackend` implementing
 `negotiate`, `wait_closed` and `close` for a custom transport. Bind any backend
 resources to the session before work that can fail so setup failures clean up.
+Calling `session.bind_backend(backend)` before returning that same backend is
+safe. `AiortcPeer` stops outbound source tracks attached to its peer on close;
+attach a per-session relay subscription when sharing a source across sessions.
+
+On the session event loop, `session.send(message)` returns `False` when the
+control channel is unavailable or accepting the message would exceed its 1 MiB
+outbound buffer limit. Handle that result by dropping stale updates or retrying
+later. Calls from worker threads schedule delivery on the session loop; their
+return value acknowledges scheduling, not transport acceptance.
 
 The WMA bridge forwards one complete offer to `POST /start-session`. The response
 is SSE: an answer, optional bounded connection telemetry, then keepalives. That

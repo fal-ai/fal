@@ -173,14 +173,18 @@ def sanitize_metered_domain(domain: str) -> str:
 
     host = raw
     if "://" in host:
-        parsed = urllib.parse.urlsplit(host)
+        try:
+            parsed = urllib.parse.urlsplit(host)
+            port = parsed.port
+        except ValueError:
+            raise MeteredConfigError("METERED_DOMAIN is not a valid URL") from None
         if parsed.scheme != "https":
             raise MeteredConfigError("METERED_DOMAIN must use https")
         if parsed.username or parsed.password:
             raise MeteredConfigError("METERED_DOMAIN must not contain credentials")
         if parsed.path not in ("", "/") or parsed.query or parsed.fragment:
             raise MeteredConfigError("METERED_DOMAIN must not contain a path or query")
-        if parsed.port is not None and parsed.port != 443:
+        if port is not None and port != 443:
             raise MeteredConfigError("METERED_DOMAIN must not specify a non-443 port")
         host = parsed.hostname or ""
     else:

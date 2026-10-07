@@ -53,6 +53,7 @@ from fal.wma.telemetry import (
 SSE_KEEPALIVE_INTERVAL = 15
 STREAM_START_TIMEOUT_SECONDS = 5
 DATA_CHANNEL_LABEL = "control"
+MAX_CONTROL_BUFFER_BYTES = 1024 * 1024
 START_SESSION_PATH = "/start-session"
 
 FAL_BILLING_HEADER = "x-fal-billable-units"
@@ -158,11 +159,6 @@ class SessionParams(Dict[str, Any]):
         super().update(other)
         self._sync()
         return self
-
-
-def _send_if_open(channel: Any, payload: str) -> None:
-    if channel.readyState == "open":
-        channel.send(payload)
 
 
 def _task_waits_on(waiter: Any, target: Any) -> bool:
@@ -478,6 +474,8 @@ class Session:
             )
 
     def bind_backend(self, backend: PeerBackend) -> None:
+        if self._backend is backend:
+            return
         if self._backend is not None:
             raise RuntimeError("WMA session already has a peer backend")
         self._backend = backend
@@ -890,6 +888,20 @@ class App(fal.App):
             backend = await self.create_backend(session)
             session.bind_backend(backend)
             answer = await backend.negotiate(request)
+            # Validate the complete answer before returning HTTP 200 or
+            # activating deferred billing. A broken metadata value must fail
+            # setup, rather than fail after the streaming headers are sent.
+            payload = {
+                **session.answer_metadata,
+                **answer.metadata,
+                "sdp": answer.sdp,
+                "type": answer.type,
+                "session_id": request.session_id,
+            }
+            answer_event = sse_event(payload)
+            reported_answer_event = sse_event(
+                {**payload, "connection_report_version": CONNECTION_REPORT_VERSION}
+            )
         except ClientOfferError as exc:
             await session.close()
             # ClientOfferError is raised only when applying the request's SDP
@@ -905,10 +917,17 @@ class App(fal.App):
                 # Preserve the platform signal to recycle a dead GPU runner.
                 raise
             if isinstance(exc, HTTPException):
-                # HTTP errors already carry their own billing/retry
-                # headers; merge in session headers (e.g. the app's
-                # ``x-fal-billable-units: 0``) they did not set themselves.
-                exc.headers = {**session.response_headers, **(exc.headers or {})}
+                # Ordinary HTTPException has no billing header. Default failed
+                # setup to zero while preserving explicit app billing/retry
+                # headers. Merge case-insensitively to avoid conflicting units.
+                headers = {FAL_BILLING_HEADER: "0"}
+                for source in (session.response_headers, exc.headers or {}):
+                    for name, value in source.items():
+                        for existing in list(headers):
+                            if existing.lower() == name.lower():
+                                del headers[existing]
+                        headers[name] = value
+                exc.headers = headers
                 session.billing_debug_print(
                     "session setup failed: billing rides the error response",
                     status_code=exc.status_code,
@@ -972,16 +991,7 @@ class App(fal.App):
                         exc_info=True,
                     )
             try:
-                payload = {
-                    **session.answer_metadata,
-                    **answer.metadata,
-                    "sdp": answer.sdp,
-                    "type": answer.type,
-                    "session_id": request.session_id,
-                }
-                if report_task is not None:
-                    payload["connection_report_version"] = report_version
-                yield sse_event(payload)
+                yield reported_answer_event if report_task is not None else answer_event
 
                 while not backend_closed.done():
                     waiters: Set[asyncio.Future] = {backend_closed}
@@ -1258,7 +1268,13 @@ class AiortcPeer:
         channel = self._channel
         if channel is None or channel.readyState != "open":
             return False
-        _send_if_open(channel, json.dumps(message))
+        payload = json.dumps(message)
+        if (
+            channel.bufferedAmount + len(payload.encode("utf-8"))
+            > MAX_CONTROL_BUFFER_BYTES
+        ):
+            return False
+        channel.send(payload)
         return True
 
     async def wait_closed(self) -> None:
@@ -1282,6 +1298,19 @@ class AiortcPeer:
         self._channel = None
         self._closed.set()
         if pc is not None:
+            # aiortc stops RTP senders but does not stop their source tracks.
+            # Outbound sources attached to this peer belong to its session.
+            stopped: Set[int] = set()
+            for sender in pc.getSenders():
+                track = sender.track
+                if track is not None and id(track) not in stopped:
+                    stopped.add(id(track))
+                    try:
+                        track.stop()
+                    except Exception:
+                        logger.warning(
+                            "WMA source track teardown failed", exc_info=True
+                        )
             await close_peer_connection(pc)
 
 

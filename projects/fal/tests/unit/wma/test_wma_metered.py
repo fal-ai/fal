@@ -1221,3 +1221,29 @@ class TestIceCandidateTypeCounts:
             i.ice_candidate_type_counts("v=0\r\nm=video 9 UDP/TLS/RTP/SAVPF 96\r\n")
             == {}
         )
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://app.metered.live:abc",
+        "https://app.metered.live:65536",
+        "https://[invalid.metered.live",
+    ],
+)
+def test_malformed_metered_url_is_redacted_and_falls_back(url, caplog):
+    with pytest.raises(m.MeteredConfigError) as caught:
+        m.sanitize_metered_domain(url)
+    assert url not in str(caught.value)
+
+    def forbidden_fetch(*args):
+        pytest.fail("invalid configuration must never make a credential request")
+
+    config = i.RunnerIceConfig.from_env(
+        {"METERED_DOMAIN": url, "METERED_SECRET_KEY": "test-secret-must-not-leak"},
+        fetch_fn=forbidden_fetch,
+    )
+    assert config.status == i.ICE_STATUS_MISCONFIGURED
+    assert config.provider is None
+    assert "test-secret-must-not-leak" not in caplog.text
+    assert url not in caplog.text
