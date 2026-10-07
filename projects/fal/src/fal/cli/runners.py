@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 
 import grpc
 import httpx
+import isolate_proto
 from httpx_sse import connect_sse
 from rich.console import Console
 from structlog.typing import EventDict
@@ -133,7 +134,8 @@ def _get_tty_size(fd: int):
 
 def _shell(args):
     """Open an interactive shell on a runner."""
-    return _shell_session(args, command=None, interactive=True)
+    # Always a PTY: the login shell expects one even when local stdin is piped.
+    return _shell_session(args, command=None, interactive=True, remote_tty=True)
 
 
 def _exec(args):
@@ -147,12 +149,27 @@ def _exec(args):
         args.console.print("[red]Error:[/] No command specified.")
         return 1
 
-    return _shell_session(args, command=command, interactive=args.interactive)
+    # A PTY mangles bytes (echo, CR/NL translation, signal characters), so only
+    # ask for one when a real terminal is attached.
+    remote_tty = args.interactive and sys.stdin.isatty()
+    return _shell_session(
+        args, command=command, interactive=args.interactive, remote_tty=remote_tty
+    )
 
 
-def _shell_session(args, command, interactive):
-    """Stream a shell session on a runner; command=None opens a login shell."""
-    import isolate_proto
+def _shell_session(args, command, interactive, *, remote_tty, stdout=None, stderr=None):
+    """Stream a shell session on a runner; command=None opens a login shell.
+
+    `remote_tty` controls whether the remote command runs under a pseudo-terminal.
+    Without one, remote stdin is closed once local input ends so pipe-reading
+    commands see EOF. Remote output goes to `stdout` and `stderr` (default: this
+    process's corresponding streams). Servers predating stream identification
+    produce output with no stream set, which is treated as stdout.
+    """
+    if stdout is None:
+        stdout = sys.stdout.buffer
+    if stderr is None:
+        stderr = sys.stderr.buffer
 
     client = SyncServerlessClient(host=args.host, team=args.team)
     stub = client._create_host()._connection.stub
@@ -204,9 +221,13 @@ def _shell_session(args, command, interactive):
     def stream_inputs():
         """Generate input stream for gRPC."""
         # Send initial message with runner_id
-        yield isolate_proto.ShellRunnerInput(runner_id=runner_id, command=command)
+        yield isolate_proto.ShellRunnerInput(
+            runner_id=runner_id, command=command, tty=remote_tty
+        )
 
         if not interactive:
+            if not remote_tty:
+                yield isolate_proto.ShellRunnerInput(close=True)
             return
 
         # Send terminal size
@@ -233,6 +254,8 @@ def _shell_session(args, command, interactive):
                 msg.tty_size.width = w
                 yield msg
             elif msg_type == "eof":
+                if not remote_tty:
+                    yield isolate_proto.ShellRunnerInput(close=True)
                 return
 
     exit_code = 1
@@ -247,8 +270,13 @@ def _shell_session(args, command, interactive):
                 exit_code = output.exit_code
                 break
             if output.data:
-                sys.stdout.buffer.write(output.data)
-                sys.stdout.buffer.flush()
+                stream = (
+                    stderr
+                    if output.HasField("stream") and output.stream == 2
+                    else stdout
+                )
+                stream.write(output.data)
+                stream.flush()
             if output.close:
                 break
         exit_code = exit_code or 0
@@ -854,7 +882,10 @@ def _add_exec_parser(subparsers, parents):
         "-it",
         "--interactive",
         action="store_true",
-        help="Allocate a TTY and attach stdin (interactive mode).",
+        help=(
+            "Attach stdin. A TTY is allocated only when stdin is a terminal; "
+            "with piped stdin the command gets a raw byte stream."
+        ),
     )
     # PARSER keeps fal's own flags parseable between the runner id and the
     # command; REMAINDER would swallow them into the command.
