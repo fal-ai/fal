@@ -23,7 +23,7 @@ from urllib.parse import urlparse
 import httpx
 import pytest
 
-from fal.toolkit.file import File
+from fal.toolkit.file import File, _local_uploader
 from fal.toolkit.file._local_uploader import upload_stream
 from fal.toolkit.file.providers import fal as remote
 
@@ -55,7 +55,13 @@ def uploader(monkeypatch):
     release = threading.Event()
     receiving = threading.Event()
     done = threading.Event()
-    state = {"parts": {}, "multipart": False, "headers": None, "reservations": 0}
+    state = {
+        "parts": {},
+        "multipart": False,
+        "headers": None,
+        "reservations": 0,
+        "reject": None,
+    }
 
     class Handler(BaseHTTPRequestHandler):
         def body(self):
@@ -103,6 +109,11 @@ def uploader(monkeypatch):
             state["parts"][number] = body
             receiving.set()
             if not release.wait(20):
+                return
+            if state["reject"]:
+                self.send_response(state["reject"])
+                self.send_header("Content-Length", "0")
+                self.end_headers()
                 return
             if not state["multipart"]:
                 done.set()
@@ -223,7 +234,40 @@ def test_generated_stream_is_accepted_after_finish(uploader):
         "generated.txt",
         iter([b"hello", b" world"]),
         {"Authorization": "Key local:test", "Content-Type": "text/plain"},
+        False,
     )
     assert url.endswith("/file/1")
     assert uploader.done.wait(10)
     assert uploader.state["parts"] == {1: b"hello world"}
+
+
+def test_wait_holds_until_cdn_completion(uploader, monkeypatch):
+    # Short status waits make the client see pending and wait again.
+    monkeypatch.setattr(_local_uploader, "_WAIT_SECONDS", 1)
+    result = {}
+
+    def save():
+        result["file"] = File.from_bytes(
+            b"hello", save_kwargs={"wait_for_completion": True}
+        )
+
+    saving = threading.Thread(target=save)
+    saving.start()
+    assert uploader.receiving.wait(10)
+    saving.join(2.5)
+    assert saving.is_alive()
+    uploader.release.set()
+    saving.join(10)
+    assert uploader.done.is_set()
+    assert result["file"].url.endswith("/file/1")
+
+
+def test_wait_falls_back_to_direct_cdn_after_failed_transfer(uploader, monkeypatch):
+    uploader.state["reject"] = 403
+    uploader.release.set()
+    direct = Mock(return_value="https://direct.example/hello.txt")
+    monkeypatch.setattr(remote.FalFileRepositoryV3, "save", direct)
+    result = File.from_bytes(b"hello", save_kwargs={"wait_for_completion": True})
+    assert result.url == direct.return_value
+    assert direct.call_args.kwargs["wait_for_completion"] is True
+    assert uploader.state["parts"] == {1: b"hello"}

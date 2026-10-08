@@ -364,7 +364,7 @@ def test_connection_failures_name_the_class_only(transport, failure):
 
     requests = transport(fail)
     with pytest.raises(LocalUploadError) as caught:
-        _local_uploader.upload("file", b"hi", 2, {})
+        _local_uploader.upload("file", b"hi", 2, {}, False)
     assert failure.__name__ in str(caught.value)
     assert "secret" not in str(caught.value)
     assert len(requests) == 1
@@ -382,7 +382,7 @@ def test_connection_failures_name_the_class_only(transport, failure):
 def test_invalid_acceptance_is_not_success(transport, body):
     transport(lambda request: httpx.Response(202, content=body))
     with pytest.raises(LocalUploadError):
-        _local_uploader.upload("file", b"", 0, {})
+        _local_uploader.upload("file", b"", 0, {}, False)
 
 
 def session_response(request):
@@ -436,7 +436,7 @@ def test_lost_finish_response_aborts_and_raises(transport):
 
     requests = transport(respond)
     with pytest.raises(LocalUploadError, match="ReadError"):
-        _local_uploader.upload_stream("file", iter([b"hi"]), {})
+        _local_uploader.upload_stream("file", iter([b"hi"]), {}, False)
     assert [r.method for r in requests] == ["POST", "PUT", "POST", "DELETE"]
 
 
@@ -446,3 +446,75 @@ async def test_async_wrapper_carries_request_context(local_upload, caller):
     result = await files.File.from_bytes_async(b"hi")
     assert result.url == ACCEPTED["file_url"]
     assert local_upload[0].headers["x-fal-request-id"] == "async-id"
+
+
+def completion_response(*statuses):
+    """Accept uploads, then answer status requests with `statuses` in order."""
+    remaining = list(statuses)
+
+    def respond(request):
+        if request.method == "GET":
+            return remaining.pop(0)
+        if request.url.path == "/uploads":
+            return httpx.Response(202, json=ACCEPTED)
+        return session_response(request)
+
+    return respond
+
+
+PENDING = httpx.Response(200, json={"state": "pending"})
+COMPLETED = httpx.Response(200, json={"state": "completed"})
+
+
+@pytest.mark.parametrize("from_path", [False, True])
+def test_wait_returns_after_cdn_completion(
+    local_upload, transport, tmp_path, from_path
+):
+    requests = transport(completion_response(PENDING, COMPLETED))
+    save_kwargs = {"wait_for_completion": True}
+    if from_path:
+        path = tmp_path / "file.txt"
+        path.write_bytes(b"hi")
+        result = files.File.from_path(path, save_kwargs=save_kwargs)
+    else:
+        result = files.File.from_bytes(b"hi", save_kwargs=save_kwargs)
+    assert result.url == ACCEPTED["file_url"]
+    assert [(r.method, str(r.url)) for r in requests[1:]] == [
+        ("GET", "http://localhost/uploads/accepted-id?wait=60")
+    ] * 2
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        httpx.Response(200, json={"state": "failed", "failure": {"rejected": 403}}),
+        httpx.Response(404),  # completion unknown after an uploader restart
+        httpx.Response(200, text="secret"),
+    ],
+)
+def test_failed_or_unknown_completion_falls_back_to_direct_cdn(
+    monkeypatch, local_upload, transport, status
+):
+    transport(completion_response(status))
+    direct = Mock(return_value="https://direct/file")
+    monkeypatch.setattr(remote.FalFileRepositoryV3, "save", direct)
+    result = files.File.from_bytes(b"hi", save_kwargs={"wait_for_completion": True})
+    assert result.url == "https://direct/file"
+    assert direct.call_args.kwargs["wait_for_completion"] is True
+
+
+def test_stream_waits_for_completion_and_raises_on_failure(local_upload, transport):
+    requests = transport(completion_response(COMPLETED))
+    repository = local.LocalFileRepository()
+    url = repository.save_stream(
+        iter([b"hi"]), "out.txt", "text/plain", wait_for_completion=True
+    )
+    assert url == ACCEPTED["file_url"]
+    assert requests[-1].url.path == "/uploads/accepted-id"
+
+    failed = httpx.Response(200, json={"state": "failed", "failure": "upstream"})
+    transport(completion_response(failed))
+    with pytest.raises(LocalUploadError, match="failed"):
+        repository.save_stream(
+            iter([b"hi"]), "out.txt", "text/plain", wait_for_completion=True
+        )

@@ -1,7 +1,7 @@
 """Client for the node-local uploader's HTTP API over a Unix socket.
 
-Acceptance is durable on this node, not CDN completion. Do not serialize live
-connections.
+Acceptance is durable on this node, not CDN completion; callers that need the
+CDN copy wait for completion. Do not serialize live connections.
 """
 
 from __future__ import annotations
@@ -21,6 +21,8 @@ if TYPE_CHECKING:
 DEFAULT_SOCKET_PATH = "/run/fal-upload/upload.sock"
 _TIMEOUT = 300
 _CONNECT_TIMEOUT = 5
+# How long each status request holds while the upload is pending.
+_WAIT_SECONDS = 60
 _PRINTABLE_ASCII = "".join(map(chr, range(0x20, 0x7F)))
 
 
@@ -37,8 +39,10 @@ def upload(
     body: bytes | Iterable[bytes],
     size_bytes: int,
     headers: dict[str, str],
+    wait_for_completion: bool,
 ) -> str:
-    """Return the URL once the complete known-length body is durably accepted."""
+    """Return the URL once the complete known-length body is durably accepted,
+    or once the CDN has it when waiting for completion."""
     with _new_client() as http:
         response = _request(
             http,
@@ -52,13 +56,20 @@ def upload(
             },
             content=body,
         )
-    return _upload_info(response, "accepted_local")[1]
+        upload_id, file_url = _upload_info(response, "accepted_local")
+        if wait_for_completion:
+            _wait_for_completion(http, upload_id)
+    return file_url
 
 
 def upload_stream(
-    file_name: str, chunks: Iterable[bytes], headers: dict[str, str]
+    file_name: str,
+    chunks: Iterable[bytes],
+    headers: dict[str, str],
+    wait_for_completion: bool,
 ) -> str:
-    """Return the URL once a body of unknown size is durably accepted.
+    """Return the URL once a body of unknown size is durably accepted, or once
+    the CDN has it when waiting for completion.
 
     The uploader accepts only on an explicit finish carrying the final byte
     count. Any failure, including a raising producer, aborts the session.
@@ -90,12 +101,37 @@ def upload_stream(
                 202,
                 json={"size_bytes": size},
             )
-            return _upload_info(response, "accepted_local")[1]
+            upload_id, file_url = _upload_info(response, "accepted_local")
         except BaseException:
             # Aborting must not mask the original failure.
             with suppress(LocalUploadError):
                 _request(http, "DELETE", path, 202)
             raise
+        if wait_for_completion:
+            _wait_for_completion(http, upload_id)
+    return file_url
+
+
+def _wait_for_completion(http: httpx.Client, upload_id: str) -> None:
+    """Return once the CDN has the file.
+
+    The uploader fails pending uploads at their queue deadline, so this ends. A
+    404 means the uploader restarted or dropped the record: the outcome is unknown.
+    """
+    path = "/uploads/" + quote(upload_id, safe="")
+    while True:
+        response = _request(http, "GET", path, 200, params={"wait": _WAIT_SECONDS})
+        try:
+            status = response.json()
+            state = status["state"]
+        except (ValueError, KeyError, TypeError):
+            raise LocalUploadError(
+                "Local uploader returned an invalid response."
+            ) from None
+        if state == "completed":
+            return
+        if state != "pending":
+            raise LocalUploadError(f"Local upload {state} ({status.get('failure')}).")
 
 
 def _request(
