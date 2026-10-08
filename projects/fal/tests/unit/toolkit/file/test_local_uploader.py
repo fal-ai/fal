@@ -425,8 +425,9 @@ def _session(request):
     if request.url.path == "/upload-sessions":
         started = {**ACCEPTED, "upload_id": "session-id", "state": "receiving"}
         return httpx.Response(201, json=started)
-    status = {"PUT": 204, "DELETE": 202}.get(request.method)
-    return httpx.Response(status) if status else httpx.Response(202, json=ACCEPTED)
+    if request.method == "PUT":
+        return httpx.Response(204)
+    return httpx.Response(202, json=ACCEPTED)
 
 
 def test_stream_finishes_with_the_byte_count(local_upload, transport):
