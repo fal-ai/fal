@@ -23,6 +23,7 @@ else:
 from pydantic import BaseModel, Field
 
 from fal.compat import run_in_thread
+from fal.flags import bool_envvar
 from fal.ref import get_current_app
 from fal.toolkit.file._upload_policy import (
     UPLOAD_POLICY_KEY,
@@ -41,6 +42,7 @@ from fal.toolkit.file.providers.fal import (
     MultipartUploadV3,
 )
 from fal.toolkit.file.providers.gcp import GoogleStorageRepository
+from fal.toolkit.file.providers.local import LocalFileRepository
 from fal.toolkit.file.providers.r2 import R2Repository
 from fal.toolkit.file.types import FileData, FileRepository, RepositoryId
 from fal.toolkit.utils.download_utils import download_file
@@ -49,7 +51,12 @@ FileRepositoryFactory = Callable[[], FileRepository]
 
 BUILT_IN_REPOSITORIES: dict[RepositoryId, FileRepositoryFactory] = {
     "fal": lambda: FalFileRepository(),
-    "fal_v3": lambda: FalFileRepositoryV3(),
+    # Read on the runner at upload time, never when serializing the app.
+    "fal_v3": lambda: (
+        LocalFileRepository()
+        if bool_envvar("FAL_USE_LOCAL_UPLOADER")
+        else FalFileRepositoryV3()
+    ),
     "in_memory": lambda: InMemoryRepository(),
     "gcp_storage": lambda: GoogleStorageRepository(),
     "r2": lambda: R2Repository(),
@@ -90,7 +97,8 @@ _DEFAULT_REPOSITORY_IDS = frozenset({DEFAULT_REPOSITORY, "fal_v2", "cdn"})
 # the one an app's own import produced are different objects and isinstance would
 # reject a genuinely default repository. FalFileRepositoryV2 and
 # FalCDNFileRepository are aliases of the same class, so one name covers all three.
-_DEFAULT_REPOSITORY_TYPES = frozenset({"FalFileRepositoryV3"})
+# LocalFileRepository is what FAL_USE_LOCAL_UPLOADER substitutes for "fal_v3".
+_DEFAULT_REPOSITORY_TYPES = frozenset({"FalFileRepositoryV3", "LocalFileRepository"})
 
 
 def _is_default_repository(repository: FileRepository | RepositoryId) -> bool:
@@ -175,7 +183,8 @@ def _try_with_fallback(
         try:
             return getattr(repo_obj, func)(*args, **kwargs)
         except Exception as exc:
-            if idx >= len(attempts) - 1:
+            # An uncertain upload must not be replayed through another repository.
+            if idx >= len(attempts) - 1 or not getattr(exc, "falls_back", True):
                 raise
 
             traceback.print_exc()
