@@ -1262,6 +1262,7 @@ class ApplicationInfo(google.protobuf.message.Message):
     CONCURRENCY_BUFFER_PERC_FIELD_NUMBER: builtins.int
     SCALING_DELAY_SECONDS_FIELD_NUMBER: builtins.int
     ENVIRONMENT_NAME_FIELD_NUMBER: builtins.int
+    WARNINGS_FIELD_NUMBER: builtins.int
     application_id: builtins.str
     @property
     def created_at(self) -> google.protobuf.timestamp_pb2.Timestamp: ...
@@ -1280,6 +1281,9 @@ class ApplicationInfo(google.protobuf.message.Message):
     concurrency_buffer_perc: builtins.int
     scaling_delay_seconds: builtins.int
     environment_name: builtins.str
+    @property
+    def warnings(self) -> google.protobuf.internal.containers.RepeatedScalarFieldContainer[builtins.str]:
+        """Recomputed against the current catalog; not persisted with the app."""
     def __init__(
         self,
         *,
@@ -1298,9 +1302,10 @@ class ApplicationInfo(google.protobuf.message.Message):
         concurrency_buffer_perc: builtins.int | None = ...,
         scaling_delay_seconds: builtins.int | None = ...,
         environment_name: builtins.str | None = ...,
+        warnings: collections.abc.Iterable[builtins.str] | None = ...,
     ) -> None: ...
     def HasField(self, field_name: typing_extensions.Literal["_concurrency_buffer", b"_concurrency_buffer", "_concurrency_buffer_perc", b"_concurrency_buffer_perc", "_environment_name", b"_environment_name", "_request_timeout", b"_request_timeout", "_scaling_delay_seconds", b"_scaling_delay_seconds", "_startup_timeout", b"_startup_timeout", "concurrency_buffer", b"concurrency_buffer", "concurrency_buffer_perc", b"concurrency_buffer_perc", "created_at", b"created_at", "environment_name", b"environment_name", "request_timeout", b"request_timeout", "scaling_delay_seconds", b"scaling_delay_seconds", "startup_timeout", b"startup_timeout"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing_extensions.Literal["_concurrency_buffer", b"_concurrency_buffer", "_concurrency_buffer_perc", b"_concurrency_buffer_perc", "_environment_name", b"_environment_name", "_request_timeout", b"_request_timeout", "_scaling_delay_seconds", b"_scaling_delay_seconds", "_startup_timeout", b"_startup_timeout", "active_runners", b"active_runners", "application_id", b"application_id", "concurrency_buffer", b"concurrency_buffer", "concurrency_buffer_perc", b"concurrency_buffer_perc", "created_at", b"created_at", "environment_name", b"environment_name", "keep_alive", b"keep_alive", "machine_types", b"machine_types", "max_concurrency", b"max_concurrency", "max_multiplexing", b"max_multiplexing", "min_concurrency", b"min_concurrency", "request_timeout", b"request_timeout", "scaling_delay_seconds", b"scaling_delay_seconds", "startup_timeout", b"startup_timeout", "valid_regions", b"valid_regions"]) -> None: ...
+    def ClearField(self, field_name: typing_extensions.Literal["_concurrency_buffer", b"_concurrency_buffer", "_concurrency_buffer_perc", b"_concurrency_buffer_perc", "_environment_name", b"_environment_name", "_request_timeout", b"_request_timeout", "_scaling_delay_seconds", b"_scaling_delay_seconds", "_startup_timeout", b"_startup_timeout", "active_runners", b"active_runners", "application_id", b"application_id", "concurrency_buffer", b"concurrency_buffer", "concurrency_buffer_perc", b"concurrency_buffer_perc", "created_at", b"created_at", "environment_name", b"environment_name", "keep_alive", b"keep_alive", "machine_types", b"machine_types", "max_concurrency", b"max_concurrency", "max_multiplexing", b"max_multiplexing", "min_concurrency", b"min_concurrency", "request_timeout", b"request_timeout", "scaling_delay_seconds", b"scaling_delay_seconds", "startup_timeout", b"startup_timeout", "valid_regions", b"valid_regions", "warnings", b"warnings"]) -> None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_concurrency_buffer", b"_concurrency_buffer"]) -> typing_extensions.Literal["concurrency_buffer"] | None: ...
     @typing.overload
@@ -1540,6 +1545,7 @@ class AliasInfo(google.protobuf.message.Message):
     SCALING_DELAY_SECONDS_FIELD_NUMBER: builtins.int
     ENVIRONMENT_NAME_FIELD_NUMBER: builtins.int
     IS_ROLLING_FIELD_NUMBER: builtins.int
+    WARNINGS_FIELD_NUMBER: builtins.int
     alias: builtins.str
     revision: builtins.str
     auth_mode: global___ApplicationAuthMode.ValueType
@@ -1559,6 +1565,9 @@ class AliasInfo(google.protobuf.message.Message):
     scaling_delay_seconds: builtins.int
     environment_name: builtins.str
     is_rolling: builtins.bool
+    @property
+    def warnings(self) -> google.protobuf.internal.containers.RepeatedScalarFieldContainer[builtins.str]:
+        """Recomputed against the current catalog; not persisted with the app."""
     def __init__(
         self,
         *,
@@ -1579,9 +1588,10 @@ class AliasInfo(google.protobuf.message.Message):
         scaling_delay_seconds: builtins.int | None = ...,
         environment_name: builtins.str | None = ...,
         is_rolling: builtins.bool = ...,
+        warnings: collections.abc.Iterable[builtins.str] | None = ...,
     ) -> None: ...
     def HasField(self, field_name: typing_extensions.Literal["_concurrency_buffer", b"_concurrency_buffer", "_concurrency_buffer_perc", b"_concurrency_buffer_perc", "_environment_name", b"_environment_name", "_request_timeout", b"_request_timeout", "_scaling_delay_seconds", b"_scaling_delay_seconds", "_startup_timeout", b"_startup_timeout", "concurrency_buffer", b"concurrency_buffer", "concurrency_buffer_perc", b"concurrency_buffer_perc", "environment_name", b"environment_name", "request_timeout", b"request_timeout", "scaling_delay_seconds", b"scaling_delay_seconds", "startup_timeout", b"startup_timeout"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing_extensions.Literal["_concurrency_buffer", b"_concurrency_buffer", "_concurrency_buffer_perc", b"_concurrency_buffer_perc", "_environment_name", b"_environment_name", "_request_timeout", b"_request_timeout", "_scaling_delay_seconds", b"_scaling_delay_seconds", "_startup_timeout", b"_startup_timeout", "active_runners", b"active_runners", "alias", b"alias", "auth_mode", b"auth_mode", "concurrency_buffer", b"concurrency_buffer", "concurrency_buffer_perc", b"concurrency_buffer_perc", "environment_name", b"environment_name", "is_rolling", b"is_rolling", "keep_alive", b"keep_alive", "machine_types", b"machine_types", "max_concurrency", b"max_concurrency", "max_multiplexing", b"max_multiplexing", "min_concurrency", b"min_concurrency", "request_timeout", b"request_timeout", "revision", b"revision", "scaling_delay_seconds", b"scaling_delay_seconds", "startup_timeout", b"startup_timeout", "valid_regions", b"valid_regions"]) -> None: ...
+    def ClearField(self, field_name: typing_extensions.Literal["_concurrency_buffer", b"_concurrency_buffer", "_concurrency_buffer_perc", b"_concurrency_buffer_perc", "_environment_name", b"_environment_name", "_request_timeout", b"_request_timeout", "_scaling_delay_seconds", b"_scaling_delay_seconds", "_startup_timeout", b"_startup_timeout", "active_runners", b"active_runners", "alias", b"alias", "auth_mode", b"auth_mode", "concurrency_buffer", b"concurrency_buffer", "concurrency_buffer_perc", b"concurrency_buffer_perc", "environment_name", b"environment_name", "is_rolling", b"is_rolling", "keep_alive", b"keep_alive", "machine_types", b"machine_types", "max_concurrency", b"max_concurrency", "max_multiplexing", b"max_multiplexing", "min_concurrency", b"min_concurrency", "request_timeout", b"request_timeout", "revision", b"revision", "scaling_delay_seconds", b"scaling_delay_seconds", "startup_timeout", b"startup_timeout", "valid_regions", b"valid_regions", "warnings", b"warnings"]) -> None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing_extensions.Literal["_concurrency_buffer", b"_concurrency_buffer"]) -> typing_extensions.Literal["concurrency_buffer"] | None: ...
     @typing.overload

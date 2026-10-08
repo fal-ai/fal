@@ -354,3 +354,11 @@ def test_create_user_key_v2_policy_fields():
     )
     assert policy_request.HasField("policy") is True
     assert list(policy_request.policy.permissions) == ["serverless:apps:run"]
+
+
+def test_application_warning_fields_round_trip():
+    for message_type in (isolate_proto.ApplicationInfo, isolate_proto.AliasInfo):
+        assert list(message_type().warnings) == []
+        message = message_type(warnings=["Unsupported machine types: removed"])
+        decoded = message_type.FromString(message.SerializeToString())
+        assert list(decoded.warnings) == ["Unsupported machine types: removed"]

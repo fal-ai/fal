@@ -480,6 +480,8 @@ message ApplicationInfo {
     optional int32 concurrency_buffer_perc = 14;
     optional int32 scaling_delay_seconds = 15;
     optional string environment_name = 16;
+    // Recomputed against the current catalog; not persisted with the app.
+    repeated string warnings = 17;
 }
 
 message ListApplicationsResult {
@@ -555,6 +557,8 @@ message AliasInfo {
     optional int32 scaling_delay_seconds = 15;
     optional string environment_name = 16;
     bool is_rolling = 17;
+    // Recomputed against the current catalog; not persisted with the app.
+    repeated string warnings = 18;
 }
 
 message SetSecretRequest {
