@@ -28,9 +28,13 @@ _REJECTION_DELAYS = (0.1, 0.2)
 class LocalUploadError(FileUploadException):
     """The uploader failed after it may have accepted the bytes."""
 
+    falls_back = False
+
 
 class LocalUploadRefused(LocalUploadError):
     """The uploader did not take the work, so a direct upload cannot duplicate it."""
+
+    falls_back = True
 
 
 class LocalUploadRejected(LocalUploadRefused):

@@ -33,6 +33,7 @@ def uploader(monkeypatch, request):
     accept = threading.Event()
     accept.set()
     responded = threading.Event()
+    lose_reply = threading.Event()
 
     class Handler(BaseHTTPRequestHandler):
         def do_POST(self):
@@ -45,6 +46,8 @@ def uploader(monkeypatch, request):
                 return
             received.set()
             if not accept.wait(10):
+                return
+            if lose_reply.is_set():
                 return
             payload = json.dumps(
                 {
@@ -77,6 +80,7 @@ def uploader(monkeypatch, request):
                     received=received,
                     accept=accept,
                     responded=responded,
+                    lose_reply=lose_reply,
                 )
             finally:
                 accept.set()
@@ -105,7 +109,8 @@ def test_missing_socket_falls_back_to_direct_cdn(monkeypatch, capsys):
 
 
 @pytest.mark.parametrize("uploader", [2], indirect=True)
-def test_serialized_sdk_reads_runner_environment(uploader, tmp_path):
+@pytest.mark.parametrize("lose_reply", [False, True])
+def test_serialized_sdk_reads_runner_environment(uploader, tmp_path, lose_reply):
     target = tmp_path / "file.pkl"
     # Serialize in a clean deploy process with the flag OFF. The new runner
     # enables it only after deserializing the app's copy of File.
@@ -124,21 +129,42 @@ def test_serialized_sdk_reads_runner_environment(uploader, tmp_path):
         check=False,
     )
     assert deploy.returncode == 0, deploy.stderr
+    if lose_reply:
+        uploader.lose_reply.set()
+    code = """
+import pickle, sys
+from types import SimpleNamespace
+
+File = pickle.load(open(sys.argv[1], 'rb'))
+globals_ = File.from_bytes.__func__.__globals__['_try_with_fallback'].__globals__
+globals_['BUILT_IN_REPOSITORIES']['fal'] = lambda: SimpleNamespace(
+    save=lambda *args, **kwargs: 'https://unexpected-fallback/file'
+)
+try:
+    result = File.from_bytes(b'from runner')
+except Exception as exc:
+    assert sys.argv[2] == 'True', type(exc).__name__
+    assert type(exc).__name__ == 'LocalUploadError', type(exc).__name__
+    print('NO_FALLBACK')
+else:
+    assert sys.argv[2] == 'False', result.url
+    print(result.url)
+"""
     runner = subprocess.run(
         [
             sys.executable,
             "-c",
-            "import pickle, sys; "
-            "File = pickle.load(open(sys.argv[1], 'rb')); "
-            "print(File.from_bytes(b'from runner').url)",
+            code,
             str(target),
+            str(lose_reply),
         ],
         capture_output=True,
         timeout=20,
         check=False,
     )
     assert runner.returncode == 0, runner.stderr
-    assert b"https://fal.media/file.bin" in runner.stdout
+    expected = b"NO_FALLBACK" if lose_reply else b"https://fal.media/file.bin"
+    assert expected in runner.stdout
     assert [body for _, body in uploader.requests] == [b"from runner"] * 3
 
 

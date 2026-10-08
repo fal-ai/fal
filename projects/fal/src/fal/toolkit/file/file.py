@@ -183,7 +183,8 @@ def _try_with_fallback(
         try:
             return getattr(repo_obj, func)(*args, **kwargs)
         except Exception as exc:
-            if idx >= len(attempts) - 1:
+            # An uncertain upload must not be replayed through another repository.
+            if idx >= len(attempts) - 1 or not getattr(exc, "falls_back", True):
                 raise
 
             traceback.print_exc()

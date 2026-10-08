@@ -267,17 +267,30 @@ def test_refusals_fall_back_to_direct_cdn(
         httpx.ReadTimeout,
     ],
 )
+@pytest.mark.parametrize("source", ["bytes", "small_file", "large_file"])
+@pytest.mark.parametrize("explicit", [False, True])
 def test_possibly_accepted_failures_are_raised(
-    monkeypatch, local_upload, transport, response
+    monkeypatch, local_upload, transport, tmp_path, response, source, explicit
 ):
     transport(_respond(response))
     direct = Mock()
+    legacy = Mock()
     monkeypatch.setattr(remote.FalFileRepositoryV3, "save", direct)
+    monkeypatch.setattr(remote.FalFileRepositoryV3, "save_file", direct)
+    monkeypatch.setattr(remote.FalFileRepository, "save", legacy)
+    monkeypatch.setattr(remote.FalFileRepository, "save_file", legacy)
+    kwargs = {"repository": local.LocalFileRepository()} if explicit else {}
     with pytest.raises(LocalUploadError) as caught:
-        local.LocalFileRepository().save(FileData(b"hi"))
+        if source == "bytes":
+            files.File.from_bytes(b"hi", **kwargs)
+        else:
+            path = tmp_path / "file.txt"
+            path.write_bytes(b"hi")
+            files.File.from_path(path, multipart=source == "large_file", **kwargs)
     assert not isinstance(caught.value, LocalUploadRefused)
     assert "secret" not in str(caught.value)
     direct.assert_not_called()
+    legacy.assert_not_called()
 
 
 def test_missing_httpx_falls_back_to_v3(monkeypatch):
