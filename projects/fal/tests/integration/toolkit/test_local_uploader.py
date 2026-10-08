@@ -24,7 +24,7 @@ import httpx
 import pytest
 
 from fal.toolkit.file import File, _local_uploader
-from fal.toolkit.file._local_uploader import upload_stream
+from fal.toolkit.file._local_uploader import LocalUploadError
 from fal.toolkit.file.providers import fal as remote
 
 pytestmark = pytest.mark.skipif(
@@ -225,18 +225,6 @@ def test_runner_exit_after_acceptance(uploader, tmp_path, monkeypatch, size_mib)
     assert actual.digest() == digest.digest()
 
 
-def test_generated_stream_is_accepted_after_finish(uploader):
-    uploader.release.set()
-    url = upload_stream(
-        "generated.txt",
-        iter([b"hello", b" world"]),
-        {"Authorization": "Key local:test", "Content-Type": "text/plain"},
-    )
-    assert url.endswith("/file/1")
-    assert uploader.done.wait(10)
-    assert uploader.state["parts"] == {1: b"hello world"}
-
-
 def test_wait_holds_until_cdn_completion(uploader, monkeypatch):
     # Short status waits make the client see pending and wait again.
     monkeypatch.setattr(_local_uploader, "_WAIT_SECONDS", 1)
@@ -258,12 +246,12 @@ def test_wait_holds_until_cdn_completion(uploader, monkeypatch):
     assert result["file"].url.endswith("/file/1")
 
 
-def test_wait_falls_back_to_direct_cdn_after_failed_transfer(uploader, monkeypatch):
+def test_wait_raises_after_failed_transfer(uploader, monkeypatch):
     uploader.state["reject"] = 403
     uploader.release.set()
-    direct = Mock(return_value="https://direct.example/hello.txt")
+    direct = Mock()
     monkeypatch.setattr(remote.FalFileRepositoryV3, "save", direct)
-    result = File.from_bytes(b"hello", save_kwargs={"wait_for_completion": True})
-    assert result.url == direct.return_value
-    assert direct.call_args.kwargs["wait_for_completion"] is True
+    with pytest.raises(LocalUploadError, match="failed"):
+        File.from_bytes(b"hello", save_kwargs={"wait_for_completion": True})
+    direct.assert_not_called()
     assert uploader.state["parts"] == {1: b"hello"}

@@ -1,13 +1,15 @@
+import io
 import json
 import os
 import struct
 from unittest.mock import MagicMock, patch
 
+import isolate_proto
 import pytest
 
 from fal.cli.main import parse_args
 from fal.cli.parser import FalParserExit
-from fal.cli.runners import _exec, _get_tty_size, _gpus
+from fal.cli.runners import _exec, _get_tty_size, _gpus, _shell_session
 
 if os.name != "nt":
     import fcntl
@@ -127,6 +129,134 @@ def test_exec_rejects_separator_only_command(mock_client_cls):
     assert exit_code == 1
     assert sent == []
     assert "No command specified" in console.print.call_args[0][0]
+
+
+@patch("fal.cli.runners.SyncServerlessClient")
+def test_shell_session_separates_output_streams(mock_client_cls):
+    stub = mock_client_cls.return_value._create_host.return_value._connection.stub
+    stub.ShellRunner.return_value = [
+        isolate_proto.ShellRunnerOutput(data=b"out"),
+        isolate_proto.ShellRunnerOutput(data=b"err", stream=2),
+        isolate_proto.ShellRunnerOutput(exit_code=0),
+    ]
+    stdout = io.BytesIO()
+    stderr = io.BytesIO()
+    args = parse_args(["runners", "exec", "runner-id", "--", "true"])
+
+    exit_code = _shell_session(
+        args,
+        command=["true"],
+        interactive=False,
+        remote_tty=False,
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+    assert exit_code == 0
+    assert stdout.getvalue() == b"out"
+    assert stderr.getvalue() == b"err"
+
+
+@patch("fal.cli.runners.SyncServerlessClient")
+def test_exec_without_terminal_requests_no_tty_and_closes_stdin(mock_client_cls):
+    with patch("fal.cli.runners.sys.stdin") as stdin:
+        stdin.isatty.return_value = False
+        exit_code, sent, _ = _exec_with_command(mock_client_cls, ["python"])
+
+    assert exit_code == 0
+    assert sent[0].HasField("tty") and sent[0].tty is False
+    assert [msg.close for msg in sent] == [False, True]
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Interactive shell is Unix-only")
+@patch("fal.cli.runners.SyncServerlessClient")
+def test_exec_interactive_with_piped_stdin_streams_raw_bytes(mock_client_cls):
+    sent = []
+
+    def shell_runner(inputs):
+        sent.extend(inputs)
+        return [isolate_proto.ShellRunnerOutput(exit_code=0)]
+
+    stub = mock_client_cls.return_value._create_host.return_value._connection.stub
+    stub.ShellRunner.side_effect = shell_runner
+
+    read_fd, write_fd = os.pipe()
+    os.write(write_fd, b"SSH-2.0-client\r\n")
+    os.close(write_fd)
+    args = parse_args(["runners", "exec", "-it", "runner-id", "--", "sshd", "-i"])
+    args.console = MagicMock()
+    try:
+        with patch("fal.cli.runners.sys.stdin") as stdin:
+            stdin.isatty.return_value = False
+            stdin.fileno.return_value = read_fd
+            assert args.func(args) == 0
+    finally:
+        os.close(read_fd)
+
+    assert sent[0].tty is False
+    assert not sent[0].HasField("tty_size")
+    assert list(sent[0].command) == ["sshd", "-i"]
+    assert [msg.data for msg in sent[1:-1]] == [b"SSH-2.0-client\r\n"]
+    assert sent[-1].close is True
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Pseudo-terminals are Unix-only")
+@patch("fal.cli.runners.SyncServerlessClient")
+def test_exec_interactive_on_terminal_requests_tty_and_sends_size(mock_client_cls):
+    sent = []
+
+    def shell_runner(inputs):
+        for msg in inputs:
+            sent.append(msg)
+            if msg.HasField("tty_size"):
+                break
+        return [isolate_proto.ShellRunnerOutput(exit_code=0)]
+
+    stub = mock_client_cls.return_value._create_host.return_value._connection.stub
+    stub.ShellRunner.side_effect = shell_runner
+
+    master_fd, slave_fd = os.openpty()
+    args = parse_args(["runners", "exec", "-it", "runner-id", "--", "bash"])
+    args.console = MagicMock()
+    try:
+        with patch("fal.cli.runners.sys.stdin") as stdin:
+            stdin.isatty.return_value = True
+            stdin.fileno.return_value = slave_fd
+            assert args.func(args) == 0
+    finally:
+        os.close(master_fd)
+        os.close(slave_fd)
+
+    # The local `import tty` inside the session must not leak into the message.
+    assert sent[0].tty is True
+    assert sent[1].HasField("tty_size")
+
+
+@patch("fal.cli.runners.SyncServerlessClient")
+def test_shell_always_requests_tty(mock_client_cls):
+    sent = []
+
+    def shell_runner(inputs):
+        sent.extend(inputs)
+        return [isolate_proto.ShellRunnerOutput(exit_code=0)]
+
+    stub = mock_client_cls.return_value._create_host.return_value._connection.stub
+    stub.ShellRunner.side_effect = shell_runner
+
+    read_fd, write_fd = os.pipe()
+    os.close(write_fd)
+    args = parse_args(["runners", "shell", "runner-id"])
+    args.console = MagicMock()
+    try:
+        with patch("fal.cli.runners.sys.stdin") as stdin:
+            stdin.isatty.return_value = False
+            stdin.fileno.return_value = read_fd
+            assert args.func(args) == 0
+    finally:
+        os.close(read_fd)
+
+    assert sent[0].tty is True
+    assert all(not msg.close for msg in sent)
 
 
 def _mock_client(payload):

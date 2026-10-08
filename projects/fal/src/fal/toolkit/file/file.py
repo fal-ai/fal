@@ -51,7 +51,12 @@ FileRepositoryFactory = Callable[[], FileRepository]
 
 BUILT_IN_REPOSITORIES: dict[RepositoryId, FileRepositoryFactory] = {
     "fal": lambda: FalFileRepository(),
-    "fal_v3": lambda: FalFileRepositoryV3(),
+    # Read on the runner at upload time, never when serializing the app.
+    "fal_v3": lambda: (
+        LocalFileRepository()
+        if bool_envvar("FAL_USE_LOCAL_UPLOADER")
+        else FalFileRepositoryV3()
+    ),
     "in_memory": lambda: InMemoryRepository(),
     "gcp_storage": lambda: GoogleStorageRepository(),
     "r2": lambda: R2Repository(),
@@ -71,10 +76,6 @@ def get_builtin_repository(id: RepositoryId | FileRepository) -> FileRepository:
             stacklevel=2,
         )
         id = "fal_v3"
-
-    # Read on the runner at upload time, never when serializing the app.
-    if id == "fal_v3" and bool_envvar("FAL_USE_LOCAL_UPLOADER"):
-        return LocalFileRepository()
 
     if id not in BUILT_IN_REPOSITORIES.keys():
         raise ValueError(f'"{id}" is not a valid built-in file repository')
@@ -182,7 +183,8 @@ def _try_with_fallback(
         try:
             return getattr(repo_obj, func)(*args, **kwargs)
         except Exception as exc:
-            if idx >= len(attempts) - 1:
+            # An uncertain upload must not be replayed through another repository.
+            if idx >= len(attempts) - 1 or not getattr(exc, "falls_back", True):
                 raise
 
             traceback.print_exc()
