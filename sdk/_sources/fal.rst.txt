@@ -15,6 +15,7 @@ Subpackages
    fal.exceptions
    fal.logging
    fal.toolkit
+   fal.wma
 
 Submodules
 ----------

@@ -849,7 +849,7 @@ apply only to number fields (<cite>int</cite>, <cite>float</cite>, <cite>Decimal
 <div class="admonition note">
 <p class="admonition-title">Note</p>
 <ul class="simple">
-<li><p>Any <cite>_Unset</cite> objects will be replaced by the corresponding value defined in the <cite>_DefaultValues</cite> dictionary. If a key for the <cite>_Unset</cite> object is not found in the <cite>_DefaultValues</cite> dictionary, it will default to <cite>None</cite></p></li>
+<li><p>Any <cite>_Unset</cite> objects will be replaced by the corresponding default value of the <cite>FieldInfo</cite> constructor.</p></li>
 </ul>
 </div>
 <dl class="field-list simple">
@@ -864,7 +864,7 @@ This is often used for things like converting between snake and camel case.</p><
 <li><p><strong>validation_alias</strong> (<span class="sphinx_autodoc_typehints-type">str | AliasPath | AliasChoices | None</span>) – Like <cite>alias</cite>, but only affects validation, not serialization.</p></li>
 <li><p><strong>serialization_alias</strong> (<span class="sphinx_autodoc_typehints-type">str | None</span>) – Like <cite>alias</cite>, but only affects serialization, not validation.</p></li>
 <li><p><strong>title</strong> (<span class="sphinx_autodoc_typehints-type">str | None</span>) – Human-readable title.</p></li>
-<li><p><strong>field_title_generator</strong> (<span class="sphinx_autodoc_typehints-type">Callable[[str, FieldInfo], str] | None</span>) – A callable that takes a field name and returns title for it.</p></li>
+<li><p><strong>field_title_generator</strong> (<span class="sphinx_autodoc_typehints-type">Callable[[str, FieldInfo], str] | None</span>) – A callable that takes a field’s name and info and returns title for it.</p></li>
 <li><p><strong>description</strong> (<span class="sphinx_autodoc_typehints-type">str | None</span>) – Human-readable description.</p></li>
 <li><p><strong>examples</strong> (<span class="sphinx_autodoc_typehints-type">list[Any] | None</span>) – Example values for this field.</p></li>
 <li><p><strong>exclude</strong> (<span class="sphinx_autodoc_typehints-type">bool | None</span>) – Whether to exclude the field from the model serialization.</p></li>
@@ -895,7 +895,7 @@ See [Strict Mode](../concepts/strict_mode.md) for details.</p></li>
 <li><p><strong>max_length</strong> (<span class="sphinx_autodoc_typehints-type">int | None</span>) – Maximum length for iterables.</p></li>
 <li><p><strong>pattern</strong> (<span class="sphinx_autodoc_typehints-type">str | re.Pattern[str] | None</span>) – Pattern for strings (a regular expression).</p></li>
 <li><p><strong>allow_inf_nan</strong> (<span class="sphinx_autodoc_typehints-type">bool | None</span>) – Allow <cite>inf</cite>, <cite>-inf</cite>, <cite>nan</cite>. Only applicable to float and [<cite>Decimal</cite>][decimal.Decimal] numbers.</p></li>
-<li><p><strong>max_digits</strong> (<span class="sphinx_autodoc_typehints-type">int | None</span>) – Maximum number of allow digits for strings.</p></li>
+<li><p><strong>max_digits</strong> (<span class="sphinx_autodoc_typehints-type">int | None</span>) – Maximum number of allowed digits for [<cite>Decimal</cite>][decimal.Decimal] numbers.</p></li>
 <li><p><strong>decimal_places</strong> (<span class="sphinx_autodoc_typehints-type">int | None</span>) – Maximum number of decimal places allowed for numbers.</p></li>
 <li><p><strong>union_mode</strong> (<span class="sphinx_autodoc_typehints-type">Literal[‘smart’, ‘left_to_right’]</span>) – The strategy to apply when validating a union. Can be <cite>smart</cite> (the default), or <cite>left_to_right</cite>.
 See [Union Mode](../concepts/unions.md#union-modes) for details.</p></li>
@@ -977,7 +977,7 @@ apply only to number fields (<cite>int</cite>, <cite>float</cite>, <cite>Decimal
 <div class="admonition note">
 <p class="admonition-title">Note</p>
 <ul class="simple">
-<li><p>Any <cite>_Unset</cite> objects will be replaced by the corresponding value defined in the <cite>_DefaultValues</cite> dictionary. If a key for the <cite>_Unset</cite> object is not found in the <cite>_DefaultValues</cite> dictionary, it will default to <cite>None</cite></p></li>
+<li><p>Any <cite>_Unset</cite> objects will be replaced by the corresponding default value of the <cite>FieldInfo</cite> constructor.</p></li>
 </ul>
 </div>
 <dl class="field-list simple">
@@ -992,7 +992,7 @@ This is often used for things like converting between snake and camel case.</p><
 <li><p><strong>validation_alias</strong> (<span class="sphinx_autodoc_typehints-type">str | AliasPath | AliasChoices | None</span>) – Like <cite>alias</cite>, but only affects validation, not serialization.</p></li>
 <li><p><strong>serialization_alias</strong> (<span class="sphinx_autodoc_typehints-type">str | None</span>) – Like <cite>alias</cite>, but only affects serialization, not validation.</p></li>
 <li><p><strong>title</strong> (<span class="sphinx_autodoc_typehints-type">str | None</span>) – Human-readable title.</p></li>
-<li><p><strong>field_title_generator</strong> (<span class="sphinx_autodoc_typehints-type">Callable[[str, FieldInfo], str] | None</span>) – A callable that takes a field name and returns title for it.</p></li>
+<li><p><strong>field_title_generator</strong> (<span class="sphinx_autodoc_typehints-type">Callable[[str, FieldInfo], str] | None</span>) – A callable that takes a field’s name and info and returns title for it.</p></li>
 <li><p><strong>description</strong> (<span class="sphinx_autodoc_typehints-type">str | None</span>) – Human-readable description.</p></li>
 <li><p><strong>examples</strong> (<span class="sphinx_autodoc_typehints-type">list[Any] | None</span>) – Example values for this field.</p></li>
 <li><p><strong>exclude</strong> (<span class="sphinx_autodoc_typehints-type">bool | None</span>) – Whether to exclude the field from the model serialization.</p></li>
@@ -1023,7 +1023,7 @@ See [Strict Mode](../concepts/strict_mode.md) for details.</p></li>
 <li><p><strong>max_length</strong> (<span class="sphinx_autodoc_typehints-type">int | None</span>) – Maximum length for iterables.</p></li>
 <li><p><strong>pattern</strong> (<span class="sphinx_autodoc_typehints-type">str | re.Pattern[str] | None</span>) – Pattern for strings (a regular expression).</p></li>
 <li><p><strong>allow_inf_nan</strong> (<span class="sphinx_autodoc_typehints-type">bool | None</span>) – Allow <cite>inf</cite>, <cite>-inf</cite>, <cite>nan</cite>. Only applicable to float and [<cite>Decimal</cite>][decimal.Decimal] numbers.</p></li>
-<li><p><strong>max_digits</strong> (<span class="sphinx_autodoc_typehints-type">int | None</span>) – Maximum number of allow digits for strings.</p></li>
+<li><p><strong>max_digits</strong> (<span class="sphinx_autodoc_typehints-type">int | None</span>) – Maximum number of allowed digits for [<cite>Decimal</cite>][decimal.Decimal] numbers.</p></li>
 <li><p><strong>decimal_places</strong> (<span class="sphinx_autodoc_typehints-type">int | None</span>) – Maximum number of decimal places allowed for numbers.</p></li>
 <li><p><strong>union_mode</strong> (<span class="sphinx_autodoc_typehints-type">Literal[‘smart’, ‘left_to_right’]</span>) – The strategy to apply when validating a union. Can be <cite>smart</cite> (the default), or <cite>left_to_right</cite>.
 See [Union Mode](../concepts/unions.md#union-modes) for details.</p></li>
@@ -1063,7 +1063,7 @@ apply only to number fields (<cite>int</cite>, <cite>float</cite>, <cite>Decimal
 <div class="admonition note">
 <p class="admonition-title">Note</p>
 <ul class="simple">
-<li><p>Any <cite>_Unset</cite> objects will be replaced by the corresponding value defined in the <cite>_DefaultValues</cite> dictionary. If a key for the <cite>_Unset</cite> object is not found in the <cite>_DefaultValues</cite> dictionary, it will default to <cite>None</cite></p></li>
+<li><p>Any <cite>_Unset</cite> objects will be replaced by the corresponding default value of the <cite>FieldInfo</cite> constructor.</p></li>
 </ul>
 </div>
 <dl class="field-list simple">
@@ -1078,7 +1078,7 @@ This is often used for things like converting between snake and camel case.</p><
 <li><p><strong>validation_alias</strong> (<span class="sphinx_autodoc_typehints-type">str | AliasPath | AliasChoices | None</span>) – Like <cite>alias</cite>, but only affects validation, not serialization.</p></li>
 <li><p><strong>serialization_alias</strong> (<span class="sphinx_autodoc_typehints-type">str | None</span>) – Like <cite>alias</cite>, but only affects serialization, not validation.</p></li>
 <li><p><strong>title</strong> (<span class="sphinx_autodoc_typehints-type">str | None</span>) – Human-readable title.</p></li>
-<li><p><strong>field_title_generator</strong> (<span class="sphinx_autodoc_typehints-type">Callable[[str, FieldInfo], str] | None</span>) – A callable that takes a field name and returns title for it.</p></li>
+<li><p><strong>field_title_generator</strong> (<span class="sphinx_autodoc_typehints-type">Callable[[str, FieldInfo], str] | None</span>) – A callable that takes a field’s name and info and returns title for it.</p></li>
 <li><p><strong>description</strong> (<span class="sphinx_autodoc_typehints-type">str | None</span>) – Human-readable description.</p></li>
 <li><p><strong>examples</strong> (<span class="sphinx_autodoc_typehints-type">list[Any] | None</span>) – Example values for this field.</p></li>
 <li><p><strong>exclude</strong> (<span class="sphinx_autodoc_typehints-type">bool | None</span>) – Whether to exclude the field from the model serialization.</p></li>
@@ -1109,7 +1109,7 @@ See [Strict Mode](../concepts/strict_mode.md) for details.</p></li>
 <li><p><strong>max_length</strong> (<span class="sphinx_autodoc_typehints-type">int | None</span>) – Maximum length for iterables.</p></li>
 <li><p><strong>pattern</strong> (<span class="sphinx_autodoc_typehints-type">str | re.Pattern[str] | None</span>) – Pattern for strings (a regular expression).</p></li>
 <li><p><strong>allow_inf_nan</strong> (<span class="sphinx_autodoc_typehints-type">bool | None</span>) – Allow <cite>inf</cite>, <cite>-inf</cite>, <cite>nan</cite>. Only applicable to float and [<cite>Decimal</cite>][decimal.Decimal] numbers.</p></li>
-<li><p><strong>max_digits</strong> (<span class="sphinx_autodoc_typehints-type">int | None</span>) – Maximum number of allow digits for strings.</p></li>
+<li><p><strong>max_digits</strong> (<span class="sphinx_autodoc_typehints-type">int | None</span>) – Maximum number of allowed digits for [<cite>Decimal</cite>][decimal.Decimal] numbers.</p></li>
 <li><p><strong>decimal_places</strong> (<span class="sphinx_autodoc_typehints-type">int | None</span>) – Maximum number of decimal places allowed for numbers.</p></li>
 <li><p><strong>union_mode</strong> (<span class="sphinx_autodoc_typehints-type">Literal[‘smart’, ‘left_to_right’]</span>) – The strategy to apply when validating a union. Can be <cite>smart</cite> (the default), or <cite>left_to_right</cite>.
 See [Union Mode](../concepts/unions.md#union-modes) for details.</p></li>
@@ -1179,7 +1179,7 @@ apply only to number fields (<cite>int</cite>, <cite>float</cite>, <cite>Decimal
 <div class="admonition note">
 <p class="admonition-title">Note</p>
 <ul class="simple">
-<li><p>Any <cite>_Unset</cite> objects will be replaced by the corresponding value defined in the <cite>_DefaultValues</cite> dictionary. If a key for the <cite>_Unset</cite> object is not found in the <cite>_DefaultValues</cite> dictionary, it will default to <cite>None</cite></p></li>
+<li><p>Any <cite>_Unset</cite> objects will be replaced by the corresponding default value of the <cite>FieldInfo</cite> constructor.</p></li>
 </ul>
 </div>
 <dl class="field-list simple">
@@ -1194,7 +1194,7 @@ This is often used for things like converting between snake and camel case.</p><
 <li><p><strong>validation_alias</strong> (<span class="sphinx_autodoc_typehints-type">str | AliasPath | AliasChoices | None</span>) – Like <cite>alias</cite>, but only affects validation, not serialization.</p></li>
 <li><p><strong>serialization_alias</strong> (<span class="sphinx_autodoc_typehints-type">str | None</span>) – Like <cite>alias</cite>, but only affects serialization, not validation.</p></li>
 <li><p><strong>title</strong> (<span class="sphinx_autodoc_typehints-type">str | None</span>) – Human-readable title.</p></li>
-<li><p><strong>field_title_generator</strong> (<span class="sphinx_autodoc_typehints-type">Callable[[str, FieldInfo], str] | None</span>) – A callable that takes a field name and returns title for it.</p></li>
+<li><p><strong>field_title_generator</strong> (<span class="sphinx_autodoc_typehints-type">Callable[[str, FieldInfo], str] | None</span>) – A callable that takes a field’s name and info and returns title for it.</p></li>
 <li><p><strong>description</strong> (<span class="sphinx_autodoc_typehints-type">str | None</span>) – Human-readable description.</p></li>
 <li><p><strong>examples</strong> (<span class="sphinx_autodoc_typehints-type">list[Any] | None</span>) – Example values for this field.</p></li>
 <li><p><strong>exclude</strong> (<span class="sphinx_autodoc_typehints-type">bool | None</span>) – Whether to exclude the field from the model serialization.</p></li>
@@ -1225,7 +1225,7 @@ See [Strict Mode](../concepts/strict_mode.md) for details.</p></li>
 <li><p><strong>max_length</strong> (<span class="sphinx_autodoc_typehints-type">int | None</span>) – Maximum length for iterables.</p></li>
 <li><p><strong>pattern</strong> (<span class="sphinx_autodoc_typehints-type">str | re.Pattern[str] | None</span>) – Pattern for strings (a regular expression).</p></li>
 <li><p><strong>allow_inf_nan</strong> (<span class="sphinx_autodoc_typehints-type">bool | None</span>) – Allow <cite>inf</cite>, <cite>-inf</cite>, <cite>nan</cite>. Only applicable to float and [<cite>Decimal</cite>][decimal.Decimal] numbers.</p></li>
-<li><p><strong>max_digits</strong> (<span class="sphinx_autodoc_typehints-type">int | None</span>) – Maximum number of allow digits for strings.</p></li>
+<li><p><strong>max_digits</strong> (<span class="sphinx_autodoc_typehints-type">int | None</span>) – Maximum number of allowed digits for [<cite>Decimal</cite>][decimal.Decimal] numbers.</p></li>
 <li><p><strong>decimal_places</strong> (<span class="sphinx_autodoc_typehints-type">int | None</span>) – Maximum number of decimal places allowed for numbers.</p></li>
 <li><p><strong>union_mode</strong> (<span class="sphinx_autodoc_typehints-type">Literal[‘smart’, ‘left_to_right’]</span>) – The strategy to apply when validating a union. Can be <cite>smart</cite> (the default), or <cite>left_to_right</cite>.
 See [Union Mode](../concepts/unions.md#union-modes) for details.</p></li>
@@ -1265,7 +1265,7 @@ apply only to number fields (<cite>int</cite>, <cite>float</cite>, <cite>Decimal
 <div class="admonition note">
 <p class="admonition-title">Note</p>
 <ul class="simple">
-<li><p>Any <cite>_Unset</cite> objects will be replaced by the corresponding value defined in the <cite>_DefaultValues</cite> dictionary. If a key for the <cite>_Unset</cite> object is not found in the <cite>_DefaultValues</cite> dictionary, it will default to <cite>None</cite></p></li>
+<li><p>Any <cite>_Unset</cite> objects will be replaced by the corresponding default value of the <cite>FieldInfo</cite> constructor.</p></li>
 </ul>
 </div>
 <dl class="field-list simple">
@@ -1280,7 +1280,7 @@ This is often used for things like converting between snake and camel case.</p><
 <li><p><strong>validation_alias</strong> (<span class="sphinx_autodoc_typehints-type">str | AliasPath | AliasChoices | None</span>) – Like <cite>alias</cite>, but only affects validation, not serialization.</p></li>
 <li><p><strong>serialization_alias</strong> (<span class="sphinx_autodoc_typehints-type">str | None</span>) – Like <cite>alias</cite>, but only affects serialization, not validation.</p></li>
 <li><p><strong>title</strong> (<span class="sphinx_autodoc_typehints-type">str | None</span>) – Human-readable title.</p></li>
-<li><p><strong>field_title_generator</strong> (<span class="sphinx_autodoc_typehints-type">Callable[[str, FieldInfo], str] | None</span>) – A callable that takes a field name and returns title for it.</p></li>
+<li><p><strong>field_title_generator</strong> (<span class="sphinx_autodoc_typehints-type">Callable[[str, FieldInfo], str] | None</span>) – A callable that takes a field’s name and info and returns title for it.</p></li>
 <li><p><strong>description</strong> (<span class="sphinx_autodoc_typehints-type">str | None</span>) – Human-readable description.</p></li>
 <li><p><strong>examples</strong> (<span class="sphinx_autodoc_typehints-type">list[Any] | None</span>) – Example values for this field.</p></li>
 <li><p><strong>exclude</strong> (<span class="sphinx_autodoc_typehints-type">bool | None</span>) – Whether to exclude the field from the model serialization.</p></li>
@@ -1311,7 +1311,7 @@ See [Strict Mode](../concepts/strict_mode.md) for details.</p></li>
 <li><p><strong>max_length</strong> (<span class="sphinx_autodoc_typehints-type">int | None</span>) – Maximum length for iterables.</p></li>
 <li><p><strong>pattern</strong> (<span class="sphinx_autodoc_typehints-type">str | re.Pattern[str] | None</span>) – Pattern for strings (a regular expression).</p></li>
 <li><p><strong>allow_inf_nan</strong> (<span class="sphinx_autodoc_typehints-type">bool | None</span>) – Allow <cite>inf</cite>, <cite>-inf</cite>, <cite>nan</cite>. Only applicable to float and [<cite>Decimal</cite>][decimal.Decimal] numbers.</p></li>
-<li><p><strong>max_digits</strong> (<span class="sphinx_autodoc_typehints-type">int | None</span>) – Maximum number of allow digits for strings.</p></li>
+<li><p><strong>max_digits</strong> (<span class="sphinx_autodoc_typehints-type">int | None</span>) – Maximum number of allowed digits for [<cite>Decimal</cite>][decimal.Decimal] numbers.</p></li>
 <li><p><strong>decimal_places</strong> (<span class="sphinx_autodoc_typehints-type">int | None</span>) – Maximum number of decimal places allowed for numbers.</p></li>
 <li><p><strong>union_mode</strong> (<span class="sphinx_autodoc_typehints-type">Literal[‘smart’, ‘left_to_right’]</span>) – The strategy to apply when validating a union. Can be <cite>smart</cite> (the default), or <cite>left_to_right</cite>.
 See [Union Mode](../concepts/unions.md#union-modes) for details.</p></li>
@@ -1420,7 +1420,7 @@ apply only to number fields (<cite>int</cite>, <cite>float</cite>, <cite>Decimal
 <div class="admonition note">
 <p class="admonition-title">Note</p>
 <ul class="simple">
-<li><p>Any <cite>_Unset</cite> objects will be replaced by the corresponding value defined in the <cite>_DefaultValues</cite> dictionary. If a key for the <cite>_Unset</cite> object is not found in the <cite>_DefaultValues</cite> dictionary, it will default to <cite>None</cite></p></li>
+<li><p>Any <cite>_Unset</cite> objects will be replaced by the corresponding default value of the <cite>FieldInfo</cite> constructor.</p></li>
 </ul>
 </div>
 <dl class="field-list simple">
@@ -1435,7 +1435,7 @@ This is often used for things like converting between snake and camel case.</p><
 <li><p><strong>validation_alias</strong> (<span class="sphinx_autodoc_typehints-type">str | AliasPath | AliasChoices | None</span>) – Like <cite>alias</cite>, but only affects validation, not serialization.</p></li>
 <li><p><strong>serialization_alias</strong> (<span class="sphinx_autodoc_typehints-type">str | None</span>) – Like <cite>alias</cite>, but only affects serialization, not validation.</p></li>
 <li><p><strong>title</strong> (<span class="sphinx_autodoc_typehints-type">str | None</span>) – Human-readable title.</p></li>
-<li><p><strong>field_title_generator</strong> (<span class="sphinx_autodoc_typehints-type">Callable[[str, FieldInfo], str] | None</span>) – A callable that takes a field name and returns title for it.</p></li>
+<li><p><strong>field_title_generator</strong> (<span class="sphinx_autodoc_typehints-type">Callable[[str, FieldInfo], str] | None</span>) – A callable that takes a field’s name and info and returns title for it.</p></li>
 <li><p><strong>description</strong> (<span class="sphinx_autodoc_typehints-type">str | None</span>) – Human-readable description.</p></li>
 <li><p><strong>examples</strong> (<span class="sphinx_autodoc_typehints-type">list[Any] | None</span>) – Example values for this field.</p></li>
 <li><p><strong>exclude</strong> (<span class="sphinx_autodoc_typehints-type">bool | None</span>) – Whether to exclude the field from the model serialization.</p></li>
@@ -1466,7 +1466,7 @@ See [Strict Mode](../concepts/strict_mode.md) for details.</p></li>
 <li><p><strong>max_length</strong> (<span class="sphinx_autodoc_typehints-type">int | None</span>) – Maximum length for iterables.</p></li>
 <li><p><strong>pattern</strong> (<span class="sphinx_autodoc_typehints-type">str | re.Pattern[str] | None</span>) – Pattern for strings (a regular expression).</p></li>
 <li><p><strong>allow_inf_nan</strong> (<span class="sphinx_autodoc_typehints-type">bool | None</span>) – Allow <cite>inf</cite>, <cite>-inf</cite>, <cite>nan</cite>. Only applicable to float and [<cite>Decimal</cite>][decimal.Decimal] numbers.</p></li>
-<li><p><strong>max_digits</strong> (<span class="sphinx_autodoc_typehints-type">int | None</span>) – Maximum number of allow digits for strings.</p></li>
+<li><p><strong>max_digits</strong> (<span class="sphinx_autodoc_typehints-type">int | None</span>) – Maximum number of allowed digits for [<cite>Decimal</cite>][decimal.Decimal] numbers.</p></li>
 <li><p><strong>decimal_places</strong> (<span class="sphinx_autodoc_typehints-type">int | None</span>) – Maximum number of decimal places allowed for numbers.</p></li>
 <li><p><strong>union_mode</strong> (<span class="sphinx_autodoc_typehints-type">Literal[‘smart’, ‘left_to_right’]</span>) – The strategy to apply when validating a union. Can be <cite>smart</cite> (the default), or <cite>left_to_right</cite>.
 See [Union Mode](../concepts/unions.md#union-modes) for details.</p></li>
@@ -1583,7 +1583,7 @@ apply only to number fields (<cite>int</cite>, <cite>float</cite>, <cite>Decimal
 <div class="admonition note">
 <p class="admonition-title">Note</p>
 <ul class="simple">
-<li><p>Any <cite>_Unset</cite> objects will be replaced by the corresponding value defined in the <cite>_DefaultValues</cite> dictionary. If a key for the <cite>_Unset</cite> object is not found in the <cite>_DefaultValues</cite> dictionary, it will default to <cite>None</cite></p></li>
+<li><p>Any <cite>_Unset</cite> objects will be replaced by the corresponding default value of the <cite>FieldInfo</cite> constructor.</p></li>
 </ul>
 </div>
 <dl class="field-list simple">
@@ -1598,7 +1598,7 @@ This is often used for things like converting between snake and camel case.</p><
 <li><p><strong>validation_alias</strong> (<span class="sphinx_autodoc_typehints-type">str | AliasPath | AliasChoices | None</span>) – Like <cite>alias</cite>, but only affects validation, not serialization.</p></li>
 <li><p><strong>serialization_alias</strong> (<span class="sphinx_autodoc_typehints-type">str | None</span>) – Like <cite>alias</cite>, but only affects serialization, not validation.</p></li>
 <li><p><strong>title</strong> (<span class="sphinx_autodoc_typehints-type">str | None</span>) – Human-readable title.</p></li>
-<li><p><strong>field_title_generator</strong> (<span class="sphinx_autodoc_typehints-type">Callable[[str, FieldInfo], str] | None</span>) – A callable that takes a field name and returns title for it.</p></li>
+<li><p><strong>field_title_generator</strong> (<span class="sphinx_autodoc_typehints-type">Callable[[str, FieldInfo], str] | None</span>) – A callable that takes a field’s name and info and returns title for it.</p></li>
 <li><p><strong>description</strong> (<span class="sphinx_autodoc_typehints-type">str | None</span>) – Human-readable description.</p></li>
 <li><p><strong>examples</strong> (<span class="sphinx_autodoc_typehints-type">list[Any] | None</span>) – Example values for this field.</p></li>
 <li><p><strong>exclude</strong> (<span class="sphinx_autodoc_typehints-type">bool | None</span>) – Whether to exclude the field from the model serialization.</p></li>
@@ -1629,7 +1629,7 @@ See [Strict Mode](../concepts/strict_mode.md) for details.</p></li>
 <li><p><strong>max_length</strong> (<span class="sphinx_autodoc_typehints-type">int | None</span>) – Maximum length for iterables.</p></li>
 <li><p><strong>pattern</strong> (<span class="sphinx_autodoc_typehints-type">str | re.Pattern[str] | None</span>) – Pattern for strings (a regular expression).</p></li>
 <li><p><strong>allow_inf_nan</strong> (<span class="sphinx_autodoc_typehints-type">bool | None</span>) – Allow <cite>inf</cite>, <cite>-inf</cite>, <cite>nan</cite>. Only applicable to float and [<cite>Decimal</cite>][decimal.Decimal] numbers.</p></li>
-<li><p><strong>max_digits</strong> (<span class="sphinx_autodoc_typehints-type">int | None</span>) – Maximum number of allow digits for strings.</p></li>
+<li><p><strong>max_digits</strong> (<span class="sphinx_autodoc_typehints-type">int | None</span>) – Maximum number of allowed digits for [<cite>Decimal</cite>][decimal.Decimal] numbers.</p></li>
 <li><p><strong>decimal_places</strong> (<span class="sphinx_autodoc_typehints-type">int | None</span>) – Maximum number of decimal places allowed for numbers.</p></li>
 <li><p><strong>union_mode</strong> (<span class="sphinx_autodoc_typehints-type">Literal[‘smart’, ‘left_to_right’]</span>) – The strategy to apply when validating a union. Can be <cite>smart</cite> (the default), or <cite>left_to_right</cite>.
 See [Union Mode](../concepts/unions.md#union-modes) for details.</p></li>
@@ -1776,7 +1776,7 @@ apply only to number fields (<cite>int</cite>, <cite>float</cite>, <cite>Decimal
 <div class="admonition note">
 <p class="admonition-title">Note</p>
 <ul class="simple">
-<li><p>Any <cite>_Unset</cite> objects will be replaced by the corresponding value defined in the <cite>_DefaultValues</cite> dictionary. If a key for the <cite>_Unset</cite> object is not found in the <cite>_DefaultValues</cite> dictionary, it will default to <cite>None</cite></p></li>
+<li><p>Any <cite>_Unset</cite> objects will be replaced by the corresponding default value of the <cite>FieldInfo</cite> constructor.</p></li>
 </ul>
 </div>
 <dl class="field-list simple">
@@ -1791,7 +1791,7 @@ This is often used for things like converting between snake and camel case.</p><
 <li><p><strong>validation_alias</strong> (<span class="sphinx_autodoc_typehints-type">str | AliasPath | AliasChoices | None</span>) – Like <cite>alias</cite>, but only affects validation, not serialization.</p></li>
 <li><p><strong>serialization_alias</strong> (<span class="sphinx_autodoc_typehints-type">str | None</span>) – Like <cite>alias</cite>, but only affects serialization, not validation.</p></li>
 <li><p><strong>title</strong> (<span class="sphinx_autodoc_typehints-type">str | None</span>) – Human-readable title.</p></li>
-<li><p><strong>field_title_generator</strong> (<span class="sphinx_autodoc_typehints-type">Callable[[str, FieldInfo], str] | None</span>) – A callable that takes a field name and returns title for it.</p></li>
+<li><p><strong>field_title_generator</strong> (<span class="sphinx_autodoc_typehints-type">Callable[[str, FieldInfo], str] | None</span>) – A callable that takes a field’s name and info and returns title for it.</p></li>
 <li><p><strong>description</strong> (<span class="sphinx_autodoc_typehints-type">str | None</span>) – Human-readable description.</p></li>
 <li><p><strong>examples</strong> (<span class="sphinx_autodoc_typehints-type">list[Any] | None</span>) – Example values for this field.</p></li>
 <li><p><strong>exclude</strong> (<span class="sphinx_autodoc_typehints-type">bool | None</span>) – Whether to exclude the field from the model serialization.</p></li>
@@ -1822,7 +1822,7 @@ See [Strict Mode](../concepts/strict_mode.md) for details.</p></li>
 <li><p><strong>max_length</strong> (<span class="sphinx_autodoc_typehints-type">int | None</span>) – Maximum length for iterables.</p></li>
 <li><p><strong>pattern</strong> (<span class="sphinx_autodoc_typehints-type">str | re.Pattern[str] | None</span>) – Pattern for strings (a regular expression).</p></li>
 <li><p><strong>allow_inf_nan</strong> (<span class="sphinx_autodoc_typehints-type">bool | None</span>) – Allow <cite>inf</cite>, <cite>-inf</cite>, <cite>nan</cite>. Only applicable to float and [<cite>Decimal</cite>][decimal.Decimal] numbers.</p></li>
-<li><p><strong>max_digits</strong> (<span class="sphinx_autodoc_typehints-type">int | None</span>) – Maximum number of allow digits for strings.</p></li>
+<li><p><strong>max_digits</strong> (<span class="sphinx_autodoc_typehints-type">int | None</span>) – Maximum number of allowed digits for [<cite>Decimal</cite>][decimal.Decimal] numbers.</p></li>
 <li><p><strong>decimal_places</strong> (<span class="sphinx_autodoc_typehints-type">int | None</span>) – Maximum number of decimal places allowed for numbers.</p></li>
 <li><p><strong>union_mode</strong> (<span class="sphinx_autodoc_typehints-type">Literal[‘smart’, ‘left_to_right’]</span>) – The strategy to apply when validating a union. Can be <cite>smart</cite> (the default), or <cite>left_to_right</cite>.
 See [Union Mode](../concepts/unions.md#union-modes) for details.</p></li>
@@ -1952,7 +1952,7 @@ apply only to number fields (<cite>int</cite>, <cite>float</cite>, <cite>Decimal
 <div class="admonition note">
 <p class="admonition-title">Note</p>
 <ul class="simple">
-<li><p>Any <cite>_Unset</cite> objects will be replaced by the corresponding value defined in the <cite>_DefaultValues</cite> dictionary. If a key for the <cite>_Unset</cite> object is not found in the <cite>_DefaultValues</cite> dictionary, it will default to <cite>None</cite></p></li>
+<li><p>Any <cite>_Unset</cite> objects will be replaced by the corresponding default value of the <cite>FieldInfo</cite> constructor.</p></li>
 </ul>
 </div>
 <dl class="field-list simple">
@@ -1967,7 +1967,7 @@ This is often used for things like converting between snake and camel case.</p><
 <li><p><strong>validation_alias</strong> (<span class="sphinx_autodoc_typehints-type">str | AliasPath | AliasChoices | None</span>) – Like <cite>alias</cite>, but only affects validation, not serialization.</p></li>
 <li><p><strong>serialization_alias</strong> (<span class="sphinx_autodoc_typehints-type">str | None</span>) – Like <cite>alias</cite>, but only affects serialization, not validation.</p></li>
 <li><p><strong>title</strong> (<span class="sphinx_autodoc_typehints-type">str | None</span>) – Human-readable title.</p></li>
-<li><p><strong>field_title_generator</strong> (<span class="sphinx_autodoc_typehints-type">Callable[[str, FieldInfo], str] | None</span>) – A callable that takes a field name and returns title for it.</p></li>
+<li><p><strong>field_title_generator</strong> (<span class="sphinx_autodoc_typehints-type">Callable[[str, FieldInfo], str] | None</span>) – A callable that takes a field’s name and info and returns title for it.</p></li>
 <li><p><strong>description</strong> (<span class="sphinx_autodoc_typehints-type">str | None</span>) – Human-readable description.</p></li>
 <li><p><strong>examples</strong> (<span class="sphinx_autodoc_typehints-type">list[Any] | None</span>) – Example values for this field.</p></li>
 <li><p><strong>exclude</strong> (<span class="sphinx_autodoc_typehints-type">bool | None</span>) – Whether to exclude the field from the model serialization.</p></li>
@@ -1998,7 +1998,7 @@ See [Strict Mode](../concepts/strict_mode.md) for details.</p></li>
 <li><p><strong>max_length</strong> (<span class="sphinx_autodoc_typehints-type">int | None</span>) – Maximum length for iterables.</p></li>
 <li><p><strong>pattern</strong> (<span class="sphinx_autodoc_typehints-type">str | re.Pattern[str] | None</span>) – Pattern for strings (a regular expression).</p></li>
 <li><p><strong>allow_inf_nan</strong> (<span class="sphinx_autodoc_typehints-type">bool | None</span>) – Allow <cite>inf</cite>, <cite>-inf</cite>, <cite>nan</cite>. Only applicable to float and [<cite>Decimal</cite>][decimal.Decimal] numbers.</p></li>
-<li><p><strong>max_digits</strong> (<span class="sphinx_autodoc_typehints-type">int | None</span>) – Maximum number of allow digits for strings.</p></li>
+<li><p><strong>max_digits</strong> (<span class="sphinx_autodoc_typehints-type">int | None</span>) – Maximum number of allowed digits for [<cite>Decimal</cite>][decimal.Decimal] numbers.</p></li>
 <li><p><strong>decimal_places</strong> (<span class="sphinx_autodoc_typehints-type">int | None</span>) – Maximum number of decimal places allowed for numbers.</p></li>
 <li><p><strong>union_mode</strong> (<span class="sphinx_autodoc_typehints-type">Literal[‘smart’, ‘left_to_right’]</span>) – The strategy to apply when validating a union. Can be <cite>smart</cite> (the default), or <cite>left_to_right</cite>.
 See [Union Mode](../concepts/unions.md#union-modes) for details.</p></li>
@@ -2094,7 +2094,7 @@ apply only to number fields (<cite>int</cite>, <cite>float</cite>, <cite>Decimal
 <div class="admonition note">
 <p class="admonition-title">Note</p>
 <ul class="simple">
-<li><p>Any <cite>_Unset</cite> objects will be replaced by the corresponding value defined in the <cite>_DefaultValues</cite> dictionary. If a key for the <cite>_Unset</cite> object is not found in the <cite>_DefaultValues</cite> dictionary, it will default to <cite>None</cite></p></li>
+<li><p>Any <cite>_Unset</cite> objects will be replaced by the corresponding default value of the <cite>FieldInfo</cite> constructor.</p></li>
 </ul>
 </div>
 <dl class="field-list simple">
@@ -2109,7 +2109,7 @@ This is often used for things like converting between snake and camel case.</p><
 <li><p><strong>validation_alias</strong> (<span class="sphinx_autodoc_typehints-type">str | AliasPath | AliasChoices | None</span>) – Like <cite>alias</cite>, but only affects validation, not serialization.</p></li>
 <li><p><strong>serialization_alias</strong> (<span class="sphinx_autodoc_typehints-type">str | None</span>) – Like <cite>alias</cite>, but only affects serialization, not validation.</p></li>
 <li><p><strong>title</strong> (<span class="sphinx_autodoc_typehints-type">str | None</span>) – Human-readable title.</p></li>
-<li><p><strong>field_title_generator</strong> (<span class="sphinx_autodoc_typehints-type">Callable[[str, FieldInfo], str] | None</span>) – A callable that takes a field name and returns title for it.</p></li>
+<li><p><strong>field_title_generator</strong> (<span class="sphinx_autodoc_typehints-type">Callable[[str, FieldInfo], str] | None</span>) – A callable that takes a field’s name and info and returns title for it.</p></li>
 <li><p><strong>description</strong> (<span class="sphinx_autodoc_typehints-type">str | None</span>) – Human-readable description.</p></li>
 <li><p><strong>examples</strong> (<span class="sphinx_autodoc_typehints-type">list[Any] | None</span>) – Example values for this field.</p></li>
 <li><p><strong>exclude</strong> (<span class="sphinx_autodoc_typehints-type">bool | None</span>) – Whether to exclude the field from the model serialization.</p></li>
@@ -2140,7 +2140,7 @@ See [Strict Mode](../concepts/strict_mode.md) for details.</p></li>
 <li><p><strong>max_length</strong> (<span class="sphinx_autodoc_typehints-type">int | None</span>) – Maximum length for iterables.</p></li>
 <li><p><strong>pattern</strong> (<span class="sphinx_autodoc_typehints-type">str | re.Pattern[str] | None</span>) – Pattern for strings (a regular expression).</p></li>
 <li><p><strong>allow_inf_nan</strong> (<span class="sphinx_autodoc_typehints-type">bool | None</span>) – Allow <cite>inf</cite>, <cite>-inf</cite>, <cite>nan</cite>. Only applicable to float and [<cite>Decimal</cite>][decimal.Decimal] numbers.</p></li>
-<li><p><strong>max_digits</strong> (<span class="sphinx_autodoc_typehints-type">int | None</span>) – Maximum number of allow digits for strings.</p></li>
+<li><p><strong>max_digits</strong> (<span class="sphinx_autodoc_typehints-type">int | None</span>) – Maximum number of allowed digits for [<cite>Decimal</cite>][decimal.Decimal] numbers.</p></li>
 <li><p><strong>decimal_places</strong> (<span class="sphinx_autodoc_typehints-type">int | None</span>) – Maximum number of decimal places allowed for numbers.</p></li>
 <li><p><strong>union_mode</strong> (<span class="sphinx_autodoc_typehints-type">Literal[‘smart’, ‘left_to_right’]</span>) – The strategy to apply when validating a union. Can be <cite>smart</cite> (the default), or <cite>left_to_right</cite>.
 See [Union Mode](../concepts/unions.md#union-modes) for details.</p></li>
@@ -2363,7 +2363,7 @@ apply only to number fields (<cite>int</cite>, <cite>float</cite>, <cite>Decimal
 <div class="admonition note">
 <p class="admonition-title">Note</p>
 <ul class="simple">
-<li><p>Any <cite>_Unset</cite> objects will be replaced by the corresponding value defined in the <cite>_DefaultValues</cite> dictionary. If a key for the <cite>_Unset</cite> object is not found in the <cite>_DefaultValues</cite> dictionary, it will default to <cite>None</cite></p></li>
+<li><p>Any <cite>_Unset</cite> objects will be replaced by the corresponding default value of the <cite>FieldInfo</cite> constructor.</p></li>
 </ul>
 </div>
 <dl class="field-list simple">
@@ -2378,7 +2378,7 @@ This is often used for things like converting between snake and camel case.</p><
 <li><p><strong>validation_alias</strong> (<span class="sphinx_autodoc_typehints-type">str | AliasPath | AliasChoices | None</span>) – Like <cite>alias</cite>, but only affects validation, not serialization.</p></li>
 <li><p><strong>serialization_alias</strong> (<span class="sphinx_autodoc_typehints-type">str | None</span>) – Like <cite>alias</cite>, but only affects serialization, not validation.</p></li>
 <li><p><strong>title</strong> (<span class="sphinx_autodoc_typehints-type">str | None</span>) – Human-readable title.</p></li>
-<li><p><strong>field_title_generator</strong> (<span class="sphinx_autodoc_typehints-type">Callable[[str, FieldInfo], str] | None</span>) – A callable that takes a field name and returns title for it.</p></li>
+<li><p><strong>field_title_generator</strong> (<span class="sphinx_autodoc_typehints-type">Callable[[str, FieldInfo], str] | None</span>) – A callable that takes a field’s name and info and returns title for it.</p></li>
 <li><p><strong>description</strong> (<span class="sphinx_autodoc_typehints-type">str | None</span>) – Human-readable description.</p></li>
 <li><p><strong>examples</strong> (<span class="sphinx_autodoc_typehints-type">list[Any] | None</span>) – Example values for this field.</p></li>
 <li><p><strong>exclude</strong> (<span class="sphinx_autodoc_typehints-type">bool | None</span>) – Whether to exclude the field from the model serialization.</p></li>
@@ -2409,7 +2409,7 @@ See [Strict Mode](../concepts/strict_mode.md) for details.</p></li>
 <li><p><strong>max_length</strong> (<span class="sphinx_autodoc_typehints-type">int | None</span>) – Maximum length for iterables.</p></li>
 <li><p><strong>pattern</strong> (<span class="sphinx_autodoc_typehints-type">str | re.Pattern[str] | None</span>) – Pattern for strings (a regular expression).</p></li>
 <li><p><strong>allow_inf_nan</strong> (<span class="sphinx_autodoc_typehints-type">bool | None</span>) – Allow <cite>inf</cite>, <cite>-inf</cite>, <cite>nan</cite>. Only applicable to float and [<cite>Decimal</cite>][decimal.Decimal] numbers.</p></li>
-<li><p><strong>max_digits</strong> (<span class="sphinx_autodoc_typehints-type">int | None</span>) – Maximum number of allow digits for strings.</p></li>
+<li><p><strong>max_digits</strong> (<span class="sphinx_autodoc_typehints-type">int | None</span>) – Maximum number of allowed digits for [<cite>Decimal</cite>][decimal.Decimal] numbers.</p></li>
 <li><p><strong>decimal_places</strong> (<span class="sphinx_autodoc_typehints-type">int | None</span>) – Maximum number of decimal places allowed for numbers.</p></li>
 <li><p><strong>union_mode</strong> (<span class="sphinx_autodoc_typehints-type">Literal[‘smart’, ‘left_to_right’]</span>) – The strategy to apply when validating a union. Can be <cite>smart</cite> (the default), or <cite>left_to_right</cite>.
 See [Union Mode](../concepts/unions.md#union-modes) for details.</p></li>

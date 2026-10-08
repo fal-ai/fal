@@ -1,0 +1,109 @@
+fal.wma package
+===============
+
+Submodules
+----------
+
+fal.wma.app module
+------------------
+
+.. automodule:: fal.wma.app
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+fal.wma.contract module
+-----------------------
+
+.. automodule:: fal.wma.contract
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+fal.wma.duration\_billing module
+--------------------------------
+
+.. automodule:: fal.wma.duration_billing
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+fal.wma.ice module
+------------------
+
+.. automodule:: fal.wma.ice
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+fal.wma.metered module
+----------------------
+
+.. automodule:: fal.wma.metered
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+fal.wma.profile module
+----------------------
+
+.. automodule:: fal.wma.profile
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+fal.wma.protocol module
+-----------------------
+
+.. automodule:: fal.wma.protocol
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+fal.wma.raw module
+------------------
+
+.. automodule:: fal.wma.raw
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+fal.wma.relay module
+--------------------
+
+.. automodule:: fal.wma.relay
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+fal.wma.sdk module
+------------------
+
+.. automodule:: fal.wma.sdk
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+fal.wma.telemetry module
+------------------------
+
+.. automodule:: fal.wma.telemetry
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+fal.wma.ui module
+-----------------
+
+.. automodule:: fal.wma.ui
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+Module contents
+---------------
+
+.. automodule:: fal.wma
+   :members:
+   :undoc-members:
+   :show-inheritance:
