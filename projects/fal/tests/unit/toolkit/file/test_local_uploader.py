@@ -360,3 +360,62 @@ async def test_async_wrapper_carries_request_context(local_upload, caller):
     result = await files.File.from_bytes_async(b"hi")
     assert result.url == ACCEPTED["file_url"]
     assert local_upload[0].headers["x-fal-request-id"] == "async-id"
+
+
+def _completion(*statuses):
+    """Accept the upload, then answer status requests with `statuses` in order."""
+    remaining = list(statuses)
+
+    def respond(request):
+        if request.method == "POST":
+            return httpx.Response(202, json=ACCEPTED)
+        return _respond(remaining.pop(0))(request)
+
+    return respond
+
+
+PENDING = httpx.Response(200, json={"state": "pending"})
+COMPLETED = httpx.Response(200, json={"state": "completed"})
+
+
+@pytest.mark.parametrize("from_path", [False, True])
+def test_wait_returns_after_cdn_completion(
+    local_upload, transport, tmp_path, from_path
+):
+    requests = transport(_completion(PENDING, COMPLETED))
+    save_kwargs = {"wait_for_completion": True}
+    if from_path:
+        path = tmp_path / "file.txt"
+        path.write_bytes(b"hi")
+        result = files.File.from_path(path, save_kwargs=save_kwargs)
+    else:
+        result = files.File.from_bytes(b"hi", save_kwargs=save_kwargs)
+    assert result.url == ACCEPTED["file_url"]
+    assert [(r.method, str(r.url)) for r in requests[1:]] == [
+        ("GET", "http://localhost/uploads/accepted-id?wait=60")
+    ] * 2
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        httpx.Response(200, json={"state": "failed", "failure": {"rejected": 403}}),
+        httpx.Response(404, text="secret"),  # completed before a restart, or expired
+        httpx.Response(200, text="secret"),
+        httpx.ReadError,
+    ],
+)
+def test_failed_or_unknown_completion_is_raised(
+    monkeypatch, local_upload, transport, status
+):
+    transport(_completion(PENDING, status))
+    direct = Mock()
+    legacy = Mock()
+    monkeypatch.setattr(remote.FalFileRepositoryV3, "save", direct)
+    monkeypatch.setattr(remote.FalFileRepository, "save", legacy)
+    with pytest.raises(LocalUploadError) as caught:
+        files.File.from_bytes(b"hi", save_kwargs={"wait_for_completion": True})
+    assert not isinstance(caught.value, LocalUploadRefused)
+    assert "secret" not in str(caught.value)
+    direct.assert_not_called()
+    legacy.assert_not_called()

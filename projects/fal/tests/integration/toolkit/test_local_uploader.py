@@ -23,7 +23,8 @@ from urllib.parse import urlparse
 import httpx
 import pytest
 
-from fal.toolkit.file import File
+from fal.toolkit.file import File, _local_uploader
+from fal.toolkit.file._local_uploader import LocalUploadError
 from fal.toolkit.file.providers import fal as remote
 
 pytestmark = pytest.mark.skipif(
@@ -54,15 +55,21 @@ def uploader(monkeypatch):
     release = threading.Event()
     receiving = threading.Event()
     done = threading.Event()
-    state = {"parts": {}, "multipart": False, "headers": None, "reservations": 0}
+    state = {
+        "parts": {},
+        "multipart": False,
+        "headers": None,
+        "reservations": 0,
+        "reject": None,
+    }
 
     class Handler(BaseHTTPRequestHandler):
         def body(self):
             return self.rfile.read(int(self.headers.get("Content-Length", 0)))
 
-        def respond(self, data, *, etag=None):
+        def respond(self, data, *, status=200, etag=None):
             encoded = json.dumps(data).encode()
-            self.send_response(200)
+            self.send_response(status)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(encoded)))
             if etag:
@@ -103,6 +110,8 @@ def uploader(monkeypatch):
             receiving.set()
             if not release.wait(20):
                 return
+            if state["reject"]:
+                return self.respond({}, status=state["reject"])
             if not state["multipart"]:
                 done.set()
             self.respond({}, etag=f'"part-{number}"')
@@ -214,3 +223,35 @@ def test_runner_exit_after_acceptance(uploader, tmp_path, monkeypatch, size_mib)
     for _, part in sorted(uploader.state["parts"].items()):
         actual.update(part)
     assert actual.digest() == digest.digest()
+
+
+def test_wait_holds_until_cdn_completion(uploader, monkeypatch):
+    # Short status waits make the client see pending and wait again.
+    monkeypatch.setattr(_local_uploader, "_WAIT_SECONDS", 1)
+    result = {}
+
+    def save():
+        result["file"] = File.from_bytes(
+            b"hello", save_kwargs={"wait_for_completion": True}
+        )
+
+    saving = threading.Thread(target=save)
+    saving.start()
+    assert uploader.receiving.wait(10)
+    saving.join(2.5)
+    assert saving.is_alive()
+    uploader.release.set()
+    saving.join(10)
+    assert uploader.done.is_set()
+    assert result["file"].url.endswith("/file/1")
+
+
+def test_wait_raises_after_failed_transfer(uploader, monkeypatch):
+    uploader.state["reject"] = 403
+    uploader.release.set()
+    direct = Mock()
+    monkeypatch.setattr(remote.FalFileRepositoryV3, "save", direct)
+    with pytest.raises(LocalUploadError, match="failed"):
+        File.from_bytes(b"hello", save_kwargs={"wait_for_completion": True})
+    direct.assert_not_called()
+    assert uploader.state["parts"] == {1: b"hello"}

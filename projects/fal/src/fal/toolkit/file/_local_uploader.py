@@ -1,7 +1,7 @@
 """Client for the node-local uploader's HTTP API over a Unix socket.
 
-Acceptance is durable on this node, not CDN completion. Do not serialize live
-connections.
+Acceptance is durable on this node, not CDN completion; callers that need the
+CDN copy wait for completion. Do not serialize live connections.
 """
 
 from __future__ import annotations
@@ -10,6 +10,7 @@ import os
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator
+from urllib.parse import quote
 
 from fal.toolkit.exceptions import FileUploadException
 
@@ -23,6 +24,8 @@ _TIMEOUT = 300
 _CONNECT_TIMEOUT = 5
 _CHUNK_SIZE = 64 * 1024
 _REJECTION_DELAYS = (0.1, 0.2)
+# How long each status request holds while the upload is pending.
+_WAIT_SECONDS = 60
 
 
 class LocalUploadError(FileUploadException):
@@ -41,8 +44,15 @@ class LocalUploadRejected(LocalUploadRefused):
     """The uploader is full or draining and may accept a replay shortly."""
 
 
-def upload(file_name: str, content: bytes | Path, headers: dict[str, str]) -> str:
-    """Return the URL once the complete body is durably accepted.
+def upload(
+    file_name: str,
+    content: bytes | Path,
+    headers: dict[str, str],
+    *,
+    wait_for_completion: bool = False,
+) -> str:
+    """Return the URL once the complete body is durably accepted, or once the
+    CDN has it when waiting for completion.
 
     A rejected submission is replayed briefly; a file is reopened for each
     attempt.
@@ -54,15 +64,26 @@ def upload(file_name: str, content: bytes | Path, headers: dict[str, str]) -> st
         "Content-Length": str(size),
     }
     with _new_client() as http:
-        for delay in _REJECTION_DELAYS:
-            try:
-                return _submit(http, content, headers)
-            except LocalUploadRejected:
-                time.sleep(delay)
-        return _submit(http, content, headers)
+        upload_id, file_url = _accept(http, content, headers)
+        if wait_for_completion:
+            _wait_for_completion(http, upload_id)
+    return file_url
 
 
-def _submit(http: httpx.Client, content: bytes | Path, headers: dict[str, str]) -> str:
+def _accept(
+    http: httpx.Client, content: bytes | Path, headers: dict[str, str]
+) -> tuple[str, str]:
+    for delay in _REJECTION_DELAYS:
+        try:
+            return _submit(http, content, headers)
+        except LocalUploadRejected:
+            time.sleep(delay)
+    return _submit(http, content, headers)
+
+
+def _submit(
+    http: httpx.Client, content: bytes | Path, headers: dict[str, str]
+) -> tuple[str, str]:
     import httpx  # noqa: PLC0415 -- see _new_client
 
     body = content if isinstance(content, bytes) else _chunks(content)
@@ -94,10 +115,43 @@ def _submit(http: httpx.Client, content: bytes | Path, headers: dict[str, str]) 
     try:
         result = response.json()
         if result["state"] == "accepted_local":
-            return result["file_url"]
+            return result["upload_id"], result["file_url"]
     except (ValueError, KeyError, TypeError):
         pass
     raise LocalUploadError("Local uploader returned an invalid response.")
+
+
+def _wait_for_completion(http: httpx.Client, upload_id: str) -> None:
+    """Return once the CDN has the file; raise if it failed or is unknown.
+
+    The uploader fails pending uploads at their queue deadline, so this ends. A
+    404 means the uploader restarted or dropped the record.
+    """
+    import httpx  # noqa: PLC0415 -- see _new_client
+
+    path = "/uploads/" + quote(upload_id, safe="")
+    while True:
+        try:
+            response = http.get(path, params={"wait": _WAIT_SECONDS})
+        except httpx.RequestError as exc:
+            raise LocalUploadError(
+                f"Lost the local uploader while waiting ({type(exc).__name__})."
+            ) from None
+        if response.status_code != 200:
+            raise LocalUploadError(
+                f"Local upload state is unknown (HTTP {response.status_code})."
+            )
+        try:
+            status = response.json()
+            state = status["state"]
+        except (ValueError, KeyError, TypeError):
+            raise LocalUploadError(
+                "Local uploader returned an invalid response."
+            ) from None
+        if state == "completed":
+            return
+        if state != "pending":
+            raise LocalUploadError(f"Local upload {state} ({status.get('failure')}).")
 
 
 def _chunks(path: Path) -> Iterator[bytes]:

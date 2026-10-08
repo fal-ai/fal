@@ -43,7 +43,8 @@ def _headers(
 
 
 class LocalFileRepository(FileRepository):
-    """Hand uploads to the node-local service and wait for durable acceptance.
+    """Hand uploads to the node-local service and wait for durable acceptance,
+    or for CDN completion with `wait_for_completion`.
 
     Cancelling an async wrapper's await does not stop the uploading thread.
     """
@@ -57,10 +58,16 @@ class LocalFileRepository(FileRepository):
         multipart_chunk_size: int | None = None,
         multipart_max_concurrency: int | None = None,
         object_lifecycle_preference: dict[str, str] | None = None,
+        wait_for_completion: bool = False,
     ) -> str:
-        """Return the accepted URL; the service completes the CDN transfer."""
+        """Return the URL once accepted, or once on the CDN when waiting."""
         headers = _headers(data.content_type, object_lifecycle_preference)
-        return upload(data.file_name, data.data, headers)
+        return upload(
+            data.file_name,
+            data.data,
+            headers,
+            wait_for_completion=wait_for_completion,
+        )
 
     @_or_direct
     def save_file(
@@ -72,6 +79,7 @@ class LocalFileRepository(FileRepository):
         multipart_chunk_size: int | None = None,
         multipart_max_concurrency: int | None = None,
         object_lifecycle_preference: dict[str, str] | None = None,
+        wait_for_completion: bool = False,
     ) -> tuple[str, FileData | None]:
         """Stream large files; small ones are read once and returned as FileData."""
         path = Path(file_path)
@@ -80,6 +88,12 @@ class LocalFileRepository(FileRepository):
             multipart = path.stat().st_size > threshold
         headers = _headers(content_type, object_lifecycle_preference)
         if multipart:
-            return upload(path.name, path, headers), None
+            url = upload(
+                path.name, path, headers, wait_for_completion=wait_for_completion
+            )
+            return url, None
         data = FileData(path.read_bytes(), content_type, path.name)
-        return upload(path.name, data.data, headers), data
+        url = upload(
+            path.name, data.data, headers, wait_for_completion=wait_for_completion
+        )
+        return url, data
