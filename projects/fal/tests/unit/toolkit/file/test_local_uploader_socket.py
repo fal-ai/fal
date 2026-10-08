@@ -12,6 +12,7 @@ import tempfile
 import threading
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
@@ -72,7 +73,12 @@ def uploader(monkeypatch, request):
             monkeypatch.setenv("CDN_UPLOADER_SOCKET_PATH", path)
             monkeypatch.setenv("FAL_KEY", "local:test")
             try:
-                yield requests, received, accept, responded
+                yield SimpleNamespace(
+                    requests=requests,
+                    received=received,
+                    accept=accept,
+                    responded=responded,
+                )
             finally:
                 accept.set()
                 server.shutdown()
@@ -83,10 +89,9 @@ def test_real_socket_ignores_http_proxy(uploader, monkeypatch):
     monkeypatch.setenv("HTTP_PROXY", "http://127.0.0.1:1")
     monkeypatch.setenv("SSL_CERT_FILE", "/nonexistent/certificate.pem")
     result = File.from_bytes(b"hello", file_name="hello.txt")
-    requests, _, _, _ = uploader
     assert result.url == "https://fal.media/file.bin"
-    assert requests[0][1] == b"hello"
-    assert requests[0][0]["Authorization"] == "Key local:test"
+    assert uploader.requests[0][1] == b"hello"
+    assert uploader.requests[0][0]["Authorization"] == "Key local:test"
 
 
 def test_missing_socket_does_not_use_fallback(monkeypatch):
@@ -136,25 +141,24 @@ def test_serialized_sdk_reads_runner_environment(uploader, tmp_path):
     )
     assert runner.returncode == 0, runner.stderr
     assert b"https://fal.media/file.bin" in runner.stdout
-    assert [body for _, body in uploader[0]] == [b"from runner"] * 3
+    assert [body for _, body in uploader.requests] == [b"from runner"] * 3
 
 
 @pytest.mark.asyncio
 async def test_cancelled_await_does_not_cancel_or_retry_submission(uploader, tmp_path):
-    requests, received, accept, responded = uploader
-    accept.clear()
+    uploader.accept.clear()
     path = tmp_path / "source.bin"
     path.write_bytes(b"hello")
     task = asyncio.create_task(File.from_path_async(path, multipart=True))
     try:
-        assert await run_in_thread(received.wait, 10)
+        assert await run_in_thread(uploader.received.wait, 10)
         assert not task.done()  # request body alone is not acceptance
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
             await task
         path.unlink()  # worker still owns the open source handle
     finally:
-        accept.set()
-        assert await run_in_thread(responded.wait, 10)
-    assert len(requests) == 1
-    assert requests[0][1] == b"hello"
+        uploader.accept.set()
+        assert await run_in_thread(uploader.responded.wait, 10)
+    assert len(uploader.requests) == 1
+    assert uploader.requests[0][1] == b"hello"

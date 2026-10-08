@@ -13,7 +13,7 @@ from fal.auth import AuthCredentials
 from fal.exceptions.auth import UnauthenticatedException
 from fal.toolkit.file import _local_uploader
 from fal.toolkit.file import file as files
-from fal.toolkit.file._local_uploader import LocalUploader, LocalUploadError
+from fal.toolkit.file._local_uploader import LocalUploadError
 from fal.toolkit.file._upload_policy import UPLOAD_POLICY_KEY
 from fal.toolkit.file.providers import fal as remote
 from fal.toolkit.file.providers import local
@@ -26,6 +26,7 @@ ACCEPTED = {
     "state": "accepted_local",
 }
 STARTED = {**ACCEPTED, "upload_id": "session-id", "state": "receiving"}
+SLEEP = "fal.toolkit.utils.retry.time.sleep"
 
 
 @pytest.mark.parametrize("socket_path", [None, "/tmp/custom-uploader.sock"])
@@ -61,6 +62,17 @@ def transport(monkeypatch):
             ),
         )
         return requests
+
+    return install
+
+
+@pytest.fixture
+def caller(monkeypatch):
+    def install(headers, request_id):
+        request = SimpleNamespace(headers=headers, request_id=request_id)
+        monkeypatch.setattr(
+            remote, "get_current_app", lambda: SimpleNamespace(current_request=request)
+        )
 
     return install
 
@@ -192,14 +204,9 @@ def test_files_stream_and_preserve_file_data(local_upload, tmp_path, multipart, 
 )
 @pytest.mark.parametrize("scheme", ["Key", "Bearer"])
 def test_caller_metadata_and_effective_settings(
-    monkeypatch, local_upload, settings, scheme
+    monkeypatch, local_upload, caller, settings, scheme
 ):
-    request = SimpleNamespace(
-        headers={"x-fal-cdn-token": "caller-token"}, request_id="request-id"
-    )
-    monkeypatch.setattr(
-        remote, "get_current_app", lambda: SimpleNamespace(current_request=request)
-    )
+    caller({"x-fal-cdn-token": "caller-token"}, "request-id")
     monkeypatch.setattr(
         local, "fetch_auth_credentials", lambda: AuthCredentials(scheme, "credential")
     )
@@ -218,14 +225,11 @@ def test_caller_metadata_and_effective_settings(
         assert "x-fal-object-lifecycle-preference" not in headers
 
 
-def test_token_only_does_not_fabricate_settings(monkeypatch, local_upload):
+def test_token_only_does_not_fabricate_settings(monkeypatch, local_upload, caller):
     monkeypatch.setattr(
         local, "fetch_auth_credentials", Mock(side_effect=UnauthenticatedException())
     )
-    request = SimpleNamespace(headers={"x-fal-cdn-token": "token"}, request_id=None)
-    monkeypatch.setattr(
-        remote, "get_current_app", lambda: SimpleNamespace(current_request=request)
-    )
+    caller({"x-fal-cdn-token": "token"}, None)
     local.LocalFileRepository().save(FileData(b"hi"))
     assert "authorization" not in local_upload[0].headers
     assert "x-fal-object-lifecycle" not in local_upload[0].headers
@@ -306,8 +310,8 @@ def test_definite_rejection_replays_then_uses_direct_cdn(
 
     requests = transport(respond)
     sleep = Mock()
-    monkeypatch.setattr(local.time, "sleep", sleep)
-    body = b"x" * (local._READ_SIZE + 1)
+    monkeypatch.setattr(SLEEP, sleep)
+    body = b"x" * (1024 * 1024 + 1)
     path = tmp_path / "clip.mp4"
     path.write_bytes(body)
     kwargs = {
@@ -351,7 +355,7 @@ def test_retry_stops_when_acceptance_becomes_uncertain(
         raise httpx.ReadError("lost acceptance")
 
     requests = transport(respond)
-    monkeypatch.setattr(local.time, "sleep", Mock())
+    monkeypatch.setattr(SLEEP, Mock())
     direct = Mock()
     monkeypatch.setattr(remote.FalFileRepositoryV3, "save", direct)
     with pytest.raises(LocalUploadError) as caught:
@@ -375,8 +379,8 @@ def test_connection_failure_outcomes(transport, failure, uncertain):
         raise failure("secret")
 
     requests = transport(fail)
-    with LocalUploader() as client, pytest.raises(LocalUploadError) as caught:
-        client.upload("file", b"hi", 2, {})
+    with pytest.raises(LocalUploadError) as caught:
+        _local_uploader.upload("file", b"hi", 2, {})
     assert caught.value.acceptance_uncertain is uncertain
     assert failure.__name__ in str(caught.value)
     assert "secret" not in str(caught.value)
@@ -394,8 +398,8 @@ def test_connection_failure_outcomes(transport, failure, uncertain):
 )
 def test_invalid_acceptance_is_not_success(transport, body):
     transport(lambda request: httpx.Response(202, content=body))
-    with LocalUploader() as client, pytest.raises(LocalUploadError) as caught:
-        client.upload("file", b"", 0, {})
+    with pytest.raises(LocalUploadError) as caught:
+        _local_uploader.upload("file", b"", 0, {})
     assert caught.value.acceptance_uncertain
 
 
@@ -409,29 +413,11 @@ def session_response(request):
     return httpx.Response(201, json=STARTED)
 
 
-def test_stream_requires_body_then_explicit_finish(transport):
-    requests = transport(session_response)
-    with LocalUploader() as client, client.begin_stream("file", {}) as session:
-        with pytest.raises(ValueError, match="successfully received"):
-            session.finish(5)
-        session.send_body(iter([b"he", b"llo"]))
-        assert len(requests) == 2  # EOF never finishes automatically
-        accepted = session.finish(5)
-        assert accepted.upload_id == "accepted-id"  # different from session ID
-    assert [r.method for r in requests] == ["POST", "PUT", "POST"]
-    assert requests[1].headers["transfer-encoding"] == "chunked"
-    assert requests[1].content == b"hello"
-    assert json.loads(requests[2].content) == {"size_bytes": 5}
-
-
 def test_repository_stream_counts_bytes_and_carries_metadata(
-    monkeypatch, local_upload, transport
+    local_upload, transport, caller
 ):
     requests = transport(session_response)
-    request = SimpleNamespace(headers={"x-fal-cdn-token": "token"}, request_id="rid")
-    monkeypatch.setattr(
-        remote, "get_current_app", lambda: SimpleNamespace(current_request=request)
-    )
+    caller({"x-fal-cdn-token": "token"}, "rid")
     url = local.LocalFileRepository().save_stream(
         iter([b"he", b"llo"]), "generated.txt", "text/plain"
     )
@@ -440,41 +426,22 @@ def test_repository_stream_counts_bytes_and_carries_metadata(
     assert requests[0].headers["authorization"] == "Key test:key"
     assert requests[0].headers["x-fal-request-id"] == "rid"
     assert requests[0].headers["content-type"] == "text/plain"
+    assert requests[1].headers["transfer-encoding"] == "chunked"
     assert requests[1].content == b"hello"
     assert json.loads(requests[2].content) == {"size_bytes": 5}
 
 
-def test_repository_stream_producer_failure_aborts(local_upload, transport):
-    requests = transport(session_response)
-
-    def generate():
-        yield b"partial"
-        raise RuntimeError("encoder died")
-
-    with pytest.raises(RuntimeError, match="encoder died"):
-        local.LocalFileRepository().save_stream(generate(), "clip.mp4", "video/mp4")
-    assert [r.method for r in requests] == ["POST", "DELETE"]
-
-
 @pytest.mark.parametrize("failure", [RuntimeError, asyncio.CancelledError])
-def test_producer_failure_aborts_without_finish(transport, failure):
+def test_producer_failure_aborts_without_finish(local_upload, transport, failure):
     requests = transport(session_response)
 
     def generate():
         yield b"partial"
         raise failure()
 
-    with LocalUploader() as client, client.begin_stream("file", {}) as session:
-        with pytest.raises(failure):
-            session.send_body(generate())
+    with pytest.raises(failure):
+        local.LocalFileRepository().save_stream(generate(), "clip.mp4", "video/mp4")
     assert [r.method for r in requests] == ["POST", "DELETE"]
-
-
-def test_session_exit_without_finish_aborts(transport):
-    requests = transport(session_response)
-    with LocalUploader() as client, client.begin_stream("file", {}) as session:
-        session.send_body(b"hi")
-    assert [r.method for r in requests] == ["POST", "PUT", "DELETE"]
 
 
 def test_lost_finish_response_does_not_retry_or_mask_error(transport):
@@ -486,22 +453,15 @@ def test_lost_finish_response_does_not_retry_or_mask_error(transport):
         return session_response(request)
 
     requests = transport(respond)
-    with LocalUploader() as client, pytest.raises(LocalUploadError) as caught:
-        with client.begin_stream("file", {}) as session:
-            session.send_body(b"hi")
-            session.finish(2)
+    with pytest.raises(LocalUploadError) as caught:
+        _local_uploader.upload_stream("file", iter([b"hi"]), {})
     assert caught.value.acceptance_uncertain
     assert [r.method for r in requests] == ["POST", "PUT", "POST", "DELETE"]
 
 
 @pytest.mark.asyncio
-async def test_async_wrapper_carries_request_context(monkeypatch, local_upload):
-    request = SimpleNamespace(
-        headers={"x-fal-cdn-token": "caller-token"}, request_id="async-id"
-    )
-    monkeypatch.setattr(
-        remote, "get_current_app", lambda: SimpleNamespace(current_request=request)
-    )
+async def test_async_wrapper_carries_request_context(local_upload, caller):
+    caller({"x-fal-cdn-token": "caller-token"}, "async-id")
     result = await files.File.from_bytes_async(b"hi")
     assert result.url == ACCEPTED["file_url"]
     assert local_upload[0].headers["x-fal-request-id"] == "async-id"

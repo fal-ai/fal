@@ -8,8 +8,8 @@ resending creates a new URL. Do not serialize live connections.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Iterable
+from contextlib import suppress
+from typing import TYPE_CHECKING, Any, Iterable, Iterator
 from urllib.parse import quote
 
 from fal.toolkit.exceptions import FileUploadException
@@ -39,12 +39,110 @@ class LocalUploadRejected(LocalUploadError):
     """The uploader explicitly rejected work before it could be accepted."""
 
 
-@dataclass(frozen=True)
-class AcceptedUpload:
-    """Receipt for durable local acceptance, before CDN completion."""
+def upload(
+    file_name: str,
+    body: bytes | Iterable[bytes],
+    size_bytes: int,
+    headers: dict[str, str],
+) -> str:
+    """Return the URL once the complete known-length body is durably accepted."""
+    with _new_client() as http:
+        response = _request(
+            http,
+            "POST",
+            "/uploads",
+            202,
+            accepting=True,
+            headers={
+                **headers,
+                "X-Fal-File-Name": _header_file_name(file_name),
+                "Content-Length": str(size_bytes),
+            },
+            content=body,
+        )
+    return _upload_info(response, "accepted_local")[1]
 
-    upload_id: str
-    file_url: str
+
+def upload_stream(
+    file_name: str, chunks: Iterable[bytes], headers: dict[str, str]
+) -> str:
+    """Return the URL once a body of unknown size is durably accepted.
+
+    The uploader accepts only on an explicit finish carrying the final byte
+    count. Any failure, including a raising producer, aborts the session.
+    """
+    size = 0
+
+    def counted() -> Iterator[bytes]:
+        nonlocal size
+        for chunk in chunks:
+            size += len(chunk)
+            yield chunk
+
+    with _new_client() as http:
+        response = _request(
+            http,
+            "POST",
+            "/upload-sessions",
+            201,
+            headers={**headers, "X-Fal-File-Name": _header_file_name(file_name)},
+        )
+        upload_id, _ = _upload_info(response, "receiving")
+        path = "/upload-sessions/" + quote(upload_id, safe="")
+        try:
+            _request(http, "PUT", path + "/body", 204, content=counted())
+            response = _request(
+                http,
+                "POST",
+                path + "/finish",
+                202,
+                accepting=True,
+                json={"size_bytes": size},
+            )
+            return _upload_info(response, "accepted_local")[1]
+        except BaseException:
+            # Aborting cannot undo an acceptance in progress, and must not mask
+            # the original failure.
+            with suppress(LocalUploadError):
+                _request(http, "DELETE", path, 202)
+            raise
+
+
+def _request(
+    http: httpx.Client,
+    method: str,
+    path: str,
+    expected_status: int,
+    *,
+    accepting: bool = False,
+    **kwargs: Any,
+) -> httpx.Response:
+    import httpx  # noqa: PLC0415 -- see _new_client
+
+    # Name the failure class but drop its text, which can carry credentials
+    # or signed URLs.
+    try:
+        response = http.request(method, path, **kwargs)
+    except (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout) as exc:
+        raise LocalUploadError(
+            f"Cannot connect to the local uploader ({type(exc).__name__})."
+        ) from None
+    except httpx.RequestError as exc:
+        raise LocalUploadError(
+            f"Local uploader connection was interrupted ({type(exc).__name__}).",
+            acceptance_uncertain=accepting,
+        ) from None
+    if response.status_code != expected_status:
+        message = f"Local uploader returned HTTP {response.status_code}."
+        if response.status_code == 429:
+            raise LocalUploadRejected(message)
+        raise LocalUploadError(
+            message,
+            # A shutdown or disk failure can leave committed work behind.
+            acceptance_uncertain=accepting
+            and (response.status_code >= 500 or response.is_success),
+        )
+    return response
 
 
 def _header_file_name(file_name: str) -> str:
@@ -85,146 +183,3 @@ def _upload_info(response: httpx.Response, state: str) -> tuple[str, str]:
         "Local uploader returned an invalid response.",
         acceptance_uncertain=state == "accepted_local",
     )
-
-
-class LocalUploader:
-    """Upload over a Unix socket without retries; scope connections with ``with``."""
-
-    def __init__(self):
-        self._http = _new_client()
-
-    def __enter__(self) -> LocalUploader:
-        return self
-
-    def __exit__(self, *exc: Any) -> None:
-        self._http.close()
-
-    def _request(
-        self,
-        method: str,
-        path: str,
-        expected_status: int,
-        *,
-        accepting: bool = False,
-        **kwargs: Any,
-    ) -> httpx.Response:
-        import httpx  # noqa: PLC0415 -- see _new_client
-
-        # Name the failure class but drop its text, which can carry credentials
-        # or signed URLs.
-        try:
-            response = self._http.request(method, path, **kwargs)
-        except (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout) as exc:
-            raise LocalUploadError(
-                f"Cannot connect to the local uploader ({type(exc).__name__})."
-            ) from None
-        except httpx.RequestError as exc:
-            raise LocalUploadError(
-                f"Local uploader connection was interrupted ({type(exc).__name__}).",
-                acceptance_uncertain=accepting,
-            ) from None
-        if response.status_code != expected_status:
-            message = f"Local uploader returned HTTP {response.status_code}."
-            if response.status_code == 429:
-                raise LocalUploadRejected(message)
-            raise LocalUploadError(
-                message,
-                # A shutdown or disk failure can leave committed work behind.
-                acceptance_uncertain=accepting
-                and (response.status_code >= 500 or response.is_success),
-            )
-        return response
-
-    def upload(
-        self,
-        file_name: str,
-        body: bytes | Iterable[bytes],
-        size_bytes: int,
-        headers: dict[str, str],
-    ) -> AcceptedUpload:
-        """Wait for the complete known-length body to be durably accepted."""
-        response = self._request(
-            "POST",
-            "/uploads",
-            202,
-            accepting=True,
-            headers={
-                **headers,
-                "X-Fal-File-Name": _header_file_name(file_name),
-                "Content-Length": str(size_bytes),
-            },
-            content=body,
-        )
-        return AcceptedUpload(*_upload_info(response, "accepted_local"))
-
-    def begin_stream(self, file_name: str, headers: dict[str, str]) -> UploadSession:
-        """Reserve a URL for a body whose final size is not yet known."""
-        response = self._request(
-            "POST",
-            "/upload-sessions",
-            201,
-            headers={**headers, "X-Fal-File-Name": _header_file_name(file_name)},
-        )
-        upload_id, file_url = _upload_info(response, "receiving")
-        return UploadSession(self, upload_id, file_url)
-
-
-class UploadSession:
-    """Use as a context manager to abort unfinished work on exit.
-
-    The reserved URL is not accepted yet. Send one body, await its completion, then
-    explicitly finish with the producer's final byte count. Closing a session never
-    finishes it. Aborting cannot undo an acceptance already in progress.
-    """
-
-    def __init__(self, client: LocalUploader, upload_id: str, file_url: str):
-        self._client = client
-        self._path = "/upload-sessions/" + quote(upload_id, safe="")
-        self.file_url = file_url
-        self._body_sent = False
-        self._closed = False
-
-    def __enter__(self) -> UploadSession:
-        return self
-
-    def __exit__(self, *exc: Any) -> None:
-        self._abort_quietly()
-
-    def _abort_quietly(self) -> None:
-        try:
-            self.abort()
-        except LocalUploadError:
-            # Cleanup must not mask a producer failure or lost finish response.
-            pass
-
-    def send_body(self, body: bytes | Iterable[bytes]) -> None:
-        """Send the sole body without accepting it; abort if the producer fails."""
-        if self._closed or self._body_sent:
-            raise ValueError("A session accepts exactly one body")
-        try:
-            self._client._request("PUT", self._path + "/body", 204, content=body)
-        except BaseException:
-            self._abort_quietly()
-            raise
-        self._body_sent = True
-
-    def finish(self, size_bytes: int) -> AcceptedUpload:
-        """Validate the final byte count and wait for durable local acceptance."""
-        if self._closed or not self._body_sent:
-            raise ValueError("Finish requires a successfully received body")
-        response = self._client._request(
-            "POST",
-            self._path + "/finish",
-            202,
-            accepting=True,
-            json={"size_bytes": size_bytes},
-        )
-        accepted = AcceptedUpload(*_upload_info(response, "accepted_local"))
-        self._closed = True
-        return accepted
-
-    def abort(self) -> None:
-        """Discard unfinished work; an upload already accepted cannot be undone."""
-        if not self._closed:
-            self._closed = True
-            self._client._request("DELETE", self._path, 202)

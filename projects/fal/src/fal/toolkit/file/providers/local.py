@@ -8,16 +8,19 @@ for File.as_bytes().
 from __future__ import annotations
 
 import os
-import time
 from functools import wraps
 from pathlib import Path
-from typing import Iterable, Iterator
+from typing import Iterable
 
 from fal._user_agent import USER_AGENT
 from fal.auth import fetch_auth_credentials
 from fal.exceptions.auth import UnauthenticatedException
 from fal.toolkit.exceptions import FileUploadException
-from fal.toolkit.file._local_uploader import LocalUploader, LocalUploadRejected
+from fal.toolkit.file._local_uploader import (
+    LocalUploadRejected,
+    upload,
+    upload_stream,
+)
 from fal.toolkit.file.providers.fal import (
     FalFileRepositoryV3,
     MultipartUploadV3,
@@ -25,24 +28,23 @@ from fal.toolkit.file.providers.fal import (
     _object_lifecycle_headers,
 )
 from fal.toolkit.file.types import FileData, FileRepository
-
-_READ_SIZE = 1024 * 1024
+from fal.toolkit.utils.retry import retry
 
 
 def _retry_or_fallback(method):
     """Replay the whole save operation only after a definite rejection."""
+    replayed = retry(
+        max_retries=3,
+        base_delay=0.1,
+        should_retry=lambda exc: isinstance(exc, LocalUploadRejected),
+    )(method)
 
     @wraps(method)
     def save(self, *args, **kwargs):
-        for attempt in range(3):
-            try:
-                return method(self, *args, **kwargs)
-            except LocalUploadRejected:
-                if attempt == 2:
-                    return getattr(FalFileRepositoryV3(), method.__name__)(
-                        *args, **kwargs
-                    )
-                time.sleep(0.1 * (attempt + 1))
+        try:
+            return replayed(self, *args, **kwargs)
+        except LocalUploadRejected:
+            return getattr(FalFileRepositoryV3(), method.__name__)(*args, **kwargs)
 
     return save
 
@@ -62,18 +64,6 @@ def _headers(
             ) from None
         # The uploader decides whether the token suffices or REST is required.
     return headers
-
-
-def _upload(
-    file_name: str,
-    body: bytes | Iterable[bytes],
-    size: int,
-    content_type: str,
-    object_lifecycle_preference: dict[str, str] | None,
-) -> str:
-    headers = _headers(content_type, object_lifecycle_preference)
-    with LocalUploader() as client:
-        return client.upload(file_name, body, size, headers).file_url
 
 
 class LocalFileRepository(FileRepository):
@@ -97,12 +87,11 @@ class LocalFileRepository(FileRepository):
         object_lifecycle_preference: dict[str, str] | None = None,
     ) -> str:
         """Return the accepted URL; the service completes the CDN transfer."""
-        return _upload(
+        return upload(
             data.file_name,
             data.data,
             len(data.data),
-            data.content_type,
-            object_lifecycle_preference,
+            _headers(data.content_type, object_lifecycle_preference),
         )
 
     @_retry_or_fallback
@@ -134,13 +123,12 @@ class LocalFileRepository(FileRepository):
             )
 
         with open(file_path, "rb") as source:
-            body = iter(lambda: source.read(_READ_SIZE), b"")
-            url = _upload(
+            # httpx streams file objects in fixed-size reads.
+            url = upload(
                 Path(file_path).name,
-                body,
+                source,
                 size,
-                content_type,
-                object_lifecycle_preference,
+                _headers(content_type, object_lifecycle_preference),
             )
         return url, None
 
@@ -151,21 +139,7 @@ class LocalFileRepository(FileRepository):
         content_type: str,
         object_lifecycle_preference: dict[str, str] | None = None,
     ) -> str:
-        """Upload output whose size is unknown until the producer is exhausted.
-
-        The URL is accepted only after the uploader has confirmed the full byte
-        count; a producer that raises aborts the upload instead.
-        """
-        headers = _headers(content_type, object_lifecycle_preference)
-        size = 0
-
-        def counted() -> Iterator[bytes]:
-            nonlocal size
-            for chunk in chunks:
-                size += len(chunk)
-                yield chunk
-
-        with LocalUploader() as client:
-            with client.begin_stream(file_name, headers) as session:
-                session.send_body(counted())
-                return session.finish(size).file_url
+        """Upload output whose size is unknown until the producer is exhausted."""
+        return upload_stream(
+            file_name, chunks, _headers(content_type, object_lifecycle_preference)
+        )

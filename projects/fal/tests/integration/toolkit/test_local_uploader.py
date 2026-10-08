@@ -24,14 +24,30 @@ import httpx
 import pytest
 
 from fal.toolkit.file import File
-from fal.toolkit.file._local_uploader import LocalUploader, LocalUploadError
+from fal.toolkit.file._local_uploader import upload_stream
 from fal.toolkit.file.providers import fal as remote
-from fal.toolkit.file.providers import local
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("CDN_UPLOADER_TEST_BINARY"),
     reason="Set CDN_UPLOADER_TEST_BINARY for local uploader process tests",
 )
+
+
+def _wait_healthy(socket_path, process, log):
+    deadline = time.monotonic() + 10
+    with httpx.Client(
+        transport=httpx.HTTPTransport(uds=socket_path), timeout=0.2
+    ) as client:
+        while True:
+            try:
+                if client.get("http://localhost/health").status_code == 200:
+                    return
+            except httpx.TransportError:
+                pass
+            if process.poll() is not None or time.monotonic() > deadline:
+                log.seek(0)
+                pytest.fail("Uploader failed to start: " + log.read())
+            time.sleep(0.02)
 
 
 @pytest.fixture
@@ -135,26 +151,7 @@ def uploader(monkeypatch):
                     [env["CDN_UPLOADER_TEST_BINARY"]], env=env, stdout=log, stderr=log
                 )
                 try:
-                    with httpx.Client(
-                        transport=httpx.HTTPTransport(uds=socket_path), timeout=0.2
-                    ) as client:
-                        deadline = time.monotonic() + 10
-                        while True:
-                            try:
-                                if (
-                                    client.get("http://localhost/health").status_code
-                                    == 200
-                                ):
-                                    break
-                            except httpx.TransportError:
-                                pass
-                            if (
-                                process.poll() is not None
-                                or time.monotonic() > deadline
-                            ):
-                                log.seek(0)
-                                pytest.fail("Uploader failed to start: " + log.read())
-                            time.sleep(0.02)
+                    _wait_healthy(socket_path, process, log)
                     monkeypatch.setenv("CDN_UPLOADER_SOCKET_PATH", socket_path)
                     monkeypatch.setenv("FAL_USE_LOCAL_UPLOADER", "1")
                     monkeypatch.setenv("FAL_KEY", "local:test")
@@ -201,7 +198,7 @@ def test_runner_exit_after_acceptance(uploader, tmp_path, monkeypatch, size_mib)
     direct = Mock(return_value=("https://direct.example/video.bin", None))
     sleep = Mock()
     monkeypatch.setattr(remote.FalFileRepositoryV3, "save_file", direct)
-    monkeypatch.setattr(local.time, "sleep", sleep)
+    monkeypatch.setattr("fal.toolkit.utils.retry.time.sleep", sleep)
     assert File.from_path(source, multipart=True).url == direct.return_value[0]
     direct.assert_called_once()
     assert direct.call_args.args[0] == source
@@ -220,26 +217,13 @@ def test_runner_exit_after_acceptance(uploader, tmp_path, monkeypatch, size_mib)
     assert actual.digest() == digest.digest()
 
 
-def test_generated_stream_is_accepted_only_after_finish(uploader):
+def test_generated_stream_is_accepted_after_finish(uploader):
     uploader.release.set()
-    with LocalUploader() as client, client.begin_stream(
+    url = upload_stream(
         "generated.txt",
+        iter([b"hello", b" world"]),
         {"Authorization": "Key local:test", "Content-Type": "text/plain"},
-    ) as session:
-        session.send_body(iter([b"hello", b" world"]))
-        assert not uploader.done.is_set()
-        accepted = session.finish(11)
-        assert accepted.file_url == session.file_url
+    )
+    assert url.endswith("/file/1")
     assert uploader.done.wait(10)
     assert uploader.state["parts"] == {1: b"hello world"}
-
-
-def test_incorrect_stream_size_is_rejected(uploader):
-    uploader.release.set()
-    with LocalUploader() as client, client.begin_stream(
-        "generated.txt", {"Authorization": "Key local:test"}
-    ) as session:
-        session.send_body(b"hello")
-        with pytest.raises(LocalUploadError, match="HTTP 400"):
-            session.finish(4)
-    assert not uploader.done.is_set()
