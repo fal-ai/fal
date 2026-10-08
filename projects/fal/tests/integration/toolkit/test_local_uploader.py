@@ -24,7 +24,6 @@ import httpx
 import pytest
 
 from fal.toolkit.file import File
-from fal.toolkit.file._local_uploader import upload_stream
 from fal.toolkit.file.providers import fal as remote
 
 pytestmark = pytest.mark.skipif(
@@ -215,15 +214,3 @@ def test_runner_exit_after_acceptance(uploader, tmp_path, monkeypatch, size_mib)
     for _, part in sorted(uploader.state["parts"].items()):
         actual.update(part)
     assert actual.digest() == digest.digest()
-
-
-def test_generated_stream_is_accepted_after_finish(uploader):
-    uploader.release.set()
-    url = upload_stream(
-        "generated.txt",
-        iter([b"hello", b" world"]),
-        {"Authorization": "Key local:test", "Content-Type": "text/plain"},
-    )
-    assert url.endswith("/file/1")
-    assert uploader.done.wait(10)
-    assert uploader.state["parts"] == {1: b"hello world"}

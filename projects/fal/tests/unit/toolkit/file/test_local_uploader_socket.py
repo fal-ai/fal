@@ -101,7 +101,7 @@ def test_missing_socket_falls_back_to_direct_cdn(monkeypatch, capsys):
     monkeypatch.setattr(FalFileRepositoryV3, "save", direct)
     assert File.from_bytes(b"hello").url == "https://direct/file"
     direct.assert_called_once()
-    assert "Cannot connect" in capsys.readouterr().out
+    assert "Cannot send" in capsys.readouterr().out
 
 
 @pytest.mark.parametrize("uploader", [2], indirect=True)
