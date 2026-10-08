@@ -1108,6 +1108,8 @@ def test_stateful_app_client(test_stateful_app: str):
     assert response["result"] == 0
 
 
+# Each request can wait for a cold start before it shows IN_PROGRESS.
+@pytest.mark.timeout(180)
 def test_app_cancellation(test_app: str, test_cancellable_app: str):
     request_handle = apps.submit(
         test_cancellable_app, arguments={"lhs": 1, "rhs": 2, "wait_time": 6}
