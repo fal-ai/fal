@@ -236,17 +236,31 @@ assert all(p['in'] == 'header' for p in operation.get('parameters', []))
         assert result.returncode == 0, result.stderr
 
 
-def test_documented_echo_app_survives_by_value_shipping(tmp_path):
+@pytest.mark.parametrize("name", ["untyped", "echo", "video", "filter", "motion"])
+def test_complete_wma_app_survives_by_value_shipping(tmp_path, name):
     from pathlib import Path
 
-    example = Path(__file__).parents[3] / "examples" / "wma_echo.py"
+    import pydantic
+
+    if name != "untyped" and not hasattr(pydantic, "TypeAdapter"):
+        pytest.skip("the documented playground example requires Pydantic 2")
+
+    example = Path(__file__).parents[3] / "examples" / ("wma_" + name + ".py")
+    if name == "untyped":
+        example = tmp_path / "untyped.py"
+        example.write_text(
+            "import fal.wma\n"
+            "class UntypedApp(fal.wma.App):\n"
+            "    async def create_backend(self, session):\n"
+            "        return fal.wma.AiortcPeer(session, lambda _pc: None)\n"
+        )
     payload = tmp_path / "echo.pkl"
     dump = """
 import sys, runpy, cloudpickle
 from fal._serialization import patch_pickle
 from fal.app import wrap_app
 patch_pickle()
-EchoApp = runpy.run_path(sys.argv[2])['EchoApp']
+EchoApp = runpy.run_path(sys.argv[2])[sys.argv[3]]
 # Ship the actual deployment callable. Its app method refers to the fal.wma
 # module, which must not contain a module-reference cycle back to fal.
 with open(sys.argv[1], 'wb') as stream:
@@ -261,13 +275,45 @@ assert '/start-session' in fn._routes
 """
     for code in (dump, restore):
         result = subprocess.run(
-            [sys.executable, "-c", code, str(payload), str(example)],
+            [
+                sys.executable,
+                "-c",
+                code,
+                str(payload),
+                str(example),
+                name.title() + "App",
+            ],
             capture_output=True,
             text=True,
             timeout=30,
             check=False,
         )
         assert result.returncode == 0, result.stderr
+
+
+def test_documented_echo_app_publishes_playground_contract():
+    import runpy
+    from pathlib import Path
+
+    import pydantic
+
+    if not hasattr(pydantic, "TypeAdapter"):
+        pytest.skip("realtime contract rendering requires Pydantic 2")
+
+    from fal.app import wrap_app
+
+    example = Path(__file__).parents[3] / "examples" / "wma_echo.py"
+    app = runpy.run_path(str(example))["EchoApp"]
+    metadata = wrap_app(app).options.host["metadata"]
+    discovery = metadata["openapi"]["paths"]["/start-session"]["x-fal-realtime"]
+    assert discovery["transport"]["sessionProtocol"] == "wma"
+    assert discovery["asyncapi"]["url"] == "./asyncapi.json"
+    document = metadata["asyncapi"]
+    messages = document["channels"]["control"]["messages"]
+    assert "client.echo" in messages
+    assert "server.echo" in messages
+    assert document["operations"]["sendControl"]["action"] == "send"
+    assert document["operations"]["receiveEvents"]["action"] == "receive"
 
 
 def test_fallback_media_track_survives_shipping_to_aiortc_runner(tmp_path):

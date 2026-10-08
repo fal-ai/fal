@@ -22,6 +22,66 @@ alongside that path. This declares the package without imposing a version range
 and suppresses the SDK's default requirement. The SDK does not inspect arbitrary
 paths or run build backends to discover distribution names.
 
+## Playground and realtime documentation
+
+Declare `realtime_contract` on every app intended for the WMA playground. The
+SDK publishes an AsyncAPI document and links it from the `/start-session`
+OpenAPI path through `x-fal-realtime`. The playground uses this discovery
+metadata to show Connect/Disconnect, control-message forms, examples and media
+instead of the raw SDP request form. The echo example above includes a contract.
+
+Use `RealtimeContract(client_messages=..., server_messages=..., media=...)` to
+describe the messages and tracks your backend actually supports. Message
+schemas are Pydantic models; `MessageExample` supplies sample payloads. Media
+directions are from the client's perspective: `MediaContract.send` describes
+tracks the browser sends, while `receive` describes tracks the app produces.
+For example, a camera echo app declares a required `Track(kind="video",
+source="camera", required=True)` in `send` and `Track(kind="video")` in `receive`.
+A control-only app uses an empty `MediaContract()`.
+
+After adding or changing a contract, redeploy the app to update its metadata,
+then refresh the playground. Verify that the AsyncAPI link and WMA controls
+appear and exercise a real session. WebRTC transport can run without a contract,
+but the SDK cannot infer arbitrary message handlers or media tracks; omitting
+the contract leaves the generic HTTP playground. Contract declarations describe
+the API and do not validate incoming messages at runtime.
+
+## Examples
+
+These standalone CPU apps cover three media patterns as well as basic control
+messages. Install `fal[wma]` locally before deploying; the examples with typed
+contracts require Pydantic 2. Each app generates its own playground metadata.
+
+| Example | Try in the playground | Media flow |
+| --- | --- | --- |
+| [EchoApp](examples/wma_echo.py) | Send a text message and receive it back | Control only |
+| [VideoApp](examples/wma_video.py) | Change the palette and speed of an animated color field; pause and resume | Video from app to browser, controls both ways |
+| [FilterApp](examples/wma_filter.py) | Switch your camera between mirror, monochrome and edge effects; adjust the blend | Camera to app, processed video back |
+| [MotionApp](examples/wma_motion.py) | Move in front of the camera and watch brightness and changed-pixel fractions in the message log; adjust sensitivity | Camera to app, measurements back as data |
+
+For example, from this directory:
+
+```sh
+fal deploy examples/wma_video.py::VideoApp --auth private
+fal deploy examples/wma_filter.py::FilterApp --auth private
+fal deploy examples/wma_motion.py::MotionApp --auth private
+```
+
+Open the deployed app's `/start-session` playground and select **Connect**.
+The camera examples request browser camera permission; the animated scene does
+not need camera or microphone access. Use the example selector and **Send
+message** to update live settings. Motion measurements appear in the server
+message log, with no return video. These measurements use pixel differences,
+not an object detector or learned model.
+
+The three media examples close sessions after two minutes, allow at most two
+sessions per runner, and scale down when idle. Their processing state belongs
+to each session. `session.create_task()` owns the motion reader and expiration
+tasks; `AiortcPeer` closes media resources on teardown. Frame conversion uses
+fixed resolutions, and the motion reader drains every incoming frame while
+reporting at most five times per second to avoid a growing input queue. Runner
+compute may incur charges; disconnect when finished.
+
 ## Session lifecycle
 
 Subclass `fal.wma.App` and implement `create_backend(session)`. Return an
