@@ -49,6 +49,10 @@ from fal.sdk import ApplicationHealthCheckConfig, RunnerState, get_credentials
 from fal.toolkit.utils.endpoint import cancel_on_disconnect
 from fal.workflows import Workflow
 
+# These tests run against a real environment. A request can wait for a cold
+# start before it shows IN_PROGRESS, which the 60 s default does not cover.
+pytestmark = pytest.mark.timeout(180)
+
 
 @pytest.fixture(scope="module")
 def rest_client() -> Generator[Client, None, None]:
@@ -1108,8 +1112,6 @@ def test_stateful_app_client(test_stateful_app: str):
     assert response["result"] == 0
 
 
-# Each request can wait for a cold start before it shows IN_PROGRESS.
-@pytest.mark.timeout(180)
 def test_app_cancellation(test_app: str, test_cancellable_app: str):
     request_handle = apps.submit(
         test_cancellable_app, arguments={"lhs": 1, "rhs": 2, "wait_time": 6}
@@ -1936,7 +1938,6 @@ def test_kill_runner(host: api.FalServerlessHost, test_sleep_app: str):
         assert num_runners <= existing_runners - 1
 
 
-@pytest.mark.timeout(180)
 def test_rollout_application(host: api.FalServerlessHost, test_sleep_app: str):
     _submit_and_wait_in_progress(test_sleep_app)
 
