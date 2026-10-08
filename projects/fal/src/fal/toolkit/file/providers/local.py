@@ -1,8 +1,8 @@
 """Repository adapter for opt-in, node-local uploads.
 
-Definite admission rejections are retried briefly, then sent directly to CDN.
-Accepted uploads remain the uploader's responsibility. Small files retain bytes
-for File.as_bytes().
+Rejections are retried briefly. Any uploader failure then falls back to a direct
+CDN upload, which can publish a second URL if the uploader had accepted the
+bytes. Small files retain bytes for File.as_bytes().
 """
 
 from __future__ import annotations
@@ -17,6 +17,7 @@ from fal.auth import fetch_auth_credentials
 from fal.exceptions.auth import UnauthenticatedException
 from fal.toolkit.exceptions import FileUploadException
 from fal.toolkit.file._local_uploader import (
+    LocalUploadError,
     LocalUploadRejected,
     upload,
     upload_stream,
@@ -32,7 +33,7 @@ from fal.toolkit.utils.retry import retry
 
 
 def _retry_or_fallback(method):
-    """Replay the whole save operation only after a definite rejection."""
+    """Replay the save after a rejection, then fall back to a direct CDN upload."""
     replayed = retry(
         max_retries=3,
         base_delay=0.1,
@@ -43,7 +44,8 @@ def _retry_or_fallback(method):
     def save(self, *args, **kwargs):
         try:
             return replayed(self, *args, **kwargs)
-        except LocalUploadRejected:
+        except LocalUploadError as exc:
+            print(f"{exc} Uploading directly to CDN.")
             return getattr(FalFileRepositoryV3(), method.__name__)(*args, **kwargs)
 
     return save
@@ -71,10 +73,6 @@ class LocalFileRepository(FileRepository):
 
     Cancelling an async wrapper's await does not stop the uploading thread.
     """
-
-    # A lost response may already have accepted the bytes; trying another
-    # destination could publish them twice.
-    falls_back = False
 
     @_retry_or_fallback
     def save(
@@ -127,7 +125,10 @@ class LocalFileRepository(FileRepository):
         content_type: str,
         object_lifecycle_preference: dict[str, str] | None = None,
     ) -> str:
-        """Upload output whose size is unknown until the producer is exhausted."""
+        """Upload output whose size is unknown until the producer is exhausted.
+
+        Not retried and no fallback: the producer cannot be replayed.
+        """
         return upload_stream(
             file_name, chunks, _headers(content_type, object_lifecycle_preference)
         )

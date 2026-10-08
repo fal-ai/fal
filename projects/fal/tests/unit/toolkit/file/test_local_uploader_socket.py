@@ -19,8 +19,7 @@ import pytest
 
 from fal.compat import run_in_thread
 from fal.toolkit.file import File
-from fal.toolkit.file._local_uploader import LocalUploadError
-from fal.toolkit.file.providers.fal import FalFileRepository
+from fal.toolkit.file.providers.fal import FalFileRepositoryV3
 
 pytestmark = pytest.mark.skipif(
     os.name != "posix", reason="Node-local uploader requires a POSIX host"
@@ -94,16 +93,15 @@ def test_real_socket_ignores_http_proxy(uploader, monkeypatch):
     assert uploader.requests[0][0]["Authorization"] == "Key local:test"
 
 
-def test_missing_socket_does_not_use_fallback(monkeypatch):
+def test_missing_socket_falls_back_to_direct_cdn(monkeypatch, capsys):
     monkeypatch.setenv("FAL_USE_LOCAL_UPLOADER", "1")
     monkeypatch.setenv("CDN_UPLOADER_SOCKET_PATH", "/tmp/fal-missing-uploader/socket")
     monkeypatch.setenv("FAL_KEY", "local:test")
-    fallback = Mock()
-    monkeypatch.setattr(FalFileRepository, "save", fallback)
-    with pytest.raises(LocalUploadError, match="Cannot connect") as caught:
-        File.from_bytes(b"hello")
-    assert not caught.value.acceptance_uncertain
-    fallback.assert_not_called()
+    direct = Mock(return_value="https://direct/file")
+    monkeypatch.setattr(FalFileRepositoryV3, "save", direct)
+    assert File.from_bytes(b"hello").url == "https://direct/file"
+    direct.assert_called_once()
+    assert "Cannot connect" in capsys.readouterr().out
 
 
 @pytest.mark.parametrize("uploader", [2], indirect=True)

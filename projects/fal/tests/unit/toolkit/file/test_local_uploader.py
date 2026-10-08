@@ -235,66 +235,69 @@ def test_token_only_does_not_fabricate_settings(monkeypatch, local_upload, calle
     assert "x-fal-object-lifecycle" not in local_upload[0].headers
 
 
-@pytest.mark.parametrize("status", [401, 413, 503, 307])
+def fail_with_secret(response):
+    def respond(request):
+        if response is None:
+            raise httpx.ReadError("secret")
+        return response
+
+    return respond
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        httpx.Response(401, text="secret"),
+        httpx.Response(413, text="secret"),
+        httpx.Response(503, text="secret"),
+        httpx.Response(307, headers={"location": "http://secret"}),
+        httpx.Response(202, text="secret"),
+        None,  # lost response
+    ],
+)
 @pytest.mark.parametrize("explicit", [False, True])
 @pytest.mark.parametrize("from_path", [False, True])
-def test_errors_do_not_retry_or_fall_back(
-    monkeypatch, local_upload, transport, tmp_path, status, explicit, from_path
+def test_uploader_failures_fall_back_to_direct_cdn(
+    monkeypatch,
+    capsys,
+    local_upload,
+    transport,
+    tmp_path,
+    response,
+    explicit,
+    from_path,
 ):
-    requests = transport(
-        lambda request: httpx.Response(
-            status, headers={"location": "http://elsewhere"}, text="secret"
-        )
-    )
+    requests = transport(fail_with_secret(response))
     method = "save_file" if from_path else "save"
-    fallback = Mock()
-    monkeypatch.setattr(remote.FalFileRepository, method, fallback)
+    direct = Mock(return_value="https://direct/file")
+    if from_path:
+        direct.return_value = (direct.return_value, FileData(b"hi"))
+    monkeypatch.setattr(remote.FalFileRepositoryV3, method, direct)
     kwargs = {}
     if explicit:
         monkeypatch.delenv("FAL_USE_LOCAL_UPLOADER")
         kwargs["repository"] = local.LocalFileRepository()
-    with pytest.raises(LocalUploadError, match=f"HTTP {status}") as caught:
-        if from_path:
-            path = tmp_path / "file.txt"
-            path.write_bytes(b"hi")
-            files.File.from_path(path, **kwargs)
-        else:
-            files.File.from_bytes(b"hi", **kwargs)
-    assert "secret" not in str(caught.value)
-    assert caught.value.acceptance_uncertain is (status == 503)
+    if from_path:
+        path = tmp_path / "file.txt"
+        path.write_bytes(b"hi")
+        result = files.File.from_path(path, **kwargs)
+    else:
+        result = files.File.from_bytes(b"hi", **kwargs)
+    assert result.url == "https://direct/file"
     assert len(requests) == 1
-    fallback.assert_not_called()
+    direct.assert_called_once()
+    out = capsys.readouterr().out
+    assert "Uploading directly to CDN" in out
+    assert "secret" not in out
 
 
-def test_local_in_fallback_list_does_not_chain(monkeypatch, local_upload, transport):
-    requests = transport(lambda request: httpx.Response(503))
-    monkeypatch.delenv("FAL_USE_LOCAL_UPLOADER")
-    primary = Mock(side_effect=RuntimeError("Remote upload failed"))
-    monkeypatch.setattr(remote.FalFileRepositoryV3, "save", primary)
-    fallback = Mock()
-    monkeypatch.setattr(remote.FalFileRepository, "save", fallback)
-    with pytest.raises(LocalUploadError, match="HTTP 503"):
-        files.File.from_bytes(
-            b"hi",
-            repository="fal_v3",
-            fallback_repository=[local.LocalFileRepository(), "fal"],
-        )
-    primary.assert_called_once()
-    assert len(requests) == 1
-    fallback.assert_not_called()
-
-
-def test_explicit_local_auth_failure_does_not_fall_back(monkeypatch, local_upload):
-    monkeypatch.delenv("FAL_USE_LOCAL_UPLOADER")
+def test_missing_credentials_are_not_sent(monkeypatch, local_upload):
     monkeypatch.setattr(remote, "get_current_app", lambda: None)
     monkeypatch.setattr(
         local, "fetch_auth_credentials", Mock(side_effect=UnauthenticatedException())
     )
-    fallback = Mock()
-    monkeypatch.setattr(remote.FalFileRepository, "save", fallback)
     with pytest.raises(local.FileUploadException, match="requires fal credentials"):
-        files.File.from_bytes(b"hi", repository=local.LocalFileRepository())
-    fallback.assert_not_called()
+        local.LocalFileRepository().save(FileData(b"hi"))
     assert not local_upload
 
 
@@ -345,42 +348,17 @@ def test_definite_rejection_replays_then_uses_direct_cdn(
         assert direct.call_args.kwargs == kwargs
 
 
-def test_retry_stops_when_acceptance_becomes_uncertain(
-    monkeypatch, local_upload, transport
-):
-    def respond(request):
-        if len(requests) == 1:
-            return httpx.Response(429)
-        raise httpx.ReadError("lost acceptance")
-
-    requests = transport(respond)
-    monkeypatch.setattr(SLEEP, Mock())
-    direct = Mock()
-    monkeypatch.setattr(remote.FalFileRepositoryV3, "save", direct)
-    with pytest.raises(LocalUploadError) as caught:
-        files.File.from_bytes(b"hi")
-    assert caught.value.acceptance_uncertain
-    assert len(requests) == 2
-    direct.assert_not_called()
-
-
 @pytest.mark.parametrize(
-    "failure,uncertain",
-    [
-        (httpx.ConnectError, False),
-        (httpx.ReadError, True),
-        (httpx.WriteError, True),
-        (httpx.ReadTimeout, True),
-    ],
+    "failure",
+    [httpx.ConnectError, httpx.ReadError, httpx.WriteError, httpx.ReadTimeout],
 )
-def test_connection_failure_outcomes(transport, failure, uncertain):
+def test_connection_failures_name_the_class_only(transport, failure):
     def fail(request):
         raise failure("secret")
 
     requests = transport(fail)
     with pytest.raises(LocalUploadError) as caught:
         _local_uploader.upload("file", b"hi", 2, {})
-    assert caught.value.acceptance_uncertain is uncertain
     assert failure.__name__ in str(caught.value)
     assert "secret" not in str(caught.value)
     assert len(requests) == 1
@@ -397,9 +375,8 @@ def test_connection_failure_outcomes(transport, failure, uncertain):
 )
 def test_invalid_acceptance_is_not_success(transport, body):
     transport(lambda request: httpx.Response(202, content=body))
-    with pytest.raises(LocalUploadError) as caught:
+    with pytest.raises(LocalUploadError):
         _local_uploader.upload("file", b"", 0, {})
-    assert caught.value.acceptance_uncertain
 
 
 def session_response(request):
@@ -443,7 +420,7 @@ def test_producer_failure_aborts_without_finish(local_upload, transport, failure
     assert [r.method for r in requests] == ["POST", "DELETE"]
 
 
-def test_lost_finish_response_does_not_retry_or_mask_error(transport):
+def test_lost_finish_response_aborts_and_raises(transport):
     def respond(request):
         if request.url.path.endswith("/finish"):
             raise httpx.ReadError("lost reply")
@@ -452,9 +429,8 @@ def test_lost_finish_response_does_not_retry_or_mask_error(transport):
         return session_response(request)
 
     requests = transport(respond)
-    with pytest.raises(LocalUploadError) as caught:
+    with pytest.raises(LocalUploadError, match="ReadError"):
         _local_uploader.upload_stream("file", iter([b"hi"]), {})
-    assert caught.value.acceptance_uncertain
     assert [r.method for r in requests] == ["POST", "PUT", "POST", "DELETE"]
 
 

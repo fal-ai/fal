@@ -1,8 +1,7 @@
 """Client for the node-local uploader's HTTP API over a Unix socket.
 
-Acceptance is durable on this node, not CDN completion. Only explicit admission
-rejections are safe to replay: losing a response can leave accepted work, and
-resending creates a new URL. Do not serialize live connections.
+Acceptance is durable on this node, not CDN completion. Do not serialize live
+connections.
 """
 
 from __future__ import annotations
@@ -26,17 +25,11 @@ _PRINTABLE_ASCII = "".join(map(chr, range(0x20, 0x7F)))
 
 
 class LocalUploadError(FileUploadException):
-    """A local failure, optionally with an unknown acceptance outcome."""
-
-    def __init__(self, message: str, *, acceptance_uncertain: bool = False):
-        self.acceptance_uncertain = acceptance_uncertain
-        if acceptance_uncertain:
-            message += " Acceptance is uncertain; resubmitting may create another URL."
-        super().__init__(message)
+    """The node-local uploader failed or could not be reached."""
 
 
 class LocalUploadRejected(LocalUploadError):
-    """The uploader explicitly rejected work before it could be accepted."""
+    """The uploader is full or draining and did not accept the work."""
 
 
 def upload(
@@ -52,7 +45,6 @@ def upload(
             "POST",
             "/uploads",
             202,
-            accepting=True,
             headers={
                 **headers,
                 "X-Fal-File-Name": _header_file_name(file_name),
@@ -96,13 +88,11 @@ def upload_stream(
                 "POST",
                 path + "/finish",
                 202,
-                accepting=True,
                 json={"size_bytes": size},
             )
             return _upload_info(response, "accepted_local")[1]
         except BaseException:
-            # Aborting cannot undo an acceptance in progress, and must not mask
-            # the original failure.
+            # Aborting must not mask the original failure.
             with suppress(LocalUploadError):
                 _request(http, "DELETE", path, 202)
             raise
@@ -113,8 +103,6 @@ def _request(
     method: str,
     path: str,
     expected_status: int,
-    *,
-    accepting: bool = False,
     **kwargs: Any,
 ) -> httpx.Response:
     import httpx  # noqa: PLC0415 -- see _new_client
@@ -129,19 +117,13 @@ def _request(
         ) from None
     except httpx.RequestError as exc:
         raise LocalUploadError(
-            f"Local uploader connection was interrupted ({type(exc).__name__}).",
-            acceptance_uncertain=accepting,
+            f"Local uploader connection was interrupted ({type(exc).__name__})."
         ) from None
     if response.status_code != expected_status:
         message = f"Local uploader returned HTTP {response.status_code}."
         if response.status_code == 429:
             raise LocalUploadRejected(message)
-        raise LocalUploadError(
-            message,
-            # A shutdown or disk failure can leave committed work behind.
-            acceptance_uncertain=accepting
-            and (response.status_code >= 500 or response.is_success),
-        )
+        raise LocalUploadError(message)
     return response
 
 
@@ -179,7 +161,4 @@ def _upload_info(response: httpx.Response, state: str) -> tuple[str, str]:
             return result["upload_id"], result["file_url"]
     except (ValueError, KeyError, TypeError):
         pass
-    raise LocalUploadError(
-        "Local uploader returned an invalid response.",
-        acceptance_uncertain=state == "accepted_local",
-    )
+    raise LocalUploadError("Local uploader returned an invalid response.")

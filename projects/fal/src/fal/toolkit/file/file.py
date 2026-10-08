@@ -181,7 +181,7 @@ def _try_with_fallback(
         try:
             return getattr(repo_obj, func)(*args, **kwargs)
         except Exception as exc:
-            if not repo_obj.falls_back or idx >= len(attempts) - 1:
+            if idx >= len(attempts) - 1:
                 raise
 
             traceback.print_exc()
