@@ -145,8 +145,11 @@ def test_explicit_repository_objects_and_destinations_are_preserved(
     assert not local_upload
 
 
+@pytest.mark.parametrize("explicit", [False, True])
 @pytest.mark.parametrize("from_path", [False, True])
-def test_upload_policy_keeps_precedence(monkeypatch, local_upload, tmp_path, from_path):
+def test_upload_policy_keeps_precedence(
+    monkeypatch, local_upload, tmp_path, from_path, explicit
+):
     policy = json.dumps(
         {
             "url": "https://bucket.s3.amazonaws.com/",
@@ -158,12 +161,15 @@ def test_upload_policy_keeps_precedence(monkeypatch, local_upload, tmp_path, fro
     )
     upload = Mock(return_value="https://bucket.s3.amazonaws.com/outputs/file.txt")
     monkeypatch.setattr(files, "upload_bytes_with_policy", upload)
+    kwargs = {"repository": local.LocalFileRepository()} if explicit else {}
     if from_path:
         path = tmp_path / "file.txt"
         path.write_bytes(b"hello")
-        result = files.File.from_path(path, request=request)
+        result = files.File.from_path(path, request=request, **kwargs)
     else:
-        result = files.File.from_bytes(b"hello", file_name="file.txt", request=request)
+        result = files.File.from_bytes(
+            b"hello", file_name="file.txt", request=request, **kwargs
+        )
     assert result.url == upload.return_value
     assert not local_upload
 

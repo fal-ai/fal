@@ -96,7 +96,8 @@ _DEFAULT_REPOSITORY_IDS = frozenset({DEFAULT_REPOSITORY, "fal_v2", "cdn"})
 # the one an app's own import produced are different objects and isinstance would
 # reject a genuinely default repository. FalFileRepositoryV2 and
 # FalCDNFileRepository are aliases of the same class, so one name covers all three.
-_DEFAULT_REPOSITORY_TYPES = frozenset({"FalFileRepositoryV3"})
+# LocalFileRepository is what FAL_USE_LOCAL_UPLOADER substitutes for "fal_v3".
+_DEFAULT_REPOSITORY_TYPES = frozenset({"FalFileRepositoryV3", "LocalFileRepository"})
 
 
 def _is_default_repository(repository: FileRepository | RepositoryId) -> bool:
