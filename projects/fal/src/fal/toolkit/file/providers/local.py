@@ -110,27 +110,15 @@ class LocalFileRepository(FileRepository):
         if multipart is None:
             threshold = multipart_threshold or MultipartUploadV3.MULTIPART_THRESHOLD
             multipart = size > threshold
+        name = Path(file_path).name
+        headers = _headers(content_type, object_lifecycle_preference)
         if not multipart:
-            # self.save handles rejections; forward options to its fallback.
-            return super().save_file(
-                file_path,
-                content_type,
-                multipart=False,
-                multipart_threshold=multipart_threshold,
-                multipart_chunk_size=multipart_chunk_size,
-                multipart_max_concurrency=multipart_max_concurrency,
-                object_lifecycle_preference=object_lifecycle_preference,
-            )
+            data = FileData(Path(file_path).read_bytes(), content_type, name)
+            return upload(name, data.data, len(data.data), headers), data
 
         with open(file_path, "rb") as source:
             # httpx streams file objects in fixed-size reads.
-            url = upload(
-                Path(file_path).name,
-                source,
-                size,
-                _headers(content_type, object_lifecycle_preference),
-            )
-        return url, None
+            return upload(name, source, size, headers), None
 
     def save_stream(
         self,

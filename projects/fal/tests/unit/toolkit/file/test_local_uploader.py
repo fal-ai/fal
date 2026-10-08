@@ -321,15 +321,14 @@ def test_definite_rejection_replays_then_uses_direct_cdn(
         "multipart_max_concurrency": 2,
         "object_lifecycle_preference": {"expiration_duration_seconds": 60},
     }
-    direct = Mock(return_value="https://direct/file")
-    if source == "large_file":
-        direct.return_value = ("https://direct/file", None)
-        monkeypatch.setattr(remote.FalFileRepositoryV3, "save_file", direct)
-    else:
-        monkeypatch.setattr(remote.FalFileRepositoryV3, "save", direct)
     if source == "bytes":
+        direct = Mock(return_value="https://direct/file")
+        monkeypatch.setattr(remote.FalFileRepositoryV3, "save", direct)
         result = files.File.from_bytes(body, "video/mp4", save_kwargs=dict(kwargs))
     else:
+        file_data = None if source == "large_file" else FileData(body)
+        direct = Mock(return_value=("https://direct/file", file_data))
+        monkeypatch.setattr(remote.FalFileRepositoryV3, "save_file", direct)
         result = files.File.from_path(path, "video/mp4", save_kwargs=dict(kwargs))
     assert result.url == ("https://direct/file" if exhausted else ACCEPTED["file_url"])
     assert result.file_data == (None if source == "large_file" else body)
@@ -337,7 +336,7 @@ def test_definite_rejection_replays_then_uses_direct_cdn(
     assert [call.args[0] for call in sleep.call_args_list] == [0.1, 0.2]
     if not exhausted:
         direct.assert_not_called()
-    elif source == "large_file":
+    elif source != "bytes":
         direct.assert_called_once_with(path, content_type="video/mp4", **kwargs)
     else:
         direct.assert_called_once()
