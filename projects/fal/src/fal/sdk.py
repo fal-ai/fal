@@ -1084,6 +1084,8 @@ class FalServerlessConnection:
             request.private_logs = private_logs
         if build_environment is not None:
             request.build_environment = build_environment
+        if attach_to_deployment is None and deployment_strategy == "rolling":
+            attach_to_deployment = True
         if attach_to_deployment is not None:
             request.attach_to_deployment = attach_to_deployment
         for partial_result in self.stub.RegisterApplication(request):

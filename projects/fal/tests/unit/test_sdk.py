@@ -474,7 +474,8 @@ def test_register_omits_retry_config_when_none():
     assert not stub.register_request.HasField("retry_config")
 
 
-def test_register_omits_attach_to_deployment_when_none():
+@pytest.mark.parametrize("strategy", ["rolling", "recreate"])
+def test_register_defaults_attach_to_deployment(strategy):
     connection = FalServerlessConnection("api.alpha.fal.ai", MagicMock())
     stub = RecordingStub()
     connection._stub = stub  # type: ignore[assignment]
@@ -488,11 +489,15 @@ def test_register_omits_attach_to_deployment_when_none():
             None,
             [environment],
             application_name="container-app",
-            deployment_strategy="rolling",
+            deployment_strategy=strategy,
         )
     )
 
-    assert not stub.register_request.HasField("attach_to_deployment")
+    if strategy == "rolling":
+        assert stub.register_request.HasField("attach_to_deployment")
+        assert stub.register_request.attach_to_deployment is True
+    else:
+        assert not stub.register_request.HasField("attach_to_deployment")
 
 
 @pytest.mark.parametrize("attach_to_deployment", [True, False])
