@@ -244,6 +244,81 @@ def test_sync_client_run_with_headers_and_hint():
         assert call_kwargs["headers"]["X-Custom-Header"] == "test-value"
 
 
+def test_sync_client_run_with_tags():
+    """Test that tags are packed into the X-Fal-Tags header in run()"""
+    with patch("fal_client.client._maybe_retry_request") as mock_request:
+        mock_response = Mock()
+        mock_response.json.return_value = {"result": "success"}
+        mock_request.return_value = mock_response
+
+        client = SyncClient(key="test-key")
+
+        client.run(
+            "test-app",
+            {"input": "data"},
+            tags={"team": "design", "env": "prod"},
+            headers={"X-Custom": "value"},
+        )
+
+        call_kwargs = mock_request.call_args[1]
+        assert call_kwargs["headers"]["X-Fal-Tags"] == "team=design,env=prod"
+        assert call_kwargs["headers"]["X-Custom"] == "value"
+
+
+def test_sync_client_run_with_invalid_tags_raises():
+    """Test that invalid tags are rejected before the request is made"""
+    with patch("fal_client.client._maybe_retry_request") as mock_request:
+        client = SyncClient(key="test-key")
+
+        with pytest.raises(ValueError, match="Tag key"):
+            client.run("test-app", {"input": "data"}, tags={"bad key": "value"})
+
+        mock_request.assert_not_called()
+
+
+def test_sync_client_stream_with_tags():
+    """Test that tags are packed into the X-Fal-Tags header in stream()"""
+    with patch("fal_client.client.connect_sse") as mock_connect_sse:
+        events = Mock()
+        events.response.headers = {}
+        events.iter_sse.return_value = iter([])
+        mock_connect_sse.return_value.__enter__ = Mock(return_value=events)
+        mock_connect_sse.return_value.__exit__ = Mock(return_value=False)
+
+        client = SyncClient(key="test-key")
+        assert list(client.stream("test-app", {}, tags={"env": "prod"})) == []
+
+        call_kwargs = mock_connect_sse.call_args[1]
+        assert call_kwargs["headers"]["X-Fal-Tags"] == "env=prod"
+
+
+def test_sync_client_subscribe_with_tags():
+    """Test that tags reach the submit request in subscribe()"""
+    with patch("fal_client.client._maybe_retry_request") as mock_request:
+        submit_response = Mock()
+        submit_response.json.return_value = {
+            "request_id": "req-123",
+            "response_url": "http://response",
+            "status_url": "http://status",
+            "cancel_url": "http://cancel",
+        }
+
+        status_response = Mock()
+        status_response.json.return_value = {"status": "COMPLETED", "logs": []}
+
+        result_response = Mock()
+        result_response.json.return_value = {"result": "done"}
+
+        mock_request.side_effect = [submit_response, status_response, result_response]
+
+        client = SyncClient(key="test-key")
+        result = client.subscribe("test-app", {"input": "data"}, tags={"env": "prod"})
+
+        assert result == {"result": "done"}
+        first_call_kwargs = mock_request.call_args_list[0][1]
+        assert first_call_kwargs["headers"]["X-Fal-Tags"] == "env=prod"
+
+
 def test_sync_client_submit_with_headers():
     """Test that custom headers are passed through in submit()"""
     with patch("fal_client.client._maybe_retry_request") as mock_request:
@@ -1322,6 +1397,33 @@ async def test_async_upload_respects_repository_order():
 
 
 @pytest.mark.asyncio
+async def test_async_client_submit_with_tags():
+    """Test that tags are packed into the X-Fal-Tags header in submit()"""
+    with patch(
+        "fal_client.client._async_maybe_retry_request", new_callable=AsyncMock
+    ) as mock_request:
+        mock_response = Mock()
+        mock_response.json.return_value = {
+            "request_id": "req-123",
+            "response_url": "http://response",
+            "status_url": "http://status",
+            "cancel_url": "http://cancel",
+        }
+        mock_request.return_value = mock_response
+
+        client = AsyncClient(key="test-key")
+
+        await client.submit(
+            "test-app",
+            {"input": "data"},
+            tags={"team": "design"},
+        )
+
+        call_kwargs = mock_request.call_args[1]
+        assert call_kwargs["headers"]["X-Fal-Tags"] == "team=design"
+
+
+@pytest.mark.asyncio
 async def test_async_client_submit_with_headers():
     """Test that custom headers are passed through in async submit()"""
     with patch(
@@ -2079,7 +2181,7 @@ async def test_async_client_ws_connect_uses_headers_without_jwt(mocker):
 
 
 def test_sync_client_run_with_start_timeout():
-    """Test that start_timeout adds X-Fal-Request-Timeout header in run()."""
+    """Test that start_timeout adds X-Fal-Request-Start-Timeout header in run()."""
     with patch("fal_client.client._maybe_retry_request") as mock_request:
         mock_response = Mock()
         mock_response.json.return_value = {"result": "success"}
@@ -2090,7 +2192,7 @@ def test_sync_client_run_with_start_timeout():
 
         call_kwargs = mock_request.call_args[1]
         assert "headers" in call_kwargs
-        assert call_kwargs["headers"]["X-Fal-Request-Timeout"] == "30.0"
+        assert call_kwargs["headers"]["X-Fal-Request-Start-Timeout"] == "30.0"
 
 
 def test_sync_client_run_with_start_timeout_float():
@@ -2104,11 +2206,11 @@ def test_sync_client_run_with_start_timeout_float():
         client.run("test-app", {"input": "data"}, start_timeout=45.5)
 
         call_kwargs = mock_request.call_args[1]
-        assert call_kwargs["headers"]["X-Fal-Request-Timeout"] == "45.5"
+        assert call_kwargs["headers"]["X-Fal-Request-Start-Timeout"] == "45.5"
 
 
 def test_sync_client_submit_with_start_timeout():
-    """Test that start_timeout adds X-Fal-Request-Timeout header in submit()."""
+    """Test that start_timeout adds X-Fal-Request-Start-Timeout header in submit()."""
     with patch("fal_client.client._maybe_retry_request") as mock_request:
         mock_response = Mock()
         mock_response.json.return_value = {
@@ -2124,7 +2226,7 @@ def test_sync_client_submit_with_start_timeout():
 
         call_kwargs = mock_request.call_args[1]
         assert "headers" in call_kwargs
-        assert call_kwargs["headers"]["X-Fal-Request-Timeout"] == "60.0"
+        assert call_kwargs["headers"]["X-Fal-Request-Start-Timeout"] == "60.0"
 
 
 def test_sync_client_subscribe_with_start_timeout():
@@ -2152,7 +2254,7 @@ def test_sync_client_subscribe_with_start_timeout():
         # Check the first call (submit) has the header
         first_call_kwargs = mock_request.call_args_list[0][1]
         assert "headers" in first_call_kwargs
-        assert first_call_kwargs["headers"]["X-Fal-Request-Timeout"] == "90.0"
+        assert first_call_kwargs["headers"]["X-Fal-Request-Start-Timeout"] == "90.0"
 
 
 def test_sync_client_subscribe_with_interval(monkeypatch):
@@ -2201,7 +2303,7 @@ def test_sync_client_subscribe_with_interval(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_async_client_run_with_start_timeout():
-    """Test that start_timeout adds X-Fal-Request-Timeout header in async run()."""
+    """Test that start_timeout adds X-Fal-Request-Start-Timeout header in async run()."""
     with patch(
         "fal_client.client._async_maybe_retry_request", new_callable=AsyncMock
     ) as mock_request:
@@ -2214,12 +2316,12 @@ async def test_async_client_run_with_start_timeout():
 
         call_kwargs = mock_request.call_args[1]
         assert "headers" in call_kwargs
-        assert call_kwargs["headers"]["X-Fal-Request-Timeout"] == "30.0"
+        assert call_kwargs["headers"]["X-Fal-Request-Start-Timeout"] == "30.0"
 
 
 @pytest.mark.asyncio
 async def test_async_client_submit_with_start_timeout():
-    """Test that start_timeout adds X-Fal-Request-Timeout header in async submit()."""
+    """Test that start_timeout adds X-Fal-Request-Start-Timeout header in async submit()."""
     with patch(
         "fal_client.client._async_maybe_retry_request", new_callable=AsyncMock
     ) as mock_request:
@@ -2237,7 +2339,7 @@ async def test_async_client_submit_with_start_timeout():
 
         call_kwargs = mock_request.call_args[1]
         assert "headers" in call_kwargs
-        assert call_kwargs["headers"]["X-Fal-Request-Timeout"] == "60.0"
+        assert call_kwargs["headers"]["X-Fal-Request-Start-Timeout"] == "60.0"
 
 
 @pytest.mark.asyncio
@@ -2268,7 +2370,7 @@ async def test_async_client_subscribe_with_start_timeout():
         # Check the first call (submit) has the header
         first_call_kwargs = mock_request.call_args_list[0][1]
         assert "headers" in first_call_kwargs
-        assert first_call_kwargs["headers"]["X-Fal-Request-Timeout"] == "90.0"
+        assert first_call_kwargs["headers"]["X-Fal-Request-Start-Timeout"] == "90.0"
 
 
 @pytest.mark.asyncio
@@ -2329,7 +2431,7 @@ def test_sync_client_run_without_start_timeout_no_header():
         client.run("test-app", {"input": "data"})
 
         call_kwargs = mock_request.call_args[1]
-        assert "X-Fal-Request-Timeout" not in call_kwargs.get("headers", {})
+        assert "X-Fal-Request-Start-Timeout" not in call_kwargs.get("headers", {})
 
 
 def test_sync_client_run_with_start_timeout_and_hint():
@@ -2343,7 +2445,7 @@ def test_sync_client_run_with_start_timeout_and_hint():
         client.run("test-app", {"input": "data"}, start_timeout=30, hint="lora:a")
 
         call_kwargs = mock_request.call_args[1]
-        assert call_kwargs["headers"]["X-Fal-Request-Timeout"] == "30.0"
+        assert call_kwargs["headers"]["X-Fal-Request-Start-Timeout"] == "30.0"
         assert call_kwargs["headers"]["X-Fal-Runner-Hint"] == "lora:a"
 
 

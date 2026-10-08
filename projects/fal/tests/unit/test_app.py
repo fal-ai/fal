@@ -1112,6 +1112,27 @@ def test_wrap_app_allows_resolver_with_container_kind():
     assert fn.options.environment.get("resolver") == "uv"
 
 
+def test_function_compile_bytecode_propagates_to_environment():
+    @fal.function(resolver="uv", compile_bytecode=True)
+    def compiled_function():
+        pass
+
+    assert compiled_function.options.environment["compile_bytecode"] is True
+
+
+def test_app_compile_bytecode_propagates_to_environment():
+    from fal.app import wrap_app
+
+    class CompiledApp(App, compile_bytecode=True):
+        @endpoint("/")
+        def hello(self) -> str:
+            return "Hello, world!"
+
+    fn = wrap_app(CompiledApp)
+
+    assert fn.options.environment["compile_bytecode"] is True
+
+
 def test_function_force_env_build_propagates_for_container_apps():
     image = ContainerImage.from_dockerfile_str("FROM python:3.11-slim")
 

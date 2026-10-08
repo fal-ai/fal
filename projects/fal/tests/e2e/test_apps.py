@@ -1934,17 +1934,9 @@ def test_kill_runner(host: api.FalServerlessHost, test_sleep_app: str):
         assert num_runners <= existing_runners - 1
 
 
+@pytest.mark.timeout(180)
 def test_rollout_application(host: api.FalServerlessHost, test_sleep_app: str):
-    handle = apps.submit(test_sleep_app, arguments={"wait_time": 30})
-
-    while True:
-        status = handle.status()
-        if isinstance(status, apps.InProgress):
-            break
-        elif isinstance(status, apps.Queued):
-            time.sleep(1)
-        else:
-            raise Exception(f"Failed to start the app: {status}")
+    _submit_and_wait_in_progress(test_sleep_app)
 
     with host._connection as client:
         _, _, app_alias = test_sleep_app.partition("/")
@@ -1953,22 +1945,70 @@ def test_rollout_application(host: api.FalServerlessHost, test_sleep_app: str):
         runner_id_before = runners_before[0].runner_id
 
         client.rollout_application(app_alias, force=True)
+        _wait_until_replaced(client, app_alias, {runner_id_before})
 
-        time.sleep(15)
-
-        runners_after = client.list_alias_runners(app_alias)
-        runner_ids_after = {r.runner_id for r in runners_after}
-
-        assert runner_id_before not in runner_ids_after
+        # A forced rollout only kills runners, so send a request to start a new one.
+        _submit_and_wait_in_progress(test_sleep_app)
+        runner_ids_after = _wait_for_running_runners(
+            client, app_alias, exclude={runner_id_before}
+        )
 
         client.rollout_application(app_alias, force=True)
+        _wait_until_replaced(client, app_alias, runner_ids_after)
 
-        time.sleep(3)
 
-        runners_final = client.list_alias_runners(app_alias)
-        runner_ids_final = {r.runner_id for r in runners_final}
+def _submit_and_wait_in_progress(app_id: str) -> None:
+    handle = apps.submit(app_id, arguments={"wait_time": 30})
+    while True:
+        status = handle.status()
+        if isinstance(status, apps.InProgress):
+            return
+        elif isinstance(status, apps.Queued):
+            time.sleep(1)
+        else:
+            raise Exception(f"Failed to start the app: {status}")
 
-        assert not runner_ids_after.intersection(runner_ids_final)
+
+_REPLACED_STATES = {
+    RunnerState.DRAINING,
+    RunnerState.TERMINATING,
+    RunnerState.TERMINATED,
+    RunnerState.DEAD,
+}
+
+
+def _wait_until_replaced(client, app_alias: str, runner_ids: set[str]) -> None:
+    deadline = time.time() + 30
+    while True:
+        runners = client.list_alias_runners(app_alias)
+        remaining = {
+            runner.runner_id
+            for runner in runners
+            if runner.runner_id in runner_ids and runner.state not in _REPLACED_STATES
+        }
+        if not remaining:
+            return
+        if time.time() > deadline:
+            raise AssertionError(
+                f"Runners {remaining} not replaced after rollout: {runners}"
+            )
+        time.sleep(0.5)
+
+
+def _wait_for_running_runners(client, app_alias: str, exclude: set[str]) -> set[str]:
+    deadline = time.time() + 30
+    while True:
+        runners = client.list_alias_runners(app_alias)
+        running = {
+            runner.runner_id
+            for runner in runners
+            if runner.runner_id not in exclude and runner.state == RunnerState.RUNNING
+        }
+        if running:
+            return running
+        if time.time() > deadline:
+            raise AssertionError(f"No new runner is serving requests: {runners}")
+        time.sleep(0.5)
 
 
 def test_shell_runner(host: api.FalServerlessHost, test_sleep_app: str):
