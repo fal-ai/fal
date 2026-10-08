@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import warnings
 import zipfile
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -9,7 +10,11 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from openapi_fal_rest.client import Client
 
+import pathspec
+from packaging.version import Version
 from pathspec import PathSpec
+
+_PATHSPEC_IS_1X = Version(pathspec.__version__).major >= 1
 
 
 def _check_hash(client: Client, target_path: str, hash_string: str) -> bool:
@@ -80,13 +85,21 @@ def _load_gitignore_patterns(dir_path: str) -> list:
     return gitignore_patterns
 
 
-def _is_ignored(file_path: str, gitignore_patterns: list[str]) -> bool:
-    pathspec = PathSpec.from_lines("gitwildmatch", gitignore_patterns)
-    return pathspec.match_file(file_path)
+def _build_ignore_spec(gitignore_patterns: list[str]) -> PathSpec:
+    # "gitwildmatch" is deprecated on pathspec 1.x, but do not rename it to
+    # "gitignore": that name binds different pattern classes on 0.x vs 1.x.
+    if _PATHSPEC_IS_1X:
+        # Pin the stdlib backend; 1.x auto-picks re2/hyperscan when installed.
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            return PathSpec.from_lines(
+                "gitwildmatch", gitignore_patterns, backend="simple"
+            )
+    return PathSpec.from_lines("gitwildmatch", gitignore_patterns)
 
 
 def _zip_directory(dir_path: str, zip_path: str) -> None:
-    gitignore_patterns = _load_gitignore_patterns(dir_path)
+    ignore_spec = _build_ignore_spec(_load_gitignore_patterns(dir_path))
 
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
         for root, _, files in os.walk(dir_path):
@@ -94,7 +107,7 @@ def _zip_directory(dir_path: str, zip_path: str) -> None:
                 file_path = os.path.join(root, file)
                 relative_path = os.path.relpath(file_path, dir_path)
 
-                if not _is_ignored(relative_path, gitignore_patterns):
+                if not ignore_spec.match_file(relative_path):
                     arcname = relative_path
                     zipf.write(file_path, arcname)
 
