@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -194,6 +195,25 @@ def test_files_stream_and_preserve_file_data(local_upload, tmp_path, multipart, 
     path.unlink()  # caller may remove the source immediately after acceptance
 
 
+@pytest.mark.parametrize("pattern", [b"a", b"a\n"])
+def test_file_stream_uses_bounded_chunks(monkeypatch, local_upload, tmp_path, pattern):
+    path = tmp_path / "file.bin"
+    data = pattern * (128 * 1024) + b"end"
+    path.write_bytes(data)
+
+    def upload(name, body, size, headers):
+        chunks = list(body)
+        assert all(0 < len(chunk) <= 64 * 1024 for chunk in chunks)
+        assert b"".join(chunks) == data
+        assert size == len(data)
+        return ACCEPTED["file_url"]
+
+    monkeypatch.setattr(local, "upload", upload)
+    result = files.File.from_path(path, multipart=True)
+    assert result.url == ACCEPTED["file_url"]
+    assert result.file_data is None
+
+
 @pytest.mark.parametrize(
     "settings",
     [
@@ -295,6 +315,34 @@ def test_uploader_failures_fall_back_to_direct_cdn(
     out = capsys.readouterr().out
     assert "Uploading directly to CDN" in out
     assert "secret" not in out
+
+
+@pytest.mark.parametrize("source", ["bytes", "small_file", "large_file"])
+@pytest.mark.parametrize("fallback", [None, "fal"])
+def test_missing_httpx_falls_back_to_v3(monkeypatch, tmp_path, source, fallback):
+    monkeypatch.setenv("FAL_USE_LOCAL_UPLOADER", "1")
+    monkeypatch.setattr(
+        local, "fetch_auth_credentials", lambda: AuthCredentials("Key", "test:key")
+    )
+    monkeypatch.setitem(sys.modules, "httpx", None)
+    legacy = Mock()
+    monkeypatch.setattr(remote.FalFileRepository, "save", legacy)
+    monkeypatch.setattr(remote.FalFileRepository, "save_file", legacy)
+    direct = Mock(return_value="https://direct/file")
+    if source == "bytes":
+        monkeypatch.setattr(remote.FalFileRepositoryV3, "save", direct)
+        result = files.File.from_bytes(b"hi", fallback_repository=fallback)
+    else:
+        path = tmp_path / "file.txt"
+        path.write_bytes(b"hi")
+        direct.return_value = ("https://direct/file", None)
+        monkeypatch.setattr(remote.FalFileRepositoryV3, "save_file", direct)
+        result = files.File.from_path(
+            path, multipart=source == "large_file", fallback_repository=fallback
+        )
+    assert result.url == "https://direct/file"
+    direct.assert_called_once()
+    legacy.assert_not_called()
 
 
 def test_missing_credentials_are_not_sent(monkeypatch, local_upload):

@@ -115,8 +115,9 @@ class LocalFileRepository(FileRepository):
             return upload(name, data.data, len(data.data), headers), data
 
         with open(file_path, "rb") as source:
-            # httpx streams file objects in fixed-size reads.
-            return upload(name, source, size, headers), None
+            # Older httpx versions iterate file objects by line, without a size limit.
+            chunks = iter(lambda: source.read(64 * 1024), b"")
+            return upload(name, chunks, size, headers), None
 
     def save_stream(
         self,

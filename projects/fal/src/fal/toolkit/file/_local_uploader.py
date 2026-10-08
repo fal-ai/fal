@@ -139,7 +139,11 @@ def _header_file_name(file_name: str) -> str:
 
 def _new_client() -> httpx.Client:
     # Local, not module scope, for the reason given in _upload_policy._new_client.
-    import httpx  # noqa: PLC0415
+    try:
+        import httpx  # noqa: PLC0415
+    except ModuleNotFoundError:
+        # Plain function runners may not have httpx installed.
+        raise LocalUploadError("Local uploader dependencies are unavailable.") from None
 
     # Resolve the socket on the runner, not when serializing the app.
     socket_path = os.environ.get("CDN_UPLOADER_SOCKET_PATH", DEFAULT_SOCKET_PATH)
