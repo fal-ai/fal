@@ -2153,6 +2153,7 @@ class RouteSignature(NamedTuple):
     emit_timings: bool = False
     encode_message: Callable[[Any], bytes] | None = None
     decode_message: Callable[[bytes], Any] | None = None
+    billing: Any = None
 
 
 class FalServer(uvicorn.Server):
