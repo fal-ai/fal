@@ -67,9 +67,9 @@ def uploader(monkeypatch):
         def body(self):
             return self.rfile.read(int(self.headers.get("Content-Length", 0)))
 
-        def respond(self, data, *, etag=None):
+        def respond(self, data, *, status=200, etag=None):
             encoded = json.dumps(data).encode()
-            self.send_response(200)
+            self.send_response(status)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(encoded)))
             if etag:
@@ -111,10 +111,7 @@ def uploader(monkeypatch):
             if not release.wait(20):
                 return
             if state["reject"]:
-                self.send_response(state["reject"])
-                self.send_header("Content-Length", "0")
-                self.end_headers()
-                return
+                return self.respond({}, status=state["reject"])
             if not state["multipart"]:
                 done.set()
             self.respond({}, etag=f'"part-{number}"')
@@ -234,7 +231,6 @@ def test_generated_stream_is_accepted_after_finish(uploader):
         "generated.txt",
         iter([b"hello", b" world"]),
         {"Authorization": "Key local:test", "Content-Type": "text/plain"},
-        False,
     )
     assert url.endswith("/file/1")
     assert uploader.done.wait(10)

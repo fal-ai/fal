@@ -87,13 +87,13 @@ class LocalFileRepository(FileRepository):
         object_lifecycle_preference: dict[str, str] | None = None,
         wait_for_completion: bool = False,
     ) -> str:
-        """Return the accepted URL; the service completes the CDN transfer."""
+        """Return the URL once accepted, or once on the CDN when waiting."""
         return upload(
             data.file_name,
             data.data,
             len(data.data),
             _headers(data.content_type, object_lifecycle_preference),
-            wait_for_completion,
+            wait_for_completion=wait_for_completion,
         )
 
     @_retry_or_fallback
@@ -117,12 +117,21 @@ class LocalFileRepository(FileRepository):
         headers = _headers(content_type, object_lifecycle_preference)
         if not multipart:
             data = FileData(Path(file_path).read_bytes(), content_type, name)
-            url = upload(name, data.data, len(data.data), headers, wait_for_completion)
+            url = upload(
+                name,
+                data.data,
+                len(data.data),
+                headers,
+                wait_for_completion=wait_for_completion,
+            )
             return url, data
 
         with open(file_path, "rb") as source:
             # httpx streams file objects in fixed-size reads.
-            return upload(name, source, size, headers, wait_for_completion), None
+            url = upload(
+                name, source, size, headers, wait_for_completion=wait_for_completion
+            )
+            return url, None
 
     def save_stream(
         self,
@@ -140,5 +149,5 @@ class LocalFileRepository(FileRepository):
             file_name,
             chunks,
             _headers(content_type, object_lifecycle_preference),
-            wait_for_completion,
+            wait_for_completion=wait_for_completion,
         )

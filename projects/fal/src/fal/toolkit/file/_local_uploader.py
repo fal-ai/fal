@@ -39,7 +39,8 @@ def upload(
     body: bytes | Iterable[bytes],
     size_bytes: int,
     headers: dict[str, str],
-    wait_for_completion: bool,
+    *,
+    wait_for_completion: bool = False,
 ) -> str:
     """Return the URL once the complete known-length body is durably accepted,
     or once the CDN has it when waiting for completion."""
@@ -66,7 +67,8 @@ def upload_stream(
     file_name: str,
     chunks: Iterable[bytes],
     headers: dict[str, str],
-    wait_for_completion: bool,
+    *,
+    wait_for_completion: bool = False,
 ) -> str:
     """Return the URL once a body of unknown size is durably accepted, or once
     the CDN has it when waiting for completion.

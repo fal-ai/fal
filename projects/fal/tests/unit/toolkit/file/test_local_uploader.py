@@ -364,7 +364,7 @@ def test_connection_failures_name_the_class_only(transport, failure):
 
     requests = transport(fail)
     with pytest.raises(LocalUploadError) as caught:
-        _local_uploader.upload("file", b"hi", 2, {}, False)
+        _local_uploader.upload("file", b"hi", 2, {})
     assert failure.__name__ in str(caught.value)
     assert "secret" not in str(caught.value)
     assert len(requests) == 1
@@ -382,7 +382,7 @@ def test_connection_failures_name_the_class_only(transport, failure):
 def test_invalid_acceptance_is_not_success(transport, body):
     transport(lambda request: httpx.Response(202, content=body))
     with pytest.raises(LocalUploadError):
-        _local_uploader.upload("file", b"", 0, {}, False)
+        _local_uploader.upload("file", b"", 0, {})
 
 
 def session_response(request):
@@ -436,7 +436,7 @@ def test_lost_finish_response_aborts_and_raises(transport):
 
     requests = transport(respond)
     with pytest.raises(LocalUploadError, match="ReadError"):
-        _local_uploader.upload_stream("file", iter([b"hi"]), {}, False)
+        _local_uploader.upload_stream("file", iter([b"hi"]), {})
     assert [r.method for r in requests] == ["POST", "PUT", "POST", "DELETE"]
 
 
