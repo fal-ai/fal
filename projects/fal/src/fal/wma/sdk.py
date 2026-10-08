@@ -32,7 +32,8 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
 
-import fal
+from fal import App as FalApp
+from fal import endpoint
 from fal.compat import run_in_thread
 from fal.exceptions import GPUException
 from fal.wma._errors import InputValueError, InternalServerError
@@ -830,7 +831,7 @@ def _schema_prefix(app_class_name: str) -> str:
     return trimmed or app_class_name
 
 
-class App(fal.App):
+class App(FalApp):
     """A WMA app whose one lifecycle endpoint owns a long-lived connection."""
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
@@ -916,7 +917,7 @@ class App(fal.App):
             metadata["asyncapi"] = app.asyncapi()
         return metadata
 
-    @fal.endpoint(START_SESSION_PATH)
+    @endpoint(START_SESSION_PATH)
     async def start_session(
         self,
         request: StartSessionRequest = Body(...),

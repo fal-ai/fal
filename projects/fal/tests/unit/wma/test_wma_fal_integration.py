@@ -236,6 +236,40 @@ assert all(p['in'] == 'header' for p in operation.get('parameters', []))
         assert result.returncode == 0, result.stderr
 
 
+def test_documented_echo_app_survives_by_value_shipping(tmp_path):
+    from pathlib import Path
+
+    example = Path(__file__).parents[3] / "examples" / "wma_echo.py"
+    payload = tmp_path / "echo.pkl"
+    dump = """
+import sys, runpy, cloudpickle
+from fal._serialization import patch_pickle
+from fal.app import wrap_app
+patch_pickle()
+EchoApp = runpy.run_path(sys.argv[2])['EchoApp']
+# Ship the actual deployment callable. Its app method refers to the fal.wma
+# module, which must not contain a module-reference cycle back to fal.
+with open(sys.argv[1], 'wb') as stream:
+    stream.write(cloudpickle.dumps(wrap_app(EchoApp).func))
+"""
+    restore = """
+import sys, cloudpickle
+with open(sys.argv[1], 'rb') as stream:
+    fn = cloudpickle.load(stream)
+assert callable(fn)
+assert '/start-session' in fn._routes
+"""
+    for code in (dump, restore):
+        result = subprocess.run(
+            [sys.executable, "-c", code, str(payload), str(example)],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr
+
+
 def test_fallback_media_track_survives_shipping_to_aiortc_runner(tmp_path):
     import pytest
 
