@@ -26,6 +26,7 @@ import pytest
 from fal.toolkit.file import File, _local_uploader
 from fal.toolkit.file._local_uploader import LocalUploadError
 from fal.toolkit.file.providers import fal as remote
+from fal.toolkit.file.providers.local import LocalFileRepository
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("CDN_UPLOADER_TEST_BINARY"),
@@ -255,3 +256,16 @@ def test_wait_raises_after_failed_transfer(uploader, monkeypatch):
         File.from_bytes(b"hello", save_kwargs={"wait_for_completion": True})
     direct.assert_not_called()
     assert uploader.state["parts"] == {1: b"hello"}
+
+
+def test_generated_stream_waits_for_completion(uploader):
+    uploader.release.set()
+    url = LocalFileRepository().save_stream(
+        iter([b"hello", b" world"]),
+        "generated.txt",
+        "text/plain",
+        wait_for_completion=True,
+    )
+    assert url.endswith("/file/1")
+    assert uploader.done.is_set()
+    assert uploader.state["parts"] == {1: b"hello world"}

@@ -419,3 +419,39 @@ def test_failed_or_unknown_completion_is_raised(
     assert "secret" not in str(caught.value)
     direct.assert_not_called()
     legacy.assert_not_called()
+
+
+def _session(request):
+    if request.url.path == "/upload-sessions":
+        started = {**ACCEPTED, "upload_id": "session-id", "state": "receiving"}
+        return httpx.Response(201, json=started)
+    status = {"PUT": 204, "DELETE": 202}.get(request.method)
+    return httpx.Response(status) if status else httpx.Response(202, json=ACCEPTED)
+
+
+def test_stream_finishes_with_the_byte_count(local_upload, transport):
+    requests = transport(_session)
+    url = local.LocalFileRepository().save_stream(
+        iter([b"he", b"llo"]), "out.txt", "text/plain"
+    )
+    assert url == ACCEPTED["file_url"]
+    assert [(r.method, r.url.path) for r in requests] == [
+        ("POST", "/upload-sessions"),
+        ("PUT", "/upload-sessions/session-id/body"),
+        ("POST", "/upload-sessions/session-id/finish"),
+    ]
+    assert requests[0].headers["x-fal-file-name"] == "out.txt"
+    assert requests[1].content == b"hello"
+    assert json.loads(requests[2].content) == {"size_bytes": 5}
+
+
+def test_failed_producer_aborts_the_stream(local_upload, transport):
+    requests = transport(_session)
+
+    def generate():
+        yield b"partial"
+        raise RuntimeError("encoder died")
+
+    with pytest.raises(RuntimeError, match="encoder died"):
+        local.LocalFileRepository().save_stream(generate(), "out.mp4", "video/mp4")
+    assert [r.method for r in requests] == ["POST", "DELETE"]

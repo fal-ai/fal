@@ -8,8 +8,9 @@ from __future__ import annotations
 
 import os
 import time
+from contextlib import suppress
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator
+from typing import TYPE_CHECKING, Any, Iterable, Iterator
 from urllib.parse import quote
 
 from fal.toolkit.exceptions import FileUploadException
@@ -70,6 +71,48 @@ def upload(
     return file_url
 
 
+def upload_stream(
+    file_name: str,
+    chunks: Iterable[bytes],
+    headers: dict[str, str],
+    *,
+    wait_for_completion: bool = False,
+) -> str:
+    """Return the URL once a body of unknown size is durably accepted, or once the
+    CDN has it when waiting for completion.
+
+    The uploader accepts only on an explicit finish carrying the final byte
+    count. Any failure, including a raising producer, aborts the session.
+    """
+    size = 0
+
+    def counted() -> Iterator[bytes]:
+        nonlocal size
+        for chunk in chunks:
+            size += len(chunk)
+            yield chunk
+
+    headers = {**headers, "X-Fal-File-Name": _header_file_name(file_name)}
+    with _new_client() as http:
+        response = _request(http, "POST", "/upload-sessions", 201, headers=headers)
+        session_id, _ = _receipt(response, "receiving")
+        path = "/upload-sessions/" + quote(session_id, safe="")
+        try:
+            _request(http, "PUT", path + "/body", 204, content=counted())
+            response = _request(
+                http, "POST", path + "/finish", 202, json={"size_bytes": size}
+            )
+            upload_id, file_url = _receipt(response, "accepted_local")
+        except BaseException:
+            # Aborting must not mask the original failure.
+            with suppress(LocalUploadError):
+                _request(http, "DELETE", path, 202)
+            raise
+        if wait_for_completion:
+            _wait_for_completion(http, upload_id)
+    return file_url
+
+
 def _accept(
     http: httpx.Client, content: bytes | Path, headers: dict[str, str]
 ) -> tuple[str, str]:
@@ -84,13 +127,20 @@ def _accept(
 def _submit(
     http: httpx.Client, content: bytes | Path, headers: dict[str, str]
 ) -> tuple[str, str]:
+    body = content if isinstance(content, bytes) else _chunks(content)
+    response = _request(http, "POST", "/uploads", 202, headers=headers, content=body)
+    return _receipt(response, "accepted_local")
+
+
+def _request(
+    http: httpx.Client, method: str, path: str, expected_status: int, **kwargs: Any
+) -> httpx.Response:
     import httpx  # noqa: PLC0415 -- see _new_client
 
-    body = content if isinstance(content, bytes) else _chunks(content)
     # Name the failure class but drop its text, which can carry credentials
     # or signed URLs.
     try:
-        response = http.post("/uploads", headers=headers, content=body)
+        response = http.request(method, path, **kwargs)
     except (
         httpx.ConnectError,
         httpx.ConnectTimeout,
@@ -109,12 +159,16 @@ def _submit(
     status = response.status_code
     if status == 429:
         raise LocalUploadRejected("Local uploader returned HTTP 429.")
-    if status != 202:
+    if status != expected_status:
         message = f"Local uploader returned HTTP {status}."
         raise (LocalUploadRefused if status < 500 else LocalUploadError)(message)
+    return response
+
+
+def _receipt(response: httpx.Response, state: str) -> tuple[str, str]:
     try:
         result = response.json()
-        if result["state"] == "accepted_local":
+        if result["state"] == state:
             return result["upload_id"], result["file_url"]
     except (ValueError, KeyError, TypeError):
         pass

@@ -10,8 +10,13 @@ from __future__ import annotations
 
 from functools import wraps
 from pathlib import Path
+from typing import Iterable
 
-from fal.toolkit.file._local_uploader import LocalUploadRefused, upload
+from fal.toolkit.file._local_uploader import (
+    LocalUploadRefused,
+    upload,
+    upload_stream,
+)
 from fal.toolkit.file.providers.fal import (
     FalFileRepositoryV3,
     MultipartUploadV3,
@@ -97,3 +102,20 @@ class LocalFileRepository(FileRepository):
             path.name, data.data, headers, wait_for_completion=wait_for_completion
         )
         return url, data
+
+    def save_stream(
+        self,
+        chunks: Iterable[bytes],
+        file_name: str,
+        content_type: str,
+        object_lifecycle_preference: dict[str, str] | None = None,
+        wait_for_completion: bool = False,
+    ) -> str:
+        """Upload output whose size is unknown until the producer is exhausted.
+
+        Never sent directly to the CDN: the producer cannot be replayed.
+        """
+        headers = _headers(content_type, object_lifecycle_preference)
+        return upload_stream(
+            file_name, chunks, headers, wait_for_completion=wait_for_completion
+        )
