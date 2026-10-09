@@ -1,4 +1,4 @@
-"""Client for the node-local uploader's HTTP API over a Unix socket.
+"""Client for the node-local uploader on the fal API socket.
 
 Acceptance is durable on this node, not CDN completion; callers that need the
 CDN copy wait for completion. Do not serialize live connections.
@@ -18,9 +18,10 @@ from fal.toolkit.exceptions import FileUploadException
 if TYPE_CHECKING:
     import httpx
 
-# Keep in sync with infra/modules/nomad_jobs/jobs.tf and isolate-cloud's
-# projects/isolate_controller/src/isolate_controller/scheduler/nomad/forger.py.
-DEFAULT_SOCKET_PATH = "/run/fal-upload/upload.sock"
+# Keep in sync with infra/modules/nomad_jobs/nomad_cdn_uploader_job.hcl.tftpl
+# and projects/isolate_controller/src/isolate_controller/scheduler/nomad/forger.py
+# in isolate-cloud.
+DEFAULT_SOCKET_PATH = "/run/fal/api.sock"
 _TIMEOUT = 300
 _CONNECT_TIMEOUT = 5
 _CHUNK_SIZE = 64 * 1024
@@ -106,7 +107,7 @@ def _submit(
     body: bytes | Iterator[bytes] = (
         content if isinstance(content, bytes) else _chunks(content)
     )
-    response = _request(http, "POST", "/uploads", 202, headers=headers, content=body)
+    response = _request(http, "POST", "/v1/uploads", 202, headers=headers, content=body)
     return _receipt(response, "accepted_local")
 
 
@@ -124,9 +125,9 @@ def _stream(
             size += len(chunk)
             yield chunk
 
-    response = _request(http, "POST", "/upload-sessions", 201, headers=headers)
+    response = _request(http, "POST", "/v1/upload-sessions", 201, headers=headers)
     session_id, _ = _receipt(response, "receiving")
-    path = "/upload-sessions/" + quote(session_id, safe="")
+    path = "/v1/upload-sessions/" + quote(session_id, safe="")
     try:
         _request(http, "PUT", path + "/body", 204, content=counted())
         response = _request(
@@ -200,7 +201,7 @@ def _wait_for_completion(http: httpx.Client, upload_id: str) -> None:
     """
     import httpx  # noqa: PLC0415 -- see _new_client
 
-    path = "/uploads/" + quote(upload_id, safe="")
+    path = "/v1/uploads/" + quote(upload_id, safe="")
     while True:
         try:
             response = http.get(path, params={"wait": _WAIT_SECONDS})
@@ -252,7 +253,7 @@ def _new_client() -> httpx.Client:
         ) from None
 
     # Resolve the socket on the runner, not when serializing the app.
-    socket_path = os.environ.get("CDN_UPLOADER_SOCKET_PATH", DEFAULT_SOCKET_PATH)
+    socket_path = os.environ.get("FAL_API_SOCKET", DEFAULT_SOCKET_PATH)
     return httpx.Client(
         transport=httpx.HTTPTransport(
             uds=socket_path, verify=False, retries=0, trust_env=False

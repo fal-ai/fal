@@ -26,11 +26,11 @@ ACCEPTED = {
 SLEEP = "fal.toolkit.file._local_uploader.time.sleep"
 
 
-@pytest.mark.parametrize("socket_path", [None, "/tmp/custom-uploader.sock"])
+@pytest.mark.parametrize("socket_path", [None, "/tmp/custom-api.sock"])
 def test_client_socket_path(monkeypatch, socket_path):
-    monkeypatch.delenv("CDN_UPLOADER_SOCKET_PATH", raising=False)
+    monkeypatch.delenv("FAL_API_SOCKET", raising=False)
     if socket_path is not None:
-        monkeypatch.setenv("CDN_UPLOADER_SOCKET_PATH", socket_path)
+        monkeypatch.setenv("FAL_API_SOCKET", socket_path)
     transport = Mock(wraps=httpx.HTTPTransport)
     monkeypatch.setattr(httpx, "HTTPTransport", transport)
 
@@ -38,7 +38,7 @@ def test_client_socket_path(monkeypatch, socket_path):
         pass
 
     assert transport.call_args.kwargs["uds"] == (
-        socket_path if socket_path is not None else "/run/fal-upload/upload.sock"
+        socket_path if socket_path is not None else "/run/fal/api.sock"
     )
 
 
@@ -92,7 +92,7 @@ def test_existing_calls_select_local(local_upload, repository):
     assert result.as_bytes() == b"hello"
     assert result.file_size == 5
     (request,) = local_upload
-    assert request.url.path == "/uploads"
+    assert request.url.path == "/v1/uploads"
     assert request.content == b"hello"
     assert request.headers["content-length"] == "5"
     assert request.headers["x-fal-file-name"] == "hello.txt"
@@ -392,7 +392,7 @@ def test_wait_returns_after_cdn_completion(
         result = files.File.from_bytes(b"hi", save_kwargs=save_kwargs)
     assert result.url == ACCEPTED["file_url"]
     assert [(r.method, str(r.url)) for r in requests[1:]] == [
-        ("GET", "http://localhost/uploads/accepted-id?wait=60")
+        ("GET", "http://localhost/v1/uploads/accepted-id?wait=60")
     ] * 2
 
 
@@ -422,7 +422,7 @@ def test_failed_or_unknown_completion_is_raised(
 
 
 def _session(request):
-    if request.url.path == "/upload-sessions":
+    if request.url.path == "/v1/upload-sessions":
         started = {**ACCEPTED, "upload_id": "session-id", "state": "receiving"}
         return httpx.Response(201, json=started)
     if request.method == "PUT":
@@ -437,9 +437,9 @@ def test_stream_finishes_with_the_byte_count(local_upload, transport):
     )
     assert url == ACCEPTED["file_url"]
     assert [(r.method, r.url.path) for r in requests] == [
-        ("POST", "/upload-sessions"),
-        ("PUT", "/upload-sessions/session-id/body"),
-        ("POST", "/upload-sessions/session-id/finish"),
+        ("POST", "/v1/upload-sessions"),
+        ("PUT", "/v1/upload-sessions/session-id/body"),
+        ("POST", "/v1/upload-sessions/session-id/finish"),
     ]
     assert requests[0].headers["x-fal-file-name"] == "out.txt"
     assert requests[1].content == b"hello"

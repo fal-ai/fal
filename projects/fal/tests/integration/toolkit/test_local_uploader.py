@@ -41,7 +41,7 @@ def _wait_healthy(socket_path, process, log):
     ) as client:
         while True:
             try:
-                if client.get("http://localhost/health").status_code == 200:
+                if client.get("http://localhost/v1/health").status_code == 200:
                     return
             except httpx.TransportError:
                 pass
@@ -140,10 +140,10 @@ def uploader(monkeypatch):
             root = Path(directory)
             spool = root / "spool"
             spool.mkdir()
-            socket_path = str(root / "upload.sock")
+            socket_path = str(root / "api.sock")
             env = {
                 **os.environ,
-                "CDN_UPLOADER_SOCKET_PATH": socket_path,
+                "FAL_API_SOCKET": socket_path,
                 "CDN_UPLOADER_SPOOL_DIR": str(spool),
                 "CDN_UPLOADER_REST_BASE_URL": origin,
                 "CDN_UPLOADER_METRICS_ADDR": "127.0.0.1:0",
@@ -161,7 +161,7 @@ def uploader(monkeypatch):
                 )
                 try:
                     _wait_healthy(socket_path, process, log)
-                    monkeypatch.setenv("CDN_UPLOADER_SOCKET_PATH", socket_path)
+                    monkeypatch.setenv("FAL_API_SOCKET", socket_path)
                     monkeypatch.setenv("FAL_USE_LOCAL_UPLOADER", "1")
                     monkeypatch.setenv("FAL_KEY", "local:test")
                     yield SimpleNamespace(
