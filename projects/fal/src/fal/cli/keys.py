@@ -113,11 +113,14 @@ def _create(args):
         preset=preset, permissions=permissions, description=args.desc
     )
     granted = preset.value if preset else ", ".join(permissions or [])
+    # markup=False: permission names are user input, and a stray "[/x]" would
+    # raise after the key exists, hiding the one-time secret below.
     args.console.print(
         f"Generated key id and key secret, with `{granted}`.\n"
         "This is the only time the secret will be visible.\n"
         "You will need to generate a new key pair if you lose access to this "
-        "secret."
+        "secret.",
+        markup=False,
     )
     args.console.print(f"FAL_KEY='{key_id}:{key_secret}'")
 

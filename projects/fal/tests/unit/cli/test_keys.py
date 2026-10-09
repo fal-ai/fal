@@ -125,3 +125,38 @@ def test_create_with_repeated_permission_flags():
 def test_create_rejects_permission_and_preset():
     with pytest.raises(FalParserExit):
         parse_args(["keys", "create", "--permission", "models:list", "--preset", "API"])
+
+
+@pytest.mark.parametrize("permissions", ["models:list", []])
+def test_create_rejects_malformed_permissions(permissions):
+    from fal.sdk import FalServerlessConnection
+
+    conn = object.__new__(FalServerlessConnection)
+    with pytest.raises(ValueError):
+        conn.create_user_key(None, None, permissions)
+
+
+def test_create_prints_permissions_without_markup(monkeypatch):
+    from io import StringIO
+
+    from rich.console import Console
+
+    from fal.api.client import KeysNamespace
+
+    monkeypatch.setattr(
+        KeysNamespace, "create", lambda self, **kwargs: ("id", "secret")
+    )
+    console = Console(file=StringIO(), width=200)
+    args = SimpleNamespace(
+        preset=None,
+        permission=["[/weird]"],
+        scope=None,
+        host=None,
+        team=None,
+        desc=None,
+        console=console,
+    )
+    _create(args)
+    output = console.file.getvalue()
+    assert "[/weird]" in output
+    assert "FAL_KEY='id:secret'" in output

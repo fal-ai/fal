@@ -898,6 +898,12 @@ class FalServerlessConnection:
                 "Map a KeyScope with KeyPreset.from_scope()."
             )
 
+        # A bare str is iterable and would split into one permission per letter.
+        if permissions is not None and (
+            isinstance(permissions, str) or not permissions
+        ):
+            raise ValueError("permissions must be a non-empty list of names.")
+
         # policy, policy_preset and the deprecated scope are mutually exclusive
         # on the wire, so set one and leave scope unset. DEPLOY and READONLY
         # have no scope equivalent and are only expressible this way.
