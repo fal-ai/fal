@@ -18,8 +18,9 @@ from fal.toolkit.exceptions import FileUploadException
 if TYPE_CHECKING:
     import httpx
 
-# Keep in sync with infra/modules/nomad_jobs/jobs.tf and isolate-cloud's
-# projects/isolate_controller/src/isolate_controller/scheduler/nomad/forger.py.
+# Keep in sync with infra/modules/nomad_jobs/nomad_cdn_uploader_job.hcl.tftpl
+# and projects/isolate_controller/src/isolate_controller/scheduler/nomad/forger.py
+# in isolate-cloud.
 DEFAULT_SOCKET_PATH = "/run/fal/api.sock"
 _TIMEOUT = 300
 _CONNECT_TIMEOUT = 5
