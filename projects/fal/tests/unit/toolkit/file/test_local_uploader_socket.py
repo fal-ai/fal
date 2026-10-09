@@ -36,7 +36,7 @@ def uploader(monkeypatch):
     class Handler(BaseHTTPRequestHandler):
         def do_POST(self):
             body = self.rfile.read(int(self.headers["Content-Length"]))
-            requests.append((dict(self.headers), body))
+            requests.append((self.path, dict(self.headers), body))
             received.set()
             if not accept.wait(10):
                 return
@@ -87,8 +87,10 @@ def test_real_socket_ignores_http_proxy(uploader, monkeypatch):
     monkeypatch.setenv("SSL_CERT_FILE", "/nonexistent/certificate.pem")
     result = File.from_bytes(b"hello", file_name="hello.txt")
     assert result.url == "https://fal.media/file.bin"
-    assert uploader.requests[0][1] == b"hello"
-    assert uploader.requests[0][0]["Authorization"] == "Key local:test"
+    ((path, headers, body),) = uploader.requests
+    assert path == "/v1/uploads"
+    assert body == b"hello"
+    assert headers["Authorization"] == "Key local:test"
 
 
 @pytest.mark.parametrize("lose_reply", [False, True])
@@ -147,7 +149,7 @@ else:
     assert runner.returncode == 0, runner.stderr
     expected = b"NO_FALLBACK" if lose_reply else b"https://fal.media/file.bin"
     assert expected in runner.stdout
-    assert [body for _, body in uploader.requests] == [b"from runner"]
+    assert [body for _, _, body in uploader.requests] == [b"from runner"]
 
 
 @pytest.mark.asyncio
@@ -166,5 +168,5 @@ async def test_cancelled_await_does_not_cancel_or_retry_submission(uploader, tmp
     finally:
         uploader.accept.set()
         assert await run_in_thread(uploader.responded.wait, 10)
-    assert len(uploader.requests) == 1
-    assert uploader.requests[0][1] == b"hello"
+    ((_, _, body),) = uploader.requests
+    assert body == b"hello"
