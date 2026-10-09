@@ -60,12 +60,12 @@ def uploader(monkeypatch):
 
     # pytest's nested temporary path can exceed sockaddr_un's path limit.
     with tempfile.TemporaryDirectory(prefix="fal-upl-", dir="/tmp") as directory:
-        path = str(Path(directory) / "upload.sock")
+        path = str(Path(directory) / "api.sock")
         with socketserver.UnixStreamServer(path, Handler) as server:
             thread = threading.Thread(target=server.serve_forever, daemon=True)
             thread.start()
             monkeypatch.setenv("FAL_USE_LOCAL_UPLOADER", "1")
-            monkeypatch.setenv("CDN_UPLOADER_SOCKET_PATH", path)
+            monkeypatch.setenv("FAL_API_SOCKET", path)
             monkeypatch.setenv("FAL_KEY", "local:test")
             monkeypatch.setenv("FAL_CONFIG_PATH", str(Path(directory) / "config.toml"))
             try:
