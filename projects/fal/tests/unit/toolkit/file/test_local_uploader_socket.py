@@ -67,12 +67,12 @@ def uploader(monkeypatch, request):
 
     # pytest's nested temporary path can exceed sockaddr_un's path limit.
     with tempfile.TemporaryDirectory(prefix="fal-upl-", dir="/tmp") as directory:
-        path = str(Path(directory) / "upload.sock")
+        path = str(Path(directory) / "api.sock")
         with socketserver.UnixStreamServer(path, Handler) as server:
             thread = threading.Thread(target=server.serve_forever, daemon=True)
             thread.start()
             monkeypatch.setenv("FAL_USE_LOCAL_UPLOADER", "1")
-            monkeypatch.setenv("CDN_UPLOADER_SOCKET_PATH", path)
+            monkeypatch.setenv("FAL_API_SOCKET", path)
             monkeypatch.setenv("FAL_KEY", "local:test")
             try:
                 yield SimpleNamespace(
@@ -99,7 +99,7 @@ def test_real_socket_ignores_http_proxy(uploader, monkeypatch):
 
 def test_missing_socket_falls_back_to_direct_cdn(monkeypatch, capsys):
     monkeypatch.setenv("FAL_USE_LOCAL_UPLOADER", "1")
-    monkeypatch.setenv("CDN_UPLOADER_SOCKET_PATH", "/tmp/fal-missing-uploader/socket")
+    monkeypatch.setenv("FAL_API_SOCKET", "/tmp/fal-missing-uploader/socket")
     monkeypatch.setenv("FAL_KEY", "local:test")
     direct = Mock(return_value="https://direct/file")
     monkeypatch.setattr(FalFileRepositoryV3, "save", direct)
