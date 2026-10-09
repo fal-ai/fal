@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import isolate_proto
+import pytest
 from google.protobuf import descriptor_pb2, descriptor_pool, message_factory
 
 
@@ -354,3 +355,91 @@ def test_create_user_key_v2_policy_fields():
     )
     assert policy_request.HasField("policy") is True
     assert list(policy_request.policy.permissions) == ["serverless:apps:run"]
+
+
+@pytest.mark.parametrize(
+    "message_type",
+    [
+        isolate_proto.MachineRequirements,
+        isolate_proto.UpdateApplicationRequest,
+        isolate_proto.ApplicationInfo,
+        isolate_proto.AliasInfo,
+    ],
+)
+def test_request_start_timeout_presence_and_wire_round_trip(message_type):
+    message = message_type(request_start_timeout=None)
+    assert message.HasField("request_start_timeout") is False
+    unset = message_type.FromString(message.SerializeToString())
+    assert unset.HasField("request_start_timeout") is False
+
+    message.request_start_timeout = 30
+    message.request_timeout = 600
+    restored = message_type.FromString(message.SerializeToString())
+    assert restored.HasField("request_start_timeout") is True
+    assert restored.request_start_timeout == 30
+    assert restored.request_timeout == 600
+
+    restored.ClearField("request_start_timeout")
+    cleared = message_type.FromString(restored.SerializeToString())
+    assert cleared.HasField("request_start_timeout") is False
+    assert cleared.request_timeout == 600
+
+
+@pytest.mark.parametrize(
+    "message_type",
+    [isolate_proto.MachineRequirements, isolate_proto.UpdateApplicationRequest],
+)
+def test_request_start_timeout_explicit_clear_is_distinct_from_omission(message_type):
+    request = message_type(request_start_timeout=0)
+    restored = message_type.FromString(request.SerializeToString())
+    assert restored.HasField("request_start_timeout") is True
+    assert restored.request_start_timeout == 0
+    assert message_type().HasField("request_start_timeout") is False
+
+
+@pytest.mark.parametrize(
+    "message_name,field_number,processing_timeout_number",
+    [
+        ("MachineRequirements", 20, 13),
+        ("UpdateApplicationRequest", 14, 8),
+        ("ApplicationInfo", 17, 9),
+        ("AliasInfo", 18, 10),
+    ],
+)
+def test_request_start_timeout_is_wire_compatible_with_old_readers(
+    message_name, field_number, processing_timeout_number
+):
+    message_type = getattr(isolate_proto, message_name)
+    assert (
+        message_type.DESCRIPTOR.fields_by_name["request_start_timeout"].number
+        == field_number
+    )
+    file_descriptor = descriptor_pb2.FileDescriptorProto(
+        name="legacy_timeout_compat.proto",
+        package="legacy_timeout_compat",
+        syntax="proto3",
+    )
+    legacy_descriptor = file_descriptor.message_type.add(name=message_name)
+    legacy_descriptor.field.add(
+        name="request_timeout",
+        number=processing_timeout_number,
+        label=descriptor_pb2.FieldDescriptorProto.LABEL_OPTIONAL,
+        type=descriptor_pb2.FieldDescriptorProto.TYPE_INT32,
+    )
+    pool = descriptor_pool.DescriptorPool()
+    pool.Add(file_descriptor)
+    legacy_type = message_factory.GetMessageClass(
+        pool.FindMessageTypeByName(f"legacy_timeout_compat.{message_name}")
+    )
+
+    current = message_type(request_timeout=600, request_start_timeout=30)
+    legacy = legacy_type.FromString(current.SerializeToString())
+    assert legacy.request_timeout == 600
+    forwarded = message_type.FromString(legacy.SerializeToString())
+    assert forwarded.request_start_timeout == 30
+
+    old_request = message_type.FromString(
+        legacy_type(request_timeout=600).SerializeToString()
+    )
+    assert old_request.request_timeout == 600
+    assert old_request.HasField("request_start_timeout") is False

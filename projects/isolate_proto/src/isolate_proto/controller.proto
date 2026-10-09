@@ -309,6 +309,10 @@ message MachineRequirements {
     optional int32 scaling_delay_seconds = 17;
     repeated string valid_regions = 18;
     optional int32 metrics_port = 19;
+    // App default queue-wait timeout in seconds, distinct from processing and
+    // runner startup timeouts. Positive values set it; 0 clears it. When
+    // omitted, the existing value is inherited unless deployment settings reset.
+    optional int32 request_start_timeout = 20;
 }
 
 enum ApplicationAuthMode {
@@ -453,6 +457,9 @@ message UpdateApplicationRequest {
     optional int32 concurrency_buffer_perc = 11;
     optional int32 scaling_delay_seconds = 12;
     optional string environment_name = 13;
+    // App default queue-wait timeout in seconds. Positive values set it;
+    // 0 clears it, and omission preserves the current value.
+    optional int32 request_start_timeout = 14;
 }
 
 message UpdateApplicationResult {
@@ -480,6 +487,8 @@ message ApplicationInfo {
     optional int32 concurrency_buffer_perc = 14;
     optional int32 scaling_delay_seconds = 15;
     optional string environment_name = 16;
+    // App default queue-wait timeout in seconds; unset means no app default.
+    optional int32 request_start_timeout = 17;
 }
 
 message ListApplicationsResult {
@@ -555,6 +564,8 @@ message AliasInfo {
     optional int32 scaling_delay_seconds = 15;
     optional string environment_name = 16;
     bool is_rolling = 17;
+    // App default queue-wait timeout in seconds; unset means no app default.
+    optional int32 request_start_timeout = 18;
 }
 
 message SetSecretRequest {
