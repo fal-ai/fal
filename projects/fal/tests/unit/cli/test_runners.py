@@ -232,8 +232,9 @@ def test_exec_interactive_on_terminal_requests_tty_and_sends_size(mock_client_cl
     assert sent[1].HasField("tty_size")
 
 
+@pytest.mark.parametrize("platform_name", ["posix", "nt"])
 @patch("fal.cli.runners.SyncServerlessClient")
-def test_shell_always_requests_tty(mock_client_cls):
+def test_shell_with_piped_stdin(mock_client_cls, platform_name):
     sent = []
 
     def shell_runner(inputs):
@@ -251,12 +252,22 @@ def test_shell_always_requests_tty(mock_client_cls):
         with patch("fal.cli.runners.sys.stdin") as stdin:
             stdin.isatty.return_value = False
             stdin.fileno.return_value = read_fd
-            assert args.func(args) == 0
+            with patch("fal.cli.runners.os.name", platform_name):
+                exit_code = args.func(args)
     finally:
         os.close(read_fd)
 
-    assert sent[0].tty is True
-    assert all(not msg.close for msg in sent)
+    if platform_name == "nt":
+        assert exit_code == 1
+        args.console.print.assert_called_once_with(
+            "[red]Error:[/] Interactive runner shell is not supported on Windows."
+        )
+        stub.ShellRunner.assert_not_called()
+        assert sent == []
+    else:
+        assert exit_code == 0
+        assert sent[0].tty is True
+        assert all(not msg.close for msg in sent)
 
 
 def _mock_client(payload):

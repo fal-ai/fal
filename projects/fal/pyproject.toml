@@ -79,6 +79,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+wma = [
+    "aiortc>=1.9,<2",
+    "pydantic>=2,<3",
+    "numpy",
+]
 docs = [
     "sphinx<8.2.0",
     "sphinx-rtd-theme",
@@ -94,6 +99,9 @@ test = [
     "numpy",
     "pyzmq",
     "fal_client",
+    # fal.wma real-negotiation tests (host-candidates only, no network);
+    # the suite importorskips it where absent.
+    "aiortc>=1.9,<2; python_version >= '3.10'",
 ]
 dev = [
     "fal[docs,test]",
