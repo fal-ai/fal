@@ -1,7 +1,10 @@
+from io import BytesIO
 from unittest.mock import MagicMock, patch
+from urllib.error import HTTPError
 
 import pytest
 
+from fal.exceptions import FalServerlessException
 from fal.sdk import (
     ApplicationHealthCheckConfig,
     FalServerlessConnection,
@@ -80,6 +83,47 @@ def test_get_credentials_raises_when_key_owner_lookup_fails():
     with patch("fal.sdk.key_credentials", return_value=("key-id", "key-secret")):
         with patch("fal.sdk.current_user_info", side_effect=RuntimeError("boom")):
             with pytest.raises(RuntimeError, match="boom"):
+                get_credentials(team="my-team")
+
+
+def _user_info_http_error(code: int, body: bytes) -> FalServerlessException:
+    exc = FalServerlessException("Failed to fetch user info")
+    exc.__cause__ = HTTPError(
+        "https://rest.alpha.fal.ai/users/current", code, "", {}, BytesIO(body)
+    )
+    return exc
+
+
+def test_get_credentials_prints_generic_notice_when_key_cannot_read_owner():
+    denied = _user_info_http_error(
+        403,
+        b'{"detail": "Insufficient permissions: required \'account:settings:read\'"}',
+    )
+    with patch("fal.sdk.key_credentials", return_value=("key-id", "key-secret")):
+        with patch("fal.sdk.current_user_info", side_effect=denied):
+            with patch("fal.sdk.console.print") as mock_console_print:
+                credentials = get_credentials(team="my-team")
+
+    mock_console_print.assert_called_once_with(
+        "Ignoring explicit team my-team because key is used."
+    )
+    assert isinstance(credentials, FalServerlessKeyCredentials)
+
+
+@pytest.mark.parametrize(
+    "code, body",
+    [
+        (401, b'{"detail": "Invalid key"}'),
+        (403, b'{"detail": "User is locked. Reason: unknown"}'),
+    ],
+)
+def test_get_credentials_raises_when_owner_lookup_fails_otherwise(code, body):
+    with patch("fal.sdk.key_credentials", return_value=("key-id", "key-secret")):
+        with patch(
+            "fal.sdk.current_user_info",
+            side_effect=_user_info_http_error(code, body),
+        ):
+            with pytest.raises(FalServerlessException):
                 get_credentials(team="my-team")
 
 

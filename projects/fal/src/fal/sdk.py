@@ -18,6 +18,7 @@ from typing import (
     TypeVar,
     get_args,
 )
+from urllib.error import HTTPError
 
 import grpc
 import isolate_proto
@@ -27,6 +28,7 @@ from fal import flags
 from fal._serialization import patch_pickle
 from fal.auth import UserAccess, current_user_info, key_credentials
 from fal.console import console
+from fal.exceptions import FalServerlessException
 from fal.logging import get_logger
 from fal.logging.trace import TraceContextInterceptor
 
@@ -306,6 +308,15 @@ def get_agent_credentials(original_credentials: Credentials) -> Credentials:
         return original_credentials
 
 
+def _is_permission_denied(error: BaseException | None) -> bool:
+    if not isinstance(error, HTTPError) or error.code != 403:
+        return False
+    try:
+        return b"Insufficient permissions" in error.read()
+    except Exception:
+        return False
+
+
 def get_credentials(
     team: str | None = None,
     key: str | None = None,
@@ -331,16 +342,23 @@ def get_credentials(
         logger.debug("Using key credentials")
         credentials = FalServerlessKeyCredentials(key_creds[0], key_creds[1])
         if _team:
-            user_info = current_user_info(credentials.to_headers())
-            full_name = user_info["full_name"]
-            nickname = user_info["nickname"]
-            user_id = user_info["user_id"]
+            try:
+                user_info = current_user_info(credentials.to_headers())
+            except FalServerlessException as exc:
+                # The key may lack account:settings:read; it still works.
+                if not _is_permission_denied(exc.__cause__):
+                    raise
+                console.print(f"Ignoring explicit team {_team} because key is used.")
+            else:
+                full_name = user_info["full_name"]
+                nickname = user_info["nickname"]
+                user_id = user_info["user_id"]
 
-            if _team != nickname:
-                console.print(
-                    f"Ignoring explicit team {_team} because key is used. "
-                    f"The key belongs to {full_name}: {nickname} - {user_id}."
-                )
+                if _team != nickname:
+                    console.print(
+                        f"Ignoring explicit team {_team} because key is used. "
+                        f"The key belongs to {full_name}: {nickname} - {user_id}."
+                    )
         return credentials
 
     return AuthenticatedCredentials(team=_team)
