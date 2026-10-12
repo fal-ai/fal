@@ -77,7 +77,7 @@ def test_create_sends_the_preset_and_no_scope():
 
 
 def test_create_accepts_v2_only_presets():
-    for preset in ("DEPLOY", "READONLY"):
+    for preset in ("DEPLOY", "READONLY", "BILLING", "COMPUTE", "SERVERLESS", "AGENT"):
         args = parse_args(["keys", "create", "--preset", preset])
         assert args.preset == preset
 
@@ -100,7 +100,7 @@ def test_revoke():
 
 
 def test_unknown_scope_lists_as_scopeless():
-    # A key minted from DEPLOY/READONLY has no v1 scope; listing must not fail.
+    # A key minted from a v2-only preset has no v1 scope; listing must not fail.
     assert KeyScope.from_proto(99) is None  # type: ignore[arg-type]
 
 
