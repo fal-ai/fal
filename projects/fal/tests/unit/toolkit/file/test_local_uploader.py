@@ -4,7 +4,7 @@ import json
 import sys
 from types import SimpleNamespace
 from unittest.mock import Mock
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 from uuid import UUID
 
 import httpx
@@ -175,15 +175,22 @@ def _accept_like_the_uploader(request):
     """Substitute ${filename} and build file_url as isolate-cloud's s3_post.rs does."""
     policy = json.loads(request.headers[UPLOAD_POLICY_KEY])
     key = policy["fields"]["key"].replace(
-        "${filename}", request.headers["x-fal-file-name"]
+        "${filename}", unquote(request.headers["x-fal-file-name"])
     )
     file_url = policy["url"].rstrip("/") + "/" + quote(key, safe="/~")
     return httpx.Response(202, json={**ACCEPTED, "file_url": file_url})
 
 
+@pytest.mark.parametrize(
+    "file_name,header",
+    [
+        ("cat.txt", "cat.txt"),
+        ("vidéo (1).mp4", "vid%C3%A9o%20%281%29.mp4"),
+    ],
+)
 @pytest.mark.parametrize("explicit", [False, True])
 def test_upload_policy_goes_through_the_local_uploader(
-    monkeypatch, policy_upload, caller, explicit
+    monkeypatch, policy_upload, caller, explicit, file_name, header
 ):
     requests, in_process = policy_upload(_accept_like_the_uploader)
     caller({"x-fal-cdn-token": "caller-token"}, "request-id")
@@ -191,10 +198,10 @@ def test_upload_policy_goes_through_the_local_uploader(
     monkeypatch.setattr(upload_policy, "uuid4", lambda: UUID(int=7))
     kwargs = {"repository": local.LocalFileRepository()} if explicit else {}
     result = files.File.from_bytes(
-        b"hello", file_name="cat.txt", request=_policy_request(), **kwargs
+        b"hello", "text/plain", file_name, request=_policy_request(), **kwargs
     )
     in_process_url, fields = upload_policy._prepare_upload(
-        upload_policy.UploadPolicy(**POLICY), "cat.txt", "text/plain"
+        upload_policy.UploadPolicy(**POLICY), file_name, "text/plain"
     )
     assert result.url == in_process_url
     assert result.as_bytes() == b"hello"
@@ -202,19 +209,14 @@ def test_upload_policy_goes_through_the_local_uploader(
     assert request.url.path == "/uploads"
     assert request.content == b"hello"
     assert json.loads(request.headers[UPLOAD_POLICY_KEY]) == POLICY
-    assert fields["key"] == "outputs/" + request.headers["x-fal-file-name"]
+    assert request.headers["x-fal-file-name"] == f"{UUID(int=7).hex}-{header}"
+    assert fields["key"] == f"outputs/{UUID(int=7).hex}-{file_name}"
     assert request.headers["content-type"] == "text/plain"
     assert request.headers["x-fal-request-id"] == "request-id"
     # Without credentials an uploader that predates policies cannot use the CDN.
     assert "authorization" not in request.headers
     assert "x-fal-cdn-token" not in request.headers
     in_process.assert_not_called()
-
-
-def test_upload_policy_file_names_are_sanitized_for_the_header(policy_upload):
-    requests, _ = policy_upload(httpx.Response(202, json=ACCEPTED))
-    files.File.from_bytes(b"hi", file_name="vidéo.mp4", request=_policy_request())
-    assert requests[0].headers["x-fal-file-name"].endswith("-vid?o.mp4")
 
 
 @pytest.mark.parametrize("stage_to_disk", [False, True])

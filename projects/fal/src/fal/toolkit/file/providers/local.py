@@ -12,6 +12,7 @@ import json
 from functools import wraps
 from pathlib import Path
 from typing import Iterable
+from urllib.parse import quote
 
 from fal.flags import bool_envvar
 from fal.toolkit.file._local_uploader import (
@@ -162,7 +163,9 @@ def _upload_with_policy(
     _validate_size(
         len(content) if isinstance(content, bytes) else content.stat().st_size
     )
-    name = _upload_file_name(policy, file_name, content_type)
+    # Percent-encoded so a non-ASCII name can travel in the header; the
+    # uploader decodes it, so the key matches the in-process path.
+    name = quote(_upload_file_name(policy, file_name, content_type), safe="")
     # No credentials: an uploader without policy support then refuses the
     # upload rather than send it to the fal CDN.
     headers = {

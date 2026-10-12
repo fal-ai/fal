@@ -306,10 +306,10 @@ def test_upload_policy_posts_to_the_caller_bucket(uploader, monkeypatch):
         "fields": {"key": "outputs/${filename}"},
     }
     result = File.from_bytes(
-        b"hello", "text/plain", "cat (1).txt", request=_policy_request(policy)
+        b"hello", "text/plain", "vidéo (1).txt", request=_policy_request(policy)
     )
     expected, _ = upload_policy._prepare_upload(
-        upload_policy.UploadPolicy(**policy), "cat (1).txt", "text/plain"
+        upload_policy.UploadPolicy(**policy), "vidéo (1).txt", "text/plain"
     )
     assert result.url == expected
     assert uploader.connected.wait(10)
