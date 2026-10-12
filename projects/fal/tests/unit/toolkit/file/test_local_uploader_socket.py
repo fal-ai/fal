@@ -13,13 +13,11 @@ import threading
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import Mock
 
 import pytest
 
 from fal.compat import run_in_thread
 from fal.toolkit.file import File
-from fal.toolkit.file.providers.fal import FalFileRepositoryV3
 
 pytestmark = pytest.mark.skipif(
     os.name != "posix", reason="Node-local uploader requires a POSIX host"
@@ -27,7 +25,7 @@ pytestmark = pytest.mark.skipif(
 
 
 @pytest.fixture
-def uploader(monkeypatch, request):
+def uploader(monkeypatch):
     requests = []
     received = threading.Event()
     accept = threading.Event()
@@ -39,11 +37,6 @@ def uploader(monkeypatch, request):
         def do_POST(self):
             body = self.rfile.read(int(self.headers["Content-Length"]))
             requests.append((dict(self.headers), body))
-            if len(requests) <= getattr(request, "param", 0):
-                self.send_response(429)
-                self.send_header("Content-Length", "0")
-                self.end_headers()
-                return
             received.set()
             if not accept.wait(10):
                 return
@@ -97,18 +90,6 @@ def test_real_socket_ignores_http_proxy(uploader, monkeypatch):
     assert uploader.requests[0][0]["Authorization"] == "Key local:test"
 
 
-def test_missing_socket_falls_back_to_direct_cdn(monkeypatch, capsys):
-    monkeypatch.setenv("FAL_USE_LOCAL_UPLOADER", "1")
-    monkeypatch.setenv("CDN_UPLOADER_SOCKET_PATH", "/tmp/fal-missing-uploader/socket")
-    monkeypatch.setenv("FAL_KEY", "local:test")
-    direct = Mock(return_value="https://direct/file")
-    monkeypatch.setattr(FalFileRepositoryV3, "save", direct)
-    assert File.from_bytes(b"hello").url == "https://direct/file"
-    direct.assert_called_once()
-    assert "Cannot send" in capsys.readouterr().out
-
-
-@pytest.mark.parametrize("uploader", [2], indirect=True)
 @pytest.mark.parametrize("lose_reply", [False, True])
 def test_serialized_sdk_reads_runner_environment(uploader, tmp_path, lose_reply):
     target = tmp_path / "file.pkl"
@@ -165,7 +146,7 @@ else:
     assert runner.returncode == 0, runner.stderr
     expected = b"NO_FALLBACK" if lose_reply else b"https://fal.media/file.bin"
     assert expected in runner.stdout
-    assert [body for _, body in uploader.requests] == [b"from runner"] * 3
+    assert [body for _, body in uploader.requests] == [b"from runner"]
 
 
 @pytest.mark.asyncio

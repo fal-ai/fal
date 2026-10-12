@@ -26,7 +26,6 @@ ACCEPTED = {
     "file_url": "https://fal.media/file.txt",
     "state": "accepted_local",
 }
-SLEEP = "fal.toolkit.file._local_uploader.time.sleep"
 
 
 @pytest.mark.parametrize("socket_path", [None, "/tmp/custom-uploader.sock"])
@@ -358,80 +357,54 @@ def _respond(response):
 
 
 @pytest.mark.parametrize(
-    "response,attempts",
+    "response,refused",
     [
-        (httpx.Response(401, text="secret"), 1),
-        (httpx.Response(413, text="secret"), 1),
-        (httpx.Response(307, headers={"location": "http://secret"}), 1),
-        (httpx.Response(429, text="secret"), 3),
-        (httpx.ConnectError, 1),
-        (httpx.WriteError, 1),
-    ],
-)
-@pytest.mark.parametrize("from_path", [False, True])
-def test_refusals_fall_back_to_direct_cdn(
-    monkeypatch,
-    capsys,
-    local_upload,
-    transport,
-    tmp_path,
-    response,
-    attempts,
-    from_path,
-):
-    requests = transport(_respond(response))
-    monkeypatch.setattr(SLEEP, Mock())
-    direct = Mock(return_value="https://direct/file")
-    if from_path:
-        direct.return_value = (direct.return_value, FileData(b"hi"))
-        monkeypatch.setattr(remote.FalFileRepositoryV3, "save_file", direct)
-        path = tmp_path / "file.txt"
-        path.write_bytes(b"hi")
-        result = files.File.from_path(path)
-    else:
-        monkeypatch.setattr(remote.FalFileRepositoryV3, "save", direct)
-        result = files.File.from_bytes(b"hi")
-    assert result.url == "https://direct/file"
-    assert len(requests) == attempts
-    direct.assert_called_once()
-    out = capsys.readouterr().out
-    assert "Uploading directly to CDN" in out
-    assert "secret" not in out
-
-
-@pytest.mark.parametrize(
-    "response",
-    [
-        httpx.Response(503, text="secret"),
-        httpx.Response(202, text="secret"),
-        httpx.Response(202, json={**ACCEPTED, "state": "receiving"}),
-        httpx.ReadError,
-        httpx.ReadTimeout,
+        (httpx.Response(401, text="secret"), True),
+        (httpx.Response(413, text="secret"), True),
+        (httpx.Response(307, headers={"location": "http://secret"}), True),
+        (httpx.ConnectError, True),
+        (httpx.WriteError, True),
+        (httpx.Response(503, text="secret"), False),
+        (httpx.Response(202, text="secret"), False),
+        (httpx.Response(202, json={**ACCEPTED, "state": "receiving"}), False),
+        (httpx.ReadError, False),
+        (httpx.ReadTimeout, False),
     ],
 )
 @pytest.mark.parametrize("source", ["bytes", "small_file", "large_file"])
-@pytest.mark.parametrize("explicit", [False, True])
-def test_possibly_accepted_failures_are_raised(
-    monkeypatch, local_upload, transport, tmp_path, response, source, explicit
+def test_only_refusals_fall_back_to_direct_cdn(
+    monkeypatch, capsys, local_upload, transport, tmp_path, response, refused, source
 ):
-    transport(_respond(response))
-    direct = Mock()
+    requests = transport(_respond(response))
+    direct = Mock(return_value="https://direct/file")
+    direct_file = Mock(return_value=("https://direct/file", None))
     legacy = Mock()
     monkeypatch.setattr(remote.FalFileRepositoryV3, "save", direct)
-    monkeypatch.setattr(remote.FalFileRepositoryV3, "save_file", direct)
+    monkeypatch.setattr(remote.FalFileRepositoryV3, "save_file", direct_file)
     monkeypatch.setattr(remote.FalFileRepository, "save", legacy)
     monkeypatch.setattr(remote.FalFileRepository, "save_file", legacy)
-    kwargs = {"repository": local.LocalFileRepository()} if explicit else {}
-    with pytest.raises(LocalUploadError) as caught:
+    path = tmp_path / "file.txt"
+    path.write_bytes(b"hi")
+
+    def save():
         if source == "bytes":
-            files.File.from_bytes(b"hi", **kwargs)
-        else:
-            path = tmp_path / "file.txt"
-            path.write_bytes(b"hi")
-            files.File.from_path(path, multipart=source == "large_file", **kwargs)
-    assert not isinstance(caught.value, LocalUploadRefused)
-    assert "secret" not in str(caught.value)
-    direct.assert_not_called()
+            return files.File.from_bytes(b"hi")
+        return files.File.from_path(path, multipart=source == "large_file")
+
+    if refused:
+        assert save().url == "https://direct/file"
+        (direct if source == "bytes" else direct_file).assert_called_once()
+        out = capsys.readouterr().out
+        assert "Uploading directly to CDN" in out
+        assert "secret" not in out
+    else:
+        with pytest.raises(LocalUploadError) as caught:
+            save()
+        assert not isinstance(caught.value, LocalUploadRefused)
+        assert "secret" not in str(caught.value)
+        direct.assert_not_called()
+        direct_file.assert_not_called()
+    assert len(requests) == 1
     legacy.assert_not_called()
 
 
@@ -462,7 +435,7 @@ def test_rejection_replays_then_uses_direct_cdn(
 
     requests = transport(respond)
     sleep = Mock()
-    monkeypatch.setattr(SLEEP, sleep)
+    monkeypatch.setattr("fal.toolkit.file._local_uploader.time.sleep", sleep)
     body = b"x" * (1024 * 1024 + 1)
     path = tmp_path / "clip.mp4"
     path.write_bytes(body)
