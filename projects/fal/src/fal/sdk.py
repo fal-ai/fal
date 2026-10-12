@@ -553,6 +553,10 @@ class KeyPreset(enum.Enum):
     API = "API"
     DEPLOY = "DEPLOY"
     READONLY = "READONLY"
+    BILLING = "BILLING"
+    COMPUTE = "COMPUTE"
+    SERVERLESS = "SERVERLESS"
+    AGENT = "AGENT"
 
     @staticmethod
     def from_scope(scope: KeyScope) -> KeyPreset:
@@ -923,8 +927,8 @@ class FalServerlessConnection:
             raise ValueError("permissions must be a non-empty list of names.")
 
         # policy, policy_preset and the deprecated scope are mutually exclusive
-        # on the wire, so set one and leave scope unset. DEPLOY and READONLY
-        # have no scope equivalent and are only expressible this way.
+        # on the wire, so set one and leave scope unset. Presets other than
+        # FULL and API have no scope equivalent and are only expressible this way.
         if permissions is not None:
             request = isolate_proto.CreateUserKeyRequest(
                 policy=isolate_proto.KeyPolicy(permissions=permissions), alias=alias

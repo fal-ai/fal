@@ -12,6 +12,10 @@ PRESET_DESCRIPTIONS = {
     KeyPreset.API: "Run models and upload files.",
     KeyPreset.DEPLOY: "Deploy apps and upload files.",
     KeyPreset.READONLY: "Read models, apps and logs.",
+    KeyPreset.BILLING: "Read billing, usage and invoices.",
+    KeyPreset.COMPUTE: "Manage compute instances and runners.",
+    KeyPreset.SERVERLESS: "Build, deploy and run apps, models and storage.",
+    KeyPreset.AGENT: "Run agents. Requires Agent access on the account.",
 }
 
 
