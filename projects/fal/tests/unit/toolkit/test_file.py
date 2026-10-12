@@ -9,6 +9,7 @@ from unittest.mock import patch
 import pytest
 from pydantic import BaseModel
 
+from fal.toolkit.exceptions import FileUploadException, FileUploadFallbackException
 from fal.toolkit.file.file import (
     OBJECT_LIFECYCLE_PREFERENCE_KEY,
     FalFileRepositoryV3,
@@ -264,14 +265,63 @@ class TestTryWithFallback:
         assert len(repo3.calls) == 1
 
     def test_all_repositories_fail(self):
-        """Test that exception is raised when all repositories fail"""
-        repo1 = MockRepository("repo1", should_fail=True)
+        """Every attempt's failure is kept; the fallback's error alone would hide
+        the primary failure that triggered it."""
+        primary_error = FileUploadException(
+            "Error initiating upload. Status 500: Internal Server Error. "
+            "Storage type: fal-cdn-v3"
+        )
+        fallback_error = FileUploadException(
+            "Error initiating upload. Status 400: Bad Request. Storage type: gcs. "
+            'Server response: {"detail":"Invalid storage type"}'
+        )
+        repo1 = MockRepository(
+            "repo1", should_fail=True, failure_exception=primary_error
+        )
+        repo2 = MockRepository(
+            "repo2", should_fail=True, failure_exception=fallback_error
+        )
+
+        with patch("fal.toolkit.file.file.get_builtin_repository") as mock_get_repo:
+            mock_get_repo.side_effect = [repo1, repo2]
+
+            with pytest.raises(FileUploadFallbackException) as exc_info:
+                _try_with_fallback(
+                    func="save",
+                    args=[FileData(b"test_data", "text/plain", "test.txt")],
+                    repository="repo1",
+                    fallback_repository="repo2",
+                    save_kwargs={},
+                    fallback_save_kwargs={},
+                )
+
+        message = str(exc_info.value)
+        assert message.startswith("Failed to save to all 2 repositories. ")
+        assert "repo1: FileUploadException: " + str(primary_error) in message
+        assert "repo2: FileUploadException: " + str(fallback_error) in message
+        assert message.index("repo1:") < message.index("repo2:")
+        assert exc_info.value.failures == [
+            ("repo1", primary_error),
+            ("repo2", fallback_error),
+        ]
+        assert exc_info.value.__cause__ is fallback_error
+        # Still a FileUploadException, so existing handlers keep working.
+        assert isinstance(exc_info.value, FileUploadException)
+
+    def test_all_repositories_fail_with_mixed_exception_types(self):
+        """Non-toolkit errors from custom repositories are named in the summary"""
+        repo1 = MockRepository(
+            "repo1", should_fail=True, failure_exception=ValueError("boom")
+        )
         repo2 = MockRepository("repo2", should_fail=True)
 
         with patch("fal.toolkit.file.file.get_builtin_repository") as mock_get_repo:
             mock_get_repo.side_effect = [repo1, repo2]
 
-            with pytest.raises(Exception, match="Mock failure for repo2"):
+            with pytest.raises(
+                FileUploadFallbackException,
+                match=r"repo1: ValueError: boom; repo2: Exception: Mock failure",
+            ):
                 _try_with_fallback(
                     func="save",
                     args=[FileData(b"test_data", "text/plain", "test.txt")],
@@ -282,11 +332,11 @@ class TestTryWithFallback:
                 )
 
     def test_no_fallback_repository(self):
-        """Test behavior when no fallback repository is provided"""
+        """Without a fallback the original exception is re-raised untouched"""
         repo = MockRepository("primary", should_fail=True)
 
         with patch("fal.toolkit.file.file.get_builtin_repository", return_value=repo):
-            with pytest.raises(Exception, match="Mock failure for primary"):
+            with pytest.raises(Exception, match="Mock failure for primary") as exc_info:
                 _try_with_fallback(
                     func="save",
                     args=[FileData(b"test_data", "text/plain", "test.txt")],
@@ -295,6 +345,9 @@ class TestTryWithFallback:
                     save_kwargs={},
                     fallback_save_kwargs={},
                 )
+
+        assert exc_info.value is repo.failure_exception
+        assert not isinstance(exc_info.value, FileUploadFallbackException)
 
     def test_save_file_function(self):
         """Test with save_file function instead of save"""

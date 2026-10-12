@@ -24,6 +24,7 @@ from pydantic import BaseModel, Field
 
 from fal.compat import run_in_thread
 from fal.ref import get_current_app
+from fal.toolkit.exceptions import FileUploadFallbackException
 from fal.toolkit.file._upload_policy import (
     UPLOAD_POLICY_KEY,
     UploadPolicyInputError,
@@ -170,19 +171,35 @@ def _try_with_fallback(
         (repository, save_kwargs),
         *((fallback, fallback_save_kwargs) for fallback in fallback_repository),
     ]
+    failures: list[tuple[str, Exception]] = []
     for idx, (repo, kwargs) in enumerate(attempts):
         repo_obj = get_builtin_repository(repo)
         try:
             return getattr(repo_obj, func)(*args, **kwargs)
         except Exception as exc:
-            if idx >= len(attempts) - 1:
+            failures.append((_repo_label(repo), exc))
+            if idx < len(attempts) - 1:
+                traceback.print_exc()
+                print(
+                    f"Failed to {func} to repository {_repo_label(repo)}: {exc}, "
+                    f"falling back to {_repo_label(attempts[idx + 1][0])}"
+                )
+                continue
+
+            if len(attempts) == 1:
                 raise
 
-            traceback.print_exc()
-            print(
-                f"Failed to {func} to repository {_repo_label(repo)}: {exc}, "
-                f"falling back to {_repo_label(attempts[idx + 1][0])}"
+            # The last error on its own misleads: a fallback the account is not
+            # allowed to use (GCS answering "Invalid storage type") would hide the
+            # CDN failure that triggered it, which is the one worth fixing.
+            summary = "; ".join(
+                f"{label}: {type(failure).__name__}: {failure}"
+                for label, failure in failures
             )
+            raise FileUploadFallbackException(
+                f"Failed to {func} to all {len(failures)} repositories. {summary}",
+                failures,
+            ) from exc
 
 
 def _get_object_lifecycle_preference_from_context() -> dict[str, str] | None:
