@@ -18,8 +18,14 @@ class FileUploadFallbackException(FileUploadException):
     """
 
     def __init__(self, message: str, failures: "list[tuple[str, Exception]]"):
-        super().__init__(message)
+        # Keep ``failures`` in ``args`` so the exception survives pickling: the
+        # isolate agent serializes raised exceptions back to the client, and
+        # ``BaseException.__reduce__`` re-invokes ``__init__(*args)``.
+        super().__init__(message, failures)
         self.failures = failures
+
+    def __str__(self) -> str:
+        return str(self.args[0])
 
 
 class KVStoreException(FalTookitException):

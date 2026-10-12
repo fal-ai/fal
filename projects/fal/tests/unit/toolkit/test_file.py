@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import pickle
 from base64 import b64encode
 from pathlib import Path
 from typing import Any, Optional
@@ -307,6 +308,25 @@ class TestTryWithFallback:
         assert exc_info.value.__cause__ is fallback_error
         # Still a FileUploadException, so existing handlers keep working.
         assert isinstance(exc_info.value, FileUploadException)
+
+    def test_fallback_exception_survives_pickling(self):
+        """Exceptions raised in an isolate agent are pickled back to the client"""
+        failures = [
+            ("repo1", FileUploadException("primary failed")),
+            ("repo2", FileUploadException("fallback failed")),
+        ]
+        exc = FileUploadFallbackException(
+            "Failed to save to all 2 repositories", failures
+        )
+
+        restored = pickle.loads(pickle.dumps(exc))
+
+        assert isinstance(restored, FileUploadFallbackException)
+        assert str(restored) == "Failed to save to all 2 repositories"
+        assert [(label, str(err)) for label, err in restored.failures] == [
+            ("repo1", "primary failed"),
+            ("repo2", "fallback failed"),
+        ]
 
     def test_all_repositories_fail_with_mixed_exception_types(self):
         """Non-toolkit errors from custom repositories are named in the summary"""
