@@ -1166,7 +1166,7 @@ class PollBackoff:
 
     initial: float = 0.25
     multiplier: float = 1.05
-    maximum: float = 30.0
+    maximum: float = 10.0
     jitter: float = 0.2
 
     def __post_init__(self) -> None:

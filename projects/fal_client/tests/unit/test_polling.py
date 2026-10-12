@@ -15,7 +15,7 @@ from fal_client.client import (
 def test_backoff_grows_from_initial_up_to_maximum():
     delays = PollBackoff(jitter=0).delays()
     assert [next(delays) for _ in range(3)] == pytest.approx([0.25, 0.2625, 0.275625])
-    assert next(islice(delays, 1000, None)) == 30.0
+    assert next(islice(delays, 1000, None)) == 10.0
 
 
 def test_backoff_jitter_stays_within_bounds():
@@ -23,7 +23,7 @@ def test_backoff_jitter_stays_within_bounds():
     assert len(first) > 1
     assert all(0.2 <= delay <= 0.3 for delay in first)
     assert all(
-        delay <= 30.0 for delay in islice(PollBackoff(multiplier=2).delays(), 100)
+        delay <= 10.0 for delay in islice(PollBackoff(multiplier=2).delays(), 100)
     )
 
 
@@ -31,7 +31,7 @@ def test_backoff_jitter_stays_within_bounds():
     "kwargs",
     [
         {"initial": 0},
-        {"initial": 31},
+        {"initial": 11},
         {"maximum": float("inf")},
         {"multiplier": 0.9},
         {"jitter": 1.5},
@@ -119,7 +119,9 @@ async def test_polling_resets_only_on_status_changes(sleeps, async_mode, interva
     )
     if async_mode:
         async with httpx.AsyncClient(transport=transport) as http:
-            handle = AsyncRequestHandle.from_request_id(http, "fal-ai/test", "request-id")
+            handle = AsyncRequestHandle.from_request_id(
+                http, "fal-ai/test", "request-id"
+            )
             statuses = [
                 status
                 async for status in handle.iter_events(
@@ -128,7 +130,9 @@ async def test_polling_resets_only_on_status_changes(sleeps, async_mode, interva
             ]
     else:
         with httpx.Client(transport=transport) as http:
-            handle = SyncRequestHandle.from_request_id(http, "fal-ai/test", "request-id")
+            handle = SyncRequestHandle.from_request_id(
+                http, "fal-ai/test", "request-id"
+            )
             statuses = list(
                 handle.iter_events(with_logs=True, interval=interval, backoff=DOUBLING)
             )
