@@ -45,6 +45,11 @@ class LocalUploadRejected(LocalUploadRefused):
     """The uploader is full or draining and may accept a replay shortly."""
 
 
+class LocalUploadInvalid(LocalUploadRefused):
+    """The uploader refused this upload's content or metadata (HTTP 413 or 422),
+    not for lack of capacity."""
+
+
 def upload(
     file_name: str,
     content: bytes | Path,
@@ -176,6 +181,8 @@ def _request(
     status = response.status_code
     if status == 429:
         raise LocalUploadRejected("Local uploader returned HTTP 429.")
+    if status in (413, 422):
+        raise LocalUploadInvalid(f"Local uploader returned HTTP {status}.")
     if status != expected_status:
         message = f"Local uploader returned HTTP {status}."
         raise (LocalUploadRefused if status < 500 else LocalUploadError)(message)

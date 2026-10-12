@@ -4,6 +4,8 @@ import json
 import sys
 from types import SimpleNamespace
 from unittest.mock import Mock
+from urllib.parse import quote, unquote
+from uuid import UUID
 
 import httpx
 import pytest
@@ -11,6 +13,7 @@ from starlette.requests import Request
 
 from fal.auth import AuthCredentials
 from fal.toolkit.file import _local_uploader
+from fal.toolkit.file import _upload_policy as upload_policy
 from fal.toolkit.file import file as files
 from fal.toolkit.file._local_uploader import LocalUploadError, LocalUploadRefused
 from fal.toolkit.file._upload_policy import UPLOAD_POLICY_KEY
@@ -137,26 +140,165 @@ def test_explicit_repository_objects_and_destinations_are_preserved(
     assert not local_upload
 
 
-def test_upload_policy_overrides_explicit_local_repository(monkeypatch, local_upload):
-    policy = json.dumps(
-        {
-            "url": "https://bucket.s3.amazonaws.com/",
-            "fields": {"key": "outputs/${filename}"},
-        }
+POLICY = {
+    "url": "https://bucket.s3.amazonaws.com/",
+    "fields": {"key": "outputs/${filename}", "policy": "signed", "x-amz-flag": True},
+}
+
+
+def _policy_request():
+    header = (UPLOAD_POLICY_KEY.encode(), json.dumps(POLICY).encode())
+    return Request({"type": "http", "headers": [header]})
+
+
+@pytest.fixture
+def policy_upload(monkeypatch, transport):
+    """Opt in; record in-process uploads and fail on any fal CDN upload."""
+    monkeypatch.setenv("FAL_USE_LOCAL_UPLOADER", "1")
+    monkeypatch.setattr(SLEEP, Mock())
+    in_process = Mock(return_value="https://bucket.s3.amazonaws.com/outputs/direct")
+    monkeypatch.setattr(local, "upload_bytes_with_policy", in_process)
+    monkeypatch.setattr(local, "upload_path_with_policy", in_process)
+    for repository in (remote.FalFileRepositoryV3, remote.FalFileRepository):
+        for method in ("save", "save_file"):
+            monkeypatch.setattr(repository, method, Mock(side_effect=AssertionError))
+
+    def install(response):
+        respond = isinstance(response, (httpx.Response, type))
+        handler = _respond(response) if respond else response
+        return transport(handler), in_process
+
+    return install
+
+
+def _accept_like_the_uploader(request):
+    """Substitute ${filename} and build file_url as isolate-cloud's s3_post.rs does."""
+    policy = json.loads(request.headers[UPLOAD_POLICY_KEY])
+    key = policy["fields"]["key"].replace(
+        "${filename}", unquote(request.headers["x-fal-file-name"])
     )
-    request = Request(
-        {"type": "http", "headers": [(UPLOAD_POLICY_KEY.encode(), policy.encode())]}
-    )
-    upload = Mock(return_value="https://bucket.s3.amazonaws.com/outputs/file.txt")
-    monkeypatch.setattr(files, "upload_bytes_with_policy", upload)
+    file_url = policy["url"].rstrip("/") + "/" + quote(key, safe="/~")
+    return httpx.Response(202, json={**ACCEPTED, "file_url": file_url})
+
+
+@pytest.mark.parametrize(
+    "file_name,header",
+    [
+        ("cat.txt", "cat.txt"),
+        ("vidéo (1).mp4", "vid%C3%A9o%20%281%29.mp4"),
+    ],
+)
+@pytest.mark.parametrize("explicit", [False, True])
+def test_upload_policy_goes_through_the_local_uploader(
+    monkeypatch, policy_upload, caller, explicit, file_name, header
+):
+    requests, in_process = policy_upload(_accept_like_the_uploader)
+    caller({"x-fal-cdn-token": "caller-token"}, "request-id")
+    monkeypatch.setattr(upload_policy, "get_current_app", remote.get_current_app)
+    monkeypatch.setattr(upload_policy, "uuid4", lambda: UUID(int=7))
+    kwargs = {"repository": local.LocalFileRepository()} if explicit else {}
     result = files.File.from_bytes(
-        b"hello",
-        file_name="file.txt",
-        request=request,
-        repository=local.LocalFileRepository(),
+        b"hello", "text/plain", file_name, request=_policy_request(), **kwargs
     )
-    assert result.url == upload.return_value
-    assert not local_upload
+    in_process_url, fields = upload_policy._prepare_upload(
+        upload_policy.UploadPolicy(**POLICY), file_name, "text/plain"
+    )
+    assert result.url == in_process_url
+    assert result.as_bytes() == b"hello"
+    (request,) = requests
+    assert request.url.path == "/uploads"
+    assert request.content == b"hello"
+    assert json.loads(request.headers[UPLOAD_POLICY_KEY]) == POLICY
+    assert request.headers["x-fal-file-name"] == f"{UUID(int=7).hex}-{header}"
+    assert fields["key"] == f"outputs/{UUID(int=7).hex}-{file_name}"
+    assert request.headers["content-type"] == "text/plain"
+    assert request.headers["x-fal-request-id"] == "request-id"
+    # Without credentials an uploader that predates policies cannot use the CDN.
+    assert "authorization" not in request.headers
+    assert "x-fal-cdn-token" not in request.headers
+    in_process.assert_not_called()
+
+
+@pytest.mark.parametrize("stage_to_disk", [False, True])
+def test_upload_policy_files_stream_from_disk_when_large(
+    policy_upload, tmp_path, stage_to_disk
+):
+    requests, _ = policy_upload(httpx.Response(202, json=ACCEPTED))
+    path = tmp_path / "out.bin"
+    path.write_bytes(b"data")
+    result = files.File.from_path(
+        path, multipart=stage_to_disk, request=_policy_request()
+    )
+    assert result.url == ACCEPTED["file_url"]
+    assert result.file_data == (None if stage_to_disk else b"data")
+    assert requests[0].content == b"data"
+
+
+@pytest.mark.parametrize(
+    "response,attempts",
+    [
+        (httpx.Response(429), 3),
+        (httpx.Response(401), 1),  # an uploader that predates policies
+        (httpx.ConnectError, 1),
+    ],
+)
+def test_upload_policy_refusals_upload_in_process(policy_upload, response, attempts):
+    requests, in_process = policy_upload(response)
+    result = files.File.from_bytes(
+        b"hi", "text/plain", "cat.txt", request=_policy_request()
+    )
+    assert result.url == in_process.return_value
+    assert len(requests) == attempts
+    in_process.assert_called_once_with(
+        upload_policy.UploadPolicy(**POLICY), "cat.txt", b"hi", "text/plain"
+    )
+
+
+@pytest.mark.parametrize("status", [413, 422])
+def test_upload_policy_rejections_are_raised(policy_upload, status):
+    _, in_process = policy_upload(httpx.Response(status, text="secret"))
+    with pytest.raises(upload_policy.UploadPolicyError) as caught:
+        files.File.from_bytes(b"hi", request=_policy_request())
+    assert caught.value.status_code == 424
+    assert "secret" not in str(caught.value)
+    in_process.assert_not_called()
+
+
+@pytest.mark.parametrize("response", [httpx.Response(503), httpx.ReadError])
+def test_upload_policy_possibly_accepted_failures_are_raised(policy_upload, response):
+    _, in_process = policy_upload(response)
+    with pytest.raises(LocalUploadError) as caught:
+        files.File.from_bytes(b"hi", request=_policy_request())
+    assert not isinstance(caught.value, LocalUploadRefused)
+    in_process.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"file_name": "a/b.txt"},
+        {"content_type": "image/png", "file_name": "b.txt"},
+    ],
+)
+def test_upload_policy_input_is_checked_before_handoff(
+    monkeypatch, policy_upload, kwargs
+):
+    requests, in_process = policy_upload(httpx.Response(202, json=ACCEPTED))
+    signed = {**POLICY, "fields": {**POLICY["fields"], "Content-Type": "text/plain"}}
+    header = (UPLOAD_POLICY_KEY.encode(), json.dumps(signed).encode())
+    request = Request({"type": "http", "headers": [header]})
+    with pytest.raises(upload_policy.UploadPolicyInputError):
+        files.File.from_bytes(b"hi", request=request, **kwargs)
+    assert not requests
+    in_process.assert_not_called()
+
+
+def test_upload_policy_without_opt_in_uploads_in_process(monkeypatch, policy_upload):
+    monkeypatch.delenv("FAL_USE_LOCAL_UPLOADER")
+    requests, in_process = policy_upload(httpx.Response(202, json=ACCEPTED))
+    result = files.File.from_bytes(b"hi", request=_policy_request())
+    assert result.url == in_process.return_value
+    assert not requests
 
 
 @pytest.mark.parametrize("multipart", [False, True, None])
