@@ -29,8 +29,6 @@ from fal.toolkit.file._upload_policy import (
     UPLOAD_POLICY_KEY,
     UploadPolicyInputError,
     get_upload_policy,
-    upload_bytes_with_policy,
-    upload_path_with_policy,
 )
 from fal.toolkit.file.providers.fal import (
     # Re-exported for backwards compatibility; both resolve to FalFileRepositoryV3.
@@ -42,7 +40,7 @@ from fal.toolkit.file.providers.fal import (
     MultipartUploadV3,
 )
 from fal.toolkit.file.providers.gcp import GoogleStorageRepository
-from fal.toolkit.file.providers.local import LocalFileRepository
+from fal.toolkit.file.providers.local import LocalFileRepository, save_with_policy
 from fal.toolkit.file.providers.r2 import R2Repository
 from fal.toolkit.file.types import FileData, FileRepository, RepositoryId
 from fal.toolkit.utils.download_utils import download_file
@@ -301,7 +299,7 @@ class File(BaseModel):
         upload_policy = get_upload_policy(request)
         if upload_policy is not None:
             _require_no_repository_conflict(repository)
-            url = upload_bytes_with_policy(
+            url = save_with_policy(
                 upload_policy, fdata.file_name, data, fdata.content_type
             )
             return cls(
@@ -405,19 +403,15 @@ class File(BaseModel):
                 if multipart is not None
                 else file_size > MultipartUploadV3.MULTIPART_THRESHOLD
             )
-            if stage_to_disk:
-                # Stage and stream in the background, off the request thread.
-                url = upload_path_with_policy(
-                    upload_policy, file_path, file_path.name, content_type
-                )
-                file_data = None
-            else:
-                # Reusing these bytes for file_data avoids a second full read
-                # and the staging copy for the common small-output case.
-                file_data = file_path.read_bytes()
-                url = upload_bytes_with_policy(
-                    upload_policy, file_path.name, file_data, content_type
-                )
+            # Reusing small files' bytes for file_data avoids a second full read
+            # and the staging copy for the common small-output case.
+            file_data = None if stage_to_disk else file_path.read_bytes()
+            url = save_with_policy(
+                upload_policy,
+                file_path.name,
+                file_path if file_data is None else file_data,
+                content_type,
+            )
             return cls(
                 url=url,
                 file_data=file_data,

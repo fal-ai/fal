@@ -1,21 +1,34 @@
 """Repository adapter for opt-in, node-local uploads.
 
-A submission the uploader refused is sent directly to the CDN instead. A
-failure after the uploader may have accepted the bytes is raised, because a
-second upload could publish a duplicate. Small files retain bytes for
-File.as_bytes().
+A submission the uploader refused is sent directly to the CDN instead, or
+in-process to the caller's bucket under an upload policy. A failure after the
+uploader may have accepted the bytes is raised, because a second upload could
+publish a duplicate. Small files retain bytes for File.as_bytes().
 """
 
 from __future__ import annotations
 
+import json
 from functools import wraps
 from pathlib import Path
 from typing import Iterable
 
+from fal.flags import bool_envvar
 from fal.toolkit.file._local_uploader import (
+    LocalUploadInvalid,
     LocalUploadRefused,
     upload,
     upload_stream,
+)
+from fal.toolkit.file._upload_policy import (
+    UPLOAD_POLICY_KEY,
+    UploadPolicy,
+    UploadPolicyError,
+    _current_request_id,
+    _upload_file_name,
+    _validate_size,
+    upload_bytes_with_policy,
+    upload_path_with_policy,
 )
 from fal.toolkit.file.providers.fal import (
     FalFileRepositoryV3,
@@ -119,3 +132,43 @@ class LocalFileRepository(FileRepository):
         return upload_stream(
             file_name, chunks, headers, wait_for_completion=wait_for_completion
         )
+
+
+def save_with_policy(
+    policy: UploadPolicy, file_name: str, content: bytes | Path, content_type: str
+) -> str:
+    """Upload to the caller's bucket and return the URL the object will have.
+
+    Opted-in runners hand the upload to the node-local uploader. Any other
+    runner, or a refusal, uploads in-process. Neither waits for the bucket.
+    """
+    if bool_envvar("FAL_USE_LOCAL_UPLOADER"):
+        try:
+            return _upload_with_policy(policy, file_name, content, content_type)
+        except LocalUploadInvalid as exc:
+            raise UploadPolicyError(
+                f"Upload via {UPLOAD_POLICY_KEY} was refused: {exc}"
+            ) from None
+        except LocalUploadRefused as exc:
+            print(f"{exc} Uploading in-process.")
+    if isinstance(content, bytes):
+        return upload_bytes_with_policy(policy, file_name, content, content_type)
+    return upload_path_with_policy(policy, content, file_name, content_type)
+
+
+def _upload_with_policy(
+    policy: UploadPolicy, file_name: str, content: bytes | Path, content_type: str
+) -> str:
+    _validate_size(
+        len(content) if isinstance(content, bytes) else content.stat().st_size
+    )
+    name = _upload_file_name(policy, file_name, content_type)
+    # No credentials: an uploader without policy support then refuses the
+    # upload rather than send it to the fal CDN.
+    headers = {
+        "Content-Type": content_type,
+        UPLOAD_POLICY_KEY: json.dumps({"url": policy.url, "fields": policy.fields}),
+    }
+    if request_id := _current_request_id():
+        headers["X-Fal-Request-ID"] = request_id
+    return upload(name, content, headers)

@@ -6,6 +6,7 @@ isolate-cloud/monorust/target/debug/cdn-uploader binary to run these tests.
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import os
@@ -19,13 +20,17 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
 from urllib.parse import urlparse
+from uuid import UUID
 
 import httpx
 import pytest
+from starlette.requests import Request
 
 from fal.toolkit.file import File, _local_uploader
+from fal.toolkit.file import _upload_policy as upload_policy
 from fal.toolkit.file._local_uploader import LocalUploadError
 from fal.toolkit.file.providers import fal as remote
+from fal.toolkit.file.providers import local
 from fal.toolkit.file.providers.local import LocalFileRepository
 
 pytestmark = pytest.mark.skipif(
@@ -56,7 +61,9 @@ def uploader(monkeypatch):
     release = threading.Event()
     receiving = threading.Event()
     done = threading.Event()
+    connected = threading.Event()
     state = {
+        "connects": [],
         "parts": {},
         "multipart": False,
         "headers": None,
@@ -129,6 +136,14 @@ def uploader(monkeypatch):
                 }
             )
 
+        def do_CONNECT(self):
+            # The uploader's HTTPS proxy: records where a policy upload goes,
+            # then refuses the tunnel, since no fake can pass as an S3 host.
+            state["connects"].append(self.path)
+            connected.set()
+            self.send_response(502)
+            self.end_headers()
+
         def log_message(self, *args):
             pass
 
@@ -153,6 +168,7 @@ def uploader(monkeypatch):
                 "CDN_UPLOADER_MAX_QUEUE_AGE_SECONDS": "60",
                 "CDN_UPLOADER_FAILED_RETENTION_SECONDS": "60",
                 "CDN_UPLOADER_SWEEP_INTERVAL_SECONDS": "1",
+                "HTTPS_PROXY": origin,
             }
             env.pop("CDN_UPLOADER_CDN_BASE_URL", None)
             with (root / "uploader.log").open("w+") as log:
@@ -165,7 +181,11 @@ def uploader(monkeypatch):
                     monkeypatch.setenv("FAL_USE_LOCAL_UPLOADER", "1")
                     monkeypatch.setenv("FAL_KEY", "local:test")
                     yield SimpleNamespace(
-                        release=release, receiving=receiving, done=done, state=state
+                        release=release,
+                        receiving=receiving,
+                        done=done,
+                        connected=connected,
+                        state=state,
                     )
                 finally:
                     release.set()
@@ -269,3 +289,47 @@ def test_generated_stream_waits_for_completion(uploader):
     assert url.endswith("/file/1")
     assert uploader.done.is_set()
     assert uploader.state["parts"] == {1: b"hello world"}
+
+
+def _policy_request(policy):
+    header = (upload_policy.UPLOAD_POLICY_KEY.encode(), json.dumps(policy).encode())
+    return Request({"type": "http", "headers": [header]})
+
+
+def test_upload_policy_posts_to_the_caller_bucket(uploader, monkeypatch):
+    monkeypatch.delenv("FAL_KEY")  # a policy upload needs no fal credentials
+    monkeypatch.setattr(upload_policy, "uuid4", lambda: UUID(int=7))
+    in_process = Mock()
+    monkeypatch.setattr(local, "upload_bytes_with_policy", in_process)
+    policy = {
+        "url": "https://bucket.s3.us-west-1.amazonaws.com/",
+        "fields": {"key": "outputs/${filename}"},
+    }
+    result = File.from_bytes(
+        b"hello", "text/plain", "cat (1).txt", request=_policy_request(policy)
+    )
+    expected, _ = upload_policy._prepare_upload(
+        upload_policy.UploadPolicy(**policy), "cat (1).txt", "text/plain"
+    )
+    assert result.url == expected
+    assert uploader.connected.wait(10)
+    assert uploader.state["connects"][0] == "bucket.s3.us-west-1.amazonaws.com:443"
+    assert uploader.state["reservations"] == 0
+    in_process.assert_not_called()
+
+
+def test_expired_upload_policy_is_refused(uploader, monkeypatch):
+    in_process = Mock()
+    monkeypatch.setattr(local, "upload_bytes_with_policy", in_process)
+    document = {"expiration": "2020-01-01T00:00:00Z", "conditions": []}
+    policy = {
+        "url": "https://bucket.s3.amazonaws.com/",
+        "fields": {
+            "key": "outputs/${filename}",
+            "policy": base64.b64encode(json.dumps(document).encode()).decode(),
+        },
+    }
+    with pytest.raises(upload_policy.UploadPolicyError, match="HTTP 422"):
+        File.from_bytes(b"hello", request=_policy_request(policy))
+    in_process.assert_not_called()
+    assert not uploader.state["connects"]
