@@ -1617,16 +1617,24 @@ class SyncRequestHandle(_BaseRequestHandle):
         """Poll until completed, including logs if `with_logs` is True.
 
         `interval` fixes the delay in seconds between checks. Otherwise the delay
-        follows `backoff`, which defaults to `PollBackoff()`.
+        follows `backoff`, which defaults to `PollBackoff()` and resets when
+        the status changes.
         """
 
-        delays = (backoff or DEFAULT_POLL_BACKOFF).delays()
+        polling_backoff = backoff or DEFAULT_POLL_BACKOFF
+        delays = polling_backoff.delays()
+        previous_status_type: type[Status] | None = None
         while True:
             status = self.status(with_logs=with_logs)
             yield status
             if isinstance(status, Completed):
                 break
 
+            # Don't let a long queue wait slow completion detection once running.
+            # Completed exits above without another sleep.
+            if interval is None and type(status) is not previous_status_type:
+                delays = polling_backoff.delays()
+            previous_status_type = type(status)
             delay = interval if interval is not None else next(delays)
             time.sleep(delay)
 
@@ -1707,16 +1715,24 @@ class AsyncRequestHandle(_BaseRequestHandle):
         """Poll until completed, including logs if `with_logs` is True.
 
         `interval` fixes the delay in seconds between checks. Otherwise the delay
-        follows `backoff`, which defaults to `PollBackoff()`.
+        follows `backoff`, which defaults to `PollBackoff()` and resets when
+        the status changes.
         """
 
-        delays = (backoff or DEFAULT_POLL_BACKOFF).delays()
+        polling_backoff = backoff or DEFAULT_POLL_BACKOFF
+        delays = polling_backoff.delays()
+        previous_status_type: type[Status] | None = None
         while True:
             status = await self.status(with_logs=with_logs)
             yield status
             if isinstance(status, Completed):
                 break
 
+            # Don't let a long queue wait slow completion detection once running.
+            # Completed exits above without another sleep.
+            if interval is None and type(status) is not previous_status_type:
+                delays = polling_backoff.delays()
+            previous_status_type = type(status)
             delay = interval if interval is not None else next(delays)
             await asyncio.sleep(delay)
 

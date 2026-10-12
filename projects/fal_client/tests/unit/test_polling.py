@@ -100,6 +100,44 @@ def test_sync_iter_events_fixed_interval_ignores_backoff(sleeps):
     assert sleeps == [0.5, 0.5]
 
 
+@pytest.mark.parametrize("async_mode", [False, True])
+@pytest.mark.parametrize("interval", [None, 0.5])
+async def test_polling_resets_only_on_status_changes(sleeps, async_mode, interval):
+    responses = iter(
+        [
+            {"status": "IN_QUEUE", "queue_position": 2},
+            {"status": "IN_QUEUE", "queue_position": 1},
+            {"status": "IN_PROGRESS", "logs": []},
+            {"status": "IN_PROGRESS", "logs": [{"message": "working"}]},
+            {"status": "IN_QUEUE", "queue_position": 0},
+            {"status": "IN_QUEUE", "queue_position": 0},
+            {"status": "COMPLETED", "logs": [], "metrics": {}},
+        ]
+    )
+    transport = httpx.MockTransport(
+        lambda request: httpx.Response(200, json=next(responses))
+    )
+    if async_mode:
+        async with httpx.AsyncClient(transport=transport) as http:
+            handle = AsyncRequestHandle.from_request_id(http, "fal-ai/test", "request-id")
+            statuses = [
+                status
+                async for status in handle.iter_events(
+                    with_logs=True, interval=interval, backoff=DOUBLING
+                )
+            ]
+    else:
+        with httpx.Client(transport=transport) as http:
+            handle = SyncRequestHandle.from_request_id(http, "fal-ai/test", "request-id")
+            statuses = list(
+                handle.iter_events(with_logs=True, interval=interval, backoff=DOUBLING)
+            )
+
+    assert sleeps == ([1.0, 2.0, 1.0, 2.0, 1.0, 2.0] if interval is None else [0.5] * 6)
+    assert len(statuses) == 7
+    assert isinstance(statuses[-1], Completed)
+
+
 async def test_async_iter_events_backs_off_per_attempt(sleeps):
     statuses = [s async for s in _async_handle().iter_events(backoff=DOUBLING)]
 
