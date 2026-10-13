@@ -1,22 +1,38 @@
 from __future__ import annotations
 
-import sys
+import os
 import uuid
 from functools import partial
+from pathlib import Path
 from typing import Callable
 
 import pytest
 
-from fal import function
-from fal.flags import GRPC_HOST
-from fal.sdk import get_credentials
 
-print("TARGET:", GRPC_HOST, file=sys.stderr)
-print("AUTH:", get_credentials(), file=sys.stderr)
+def pytest_configure(config):
+    unit_directory = Path(__file__).parent / "unit"
+    paths = [Path(arg.split("::", 1)[0]).resolve() for arg in config.args]
+    if paths and all(
+        path == unit_directory or unit_directory in path.parents for path in paths
+    ):
+        # Unit collection imports fal before any autouse fixtures can run.
+        patch = pytest.MonkeyPatch()
+        patch.setenv("FAL_CONFIG_PATH", os.devnull)
+        patch.delenv("FAL_PROFILE", raising=False)
+        config.add_cleanup(patch.undo)
+
+
+def pytest_report_header():
+    from fal.flags import GRPC_HOST
+    from fal.sdk import get_credentials
+
+    return [f"TARGET: {GRPC_HOST}", f"AUTH: {get_credentials()}"]
 
 
 @pytest.fixture(scope="function")
 def isolated_client():
+    from fal import function
+
     return partial(function, machine_type="XS", keep_alive=0)
 
 
