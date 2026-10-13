@@ -22,7 +22,7 @@ class Declaration:
     def __init__(self, metric: str) -> None:
         self.metric = metric
 
-    def declaration(self) -> dict[str, Any]:
+    def declaration(self) -> fal.BillingComponents:
         return {"version": 1, "schema_id": f"id-{self.metric}", "app": APP}
 
 
@@ -77,6 +77,9 @@ def test_apps_without_billing_publish_only_openapi() -> None:
 def test_billing_must_be_a_declaration() -> None:
     with pytest.raises(TypeError, match="declaration"):
         fal.endpoint("/edit", billing=object())  # type: ignore[arg-type]
+    # The class itself, not an instance: declaration() would need self.
+    with pytest.raises(TypeError, match="declaration"):
+        fal.endpoint("/edit", billing=Declaration)  # type: ignore[arg-type]
     with pytest.raises(ValueError, match="Websocket"):
         fal.endpoint("/ws", is_websocket=True, billing=Declaration("images"))
 
@@ -87,7 +90,7 @@ class EqualityDeclaration:
 
     metric: str
 
-    def declaration(self) -> dict[str, Any]:
+    def declaration(self) -> fal.BillingComponents:
         return {"version": 1, "schema_id": f"id-{self.metric}", "app": APP}
 
 

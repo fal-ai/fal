@@ -1163,10 +1163,12 @@ def endpoint(
     ``billing`` declares the components the endpoint reports. It is published
     in deploy metadata under ``billing_components``, not in the OpenAPI spec.
     """
-    if billing is not None and not (
-        isinstance(billing, BillingDeclaration) and callable(billing.declaration)
+    if billing is not None and (
+        isinstance(billing, type)
+        or not isinstance(billing, BillingDeclaration)
+        or not callable(billing.declaration)
     ):
-        raise TypeError("billing must provide a declaration() method")
+        raise TypeError("billing must be an object with a declaration() method")
     if billing is not None and is_websocket:
         raise ValueError("Websocket endpoints cannot declare billing components")
 
