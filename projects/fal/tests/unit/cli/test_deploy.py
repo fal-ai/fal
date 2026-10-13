@@ -536,6 +536,15 @@ def disable_admin_deploy_check_lookup():
 
 
 @pytest.fixture
+def cli_working_directory(tmp_path, monkeypatch):
+    (tmp_path / "pyproject.toml").write_text("[tool.fal]\n")
+    directory = tmp_path / "nested"
+    directory.mkdir()
+    monkeypatch.chdir(directory)
+    return directory
+
+
+@pytest.fixture
 def mock_parse_pyproject_toml():
     return {
         "apps": {
@@ -1162,6 +1171,7 @@ def test_deploy_with_cli_auth(
     mock_parse_toml,
     mock_find_toml,
     mock_parse_pyproject_toml,
+    cli_working_directory,
 ):
     mock_parse_toml.return_value = mock_parse_pyproject_toml
 
@@ -1169,7 +1179,7 @@ def test_deploy_with_cli_auth(
 
     _deploy(args)
 
-    project_root, _ = find_project_root(None)
+    project_root = cli_working_directory
 
     mock_prepare_ref.assert_called_once_with(
         mock_prepare_ref.call_args[0][0],
@@ -1197,6 +1207,7 @@ def test_deploy_with_cli_app_name(
     mock_parse_toml,
     mock_find_toml,
     mock_parse_pyproject_toml,
+    cli_working_directory,
 ):
     mock_parse_toml.return_value = mock_parse_pyproject_toml
 
@@ -1207,7 +1218,7 @@ def test_deploy_with_cli_app_name(
 
     _deploy(args)
 
-    project_root, _ = find_project_root(None)
+    project_root = cli_working_directory
 
     mock_prepare_ref.assert_called_once_with(
         mock_prepare_ref.call_args[0][0],
@@ -1235,6 +1246,7 @@ def test_deploy_with_cli_deployment_strategy(
     mock_parse_toml,
     mock_find_toml,
     mock_parse_pyproject_toml,
+    cli_working_directory,
 ):
     mock_parse_toml.return_value = mock_parse_pyproject_toml
 
@@ -1242,7 +1254,7 @@ def test_deploy_with_cli_deployment_strategy(
 
     _deploy(args)
 
-    project_root, _ = find_project_root(None)
+    project_root = cli_working_directory
 
     mock_prepare_ref.assert_called_once_with(
         mock_prepare_ref.call_args[0][0],
@@ -1270,6 +1282,7 @@ def test_deploy_with_cli_reset_scale(
     mock_parse_toml,
     mock_find_toml,
     mock_parse_pyproject_toml,
+    cli_working_directory,
 ):
     mock_parse_toml.return_value = mock_parse_pyproject_toml
 
@@ -1277,7 +1290,7 @@ def test_deploy_with_cli_reset_scale(
 
     _deploy(args)
 
-    project_root, _ = find_project_root(None)
+    project_root = cli_working_directory
 
     mock_prepare_ref.assert_called_once_with(
         mock_prepare_ref.call_args[0][0],
@@ -1305,6 +1318,7 @@ def test_deploy_with_cli_scale(
     mock_parse_toml,
     mock_find_toml,
     mock_parse_pyproject_toml,
+    cli_working_directory,
 ):
     mock_parse_toml.return_value = mock_parse_pyproject_toml
 
@@ -1312,7 +1326,7 @@ def test_deploy_with_cli_scale(
 
     _deploy(args)
 
-    project_root, _ = find_project_root(None)
+    project_root = cli_working_directory
 
     mock_prepare_ref.assert_called_once_with(
         mock_prepare_ref.call_args[0][0],
@@ -1340,6 +1354,7 @@ def test_deploy_with_cli_no_cache(
     mock_parse_toml,
     mock_find_toml,
     mock_parse_pyproject_toml,
+    cli_working_directory,
 ):
     mock_parse_toml.return_value = mock_parse_pyproject_toml
 
@@ -1347,7 +1362,7 @@ def test_deploy_with_cli_no_cache(
 
     _deploy(args)
 
-    project_root, _ = find_project_root(None)
+    project_root = cli_working_directory
 
     mock_prepare_ref.assert_called_once_with(
         mock_prepare_ref.call_args[0][0],

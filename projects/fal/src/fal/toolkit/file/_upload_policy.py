@@ -3,6 +3,8 @@
 Private and meant to be temporary: this is the SDK-side stopgap until infra
 ships a first-class upload destination, at which point this module goes away.
 Hence the leading underscore -- nothing here is a supported public API.
+Runners opted in to the node-local uploader hand the upload to it instead and
+use this path only when it refuses (``providers.local.save_with_policy``).
 
 The ``x-app-fal-upload-policy`` header carries an S3 pre-signed POST policy --
 the JSON from boto3's ``generate_presigned_post()``::
@@ -556,12 +558,9 @@ def _validate_size(nbytes: int) -> None:
         )
 
 
-def _prepare_upload(
-    policy: UploadPolicy,
-    file_name: str,
-    content_type: str,
-) -> tuple[str, dict[str, PolicyFieldValue]]:
-    """Resolve the destination URL and the POST form fields.
+def _upload_file_name(policy: UploadPolicy, file_name: str, content_type: str) -> str:
+    """Check an output against the policy and return the name its key is built
+    from, the value that replaces ``${filename}``.
 
     The uuid prefix keeps concurrent uploads from colliding on a shared policy,
     which is signed once and typically reused for a whole request.
@@ -581,26 +580,34 @@ def _prepare_upload(
     # generation. Re-checked here because upload_* is exported, so a caller can
     # hand-build an UploadPolicy that never passed parse_upload_policy.
     _validate_policy_url(policy.url)
-    fields = dict(policy.fields)
-    key_template = _require_key_template(fields)
+    _require_key_template(policy.fields)
 
-    upload_file_name = f"{uuid4().hex}-{file_name}"
-    final_key = key_template.replace(
-        UPLOAD_POLICY_FILENAME_PLACEHOLDER, upload_file_name
+    # Signed fields cannot be rewritten: the Content-Type is injected only if
+    # the caller left it out, otherwise it must agree or S3 answers an opaque 403.
+    for name, value in policy.fields.items():
+        if _reserved_name(name) == "content-type" and value != content_type:
+            raise UploadPolicyInputError(
+                f"Invalid {UPLOAD_POLICY_KEY} header: fields.{name} is "
+                f"{value!r} but the file being uploaded is "
+                f"{content_type!r}; a signed Content-Type cannot be changed"
+            )
+    return f"{uuid4().hex}-{file_name}"
+
+
+def _prepare_upload(
+    policy: UploadPolicy,
+    file_name: str,
+    content_type: str,
+) -> tuple[str, dict[str, PolicyFieldValue]]:
+    """Resolve the destination URL and the POST form fields."""
+    name = _upload_file_name(policy, file_name, content_type)
+    fields = dict(policy.fields)
+    final_key = _require_key_template(fields).replace(
+        UPLOAD_POLICY_FILENAME_PLACEHOLDER, name
     )
     fields["key"] = final_key
-
-    # Signed fields cannot be rewritten: inject Content-Type only if the caller
-    # left it out, otherwise require agreement or S3 answers an opaque 403.
-    existing = [name for name in fields if _reserved_name(name) == "content-type"]
-    if not existing:
+    if not any(_reserved_name(field) == "content-type" for field in fields):
         fields["Content-Type"] = content_type
-    elif fields[existing[0]] != content_type:
-        raise UploadPolicyInputError(
-            f"Invalid {UPLOAD_POLICY_KEY} header: fields.{existing[0]} is "
-            f"{fields[existing[0]]!r} but the file being uploaded is "
-            f"{content_type!r}; a signed Content-Type cannot be changed"
-        )
 
     encoded_key = urllib.parse.quote(final_key.lstrip("/"), safe="/~")
     access_url = f"{policy.url.rstrip('/')}/{encoded_key}"

@@ -22,14 +22,13 @@ else:
 from pydantic import BaseModel, Field
 
 from fal.compat import run_in_thread
+from fal.flags import bool_envvar
 from fal.ref import get_current_app
 from fal.toolkit.exceptions import FileUploadFallbackException
 from fal.toolkit.file._upload_policy import (
     UPLOAD_POLICY_KEY,
     UploadPolicyInputError,
     get_upload_policy,
-    upload_bytes_with_policy,
-    upload_path_with_policy,
 )
 from fal.toolkit.file.providers.fal import (
     # Re-exported for backwards compatibility; both resolve to FalFileRepositoryV3.
@@ -41,6 +40,7 @@ from fal.toolkit.file.providers.fal import (
     MultipartUploadV3,
 )
 from fal.toolkit.file.providers.gcp import GoogleStorageRepository
+from fal.toolkit.file.providers.local import LocalFileRepository, save_with_policy
 from fal.toolkit.file.providers.r2 import R2Repository
 from fal.toolkit.file.types import FileData, FileRepository, RepositoryId
 from fal.toolkit.utils.download_utils import download_file
@@ -49,7 +49,12 @@ FileRepositoryFactory = Callable[[], FileRepository]
 
 BUILT_IN_REPOSITORIES: dict[RepositoryId, FileRepositoryFactory] = {
     "fal": lambda: FalFileRepository(),
-    "fal_v3": lambda: FalFileRepositoryV3(),
+    # Read on the runner at upload time, never when serializing the app.
+    "fal_v3": lambda: (
+        LocalFileRepository()
+        if bool_envvar("FAL_USE_LOCAL_UPLOADER")
+        else FalFileRepositoryV3()
+    ),
     "in_memory": lambda: InMemoryRepository(),
     "gcp_storage": lambda: GoogleStorageRepository(),
     "r2": lambda: R2Repository(),
@@ -90,7 +95,8 @@ _DEFAULT_REPOSITORY_IDS = frozenset({DEFAULT_REPOSITORY, "fal_v2", "cdn"})
 # the one an app's own import produced are different objects and isinstance would
 # reject a genuinely default repository. FalFileRepositoryV2 and
 # FalCDNFileRepository are aliases of the same class, so one name covers all three.
-_DEFAULT_REPOSITORY_TYPES = frozenset({"FalFileRepositoryV3"})
+# LocalFileRepository is what FAL_USE_LOCAL_UPLOADER substitutes for "fal_v3".
+_DEFAULT_REPOSITORY_TYPES = frozenset({"FalFileRepositoryV3", "LocalFileRepository"})
 
 
 def _is_default_repository(repository: FileRepository | RepositoryId) -> bool:
@@ -176,6 +182,10 @@ def _try_with_fallback(
         try:
             return getattr(repo_obj, func)(*args, **kwargs)
         except Exception as exc:
+            # An uncertain upload must not be replayed through another repository.
+            if not getattr(exc, "falls_back", True):
+                raise
+
             failure = f"{_repo_label(repo)}: {type(exc).__name__}: {exc}"
             failures.append(failure)
             if idx < len(attempts) - 1:
@@ -303,7 +313,7 @@ class File(BaseModel):
         upload_policy = get_upload_policy(request)
         if upload_policy is not None:
             _require_no_repository_conflict(repository)
-            url = upload_bytes_with_policy(
+            url = save_with_policy(
                 upload_policy, fdata.file_name, data, fdata.content_type
             )
             return cls(
@@ -407,19 +417,15 @@ class File(BaseModel):
                 if multipart is not None
                 else file_size > MultipartUploadV3.MULTIPART_THRESHOLD
             )
-            if stage_to_disk:
-                # Stage and stream in the background, off the request thread.
-                url = upload_path_with_policy(
-                    upload_policy, file_path, file_path.name, content_type
-                )
-                file_data = None
-            else:
-                # Reusing these bytes for file_data avoids a second full read
-                # and the staging copy for the common small-output case.
-                file_data = file_path.read_bytes()
-                url = upload_bytes_with_policy(
-                    upload_policy, file_path.name, file_data, content_type
-                )
+            # Reusing small files' bytes for file_data avoids a second full read
+            # and the staging copy for the common small-output case.
+            file_data = None if stage_to_disk else file_path.read_bytes()
+            url = save_with_policy(
+                upload_policy,
+                file_path.name,
+                file_path if file_data is None else file_data,
+                content_type,
+            )
             return cls(
                 url=url,
                 file_data=file_data,
