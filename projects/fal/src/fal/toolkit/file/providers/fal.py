@@ -42,6 +42,29 @@ MAX_ATTEMPTS = 5
 BASE_DELAY = 0.1
 MAX_DELAY = 30
 RETRY_CODES = [408, 409, 429, 500, 502, 503, 504]
+MAX_ERROR_RESPONSE_BYTES = 4096
+
+
+def _initiate_upload_error(exc: HTTPError, storage_type: str) -> FileUploadException:
+    message = (
+        f"Error initiating upload. Status {exc.status}: {exc.reason}. "
+        f"Storage type: {storage_type}"
+    )
+    try:
+        body = exc.read(MAX_ERROR_RESPONSE_BYTES + 1)
+        response_text = body[:MAX_ERROR_RESPONSE_BYTES].decode(
+            "utf-8", errors="replace"
+        )
+    except Exception:
+        # Reading diagnostics must not replace the original upload failure.
+        return FileUploadException(message)
+
+    if response_text.strip():
+        message += f". Server response: {response_text.strip()}"
+        if len(body) > MAX_ERROR_RESPONSE_BYTES:
+            message += " [truncated]"
+
+    return FileUploadException(message)
 
 
 def _should_retry(exc: Exception) -> bool:
@@ -298,9 +321,7 @@ class FalFileRepositoryBase(FileRepository):
 
             upload_url = result["upload_url"]
         except HTTPError as e:
-            raise FileUploadException(
-                f"Error initiating upload. Status {e.status}: {e.reason}"
-            )
+            raise _initiate_upload_error(e, storage_type) from e
 
         try:
             req = Request(
@@ -388,9 +409,7 @@ class MultipartUploadGCS:
                 self._upload_url = result["upload_url"]
 
         except HTTPError as exc:
-            raise FileUploadException(
-                f"Error initiating upload. Status {exc.status}: {exc.reason}"
-            )
+            raise _initiate_upload_error(exc, "gcs") from exc
 
     def upload_part(self, part_number: int, data: bytes) -> None:
         initiate_upload_url = self.upload_url + f"/{part_number}"
@@ -684,9 +703,7 @@ class MultipartUploadV3:
                 self._upload_url = result["upload_url"]
 
         except HTTPError as exc:
-            raise FileUploadException(
-                f"Error initiating upload. Status {exc.status}: {exc.reason}"
-            )
+            raise _initiate_upload_error(exc, "fal-cdn-v3") from exc
 
     def upload_part(self, part_number: int, data: bytes) -> None:
         parsed = urlparse(self.upload_url)
@@ -884,9 +901,7 @@ class InternalMultipartUploadV3:
                 self._upload_id = result["uploadId"]
 
         except HTTPError as exc:
-            raise FileUploadException(
-                f"Error initiating upload. Status {exc.status}: {exc.reason}"
-            )
+            raise _initiate_upload_error(exc, "fal-cdn-v3") from exc
 
     def upload_part(self, part_number: int, data: bytes) -> None:
         url = f"{self.access_url}/multipart/{self.upload_id}/{part_number}"
@@ -1091,9 +1106,7 @@ class FalFileRepositoryV3(FileRepository):
                 file_url = result["file_url"]
                 upload_url = result["upload_url"]
         except HTTPError as e:
-            raise FileUploadException(
-                f"Error initiating upload. Status {e.status}: {e.reason}"
-            )
+            raise _initiate_upload_error(e, "fal-cdn-v3") from e
 
         request = Request(
             upload_url,
@@ -1197,9 +1210,7 @@ class InternalFalFileRepositoryV3(FileRepository):
             with _maybe_retry_request(request) as response:
                 result = json.load(response)
         except HTTPError as e:
-            raise FileUploadException(
-                f"Error initiating upload. Status {e.status}: {e.reason}"
-            )
+            raise _initiate_upload_error(e, "fal-cdn-v3") from e
 
         access_url = result["access_url"]
         return access_url

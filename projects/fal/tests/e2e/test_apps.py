@@ -48,6 +48,12 @@ from fal.ref import get_current_app
 from fal.sdk import ApplicationHealthCheckConfig, RunnerState, get_credentials
 from fal.toolkit.utils.endpoint import cancel_on_disconnect
 from fal.workflows import Workflow
+from tests.utils import git_revision_short_hash
+
+# func_only excludes app deploys in fixtures from the timer; test bodies here
+# poll runners and wait out multi-second requests, so they need more than
+# the unit default.
+pytestmark = pytest.mark.timeout(180, func_only=True)
 
 
 @pytest.fixture(scope="module")
@@ -86,14 +92,6 @@ def _auth_headers() -> Dict[str, str]:
         return {}
     key_id, key_secret = key_creds
     return {"Authorization": f"Key {key_id}:{key_secret}"}
-
-
-def git_revision_short_hash() -> str:
-    return (
-        subprocess.check_output(["git", "rev-parse", "--short", "HEAD"])
-        .decode("ascii")
-        .strip()
-    )
 
 
 @fal.function(
@@ -711,7 +709,7 @@ def user(rest_client: Client) -> Generator[User, None, None]:
     yield user
 
 
-@pytest.fixture()
+@pytest.fixture(scope="module")
 def register_app(
     host: api.FalServerlessHost,
     make_tmp_app_name: Callable[[str], str],
@@ -750,6 +748,7 @@ def register_app(
     return _register_app
 
 
+# Function-scoped: its tests update and delete the alias.
 @pytest.fixture()
 def base_app(register_app):
     # running apps without aliases is no longer supported
@@ -761,7 +760,7 @@ def base_app(register_app):
         yield app_alias, app_revision
 
 
-@pytest.fixture()
+@pytest.fixture(scope="module")
 def test_app(
     user: User,
     register_app,
@@ -773,7 +772,7 @@ def test_app(
         yield f"{user.username}/{app_alias}"
 
 
-@pytest.fixture()
+@pytest.fixture(scope="module")
 def test_container_app(
     user: User,
     register_app,
@@ -782,7 +781,7 @@ def test_container_app(
         yield f"{user.username}/{app_alias}"
 
 
-@pytest.fixture()
+@pytest.fixture(scope="module")
 def test_container_build_args_app(
     user: User,
     register_app,
@@ -791,7 +790,7 @@ def test_container_build_args_app(
         yield f"{user.username}/{app_alias}"
 
 
-@pytest.fixture()
+@pytest.fixture(scope="module")
 def test_greet_server_app(
     user: User,
     register_app,
@@ -800,7 +799,7 @@ def test_greet_server_app(
         yield f"{user.username}/{app_alias}"
 
 
-@pytest.fixture()
+@pytest.fixture(scope="module")
 def test_custom_health_path_app(
     user: User,
     register_app,
@@ -809,7 +808,7 @@ def test_custom_health_path_app(
         yield f"{user.username}/{app_alias}"
 
 
-@pytest.fixture()
+@pytest.fixture(scope="module")
 def test_health_override_fn(
     user: User,
     register_app,
@@ -818,7 +817,7 @@ def test_health_override_fn(
         yield f"{user.username}/{app_alias}"
 
 
-@pytest.fixture()
+@pytest.fixture(scope="module")
 def test_health_override_app(
     user: User,
     register_app,
@@ -828,7 +827,7 @@ def test_health_override_app(
         yield f"{user.username}/{app_alias}"
 
 
-@pytest.fixture()
+@pytest.fixture(scope="module")
 def test_fastapi_app(
     user: User,
     register_app,
@@ -837,7 +836,7 @@ def test_fastapi_app(
         yield f"{user.username}/{app_alias}"
 
 
-@pytest.fixture()
+@pytest.fixture(scope="module")
 def test_stateful_app(
     user: User,
     register_app,
@@ -847,12 +846,13 @@ def test_stateful_app(
         yield f"{user.username}/{app_alias}"
 
 
-@pytest.fixture()
+@pytest.fixture(scope="module")
 def test_pydantic_validation_error():
     with AppClient.connect(StatefulAdditionApp) as client:
         yield client
 
 
+# Function-scoped: a timed-out request keeps the app busy past the test.
 @pytest.fixture()
 def test_cancellable_app(
     user: User,
@@ -863,13 +863,13 @@ def test_cancellable_app(
         yield f"{user.username}/{app_alias}"
 
 
-@pytest.fixture()
+@pytest.fixture(scope="module")
 def test_exception_app():
     with AppClient.connect(ExceptionApp) as client:
         yield client
 
 
-@pytest.fixture()
+@pytest.fixture(scope="module")
 def test_health_check_app(
     user: User,
     register_app,
@@ -879,6 +879,7 @@ def test_health_check_app(
         yield f"{user.username}/{app_alias}"
 
 
+# Function-scoped: its tests stop, kill and roll out the app's runners.
 @pytest.fixture()
 def test_sleep_app(
     user: User,
@@ -889,7 +890,7 @@ def test_sleep_app(
         yield f"{user.username}/{app_alias}"
 
 
-@pytest.fixture()
+@pytest.fixture(scope="module")
 def test_queue_blocking_app(
     user: User,
     register_app,
@@ -899,7 +900,7 @@ def test_queue_blocking_app(
         yield f"{user.username}/{app_alias}"
 
 
-@pytest.fixture()
+@pytest.fixture(scope="module")
 def test_realtime_app(
     user: User,
     register_app,
@@ -1934,7 +1935,6 @@ def test_kill_runner(host: api.FalServerlessHost, test_sleep_app: str):
         assert num_runners <= existing_runners - 1
 
 
-@pytest.mark.timeout(180)
 def test_rollout_application(host: api.FalServerlessHost, test_sleep_app: str):
     _submit_and_wait_in_progress(test_sleep_app)
 
@@ -2171,7 +2171,7 @@ class AppRefApp(fal.App, keep_alive=300, max_concurrency=1, max_multiplexing=3):
         )
 
 
-@pytest.fixture()
+@pytest.fixture(scope="module")
 def test_app_ref_app(
     user: User,
     register_app,
@@ -2266,7 +2266,7 @@ class RequestContextApp(fal.App, keep_alive=300, max_concurrency=1, max_multiple
         )
 
 
-@pytest.fixture()
+@pytest.fixture(scope="module")
 def test_request_context_app(
     user: User,
     register_app,
