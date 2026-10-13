@@ -13,6 +13,10 @@ from fal.container import ContainerImage
 from fal.toolkit.file import File
 from tests.utils import git_revision_short_hash
 
+# Each test deploys and runs an isolated function inline, so the deploy
+# counts against the timer and needs more than the unit default.
+pytestmark = pytest.mark.timeout(180)
+
 PACKAGE_NAME = "fall"
 
 
