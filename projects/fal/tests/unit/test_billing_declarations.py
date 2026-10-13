@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 from typing import Any
 
 import pytest
@@ -13,12 +14,15 @@ def isolate_agent_env(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("IS_ISOLATE_AGENT", "1")
 
 
+APP = {"type": "object", "properties": {}, "required": []}
+
+
 class Declaration:
     def __init__(self, metric: str) -> None:
         self.metric = metric
 
     def declaration(self) -> dict[str, Any]:
-        return {"version": 1, "schema_id": f"id-{self.metric}", "app": {}}
+        return {"version": 1, "schema_id": f"id-{self.metric}", "app": APP}
 
 
 class EditInput(BaseModel):
@@ -52,8 +56,8 @@ class PlainApp(fal.App):
 def test_billing_components_are_published_outside_openapi() -> None:
     metadata = BilledApp.build_metadata()
     assert metadata["billing_components"] == {
-        "/edit": {"version": 1, "schema_id": "id-images", "app": {}},
-        "/upscale": {"version": 1, "schema_id": "id-megapixels", "app": {}},
+        "/edit": {"version": 1, "schema_id": "id-images", "app": APP},
+        "/upscale": {"version": 1, "schema_id": "id-megapixels", "app": APP},
     }
     assert "billing" not in str(metadata["openapi"]).lower()
 
@@ -74,3 +78,61 @@ def test_billing_must_be_a_declaration() -> None:
         fal.endpoint("/edit", billing=object())  # type: ignore[arg-type]
     with pytest.raises(ValueError, match="Websocket"):
         fal.endpoint("/ws", is_websocket=True, billing=Declaration("images"))
+
+
+@dataclasses.dataclass
+class EqualityDeclaration:
+    """A plain dataclass: equality without hashing."""
+
+    metric: str
+
+    def declaration(self) -> dict[str, Any]:
+        return {"version": 1, "schema_id": f"id-{self.metric}", "app": APP}
+
+
+def test_a_declaration_need_not_be_hashable() -> None:
+    class DataclassApp(fal.App):
+        @fal.endpoint("/edit", billing=EqualityDeclaration("images"))
+        def edit(self, input: EditInput) -> EditOutput:
+            return EditOutput(images=1)
+
+    assert set(DataclassApp.build_metadata()["billing_components"]) == {"/edit"}
+    assert DataclassApp().collect_routes()
+
+
+def test_declaration_must_be_a_method() -> None:
+    class Property:
+        declaration = {"version": 1, "schema_id": "x", "app": APP}
+
+    with pytest.raises(TypeError, match="declaration"):
+        fal.endpoint("/edit", billing=Property())  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    "declaration, reason",
+    [
+        ([], "must be a dict"),
+        ({"version": 1, "schema_id": "x"}, "exactly version, schema_id and app"),
+        ({"version": 2, "schema_id": "x", "app": APP}, "version 1"),
+        ({"version": True, "schema_id": "x", "app": APP}, "version 1"),
+        ({"version": 1, "schema_id": "", "app": APP}, "schema_id"),
+        (
+            {"version": 1, "schema_id": "x", "app": {"type": "array"}},
+            "object JSON Schema",
+        ),
+    ],
+)
+def test_a_malformed_declaration_is_refused_before_publishing(
+    declaration: Any, reason: str
+) -> None:
+    class Malformed:
+        def declaration(self) -> Any:
+            return declaration
+
+    class MalformedApp(fal.App):
+        @fal.endpoint("/edit", billing=Malformed())
+        def edit(self, input: EditInput) -> EditOutput:
+            return EditOutput(images=1)
+
+    with pytest.raises(ValueError, match=reason):
+        MalformedApp.build_metadata()
