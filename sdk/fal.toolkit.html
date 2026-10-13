@@ -755,6 +755,14 @@ such as the download timeout belong to the downloader, not here.</p>
 </dd></dl>
 
 <dl class="py exception">
+<dt class="sig sig-object py" id="fal.toolkit.exceptions.FileUploadFallbackException">
+<em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.toolkit.exceptions.</span></span><span class="sig-name descname"><span class="pre">FileUploadFallbackException</span></span><a class="headerlink" href="#fal.toolkit.exceptions.FileUploadFallbackException" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#fal.toolkit.exceptions.FileUploadException" title="fal.toolkit.exceptions.FileUploadException"><code class="xref py py-class docutils literal notranslate"><span class="pre">FileUploadException</span></code></a></p>
+<p>Raised when the primary repository and every fallback failed; the
+message lists each attempt’s error in order.</p>
+</dd></dl>
+
+<dl class="py exception">
 <dt class="sig sig-object py" id="fal.toolkit.exceptions.KVStoreException">
 <em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fal.toolkit.exceptions.</span></span><span class="sig-name descname"><span class="pre">KVStoreException</span></span><a class="headerlink" href="#fal.toolkit.exceptions.KVStoreException" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <a class="reference internal" href="#fal.toolkit.exceptions.FalTookitException" title="fal.toolkit.exceptions.FalTookitException"><code class="xref py py-class docutils literal notranslate"><span class="pre">FalTookitException</span></code></a></p>
