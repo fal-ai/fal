@@ -2,6 +2,9 @@
 
 Acceptance is durable on this node, not CDN completion; callers that need the
 CDN copy wait for completion. Do not serialize live connections.
+
+Uploads carry the in-flight request's x-fal-* headers, which only the gateway
+sets, and every request names the runner's app in x-fal-application.
 """
 
 from __future__ import annotations
@@ -13,7 +16,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Iterable, Iterator
 from urllib.parse import quote
 
+from fal.ref import get_current_app
 from fal.toolkit.exceptions import FileUploadException
+from fal.toolkit.file._upload_policy import UPLOAD_POLICY_KEY
 
 if TYPE_CHECKING:
     import httpx
@@ -65,7 +70,7 @@ def upload(
     """
     size = len(content) if isinstance(content, bytes) else content.stat().st_size
     headers = {
-        **headers,
+        **_with_request_headers(headers),
         "X-Fal-File-Name": _header_file_name(file_name),
         "Content-Length": str(size),
     }
@@ -86,12 +91,34 @@ def upload_stream(
     """Return the URL once a body of unknown size is durably accepted, or once the
     CDN has it when waiting for completion.
     """
-    headers = {**headers, "X-Fal-File-Name": _header_file_name(file_name)}
+    headers = {
+        **_with_request_headers(headers),
+        "X-Fal-File-Name": _header_file_name(file_name),
+    }
     with _new_client() as http:
         upload_id, file_url = _stream(http, chunks, headers)
         if wait_for_completion:
             _wait_for_completion(http, upload_id)
     return file_url
+
+
+def _with_request_headers(headers: dict[str, str]) -> dict[str, str]:
+    """Add the in-flight request's x-fal-* headers; the upload's own win.
+
+    Policy uploads drop the caller's CDN token, so an uploader that predates
+    policies refuses them rather than publish to the fal CDN.
+    """
+    own = {name.lower() for name in headers}
+    if UPLOAD_POLICY_KEY in own:
+        own.add("x-fal-cdn-token")
+    app = get_current_app()
+    request = app.current_request if app else None
+    forwarded = {
+        name: value
+        for name, value in (request.headers if request else {}).items()
+        if name.lower().startswith("x-fal-") and name.lower() not in own
+    }
+    return {**forwarded, **headers}
 
 
 def _accept(
@@ -260,7 +287,9 @@ def _new_client() -> httpx.Client:
 
     # Resolve the socket on the runner, not when serializing the app.
     socket_path = os.environ.get("CDN_UPLOADER_SOCKET_PATH", DEFAULT_SOCKET_PATH)
+    app_name = os.environ.get("FAL_APP_NAME")
     return httpx.Client(
+        headers={"x-fal-application": app_name} if app_name else None,
         transport=httpx.HTTPTransport(
             uds=socket_path, verify=False, retries=0, trust_env=False
         ),
