@@ -67,6 +67,7 @@ def uploader(monkeypatch):
             monkeypatch.setenv("FAL_USE_LOCAL_UPLOADER", "1")
             monkeypatch.setenv("CDN_UPLOADER_SOCKET_PATH", path)
             monkeypatch.setenv("FAL_KEY", "local:test")
+            monkeypatch.setenv("FAL_CONFIG_PATH", str(Path(directory) / "config.toml"))
             try:
                 yield SimpleNamespace(
                     requests=requests,
