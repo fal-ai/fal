@@ -1050,7 +1050,9 @@ class FalFileRepositoryV3(FileRepository):
         multipart_chunk_size: int | None = None,
         multipart_max_concurrency: int | None = None,
         object_lifecycle_preference: dict[str, str] | None = None,
+        wait_for_completion: bool = False,
     ) -> str:
+        # Always returns after the CDN has the file, so wait_for_completion holds.
         if multipart is None:
             threshold = multipart_threshold or MultipartUploadV3.MULTIPART_THRESHOLD
             multipart = len(file.data) > threshold
@@ -1118,6 +1120,7 @@ class FalFileRepositoryV3(FileRepository):
         multipart_chunk_size: int | None = None,
         multipart_max_concurrency: int | None = None,
         object_lifecycle_preference: dict[str, str] | None = None,
+        wait_for_completion: bool = False,
     ) -> tuple[str, FileData | None]:
         if multipart is None:
             threshold = multipart_threshold or MultipartUploadV3.MULTIPART_THRESHOLD
