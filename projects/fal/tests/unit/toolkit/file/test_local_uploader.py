@@ -350,6 +350,9 @@ def test_caller_metadata_and_effective_settings(local_upload, caller, settings):
             "x-fal-cdn-token": "caller-token",
             "x-fal-request-id": "request-id",
             "x-fal-endpoint": "fal-ai/test",
+            "x-fal-object-lifecycle-preference": '{"expiration_duration_seconds": 1}',
+            "x-fal-caller-billing-country-code": "Türkiye",
+            "x-fal-application": "github_110602490-spoofed",
             "content-type": "application/json",
             "x-app-custom": "request-only",
         },
@@ -360,11 +363,13 @@ def test_caller_metadata_and_effective_settings(local_upload, caller, settings):
     )
     headers = local_upload[0].headers
     assert headers["authorization"] == "Key test:key"
-    # Forwarded and upload headers merge without duplicates; the upload's win.
+    # Context is forwarded; uploader inputs and non-ASCII values are not.
     assert headers.get_list("x-fal-cdn-token") == ["caller-token"]
     assert headers.get_list("x-fal-request-id") == ["request-id"]
     assert headers.get_list("content-type") == ["application/octet-stream"]
     assert headers["x-fal-endpoint"] == "fal-ai/test"
+    assert "x-fal-caller-billing-country-code" not in headers
+    assert "x-fal-application" not in headers
     assert "x-app-custom" not in headers
     if settings:
         assert json.loads(headers["x-fal-object-lifecycle"]) == settings

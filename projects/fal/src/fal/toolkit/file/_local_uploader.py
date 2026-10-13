@@ -18,7 +18,6 @@ from urllib.parse import quote
 
 from fal.ref import get_current_app
 from fal.toolkit.exceptions import FileUploadException
-from fal.toolkit.file._upload_policy import UPLOAD_POLICY_KEY
 
 if TYPE_CHECKING:
     import httpx
@@ -32,6 +31,16 @@ _CHUNK_SIZE = 64 * 1024
 _REJECTION_DELAYS = (0.1, 0.2)
 # How long each status request holds while the upload is pending.
 _WAIT_SECONDS = 60
+# Uploader inputs come only from the upload itself, never from the request: a
+# policy upload must stay credential-free, and an explicit lifecycle choice wins.
+_UPLOADER_INPUTS = {
+    "x-fal-application",
+    "x-fal-cdn-token",
+    "x-fal-file-name",
+    "x-fal-object-lifecycle",
+    "x-fal-object-lifecycle-preference",
+    "x-fal-request-id",
+}
 
 
 class LocalUploadError(FileUploadException):
@@ -103,20 +112,18 @@ def upload_stream(
 
 
 def _with_request_headers(headers: dict[str, str]) -> dict[str, str]:
-    """Add the in-flight request's x-fal-* headers; the upload's own win.
+    """Add the in-flight request's x-fal-* context headers.
 
-    Policy uploads drop the caller's CDN token, so an uploader that predates
-    policies refuses them rather than publish to the fal CDN.
+    Values that cannot travel as ASCII are skipped rather than fail the upload.
     """
-    own = {name.lower() for name in headers}
-    if UPLOAD_POLICY_KEY in own:
-        own.add("x-fal-cdn-token")
     app = get_current_app()
     request = app.current_request if app else None
     forwarded = {
         name: value
         for name, value in (request.headers if request else {}).items()
-        if name.lower().startswith("x-fal-") and name.lower() not in own
+        if name.lower().startswith("x-fal-")
+        and name.lower() not in _UPLOADER_INPUTS
+        and value.isascii()
     }
     return {**forwarded, **headers}
 
