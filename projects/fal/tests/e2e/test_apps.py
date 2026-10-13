@@ -945,14 +945,8 @@ def test_function_with_custom_openapi_health(
     metadata = res.parsed.to_dict()
     assert "openapi" not in metadata, f"openapi unexpectedly persisted: {metadata}"
 
-    r = httpx.post(
-        f"https://{FAL_RUN_HOST}/{test_greet_server_app}/greet",
-        json={"name": "world"},
-        headers=_auth_headers(),
-        timeout=60,
-    )
-    assert r.status_code == 200, r.text
-    assert r.json() == {"greeting": "Hello, world!"}
+    result = apps.run(test_greet_server_app, arguments={"name": "world"}, path="/greet")
+    assert result == {"greeting": "Hello, world!"}
 
     r = httpx.get(
         f"https://{FAL_RUN_HOST}/{test_greet_server_app}/health",
@@ -969,14 +963,10 @@ def test_function_with_custom_health_path(test_custom_health_path_app: str):
     endpoint (/greet) must be reachable through the platform."""
     from fal.flags import FAL_RUN_HOST
 
-    r = httpx.post(
-        f"https://{FAL_RUN_HOST}/{test_custom_health_path_app}/greet",
-        json={"name": "world"},
-        headers=_auth_headers(),
-        timeout=60,
+    result = apps.run(
+        test_custom_health_path_app, arguments={"name": "world"}, path="/greet"
     )
-    assert r.status_code == 200, r.text
-    assert r.json() == {"greeting": "Hello, world!"}
+    assert result == {"greeting": "Hello, world!"}
 
     r = httpx.get(
         f"https://{FAL_RUN_HOST}/{test_custom_health_path_app}/ready",
@@ -998,14 +988,10 @@ def test_function_health_override(test_health_override_fn: str):
     from fal.flags import FAL_RUN_HOST
 
     # main endpoint works → runner reached ready → platform probed /ready
-    r = httpx.post(
-        f"https://{FAL_RUN_HOST}/{test_health_override_fn}/greet",
-        json={"name": "world"},
-        headers=_auth_headers(),
-        timeout=60,
+    result = apps.run(
+        test_health_override_fn, arguments={"name": "world"}, path="/greet"
     )
-    assert r.status_code == 200, r.text
-    assert r.json() == {"greeting": "Hello, world!"}
+    assert result == {"greeting": "Hello, world!"}
 
     # /ready is the user-declared health endpoint
     r = httpx.get(
@@ -1037,14 +1023,8 @@ def test_app_health_override(test_health_override_app: str):
     from fal.flags import FAL_RUN_HOST
 
     # main endpoint works → runner reached ready → platform probed /ready
-    r = httpx.post(
-        f"https://{FAL_RUN_HOST}/{test_health_override_app}/",
-        json={"lhs": 1, "rhs": 2},
-        headers=_auth_headers(),
-        timeout=60,
-    )
-    assert r.status_code == 200, r.text
-    assert r.json()["result"] == 3
+    result = apps.run(test_health_override_app, arguments={"lhs": 1, "rhs": 2})
+    assert result["result"] == 3
 
     # /ready is the user-declared health endpoint
     r = httpx.get(
@@ -1624,6 +1604,11 @@ def delete_workflow_on_exit(client: httpx.Client, workflow_url: str):
 
 
 def test_workflows(test_app: str, rest_client: Client):
+    # Warm the runner first: the workflow below calls the app three times and
+    # would otherwise pay the cold start on every hop.
+    data = fal.apps.run(test_app, arguments={"lhs": 2, "rhs": 3})
+    assert data["result"] == 5
+
     workflow = Workflow(
         name="test_workflow_" + secrets.token_hex(),
         input_schema={},
@@ -1653,10 +1638,6 @@ def test_workflows(test_app: str, rest_client: Client):
     )
     workflow.set_output({"result": out.result})
     workflow_id = workflow.publish(title="Test Workflow", is_public=False)
-
-    # Test the underlying app
-    data = fal.apps.run(test_app, arguments={"lhs": 2, "rhs": 3})
-    assert data["result"] == 5
 
     with httpx.Client(
         base_url=rest_client.base_url,
