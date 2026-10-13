@@ -48,6 +48,7 @@ from fal.ref import get_current_app
 from fal.sdk import ApplicationHealthCheckConfig, RunnerState, get_credentials
 from fal.toolkit.utils.endpoint import cancel_on_disconnect
 from fal.workflows import Workflow
+from tests.utils import git_revision_short_hash
 
 
 @pytest.fixture(scope="module")
@@ -86,14 +87,6 @@ def _auth_headers() -> Dict[str, str]:
         return {}
     key_id, key_secret = key_creds
     return {"Authorization": f"Key {key_id}:{key_secret}"}
-
-
-def git_revision_short_hash() -> str:
-    return (
-        subprocess.check_output(["git", "rev-parse", "--short", "HEAD"])
-        .decode("ascii")
-        .strip()
-    )
 
 
 @fal.function(
