@@ -1604,6 +1604,11 @@ def delete_workflow_on_exit(client: httpx.Client, workflow_url: str):
 
 
 def test_workflows(test_app: str, rest_client: Client):
+    # Warm the runner first: the workflow below calls the app three times and
+    # would otherwise pay the cold start on every hop.
+    data = fal.apps.run(test_app, arguments={"lhs": 2, "rhs": 3})
+    assert data["result"] == 5
+
     workflow = Workflow(
         name="test_workflow_" + secrets.token_hex(),
         input_schema={},
@@ -1633,10 +1638,6 @@ def test_workflows(test_app: str, rest_client: Client):
     )
     workflow.set_output({"result": out.result})
     workflow_id = workflow.publish(title="Test Workflow", is_public=False)
-
-    # Test the underlying app
-    data = fal.apps.run(test_app, arguments={"lhs": 2, "rhs": 3})
-    assert data["result"] == 5
 
     with httpx.Client(
         base_url=rest_client.base_url,
