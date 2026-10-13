@@ -11,21 +11,10 @@ class FileUploadException(FalTookitException):
 
 
 class FileUploadFallbackException(FileUploadException):
-    """Raised when the primary repository and every fallback failed.
+    """Raised when the primary repository and every fallback failed; the
+    message lists each attempt's error in order."""
 
-    ``failures`` holds one ``(repository label, exception)`` pair per attempt, in
-    the order they were tried.
-    """
-
-    def __init__(self, message: str, failures: "list[tuple[str, Exception]]"):
-        # Keep ``failures`` in ``args`` so the exception survives pickling: the
-        # isolate agent serializes raised exceptions back to the client, and
-        # ``BaseException.__reduce__`` re-invokes ``__init__(*args)``.
-        super().__init__(message, failures)
-        self.failures = failures
-
-    def __str__(self) -> str:
-        return str(self.args[0])
+    pass
 
 
 class KVStoreException(FalTookitException):

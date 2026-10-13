@@ -301,32 +301,18 @@ class TestTryWithFallback:
         assert "repo1: FileUploadException: " + str(primary_error) in message
         assert "repo2: FileUploadException: " + str(fallback_error) in message
         assert message.index("repo1:") < message.index("repo2:")
-        assert exc_info.value.failures == [
-            ("repo1", primary_error),
-            ("repo2", fallback_error),
-        ]
         assert exc_info.value.__cause__ is fallback_error
         # Still a FileUploadException, so existing handlers keep working.
         assert isinstance(exc_info.value, FileUploadException)
 
     def test_fallback_exception_survives_pickling(self):
         """Exceptions raised in an isolate agent are pickled back to the client"""
-        failures = [
-            ("repo1", FileUploadException("primary failed")),
-            ("repo2", FileUploadException("fallback failed")),
-        ]
-        exc = FileUploadFallbackException(
-            "Failed to save to all 2 repositories", failures
-        )
+        exc = FileUploadFallbackException("Failed to save to all 2 repositories")
 
         restored = pickle.loads(pickle.dumps(exc))
 
         assert isinstance(restored, FileUploadFallbackException)
         assert str(restored) == "Failed to save to all 2 repositories"
-        assert [(label, str(err)) for label, err in restored.failures] == [
-            ("repo1", "primary failed"),
-            ("repo2", "fallback failed"),
-        ]
 
     def test_all_repositories_fail_with_mixed_exception_types(self):
         """Non-toolkit errors from custom repositories are named in the summary"""
@@ -462,16 +448,15 @@ class TestTryWithFallback:
         assert result1 == "success_url_from_test_repo"
         assert result2 == "success_url_from_test_repo"
 
-    def test_traceback_and_print_output(self):
-        """Test that traceback and print statements are called on failure"""
+    def test_fallback_prints_one_line_per_failed_attempt(self):
+        """A successful fallback leaves a single line naming what failed; the
+        traceback of the failed attempt is not dumped."""
         repo1 = MockRepository("repo1", should_fail=True)
         repo2 = MockRepository("repo2", should_fail=False)
 
         with patch(
             "fal.toolkit.file.file.get_builtin_repository"
-        ) as mock_get_repo, patch(
-            "fal.toolkit.file.file.traceback.print_exc"
-        ) as mock_traceback, patch("builtins.print") as mock_print:
+        ) as mock_get_repo, patch("builtins.print") as mock_print:
             mock_get_repo.side_effect = [repo1, repo2]
 
             result = _try_with_fallback(
@@ -484,12 +469,10 @@ class TestTryWithFallback:
             )
 
         assert result == "success_url_from_repo2"
-        mock_traceback.assert_called_once()
-        mock_print.assert_called_once()
-        # Check that the print message contains the expected text
-        print_call_args = mock_print.call_args[0][0]
-        assert "Failed to save to repository repo1" in print_call_args
-        assert "falling back to repo2" in print_call_args
+        mock_print.assert_called_once_with(
+            "Failed to save to repository repo1: Exception: Mock failure for repo1, "
+            "falling back to repo2"
+        )
 
     def test_failure_message_never_carries_repository_credentials(self):
         """S3Repository, R2Repository and GoogleStorageRepository are dataclasses
@@ -504,9 +487,7 @@ class TestTryWithFallback:
 
         with patch(
             "fal.toolkit.file.file.get_builtin_repository"
-        ) as mock_get_repo, patch("fal.toolkit.file.file.traceback.print_exc"), patch(
-            "builtins.print"
-        ) as mock_print:
+        ) as mock_get_repo, patch("builtins.print") as mock_print:
             mock_get_repo.side_effect = [
                 MockRepository("primary", should_fail=True),
                 fallback,

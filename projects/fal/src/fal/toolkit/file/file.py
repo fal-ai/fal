@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import shutil
-import traceback
 from functools import wraps
 from pathlib import Path
 from tempfile import NamedTemporaryFile, mkdtemp
@@ -171,17 +170,17 @@ def _try_with_fallback(
         (repository, save_kwargs),
         *((fallback, fallback_save_kwargs) for fallback in fallback_repository),
     ]
-    failures: list[tuple[str, Exception]] = []
+    failures: list[str] = []
     for idx, (repo, kwargs) in enumerate(attempts):
         repo_obj = get_builtin_repository(repo)
         try:
             return getattr(repo_obj, func)(*args, **kwargs)
         except Exception as exc:
-            failures.append((_repo_label(repo), exc))
+            failure = f"{_repo_label(repo)}: {type(exc).__name__}: {exc}"
+            failures.append(failure)
             if idx < len(attempts) - 1:
-                traceback.print_exc()
                 print(
-                    f"Failed to {func} to repository {_repo_label(repo)}: {exc}, "
+                    f"Failed to {func} to repository {failure}, "
                     f"falling back to {_repo_label(attempts[idx + 1][0])}"
                 )
                 continue
@@ -189,16 +188,11 @@ def _try_with_fallback(
             if len(attempts) == 1:
                 raise
 
-            # The last error on its own misleads: a fallback the account is not
-            # allowed to use (GCS answering "Invalid storage type") would hide the
-            # CDN failure that triggered it, which is the one worth fixing.
-            summary = "; ".join(
-                f"{label}: {type(failure).__name__}: {failure}"
-                for label, failure in failures
-            )
+            # The last error alone misleads: a denied fallback would hide the
+            # failure that triggered it.
             raise FileUploadFallbackException(
-                f"Failed to {func} to all {len(failures)} repositories. {summary}",
-                failures,
+                f"Failed to {func} to all {len(failures)} repositories. "
+                + "; ".join(failures)
             ) from exc
 
 
