@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import subprocess
 import uuid
 from contextlib import suppress
 
@@ -12,16 +11,9 @@ import fal
 from fal.api import FalServerlessError, Options
 from fal.container import ContainerImage
 from fal.toolkit.file import File
+from tests.utils import git_revision_short_hash
 
 PACKAGE_NAME = "fall"
-
-
-def git_revision_short_hash() -> str:
-    return (
-        subprocess.check_output(["git", "rev-parse", "--short", "HEAD"])
-        .decode("ascii")
-        .strip()
-    )
 
 
 @pytest.mark.xfail(reason="Temporary mismatch due to grpc version updates. Ping @efiop")
