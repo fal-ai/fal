@@ -1,11 +1,32 @@
 import pytest
 from pydantic import BaseModel, ValidationError
 
-from fal.toolkit.types import MAX_DATA_URI_LENGTH, MAX_HTTPS_URL_LENGTH, FileInput
+from fal.toolkit.types import (
+    MAX_DATA_URI_LENGTH,
+    MAX_HTTPS_URL_LENGTH,
+    FileInput,
+    ImageInput,
+)
 
 
 class DummyModel(BaseModel):
     url: FileInput
+
+
+class ImageModel(BaseModel):
+    url: ImageInput
+
+
+@pytest.mark.parametrize("model", [DummyModel, ImageModel])
+def test_schema_formats(model):
+    schema = (
+        model.model_json_schema()
+        if hasattr(model, "model_json_schema")
+        else model.schema()
+    )
+    alternatives = schema["properties"]["url"]["anyOf"]
+    assert {item["format"] for item in alternatives} == {"https-url", "data-uri"}
+    assert all(item["type"] == "string" for item in alternatives)
 
 
 class TestFileInput:

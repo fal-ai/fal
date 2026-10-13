@@ -47,6 +47,7 @@ class DataUri(DownloadFileMixin, str):
                 "strip_whitespace": True,
             }
 
+        @classmethod
         def __get_pydantic_json_schema__(cls, core_schema, handler) -> Dict[str, Any]:
             json_schema = handler(core_schema)
             json_schema.update(format="data-uri")
@@ -91,6 +92,7 @@ class HttpsUrl(DownloadFileMixin, str):
                 "strip_whitespace": True,
             }
 
+        @classmethod
         def __get_pydantic_json_schema__(cls, core_schema, handler) -> Dict[str, Any]:
             json_schema = handler(core_schema)
             json_schema.update(format="https-url")
