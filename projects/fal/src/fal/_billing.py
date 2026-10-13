@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any, Literal, Protocol, TypedDict, runtime_checkable
 
 BILLING_COMPONENTS_VERSION = 1
@@ -44,4 +45,12 @@ def check_declaration(path: str, value: object) -> BillingComponents:
     app = value["app"]
     if not isinstance(app, dict) or app.get("type") != "object":
         raise fail("must have an object JSON Schema as app")
+    # Deploy metadata travels as JSON (a protobuf Struct, then JSONB): refuse
+    # what JSON cannot carry, or would silently change (tuples, non-str keys).
+    try:
+        encoded = json.dumps(value, allow_nan=False)
+    except (TypeError, ValueError):
+        raise fail("must be JSON-serializable, without NaN or infinity") from None
+    if json.loads(encoded) != value:
+        raise fail("must survive a JSON round trip unchanged")
     return value  # type: ignore[return-value]

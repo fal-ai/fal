@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+from decimal import Decimal
 from typing import Any
 
 import pytest
@@ -123,6 +124,17 @@ def test_declaration_must_be_a_method() -> None:
         (
             {"version": 1, "schema_id": "x", "app": {"type": "array"}},
             "object JSON Schema",
+        ),
+        *(
+            ({"version": 1, "schema_id": "x", "app": {**APP, "x": bad}}, reason)
+            for bad, reason in [
+                (Decimal("0.5"), "JSON-serializable"),
+                (float("nan"), "without NaN"),
+                (float("inf"), "without NaN or infinity"),
+                ({"a", "b"}, "JSON-serializable"),
+                (("1K", "2K"), "round trip"),
+                ({1: "one"}, "round trip"),
+            ]
         ),
     ],
 )
