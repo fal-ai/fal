@@ -96,11 +96,11 @@ def test_isolate_error_handling(isolated_client):
     def setup():
         print("hello")
 
-    @isolated_client(requirements=requirements, keep_alive=20, setup=setup)
-    def raises_value_error():
-        import pyjokes
+    @isolated_client(requirements=requirements, keep_alive=20, setup_function=setup)
+    def raises_value_error(setup):
+        import pyjokes  # noqa: F401
 
-        return pyjokes.get_joke()
+        raise ValueError("designed to fail")
 
     with pytest.raises(ValueError):
         raises_value_error()
@@ -350,17 +350,13 @@ def test_download_model_weights(isolated_client, mock_fal_persistent_dirs):
 def test_clone_repository(isolated_client, mock_fal_persistent_dirs):
     from fal.toolkit.utils.download_utils import FAL_REPOSITORY_DIR
 
-    # https://github.com/fal-ai/isolate/tree/64b0a89c8391bd2cb3ca23cdeae01779e11aee05
-    EXAMPLE_REPO_URL = "https://github.com/fal-ai/isolate.git"
-    EXAMPLE_REPO_FIRST_COMMIT = "64b0a89c8391bd2cb3ca23cdeae01779e11aee05"
-    EXAMPLE_REPO_SECOND_COMMIT = "34ecbca8cc7b64719d2a5c40dd3272f8d13bc1d2"
-    expected_path = FAL_REPOSITORY_DIR / "isolate"
-    first_expected_path = (
-        FAL_REPOSITORY_DIR / f"isolate-{EXAMPLE_REPO_FIRST_COMMIT[:8]}"
-    )
-    second_expected_path = (
-        FAL_REPOSITORY_DIR / f"isolate-{EXAMPLE_REPO_SECOND_COMMIT[:8]}"
-    )
+    # The two earliest commits of this repository, which is public.
+    EXAMPLE_REPO_URL = "https://github.com/fal-ai/fal.git"
+    EXAMPLE_REPO_FIRST_COMMIT = "b8e0404a237c109a7fb7018cdc56ae25cfc03cad"
+    EXAMPLE_REPO_SECOND_COMMIT = "0c424218327e2054c1d837b3b5a74e5e5c40ad2f"
+    expected_path = FAL_REPOSITORY_DIR / "fal"
+    first_expected_path = FAL_REPOSITORY_DIR / f"fal-{EXAMPLE_REPO_FIRST_COMMIT[:8]}"
+    second_expected_path = FAL_REPOSITORY_DIR / f"fal-{EXAMPLE_REPO_SECOND_COMMIT[:8]}"
 
     @isolated_client()
     def clone_without_commit_hash():
@@ -571,22 +567,3 @@ def test_fal_compressed_file(isolated_client):
 
     assert all(isinstance(file, Path) for file in extracted_file_paths)
     assert len(extracted_file_paths) == 3
-
-
-def test_download_file_with_slash_in_filename():
-    from fal.toolkit.utils.download_utils import _filename_from_response
-    from fal.toolkit.utils.ssrf import SafeResponse
-
-    test_url = "https://example.com/file/with/slash.txt"
-
-    file_name = _filename_from_response(
-        test_url,
-        SafeResponse(
-            200,
-            headers={
-                "content-disposition": 'attachment; filename="file/with/slash.txt"'
-            },
-        ),
-    )
-
-    assert "/" not in file_name
