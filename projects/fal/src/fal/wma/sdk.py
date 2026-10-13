@@ -911,10 +911,9 @@ class App(FalApp):
     def build_metadata(cls) -> Dict[str, Any]:
         """Publish both documents through the deployment metadata channel."""
 
-        app = cls(_allow_init=True)
-        metadata = {"openapi": app.openapi()}
+        metadata = super().build_metadata()
         if cls.realtime_contract is not None:
-            metadata["asyncapi"] = app.asyncapi()
+            metadata["asyncapi"] = cls(_allow_init=True).asyncapi()
         return metadata
 
     @endpoint(START_SESSION_PATH)

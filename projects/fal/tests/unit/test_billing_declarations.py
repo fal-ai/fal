@@ -7,6 +7,7 @@ import pytest
 from pydantic import BaseModel
 
 import fal
+from fal.wma import App as WmaApp
 
 
 @pytest.fixture(autouse=True)
@@ -136,3 +137,14 @@ def test_a_malformed_declaration_is_refused_before_publishing(
 
     with pytest.raises(ValueError, match=reason):
         MalformedApp.build_metadata()
+
+
+def test_wma_apps_publish_billing_components() -> None:
+    class BilledWmaApp(WmaApp):
+        @fal.endpoint("/edit", billing=Declaration("images"))
+        def edit(self, input: EditInput) -> EditOutput:
+            return EditOutput(images=1)
+
+    metadata = BilledWmaApp.build_metadata()
+    assert set(metadata["billing_components"]) == {"/edit"}
+    assert "/edit" in metadata["openapi"]["paths"]
