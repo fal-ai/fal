@@ -205,7 +205,7 @@ def test_upload_policy_goes_through_the_local_uploader(
     assert result.url == in_process_url
     assert result.as_bytes() == b"hello"
     (request,) = requests
-    assert request.url.path == "/uploads"
+    assert request.url.path == "/v1/uploads"
     assert request.content == b"hello"
     assert json.loads(request.headers[UPLOAD_POLICY_KEY]) == POLICY
     assert request.headers["x-fal-file-name"] == f"{UUID(int=7).hex}-{header}"
