@@ -116,11 +116,11 @@ def _with_request_headers(headers: dict[str, str]) -> dict[str, str]:
 
     Values that cannot travel as ASCII are skipped rather than fail the upload.
     """
-    app = get_current_app()
-    request = app.current_request if app else None
+    request = getattr(get_current_app(), "current_request", None)
+    context = request.headers if request else {}
     forwarded = {
         name: value
-        for name, value in (request.headers if request else {}).items()
+        for name, value in context.items()
         if name.lower().startswith("x-fal-")
         and name.lower() not in _UPLOADER_INPUTS
         and value.isascii()
