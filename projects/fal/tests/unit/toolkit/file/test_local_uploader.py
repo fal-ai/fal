@@ -154,7 +154,7 @@ def _policy_request():
 def policy_upload(monkeypatch, transport):
     """Opt in; record in-process uploads and fail on any fal CDN upload."""
     monkeypatch.setenv("FAL_USE_LOCAL_UPLOADER", "1")
-    monkeypatch.setattr(SLEEP, Mock())
+    monkeypatch.setattr("fal.toolkit.file._local_uploader.time.sleep", Mock())
     in_process = Mock(return_value="https://bucket.s3.amazonaws.com/outputs/direct")
     monkeypatch.setattr(local, "upload_bytes_with_policy", in_process)
     monkeypatch.setattr(local, "upload_path_with_policy", in_process)
