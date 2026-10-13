@@ -15,6 +15,17 @@ def pytest_configure(config):
 
 
 @pytest.fixture(autouse=True)
+def _restore_aioice_close(monkeypatch):
+    try:
+        from aioice import ice
+    except ImportError:
+        return
+
+    # Real negotiations install the process-global teardown shim.
+    monkeypatch.setattr(ice.Connection, "close", ice.Connection.close)
+
+
+@pytest.fixture(autouse=True)
 def _event_loop_for_sync_construction():
     """Keep a current event loop set on Python <= 3.9.
 
