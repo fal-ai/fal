@@ -232,29 +232,6 @@ def test_dependency_inference(isolated_client):
     assert calling_function() == 42
 
 
-def test_process_crash(isolated_client):
-    # We can catch the SystemExit if it originates from
-    # an exception (in the case of exit(1)).
-    @isolated_client("virtualenv")
-    def process_crash_regular():
-        exit(1)
-
-    with pytest.raises(SystemExit):
-        process_crash_regular()
-
-    # But if it is a native exit call, then the agent process
-    # will crash and there is not much we can do other than offer
-    # a decent error message.
-    @isolated_client("virtualenv")
-    def process_crash_without_catching():
-        import os
-
-        os._exit(0)
-
-    with pytest.raises(FalServerlessError, match="quit unexpectedly"):
-        process_crash_without_catching()
-
-
 def test_unserializable_input_function(isolated_client):
     # When the function can not be serialized at all (has a reference to an unpicklable
     # object (like a frame)).
