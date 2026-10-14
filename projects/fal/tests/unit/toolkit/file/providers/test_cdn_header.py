@@ -1,12 +1,19 @@
 from __future__ import annotations
 
+import threading
+from contextvars import ContextVar
 from datetime import datetime, timezone
 from unittest.mock import patch
 
 import pytest
 
+import fal.ref
+from fal import App
+from fal.app import RequestContext
 from fal.auth import AuthCredentials
+from fal.toolkit.file import File
 from fal.toolkit.file.providers import fal as providers
+from fal.toolkit.file.types import FileRepository
 
 
 class FakeRequest:
@@ -298,3 +305,55 @@ def test_internal_multipart_upload_v3_auth_headers_include_cdn_token():
     assert headers["X-Fal-CDN-Token"] == cdn_token
     assert "Authorization" in headers
     assert headers["User-Agent"] == providers.USER_AGENT
+
+
+class _HeaderRecordingRepository(FileRepository):
+    def __init__(self):
+        self.headers: dict[str, str] = {}
+
+    def save(self, data, **kwargs) -> str:
+        providers._caller_cdn_header(self.headers)
+        return "https://cdn.test/out"
+
+    def save_file(self, file_path, content_type, **kwargs):
+        providers._caller_cdn_header(self.headers)
+        return "https://cdn.test/out", None
+
+
+@pytest.mark.parametrize("constructor", ["from_bytes", "from_path"])
+def test_upload_on_a_worker_thread_carries_the_explicit_request(
+    monkeypatch, tmp_path, constructor
+):
+    """A thread the app hands work to starts with an empty request context, so
+    the caller's identity has to come from the request= the upload was given."""
+    monkeypatch.setenv("IS_ISOLATE_AGENT", "1")
+    app = App()
+    app._current_request_context = ContextVar(  # type: ignore[assignment]
+        "_current_request_context",
+        default=RequestContext(
+            request_id=None, endpoint=None, lifecycle_preference=None, headers={}
+        ),
+    )
+    monkeypatch.setattr(fal.ref, "current_app", app)
+    request = FakeRequest(
+        headers={"x-fal-cdn-token": "caller-token", "x-fal-request-id": "req-1"}
+    )
+    repository = _HeaderRecordingRepository()
+    source = tmp_path / "out.txt"
+    source.write_bytes(b"payload")
+
+    def upload():
+        if constructor == "from_bytes":
+            File.from_bytes(b"payload", repository=repository, request=request)
+        else:
+            File.from_path(source, repository=repository, request=request)
+
+    worker = threading.Thread(target=upload)
+    worker.start()
+    worker.join()
+
+    assert repository.headers == {
+        "X-Fal-CDN-Token": "caller-token",
+        "X-Fal-Request-ID": "req-1",
+    }
+    assert app.current_request.headers == {}

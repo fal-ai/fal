@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shutil
+from contextlib import AbstractContextManager, nullcontext
 from functools import wraps
 from pathlib import Path
 from tempfile import NamedTemporaryFile, mkdtemp
@@ -213,6 +214,12 @@ def _get_object_lifecycle_preference_from_context() -> dict[str, str] | None:
     return current_app.current_request.lifecycle_preference
 
 
+def _bind_request(request: Any) -> AbstractContextManager[None]:
+    """Upload as ``request``, even on a thread that lost the app's request context."""
+    bind = getattr(get_current_app(), "bind_request", None)
+    return bind(request) if bind is not None else nullcontext()
+
+
 class File(BaseModel):
     # public properties
     url: str = Field(
@@ -313,9 +320,10 @@ class File(BaseModel):
         upload_policy = get_upload_policy(request)
         if upload_policy is not None:
             _require_no_repository_conflict(repository)
-            url = save_with_policy(
-                upload_policy, fdata.file_name, data, fdata.content_type
-            )
+            with _bind_request(request):
+                url = save_with_policy(
+                    upload_policy, fdata.file_name, data, fdata.content_type
+                )
             return cls(
                 url=url,
                 content_type=fdata.content_type,
@@ -338,14 +346,15 @@ class File(BaseModel):
             "object_lifecycle_preference", object_lifecycle_preference
         )
 
-        url = _try_with_fallback(
-            "save",
-            [fdata],
-            repository=repository,
-            fallback_repository=fallback_repository,
-            save_kwargs=save_kwargs,
-            fallback_save_kwargs=fallback_save_kwargs,
-        )
+        with _bind_request(request):
+            url = _try_with_fallback(
+                "save",
+                [fdata],
+                repository=repository,
+                fallback_repository=fallback_repository,
+                save_kwargs=save_kwargs,
+                fallback_save_kwargs=fallback_save_kwargs,
+            )
 
         return cls(
             url=url,
@@ -420,12 +429,13 @@ class File(BaseModel):
             # Reusing small files' bytes for file_data avoids a second full read
             # and the staging copy for the common small-output case.
             file_data = None if stage_to_disk else file_path.read_bytes()
-            url = save_with_policy(
-                upload_policy,
-                file_path.name,
-                file_path if file_data is None else file_data,
-                content_type,
-            )
+            with _bind_request(request):
+                url = save_with_policy(
+                    upload_policy,
+                    file_path.name,
+                    file_path if file_data is None else file_data,
+                    content_type,
+                )
             return cls(
                 url=url,
                 file_data=file_data,
@@ -454,14 +464,15 @@ class File(BaseModel):
         save_kwargs.setdefault("content_type", content_type)
         fallback_save_kwargs.setdefault("content_type", content_type)
 
-        url, data = _try_with_fallback(
-            "save_file",
-            [file_path],
-            repository=repository,
-            fallback_repository=fallback_repository,
-            save_kwargs=save_kwargs,
-            fallback_save_kwargs=fallback_save_kwargs,
-        )
+        with _bind_request(request):
+            url, data = _try_with_fallback(
+                "save_file",
+                [file_path],
+                repository=repository,
+                fallback_repository=fallback_repository,
+                save_kwargs=save_kwargs,
+                fallback_save_kwargs=fallback_save_kwargs,
+            )
 
         return cls(
             url=url,
