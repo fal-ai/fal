@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import sys
 import tempfile
-from pathlib import Path
+from pathlib import PurePosixPath
 from typing import Callable
 from uuid import uuid4
 
@@ -25,7 +26,10 @@ from fal.toolkit.utils.download_utils import _git_rev_parse, _hash_url
 # counts against the timer and needs more than the unit default.
 pytestmark = pytest.mark.timeout(180)
 
-EXAMPLE_FILE_URL = "https://raw.githubusercontent.com/fal-ai/fal/main/projects/fal/tests/assets/cat.png"
+EXAMPLE_FILE_URL = (
+    "https://storage.googleapis.com/falserverless/sdk_tests/compressed_file_test.zip"
+)
+EXAMPLE_FILE_NAME = "compressed_file_test.zip"
 
 
 @pytest.mark.flaky(max_runs=3)
@@ -53,13 +57,25 @@ def test_isolated(isolated_client: Callable[..., Callable[..., IsolatedFunction]
     first = get_hostname()
     assert local_hostname != first
 
-    get_hostname_local = get_hostname.on(local)
-    second = get_hostname_local()
-    assert local_hostname == second
-
     get_hostname_m = get_hostname.on(machine_type="L")
     third = get_hostname_m()
     assert local_hostname != third
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="isolate's local virtualenv backend does not work on Windows",
+)
+def test_isolated_on_local_host(isolated_client):
+    @isolated_client("virtualenv")
+    def get_hostname() -> str:
+        import socket
+
+        return socket.gethostname()
+
+    import socket
+
+    assert get_hostname.on(local)() == socket.gethostname()
 
 
 def test_isolate_setup_funcs(isolated_client):
@@ -175,7 +191,8 @@ def mock_fal_persistent_dirs(monkeypatch):
     It is NOT enough to mock only `FAL_PERSISTENT_DIR`, since the other two are
     might already be evaluated based on the `FAL_PERSISTENT_DIR` during imports.
     """
-    temp_data_dir = Path(f"/tmp/data/fal-tests-{uuid4().hex}")
+    # PurePosixPath: a concrete WindowsPath cannot be unpickled on the worker.
+    temp_data_dir = PurePosixPath(f"/tmp/data/fal-tests-{uuid4().hex}")
     temp_repository_dir = temp_data_dir / ".fal" / "repos"
     temp_model_weights_dir = temp_data_dir / ".fal" / "model_weights"
 
@@ -203,7 +220,7 @@ def test_download_file(isolated_client, mock_fal_persistent_dirs):
 
     relative_directory = "test"
     output_directory = FAL_PERSISTENT_DIR / relative_directory
-    expected_path = output_directory / "cat.png"
+    expected_path = output_directory / EXAMPLE_FILE_NAME
 
     @isolated_client()
     def absolute_path_persistent_dir():
@@ -212,7 +229,7 @@ def test_download_file(isolated_client, mock_fal_persistent_dirs):
             target_dir=output_directory,
         )
 
-        return downloaded_path
+        return str(downloaded_path)
 
     assert str(expected_path) == str(
         absolute_path_persistent_dir()
@@ -225,7 +242,7 @@ def test_download_file(isolated_client, mock_fal_persistent_dirs):
             target_dir=output_directory,
         )
 
-        return downloaded_path
+        return str(downloaded_path)
 
     assert str(expected_path) == str(
         absolute_path_non_persistent_dir()
@@ -238,7 +255,7 @@ def test_download_file(isolated_client, mock_fal_persistent_dirs):
             target_dir=relative_directory,
         )
 
-        return downloaded_path
+        return str(downloaded_path)
 
     assert str(expected_path) == str(
         relative_path()
@@ -268,11 +285,11 @@ def test_download_file(isolated_client, mock_fal_persistent_dirs):
         third_path_stat = third_path.stat()
 
         return (
-            first_path,
+            str(first_path),
             first_path_stat,
-            second_path,
+            str(second_path),
             second_path_stat,
-            third_path,
+            str(third_path),
             third_path_stat,
         )
 
@@ -303,7 +320,9 @@ def test_download_model_weights(isolated_client, mock_fal_persistent_dirs):
 
     print(FAL_MODEL_WEIGHTS_DIR)
 
-    expected_path = FAL_MODEL_WEIGHTS_DIR / _hash_url(EXAMPLE_FILE_URL) / "cat.png"
+    expected_path = (
+        FAL_MODEL_WEIGHTS_DIR / _hash_url(EXAMPLE_FILE_URL) / EXAMPLE_FILE_NAME
+    )
 
     @isolated_client()
     def download_weights():
@@ -317,11 +336,11 @@ def test_download_model_weights(isolated_client, mock_fal_persistent_dirs):
         third_path_stat = third_path.stat()
 
         return (
-            first_path,
+            str(first_path),
             first_path_stat,
-            second_path,
+            str(second_path),
             second_path_stat,
-            third_path,
+            str(third_path),
             third_path_stat,
         )
 
@@ -350,19 +369,23 @@ def test_download_model_weights(isolated_client, mock_fal_persistent_dirs):
 def test_clone_repository(isolated_client, mock_fal_persistent_dirs):
     from fal.toolkit.utils.download_utils import FAL_REPOSITORY_DIR
 
-    # The two earliest commits of this repository, which is public.
-    EXAMPLE_REPO_URL = "https://github.com/fal-ai/fal.git"
-    EXAMPLE_REPO_FIRST_COMMIT = "b8e0404a237c109a7fb7018cdc56ae25cfc03cad"
-    EXAMPLE_REPO_SECOND_COMMIT = "0c424218327e2054c1d837b3b5a74e5e5c40ad2f"
-    expected_path = FAL_REPOSITORY_DIR / "fal"
-    first_expected_path = FAL_REPOSITORY_DIR / f"fal-{EXAMPLE_REPO_FIRST_COMMIT[:8]}"
-    second_expected_path = FAL_REPOSITORY_DIR / f"fal-{EXAMPLE_REPO_SECOND_COMMIT[:8]}"
+    # A 4 KB public repository: the test clones it six times with --recursive.
+    EXAMPLE_REPO_URL = "https://github.com/fal-ai/fal-events.git"
+    EXAMPLE_REPO_FIRST_COMMIT = "925f731e5517109b9a67bb3d54931ca3587bd8ba"
+    EXAMPLE_REPO_SECOND_COMMIT = "c95516b7c0d7b334c69d99c25d8789161ce689ca"
+    expected_path = FAL_REPOSITORY_DIR / "fal-events"
+    first_expected_path = (
+        FAL_REPOSITORY_DIR / f"fal-events-{EXAMPLE_REPO_FIRST_COMMIT[:8]}"
+    )
+    second_expected_path = (
+        FAL_REPOSITORY_DIR / f"fal-events-{EXAMPLE_REPO_SECOND_COMMIT[:8]}"
+    )
 
     @isolated_client()
     def clone_without_commit_hash():
         repo_path = clone_repository(EXAMPLE_REPO_URL)
 
-        return repo_path
+        return str(repo_path)
 
     repo_path = clone_without_commit_hash()
     assert str(repo_path) == str(expected_path), "Path should be the target location"
@@ -380,7 +403,7 @@ def test_clone_repository(isolated_client, mock_fal_persistent_dirs):
 
         second_repo_hash = _git_rev_parse(second_path, "HEAD")
 
-        return first_path, first_repo_hash, second_path, second_repo_hash
+        return str(first_path), first_repo_hash, str(second_path), second_repo_hash
 
     (
         first_path,
@@ -421,11 +444,11 @@ def test_clone_repository(isolated_client, mock_fal_persistent_dirs):
         third_repo_stat = third_path.stat()
 
         return (
-            first_path,
+            str(first_path),
             first_repo_stat,
-            second_path,
+            str(second_path),
             second_repo_stat,
-            third_path,
+            str(third_path),
             third_repo_stat,
         )
 
@@ -523,10 +546,7 @@ def test_fal_file_save(isolated_client):
 @pytest.mark.parametrize(
     "file_url, expected_content",
     [
-        (
-            EXAMPLE_FILE_URL,
-            "projects/fal/cat.png",
-        ),
+        (EXAMPLE_FILE_URL, EXAMPLE_FILE_NAME),
         ("data:text/plain;charset=UTF-8,fal", "fal"),
     ],
 )
@@ -556,14 +576,11 @@ def test_fal_compressed_file(isolated_client):
         files: CompressedFile
 
     @isolated_client(requirements=[f"pydantic=={pydantic_version}", "tomli"])
-    def init_compressed_file_on_fal(input: TestInput) -> int:
-        extracted_file_paths = [file for file in input.files]
-        return extracted_file_paths
+    def init_compressed_file_on_fal(input: TestInput) -> list[str]:
+        return [file.name for file in input.files]
 
-    archive_url = "https://storage.googleapis.com/falserverless/sdk_tests/compressed_file_test.zip"
-    test_input = TestInput(files=archive_url)
+    test_input = TestInput(files=EXAMPLE_FILE_URL)
 
-    extracted_file_paths = init_compressed_file_on_fal(test_input)
+    extracted_file_names = init_compressed_file_on_fal(test_input)
 
-    assert all(isinstance(file, Path) for file in extracted_file_paths)
-    assert len(extracted_file_paths) == 3
+    assert len(set(extracted_file_names)) == 3
