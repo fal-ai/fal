@@ -1,7 +1,10 @@
-"""Client for the node-local uploader's HTTP API over a Unix socket.
+"""Client for the node-local uploader on the fal API socket.
 
 Acceptance is durable on this node, not CDN completion; callers that need the
 CDN copy wait for completion. Do not serialize live connections.
+
+Uploads carry the in-flight request's x-fal-* headers, which only the gateway
+sets, and every request names the runner's app in x-fal-application.
 """
 
 from __future__ import annotations
@@ -13,20 +16,32 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Iterable, Iterator
 from urllib.parse import quote
 
+from fal.ref import get_current_app
 from fal.toolkit.exceptions import FileUploadException
 
 if TYPE_CHECKING:
     import httpx
 
-# Keep in sync with infra/modules/nomad_jobs/jobs.tf and isolate-cloud's
-# projects/isolate_controller/src/isolate_controller/scheduler/nomad/forger.py.
-DEFAULT_SOCKET_PATH = "/run/fal-upload/upload.sock"
+# Keep in sync with infra/modules/nomad_jobs/nomad_cdn_uploader_job.hcl.tftpl
+# and projects/isolate_controller/src/isolate_controller/scheduler/nomad/forger.py
+# in isolate-cloud.
+DEFAULT_SOCKET_PATH = "/run/fal/api.sock"
 _TIMEOUT = 300
 _CONNECT_TIMEOUT = 5
 _CHUNK_SIZE = 64 * 1024
 _REJECTION_DELAYS = (0.1, 0.2)
 # How long each status request holds while the upload is pending.
 _WAIT_SECONDS = 60
+# Uploader inputs come only from the upload itself, never from the request: a
+# policy upload must stay credential-free, and an explicit lifecycle choice wins.
+_UPLOADER_INPUTS = {
+    "x-fal-application",
+    "x-fal-cdn-token",
+    "x-fal-file-name",
+    "x-fal-object-lifecycle",
+    "x-fal-object-lifecycle-preference",
+    "x-fal-request-id",
+}
 
 
 class LocalUploadError(FileUploadException):
@@ -65,7 +80,7 @@ def upload(
     """
     size = len(content) if isinstance(content, bytes) else content.stat().st_size
     headers = {
-        **headers,
+        **_with_request_headers(headers),
         "X-Fal-File-Name": _header_file_name(file_name),
         "Content-Length": str(size),
     }
@@ -86,12 +101,32 @@ def upload_stream(
     """Return the URL once a body of unknown size is durably accepted, or once the
     CDN has it when waiting for completion.
     """
-    headers = {**headers, "X-Fal-File-Name": _header_file_name(file_name)}
+    headers = {
+        **_with_request_headers(headers),
+        "X-Fal-File-Name": _header_file_name(file_name),
+    }
     with _new_client() as http:
         upload_id, file_url = _stream(http, chunks, headers)
         if wait_for_completion:
             _wait_for_completion(http, upload_id)
     return file_url
+
+
+def _with_request_headers(headers: dict[str, str]) -> dict[str, str]:
+    """Add the in-flight request's x-fal-* context headers.
+
+    Values that cannot travel as ASCII are skipped rather than fail the upload.
+    """
+    request = getattr(get_current_app(), "current_request", None)
+    context = request.headers if request else {}
+    forwarded = {
+        name: value
+        for name, value in context.items()
+        if name.lower().startswith("x-fal-")
+        and name.lower() not in _UPLOADER_INPUTS
+        and value.isascii()
+    }
+    return {**forwarded, **headers}
 
 
 def _accept(
@@ -111,7 +146,7 @@ def _submit(
     body: bytes | Iterator[bytes] = (
         content if isinstance(content, bytes) else _chunks(content)
     )
-    response = _request(http, "POST", "/uploads", 202, headers=headers, content=body)
+    response = _request(http, "POST", "/v1/uploads", 202, headers=headers, content=body)
     return _receipt(response, "accepted_local")
 
 
@@ -129,9 +164,9 @@ def _stream(
             size += len(chunk)
             yield chunk
 
-    response = _request(http, "POST", "/upload-sessions", 201, headers=headers)
+    response = _request(http, "POST", "/v1/upload-sessions", 201, headers=headers)
     session_id, _ = _receipt(response, "receiving")
-    path = "/upload-sessions/" + quote(session_id, safe="")
+    path = "/v1/upload-sessions/" + quote(session_id, safe="")
     try:
         _request(http, "PUT", path + "/body", 204, content=counted())
         response = _request(
@@ -207,7 +242,7 @@ def _wait_for_completion(http: httpx.Client, upload_id: str) -> None:
     """
     import httpx  # noqa: PLC0415 -- see _new_client
 
-    path = "/uploads/" + quote(upload_id, safe="")
+    path = "/v1/uploads/" + quote(upload_id, safe="")
     while True:
         try:
             response = http.get(path, params={"wait": _WAIT_SECONDS})
@@ -259,8 +294,10 @@ def _new_client() -> httpx.Client:
         ) from None
 
     # Resolve the socket on the runner, not when serializing the app.
-    socket_path = os.environ.get("CDN_UPLOADER_SOCKET_PATH", DEFAULT_SOCKET_PATH)
+    socket_path = os.environ.get("FAL_API_SOCKET", DEFAULT_SOCKET_PATH)
+    app_name = os.environ.get("FAL_APP_NAME")
     return httpx.Client(
+        headers={"x-fal-application": app_name} if app_name else None,
         transport=httpx.HTTPTransport(
             uds=socket_path, verify=False, retries=0, trust_env=False
         ),
