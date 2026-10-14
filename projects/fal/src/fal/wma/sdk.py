@@ -46,6 +46,7 @@ from fal.wma._raw import (
 )
 from fal.wma._request_id import valid_fal_request_id
 from fal.wma.contract import RealtimeContract, apply_contract, render_asyncapi
+from fal.wma.recording import RecordingConfig, RecordingPool, SessionRecording
 from fal.wma.telemetry import (
     CONNECTION_REPORT_VERSION,
     ConnectionReportObserver,
@@ -276,6 +277,9 @@ class Session:
         billing_debug: bool = False,
         minimum_billable_units: float = 0,
     ) -> None:
+        self._recording: Union[SessionRecording, None] = None
+        self._recording_enabled = False
+        self._recording_error: Union[str, None] = None
         self.http_request = http_request
         self.id = request.session_id
         self.offer = request
@@ -703,6 +707,47 @@ class Session:
                 exc_info=(type(error), error, error.__traceback__),
             )
 
+    def record_video(self, track: Any, *, fps: float) -> Any:
+        """Select the outgoing video track to record when App.recording is enabled.
+
+        Disabled or capacity-limited recording returns the original track.
+        Only one track per session is supported.
+        """
+        if self._is_closed:
+            raise RuntimeError("cannot record video after session closure")
+        if self._recording is None:
+            return track
+        return self._recording.wrap_track(track, fps=fps)
+
+    def _abort_recording(self) -> None:
+        if self._recording is not None:
+            self._recording.abort()
+
+    def _recording_pending_event(self) -> str:
+        if not self._recording_enabled:
+            return ""
+        return sse_event(
+            {"session_id": self.id, "recording_status": "uploading"},
+            event="recording",
+        )
+
+    async def _recording_result_events(self):
+        if self._recording is not None:
+            async for event in self._recording.result_events():
+                yield event
+        elif self._recording_enabled:
+            yield sse_event(
+                {
+                    "session_id": self.id,
+                    "request_id": self.request_id,
+                    "recording_status": "failed",
+                    "video": [],
+                    "publication_transport": "final_sse",
+                    "error": self._recording_error,
+                },
+                event="result",
+            )
+
     async def wait_closed(self) -> None:
         await self._closed.wait()
 
@@ -739,6 +784,8 @@ class Session:
         with self._send_lock:
             self._pending_sends.clear()
         self._closed.set()
+        if self._recording is not None:
+            self._recording.seal()
 
         backend = self._backend
         if backend is not None:
@@ -848,6 +895,9 @@ class App(FalApp):
     # must retain FAL_KEY alongside their app-specific secrets.
     secrets: ClassVar[List[str]] = ["FAL_KEY"]
 
+    #: Optional server video recording; finalization retains the HTTP request.
+    recording: ClassVar[Union[RecordingConfig, None]] = None
+
     #: Per-app opt-in for billing-event tracing: subclasses set ``True`` to
     #: print one ``[wma-billing]`` line per billing event on every session
     #: (creation, unit accumulation, deferred activation, finalization,
@@ -936,6 +986,26 @@ class App(FalApp):
             billing_debug=self.billing_debug,
             minimum_billable_units=self.minimum_billable_units,
         )
+        if self.recording is not None:
+            session._recording_enabled = True
+            pool = self.__dict__.get("_recording_pool")
+            if pool is None:
+                pool = self._recording_pool = RecordingPool()
+            try:
+                session._recording = pool.create(
+                    session.id, session.request_id, http_request, self.recording
+                )
+                if session._recording is None:
+                    session._recording_error = "recording_capacity"
+            except Exception:
+                logger.exception("WMA recording initialization failed")
+                session._recording_error = "recording_initialization_failed"
+            session.response_headers.update(
+                {
+                    "x-fal-sse-last-event-as-body": "true",
+                    "x-fal-sse-content-type": "application/json",
+                }
+            )
         try:
             backend = await self.create_backend(session)
             session.bind_backend(backend)
@@ -955,7 +1025,10 @@ class App(FalApp):
                 {**payload, "connection_report_version": CONNECTION_REPORT_VERSION}
             )
         except ClientOfferError as exc:
-            await session.close()
+            try:
+                await session.close()
+            finally:
+                session._abort_recording()
             # ClientOfferError is raised only when applying the request's SDP
             # (``type`` is already constrained to "offer" by validation), so
             # locate the 422 at the offending field.
@@ -964,7 +1037,10 @@ class App(FalApp):
                 msg=f"WebRTC negotiation failed: {exc}",
             ) from exc
         except Exception as exc:
-            await session.close()
+            try:
+                await session.close()
+            finally:
+                session._abort_recording()
             if isinstance(exc, GPUException):
                 # Preserve the platform signal to recycle a dead GPU runner.
                 raise
@@ -995,7 +1071,10 @@ class App(FalApp):
             raise InternalServerError(input=None) from exc
         except BaseException:
             # Cancellation / shutdown: clean up but propagate unchanged.
-            await session.close()
+            try:
+                await session.close()
+            finally:
+                session._abort_recording()
             raise
 
         # Success only: error paths above bill through their immediate
@@ -1012,13 +1091,19 @@ class App(FalApp):
             with suppress(asyncio.CancelledError):
                 await asyncio.shield(close_task)
 
+        async def dispose_session() -> None:
+            try:
+                await close_session()
+            finally:
+                session._abort_recording()
+
         async def close_if_stream_never_starts() -> None:
             try:
                 await asyncio.wait_for(
                     stream_started.wait(), timeout=STREAM_START_TIMEOUT_SECONDS
                 )
             except asyncio.TimeoutError:
-                await close_session()
+                await dispose_session()
 
         async def event_stream():
             stream_started.set()
@@ -1043,7 +1128,9 @@ class App(FalApp):
                         exc_info=True,
                     )
             try:
-                yield reported_answer_event if report_task is not None else answer_event
+                yield (
+                    reported_answer_event if report_task is not None else answer_event
+                ) + session._recording_pending_event()
 
                 while not backend_closed.done():
                     waiters: Set[asyncio.Future] = {backend_closed}
@@ -1082,7 +1169,10 @@ class App(FalApp):
                                         exc_info=True,
                                     )
                                 else:
-                                    yield report_event
+                                    yield (
+                                        report_event
+                                        + session._recording_pending_event()
+                                    )
                         report_task = None
                     if not done:
                         yield ": keepalive\n\n"
@@ -1100,14 +1190,27 @@ class App(FalApp):
                 finally:
                     await close_session()
 
+        async def response_stream():
+            original = event_stream()
+            try:
+                async for event in original:
+                    yield event
+                async for event in session._recording_result_events():
+                    yield event
+            finally:
+                try:
+                    await original.aclose()
+                finally:
+                    session._abort_recording()
+
         watchdog = asyncio.ensure_future(close_if_stream_never_starts())
         _SESSION_TASKS.add(watchdog)
         watchdog.add_done_callback(_SESSION_TASKS.discard)
         return StreamingResponse(
-            event_stream(),
+            response_stream(),
             media_type="text/event-stream",
             headers=session.response_headers,
-            background=BackgroundTask(close_session),
+            background=BackgroundTask(dispose_session),
         )
 
 
