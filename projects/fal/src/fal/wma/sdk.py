@@ -724,7 +724,7 @@ class Session:
             self._recording.abort()
 
     def _recording_pending_event(self) -> str:
-        if not self._recording_enabled:
+        if self._recording is None:
             return ""
         return sse_event(
             {"session_id": self.id, "recording_status": "uploading"},
@@ -1000,12 +1000,6 @@ class App(FalApp):
             except Exception:
                 logger.exception("WMA recording initialization failed")
                 session._recording_error = "recording_initialization_failed"
-            session.response_headers.update(
-                {
-                    "x-fal-sse-last-event-as-body": "true",
-                    "x-fal-sse-content-type": "application/json",
-                }
-            )
         try:
             backend = await self.create_backend(session)
             session.bind_backend(backend)
@@ -1080,6 +1074,13 @@ class App(FalApp):
         # Success only: error paths above bill through their immediate
         # ``x-fal-billable-units`` headers and must never park the gateway
         # request in WAITING.
+        if session._recording_enabled:
+            session.response_headers.update(
+                {
+                    "x-fal-sse-last-event-as-body": "true",
+                    "x-fal-sse-content-type": "application/json",
+                }
+            )
         session._activate_deferred_billing()
 
         stream_started = asyncio.Event()

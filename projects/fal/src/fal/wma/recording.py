@@ -19,6 +19,7 @@ from typing import Any, Callable
 
 from fastapi import Request
 
+from fal.compat import run_in_thread
 from fal.toolkit import File
 from fal.wma._raw import sse_event
 
@@ -148,19 +149,26 @@ class SessionRecording:
             self.directory.cleanup()
             self.on_release()
 
-    def offer(self, frame: Any) -> None:
+    def _snapshot(self, frame: Any) -> tuple[bytes, int, int, float]:
+        if frame.width * frame.height * 3 // 2 > self.config.max_frame_bytes:
+            raise ValueError("frame_limit")
+        pixels = frame.to_ndarray(format="yuv420p")
+        # Own the bytes before returning the original frame to aiortc.
+        data = pixels.tobytes()
+        if len(data) > self.config.max_frame_bytes:
+            raise ValueError("frame_limit")
+        return data, frame.width, frame.height, float(frame.pts * frame.time_base)
+
+    async def offer(self, frame: Any) -> None:
         if self.sealed.is_set():
             return
         try:
-            if frame.width * frame.height * 3 // 2 > self.config.max_frame_bytes:
-                raise ValueError("frame_limit")
-            pixels = frame.to_ndarray(format="yuv420p")
-            # aiortc may mutate the delivered frame; retain only owned bytes.
-            data = pixels.tobytes()
-            if len(data) > self.config.max_frame_bytes:
-                raise ValueError("frame_limit")
-            stamp = float(frame.pts * frame.time_base)
-            self.queue.put_nowait((data, frame.width, frame.height, stamp))
+            snapshot = await run_in_thread(self._snapshot, frame)
+            # Closure/cancellation can happen while the worker copies pixels.
+            # Keep queue/thread lifecycle mutations on the event loop.
+            if self.sealed.is_set():
+                return
+            self.queue.put_nowait(snapshot)
             if self.thread is None:
                 self.thread = threading.Thread(target=self._encode, daemon=True)
                 self.thread.start()
@@ -387,7 +395,7 @@ class SessionRecording:
         class RecordingTrack(VideoStreamTrack):
             async def recv(self):
                 frame = await track.recv()
-                recording.offer(frame)
+                await recording.offer(frame)
                 return frame
 
             def stop(self):

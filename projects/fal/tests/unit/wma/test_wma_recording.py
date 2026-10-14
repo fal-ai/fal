@@ -43,7 +43,7 @@ async def test_recording_encodes_delivered_frames_and_uploads_before_close(
             np.full((48, 64, 3), index * 20, dtype=np.uint8), format="rgb24"
         )
         frame.pts, frame.time_base = round(index * 90000 / fps), Fraction(1, 90000)
-        rec.offer(frame)
+        await rec.offer(frame)
         await asyncio.sleep(0.02)
     deadline = time.monotonic() + 5
     while not uploaded and time.monotonic() < deadline:
@@ -87,7 +87,7 @@ async def test_upload_failure_is_safe_and_does_not_raise_into_stream():
         np.zeros((48, 64, 3), dtype=np.uint8), format="rgb24"
     )
     frame.pts, frame.time_base = 0, Fraction(1, 90000)
-    rec.offer(frame)
+    await rec.offer(frame)
     rec.seal()
     events = [event async for event in rec.result_events(timeout=5)]
     assert '"recording_status": "failed"' in events[-1]
@@ -201,6 +201,7 @@ async def test_capacity_is_per_recording_not_client_session_id_and_recovers():
     app.backends[1].closed.set()
     chunks = [chunk async for chunk in second.body_iterator]
     assert '"error": "recording_capacity"' in chunks[-1]
+    assert '"recording_status": "uploading"' not in "".join(chunks)
     assert len(app._recording_pool.active) == 1
     app.backends[0].closed.set()
     _ = [chunk async for chunk in first.body_iterator]
@@ -337,7 +338,7 @@ async def test_cancellation_during_finalization_cancels_upload_and_releases_capa
         np.zeros((48, 64, 3), dtype=np.uint8), format="rgb24"
     )
     frame.pts, frame.time_base = 0, Fraction(1, 90000)
-    rec.offer(frame)
+    await rec.offer(frame)
     app.backends[0].closed.set()
 
     async def consume():
@@ -410,7 +411,7 @@ async def test_encoder_upload_retains_originating_request_context():
         np.zeros((48, 64, 3), dtype=np.uint8), format="rgb24"
     )
     frame.pts, frame.time_base = 0, Fraction(1, 90000)
-    rec.offer(frame)
+    await rec.offer(frame)
     events = [event async for event in rec.result_events(timeout=5)]
     assert seen == ["session-caller"]
     assert '"recording_status": "complete"' in events[-1]
@@ -445,7 +446,7 @@ async def test_timeout_retains_file_and_capacity_until_blocking_upload_finishes(
         np.zeros((48, 64, 3), dtype=np.uint8), format="rgb24"
     )
     frame.pts, frame.time_base = 0, Fraction(1, 90000)
-    rec.offer(frame)
+    await rec.offer(frame)
     app.backends[0].closed.set()
     try:
         chunks = await asyncio.wait_for(collect(response.body_iterator), timeout=2)
@@ -469,3 +470,84 @@ async def test_timeout_retains_file_and_capacity_until_blocking_upload_finishes(
 
 async def collect(events):
     return [event async for event in events]
+
+
+@pytest.mark.asyncio
+async def test_recording_setup_http_error_preserves_headers_without_sse(monkeypatch):
+    from fastapi import HTTPException
+
+    from fal.wma import RecordingConfig
+
+    async def fail(*args):
+        raise HTTPException(429, "busy", headers={"Retry-After": "5"})
+
+    monkeypatch.setattr(Backend, "negotiate", fail)
+    app = app_with_recording(RecordingConfig())
+    with pytest.raises(HTTPException) as error:
+        await start(app)
+    assert error.value.detail == "busy"
+    assert error.value.headers["Retry-After"] == "5"
+    assert error.value.headers["x-fal-billable-units"] == "0"
+    assert not any(key.startswith("x-fal-sse-") for key in error.value.headers)
+    assert not app._recording_pool.active
+
+
+@pytest.mark.asyncio
+async def test_recording_init_failure_does_not_claim_uploading(monkeypatch):
+    from fal.wma import RecordingConfig
+    from fal.wma.recording import RecordingPool
+
+    def fail(*args):
+        raise RuntimeError("initialization failed")
+
+    monkeypatch.setattr(RecordingPool, "create", fail)
+    app = app_with_recording(RecordingConfig())
+    response = await start(app)
+    app.backends[0].closed.set()
+    chunks = [chunk async for chunk in response.body_iterator]
+    assert '"recording_status": "uploading"' not in "".join(chunks)
+    assert '"error": "recording_initialization_failed"' in chunks[-1]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("close_during_snapshot", [False, True])
+async def test_snapshot_leaves_loop_responsive_and_respects_closure(
+    monkeypatch, close_during_snapshot
+):
+    import threading
+
+    rec = SessionRecording("snapshot", None, None)
+    entered, release = threading.Event(), threading.Event()
+    loop_thread = threading.get_ident()
+
+    def snapshot(frame):
+        assert threading.get_ident() != loop_thread
+        entered.set()
+        assert release.wait(5)
+        return bytes(64 * 48 * 3 // 2), 64, 48, 0.0
+
+    monkeypatch.setattr(rec, "_snapshot", snapshot)
+    task = asyncio.create_task(rec.offer(object()))
+    try:
+
+        async def wait_entered():
+            while not entered.is_set():
+                await asyncio.sleep(0.001)
+
+        await asyncio.wait_for(wait_entered(), 2)
+        # A sibling session can run while snapshot work is still blocked.
+        assert not task.done()
+        if close_during_snapshot:
+            rec.abort()
+        release.set()
+        await asyncio.wait_for(task, 2)
+        if close_during_snapshot:
+            assert rec.thread is None
+            assert rec.queue.empty()
+        else:
+            assert rec.thread is not None
+    finally:
+        release.set()
+        await task
+        rec.seal()
+        _ = [event async for event in rec.result_events(timeout=5)]
