@@ -288,24 +288,26 @@ def test_unserializable_return(isolated_client):
 
 
 def test_missing_dependencies_on_client(isolated_client):
-    import importlib.util
+    module_name = f"runner_only_dependency_{uuid.uuid4().hex}"
 
-    if importlib.util.find_spec("refactor") is not None:
-        pytest.skip("This test requires refactor to be absent from the client")
+    @isolated_client("virtualenv")
+    def remote_only_module():
+        import sys
+        import types
 
-    @isolated_client("virtualenv", requirements=["refactor"])
-    def unpicklable_input_function_client():
-        import refactor
-
-        return refactor
+        module = types.ModuleType(module_name)
+        # Registration makes cloudpickle serialize this module by reference.
+        # It must remain registered until the agent serializes the return value.
+        sys.modules[module_name] = module
+        return module
 
     with pytest.raises(
-        FalSerializationError, match="Could not find module 'refactor'"
+        FalSerializationError, match=f"Could not find module '{module_name}'"
     ) as exc_info:
-        unpicklable_input_function_client()
+        remote_only_module()
 
     assert isinstance(exc_info.value.__cause__, ModuleNotFoundError)
-    assert exc_info.value.__cause__.name == "refactor"
+    assert exc_info.value.__cause__.name == module_name
 
 
 def test_unserializable_exception(isolated_client):
