@@ -17,6 +17,7 @@ import fastapi
 import grpc.aio as async_grpc
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+from fal._billing import BillingComponents, BillingDeclaration, check_declaration
 from fal._serialization import include_modules_from
 from fal._typing import EndpointT
 from fal.api import (
@@ -816,7 +817,25 @@ class App(BaseServable):
 
     @classmethod
     def build_metadata(cls) -> dict[str, Any]:
-        return {"openapi": cls(_allow_init=True).openapi()}
+        metadata: dict[str, Any] = {"openapi": cls(_allow_init=True).openapi()}
+        billing_components = cls.get_billing_components()
+        if billing_components:
+            metadata["billing_components"] = billing_components
+        return metadata
+
+    @classmethod
+    def get_billing_components(cls) -> dict[str, BillingComponents]:
+        """Billing declarations per endpoint path, kept out of the OpenAPI spec."""
+        components: dict[str, BillingComponents] = {}
+        for _, endpoint in inspect.getmembers(cls, inspect.isfunction):
+            signature = getattr(endpoint, "route_signature", None)
+            billing = getattr(endpoint, "billing_declaration", None)
+            if signature is None or billing is None:
+                continue
+            components[signature.path] = check_declaration(
+                signature.path, billing.declaration()
+            )
+        return dict(sorted(components.items()))
 
     @classmethod
     def run_local(
@@ -1137,8 +1156,21 @@ def endpoint(
     *,
     is_websocket: bool = False,
     health_check: HealthCheck | None = None,
+    billing: BillingDeclaration | None = None,
 ) -> Callable[[EndpointT], EndpointT]:
-    """Designate the decorated function as an application endpoint."""
+    """Designate the decorated function as an application endpoint.
+
+    ``billing`` declares the components the endpoint reports. It is published
+    in deploy metadata under ``billing_components``, not in the OpenAPI spec.
+    """
+    if billing is not None and (
+        isinstance(billing, type)
+        or not isinstance(billing, BillingDeclaration)
+        or not callable(billing.declaration)
+    ):
+        raise TypeError("billing must be an object with a declaration() method")
+    if billing is not None and is_websocket:
+        raise ValueError("Websocket endpoints cannot declare billing components")
 
     def marker_fn(callable: EndpointT) -> EndpointT:
         if hasattr(callable, "route_signature"):
@@ -1151,6 +1183,8 @@ def endpoint(
             is_websocket=is_websocket,
             health_check=health_check,
         )
+        # Kept off the route signature, which is hashed: a declaration need not be.
+        callable.billing_declaration = billing  # type: ignore
         return callable
 
     return marker_fn

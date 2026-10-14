@@ -886,23 +886,26 @@ class App(FalApp):
     def asyncapi(self) -> Dict[str, Any]:
         """Build the standalone realtime contract paired with ``openapi()``."""
 
-        contract = type(self).realtime_contract
+        return type(self)._render_asyncapi(self.openapi())
+
+    @classmethod
+    def _render_asyncapi(cls, openapi_spec: Dict[str, Any]) -> Dict[str, Any]:
+        contract = cls.realtime_contract
         if contract is None:
             raise ValueError("this WMA app does not declare a realtime contract")
 
-        openapi_spec = self.openapi()
         session_path = openapi_spec.get("paths", {}).get(START_SESSION_PATH)
         if session_path is None or "post" not in session_path:
             raise ValueError(
-                f"{type(self).__name__} declares a realtime_contract but does "
+                f"{cls.__name__} declares a realtime_contract but does "
                 f"not serve POST {START_SESSION_PATH}; the contract documents "
                 "the session that endpoint negotiates, so it must exist"
             )
         operation_id = session_path["post"]["operationId"]
         return render_asyncapi(
             contract,
-            title=f"{_schema_prefix(type(self).__name__)} realtime client API",
-            schema_prefix=_schema_prefix(type(self).__name__),
+            title=f"{_schema_prefix(cls.__name__)} realtime client API",
+            schema_prefix=_schema_prefix(cls.__name__),
             channel_address=DATA_CHANNEL_LABEL,
             openapi_operation_id=operation_id,
         )
@@ -911,10 +914,10 @@ class App(FalApp):
     def build_metadata(cls) -> Dict[str, Any]:
         """Publish both documents through the deployment metadata channel."""
 
-        app = cls(_allow_init=True)
-        metadata = {"openapi": app.openapi()}
+        metadata = super().build_metadata()
         if cls.realtime_contract is not None:
-            metadata["asyncapi"] = app.asyncapi()
+            # Rendered from the OpenAPI document already built for metadata.
+            metadata["asyncapi"] = cls._render_asyncapi(metadata["openapi"])
         return metadata
 
     @endpoint(START_SESSION_PATH)
