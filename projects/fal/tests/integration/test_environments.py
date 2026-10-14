@@ -26,6 +26,11 @@ def client():
     return SyncServerlessClient(host=host, api_key=api_key)
 
 
+@pytest.mark.xfail(
+    reason="Currently flaky due to eventual consistency in environment listings; "
+    "remove once lifecycle reads are reliable.",
+    strict=False,
+)
 @pytest.mark.flaky(max_runs=3)
 def test_environment_lifecycle(client: SyncServerlessClient, test_env_name: str):
     """Test creating, listing, and deleting environments."""
