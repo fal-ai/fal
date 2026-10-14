@@ -10,7 +10,7 @@ def _set(args):
             name,
             value,
             environment_name=args.env,
-            default_exposed=not args.not_exposed_by_default,
+            default_exposed=args.default_exposed,
         )
 
 
@@ -32,12 +32,29 @@ def _add_set_parser(subparsers, parents):
         action=DictAction,
         help="Secret NAME=VALUE pairs.",
     )
-    parser.add_argument(
+    # Tri-state, matching the API: None leaves the exposure alone (the account
+    # default decides for a new secret, and an existing secret keeps whatever it
+    # was set to), so a plain value rotation never changes exposure.
+    exposure = parser.add_mutually_exclusive_group()
+    exposure.add_argument(
         "--not-exposed-by-default",
-        action="store_true",
+        dest="default_exposed",
+        action="store_const",
+        const=False,
+        default=None,
         help=(
             "Do not expose the secret to apps by default; it is only "
             "injected into apps that explicitly list it in their secrets."
+        ),
+    )
+    exposure.add_argument(
+        "--exposed-by-default",
+        dest="default_exposed",
+        action="store_const",
+        const=True,
+        help=(
+            "Expose the secret to apps that do not explicitly list their "
+            "secrets. Overrides the account-level default."
         ),
     )
     add_env_argument(parser)
