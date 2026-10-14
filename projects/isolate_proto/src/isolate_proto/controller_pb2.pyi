@@ -760,9 +760,9 @@ class MachineRequirements(google.protobuf.message.Message):
     def valid_regions(self) -> google.protobuf.internal.containers.RepeatedScalarFieldContainer[builtins.str]: ...
     metrics_port: builtins.int
     request_start_timeout: builtins.int
-    """App default queue-wait timeout in seconds, distinct from processing and
-    runner startup timeouts. Positive values set it; 0 clears it. When
-    omitted, the existing value is inherited unless deployment settings reset.
+    """Queue-wait default in seconds, applied only to the app owner's requests.
+    Request headers override it. Positive values set it; 0 clears it.
+    Omission inherits unless deployment settings reset.
     """
     def __init__(
         self,
@@ -1172,8 +1172,9 @@ class UpdateApplicationRequest(google.protobuf.message.Message):
     scaling_delay_seconds: builtins.int
     environment_name: builtins.str
     request_start_timeout: builtins.int
-    """App default queue-wait timeout in seconds. Positive values set it;
-    0 clears it, and omission preserves the current value.
+    """Queue-wait default in seconds, applied only to the app owner's requests.
+    Request headers override it. Positive values set it; 0 clears it.
+    Omission preserves the current value.
     """
     def __init__(
         self,
@@ -1299,7 +1300,9 @@ class ApplicationInfo(google.protobuf.message.Message):
     scaling_delay_seconds: builtins.int
     environment_name: builtins.str
     request_start_timeout: builtins.int
-    """App default queue-wait timeout in seconds; unset means no app default."""
+    """Queue-wait default in seconds, applied only to the app owner's requests.
+    Request headers override it; unset means no app default.
+    """
     def __init__(
         self,
         *,
@@ -1584,7 +1587,9 @@ class AliasInfo(google.protobuf.message.Message):
     environment_name: builtins.str
     is_rolling: builtins.bool
     request_start_timeout: builtins.int
-    """App default queue-wait timeout in seconds; unset means no app default."""
+    """Queue-wait default in seconds, applied only to the app owner's requests.
+    Request headers override it; unset means no app default.
+    """
     def __init__(
         self,
         *,
