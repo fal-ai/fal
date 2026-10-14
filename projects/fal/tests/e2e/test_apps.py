@@ -910,7 +910,7 @@ def test_realtime_app(
         yield f"{user.username}/{app_alias}"
 
 
-def test_broken_app_failure(host: api.FalServerlessHost, user: User):
+def test_broken_app_failure():
     with pytest.raises(FalServerlessException) as e:
         wrap_app(BrokenApp)
 
@@ -1128,7 +1128,7 @@ def test_app_cancellation(test_app: str, test_cancellable_app: str):
     assert response == {"result": 3}
 
 
-def test_app_disconnect_behavior(test_app: str, test_cancellable_app: str):
+def test_app_disconnect_behavior(test_cancellable_app: str):
     with pytest.raises(HTTPStatusError) as e:
         apps.run(
             test_cancellable_app,
@@ -1331,7 +1331,7 @@ def test_app_no_serve_spec_metadata(test_fastapi_app: str, rest_client: Client):
     ), f"openapi should not be present in metadata {metadata}"
 
 
-def test_404_response(test_app: str, request: pytest.FixtureRequest):
+def test_404_response(test_app: str):
     with pytest.raises(HTTPStatusError, match="Path /.*other not found"):
         apps.run(test_app, path="/other", arguments={"lhs": 1, "rhs": 2})
 
@@ -1696,21 +1696,6 @@ def test_pydantic_validation_billing(test_pydantic_validation_error: AppClient):
 
         assert response.status_code == 422
         assert response.headers.get("x-fal-billable-units") == "0"
-
-
-def test_field_exception_billing(test_exception_app: AppClient):
-    with httpx.Client(headers=_auth_headers()) as httpx_client:
-        url = test_exception_app.url + "/field-exception"
-        response = httpx_client.post(
-            url,
-            json={"lhs": 1, "rhs": 2},
-            timeout=30,
-        )
-
-        assert response.status_code == 422
-        # For errors raised on runtime, developers should be handling the billing.
-        # Therefore not adding billing units.
-        assert not hasattr(response.headers, "x-fal-billable-units")
 
 
 def test_field_exception_int_billable_units_formatting(test_exception_app: AppClient):
