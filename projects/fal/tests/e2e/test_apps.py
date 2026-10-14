@@ -1250,8 +1250,7 @@ def test_app_client_async(test_sleep_app: str):
 
 
 # If the logging subsystem is not working for some nodes, this test will flake
-@pytest.mark.xfail(
-    run=False,
+@pytest.mark.skip(
     reason="The traceback logs endpoint returned no logs within the polling window; "
     "remove once traceback delivery is reliable. Ping @efiop",
 )

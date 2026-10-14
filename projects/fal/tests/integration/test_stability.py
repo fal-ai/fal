@@ -182,8 +182,7 @@ def test_function_exception(isolated_client):
     assert isinstance(bar_exc.__cause__, FooException)
 
 
-@pytest.mark.xfail(
-    run=False,
+@pytest.mark.skip(
     reason="See https://github.com/fal-ai/fal/issues/169",
 )
 def test_function_calling_other_function(isolated_client):
@@ -217,8 +216,7 @@ def test_function_calling_other_function(isolated_client):
     assert calling_function(recurse=True) == 42
 
 
-@pytest.mark.xfail(
-    run=False,
+@pytest.mark.skip(
     reason="Nested isolated functions require an explicit fal dependency; "
     "remove once dependency inference is supported.",
 )
@@ -324,8 +322,7 @@ def test_unserializable_exception(isolated_client):
         unpicklable_input_function_client()
 
 
-@pytest.mark.xfail(
-    run=False,
+@pytest.mark.skip(
     reason="Dependency conflicts are detected, but the backend returns a generic "
     "environment build error instead of the resolver diagnostic.",
 )
@@ -348,8 +345,7 @@ def test_client_superseeding_dependencies_crash(isolated_client):
         conflicting_environment()
 
 
-@pytest.mark.xfail(
-    run=False,
+@pytest.mark.skip(
     reason="OOM currently surfaces as a closed runner stream, not an insufficient "
     "memory diagnostic; remove once OOM reporting is reliable.",
 )
@@ -464,8 +460,7 @@ def test_futures(isolated_client):
     assert future_4.result() == 8
 
 
-@pytest.mark.xfail(
-    run=False,
+@pytest.mark.skip(
     reason="Successive inline calls can start different runners despite keep_alive; "
     "remove once this test can reliably reuse a runner for its in-memory cache.",
 )
