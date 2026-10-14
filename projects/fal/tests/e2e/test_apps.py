@@ -478,6 +478,13 @@ class ExceptionApp(fal.App, keep_alive=300, max_concurrency=1):
             billable_units=input.value,
         )
 
+
+class GPUExceptionApp(fal.App, keep_alive=300, max_concurrency=1):
+    """Kept apart from ExceptionApp: a GPU error answers 503, which tells the
+    platform to restart the runner, so nothing else may share this app."""
+
+    machine_type = "XS"
+
     @fal.endpoint("/cuda-exception")
     def cuda_exception(self) -> Output:
         # mimicking error message from PyTorch (https://github.com/pytorch/pytorch/blob/6c65fd03942415b68040e102c44cf5109d2d851e/c10/cuda/CUDACachingAllocator.cpp#L1234C12-L1234C30)
@@ -866,6 +873,13 @@ def test_cancellable_app(
 @pytest.fixture(scope="module")
 def test_exception_app():
     with AppClient.connect(ExceptionApp) as client:
+        yield client
+
+
+# Function-scoped: every request restarts the runner.
+@pytest.fixture()
+def test_gpu_exception_app():
+    with AppClient.connect(GPUExceptionApp) as client:
         yield client
 
 
@@ -1666,20 +1680,13 @@ def test_app_exceptions(test_exception_app: AppClient):
 
     assert field_exc.value.headers.get("x-fal-billable-units") is None
 
+
+@pytest.mark.parametrize(
+    "endpoint", ["cuda_exception", "cuda_exception_2", "cuda_exception_3"]
+)
+def test_gpu_exceptions(test_gpu_exception_app: AppClient, endpoint: str):
     with pytest.raises(AppClientError) as cuda_exc:
-        test_exception_app.cuda_exception({})
-
-    assert cuda_exc.value.status_code == _GPU_ERROR_STATUS_CODE
-    assert _CUDA_OOM_MESSAGE in cuda_exc.value.message
-
-    with pytest.raises(AppClientError) as cuda_exc:
-        test_exception_app.cuda_exception_2({})
-
-    assert cuda_exc.value.status_code == _GPU_ERROR_STATUS_CODE
-    assert _CUDA_OOM_MESSAGE in cuda_exc.value.message
-
-    with pytest.raises(AppClientError) as cuda_exc:
-        test_exception_app.cuda_exception_3({})
+        getattr(test_gpu_exception_app, endpoint)({})
 
     assert cuda_exc.value.status_code == _GPU_ERROR_STATUS_CODE
     assert _CUDA_OOM_MESSAGE in cuda_exc.value.message
