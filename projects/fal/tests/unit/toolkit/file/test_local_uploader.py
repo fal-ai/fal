@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -443,6 +444,7 @@ def test_only_refusals_fall_back_to_direct_cdn(
     legacy.assert_not_called()
 
 
+@pytest.mark.skipif(os.name != "posix", reason="Unix sockets require a POSIX host")
 @pytest.mark.parametrize("old_wiring", [False, True])
 def test_missing_socket_falls_back_to_direct_cdn(monkeypatch, tmp_path, old_wiring):
     monkeypatch.setenv("FAL_USE_LOCAL_UPLOADER", "1")
