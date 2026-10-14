@@ -44,6 +44,16 @@ def test_client_socket_path(monkeypatch, socket_path):
     )
 
 
+@pytest.mark.parametrize("app_name", [None, "github_110602490-test"])
+def test_client_names_the_app(monkeypatch, app_name):
+    monkeypatch.delenv("FAL_APP_NAME", raising=False)
+    if app_name is not None:
+        monkeypatch.setenv("FAL_APP_NAME", app_name)
+
+    with _local_uploader._new_client() as http:
+        assert http.headers.get("x-fal-application") == app_name
+
+
 @pytest.fixture
 def transport(monkeypatch):
     requests = []
@@ -69,9 +79,9 @@ def transport(monkeypatch):
 def caller(monkeypatch):
     def install(headers, request_id):
         request = SimpleNamespace(headers=headers, request_id=request_id)
-        monkeypatch.setattr(
-            remote, "get_current_app", lambda: SimpleNamespace(current_request=request)
-        )
+        app = SimpleNamespace(current_request=request)
+        monkeypatch.setattr(remote, "get_current_app", lambda: app)
+        monkeypatch.setattr(_local_uploader, "get_current_app", lambda: app)
 
     return install
 
@@ -192,7 +202,10 @@ def test_upload_policy_goes_through_the_local_uploader(
     monkeypatch, policy_upload, caller, explicit, file_name, header
 ):
     requests, in_process = policy_upload(_accept_like_the_uploader)
-    caller({"x-fal-cdn-token": "caller-token"}, "request-id")
+    caller(
+        {"x-fal-cdn-token": "caller-token", "x-fal-endpoint": "fal-ai/test"},
+        "request-id",
+    )
     monkeypatch.setattr(upload_policy, "get_current_app", remote.get_current_app)
     monkeypatch.setattr(upload_policy, "uuid4", lambda: UUID(int=7))
     kwargs = {"repository": local.LocalFileRepository()} if explicit else {}
@@ -212,6 +225,7 @@ def test_upload_policy_goes_through_the_local_uploader(
     assert fields["key"] == f"outputs/{UUID(int=7).hex}-{file_name}"
     assert request.headers["content-type"] == "text/plain"
     assert request.headers["x-fal-request-id"] == "request-id"
+    assert request.headers["x-fal-endpoint"] == "fal-ai/test"
     # Without credentials an uploader that predates policies cannot use the CDN.
     assert "authorization" not in request.headers
     assert "x-fal-cdn-token" not in request.headers
@@ -331,14 +345,32 @@ def test_file_chunks_are_bounded(tmp_path):
 
 @pytest.mark.parametrize("settings", [None, {"expiration_duration_seconds": 3600}])
 def test_caller_metadata_and_effective_settings(local_upload, caller, settings):
-    caller({"x-fal-cdn-token": "caller-token"}, "request-id")
+    caller(
+        {
+            "x-fal-cdn-token": "caller-token",
+            "x-fal-request-id": "request-id",
+            "x-fal-endpoint": "fal-ai/test",
+            "x-fal-object-lifecycle-preference": '{"expiration_duration_seconds": 1}',
+            "x-fal-caller-billing-country-code": "Türkiye",
+            "x-fal-application": "github_110602490-spoofed",
+            "content-type": "application/json",
+            "x-app-custom": "request-only",
+        },
+        "request-id",
+    )
     local.LocalFileRepository().save(
         FileData(b"hi"), object_lifecycle_preference=settings
     )
     headers = local_upload[0].headers
     assert headers["authorization"] == "Key test:key"
-    assert headers["x-fal-cdn-token"] == "caller-token"
-    assert headers["x-fal-request-id"] == "request-id"
+    # Context is forwarded; uploader inputs and non-ASCII values are not.
+    assert headers.get_list("x-fal-cdn-token") == ["caller-token"]
+    assert headers.get_list("x-fal-request-id") == ["request-id"]
+    assert headers.get_list("content-type") == ["application/octet-stream"]
+    assert headers["x-fal-endpoint"] == "fal-ai/test"
+    assert "x-fal-caller-billing-country-code" not in headers
+    assert "x-fal-application" not in headers
+    assert "x-app-custom" not in headers
     if settings:
         assert json.loads(headers["x-fal-object-lifecycle"]) == settings
         assert json.loads(headers["x-fal-object-lifecycle-preference"]) == settings
