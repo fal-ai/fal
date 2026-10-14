@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -28,11 +29,13 @@ ACCEPTED = {
 }
 
 
-@pytest.mark.parametrize("socket_path", [None, "/tmp/custom-uploader.sock"])
+@pytest.mark.parametrize("socket_path", [None, "/tmp/custom-api.sock"])
 def test_client_socket_path(monkeypatch, socket_path):
-    monkeypatch.delenv("CDN_UPLOADER_SOCKET_PATH", raising=False)
+    monkeypatch.delenv("FAL_API_SOCKET", raising=False)
+    # Only FAL_API_SOCKET selects the socket; the old variable is ignored.
+    monkeypatch.setenv("CDN_UPLOADER_SOCKET_PATH", "/run/fal-upload/upload.sock")
     if socket_path is not None:
-        monkeypatch.setenv("CDN_UPLOADER_SOCKET_PATH", socket_path)
+        monkeypatch.setenv("FAL_API_SOCKET", socket_path)
     transport = Mock(wraps=httpx.HTTPTransport)
     monkeypatch.setattr(httpx, "HTTPTransport", transport)
 
@@ -40,7 +43,7 @@ def test_client_socket_path(monkeypatch, socket_path):
         pass
 
     assert transport.call_args.kwargs["uds"] == (
-        socket_path if socket_path is not None else "/run/fal-upload/upload.sock"
+        socket_path if socket_path is not None else "/run/fal/api.sock"
     )
 
 
@@ -104,7 +107,7 @@ def test_existing_calls_select_local(local_upload, repository):
     assert result.as_bytes() == b"hello"
     assert result.file_size == 5
     (request,) = local_upload
-    assert request.url.path == "/uploads"
+    assert request.url.path == "/v1/uploads"
     assert request.content == b"hello"
     assert request.headers["content-length"] == "5"
     assert request.headers["x-fal-file-name"] == "hello.txt"
@@ -218,7 +221,7 @@ def test_upload_policy_goes_through_the_local_uploader(
     assert result.url == in_process_url
     assert result.as_bytes() == b"hello"
     (request,) = requests
-    assert request.url.path == "/uploads"
+    assert request.url.path == "/v1/uploads"
     assert request.content == b"hello"
     assert json.loads(request.headers[UPLOAD_POLICY_KEY]) == POLICY
     assert request.headers["x-fal-file-name"] == f"{UUID(int=7).hex}-{header}"
@@ -392,6 +395,7 @@ def _respond(response):
     "response,refused",
     [
         (httpx.Response(401, text="secret"), True),
+        (httpx.Response(404, text="secret"), True),  # no /v1 routes
         (httpx.Response(413, text="secret"), True),
         (httpx.Response(307, headers={"location": "http://secret"}), True),
         (httpx.ConnectError, True),
@@ -438,6 +442,23 @@ def test_only_refusals_fall_back_to_direct_cdn(
         direct_file.assert_not_called()
     assert len(requests) == 1
     legacy.assert_not_called()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="Unix sockets require a POSIX host")
+@pytest.mark.parametrize("old_wiring", [False, True])
+def test_missing_socket_falls_back_to_direct_cdn(monkeypatch, tmp_path, old_wiring):
+    monkeypatch.setenv("FAL_USE_LOCAL_UPLOADER", "1")
+    monkeypatch.delenv("FAL_API_SOCKET", raising=False)
+    monkeypatch.setattr(_local_uploader, "DEFAULT_SOCKET_PATH", str(tmp_path / "x"))
+    if old_wiring:
+        monkeypatch.setenv("CDN_UPLOADER_SOCKET_PATH", "/run/fal-upload/upload.sock")
+    monkeypatch.setattr(
+        remote, "fetch_auth_credentials", lambda: AuthCredentials("Key", "test:key")
+    )
+    direct = Mock(return_value="https://direct/file")
+    monkeypatch.setattr(remote.FalFileRepositoryV3, "save", direct)
+    assert files.File.from_bytes(b"hi").url == "https://direct/file"
+    direct.assert_called_once()
 
 
 def test_missing_httpx_falls_back_to_v3(monkeypatch):
@@ -539,7 +560,7 @@ def test_wait_returns_after_cdn_completion(
         result = files.File.from_bytes(b"hi", save_kwargs=save_kwargs)
     assert result.url == ACCEPTED["file_url"]
     assert [(r.method, str(r.url)) for r in requests[1:]] == [
-        ("GET", "http://localhost/uploads/accepted-id?wait=60")
+        ("GET", "http://localhost/v1/uploads/accepted-id?wait=60")
     ] * 2
 
 
@@ -569,7 +590,7 @@ def test_failed_or_unknown_completion_is_raised(
 
 
 def _session(request):
-    if request.url.path == "/upload-sessions":
+    if request.url.path == "/v1/upload-sessions":
         started = {**ACCEPTED, "upload_id": "session-id", "state": "receiving"}
         return httpx.Response(201, json=started)
     if request.method == "PUT":
@@ -584,9 +605,9 @@ def test_stream_finishes_with_the_byte_count(local_upload, transport):
     )
     assert url == ACCEPTED["file_url"]
     assert [(r.method, r.url.path) for r in requests] == [
-        ("POST", "/upload-sessions"),
-        ("PUT", "/upload-sessions/session-id/body"),
-        ("POST", "/upload-sessions/session-id/finish"),
+        ("POST", "/v1/upload-sessions"),
+        ("PUT", "/v1/upload-sessions/session-id/body"),
+        ("POST", "/v1/upload-sessions/session-id/finish"),
     ]
     assert requests[0].headers["x-fal-file-name"] == "out.txt"
     assert requests[1].content == b"hello"
