@@ -31,6 +31,8 @@ ACCEPTED = {
 @pytest.mark.parametrize("socket_path", [None, "/tmp/custom-api.sock"])
 def test_client_socket_path(monkeypatch, socket_path):
     monkeypatch.delenv("FAL_API_SOCKET", raising=False)
+    # Only FAL_API_SOCKET selects the socket; the old variable is ignored.
+    monkeypatch.setenv("CDN_UPLOADER_SOCKET_PATH", "/run/fal-upload/upload.sock")
     if socket_path is not None:
         monkeypatch.setenv("FAL_API_SOCKET", socket_path)
     transport = Mock(wraps=httpx.HTTPTransport)
@@ -392,6 +394,7 @@ def _respond(response):
     "response,refused",
     [
         (httpx.Response(401, text="secret"), True),
+        (httpx.Response(404, text="secret"), True),  # no /v1 routes
         (httpx.Response(413, text="secret"), True),
         (httpx.Response(307, headers={"location": "http://secret"}), True),
         (httpx.ConnectError, True),
@@ -438,6 +441,22 @@ def test_only_refusals_fall_back_to_direct_cdn(
         direct_file.assert_not_called()
     assert len(requests) == 1
     legacy.assert_not_called()
+
+
+@pytest.mark.parametrize("old_wiring", [False, True])
+def test_missing_socket_falls_back_to_direct_cdn(monkeypatch, tmp_path, old_wiring):
+    monkeypatch.setenv("FAL_USE_LOCAL_UPLOADER", "1")
+    monkeypatch.delenv("FAL_API_SOCKET", raising=False)
+    monkeypatch.setattr(_local_uploader, "DEFAULT_SOCKET_PATH", str(tmp_path / "x"))
+    if old_wiring:
+        monkeypatch.setenv("CDN_UPLOADER_SOCKET_PATH", "/run/fal-upload/upload.sock")
+    monkeypatch.setattr(
+        remote, "fetch_auth_credentials", lambda: AuthCredentials("Key", "test:key")
+    )
+    direct = Mock(return_value="https://direct/file")
+    monkeypatch.setattr(remote.FalFileRepositoryV3, "save", direct)
+    assert files.File.from_bytes(b"hi").url == "https://direct/file"
+    direct.assert_called_once()
 
 
 def test_missing_httpx_falls_back_to_v3(monkeypatch):
