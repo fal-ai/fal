@@ -11,6 +11,10 @@ from pydantic import __version__ as pydantic_version
 
 from fal.toolkit import Image
 
+# Each test deploys and runs an isolated function inline, so the deploy
+# counts against the timer and needs more than the unit default.
+pytestmark = pytest.mark.timeout(180)
+
 
 @overload
 def get_image(as_bytes: Literal[False] = False) -> PILImage.Image: ...

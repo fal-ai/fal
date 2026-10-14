@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import random
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -20,6 +21,15 @@ _STREAM_URL_FORMAT = f"https://{flags.FAL_RUN_HOST}/{{app_id}}"
 _QUEUE_URL_FORMAT = f"https://{flags.FAL_QUEUE_RUN_HOST}/{{app_id}}"
 _REALTIME_URL_FORMAT = f"wss://{flags.FAL_RUN_HOST}/{{app_id}}"
 _WS_URL_FORMAT = f"wss://{flags.FAL_WS_RUN_HOST}/{{app_id}}"
+
+# Retry policy for the idempotent queue reads (status and result). It mirrors
+# fal_client's; that package is only an optional dependency of the SDK, so the
+# rules are kept here rather than imported.
+_RETRY_MAX_ATTEMPTS = 10
+_RETRY_BASE_DELAY = 0.1
+_RETRY_MAX_DELAY = 30.0
+_RETRY_STATUS_CODES = frozenset({408, 409, 429})
+_INGRESS_ERROR_CODES = frozenset({502, 503, 504})
 
 
 def _backwards_compatible_app_id(app_id: str) -> str:
@@ -66,6 +76,52 @@ def _get_http_client() -> httpx.Client:
     return httpx.Client(headers={"User-Agent": USER_AGENT})
 
 
+def _is_ingress_error(response: httpx.Response) -> bool:
+    if response.status_code not in _INGRESS_ERROR_CODES:
+        return False
+    # Our own servers always tag their responses.
+    if "x-fal-request-id" in response.headers:
+        return False
+    return "nginx" in response.text
+
+
+def _should_retry(exc: httpx.HTTPError) -> bool:
+    if isinstance(exc, httpx.TransportError):
+        # Covers timeouts, connection and protocol errors.
+        return True
+    if isinstance(exc, httpx.HTTPStatusError):
+        response = exc.response
+        # A 504 the platform attributes to a user-set timeout is final.
+        if response.status_code == 504 and response.headers.get(
+            "x-fal-request-timeout-type"
+        ):
+            return False
+        return response.status_code in _RETRY_STATUS_CODES or _is_ingress_error(
+            response
+        )
+    return False
+
+
+def _retry_delay(attempt: int) -> float:
+    delay = min(_RETRY_BASE_DELAY * (2 ** (attempt - 1)), _RETRY_MAX_DELAY)
+    return min(delay * random.uniform(0.5, 1.5), _RETRY_MAX_DELAY)
+
+
+def _get_with_retries(client: httpx.Client, url: str, **kwargs: Any) -> httpx.Response:
+    """GET and raise for status, retrying transient failures. Only for
+    idempotent requests."""
+    for attempt in range(1, _RETRY_MAX_ATTEMPTS + 1):
+        try:
+            response = client.get(url, **kwargs)
+            response.raise_for_status()
+            return response
+        except httpx.HTTPError as exc:
+            if attempt == _RETRY_MAX_ATTEMPTS or not _should_retry(exc):
+                raise
+            time.sleep(_retry_delay(attempt))
+    raise AssertionError("unreachable")
+
+
 @dataclass
 class RequestHandle:
     """A handle to an async inference request."""
@@ -95,12 +151,12 @@ class RequestHandle:
             _QUEUE_URL_FORMAT.format(app_id=self.app_id)
             + f"/requests/{self.request_id}/status/"
         )
-        response = self._client.get(
+        response = _get_with_retries(
+            self._client,
             url,
             headers=self._creds.to_headers(),
             params={"logs": int(logs)},
         )
-        response.raise_for_status()
 
         data = response.json()
 
@@ -149,10 +205,12 @@ class RequestHandle:
             _QUEUE_URL_FORMAT.format(app_id=self.app_id)
             + f"/requests/{self.request_id}/"
         )
-        response = self._client.get(url, headers=self._creds.to_headers())
         try:
-            response.raise_for_status()
+            response = _get_with_retries(
+                self._client, url, headers=self._creds.to_headers()
+            )
         except httpx.HTTPStatusError as e:
+            response = e.response
             if "application/json" not in response.headers["Content-Type"]:
                 raise
             raise httpx.HTTPStatusError(

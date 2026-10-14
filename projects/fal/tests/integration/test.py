@@ -21,6 +21,10 @@ from fal.toolkit import (
 from fal.toolkit.file.file import CompressedFile
 from fal.toolkit.utils.download_utils import _git_rev_parse, _hash_url
 
+# Each test deploys and runs an isolated function inline, so the deploy
+# counts against the timer and needs more than the unit default.
+pytestmark = pytest.mark.timeout(180)
+
 EXAMPLE_FILE_URL = "https://raw.githubusercontent.com/fal-ai/fal/main/projects/fal/tests/assets/cat.png"
 
 

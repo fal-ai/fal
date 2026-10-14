@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import shutil
-import traceback
 from functools import wraps
 from pathlib import Path
 from tempfile import NamedTemporaryFile, mkdtemp
@@ -25,6 +24,7 @@ from pydantic import BaseModel, Field
 from fal.compat import run_in_thread
 from fal.flags import bool_envvar
 from fal.ref import get_current_app
+from fal.toolkit.exceptions import FileUploadFallbackException
 from fal.toolkit.file._upload_policy import (
     UPLOAD_POLICY_KEY,
     UploadPolicyInputError,
@@ -176,20 +176,34 @@ def _try_with_fallback(
         (repository, save_kwargs),
         *((fallback, fallback_save_kwargs) for fallback in fallback_repository),
     ]
+    failures: list[str] = []
     for idx, (repo, kwargs) in enumerate(attempts):
         repo_obj = get_builtin_repository(repo)
         try:
             return getattr(repo_obj, func)(*args, **kwargs)
         except Exception as exc:
             # An uncertain upload must not be replayed through another repository.
-            if idx >= len(attempts) - 1 or not getattr(exc, "falls_back", True):
+            if not getattr(exc, "falls_back", True):
                 raise
 
-            traceback.print_exc()
-            print(
-                f"Failed to {func} to repository {_repo_label(repo)}: {exc}, "
-                f"falling back to {_repo_label(attempts[idx + 1][0])}"
-            )
+            failure = f"{_repo_label(repo)}: {type(exc).__name__}: {exc}"
+            failures.append(failure)
+            if idx < len(attempts) - 1:
+                print(
+                    f"Failed to {func} to repository {failure}, "
+                    f"falling back to {_repo_label(attempts[idx + 1][0])}"
+                )
+                continue
+
+            if len(attempts) == 1:
+                raise
+
+            # The last error alone misleads: a denied fallback would hide the
+            # failure that triggered it.
+            raise FileUploadFallbackException(
+                f"Failed to {func} to all {len(failures)} repositories. "
+                + "; ".join(failures)
+            ) from exc
 
 
 def _get_object_lifecycle_preference_from_context() -> dict[str, str] | None:
