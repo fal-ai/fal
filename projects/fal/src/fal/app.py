@@ -11,7 +11,7 @@ import threading
 import time
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass, field
-from typing import Any, Callable, ClassVar, Optional
+from typing import Any, Callable, ClassVar, Iterator, Optional
 
 import fastapi
 import grpc.aio as async_grpc
@@ -568,6 +568,35 @@ class RequestContext:
     upload_policy: UploadPolicy | None = None
 
 
+def _merge_request_context(ambient: RequestContext, request: Any) -> RequestContext:
+    """``request``'s fields where it carries them, ``ambient``'s elsewhere.
+
+    Callers may pass a partial request, such as one built only to carry an upload
+    policy, so a field it lacks must not erase the in-flight request's.
+    """
+    if isinstance(request, RequestContext):
+        explicit = request
+    else:
+        headers = getattr(request, "headers", None) or {}
+        explicit = RequestContext(
+            request_id=headers.get(REQUEST_ID_KEY),
+            endpoint=headers.get(REQUEST_ENDPOINT_KEY),
+            lifecycle_preference=(
+                request_lifecycle_preference(request) if headers else None
+            ),
+            headers=dict(headers),
+        )
+    return RequestContext(
+        request_id=explicit.request_id or ambient.request_id,
+        endpoint=explicit.endpoint or ambient.endpoint,
+        lifecycle_preference=(
+            explicit.lifecycle_preference or ambient.lifecycle_preference
+        ),
+        headers={**ambient.headers, **explicit.headers},
+        upload_policy=explicit.upload_policy or ambient.upload_policy,
+    )
+
+
 class App(BaseServable):
     """Create a fal serverless application.
 
@@ -970,6 +999,23 @@ class App(BaseServable):
         if self._current_request_context is None:
             return None
         return self._current_request_context.get()
+
+    @contextmanager
+    def bind_request(self, request: Any) -> Iterator[None]:
+        """Make ``request`` the in-flight request for code in this block.
+
+        ``current_request`` is a ContextVar, so a thread the app handed work to
+        sees it empty. Binding the request the work belongs to restores it there.
+        """
+        if request is None or self._current_request_context is None:
+            yield
+            return
+        context = _merge_request_context(self._current_request_context.get(), request)
+        token = self._current_request_context.set(context)
+        try:
+            yield
+        finally:
+            self._current_request_context.reset(token)
 
     def health(self):
         return {"version": self.version}
