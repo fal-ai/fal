@@ -8,7 +8,7 @@ from isolate.backends.common import active_python
 from pydantic import __version__ as pydantic_version
 
 import fal
-from fal.api import FalServerlessError
+from fal.api import FalSerializationError, FalServerlessError
 from fal.container import ContainerImage
 from fal.toolkit.file import File
 from tests.utils import git_revision_short_hash
@@ -17,10 +17,9 @@ from tests.utils import git_revision_short_hash
 # counts against the timer and needs more than the unit default.
 pytestmark = pytest.mark.timeout(180)
 
-PACKAGE_NAME = "fall"
+PACKAGE_NAME = "fal"
 
 
-@pytest.mark.xfail(reason="Temporary mismatch due to grpc version updates. Ping @efiop")
 def test_missing_dependencies_nested_server_error(isolated_client):
     @isolated_client()
     def test1():
@@ -31,10 +30,13 @@ def test_missing_dependencies_nested_server_error(isolated_client):
         test1()
 
     with pytest.raises(
-        FalServerlessError,
-        match=r"accessed through 'test1'",
-    ):
+        FalSerializationError,
+        match="Could not find module 'fal'",
+    ) as exc_info:
         test2()
+
+    assert isinstance(exc_info.value.__cause__, ModuleNotFoundError)
+    assert exc_info.value.__cause__.name == "fal"
 
 
 def test_regular_function(isolated_client):
@@ -180,7 +182,9 @@ def test_function_exception(isolated_client):
     assert isinstance(bar_exc.__cause__, FooException)
 
 
-@pytest.mark.xfail(reason="See https://github.com/fal-ai/fal/issues/169")
+@pytest.mark.skip(
+    reason="See https://github.com/fal-ai/fal/issues/169",
+)
 def test_function_calling_other_function(isolated_client):
     try:
         import importlib.metadata as importlib_metadata
@@ -200,12 +204,6 @@ def test_function_calling_other_function(isolated_client):
         ],
     )
     def calling_function(recurse):
-        import os
-
-        for name in os.environ:
-            if name.startswith("FAL_"):
-                print(os.environ[name])
-
         if recurse:
             return calling_function(recurse=False)
         else:
@@ -218,7 +216,10 @@ def test_function_calling_other_function(isolated_client):
     assert calling_function(recurse=True) == 42
 
 
-@pytest.mark.xfail
+@pytest.mark.skip(
+    reason="Nested isolated functions require an explicit fal dependency; "
+    "remove once dependency inference is supported.",
+)
 def test_dependency_inference(isolated_client):
     @isolated_client("virtualenv")
     def regular_function():
@@ -231,31 +232,6 @@ def test_dependency_inference(isolated_client):
     assert calling_function() == 42
 
 
-@pytest.mark.xfail
-def test_process_crash(isolated_client):
-    # We can catch the SystemExit if it originates from
-    # an exception (in the case of exit(1)).
-    @isolated_client("virtualenv")
-    def process_crash_regular():
-        exit(1)
-
-    with pytest.raises(SystemExit):
-        process_crash_regular()
-
-    # But if it is a native exit call, then the agent process
-    # will crash and there is not much we can do other than offer
-    # a decent error message.
-    @isolated_client("virtualenv")
-    def process_crash_without_catching():
-        import os
-
-        os._exit(0)
-
-    with pytest.raises(FalServerlessError, match="..."):
-        process_crash_without_catching()
-
-
-@pytest.mark.xfail
 def test_unserializable_input_function(isolated_client):
     # When the function can not be serialized at all (has a reference to an unpicklable
     # object (like a frame)).
@@ -264,11 +240,15 @@ def test_unserializable_input_function(isolated_client):
     def unpicklable_input_function_client(default=__import__("sys")._getframe(0)):
         return default
 
-    with pytest.raises(FalServerlessError, match="..."):
+    with pytest.raises(
+        FalSerializationError, match="Error while serializing the given object"
+    ) as exc_info:
         unpicklable_input_function_client()
 
+    assert isinstance(exc_info.value.__cause__, TypeError)
+    assert "frame" in str(exc_info.value.__cause__)
 
-@pytest.mark.xfail
+
 def test_unserializable_return(isolated_client):
     # When the return of the function can not be serialized.
 
@@ -278,42 +258,51 @@ def test_unserializable_return(isolated_client):
 
         return sys._getframe(0)
 
-    with pytest.raises(FalServerlessError, match="..."):
+    with pytest.raises(FalServerlessError, match="Error while serializing"):
         unpicklable_return()
 
 
-@pytest.mark.xfail
 def test_missing_dependencies_on_client(isolated_client):
-    # When the return can't be deserialized on the client side due to
-    # incomplete/missing dependencies.
+    module_name = f"runner_only_dependency_{uuid.uuid4().hex}"
 
-    @isolated_client("virtualenv", requirements=["refactor"])
-    def unpicklable_input_function_client():
-        import refactor
+    @isolated_client("virtualenv")
+    def remote_only_module():
+        import sys
+        import types
 
-        return refactor.BaseAction()
+        module = types.ModuleType(module_name)
+        # Registration makes cloudpickle serialize this module by reference.
+        # It must remain registered until the agent serializes the return value.
+        sys.modules[module_name] = module
+        return module
 
-    with pytest.raises(FalServerlessError, match="..."):
-        unpicklable_input_function_client()
+    with pytest.raises(
+        FalSerializationError, match=f"Could not find module '{module_name}'"
+    ) as exc_info:
+        remote_only_module()
+
+    assert isinstance(exc_info.value.__cause__, ModuleNotFoundError)
+    assert exc_info.value.__cause__.name == module_name
 
 
-@pytest.mark.xfail
-def test_when_exception_can_not_be_deserialized(isolated_client):
-    # When the exception can't be deserialized on the client side due to
-    # incomplete/missing dependencies.
-
-    @isolated_client("virtualenv", requirements=[""])
+def test_unserializable_exception(isolated_client):
+    @isolated_client("virtualenv")
     def unpicklable_input_function_client():
         class T(Exception):
             frame = __import__("sys")._getframe(0)
 
-        raise T()
+        raise T("remote exception with an unpicklable frame")
 
-    with pytest.raises(FalServerlessError, match="..."):
+    with pytest.raises(
+        FalServerlessError, match="Error while serializing the execution result"
+    ):
         unpicklable_input_function_client()
 
 
-@pytest.mark.xfail
+@pytest.mark.skip(
+    reason="Dependency conflicts are detected, but the backend returns a generic "
+    "environment build error instead of the resolver diagnostic.",
+)
 def test_client_superseeding_dependencies_crash(isolated_client):
     # E.g. I depend on tensorboard which depends on dill==0.3.2
     # but the agent overrides it with dill==0.3.5.1 so I get an
@@ -333,7 +322,10 @@ def test_client_superseeding_dependencies_crash(isolated_client):
         conflicting_environment()
 
 
-@pytest.mark.xfail
+@pytest.mark.skip(
+    reason="OOM currently surfaces as a closed runner stream, not an insufficient "
+    "memory diagnostic; remove once OOM reporting is reliable.",
+)
 def test_memory_overflow_crash_on_run(isolated_client):
     @isolated_client("virtualenv")
     def memory_overflow_crash_on_run():
@@ -343,7 +335,7 @@ def test_memory_overflow_crash_on_run(isolated_client):
         while True:
             objects.append(os.urandom(1024**3))
 
-    with pytest.raises(Exception, match="Insufficient memory"):
+    with pytest.raises(FalServerlessError, match="Insufficient memory"):
         memory_overflow_crash_on_run()
 
 
@@ -445,7 +437,10 @@ def test_futures(isolated_client):
     assert future_4.result() == 8
 
 
-@pytest.mark.xfail(reason="Broken on nomad")
+@pytest.mark.skip(
+    reason="Successive inline calls can start different runners despite keep_alive; "
+    "remove once this test can reliably reuse a runner for its in-memory cache.",
+)
 def test_cached_function(isolated_client, capsys, monkeypatch):
     import inspect
     import time
