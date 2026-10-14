@@ -2,6 +2,9 @@
 
 Acceptance is durable on this node, not CDN completion; callers that need the
 CDN copy wait for completion. Do not serialize live connections.
+
+Uploads carry the in-flight request's x-fal-* headers, which only the gateway
+sets, and every request names the runner's app in x-fal-application.
 """
 
 from __future__ import annotations
@@ -13,6 +16,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Iterable, Iterator
 from urllib.parse import quote
 
+from fal.ref import get_current_app
 from fal.toolkit.exceptions import FileUploadException
 
 if TYPE_CHECKING:
@@ -28,6 +32,16 @@ _CHUNK_SIZE = 64 * 1024
 _REJECTION_DELAYS = (0.1, 0.2)
 # How long each status request holds while the upload is pending.
 _WAIT_SECONDS = 60
+# Uploader inputs come only from the upload itself, never from the request: a
+# policy upload must stay credential-free, and an explicit lifecycle choice wins.
+_UPLOADER_INPUTS = {
+    "x-fal-application",
+    "x-fal-cdn-token",
+    "x-fal-file-name",
+    "x-fal-object-lifecycle",
+    "x-fal-object-lifecycle-preference",
+    "x-fal-request-id",
+}
 
 
 class LocalUploadError(FileUploadException):
@@ -66,7 +80,7 @@ def upload(
     """
     size = len(content) if isinstance(content, bytes) else content.stat().st_size
     headers = {
-        **headers,
+        **_with_request_headers(headers),
         "X-Fal-File-Name": _header_file_name(file_name),
         "Content-Length": str(size),
     }
@@ -87,12 +101,32 @@ def upload_stream(
     """Return the URL once a body of unknown size is durably accepted, or once the
     CDN has it when waiting for completion.
     """
-    headers = {**headers, "X-Fal-File-Name": _header_file_name(file_name)}
+    headers = {
+        **_with_request_headers(headers),
+        "X-Fal-File-Name": _header_file_name(file_name),
+    }
     with _new_client() as http:
         upload_id, file_url = _stream(http, chunks, headers)
         if wait_for_completion:
             _wait_for_completion(http, upload_id)
     return file_url
+
+
+def _with_request_headers(headers: dict[str, str]) -> dict[str, str]:
+    """Add the in-flight request's x-fal-* context headers.
+
+    Values that cannot travel as ASCII are skipped rather than fail the upload.
+    """
+    request = getattr(get_current_app(), "current_request", None)
+    context = request.headers if request else {}
+    forwarded = {
+        name: value
+        for name, value in context.items()
+        if name.lower().startswith("x-fal-")
+        and name.lower() not in _UPLOADER_INPUTS
+        and value.isascii()
+    }
+    return {**forwarded, **headers}
 
 
 def _accept(
@@ -261,7 +295,9 @@ def _new_client() -> httpx.Client:
 
     # Resolve the socket on the runner, not when serializing the app.
     socket_path = os.environ.get("FAL_API_SOCKET", DEFAULT_SOCKET_PATH)
+    app_name = os.environ.get("FAL_APP_NAME")
     return httpx.Client(
+        headers={"x-fal-application": app_name} if app_name else None,
         transport=httpx.HTTPTransport(
             uds=socket_path, verify=False, retries=0, trust_env=False
         ),
