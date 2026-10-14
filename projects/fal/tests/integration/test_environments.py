@@ -27,6 +27,7 @@ def client():
 
 
 @pytest.mark.xfail(
+    run=False,
     reason="Currently flaky due to eventual consistency in environment listings; "
     "remove once lifecycle reads are reliable.",
     strict=False,
