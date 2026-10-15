@@ -510,8 +510,7 @@ class File(BaseModel):
         ``pending.complete(data)``, or give the URL up with ``pending.abort()``.
 
         The request context is read here, not at ``complete``. If ``complete``
-        fails, the URL stays dead: nothing falls back once a URL is out. The
-        node-local uploader drops a reservation after 300 s without progress.
+        fails, the URL stays dead: nothing falls back once a URL is out.
         """
         fdata = FileData(b"", content_type, file_name)
         upload_policy = get_upload_policy(request)
