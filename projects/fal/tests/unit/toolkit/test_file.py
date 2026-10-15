@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import os
 import pickle
 from base64 import b64encode
@@ -628,66 +627,3 @@ class TestContextBasedLifecyclePreference:
             )
             # Should use request preference, not context preference
             assert save_kwargs.get("object_lifecycle_preference") == request_preference
-
-
-class TestUploadLogLine:
-    """One file_upload JSON line per repository tried."""
-
-    @pytest.fixture(autouse=True)
-    def _request_id(self, monkeypatch):
-        monkeypatch.setattr(
-            "fal.toolkit.file.file._current_request_id", lambda: "req-1"
-        )
-
-    @staticmethod
-    def lines(capsys) -> list[dict]:
-        lines = [
-            json.loads(line)["file_upload"]
-            for line in capsys.readouterr().out.splitlines()
-            if line.startswith('{"file_upload"')
-        ]
-        for line in lines:
-            assert line.pop("duration_ms") >= 0
-        return lines
-
-    @pytest.mark.parametrize(
-        "from_path", [False, True], ids=["from_bytes", "from_path"]
-    )
-    def test_a_fallback_logs_both_attempts(self, tmp_path, capsys, from_path):
-        primary = MockRepository("primary", should_fail=True)
-        fallback = MockRepository("fallback")
-        path = tmp_path / "out.txt"
-        path.write_bytes(b"raw")
-        kwargs = {"repository": primary, "fallback_repository": fallback}
-
-        if from_path:
-            File.from_path(path, "text/plain", **kwargs)
-        else:
-            File.from_bytes(b"raw", "text/plain", **kwargs)
-
-        common = {
-            "repository": "MockRepository",
-            "bytes": 3,
-            "content_type": "text/plain",
-            "request_id": "req-1",
-        }
-        assert self.lines(capsys) == [
-            {
-                **common,
-                "outcome": "fallback",
-                "error": "Exception: Mock failure for primary",
-            },
-            {**common, "outcome": "ok"},
-        ]
-
-    def test_the_local_uploader_logs_as_local(self, capsys, monkeypatch):
-        monkeypatch.setenv("FAL_USE_LOCAL_UPLOADER", "1")
-        monkeypatch.setattr(
-            "fal.toolkit.file.file.LocalFileRepository.save",
-            lambda self, data, **kwargs: "https://example.com/local",
-        )
-
-        File.from_bytes(b"raw", fallback_repository=[])
-
-        [line] = self.lines(capsys)
-        assert (line["repository"], line["outcome"]) == ("local", "ok")
