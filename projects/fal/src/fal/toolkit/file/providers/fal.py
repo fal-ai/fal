@@ -774,12 +774,9 @@ class MultipartUploadV3:
             with _maybe_retry_request(req):
                 pass
         except HTTPError as e:
-            # 409: an earlier attempt, whose response was lost, already
-            # completed this upload. The object is stored.
-            if e.code != 409:
-                raise FileUploadException(
-                    f"Error completing upload {url}. Status {e.status}: {e.reason}"
-                )
+            raise FileUploadException(
+                f"Error completing upload {url}. Status {e.status}: {e.reason}"
+            )
 
         return self.access_url
 
@@ -795,6 +792,8 @@ class MultipartUploadV3:
                 return f.read(self.chunk_size)
 
         size = len(content) if isinstance(content, bytes) else content.stat().st_size
+        # Only this attempt's parts: a retried upload must not send stale ones.
+        self._parts = []
         with concurrent.futures.ThreadPoolExecutor(
             max_workers=self.max_concurrency
         ) as executor:

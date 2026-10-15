@@ -16,6 +16,7 @@ import pytest
 from starlette.requests import Request
 
 from fal.auth import AuthCredentials
+from fal.toolkit.exceptions import FileUploadException
 from fal.toolkit.file import _local_uploader
 from fal.toolkit.file import _upload_policy as upload_policy
 from fal.toolkit.file import file as files
@@ -678,15 +679,17 @@ def test_reserve_abort_and_failed_complete_delete_the_session(local_upload, tran
     assert [r.method for r in requests] == ["POST", "DELETE"]
 
 
-def _fake_cdn(monkeypatch, complete_status=None):
-    """Answer the REST multipart API and record each request."""
+def _fake_cdn(monkeypatch, complete_statuses=()):
+    """Answer the REST multipart API and record each request; each /complete
+    answers the next of `complete_statuses` with an error, then succeeds."""
     calls = []
+    failures = list(complete_statuses)
 
     @contextmanager
     def respond(request, **_kwargs):
         calls.append(request)
-        if complete_status and request.full_url.endswith("/complete"):
-            raise HTTPError(request.full_url, complete_status, "", {}, None)
+        if failures and request.full_url.endswith("/complete"):
+            raise HTTPError(request.full_url, failures.pop(0), "", {}, None)
         body = {"file_url": "https://v3.fal.media/out", "upload_url": "https://up/x"}
         response = io.BytesIO(json.dumps(body).encode())
         response.headers = {"ETag": "etag"}
@@ -727,15 +730,20 @@ def test_reserve_falls_back_to_a_direct_multipart_upload(
     ]
 
 
-def test_reserve_complete_accepts_an_already_completed_upload(
+def test_reserve_failed_complete_raises_and_a_retry_sends_fresh_parts(
     monkeypatch, local_upload, transport
 ):
     transport(_respond(httpx.Response(404)))
-    calls = _fake_cdn(monkeypatch, complete_status=409)
+    # 409 also means a deleted or expired upload, so it is never success.
+    calls = _fake_cdn(monkeypatch, complete_statuses=[409])
     pending = files.File.reserve("text/plain", "out.txt")
+    with pytest.raises(FileUploadException):
+        pending.complete(b"hi")
     assert pending.complete(b"hi").url == pending.url
-    # An earlier attempt already completed the upload.
-    assert [c.full_url for c in calls].count("https://up/x/complete") == 1
+    completes = [c for c in calls if c.full_url == "https://up/x/complete"]
+    assert [json.loads(c.data)["parts"] for c in completes] == [
+        [{"partNumber": 1, "etag": "etag"}]
+    ] * 2
 
 
 def _caller_request(**headers):
