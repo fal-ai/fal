@@ -81,9 +81,18 @@
 <li class="toctree-l4"><a class="reference internal" href="fal.toolkit.file.html#fal.toolkit.file.file.File.from_path"><code class="docutils literal notranslate"><span class="pre">File.from_path()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.toolkit.file.html#fal.toolkit.file.file.File.from_path_async"><code class="docutils literal notranslate"><span class="pre">File.from_path_async()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.toolkit.file.html#fal.toolkit.file.file.File.model_config"><code class="docutils literal notranslate"><span class="pre">File.model_config</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.toolkit.file.html#fal.toolkit.file.file.File.reserve"><code class="docutils literal notranslate"><span class="pre">File.reserve()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.toolkit.file.html#fal.toolkit.file.file.File.save"><code class="docutils literal notranslate"><span class="pre">File.save()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.toolkit.file.html#fal.toolkit.file.file.File.save_async"><code class="docutils literal notranslate"><span class="pre">File.save_async()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.toolkit.file.html#fal.toolkit.file.file.File.url"><code class="docutils literal notranslate"><span class="pre">File.url</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.toolkit.file.html#fal.toolkit.file.file.PendingFile"><code class="docutils literal notranslate"><span class="pre">PendingFile</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.toolkit.file.html#fal.toolkit.file.file.PendingFile.abort"><code class="docutils literal notranslate"><span class="pre">PendingFile.abort()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.toolkit.file.html#fal.toolkit.file.file.PendingFile.complete"><code class="docutils literal notranslate"><span class="pre">PendingFile.complete()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.toolkit.file.html#fal.toolkit.file.file.PendingFile.content_type"><code class="docutils literal notranslate"><span class="pre">PendingFile.content_type</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.toolkit.file.html#fal.toolkit.file.file.PendingFile.file_name"><code class="docutils literal notranslate"><span class="pre">PendingFile.file_name</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.toolkit.file.html#fal.toolkit.file.file.PendingFile.url"><code class="docutils literal notranslate"><span class="pre">PendingFile.url</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="fal.toolkit.file.html#fal.toolkit.file.file.request_lifecycle_preference"><code class="docutils literal notranslate"><span class="pre">request_lifecycle_preference()</span></code></a></li>
@@ -97,8 +106,15 @@
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="fal.toolkit.file.html#fal.toolkit.file.types.FileRepository"><code class="docutils literal notranslate"><span class="pre">FileRepository</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.toolkit.file.html#fal.toolkit.file.types.FileRepository.reserve"><code class="docutils literal notranslate"><span class="pre">FileRepository.reserve()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.toolkit.file.html#fal.toolkit.file.types.FileRepository.save"><code class="docutils literal notranslate"><span class="pre">FileRepository.save()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="fal.toolkit.file.html#fal.toolkit.file.types.FileRepository.save_file"><code class="docutils literal notranslate"><span class="pre">FileRepository.save_file()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="fal.toolkit.file.html#fal.toolkit.file.types.Reservation"><code class="docutils literal notranslate"><span class="pre">Reservation</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="fal.toolkit.file.html#fal.toolkit.file.types.Reservation.abort"><code class="docutils literal notranslate"><span class="pre">Reservation.abort()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.toolkit.file.html#fal.toolkit.file.types.Reservation.complete"><code class="docutils literal notranslate"><span class="pre">Reservation.complete</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="fal.toolkit.file.html#fal.toolkit.file.types.Reservation.url"><code class="docutils literal notranslate"><span class="pre">Reservation.url</span></code></a></li>
 </ul>
 </li>
 </ul>
@@ -1742,6 +1758,20 @@ This option can be applied only to iterable types (list, tuple, set, and frozens
 <dt class="sig sig-object py" id="fal.toolkit.File.model_config">
 <span class="sig-name descname"><span class="pre">model_config</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">ClassVar[ConfigDict]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">{}</span></em><a class="headerlink" href="#fal.toolkit.File.model_config" title="Link to this definition">¶</a></dt>
 <dd><p>Configuration for the model, should be a dictionary conforming to [<cite>ConfigDict</cite>][pydantic.config.ConfigDict].</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="fal.toolkit.File.reserve">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">reserve</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">content_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">file_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">request</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">repository</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'fal_v3'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fal.toolkit.File.reserve" title="Link to this definition">¶</a></dt>
+<dd><p>Get the file’s URL now; send the bytes later with
+<code class="docutils literal notranslate"><span class="pre">pending.complete(data)</span></code>, or give the URL up with <code class="docutils literal notranslate"><span class="pre">pending.abort()</span></code>.</p>
+<p>The request context is read here, not at <code class="docutils literal notranslate"><span class="pre">complete</span></code>. If <code class="docutils literal notranslate"><span class="pre">complete</span></code>
+fails, the URL stays dead: nothing falls back once a URL is out.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference internal" href="fal.toolkit.file.html#fal.toolkit.file.file.PendingFile" title="fal.toolkit.file.file.PendingFile"><code class="xref py py-class docutils literal notranslate"><span class="pre">PendingFile</span></code></a></span></p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py method">
