@@ -651,7 +651,6 @@ def test_aiortc_peer_connects_to_real_client_data_channel(monkeypatch):
     from fal.wma import _raw
 
     async def scenario():
-        monkeypatch.setattr(ice.Connection, "close", ice.Connection.close)
         # Zero-network setup: ``iceServers=[]`` (not None) disables aiortc's
         # default Google STUN, host discovery is pinned to loopback (aioice
         # excludes 127.0.0.1, and CI runners have no globally routable
@@ -912,9 +911,6 @@ def test_offer_without_media_for_server_tracks_is_a_client_offer_error(monkeypat
     )
 
     from fal.wma._raw import negotiate_answer
-
-    # Negotiation installs a process-wide shim; restore it after this test.
-    monkeypatch.setattr(ice.Connection, "close", ice.Connection.close)
 
     monkeypatch.setattr(
         ice, "get_host_addresses", lambda use_ipv4, use_ipv6: ["127.0.0.1"]

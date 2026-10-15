@@ -150,15 +150,22 @@ class DistributedWorker:
         :param coro: The coroutine to submit to the event loop.
         :return: A future that will resolve to the result of the coroutine.
         """
-        if not self.running:
-            raise RuntimeError("Event loop is not running.")
-        return asyncio.run_coroutine_threadsafe(coro, self.loop)
+        try:
+            if not self.running:
+                raise RuntimeError("Event loop is not running.")
+            return asyncio.run_coroutine_threadsafe(coro, self.loop)
+        except Exception:
+            coro.close()
+            raise
 
     def shutdown(self, timeout: Optional[Union[int, float]] = None) -> None:
         """
         Shutdown the event loop.
         :param timeout: The timeout for the shutdown.
         """
+        if not self.running:
+            return
+
         try:
             self.run_in_worker(self.teardown).result()
         except Exception as e:

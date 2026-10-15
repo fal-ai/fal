@@ -10,6 +10,13 @@ class FileUploadException(FalTookitException):
     pass
 
 
+class FileUploadFallbackException(FileUploadException):
+    """Raised when the primary repository and every fallback failed; the
+    message lists each attempt's error in order."""
+
+    pass
+
+
 class KVStoreException(FalTookitException):
     """Raised when KV store operation fails"""
 

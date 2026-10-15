@@ -3,6 +3,8 @@
 Private and meant to be temporary: this is the SDK-side stopgap until infra
 ships a first-class upload destination, at which point this module goes away.
 Hence the leading underscore -- nothing here is a supported public API.
+Runners opted in to the node-local uploader hand the upload to it instead and
+use this path only when it refuses (``providers.local.save_with_policy``).
 
 The ``x-app-fal-upload-policy`` header carries an S3 pre-signed POST policy --
 the JSON from boto3's ``generate_presigned_post()``::
@@ -556,12 +558,9 @@ def _validate_size(nbytes: int) -> None:
         )
 
 
-def _prepare_upload(
-    policy: UploadPolicy,
-    file_name: str,
-    content_type: str,
-) -> tuple[str, dict[str, PolicyFieldValue]]:
-    """Resolve the destination URL and the POST form fields.
+def _upload_file_name(policy: UploadPolicy, file_name: str, content_type: str) -> str:
+    """Check an output against the policy and return the name its key is built
+    from, the value that replaces ``${filename}``.
 
     The uuid prefix keeps concurrent uploads from colliding on a shared policy,
     which is signed once and typically reused for a whole request.
@@ -581,26 +580,36 @@ def _prepare_upload(
     # generation. Re-checked here because upload_* is exported, so a caller can
     # hand-build an UploadPolicy that never passed parse_upload_policy.
     _validate_policy_url(policy.url)
-    fields = dict(policy.fields)
-    key_template = _require_key_template(fields)
+    _require_key_template(policy.fields)
 
-    upload_file_name = f"{uuid4().hex}-{file_name}"
-    final_key = key_template.replace(
-        UPLOAD_POLICY_FILENAME_PLACEHOLDER, upload_file_name
+    # Signed fields cannot be rewritten: the Content-Type is injected only if
+    # the caller left it out, otherwise it must agree or S3 answers an opaque 403.
+    for name, value in policy.fields.items():
+        if _reserved_name(name) == "content-type" and value != content_type:
+            raise UploadPolicyInputError(
+                f"Invalid {UPLOAD_POLICY_KEY} header: fields.{name} is "
+                f"{value!r} but the file being uploaded is "
+                f"{content_type!r}; a signed Content-Type cannot be changed"
+            )
+    return f"{uuid4().hex}-{file_name}"
+
+
+def _prepare_upload(
+    policy: UploadPolicy,
+    file_name: str,
+    content_type: str,
+    *,
+    name: str | None = None,
+) -> tuple[str, dict[str, PolicyFieldValue]]:
+    """Resolve the destination URL and the POST form fields."""
+    name = name or _upload_file_name(policy, file_name, content_type)
+    fields = dict(policy.fields)
+    final_key = _require_key_template(fields).replace(
+        UPLOAD_POLICY_FILENAME_PLACEHOLDER, name
     )
     fields["key"] = final_key
-
-    # Signed fields cannot be rewritten: inject Content-Type only if the caller
-    # left it out, otherwise require agreement or S3 answers an opaque 403.
-    existing = [name for name in fields if _reserved_name(name) == "content-type"]
-    if not existing:
+    if not any(_reserved_name(field) == "content-type" for field in fields):
         fields["Content-Type"] = content_type
-    elif fields[existing[0]] != content_type:
-        raise UploadPolicyInputError(
-            f"Invalid {UPLOAD_POLICY_KEY} header: fields.{existing[0]} is "
-            f"{fields[existing[0]]!r} but the file being uploaded is "
-            f"{content_type!r}; a signed Content-Type cannot be changed"
-        )
 
     encoded_key = urllib.parse.quote(final_key.lstrip("/"), safe="/~")
     access_url = f"{policy.url.rstrip('/')}/{encoded_key}"
@@ -892,8 +901,16 @@ def drain(timeout: float | None = UPLOAD_POLICY_DRAIN_TIMEOUT) -> None:
         )
 
 
-def _current_request_id() -> str | None:
-    return getattr(_current_request(), "request_id", None)
+def _request_id(request: Any = None) -> str | None:
+    """The request's id: a field on the app's request context, a header on a
+    bare request. Defaults to the request in flight."""
+    if request is None:
+        request = _current_request()
+    if request is None:
+        return None
+    return getattr(request, "request_id", None) or request.headers.get(
+        "x-fal-request-id"
+    )
 
 
 def upload_bytes_with_policy(
@@ -901,6 +918,9 @@ def upload_bytes_with_policy(
     file_name: str,
     data: bytes,
     content_type: str,
+    *,
+    name: str | None = None,
+    request: Any = None,
 ) -> str:
     """Queue ``data`` for upload and return the URL it will appear at.
 
@@ -908,7 +928,7 @@ def upload_bytes_with_policy(
     what that means for the caller.
     """
     _validate_size(len(data))
-    access_url, fields = _prepare_upload(policy, file_name, content_type)
+    access_url, fields = _prepare_upload(policy, file_name, content_type, name=name)
 
     def _post(client: httpx.Client) -> httpx.Response:
         return client.post(
@@ -917,7 +937,7 @@ def upload_bytes_with_policy(
             files={"file": (file_name, data, content_type)},
         )
 
-    _submit(_post, _current_request_id(), nbytes=len(data))
+    _submit(_post, _request_id(request), nbytes=len(data))
     return access_url
 
 
@@ -926,6 +946,9 @@ def upload_path_with_policy(
     file_path: Path,
     file_name: str,
     content_type: str,
+    *,
+    name: str | None = None,
+    request: Any = None,
 ) -> str:
     """As :func:`upload_bytes_with_policy`, for a file on disk.
 
@@ -941,8 +964,8 @@ def upload_path_with_policy(
     an open file, so there the name lingers until the handle closes.
     """
     _validate_size(file_path.stat().st_size)
-    access_url, fields = _prepare_upload(policy, file_name, content_type)
-    request_id = _current_request_id()
+    access_url, fields = _prepare_upload(policy, file_name, content_type, name=name)
+    request_id = _request_id(request)
 
     # Stage on the source's own volume, not the default temp dir: the payload can
     # be large (up to 5 GB) and belongs next to where it was written rather than
