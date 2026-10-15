@@ -603,8 +603,6 @@ def _session(request):
         return httpx.Response(201, json=started)
     if request.method == "PUT":
         return httpx.Response(204)
-    if request.method == "GET":
-        return COMPLETED
     return httpx.Response(202, json=ACCEPTED)
 
 
@@ -637,9 +635,8 @@ def test_failed_producer_aborts_the_stream(local_upload, transport):
 
 
 @pytest.mark.parametrize("source", ["bytes", "path"])
-@pytest.mark.parametrize("wait", [False, True])
 def test_reserve_hands_out_the_url_before_the_body(
-    local_upload, transport, caller, tmp_path, source, wait
+    local_upload, transport, caller, tmp_path, source
 ):
     requests = transport(_session)
     caller({"x-fal-cdn-token": "caller-token"}, "request-id")
@@ -652,9 +649,7 @@ def test_reserve_hands_out_the_url_before_the_body(
 
     path = tmp_path / "out.txt"
     path.write_bytes(b"hello")
-    result = pending.complete(
-        b"hello" if source == "bytes" else path, wait_for_completion=wait
-    )
+    result = pending.complete(b"hello" if source == "bytes" else path)
     assert (result.url, result.file_name, result.file_size) == (
         ACCEPTED["file_url"],
         "out.txt",
@@ -663,7 +658,6 @@ def test_reserve_hands_out_the_url_before_the_body(
     assert [(r.method, r.url.path) for r in requests[1:]] == [
         ("PUT", "/v1/upload-sessions/session-id/body"),
         ("POST", "/v1/upload-sessions/session-id/finish"),
-        *([("GET", "/v1/uploads/accepted-id")] if wait else []),
     ]
     assert requests[1].content == b"hello"
     assert json.loads(requests[2].content) == {"size_bytes": 5}

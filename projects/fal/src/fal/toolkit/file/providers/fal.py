@@ -823,9 +823,7 @@ class _MultipartReservation(Reservation):
         self.multipart = multipart
         self.url = multipart.access_url
 
-    def complete(
-        self, content: bytes | Path, *, wait_for_completion: bool = False
-    ) -> None:
+    def complete(self, content: bytes | Path) -> None:
         self.multipart.upload(content)
 
 

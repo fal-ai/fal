@@ -566,18 +566,16 @@ class PendingFile:
 
     content_type: str
     file_name: str
-    reservation: Reservation = field(repr=False)
+    _reservation: Reservation = field(repr=False)
 
     @property
     def url(self) -> str:
-        return self.reservation.url
+        return self._reservation.url
 
-    def complete(
-        self, content: bytes | str | Path, *, wait_for_completion: bool = False
-    ) -> File:
+    def complete(self, content: bytes | str | Path) -> File:
         if not isinstance(content, bytes):
             content = Path(content)
-        self.reservation.complete(content, wait_for_completion=wait_for_completion)
+        self._reservation.complete(content)
         return File(
             url=self.url,
             content_type=self.content_type,
@@ -589,7 +587,7 @@ class PendingFile:
         )
 
     def abort(self) -> None:
-        self.reservation.abort()
+        self._reservation.abort()
 
 
 class CompressedFile(File):

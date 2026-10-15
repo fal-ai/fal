@@ -158,9 +158,7 @@ class PolicyReservation(Reservation):
         # which a background complete runs without.
         self.context = contextvars.copy_context()
 
-    def complete(
-        self, content: bytes | Path, *, wait_for_completion: bool = False
-    ) -> None:
+    def complete(self, content: bytes | Path) -> None:
         self.context.run(
             save_with_policy,
             self.policy,

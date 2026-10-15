@@ -37,9 +37,7 @@ RepositoryId = Literal[
 class Reservation:
     url: str
 
-    def complete(
-        self, content: bytes | Path, *, wait_for_completion: bool = False
-    ) -> None:
+    def complete(self, content: bytes | Path) -> None:
         raise NotImplementedError()
 
     def abort(self) -> None:

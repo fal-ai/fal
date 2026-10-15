@@ -120,14 +120,10 @@ class Session(Reservation):
         self.session_id = session_id
         self.url = url
 
-    def complete(
-        self, content: bytes | Path, *, wait_for_completion: bool = False
-    ) -> None:
+    def complete(self, content: bytes | Path) -> None:
         body = [content] if isinstance(content, bytes) else _chunks(content)
         with _new_client() as http:
-            upload_id, _ = _send(http, self.session_id, body)
-            if wait_for_completion:
-                _wait_for_completion(http, upload_id)
+            _send(http, self.session_id, body)
 
     def abort(self) -> None:
         with _new_client() as http, suppress(LocalUploadError):
