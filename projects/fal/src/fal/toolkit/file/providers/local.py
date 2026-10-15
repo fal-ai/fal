@@ -18,6 +18,7 @@ from fal.flags import bool_envvar
 from fal.toolkit.file._local_uploader import (
     LocalUploadInvalid,
     LocalUploadRefused,
+    reserve,
     upload,
     upload_stream,
 )
@@ -26,6 +27,7 @@ from fal.toolkit.file._upload_policy import (
     UploadPolicy,
     UploadPolicyError,
     _current_request_id,
+    _prepare_upload,
     _upload_file_name,
     _validate_size,
     upload_bytes_with_policy,
@@ -36,7 +38,7 @@ from fal.toolkit.file.providers.fal import (
     MultipartUploadV3,
     _object_lifecycle_headers,
 )
-from fal.toolkit.file.types import FileData, FileRepository
+from fal.toolkit.file.types import FileData, FileRepository, Reservation
 
 
 def _or_direct(method):
@@ -117,6 +119,16 @@ class LocalFileRepository(FileRepository):
         )
         return url, data
 
+    @_or_direct
+    def reserve(
+        self,
+        file_name: str,
+        content_type: str,
+        object_lifecycle_preference: dict[str, str] | None = None,
+    ) -> Reservation:
+        """Open an upload session; its URL exists before the bytes."""
+        return reserve(file_name, _headers(content_type, object_lifecycle_preference))
+
     def save_stream(
         self,
         chunks: Iterable[bytes],
@@ -135,17 +147,44 @@ class LocalFileRepository(FileRepository):
         )
 
 
+class PolicyReservation(Reservation):
+    """The URL of an object in the caller's bucket, known from the policy's key
+    before the bytes exist."""
+
+    def __init__(self, policy: UploadPolicy, file_name: str, content_type: str) -> None:
+        self.policy = policy
+        self.file_name = file_name
+        self.content_type = content_type
+        self.name = _upload_file_name(policy, file_name, content_type)
+        self.url, _ = _prepare_upload(policy, file_name, content_type, name=self.name)
+
+    def complete(
+        self, content: bytes | Path, *, wait_for_completion: bool = False
+    ) -> None:
+        # Neither upload path waits for the bucket.
+        save_with_policy(
+            self.policy, self.file_name, content, self.content_type, name=self.name
+        )
+
+
 def save_with_policy(
-    policy: UploadPolicy, file_name: str, content: bytes | Path, content_type: str
+    policy: UploadPolicy,
+    file_name: str,
+    content: bytes | Path,
+    content_type: str,
+    *,
+    name: str | None = None,
 ) -> str:
     """Upload to the caller's bucket and return the URL the object will have.
 
     Opted-in runners hand the upload to the node-local uploader. Any other
     runner, or a refusal, uploads in-process. Neither waits for the bucket.
+    ``name`` is the key name a reservation already handed out a URL for.
     """
+    name = name or _upload_file_name(policy, file_name, content_type)
     if bool_envvar("FAL_USE_LOCAL_UPLOADER"):
         try:
-            return _upload_with_policy(policy, file_name, content, content_type)
+            return _upload_with_policy(policy, name, content, content_type)
         except LocalUploadInvalid as exc:
             raise UploadPolicyError(
                 f"Upload via {UPLOAD_POLICY_KEY} was refused: {exc}"
@@ -153,19 +192,21 @@ def save_with_policy(
         except LocalUploadRefused as exc:
             print(f"{exc} Uploading in-process.")
     if isinstance(content, bytes):
-        return upload_bytes_with_policy(policy, file_name, content, content_type)
-    return upload_path_with_policy(policy, content, file_name, content_type)
+        return upload_bytes_with_policy(
+            policy, file_name, content, content_type, name=name
+        )
+    return upload_path_with_policy(policy, content, file_name, content_type, name=name)
 
 
 def _upload_with_policy(
-    policy: UploadPolicy, file_name: str, content: bytes | Path, content_type: str
+    policy: UploadPolicy, name: str, content: bytes | Path, content_type: str
 ) -> str:
     _validate_size(
         len(content) if isinstance(content, bytes) else content.stat().st_size
     )
     # Percent-encoded so a non-ASCII name can travel in the header; the
     # uploader decodes it, so the key matches the in-process path.
-    name = quote(_upload_file_name(policy, file_name, content_type), safe="")
+    name = quote(name, safe="")
     # No credentials: an uploader without policy support then refuses the
     # upload rather than send it to the fal CDN.
     headers = {

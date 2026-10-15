@@ -18,6 +18,7 @@ from urllib.parse import quote
 
 from fal.ref import get_current_app
 from fal.toolkit.exceptions import FileUploadException
+from fal.toolkit.file.types import Reservation
 
 if TYPE_CHECKING:
     import httpx
@@ -101,15 +102,41 @@ def upload_stream(
     """Return the URL once a body of unknown size is durably accepted, or once the
     CDN has it when waiting for completion.
     """
-    headers = {
-        **_with_request_headers(headers),
-        "X-Fal-File-Name": _header_file_name(file_name),
-    }
     with _new_client() as http:
-        upload_id, file_url = _stream(http, chunks, headers)
+        session_id, _ = _open_session(http, file_name, headers)
+        upload_id, file_url = _send(http, session_id, chunks)
         if wait_for_completion:
             _wait_for_completion(http, upload_id)
     return file_url
+
+
+def reserve(file_name: str, headers: dict[str, str]) -> Session:
+    """Open an upload session, whose URL exists before any body byte."""
+    with _new_client() as http:
+        return Session(*_open_session(http, file_name, headers))
+
+
+class Session(Reservation):
+    """The uploader drops a session after 300 s without progress; completing it
+    later raises.
+    """
+
+    def __init__(self, session_id: str, url: str) -> None:
+        self.session_id = session_id
+        self.url = url
+
+    def complete(
+        self, content: bytes | Path, *, wait_for_completion: bool = False
+    ) -> None:
+        body = [content] if isinstance(content, bytes) else _chunks(content)
+        with _new_client() as http:
+            upload_id, _ = _send(http, self.session_id, body)
+            if wait_for_completion:
+                _wait_for_completion(http, upload_id)
+
+    def abort(self) -> None:
+        with _new_client() as http, suppress(LocalUploadError):
+            _request(http, "DELETE", _session_path(self.session_id), 202)
 
 
 def _with_request_headers(headers: dict[str, str]) -> dict[str, str]:
@@ -150,8 +177,19 @@ def _submit(
     return _receipt(response, "accepted_local")
 
 
-def _stream(
-    http: httpx.Client, chunks: Iterable[bytes], headers: dict[str, str]
+def _open_session(
+    http: httpx.Client, file_name: str, headers: dict[str, str]
+) -> tuple[str, str]:
+    headers = {
+        **_with_request_headers(headers),
+        "X-Fal-File-Name": _header_file_name(file_name),
+    }
+    response = _request(http, "POST", "/v1/upload-sessions", 201, headers=headers)
+    return _receipt(response, "receiving")
+
+
+def _send(
+    http: httpx.Client, session_id: str, chunks: Iterable[bytes]
 ) -> tuple[str, str]:
     """Accept only on an explicit finish carrying the final byte count; any
     failure, including a raising producer, aborts the session.
@@ -164,9 +202,7 @@ def _stream(
             size += len(chunk)
             yield chunk
 
-    response = _request(http, "POST", "/v1/upload-sessions", 201, headers=headers)
-    session_id, _ = _receipt(response, "receiving")
-    path = "/v1/upload-sessions/" + quote(session_id, safe="")
+    path = _session_path(session_id)
     try:
         _request(http, "PUT", path + "/body", 204, content=counted())
         response = _request(
@@ -178,6 +214,10 @@ def _stream(
         with suppress(LocalUploadError):
             _request(http, "DELETE", path, 202)
         raise
+
+
+def _session_path(session_id: str) -> str:
+    return "/v1/upload-sessions/" + quote(session_id, safe="")
 
 
 def _request(

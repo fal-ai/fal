@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import io
 import json
 import os
 import sys
+from contextlib import contextmanager
 from types import SimpleNamespace
 from unittest.mock import Mock
 from urllib.parse import quote, unquote
@@ -265,8 +267,13 @@ def test_upload_policy_refusals_upload_in_process(policy_upload, response, attem
     )
     assert result.url == in_process.return_value
     assert len(requests) == attempts
+    # The in-process upload keeps the key name the uploader was offered.
     in_process.assert_called_once_with(
-        upload_policy.UploadPolicy(**POLICY), "cat.txt", b"hi", "text/plain"
+        upload_policy.UploadPolicy(**POLICY),
+        "cat.txt",
+        b"hi",
+        "text/plain",
+        name=unquote(requests[0].headers["x-fal-file-name"]),
     )
 
 
@@ -624,3 +631,121 @@ def test_failed_producer_aborts_the_stream(local_upload, transport):
     with pytest.raises(RuntimeError, match="encoder died"):
         local.LocalFileRepository().save_stream(generate(), "out.mp4", "video/mp4")
     assert [r.method for r in requests] == ["POST", "DELETE"]
+
+
+def _session_and_status(request):
+    if request.method == "GET":
+        return COMPLETED
+    return _session(request)
+
+
+@pytest.mark.parametrize("source", ["bytes", "path"])
+@pytest.mark.parametrize("wait", [False, True])
+def test_reserve_hands_out_the_url_before_the_body(
+    local_upload, transport, caller, tmp_path, source, wait
+):
+    requests = transport(_session_and_status)
+    caller({"x-fal-cdn-token": "caller-token"}, "request-id")
+    pending = files.File.reserve("text/plain", "out.txt")
+    assert pending.url == ACCEPTED["file_url"]
+    (opened,) = requests
+    assert opened.url.path == "/v1/upload-sessions"
+    assert opened.headers["x-fal-file-name"] == "out.txt"
+    assert opened.headers["x-fal-request-id"] == "request-id"
+
+    path = tmp_path / "out.txt"
+    path.write_bytes(b"hello")
+    result = pending.complete(
+        b"hello" if source == "bytes" else path, wait_for_completion=wait
+    )
+    assert (result.url, result.file_name, result.file_size) == (
+        ACCEPTED["file_url"],
+        "out.txt",
+        5,
+    )
+    assert [(r.method, r.url.path) for r in requests[1:]] == [
+        ("PUT", "/v1/upload-sessions/session-id/body"),
+        ("POST", "/v1/upload-sessions/session-id/finish"),
+        *([("GET", "/v1/uploads/accepted-id")] if wait else []),
+    ]
+    assert requests[1].content == b"hello"
+    assert json.loads(requests[2].content) == {"size_bytes": 5}
+    # The body carries no request context; the session already has it.
+    assert "x-fal-request-id" not in requests[1].headers
+
+
+def test_reserve_abort_and_failed_complete_delete_the_session(local_upload, transport):
+    requests = transport(_session)
+    files.File.reserve("text/plain").abort()
+    assert [r.method for r in requests] == ["POST", "DELETE"]
+
+    requests.clear()
+    pending = files.File.reserve("text/plain")
+    with pytest.raises(FileNotFoundError):
+        pending.complete("/missing/out.txt")
+    assert [r.method for r in requests] == ["POST", "DELETE"]
+
+
+@contextmanager
+def _fake_cdn(monkeypatch):
+    """Answer the REST multipart API and record each call."""
+    calls = []
+
+    @contextmanager
+    def respond(request, **_kwargs):
+        calls.append((request.get_method(), request.full_url, request.data))
+        body = {"file_url": "https://v3.fal.media/out", "upload_url": "https://up/x"}
+        response = io.BytesIO(json.dumps(body).encode())
+        response.headers = {"ETag": "etag"}
+        yield response
+
+    monkeypatch.setattr(remote, "_maybe_retry_request", respond)
+    monkeypatch.setattr(
+        remote, "fetch_auth_credentials", lambda: AuthCredentials("Key", "test:key")
+    )
+    yield calls
+
+
+@pytest.mark.parametrize("refusal", [httpx.Response(404), httpx.ConnectError])
+def test_reserve_falls_back_to_a_direct_multipart_upload(
+    monkeypatch, local_upload, transport, tmp_path, refusal
+):
+    transport(_respond(refusal))
+    monkeypatch.setattr(remote.MultipartUploadV3, "MULTIPART_CHUNK_SIZE", 3)
+    with _fake_cdn(monkeypatch) as calls:
+        pending = files.File.reserve("text/plain", "out.txt")
+        assert pending.url == "https://v3.fal.media/out"
+        assert [call[:2] for call in calls] == [
+            (
+                "POST",
+                f"https://{remote.REST_HOST}/storage/upload/initiate-multipart"
+                "?storage_type=fal-cdn-v3",
+            )
+        ]
+        path = tmp_path / "out.txt"
+        path.write_bytes(b"hello")
+        assert pending.complete(path).url == pending.url
+    assert sorted(calls[1:]) == [
+        ("POST", "https://up/x/complete", calls[-1][2]),
+        ("PUT", "https://up/x/1", b"hel"),
+        ("PUT", "https://up/x/2", b"lo"),
+    ]
+
+
+def test_reserve_policy_url_matches_the_upload(monkeypatch, policy_upload, tmp_path):
+    requests, in_process = policy_upload(_accept_like_the_uploader)
+    pending = files.File.reserve("text/plain", "cat.txt", request=_policy_request())
+    assert pending.url.startswith(POLICY["url"].rstrip("/") + "/outputs/")
+    assert requests == []
+    path = tmp_path / "cat.txt"
+    path.write_bytes(b"hi")
+    pending.complete(path)
+    (request,) = requests
+    # The uploader builds the same URL from the reserved key name.
+    assert _accept_like_the_uploader(request).json()["file_url"] == pending.url
+    in_process.assert_not_called()
+
+
+def test_in_memory_cannot_reserve():
+    with pytest.raises(NotImplementedError):
+        files.File.reserve("text/plain", repository="in_memory")

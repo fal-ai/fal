@@ -598,9 +598,15 @@ def _prepare_upload(
     policy: UploadPolicy,
     file_name: str,
     content_type: str,
+    *,
+    name: str | None = None,
 ) -> tuple[str, dict[str, PolicyFieldValue]]:
-    """Resolve the destination URL and the POST form fields."""
-    name = _upload_file_name(policy, file_name, content_type)
+    """Resolve the destination URL and the POST form fields.
+
+    ``name`` is a result of :func:`_upload_file_name` the URL was already
+    handed out for.
+    """
+    name = name or _upload_file_name(policy, file_name, content_type)
     fields = dict(policy.fields)
     final_key = _require_key_template(fields).replace(
         UPLOAD_POLICY_FILENAME_PLACEHOLDER, name
@@ -908,6 +914,8 @@ def upload_bytes_with_policy(
     file_name: str,
     data: bytes,
     content_type: str,
+    *,
+    name: str | None = None,
 ) -> str:
     """Queue ``data`` for upload and return the URL it will appear at.
 
@@ -915,7 +923,7 @@ def upload_bytes_with_policy(
     what that means for the caller.
     """
     _validate_size(len(data))
-    access_url, fields = _prepare_upload(policy, file_name, content_type)
+    access_url, fields = _prepare_upload(policy, file_name, content_type, name=name)
 
     def _post(client: httpx.Client) -> httpx.Response:
         return client.post(
@@ -933,6 +941,8 @@ def upload_path_with_policy(
     file_path: Path,
     file_name: str,
     content_type: str,
+    *,
+    name: str | None = None,
 ) -> str:
     """As :func:`upload_bytes_with_policy`, for a file on disk.
 
@@ -948,7 +958,7 @@ def upload_path_with_policy(
     an open file, so there the name lingers until the handle closes.
     """
     _validate_size(file_path.stat().st_size)
-    access_url, fields = _prepare_upload(policy, file_name, content_type)
+    access_url, fields = _prepare_upload(policy, file_name, content_type, name=name)
     request_id = _current_request_id()
 
     # Stage on the source's own volume, not the default temp dir: the payload can

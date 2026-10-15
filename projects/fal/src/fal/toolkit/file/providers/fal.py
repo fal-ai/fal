@@ -22,7 +22,7 @@ from fal.exceptions.auth import UnauthenticatedException
 from fal.flags import REST_HOST
 from fal.ref import get_current_app
 from fal.toolkit.exceptions import FileUploadException
-from fal.toolkit.file.types import FileData, FileRepository
+from fal.toolkit.file.types import FileData, FileRepository, Reservation
 from fal.toolkit.utils.retry import retry
 
 _FAL_CDN_V3 = "https://v3.fal.media"
@@ -757,6 +757,31 @@ class MultipartUploadV3:
 
         return self.access_url
 
+    def upload(self, content: bytes | Path) -> str:
+        """Send every part of a created upload, then complete it."""
+        import concurrent.futures  # noqa: PLC0415
+
+        def read_part(part_number: int) -> bytes:
+            start = (part_number - 1) * self.chunk_size
+            if isinstance(content, bytes):
+                return content[start : start + self.chunk_size]
+            with open(content, "rb") as f:
+                f.seek(start)
+                return f.read(self.chunk_size)
+
+        size = len(content) if isinstance(content, bytes) else content.stat().st_size
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=self.max_concurrency
+        ) as executor:
+            futures = [
+                executor.submit(lambda pn: self.upload_part(pn, read_part(pn)), pn)
+                for pn in range(1, math.ceil(size / self.chunk_size) + 1)
+            ]
+            for future in concurrent.futures.as_completed(futures):
+                future.result()
+
+        return self.complete()
+
     @classmethod
     def save(
         cls,
@@ -765,8 +790,6 @@ class MultipartUploadV3:
         max_concurrency: int | None = None,
         object_lifecycle_preference: dict[str, str] | None = None,
     ):
-        import concurrent.futures  # noqa: PLC0415
-
         multipart = cls(
             file.file_name,
             chunk_size=chunk_size,
@@ -774,23 +797,7 @@ class MultipartUploadV3:
             max_concurrency=max_concurrency,
         )
         multipart.create(object_lifecycle_preference=object_lifecycle_preference)
-
-        parts = math.ceil(len(file.data) / multipart.chunk_size)
-        with concurrent.futures.ThreadPoolExecutor(
-            max_workers=multipart.max_concurrency
-        ) as executor:
-            futures = []
-            for part_number in range(1, parts + 1):
-                start = (part_number - 1) * multipart.chunk_size
-                data = file.data[start : start + multipart.chunk_size]
-                futures.append(
-                    executor.submit(multipart.upload_part, part_number, data)
-                )
-
-            for future in concurrent.futures.as_completed(futures):
-                future.result()
-
-        return multipart.complete()
+        return multipart.upload(file.data)
 
     @classmethod
     def save_file(
@@ -801,39 +808,28 @@ class MultipartUploadV3:
         max_concurrency: int | None = None,
         object_lifecycle_preference: dict[str, str] | None = None,
     ) -> str:
-        import concurrent.futures  # noqa: PLC0415
-
-        file_name = os.path.basename(file_path)
-        size = os.path.getsize(file_path)
-
         multipart = cls(
-            file_name,
+            os.path.basename(file_path),
             chunk_size=chunk_size,
             content_type=content_type,
             max_concurrency=max_concurrency,
         )
         multipart.create(object_lifecycle_preference=object_lifecycle_preference)
+        return multipart.upload(Path(file_path))
 
-        parts = math.ceil(size / multipart.chunk_size)
-        with concurrent.futures.ThreadPoolExecutor(
-            max_workers=multipart.max_concurrency
-        ) as executor:
-            futures = []
-            for part_number in range(1, parts + 1):
 
-                def _upload_part(pn: int) -> None:
-                    with open(file_path, "rb") as f:
-                        start = (pn - 1) * multipart.chunk_size
-                        f.seek(start)
-                        data = f.read(multipart.chunk_size)
-                        multipart.upload_part(pn, data)
+class _MultipartReservation(Reservation):
+    """The URL of a created multipart upload, which completes at any size."""
 
-                futures.append(executor.submit(_upload_part, part_number))
+    def __init__(self, multipart: MultipartUploadV3) -> None:
+        self.multipart = multipart
+        self.url = multipart.access_url
 
-            for future in concurrent.futures.as_completed(futures):
-                future.result()
-
-        return multipart.complete()
+    def complete(
+        self, content: bytes | Path, *, wait_for_completion: bool = False
+    ) -> None:
+        # Returns once the CDN has the file, so wait_for_completion holds.
+        self.multipart.upload(content)
 
 
 class InternalMultipartUploadV3:
@@ -1056,6 +1052,17 @@ class FalFileRepositoryV3(FileRepository):
         _caller_cdn_header(headers)
 
         return headers
+
+    def reserve(
+        self,
+        file_name: str,
+        content_type: str,
+        object_lifecycle_preference: dict[str, str] | None = None,
+    ) -> Reservation:
+        # Multipart at every size: the URL goes out before the size is known.
+        multipart = MultipartUploadV3(file_name, content_type=content_type)
+        multipart.create(object_lifecycle_preference=object_lifecycle_preference)
+        return _MultipartReservation(multipart)
 
     def save(
         self,

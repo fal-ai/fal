@@ -34,8 +34,36 @@ RepositoryId = Literal[
 ]
 
 
+class Reservation:
+    """A URL handed out before its bytes exist.
+
+    If ``complete`` fails, the URL stays dead: the bytes cannot go anywhere else
+    once the URL is out.
+    """
+
+    url: str
+
+    def complete(
+        self, content: bytes | Path, *, wait_for_completion: bool = False
+    ) -> None:
+        raise NotImplementedError()
+
+    def abort(self) -> None:
+        """Give the reservation up; an unused one expires on its own."""
+
+
 @dataclass
 class FileRepository:
+    def reserve(
+        self,
+        file_name: str,
+        content_type: str,
+        object_lifecycle_preference: Optional[dict[str, str]] = None,
+    ) -> Reservation:
+        raise NotImplementedError(
+            f"{type(self).__name__} cannot hand out a URL before the upload"
+        )
+
     def save(
         self,
         data: FileData,
