@@ -406,7 +406,8 @@ def add_parser(main_subparsers, parents):
         action="store_true",
         dest="attach_to_deployment",
         help=(
-            "Attach to the deployment process and wait for the rollout to finish. "
+            "Attach to the deployment process and wait for the rollout to finish "
+            "(the default). "
             "Only applies when --strategy is rolling (the default)."
         ),
     )
