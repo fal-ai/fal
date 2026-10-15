@@ -542,14 +542,7 @@ class TestGetObjectLifecyclePreferenceFromContext:
             (),
             {"lifecycle_preference": expected_preference},
         )()
-        mock_app = type(
-            "MockApp",
-            (),
-            {
-                "current_request": mock_request_context,
-                "prepare_upload": App.prepare_upload,
-            },
-        )()
+        mock_app = type("MockApp", (), {"current_request": mock_request_context})()
 
         with patch("fal.toolkit.file.file.get_current_app", return_value=mock_app):
             result = _get_object_lifecycle_preference_from_context()
@@ -562,14 +555,7 @@ class TestGetObjectLifecyclePreferenceFromContext:
             (),
             {"lifecycle_preference": None},
         )()
-        mock_app = type(
-            "MockApp",
-            (),
-            {
-                "current_request": mock_request_context,
-                "prepare_upload": App.prepare_upload,
-            },
-        )()
+        mock_app = type("MockApp", (), {"current_request": mock_request_context})()
 
         with patch("fal.toolkit.file.file.get_current_app", return_value=mock_app):
             result = _get_object_lifecycle_preference_from_context()

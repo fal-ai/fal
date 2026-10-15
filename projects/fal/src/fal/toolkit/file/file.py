@@ -175,6 +175,8 @@ def _try_with_fallback(
     nbytes: int | None = None,
     content_type: str | None = None,
 ) -> Any:
+    request_id = _current_request_id()
+
     def report(repo, repo_obj, outcome: str, started: float, **error: str) -> None:
         # FAL_USE_LOCAL_UPLOADER swaps the repository behind "fal_v3"; the line
         # must say which one actually took the upload.
@@ -186,7 +188,7 @@ def _try_with_fallback(
             bytes=nbytes,
             duration_ms=round((time.monotonic() - started) * 1000),
             content_type=content_type,
-            request_id=_current_request_id(),
+            request_id=request_id,
             **error,
         )
 
@@ -240,7 +242,7 @@ def _try_with_fallback(
         return result
 
 
-def _prepare_upload(
+def _app_prepare_upload(
     source: bytes | Path, content_type: str, request: Any
 ) -> tuple[bytes | Path, str]:
     """Let the running app change a file before it is uploaded. Outside an app
@@ -349,7 +351,7 @@ class File(BaseModel):
         save_kwargs: Optional[dict] = None,
         fallback_save_kwargs: Optional[dict] = None,
     ) -> File:
-        source, content_type = _prepare_upload(
+        source, content_type = _app_prepare_upload(
             data, resolve_content_type(content_type, file_name), request
         )
         return cls._save(
@@ -476,8 +478,8 @@ class File(BaseModel):
         if not file_path.exists():
             raise FileNotFoundError(f"File {file_path} does not exist")
 
-        source, content_type = _prepare_upload(
-            file_path, content_type or "application/octet-stream", request
+        source, content_type = _app_prepare_upload(
+            file_path, resolve_content_type(content_type, None), request
         )
         return cls._save(
             source,
