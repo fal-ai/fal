@@ -176,7 +176,7 @@ def test_no_app_means_no_hook(monkeypatch):
     monkeypatch.setattr("fal.toolkit.file.file.get_current_app", lambda: None)
     repo = RecordingRepository()
 
-    upload_bytes(b"as is", repo, content_type="text/plain")
+    upload_bytes(bytearray(b"as is"), repo, content_type="text/plain")
 
     assert repo.saved == [("save", b"as is", "text/plain")]
 
@@ -237,6 +237,20 @@ def test_fallback_logs_one_line_per_repository(run_app, capsys):
     ]
     assert lines[0]["error"] == "RuntimeError: primary down"
     assert "error" not in lines[1]
+
+
+def test_local_uploader_logs_as_local(run_app, capsys, monkeypatch):
+    run_app(FakeApp())
+    monkeypatch.setenv("FAL_USE_LOCAL_UPLOADER", "1")
+    monkeypatch.setattr(
+        "fal.toolkit.file.file.LocalFileRepository.save",
+        lambda self, data, **kwargs: "https://example.com/local",
+    )
+
+    File.from_bytes(b"x", fallback_repository=[])
+
+    [line] = upload_lines(capsys.readouterr().out)
+    assert line["repository"] == "local"
 
 
 def test_last_failure_logs_error(run_app, capsys):

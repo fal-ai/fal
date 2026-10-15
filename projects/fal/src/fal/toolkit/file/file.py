@@ -175,10 +175,13 @@ def _try_with_fallback(
     nbytes: int | None = None,
     content_type: str | None = None,
 ) -> Any:
-    def report(repo, outcome: str, started: float, **error: str) -> None:
+    def report(repo, repo_obj, outcome: str, started: float, **error: str) -> None:
+        # FAL_USE_LOCAL_UPLOADER swaps the repository behind "fal_v3"; the line
+        # must say which one actually took the upload.
+        local = isinstance(repo_obj, LocalFileRepository)
         report_json_line(
             "file_upload",
-            repository=_repo_label(repo),
+            repository="local" if local else _repo_label(repo),
             outcome=outcome,
             bytes=nbytes,
             duration_ms=round((time.monotonic() - started) * 1000),
@@ -209,7 +212,7 @@ def _try_with_fallback(
             falls_back = getattr(exc, "falls_back", True)
             is_last = idx == len(attempts) - 1
             outcome = "fallback" if falls_back and not is_last else "error"
-            report(repo, outcome, started, error=error)
+            report(repo, repo_obj, outcome, started, error=error)
             # An uncertain upload must not be replayed through another repository.
             if not falls_back:
                 raise
@@ -233,7 +236,7 @@ def _try_with_fallback(
                 + "; ".join(failures)
             ) from exc
 
-        report(repo, "ok", started)
+        report(repo, repo_obj, "ok", started)
         return result
 
 
@@ -499,9 +502,9 @@ class File(BaseModel):
     ) -> File:
         """Upload what ``prepare_upload`` returned: bytes in memory, a path from
         disk, whichever entry point the caller used."""
-        if isinstance(source, bytes):
-            return cls._save_bytes(source, content_type, file_name, **destination)
-        return cls._save_path(Path(source), content_type, multipart, **destination)
+        if isinstance(source, Path):
+            return cls._save_path(source, content_type, multipart, **destination)
+        return cls._save_bytes(source, content_type, file_name, **destination)
 
     @classmethod
     def _save_path(
