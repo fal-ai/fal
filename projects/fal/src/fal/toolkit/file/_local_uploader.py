@@ -12,6 +12,7 @@ from __future__ import annotations
 import os
 import time
 from contextlib import suppress
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable, Iterator
 from urllib.parse import quote
@@ -111,24 +112,27 @@ def upload_stream(
     return file_url
 
 
-def reserve(file_name: str, headers: dict[str, str], request: Any = None) -> Session:
+def reserve(
+    file_name: str, headers: dict[str, str], request: Any = None
+) -> Reservation:
     with _new_client() as http:
-        return Session(*_open_session(http, file_name, headers, request))
+        session_id, url = _open_session(http, file_name, headers, request)
+    return Reservation(
+        url,
+        partial(_complete_session, session_id),
+        partial(_delete_session, session_id),
+    )
 
 
-class Session(Reservation):
-    def __init__(self, session_id: str, url: str) -> None:
-        self.session_id = session_id
-        self.url = url
+def _complete_session(session_id: str, content: bytes | Path) -> None:
+    body = [content] if isinstance(content, bytes) else _chunks(content)
+    with _new_client() as http:
+        _send(http, session_id, body)
 
-    def complete(self, content: bytes | Path) -> None:
-        body = [content] if isinstance(content, bytes) else _chunks(content)
-        with _new_client() as http:
-            _send(http, self.session_id, body)
 
-    def abort(self) -> None:
-        with _new_client() as http, suppress(LocalUploadError):
-            _request(http, "DELETE", _session_path(self.session_id), 202)
+def _delete_session(session_id: str) -> None:
+    with _new_client() as http, suppress(LocalUploadError):
+        _request(http, "DELETE", _session_path(session_id), 202)
 
 
 def _with_request_headers(

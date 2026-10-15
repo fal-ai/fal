@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from mimetypes import guess_extension, guess_type
 from pathlib import Path
-from typing import Any, Literal, Optional
+from typing import Any, Callable, Literal, Optional
 from uuid import uuid4
 
 
@@ -34,14 +34,13 @@ RepositoryId = Literal[
 ]
 
 
+@dataclass(frozen=True)
 class Reservation:
+    """A URL handed out before its bytes exist, and how to send or drop them."""
+
     url: str
-
-    def complete(self, content: bytes | Path) -> None:
-        raise NotImplementedError()
-
-    def abort(self) -> None:
-        pass
+    complete: Callable[[bytes | Path], object]
+    abort: Callable[[], None] = field(default=lambda: None)
 
 
 @dataclass

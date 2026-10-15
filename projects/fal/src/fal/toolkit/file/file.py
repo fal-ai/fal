@@ -39,11 +39,12 @@ from fal.toolkit.file.providers.fal import (
     FalFileRepositoryV3,
     InMemoryRepository,
     MultipartUploadV3,
+    _current_request,
 )
 from fal.toolkit.file.providers.gcp import GoogleStorageRepository
 from fal.toolkit.file.providers.local import (
     LocalFileRepository,
-    PolicyReservation,
+    reserve_with_policy,
     save_with_policy,
 )
 from fal.toolkit.file.providers.r2 import R2Repository
@@ -514,17 +515,19 @@ class File(BaseModel):
         """
         fdata = FileData(b"", content_type, file_name)
         upload_policy = get_upload_policy(request)
+        # The caller, fixed now: complete may run after the request, or under another.
+        caller = request if request is not None else _current_request()
         if upload_policy is not None:
             _require_no_repository_conflict(repository)
-            reservation: Reservation = PolicyReservation(
-                upload_policy, fdata.file_name, fdata.content_type, request
+            reservation = reserve_with_policy(
+                upload_policy, fdata.file_name, fdata.content_type, caller
             )
         else:
             reservation = get_builtin_repository(repository).reserve(
                 fdata.file_name,
                 fdata.content_type,
                 _lifecycle_preference(request),
-                request,
+                caller,
             )
         return PendingFile(fdata.content_type, fdata.file_name, reservation)
 

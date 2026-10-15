@@ -734,7 +734,7 @@ def test_reserve_complete_accepts_an_already_completed_upload(
     calls = _fake_cdn(monkeypatch, complete_status=409)
     pending = files.File.reserve("text/plain", "out.txt")
     assert pending.complete(b"hi").url == pending.url
-    # Once, not retried: the upload is already in a terminal state.
+    # An earlier attempt already completed the upload.
     assert [c.full_url for c in calls].count("https://up/x/complete") == 1
 
 

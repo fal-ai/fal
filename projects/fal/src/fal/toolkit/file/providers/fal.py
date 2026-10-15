@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from functools import partial
 from pathlib import Path
-from typing import Any, Callable, Dict, Generator, Generic, TypeVar
+from typing import Any, Dict, Generator, Generic, TypeVar
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse, urlunparse
 from urllib.request import Request, urlopen
@@ -82,15 +82,9 @@ def _should_retry(exc: Exception) -> bool:
     return False
 
 
-def _should_retry_complete(exc: Exception) -> bool:
-    # 409: the upload is already in a terminal state, so a re-POST cannot help.
-    return _should_retry(exc) and not (isinstance(exc, HTTPError) and exc.code == 409)
-
-
 @contextmanager
 def _maybe_retry_request(
     request: Request,
-    should_retry: Callable[[Exception], bool] = _should_retry,
     **kwargs: Any,
 ) -> Generator[addinfourl, None, None]:
     timeout = kwargs.pop("timeout", DEFAULT_REQUEST_TIMEOUT)
@@ -101,7 +95,7 @@ def _maybe_retry_request(
         max_delay=MAX_DELAY,
         backoff_type="exponential",
         jitter=True,
-        should_retry=should_retry,
+        should_retry=_should_retry,
     )(partial(urlopen, request, timeout=timeout))
 
     response = _urlopen_with_retry()
@@ -777,7 +771,7 @@ class MultipartUploadV3:
                 },
                 data=json.dumps({"parts": self._parts}).encode(),
             )
-            with _maybe_retry_request(req, should_retry=_should_retry_complete):
+            with _maybe_retry_request(req):
                 pass
         except HTTPError as e:
             # 409: an earlier attempt, whose response was lost, already
@@ -848,15 +842,6 @@ class MultipartUploadV3:
         )
         multipart.create(object_lifecycle_preference=object_lifecycle_preference)
         return multipart.upload(Path(file_path))
-
-
-class _MultipartReservation(Reservation):
-    def __init__(self, multipart: MultipartUploadV3) -> None:
-        self.multipart = multipart
-        self.url = multipart.access_url
-
-    def complete(self, content: bytes | Path) -> None:
-        self.multipart.upload(content)
 
 
 class InternalMultipartUploadV3:
@@ -1086,7 +1071,7 @@ class FalFileRepositoryV3(FileRepository):
             file_name, content_type=content_type, request=request
         )
         multipart.create(object_lifecycle_preference=object_lifecycle_preference)
-        return _MultipartReservation(multipart)
+        return Reservation(multipart.access_url, multipart.upload)
 
     def save(
         self,

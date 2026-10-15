@@ -9,7 +9,7 @@ publish a duplicate. Small files retain bytes for File.as_bytes().
 from __future__ import annotations
 
 import json
-from functools import wraps
+from functools import partial, wraps
 from pathlib import Path
 from typing import Any, Iterable
 from urllib.parse import quote
@@ -35,7 +35,6 @@ from fal.toolkit.file._upload_policy import (
 from fal.toolkit.file.providers.fal import (
     FalFileRepositoryV3,
     MultipartUploadV3,
-    _current_request,
     _object_lifecycle_headers,
     _request_id,
     _v3_auth_headers,
@@ -152,34 +151,22 @@ class LocalFileRepository(FileRepository):
         )
 
 
-class PolicyReservation(Reservation):
-    """The URL from the policy now; ``complete`` hands the bytes over without
-    waiting for the bucket, like ``save_with_policy``."""
-
-    def __init__(
-        self,
-        policy: UploadPolicy,
-        file_name: str,
-        content_type: str,
-        request: Any = None,
-    ) -> None:
-        self.policy = policy
-        self.file_name = file_name
-        self.content_type = content_type
-        # Resolved now: complete may run after the request, or under another.
-        self.request = request if request is not None else _current_request()
-        self.name = _upload_file_name(policy, file_name, content_type)
-        self.url, _ = _prepare_upload(policy, file_name, content_type, name=self.name)
-
-    def complete(self, content: bytes | Path) -> None:
-        save_with_policy(
-            self.policy,
-            self.file_name,
-            content,
-            self.content_type,
-            name=self.name,
-            request=self.request,
-        )
+def reserve_with_policy(
+    policy: UploadPolicy, file_name: str, content_type: str, request: Any
+) -> Reservation:
+    """The URL from the policy's key now; complete runs save_with_policy, which
+    does not wait for the bucket."""
+    name = _upload_file_name(policy, file_name, content_type)
+    url, _ = _prepare_upload(policy, file_name, content_type, name=name)
+    complete = partial(
+        save_with_policy,
+        policy,
+        file_name,
+        content_type=content_type,
+        name=name,
+        request=request,
+    )
+    return Reservation(url, complete)
 
 
 def save_with_policy(
