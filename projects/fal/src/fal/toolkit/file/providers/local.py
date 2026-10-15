@@ -29,7 +29,6 @@ from fal.toolkit.file._upload_policy import (
     _prepare_upload,
     _upload_file_name,
     _validate_size,
-    post_with_policy,
     upload_bytes_with_policy,
     upload_path_with_policy,
 )
@@ -154,8 +153,8 @@ class LocalFileRepository(FileRepository):
 
 
 class PolicyReservation(Reservation):
-    """The URL from the policy now; ``complete`` returns once the uploader, or
-    else the bucket, has the bytes."""
+    """The URL from the policy now; ``complete`` hands the bytes over without
+    waiting for the bucket, like ``save_with_policy``."""
 
     def __init__(
         self,
@@ -173,36 +172,42 @@ class PolicyReservation(Reservation):
         self.url, _ = _prepare_upload(policy, file_name, content_type, name=self.name)
 
     def complete(self, content: bytes | Path) -> None:
-        if _uploader_with_policy(
-            self.policy, self.name, content, self.content_type, self.request
-        ):
-            return
-        post_with_policy(
+        save_with_policy(
             self.policy,
             self.file_name,
             content,
             self.content_type,
             name=self.name,
-            request_id=_request_id(self.request),
+            request=self.request,
         )
 
 
 def save_with_policy(
-    policy: UploadPolicy, file_name: str, content: bytes | Path, content_type: str
+    policy: UploadPolicy,
+    file_name: str,
+    content: bytes | Path,
+    content_type: str,
+    *,
+    name: str | None = None,
+    request: Any = None,
 ) -> str:
     """Upload to the caller's bucket and return the URL the object will have.
 
     Opted-in runners hand the upload to the node-local uploader. Any other
-    runner, or a refusal, uploads in-process. Neither waits for the bucket.
+    runner, or a refusal, uploads in-process. Neither waits for the bucket, so
+    no runner time is spent on the caller's storage.
     """
-    name = _upload_file_name(policy, file_name, content_type)
-    if url := _uploader_with_policy(policy, name, content, content_type):
+    name = name or _upload_file_name(policy, file_name, content_type)
+    if url := _uploader_with_policy(policy, name, content, content_type, request):
         return url
+    request_id = _request_id(request)
     if isinstance(content, bytes):
         return upload_bytes_with_policy(
-            policy, file_name, content, content_type, name=name
+            policy, file_name, content, content_type, name=name, request_id=request_id
         )
-    return upload_path_with_policy(policy, content, file_name, content_type, name=name)
+    return upload_path_with_policy(
+        policy, content, file_name, content_type, name=name, request_id=request_id
+    )
 
 
 def _uploader_with_policy(

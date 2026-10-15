@@ -275,6 +275,7 @@ def test_upload_policy_refusals_upload_in_process(policy_upload, response, attem
         b"hi",
         "text/plain",
         name=unquote(requests[0].headers["x-fal-file-name"]),
+        request_id=None,
     )
 
 
@@ -796,34 +797,20 @@ def test_reserve_policy_url_matches_the_upload(
     in_process.assert_not_called()
 
 
-@pytest.mark.parametrize("status", [204, 403])
-def test_reserve_policy_complete_posts_inline(monkeypatch, tmp_path, status):
-    """Without the uploader, complete waits for the bucket instead of queueing."""
+def test_reserve_policy_complete_queues_the_post(monkeypatch, tmp_path):
+    """Without the uploader, complete does not wait for the caller's bucket."""
     monkeypatch.delenv("FAL_USE_LOCAL_UPLOADER", raising=False)
-    monkeypatch.setattr(upload_policy, "_submit", Mock(side_effect=AssertionError))
-    posts = []
-
-    def respond(request):
-        posts.append(request)
-        return httpx.Response(status)
-
-    monkeypatch.setattr(
-        upload_policy,
-        "_new_client",
-        lambda: httpx.Client(transport=httpx.MockTransport(respond)),
-    )
-    pending = files.File.reserve("text/plain", "cat.txt", request=_policy_request())
+    submit = Mock()
+    monkeypatch.setattr(upload_policy, "_submit", submit)
+    request = _policy_request()
+    request.scope["headers"] += [(b"x-fal-request-id", b"rid")]
+    pending = files.File.reserve("text/plain", "cat.txt", request=request)
     path = tmp_path / "cat.txt"
     path.write_bytes(b"hi")
-    if status == 204:
-        assert pending.complete(path).url == pending.url
-    else:
-        with pytest.raises(upload_policy.UploadPolicyError):
-            pending.complete(path)
-    (post,) = posts
-    assert str(post.url) == POLICY["url"]
-    assert pending.url.rsplit("/", 1)[1].encode() in post.content
-    assert b"hi" in post.content
+    assert pending.complete(path).url == pending.url
+    # Queued under the reserving request, with nothing in flight now.
+    submit.assert_called_once()
+    assert submit.call_args.args[1] == "rid"
 
 
 def test_in_memory_cannot_reserve():
