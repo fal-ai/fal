@@ -905,6 +905,45 @@ def _current_request_id() -> str | None:
     return getattr(_current_request(), "request_id", None)
 
 
+def post_with_policy(
+    policy: UploadPolicy,
+    file_name: str,
+    content: bytes | Path,
+    content_type: str,
+    *,
+    name: str | None = None,
+    request_id: str | None = None,
+) -> str:
+    """Upload ``content`` and return its URL once the bucket has it.
+
+    Unlike the ``upload_*`` functions this waits for the POST and raises
+    ``UploadPolicyError`` when it fails: for an upload that already runs off
+    the response path, nothing is gained by queueing it.
+    """
+    _validate_size(
+        len(content) if isinstance(content, bytes) else content.stat().st_size
+    )
+    access_url, fields = _prepare_upload(policy, file_name, content_type, name=name)
+
+    def _post(client: httpx.Client) -> httpx.Response:
+        if isinstance(content, bytes):
+            return client.post(
+                policy.url,
+                data=fields,
+                files={"file": (file_name, content, content_type)},
+            )
+        # Opened per attempt: a retry cannot reuse a consumed file object.
+        with content.open("rb") as body:
+            return client.post(
+                policy.url,
+                data=fields,
+                files={"file": (file_name, body, content_type)},
+            )
+
+    _attempt_upload(_post, request_id)
+    return access_url
+
+
 def upload_bytes_with_policy(
     policy: UploadPolicy,
     file_name: str,
@@ -1016,6 +1055,7 @@ __all__ = [
     "drain",
     "get_upload_policy",
     "parse_upload_policy",
+    "post_with_policy",
     "upload_bytes_with_policy",
     "upload_path_with_policy",
 ]

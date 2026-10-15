@@ -517,13 +517,14 @@ class File(BaseModel):
         if upload_policy is not None:
             _require_no_repository_conflict(repository)
             reservation: Reservation = PolicyReservation(
-                upload_policy, fdata.file_name, fdata.content_type
+                upload_policy, fdata.file_name, fdata.content_type, request
             )
         else:
             reservation = get_builtin_repository(repository).reserve(
                 fdata.file_name,
                 fdata.content_type,
                 _lifecycle_preference(request),
+                request,
             )
         return PendingFile(fdata.content_type, fdata.file_name, reservation)
 

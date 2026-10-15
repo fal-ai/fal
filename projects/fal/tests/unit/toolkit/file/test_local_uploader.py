@@ -5,9 +5,9 @@ import json
 import os
 import sys
 from contextlib import contextmanager
-from contextvars import ContextVar
 from types import SimpleNamespace
 from unittest.mock import Mock
+from urllib.error import HTTPError
 from urllib.parse import quote, unquote
 from uuid import UUID
 
@@ -677,13 +677,15 @@ def test_reserve_abort_and_failed_complete_delete_the_session(local_upload, tran
     assert [r.method for r in requests] == ["POST", "DELETE"]
 
 
-def _fake_cdn(monkeypatch):
-    """Answer the REST multipart API and record each call."""
+def _fake_cdn(monkeypatch, complete_status=None):
+    """Answer the REST multipart API and record each request."""
     calls = []
 
     @contextmanager
     def respond(request, **_kwargs):
-        calls.append((request.get_method(), request.full_url, request.data))
+        calls.append(request)
+        if complete_status and request.full_url.endswith("/complete"):
+            raise HTTPError(request.full_url, complete_status, "", {}, None)
         body = {"file_url": "https://v3.fal.media/out", "upload_url": "https://up/x"}
         response = io.BytesIO(json.dumps(body).encode())
         response.headers = {"ETag": "etag"}
@@ -708,7 +710,7 @@ def test_reserve_falls_back_to_a_direct_multipart_upload(
     calls = _fake_cdn(monkeypatch)
     pending = files.File.reserve("text/plain", "out.txt")
     assert pending.url == "https://v3.fal.media/out"
-    assert [call[:2] for call in calls] == [
+    assert [(c.get_method(), c.full_url) for c in calls] == [
         (
             "POST",
             f"https://{remote.REST_HOST}/storage/upload/initiate-multipart"
@@ -718,29 +720,64 @@ def test_reserve_falls_back_to_a_direct_multipart_upload(
     path = tmp_path / "out.txt"
     path.write_bytes(body)
     assert pending.complete(path).url == pending.url
-    assert sorted(calls[1:]) == [
-        ("POST", "https://up/x/complete", calls[-1][2]),
+    assert sorted((c.get_method(), c.full_url, c.data) for c in calls[1:]) == [
+        ("POST", "https://up/x/complete", calls[-1].data),
         *(("PUT", f"https://up/x/{n}", part) for n, part in enumerate(parts, 1)),
     ]
 
 
-def test_reserve_policy_url_matches_the_upload(monkeypatch, policy_upload, tmp_path):
-    requests, in_process = policy_upload(_accept_like_the_uploader)
-    # A ContextVar, like App.current_request.
-    current = ContextVar("current_request", default=None)
-    app = type("App", (), {"current_request": property(lambda _: current.get())})()
-    for module in (_local_uploader, upload_policy):
-        monkeypatch.setattr(module, "get_current_app", lambda: app)
-    token = current.set(
-        SimpleNamespace(headers={"x-fal-endpoint": "fal-ai/test"}, request_id="rid")
+def test_reserve_complete_accepts_an_already_completed_upload(
+    monkeypatch, local_upload, transport
+):
+    transport(_respond(httpx.Response(404)))
+    calls = _fake_cdn(monkeypatch, complete_status=409)
+    pending = files.File.reserve("text/plain", "out.txt")
+    assert pending.complete(b"hi").url == pending.url
+    # Once, not retried: the upload is already in a terminal state.
+    assert [c.full_url for c in calls].count("https://up/x/complete") == 1
+
+
+def _caller_request(**headers):
+    return Request(
+        {
+            "type": "http",
+            "headers": [(k.encode(), v.encode()) for k, v in headers.items()],
+        }
     )
-    pending = files.File.reserve("text/plain", "cat.txt", request=_policy_request())
-    # The response is out: complete runs without the request.
-    current.reset(token)
+
+
+@pytest.mark.parametrize("via_uploader", [True, False])
+def test_reserve_names_the_caller_from_the_given_request(
+    monkeypatch, local_upload, transport, caller, via_uploader
+):
+    requests = transport(_session if via_uploader else _respond(httpx.Response(404)))
+    calls = _fake_cdn(monkeypatch)
+    # The request in flight, if any, is not the caller.
+    caller({"x-fal-cdn-token": "other-token"}, "other-id")
+    request = _caller_request(**{"x-fal-cdn-token": "token", "x-fal-request-id": "rid"})
+    files.File.reserve("text/plain", "out.txt", request=request)
+    if via_uploader:
+        (opened,) = requests
+        headers = dict(opened.headers)
+    else:
+        (initiated,) = calls
+        headers = {k.lower(): v for k, v in initiated.header_items()}
+    assert (headers["x-fal-cdn-token"], headers["x-fal-request-id"]) == ("token", "rid")
+
+
+def test_reserve_policy_url_matches_the_upload(policy_upload, tmp_path):
+    requests, in_process = policy_upload(_accept_like_the_uploader)
+    request = _policy_request()
+    request.scope["headers"] += [
+        (b"x-fal-request-id", b"rid"),
+        (b"x-fal-endpoint", b"fal-ai/test"),
+    ]
+    pending = files.File.reserve("text/plain", "cat.txt", request=request)
     assert pending.url.startswith(POLICY["url"].rstrip("/") + "/outputs/")
     assert requests == []
     path = tmp_path / "cat.txt"
     path.write_bytes(b"hi")
+    # The response is out and no request is in flight: the given one names it.
     pending.complete(path)
     (request,) = requests
     # The uploader builds the same URL from the reserved key name.
@@ -748,6 +785,36 @@ def test_reserve_policy_url_matches_the_upload(monkeypatch, policy_upload, tmp_p
     assert request.headers["x-fal-request-id"] == "rid"
     assert request.headers["x-fal-endpoint"] == "fal-ai/test"
     in_process.assert_not_called()
+
+
+@pytest.mark.parametrize("status", [204, 403])
+def test_reserve_policy_complete_posts_inline(monkeypatch, tmp_path, status):
+    """Without the uploader, complete waits for the bucket instead of queueing."""
+    monkeypatch.delenv("FAL_USE_LOCAL_UPLOADER", raising=False)
+    monkeypatch.setattr(upload_policy, "_submit", Mock(side_effect=AssertionError))
+    posts = []
+
+    def respond(request):
+        posts.append(request)
+        return httpx.Response(status)
+
+    monkeypatch.setattr(
+        upload_policy,
+        "_new_client",
+        lambda: httpx.Client(transport=httpx.MockTransport(respond)),
+    )
+    pending = files.File.reserve("text/plain", "cat.txt", request=_policy_request())
+    path = tmp_path / "cat.txt"
+    path.write_bytes(b"hi")
+    if status == 204:
+        assert pending.complete(path).url == pending.url
+    else:
+        with pytest.raises(upload_policy.UploadPolicyError):
+            pending.complete(path)
+    (post,) = posts
+    assert str(post.url) == POLICY["url"]
+    assert pending.url.rsplit("/", 1)[1].encode() in post.content
+    assert b"hi" in post.content
 
 
 def test_in_memory_cannot_reserve():

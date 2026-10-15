@@ -13,7 +13,7 @@ import os
 import time
 from contextlib import suppress
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterable, Iterator
+from typing import TYPE_CHECKING, Any, Iterable, Iterator
 from urllib.parse import quote
 
 from fal.ref import get_current_app
@@ -72,6 +72,7 @@ def upload(
     headers: dict[str, str],
     *,
     wait_for_completion: bool = False,
+    request: Any = None,
 ) -> str:
     """Return the URL once the complete body is durably accepted, or once the
     CDN has it when waiting for completion.
@@ -81,7 +82,7 @@ def upload(
     """
     size = len(content) if isinstance(content, bytes) else content.stat().st_size
     headers = {
-        **_with_request_headers(headers),
+        **_with_request_headers(headers, request),
         "X-Fal-File-Name": _header_file_name(file_name),
         "Content-Length": str(size),
     }
@@ -110,9 +111,9 @@ def upload_stream(
     return file_url
 
 
-def reserve(file_name: str, headers: dict[str, str]) -> Session:
+def reserve(file_name: str, headers: dict[str, str], request: Any = None) -> Session:
     with _new_client() as http:
-        return Session(*_open_session(http, file_name, headers))
+        return Session(*_open_session(http, file_name, headers, request))
 
 
 class Session(Reservation):
@@ -130,12 +131,15 @@ class Session(Reservation):
             _request(http, "DELETE", _session_path(self.session_id), 202)
 
 
-def _with_request_headers(headers: dict[str, str]) -> dict[str, str]:
-    """Add the in-flight request's x-fal-* context headers.
+def _with_request_headers(
+    headers: dict[str, str], request: Any = None
+) -> dict[str, str]:
+    """Add the request's x-fal-* context headers, by default the in-flight one's.
 
     Values that cannot travel as ASCII are skipped rather than fail the upload.
     """
-    request = getattr(get_current_app(), "current_request", None)
+    if request is None:
+        request = getattr(get_current_app(), "current_request", None)
     context = request.headers if request else {}
     forwarded = {
         name: value
@@ -169,10 +173,10 @@ def _submit(
 
 
 def _open_session(
-    http: httpx.Client, file_name: str, headers: dict[str, str]
+    http: httpx.Client, file_name: str, headers: dict[str, str], request: Any = None
 ) -> tuple[str, str]:
     headers = {
-        **_with_request_headers(headers),
+        **_with_request_headers(headers, request),
         "X-Fal-File-Name": _header_file_name(file_name),
     }
     response = _request(http, "POST", "/v1/upload-sessions", 201, headers=headers)

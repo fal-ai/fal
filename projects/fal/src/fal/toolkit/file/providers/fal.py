@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from functools import partial
 from pathlib import Path
-from typing import Any, Dict, Generator, Generic, TypeVar
+from typing import Any, Callable, Dict, Generator, Generic, TypeVar
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse, urlunparse
 from urllib.request import Request, urlopen
@@ -82,9 +82,15 @@ def _should_retry(exc: Exception) -> bool:
     return False
 
 
+def _should_retry_complete(exc: Exception) -> bool:
+    # 409: the upload is already in a terminal state, so a re-POST cannot help.
+    return _should_retry(exc) and not (isinstance(exc, HTTPError) and exc.code == 409)
+
+
 @contextmanager
 def _maybe_retry_request(
     request: Request,
+    should_retry: Callable[[Exception], bool] = _should_retry,
     **kwargs: Any,
 ) -> Generator[addinfourl, None, None]:
     timeout = kwargs.pop("timeout", DEFAULT_REQUEST_TIMEOUT)
@@ -95,7 +101,7 @@ def _maybe_retry_request(
         max_delay=MAX_DELAY,
         backoff_type="exponential",
         jitter=True,
-        should_retry=_should_retry,
+        should_retry=should_retry,
     )(partial(urlopen, request, timeout=timeout))
 
     response = _urlopen_with_retry()
@@ -118,15 +124,42 @@ def _object_lifecycle_headers(
         )
 
 
-def _caller_cdn_header(
-    headers: dict[str, str],
-):
+def _current_request() -> Any:
     current_app = get_current_app()
-    if current_app and current_app.current_request:
-        if cdn_token := current_app.current_request.headers.get("x-fal-cdn-token"):
-            headers["X-Fal-CDN-Token"] = cdn_token
-        if request_id := current_app.current_request.request_id:
-            headers["X-Fal-Request-ID"] = request_id
+    return current_app.current_request if current_app else None
+
+
+def _request_id(request: Any = None) -> str | None:
+    """The request's id: a field on the app's request context, a header on a
+    bare request. Defaults to the request in flight."""
+    if request is None:
+        request = _current_request()
+    if request is None:
+        return None
+    return getattr(request, "request_id", None) or request.headers.get(
+        "x-fal-request-id"
+    )
+
+
+def _caller_cdn_header(headers: dict[str, str], request: Any = None) -> None:
+    """Name the caller on an upload, from the given request or the one in flight."""
+    if request is None:
+        request = _current_request()
+    if request is None:
+        return
+    if cdn_token := request.headers.get("x-fal-cdn-token"):
+        headers["X-Fal-CDN-Token"] = cdn_token
+    if request_id := _request_id(request):
+        headers["X-Fal-Request-ID"] = request_id
+
+
+def _v3_auth_headers(request: Any = None) -> dict[str, str]:
+    headers = {
+        "Authorization": _require_auth_credentials().header_value,
+        "User-Agent": USER_AGENT,
+    }
+    _caller_cdn_header(headers, request)
+    return headers
 
 
 @dataclass(repr=False)
@@ -642,11 +675,13 @@ class MultipartUploadV3:
         chunk_size: int | None = None,
         content_type: str | None = None,
         max_concurrency: int | None = None,
+        request: Any = None,
     ) -> None:
         self.file_name = file_name
         self.chunk_size = chunk_size or self.MULTIPART_CHUNK_SIZE
         self.content_type = content_type or "application/octet-stream"
         self.max_concurrency = max_concurrency or self.MULTIPART_MAX_CONCURRENCY
+        self.request = request
 
         self._access_url: str | None = None
         self._upload_url: str | None = None
@@ -667,13 +702,7 @@ class MultipartUploadV3:
 
     @property
     def auth_headers(self) -> dict[str, str]:
-        headers = {
-            "Authorization": _require_auth_credentials().header_value,
-            "User-Agent": USER_AGENT,
-        }
-        _caller_cdn_header(headers)
-
-        return headers
+        return _v3_auth_headers(self.request)
 
     def create(self, object_lifecycle_preference: dict[str, str] | None = None) -> None:
         url = f"https://{REST_HOST}/storage/upload/initiate-multipart?storage_type=fal-cdn-v3"
@@ -748,12 +777,15 @@ class MultipartUploadV3:
                 },
                 data=json.dumps({"parts": self._parts}).encode(),
             )
-            with _maybe_retry_request(req):
+            with _maybe_retry_request(req, should_retry=_should_retry_complete):
                 pass
         except HTTPError as e:
-            raise FileUploadException(
-                f"Error completing upload {url}. Status {e.status}: {e.reason}"
-            )
+            # 409: an earlier attempt, whose response was lost, already
+            # completed this upload. The object is stored.
+            if e.code != 409:
+                raise FileUploadException(
+                    f"Error completing upload {url}. Status {e.status}: {e.reason}"
+                )
 
         return self.access_url
 
@@ -1040,22 +1072,19 @@ class InMemoryRepository(FileRepository):
 class FalFileRepositoryV3(FileRepository):
     @property
     def auth_headers(self) -> dict[str, str]:
-        headers = {
-            "Authorization": _require_auth_credentials().header_value,
-            "User-Agent": USER_AGENT,
-        }
-        _caller_cdn_header(headers)
-
-        return headers
+        return _v3_auth_headers()
 
     def reserve(
         self,
         file_name: str,
         content_type: str,
         object_lifecycle_preference: dict[str, str] | None = None,
+        request: Any = None,
     ) -> Reservation:
         # Multipart at every size: the URL goes out before the size is known.
-        multipart = MultipartUploadV3(file_name, content_type=content_type)
+        multipart = MultipartUploadV3(
+            file_name, content_type=content_type, request=request
+        )
         multipart.create(object_lifecycle_preference=object_lifecycle_preference)
         return _MultipartReservation(multipart)
 

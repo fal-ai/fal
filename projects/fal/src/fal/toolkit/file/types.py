@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from mimetypes import guess_extension, guess_type
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 from uuid import uuid4
 
 
@@ -51,6 +51,7 @@ class FileRepository:
         file_name: str,
         content_type: str,
         object_lifecycle_preference: Optional[dict[str, str]] = None,
+        request: Any = None,
     ) -> Reservation:
         raise NotImplementedError(
             f"{type(self).__name__} cannot hand out a URL before the upload"
