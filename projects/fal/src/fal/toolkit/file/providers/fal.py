@@ -22,6 +22,7 @@ from fal.exceptions.auth import UnauthenticatedException
 from fal.flags import REST_HOST
 from fal.ref import get_current_app
 from fal.toolkit.exceptions import FileUploadException
+from fal.toolkit.file._upload_policy import _request_id
 from fal.toolkit.file.types import FileData, FileRepository, Reservation
 from fal.toolkit.utils.retry import retry
 
@@ -118,27 +119,11 @@ def _object_lifecycle_headers(
         )
 
 
-def _current_request() -> Any:
-    current_app = get_current_app()
-    return current_app.current_request if current_app else None
-
-
-def _request_id(request: Any = None) -> str | None:
-    """The request's id: a field on the app's request context, a header on a
-    bare request. Defaults to the request in flight."""
-    if request is None:
-        request = _current_request()
-    if request is None:
-        return None
-    return getattr(request, "request_id", None) or request.headers.get(
-        "x-fal-request-id"
-    )
-
-
 def _caller_cdn_header(headers: dict[str, str], request: Any = None) -> None:
     """Name the caller on an upload, from the given request or the one in flight."""
     if request is None:
-        request = _current_request()
+        current_app = get_current_app()
+        request = current_app.current_request if current_app else None
     if request is None:
         return
     if cdn_token := request.headers.get("x-fal-cdn-token"):
@@ -274,6 +259,16 @@ class FalV3TokenManager(FalV2TokenManager):
 
 fal_v2_token_manager = FalV2TokenManager()
 fal_v3_token_manager = FalV3TokenManager()
+
+
+def _token_auth_headers() -> dict[str, str]:
+    token = fal_v3_token_manager.get_token()
+    headers = {
+        "Authorization": f"{token.token_type} {token.token}",
+        "User-Agent": USER_AGENT,
+    }
+    _caller_cdn_header(headers)
+    return headers
 
 
 VariableType = TypeVar("VariableType")
@@ -611,14 +606,7 @@ class FalFileRepository(FalFileRepositoryBase):
 
     @property
     def auth_headers(self) -> dict[str, str]:
-        token = fal_v3_token_manager.get_token()
-        headers = {
-            "Authorization": f"{token.token_type} {token.token}",
-            "User-Agent": USER_AGENT,
-        }
-        _caller_cdn_header(headers)
-
-        return headers
+        return _token_auth_headers()
 
     def save_file(
         self,
@@ -878,14 +866,7 @@ class InternalMultipartUploadV3:
 
     @property
     def auth_headers(self) -> dict[str, str]:
-        token = fal_v3_token_manager.get_token()
-        headers = {
-            "Authorization": f"{token.token_type} {token.token}",
-            "User-Agent": USER_AGENT,
-        }
-        _caller_cdn_header(headers)
-
-        return headers
+        return _token_auth_headers()
 
     def create(self, object_lifecycle_preference: dict[str, str] | None = None) -> None:
         token = fal_v3_token_manager.get_token()
@@ -1232,14 +1213,7 @@ class InternalFalFileRepositoryV3(FileRepository):
 
     @property
     def auth_headers(self) -> dict[str, str]:
-        token = fal_v3_token_manager.get_token()
-        headers = {
-            "Authorization": f"{token.token_type} {token.token}",
-            "User-Agent": USER_AGENT,
-        }
-        _caller_cdn_header(headers)
-
-        return headers
+        return _token_auth_headers()
 
     def save_file(
         self,

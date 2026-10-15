@@ -27,6 +27,7 @@ from fal.toolkit.file._upload_policy import (
     UploadPolicy,
     UploadPolicyError,
     _prepare_upload,
+    _request_id,
     _upload_file_name,
     _validate_size,
     upload_bytes_with_policy,
@@ -36,7 +37,6 @@ from fal.toolkit.file.providers.fal import (
     FalFileRepositoryV3,
     MultipartUploadV3,
     _object_lifecycle_headers,
-    _request_id,
     _v3_auth_headers,
 )
 from fal.toolkit.file.types import FileData, FileRepository, Reservation
@@ -187,13 +187,12 @@ def save_with_policy(
     name = name or _upload_file_name(policy, file_name, content_type)
     if url := _uploader_with_policy(policy, name, content, content_type, request):
         return url
-    request_id = _request_id(request)
     if isinstance(content, bytes):
         return upload_bytes_with_policy(
-            policy, file_name, content, content_type, name=name, request_id=request_id
+            policy, file_name, content, content_type, name=name, request=request
         )
     return upload_path_with_policy(
-        policy, content, file_name, content_type, name=name, request_id=request_id
+        policy, content, file_name, content_type, name=name, request=request
     )
 
 

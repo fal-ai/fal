@@ -276,7 +276,7 @@ def test_upload_policy_refusals_upload_in_process(policy_upload, response, attem
         b"hi",
         "text/plain",
         name=unquote(requests[0].headers["x-fal-file-name"]),
-        request_id=None,
+        request=None,
     )
 
 

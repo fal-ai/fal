@@ -901,8 +901,16 @@ def drain(timeout: float | None = UPLOAD_POLICY_DRAIN_TIMEOUT) -> None:
         )
 
 
-def _current_request_id() -> str | None:
-    return getattr(_current_request(), "request_id", None)
+def _request_id(request: Any = None) -> str | None:
+    """The request's id: a field on the app's request context, a header on a
+    bare request. Defaults to the request in flight."""
+    if request is None:
+        request = _current_request()
+    if request is None:
+        return None
+    return getattr(request, "request_id", None) or request.headers.get(
+        "x-fal-request-id"
+    )
 
 
 def upload_bytes_with_policy(
@@ -912,7 +920,7 @@ def upload_bytes_with_policy(
     content_type: str,
     *,
     name: str | None = None,
-    request_id: str | None = None,
+    request: Any = None,
 ) -> str:
     """Queue ``data`` for upload and return the URL it will appear at.
 
@@ -929,7 +937,7 @@ def upload_bytes_with_policy(
             files={"file": (file_name, data, content_type)},
         )
 
-    _submit(_post, request_id or _current_request_id(), nbytes=len(data))
+    _submit(_post, _request_id(request), nbytes=len(data))
     return access_url
 
 
@@ -940,7 +948,7 @@ def upload_path_with_policy(
     content_type: str,
     *,
     name: str | None = None,
-    request_id: str | None = None,
+    request: Any = None,
 ) -> str:
     """As :func:`upload_bytes_with_policy`, for a file on disk.
 
@@ -957,7 +965,7 @@ def upload_path_with_policy(
     """
     _validate_size(file_path.stat().st_size)
     access_url, fields = _prepare_upload(policy, file_name, content_type, name=name)
-    request_id = request_id or _current_request_id()
+    request_id = _request_id(request)
 
     # Stage on the source's own volume, not the default temp dir: the payload can
     # be large (up to 5 GB) and belongs next to where it was written rather than

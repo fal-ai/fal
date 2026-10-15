@@ -29,6 +29,7 @@ from fal.toolkit.exceptions import FileUploadFallbackException
 from fal.toolkit.file._upload_policy import (
     UPLOAD_POLICY_KEY,
     UploadPolicyInputError,
+    _current_request,
     get_upload_policy,
 )
 from fal.toolkit.file.providers.fal import (
@@ -39,7 +40,6 @@ from fal.toolkit.file.providers.fal import (
     FalFileRepositoryV3,
     InMemoryRepository,
     MultipartUploadV3,
-    _current_request,
 )
 from fal.toolkit.file.providers.gcp import GoogleStorageRepository
 from fal.toolkit.file.providers.local import (
