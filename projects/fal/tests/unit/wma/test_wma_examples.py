@@ -20,6 +20,71 @@ def load(name):
     return runpy.run_path(str(EXAMPLES / ("wma_" + name + ".py")))
 
 
+@pytest.mark.allow_real_sleep
+def test_two_session_handlers_use_independent_control_channels(monkeypatch):
+    pytest.importorskip("aiortc")
+    from aioice import ice
+    from aiortc import RTCConfiguration, RTCPeerConnection, RTCSessionDescription
+    from fastapi import Request
+
+    from fal.wma import StartSessionRequest, _raw
+
+    async def no_ice(*args, **kwargs):
+        return [], False
+
+    monkeypatch.setattr(fal.wma.RunnerIceConfig, "build_ice_servers_async", no_ice)
+    monkeypatch.setattr(
+        ice, "get_host_addresses", lambda use_ipv4, use_ipv6: ["127.0.0.1"]
+    )
+    monkeypatch.setattr(_raw, "is_globally_routable_ip", lambda ip: True)
+
+    async def scenario():
+        app = load("multi_endpoint")["MultiEndpointApp"](_allow_init=True)
+
+        async def connect(path, expected, wrong):
+            client = RTCPeerConnection(RTCConfiguration(iceServers=[]))
+            channel = client.createDataChannel("control")
+            opened = asyncio.Event()
+            messages = asyncio.Queue()
+            channel.on("open", opened.set)
+            channel.on("message", lambda raw: messages.put_nowait(json.loads(raw)))
+            response = None
+            try:
+                await client.setLocalDescription(await client.createOffer())
+                offer = StartSessionRequest(sdp=client.localDescription.sdp)
+                handler = app.game if path.startswith("/game/") else app.start_session
+                response = await handler(
+                    offer,
+                    x_fal_caller_user_id=None,
+                    x_fal_request_id=None,
+                    http_request=Request({"type": "http", "path": path, "headers": []}),
+                )
+                first = await response.body_iterator.__anext__()
+                answer = json.loads(first[len("data: ") :])
+                await client.setRemoteDescription(
+                    RTCSessionDescription(sdp=answer["sdp"], type=answer["type"])
+                )
+                await asyncio.wait_for(opened.wait(), 10)
+                channel.send(json.dumps(wrong))
+                channel.send(json.dumps(expected))
+                assert await asyncio.wait_for(messages.get(), 10) == expected
+                assert messages.empty()
+            finally:
+                await client.close()
+                if response is not None:
+                    await response.body_iterator.aclose()
+                    await response.background()
+
+        echo = {"type": "echo", "text": "hello"}
+        move = {"type": "move", "direction": "right"}
+        await asyncio.gather(
+            connect("/start-session", echo, move),
+            connect("/game/start-session", move, echo),
+        )
+
+    asyncio.run(scenario())
+
+
 @pytest.mark.parametrize(
     "name,send,receive", [("video", 0, 1), ("filter", 1, 1), ("motion", 1, 0)]
 )
