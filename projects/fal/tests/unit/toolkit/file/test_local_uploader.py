@@ -603,6 +603,8 @@ def _session(request):
         return httpx.Response(201, json=started)
     if request.method == "PUT":
         return httpx.Response(204)
+    if request.method == "GET":
+        return COMPLETED
     return httpx.Response(202, json=ACCEPTED)
 
 
@@ -634,18 +636,12 @@ def test_failed_producer_aborts_the_stream(local_upload, transport):
     assert [r.method for r in requests] == ["POST", "DELETE"]
 
 
-def _session_and_status(request):
-    if request.method == "GET":
-        return COMPLETED
-    return _session(request)
-
-
 @pytest.mark.parametrize("source", ["bytes", "path"])
 @pytest.mark.parametrize("wait", [False, True])
 def test_reserve_hands_out_the_url_before_the_body(
     local_upload, transport, caller, tmp_path, source, wait
 ):
-    requests = transport(_session_and_status)
+    requests = transport(_session)
     caller({"x-fal-cdn-token": "caller-token"}, "request-id")
     pending = files.File.reserve("text/plain", "out.txt")
     assert pending.url == ACCEPTED["file_url"]
@@ -687,7 +683,6 @@ def test_reserve_abort_and_failed_complete_delete_the_session(local_upload, tran
     assert [r.method for r in requests] == ["POST", "DELETE"]
 
 
-@contextmanager
 def _fake_cdn(monkeypatch):
     """Answer the REST multipart API and record each call."""
     calls = []
@@ -701,10 +696,7 @@ def _fake_cdn(monkeypatch):
         yield response
 
     monkeypatch.setattr(remote, "_maybe_retry_request", respond)
-    monkeypatch.setattr(
-        remote, "fetch_auth_credentials", lambda: AuthCredentials("Key", "test:key")
-    )
-    yield calls
+    return calls
 
 
 @pytest.mark.parametrize(
@@ -719,19 +711,19 @@ def test_reserve_falls_back_to_a_direct_multipart_upload(
 ):
     transport(_respond(refusal))
     monkeypatch.setattr(remote.MultipartUploadV3, "MULTIPART_CHUNK_SIZE", 3)
-    with _fake_cdn(monkeypatch) as calls:
-        pending = files.File.reserve("text/plain", "out.txt")
-        assert pending.url == "https://v3.fal.media/out"
-        assert [call[:2] for call in calls] == [
-            (
-                "POST",
-                f"https://{remote.REST_HOST}/storage/upload/initiate-multipart"
-                "?storage_type=fal-cdn-v3",
-            )
-        ]
-        path = tmp_path / "out.txt"
-        path.write_bytes(body)
-        assert pending.complete(path).url == pending.url
+    calls = _fake_cdn(monkeypatch)
+    pending = files.File.reserve("text/plain", "out.txt")
+    assert pending.url == "https://v3.fal.media/out"
+    assert [call[:2] for call in calls] == [
+        (
+            "POST",
+            f"https://{remote.REST_HOST}/storage/upload/initiate-multipart"
+            "?storage_type=fal-cdn-v3",
+        )
+    ]
+    path = tmp_path / "out.txt"
+    path.write_bytes(body)
+    assert pending.complete(path).url == pending.url
     assert sorted(calls[1:]) == [
         ("POST", "https://up/x/complete", calls[-1][2]),
         *(("PUT", f"https://up/x/{n}", part) for n, part in enumerate(parts, 1)),

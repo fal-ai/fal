@@ -532,9 +532,7 @@ class File(BaseModel):
                 fdata.content_type,
                 _lifecycle_preference(request),
             )
-        return PendingFile(
-            reservation.url, fdata.content_type, fdata.file_name, reservation
-        )
+        return PendingFile(fdata.content_type, fdata.file_name, reservation)
 
     def as_bytes(self) -> bytes:
         if self.file_data is None:
@@ -572,10 +570,13 @@ class File(BaseModel):
 class PendingFile:
     """A reserved file URL whose bytes are not sent yet. See File.reserve."""
 
-    url: str
     content_type: str
     file_name: str
     reservation: Reservation = field(repr=False)
+
+    @property
+    def url(self) -> str:
+        return self.reservation.url
 
     def complete(
         self, content: bytes | str | Path, *, wait_for_completion: bool = False
