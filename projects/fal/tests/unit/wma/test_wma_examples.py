@@ -70,10 +70,15 @@ def test_two_session_handlers_use_independent_control_channels(monkeypatch):
                 assert await asyncio.wait_for(messages.get(), 10) == expected
                 assert messages.empty()
             finally:
-                await client.close()
-                if response is not None:
-                    await response.body_iterator.aclose()
-                    await response.background()
+
+                async def close_response():
+                    if response is not None:
+                        await response.body_iterator.aclose()
+                        await response.background()
+
+                await asyncio.wait_for(
+                    asyncio.gather(client.close(), close_response()), 10
+                )
 
         echo = {"type": "echo", "text": "hello"}
         move = {"type": "move", "direction": "right"}
@@ -82,7 +87,7 @@ def test_two_session_handlers_use_independent_control_channels(monkeypatch):
             connect("/game/start-session", move, echo),
         )
 
-    asyncio.run(scenario())
+    asyncio.run(asyncio.wait_for(scenario(), 30))
 
 
 @pytest.mark.parametrize(
