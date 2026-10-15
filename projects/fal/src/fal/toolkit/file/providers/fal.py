@@ -758,7 +758,6 @@ class MultipartUploadV3:
         return self.access_url
 
     def upload(self, content: bytes | Path) -> str:
-        """Send every part of a created upload, then complete it."""
         import concurrent.futures  # noqa: PLC0415
 
         def read_part(part_number: int) -> bytes:
@@ -820,8 +819,6 @@ class MultipartUploadV3:
 
 
 class _MultipartReservation(Reservation):
-    """The URL of a created multipart upload, which completes at any size."""
-
     def __init__(self, multipart: MultipartUploadV3) -> None:
         self.multipart = multipart
         self.url = multipart.access_url
@@ -829,7 +826,6 @@ class _MultipartReservation(Reservation):
     def complete(
         self, content: bytes | Path, *, wait_for_completion: bool = False
     ) -> None:
-        # Returns once the CDN has the file, so wait_for_completion holds.
         self.multipart.upload(content)
 
 

@@ -111,16 +111,11 @@ def upload_stream(
 
 
 def reserve(file_name: str, headers: dict[str, str]) -> Session:
-    """Open an upload session, whose URL exists before any body byte."""
     with _new_client() as http:
         return Session(*_open_session(http, file_name, headers))
 
 
 class Session(Reservation):
-    """The uploader drops a session after 300 s without progress; completing it
-    later raises.
-    """
-
     def __init__(self, session_id: str, url: str) -> None:
         self.session_id = session_id
         self.url = url

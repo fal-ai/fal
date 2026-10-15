@@ -506,18 +506,12 @@ class File(BaseModel):
         request: Optional[Request] = None,
         repository: FileRepository | RepositoryId = DEFAULT_REPOSITORY,
     ) -> PendingFile:
-        """Get the file's URL now and send its bytes later.
+        """Get the file's URL now; send the bytes later with
+        ``pending.complete(data)``, or give the URL up with ``pending.abort()``.
 
-        Respond with ``pending.url`` right away, then call
-        ``pending.complete(data)`` with the bytes or a path, or
-        ``pending.abort()`` to give the URL up. The request context (upload
-        policy, lifecycle, caller CDN token, request id) is taken here, not at
-        ``complete``.
-
-        If ``complete`` fails, the URL stays dead: there is no fallback
-        repository once a URL is out. The node-local uploader drops a
-        reservation after 300 s without progress. ``in_memory`` cannot reserve,
-        because its URL is the bytes.
+        The request context is read here, not at ``complete``. If ``complete``
+        fails, the URL stays dead: nothing falls back once a URL is out. The
+        node-local uploader drops a reservation after 300 s without progress.
         """
         fdata = FileData(b"", content_type, file_name)
         upload_policy = get_upload_policy(request)
@@ -568,7 +562,7 @@ class File(BaseModel):
 
 @dataclass
 class PendingFile:
-    """A reserved file URL whose bytes are not sent yet. See File.reserve."""
+    """See File.reserve."""
 
     content_type: str
     file_name: str
@@ -581,8 +575,6 @@ class PendingFile:
     def complete(
         self, content: bytes | str | Path, *, wait_for_completion: bool = False
     ) -> File:
-        """Send the bytes; return once the destination accepted them, or once
-        the CDN has them when waiting for completion."""
         if not isinstance(content, bytes):
             content = Path(content)
         self.reservation.complete(content, wait_for_completion=wait_for_completion)

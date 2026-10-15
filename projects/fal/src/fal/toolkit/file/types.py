@@ -35,12 +35,6 @@ RepositoryId = Literal[
 
 
 class Reservation:
-    """A URL handed out before its bytes exist.
-
-    If ``complete`` fails, the URL stays dead: the bytes cannot go anywhere else
-    once the URL is out.
-    """
-
     url: str
 
     def complete(
@@ -49,7 +43,7 @@ class Reservation:
         raise NotImplementedError()
 
     def abort(self) -> None:
-        """Give the reservation up; an unused one expires on its own."""
+        pass
 
 
 @dataclass

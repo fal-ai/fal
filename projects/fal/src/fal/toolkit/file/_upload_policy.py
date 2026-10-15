@@ -601,11 +601,7 @@ def _prepare_upload(
     *,
     name: str | None = None,
 ) -> tuple[str, dict[str, PolicyFieldValue]]:
-    """Resolve the destination URL and the POST form fields.
-
-    ``name`` is a result of :func:`_upload_file_name` the URL was already
-    handed out for.
-    """
+    """Resolve the destination URL and the POST form fields."""
     name = name or _upload_file_name(policy, file_name, content_type)
     fields = dict(policy.fields)
     final_key = _require_key_template(fields).replace(

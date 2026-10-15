@@ -127,7 +127,6 @@ class LocalFileRepository(FileRepository):
         content_type: str,
         object_lifecycle_preference: dict[str, str] | None = None,
     ) -> Reservation:
-        """Open an upload session; its URL exists before the bytes."""
         return reserve(file_name, _headers(content_type, object_lifecycle_preference))
 
     def save_stream(
@@ -149,23 +148,19 @@ class LocalFileRepository(FileRepository):
 
 
 class PolicyReservation(Reservation):
-    """The URL of an object in the caller's bucket, known from the policy's key
-    before the bytes exist."""
-
     def __init__(self, policy: UploadPolicy, file_name: str, content_type: str) -> None:
         self.policy = policy
         self.file_name = file_name
         self.content_type = content_type
         self.name = _upload_file_name(policy, file_name, content_type)
         self.url, _ = _prepare_upload(policy, file_name, content_type, name=self.name)
-        # The upload reads the request id and x-fal-* headers from the current
-        # request, which is gone by the time a background complete runs.
+        # The upload reads the request id and headers from the current request,
+        # which a background complete runs without.
         self.context = contextvars.copy_context()
 
     def complete(
         self, content: bytes | Path, *, wait_for_completion: bool = False
     ) -> None:
-        # Neither upload path waits for the bucket.
         self.context.run(
             save_with_policy,
             self.policy,
@@ -188,7 +183,6 @@ def save_with_policy(
 
     Opted-in runners hand the upload to the node-local uploader. Any other
     runner, or a refusal, uploads in-process. Neither waits for the bucket.
-    ``name`` is the key name a reservation already handed out a URL for.
     """
     name = name or _upload_file_name(policy, file_name, content_type)
     if bool_envvar("FAL_USE_LOCAL_UPLOADER"):
