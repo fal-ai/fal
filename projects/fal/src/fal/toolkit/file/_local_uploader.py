@@ -12,12 +12,14 @@ from __future__ import annotations
 import os
 import time
 from contextlib import suppress
+from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterable, Iterator
+from typing import TYPE_CHECKING, Any, Iterable, Iterator
 from urllib.parse import quote
 
 from fal.ref import get_current_app
 from fal.toolkit.exceptions import FileUploadException
+from fal.toolkit.file.types import Reservation
 
 if TYPE_CHECKING:
     import httpx
@@ -71,6 +73,7 @@ def upload(
     headers: dict[str, str],
     *,
     wait_for_completion: bool = False,
+    request: Any = None,
 ) -> str:
     """Return the URL once the complete body is durably accepted, or once the
     CDN has it when waiting for completion.
@@ -80,7 +83,7 @@ def upload(
     """
     size = len(content) if isinstance(content, bytes) else content.stat().st_size
     headers = {
-        **_with_request_headers(headers),
+        **_with_request_headers(headers, request),
         "X-Fal-File-Name": _header_file_name(file_name),
         "Content-Length": str(size),
     }
@@ -101,23 +104,46 @@ def upload_stream(
     """Return the URL once a body of unknown size is durably accepted, or once the
     CDN has it when waiting for completion.
     """
-    headers = {
-        **_with_request_headers(headers),
-        "X-Fal-File-Name": _header_file_name(file_name),
-    }
     with _new_client() as http:
-        upload_id, file_url = _stream(http, chunks, headers)
+        session_id, _ = _open_session(http, file_name, headers)
+        upload_id, file_url = _send(http, session_id, chunks)
         if wait_for_completion:
             _wait_for_completion(http, upload_id)
     return file_url
 
 
-def _with_request_headers(headers: dict[str, str]) -> dict[str, str]:
-    """Add the in-flight request's x-fal-* context headers.
+def reserve(
+    file_name: str, headers: dict[str, str], request: Any = None
+) -> Reservation:
+    with _new_client() as http:
+        session_id, url = _open_session(http, file_name, headers, request)
+    return Reservation(
+        url,
+        partial(_complete_session, session_id),
+        partial(_delete_session, session_id),
+    )
+
+
+def _complete_session(session_id: str, content: bytes | Path) -> None:
+    body = [content] if isinstance(content, bytes) else _chunks(content)
+    with _new_client() as http:
+        _send(http, session_id, body)
+
+
+def _delete_session(session_id: str) -> None:
+    with _new_client() as http, suppress(LocalUploadError):
+        _request(http, "DELETE", _session_path(session_id), 202)
+
+
+def _with_request_headers(
+    headers: dict[str, str], request: Any = None
+) -> dict[str, str]:
+    """Add the request's x-fal-* context headers, by default the in-flight one's.
 
     Values that cannot travel as ASCII are skipped rather than fail the upload.
     """
-    request = getattr(get_current_app(), "current_request", None)
+    if request is None:
+        request = getattr(get_current_app(), "current_request", None)
     context = request.headers if request else {}
     forwarded = {
         name: value
@@ -150,8 +176,19 @@ def _submit(
     return _receipt(response, "accepted_local")
 
 
-def _stream(
-    http: httpx.Client, chunks: Iterable[bytes], headers: dict[str, str]
+def _open_session(
+    http: httpx.Client, file_name: str, headers: dict[str, str], request: Any = None
+) -> tuple[str, str]:
+    headers = {
+        **_with_request_headers(headers, request),
+        "X-Fal-File-Name": _header_file_name(file_name),
+    }
+    response = _request(http, "POST", "/v1/upload-sessions", 201, headers=headers)
+    return _receipt(response, "receiving")
+
+
+def _send(
+    http: httpx.Client, session_id: str, chunks: Iterable[bytes]
 ) -> tuple[str, str]:
     """Accept only on an explicit finish carrying the final byte count; any
     failure, including a raising producer, aborts the session.
@@ -164,9 +201,7 @@ def _stream(
             size += len(chunk)
             yield chunk
 
-    response = _request(http, "POST", "/v1/upload-sessions", 201, headers=headers)
-    session_id, _ = _receipt(response, "receiving")
-    path = "/v1/upload-sessions/" + quote(session_id, safe="")
+    path = _session_path(session_id)
     try:
         _request(http, "PUT", path + "/body", 204, content=counted())
         response = _request(
@@ -178,6 +213,10 @@ def _stream(
         with suppress(LocalUploadError):
             _request(http, "DELETE", path, 202)
         raise
+
+
+def _session_path(session_id: str) -> str:
+    return "/v1/upload-sessions/" + quote(session_id, safe="")
 
 
 def _request(

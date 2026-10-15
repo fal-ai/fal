@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shutil
+from dataclasses import dataclass, field
 from functools import wraps
 from pathlib import Path
 from tempfile import NamedTemporaryFile, mkdtemp
@@ -28,6 +29,7 @@ from fal.toolkit.exceptions import FileUploadFallbackException
 from fal.toolkit.file._upload_policy import (
     UPLOAD_POLICY_KEY,
     UploadPolicyInputError,
+    _current_request,
     get_upload_policy,
 )
 from fal.toolkit.file.providers.fal import (
@@ -40,9 +42,13 @@ from fal.toolkit.file.providers.fal import (
     MultipartUploadV3,
 )
 from fal.toolkit.file.providers.gcp import GoogleStorageRepository
-from fal.toolkit.file.providers.local import LocalFileRepository, save_with_policy
+from fal.toolkit.file.providers.local import (
+    LocalFileRepository,
+    reserve_with_policy,
+    save_with_policy,
+)
 from fal.toolkit.file.providers.r2 import R2Repository
-from fal.toolkit.file.types import FileData, FileRepository, RepositoryId
+from fal.toolkit.file.types import FileData, FileRepository, RepositoryId, Reservation
 from fal.toolkit.utils.download_utils import download_file
 
 FileRepositoryFactory = Callable[[], FileRepository]
@@ -213,6 +219,12 @@ def _get_object_lifecycle_preference_from_context() -> dict[str, str] | None:
     return current_app.current_request.lifecycle_preference
 
 
+def _lifecycle_preference(request: Optional[Request]) -> dict[str, str] | None:
+    if request:
+        return request_lifecycle_preference(request)
+    return _get_object_lifecycle_preference_from_context()
+
+
 class File(BaseModel):
     # public properties
     url: str = Field(
@@ -324,12 +336,7 @@ class File(BaseModel):
                 file_data=data,
             )
 
-        if request:
-            object_lifecycle_preference = request_lifecycle_preference(request)
-        else:
-            object_lifecycle_preference = (
-                _get_object_lifecycle_preference_from_context()
-            )
+        object_lifecycle_preference = _lifecycle_preference(request)
 
         save_kwargs.setdefault(
             "object_lifecycle_preference", object_lifecycle_preference
@@ -434,12 +441,7 @@ class File(BaseModel):
                 file_size=file_size,
             )
 
-        if request:
-            object_lifecycle_preference = request_lifecycle_preference(request)
-        else:
-            object_lifecycle_preference = (
-                _get_object_lifecycle_preference_from_context()
-            )
+        object_lifecycle_preference = _lifecycle_preference(request)
 
         save_kwargs.setdefault(
             "object_lifecycle_preference", object_lifecycle_preference
@@ -497,6 +499,38 @@ class File(BaseModel):
             fallback_save_kwargs=fallback_save_kwargs,
         )
 
+    @classmethod
+    def reserve(
+        cls,
+        content_type: Optional[str] = None,
+        file_name: Optional[str] = None,
+        request: Optional[Request] = None,
+        repository: FileRepository | RepositoryId = DEFAULT_REPOSITORY,
+    ) -> PendingFile:
+        """Get the file's URL now; send the bytes later with
+        ``pending.complete(data)``, or give the URL up with ``pending.abort()``.
+
+        The request context is read here, not at ``complete``. If ``complete``
+        fails, the URL stays dead: nothing falls back once a URL is out.
+        """
+        fdata = FileData(b"", content_type, file_name)
+        upload_policy = get_upload_policy(request)
+        # The caller, fixed now: complete may run after the request, or under another.
+        caller = request if request is not None else _current_request()
+        if upload_policy is not None:
+            _require_no_repository_conflict(repository)
+            reservation = reserve_with_policy(
+                upload_policy, fdata.file_name, fdata.content_type, caller
+            )
+        else:
+            reservation = get_builtin_repository(repository).reserve(
+                fdata.file_name,
+                fdata.content_type,
+                _lifecycle_preference(request),
+                caller,
+            )
+        return PendingFile(fdata.content_type, fdata.file_name, reservation)
+
     def as_bytes(self) -> bytes:
         if self.file_data is None:
             raise ValueError("File has not been downloaded")
@@ -527,6 +561,36 @@ class File(BaseModel):
         overwrite: bool = False,
     ) -> Path:
         return await run_in_thread(self.save, path, overwrite)
+
+
+@dataclass
+class PendingFile:
+    """See File.reserve."""
+
+    content_type: str
+    file_name: str
+    _reservation: Reservation = field(repr=False)
+
+    @property
+    def url(self) -> str:
+        return self._reservation.url
+
+    def complete(self, content: bytes | str | Path) -> File:
+        if not isinstance(content, bytes):
+            content = Path(content)
+        self._reservation.complete(content)
+        return File(
+            url=self.url,
+            content_type=self.content_type,
+            file_name=self.file_name,
+            file_size=(
+                len(content) if isinstance(content, bytes) else content.stat().st_size
+            ),
+            file_data=content if isinstance(content, bytes) else None,
+        )
+
+    def abort(self) -> None:
+        self._reservation.abort()
 
 
 class CompressedFile(File):

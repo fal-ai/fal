@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import io
 import json
 import os
 import sys
+from contextlib import contextmanager
 from types import SimpleNamespace
 from unittest.mock import Mock
+from urllib.error import HTTPError
 from urllib.parse import quote, unquote
 from uuid import UUID
 
@@ -13,6 +16,7 @@ import pytest
 from starlette.requests import Request
 
 from fal.auth import AuthCredentials
+from fal.toolkit.exceptions import FileUploadException
 from fal.toolkit.file import _local_uploader
 from fal.toolkit.file import _upload_policy as upload_policy
 from fal.toolkit.file import file as files
@@ -265,8 +269,14 @@ def test_upload_policy_refusals_upload_in_process(policy_upload, response, attem
     )
     assert result.url == in_process.return_value
     assert len(requests) == attempts
+    # The in-process upload keeps the key name the uploader was offered.
     in_process.assert_called_once_with(
-        upload_policy.UploadPolicy(**POLICY), "cat.txt", b"hi", "text/plain"
+        upload_policy.UploadPolicy(**POLICY),
+        "cat.txt",
+        b"hi",
+        "text/plain",
+        name=unquote(requests[0].headers["x-fal-file-name"]),
+        request=None,
     )
 
 
@@ -624,3 +634,193 @@ def test_failed_producer_aborts_the_stream(local_upload, transport):
     with pytest.raises(RuntimeError, match="encoder died"):
         local.LocalFileRepository().save_stream(generate(), "out.mp4", "video/mp4")
     assert [r.method for r in requests] == ["POST", "DELETE"]
+
+
+@pytest.mark.parametrize("source", ["bytes", "path"])
+def test_reserve_hands_out_the_url_before_the_body(
+    local_upload, transport, caller, tmp_path, source
+):
+    requests = transport(_session)
+    caller({"x-fal-cdn-token": "caller-token"}, "request-id")
+    pending = files.File.reserve("text/plain", "out.txt")
+    assert pending.url == ACCEPTED["file_url"]
+    (opened,) = requests
+    assert opened.url.path == "/v1/upload-sessions"
+    assert opened.headers["x-fal-file-name"] == "out.txt"
+    assert opened.headers["x-fal-request-id"] == "request-id"
+
+    path = tmp_path / "out.txt"
+    path.write_bytes(b"hello")
+    result = pending.complete(b"hello" if source == "bytes" else path)
+    assert (result.url, result.file_name, result.file_size) == (
+        ACCEPTED["file_url"],
+        "out.txt",
+        5,
+    )
+    assert [(r.method, r.url.path) for r in requests[1:]] == [
+        ("PUT", "/v1/upload-sessions/session-id/body"),
+        ("POST", "/v1/upload-sessions/session-id/finish"),
+    ]
+    assert requests[1].content == b"hello"
+    assert json.loads(requests[2].content) == {"size_bytes": 5}
+    # The body carries no request context; the session already has it.
+    assert "x-fal-request-id" not in requests[1].headers
+
+
+def test_reserve_abort_and_failed_complete_delete_the_session(local_upload, transport):
+    requests = transport(_session)
+    files.File.reserve("text/plain").abort()
+    assert [r.method for r in requests] == ["POST", "DELETE"]
+
+    requests.clear()
+    pending = files.File.reserve("text/plain")
+    with pytest.raises(FileNotFoundError):
+        pending.complete("/missing/out.txt")
+    assert [r.method for r in requests] == ["POST", "DELETE"]
+
+
+def _fake_cdn(monkeypatch, complete_statuses=()):
+    """Answer the REST multipart API and record each request; each /complete
+    answers the next of `complete_statuses` with an error, then succeeds."""
+    calls = []
+    failures = list(complete_statuses)
+
+    @contextmanager
+    def respond(request, **_kwargs):
+        calls.append(request)
+        if failures and request.full_url.endswith("/complete"):
+            raise HTTPError(request.full_url, failures.pop(0), "", {}, None)
+        body = {"file_url": "https://v3.fal.media/out", "upload_url": "https://up/x"}
+        response = io.BytesIO(json.dumps(body).encode())
+        response.headers = {"ETag": "etag"}
+        yield response
+
+    monkeypatch.setattr(remote, "_maybe_retry_request", respond)
+    return calls
+
+
+@pytest.mark.parametrize(
+    "refusal,body,parts",
+    [
+        (httpx.Response(404), b"hello", [b"hel", b"lo"]),
+        (httpx.ConnectError, b"", [b""]),
+    ],
+)
+def test_reserve_falls_back_to_a_direct_multipart_upload(
+    monkeypatch, local_upload, transport, tmp_path, refusal, body, parts
+):
+    transport(_respond(refusal))
+    monkeypatch.setattr(remote.MultipartUploadV3, "MULTIPART_CHUNK_SIZE", 3)
+    calls = _fake_cdn(monkeypatch)
+    pending = files.File.reserve("text/plain", "out.txt")
+    assert pending.url == "https://v3.fal.media/out"
+    assert [(c.get_method(), c.full_url) for c in calls] == [
+        (
+            "POST",
+            f"https://{remote.REST_HOST}/storage/upload/initiate-multipart"
+            "?storage_type=fal-cdn-v3",
+        )
+    ]
+    path = tmp_path / "out.txt"
+    path.write_bytes(body)
+    assert pending.complete(path).url == pending.url
+    assert sorted((c.get_method(), c.full_url, c.data) for c in calls[1:]) == [
+        ("POST", "https://up/x/complete", calls[-1].data),
+        *(("PUT", f"https://up/x/{n}", part) for n, part in enumerate(parts, 1)),
+    ]
+
+
+def test_reserve_failed_complete_raises_and_a_retry_sends_fresh_parts(
+    monkeypatch, local_upload, transport
+):
+    transport(_respond(httpx.Response(404)))
+    # 409 also means a deleted or expired upload, so it is never success.
+    calls = _fake_cdn(monkeypatch, complete_statuses=[409])
+    pending = files.File.reserve("text/plain", "out.txt")
+    with pytest.raises(FileUploadException):
+        pending.complete(b"hi")
+    assert pending.complete(b"hi").url == pending.url
+    completes = [c for c in calls if c.full_url == "https://up/x/complete"]
+    assert [json.loads(c.data)["parts"] for c in completes] == [
+        [{"partNumber": 1, "etag": "etag"}]
+    ] * 2
+
+
+def _caller_request(**headers):
+    return Request(
+        {
+            "type": "http",
+            "headers": [(k.encode(), v.encode()) for k, v in headers.items()],
+        }
+    )
+
+
+@pytest.mark.parametrize("via_uploader", [True, False])
+def test_reserve_names_the_caller_from_the_given_request(
+    monkeypatch, local_upload, transport, caller, via_uploader
+):
+    requests = transport(_session if via_uploader else _respond(httpx.Response(404)))
+    calls = _fake_cdn(monkeypatch)
+    # The request in flight, if any, is not the caller.
+    caller({"x-fal-cdn-token": "other-token"}, "other-id")
+    request = _caller_request(**{"x-fal-cdn-token": "token", "x-fal-request-id": "rid"})
+    files.File.reserve("text/plain", "out.txt", request=request)
+    if via_uploader:
+        (opened,) = requests
+        headers = dict(opened.headers)
+    else:
+        (initiated,) = calls
+        headers = {k.lower(): v for k, v in initiated.header_items()}
+    assert (headers["x-fal-cdn-token"], headers["x-fal-request-id"]) == ("token", "rid")
+
+
+@pytest.mark.parametrize("given", [True, False])
+def test_reserve_policy_url_matches_the_upload(
+    monkeypatch, policy_upload, tmp_path, given
+):
+    requests, in_process = policy_upload(_accept_like_the_uploader)
+    request = _policy_request()
+    request.scope["headers"] += [
+        (b"x-fal-request-id", b"rid"),
+        (b"x-fal-endpoint", b"fal-ai/test"),
+    ]
+    # Given, or in flight at reserve time; either way gone before complete.
+    app = SimpleNamespace(current_request=None if given else request)
+    for module in (files, upload_policy, remote, _local_uploader):
+        monkeypatch.setattr(module, "get_current_app", lambda: app)
+    pending = files.File.reserve(
+        "text/plain", "cat.txt", request=request if given else None
+    )
+    app.current_request = None
+    assert pending.url.startswith(POLICY["url"].rstrip("/") + "/outputs/")
+    assert requests == []
+    path = tmp_path / "cat.txt"
+    path.write_bytes(b"hi")
+    pending.complete(path)
+    (request,) = requests
+    # The uploader builds the same URL from the reserved key name.
+    assert _accept_like_the_uploader(request).json()["file_url"] == pending.url
+    assert request.headers["x-fal-request-id"] == "rid"
+    assert request.headers["x-fal-endpoint"] == "fal-ai/test"
+    in_process.assert_not_called()
+
+
+def test_reserve_policy_complete_queues_the_post(monkeypatch, tmp_path):
+    """Without the uploader, complete does not wait for the caller's bucket."""
+    monkeypatch.delenv("FAL_USE_LOCAL_UPLOADER", raising=False)
+    submit = Mock()
+    monkeypatch.setattr(upload_policy, "_submit", submit)
+    request = _policy_request()
+    request.scope["headers"] += [(b"x-fal-request-id", b"rid")]
+    pending = files.File.reserve("text/plain", "cat.txt", request=request)
+    path = tmp_path / "cat.txt"
+    path.write_bytes(b"hi")
+    assert pending.complete(path).url == pending.url
+    # Queued under the reserving request, with nothing in flight now.
+    submit.assert_called_once()
+    assert submit.call_args.args[1] == "rid"
+
+
+def test_in_memory_cannot_reserve():
+    with pytest.raises(NotImplementedError):
+        files.File.reserve("text/plain", repository="in_memory")

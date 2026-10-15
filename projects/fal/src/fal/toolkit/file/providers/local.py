@@ -9,15 +9,16 @@ publish a duplicate. Small files retain bytes for File.as_bytes().
 from __future__ import annotations
 
 import json
-from functools import wraps
+from functools import partial, wraps
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Iterable
 from urllib.parse import quote
 
 from fal.flags import bool_envvar
 from fal.toolkit.file._local_uploader import (
     LocalUploadInvalid,
     LocalUploadRefused,
+    reserve,
     upload,
     upload_stream,
 )
@@ -25,7 +26,8 @@ from fal.toolkit.file._upload_policy import (
     UPLOAD_POLICY_KEY,
     UploadPolicy,
     UploadPolicyError,
-    _current_request_id,
+    _prepare_upload,
+    _request_id,
     _upload_file_name,
     _validate_size,
     upload_bytes_with_policy,
@@ -35,8 +37,9 @@ from fal.toolkit.file.providers.fal import (
     FalFileRepositoryV3,
     MultipartUploadV3,
     _object_lifecycle_headers,
+    _v3_auth_headers,
 )
-from fal.toolkit.file.types import FileData, FileRepository
+from fal.toolkit.file.types import FileData, FileRepository, Reservation
 
 
 def _or_direct(method):
@@ -54,9 +57,11 @@ def _or_direct(method):
 
 
 def _headers(
-    content_type: str, object_lifecycle_preference: dict[str, str] | None
+    content_type: str,
+    object_lifecycle_preference: dict[str, str] | None,
+    request: Any = None,
 ) -> dict[str, str]:
-    headers = {**FalFileRepositoryV3().auth_headers, "Content-Type": content_type}
+    headers = {**_v3_auth_headers(request), "Content-Type": content_type}
     _object_lifecycle_headers(headers, object_lifecycle_preference)
     return headers
 
@@ -117,6 +122,17 @@ class LocalFileRepository(FileRepository):
         )
         return url, data
 
+    @_or_direct
+    def reserve(
+        self,
+        file_name: str,
+        content_type: str,
+        object_lifecycle_preference: dict[str, str] | None = None,
+        request: Any = None,
+    ) -> Reservation:
+        headers = _headers(content_type, object_lifecycle_preference, request)
+        return reserve(file_name, headers, request)
+
     def save_stream(
         self,
         chunks: Iterable[bytes],
@@ -135,43 +151,91 @@ class LocalFileRepository(FileRepository):
         )
 
 
+def reserve_with_policy(
+    policy: UploadPolicy, file_name: str, content_type: str, request: Any
+) -> Reservation:
+    """The URL from the policy's key now; complete runs save_with_policy, which
+    does not wait for the bucket."""
+    name = _upload_file_name(policy, file_name, content_type)
+    url, _ = _prepare_upload(policy, file_name, content_type, name=name)
+    complete = partial(
+        save_with_policy,
+        policy,
+        file_name,
+        content_type=content_type,
+        name=name,
+        request=request,
+    )
+    return Reservation(url, complete)
+
+
 def save_with_policy(
-    policy: UploadPolicy, file_name: str, content: bytes | Path, content_type: str
+    policy: UploadPolicy,
+    file_name: str,
+    content: bytes | Path,
+    content_type: str,
+    *,
+    name: str | None = None,
+    request: Any = None,
 ) -> str:
     """Upload to the caller's bucket and return the URL the object will have.
 
     Opted-in runners hand the upload to the node-local uploader. Any other
-    runner, or a refusal, uploads in-process. Neither waits for the bucket.
+    runner, or a refusal, uploads in-process. Neither waits for the bucket, so
+    no runner time is spent on the caller's storage.
     """
-    if bool_envvar("FAL_USE_LOCAL_UPLOADER"):
-        try:
-            return _upload_with_policy(policy, file_name, content, content_type)
-        except LocalUploadInvalid as exc:
-            raise UploadPolicyError(
-                f"Upload via {UPLOAD_POLICY_KEY} was refused: {exc}"
-            ) from None
-        except LocalUploadRefused as exc:
-            print(f"{exc} Uploading in-process.")
+    name = name or _upload_file_name(policy, file_name, content_type)
+    if url := _uploader_with_policy(policy, name, content, content_type, request):
+        return url
     if isinstance(content, bytes):
-        return upload_bytes_with_policy(policy, file_name, content, content_type)
-    return upload_path_with_policy(policy, content, file_name, content_type)
+        return upload_bytes_with_policy(
+            policy, file_name, content, content_type, name=name, request=request
+        )
+    return upload_path_with_policy(
+        policy, content, file_name, content_type, name=name, request=request
+    )
+
+
+def _uploader_with_policy(
+    policy: UploadPolicy,
+    name: str,
+    content: bytes | Path,
+    content_type: str,
+    request: Any = None,
+) -> str | None:
+    """The URL from the node-local uploader, or None when it did not take the work."""
+    if not bool_envvar("FAL_USE_LOCAL_UPLOADER"):
+        return None
+    try:
+        return _upload_with_policy(policy, name, content, content_type, request)
+    except LocalUploadInvalid as exc:
+        raise UploadPolicyError(
+            f"Upload via {UPLOAD_POLICY_KEY} was refused: {exc}"
+        ) from None
+    except LocalUploadRefused as exc:
+        print(f"{exc} Uploading in-process.")
+        return None
 
 
 def _upload_with_policy(
-    policy: UploadPolicy, file_name: str, content: bytes | Path, content_type: str
+    policy: UploadPolicy,
+    name: str,
+    content: bytes | Path,
+    content_type: str,
+    request: Any = None,
 ) -> str:
     _validate_size(
         len(content) if isinstance(content, bytes) else content.stat().st_size
     )
     # Percent-encoded so a non-ASCII name can travel in the header; the
     # uploader decodes it, so the key matches the in-process path.
-    name = quote(_upload_file_name(policy, file_name, content_type), safe="")
+    name = quote(name, safe="")
     # No credentials: an uploader without policy support then refuses the
     # upload rather than send it to the fal CDN.
     headers = {
         "Content-Type": content_type,
         UPLOAD_POLICY_KEY: json.dumps({"url": policy.url, "fields": policy.fields}),
     }
-    if request_id := _current_request_id():
+    if request_id := _request_id(request):
         headers["X-Fal-Request-ID"] = request_id
-    return upload(name, content, headers)
+    return upload(name, content, headers, request=request)
