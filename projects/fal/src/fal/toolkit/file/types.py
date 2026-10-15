@@ -7,6 +7,14 @@ from typing import Literal, Optional
 from uuid import uuid4
 
 
+def resolve_content_type(content_type: str | None, file_name: str | None) -> str:
+    if content_type is None and file_name is not None:
+        content_type, _ = guess_type(file_name)
+
+    # Ultimately fallback to a generic binary file mime type
+    return content_type or "application/octet-stream"
+
+
 class FileData:
     data: bytes
     content_type: str
@@ -16,11 +24,7 @@ class FileData:
         self, data: bytes, content_type: str | None = None, file_name: str | None = None
     ):
         self.data = data
-        if content_type is None and file_name is not None:
-            content_type, _ = guess_type(file_name or "")
-
-        # Ultimately fallback to a generic binary file mime type
-        self.content_type = content_type or "application/octet-stream"
+        self.content_type = resolve_content_type(content_type, file_name)
 
         if file_name is None:
             extension = guess_extension(self.content_type, strict=False) or ".bin"

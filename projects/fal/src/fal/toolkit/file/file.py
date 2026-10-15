@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shutil
+import time
 from functools import wraps
 from pathlib import Path
 from tempfile import NamedTemporaryFile, mkdtemp
@@ -28,7 +29,9 @@ from fal.toolkit.exceptions import FileUploadFallbackException
 from fal.toolkit.file._upload_policy import (
     UPLOAD_POLICY_KEY,
     UploadPolicyInputError,
+    _current_request_id,
     get_upload_policy,
+    report_json_line,
 )
 from fal.toolkit.file.providers.fal import (
     # Re-exported for backwards compatibility; both resolve to FalFileRepositoryV3.
@@ -42,7 +45,12 @@ from fal.toolkit.file.providers.fal import (
 from fal.toolkit.file.providers.gcp import GoogleStorageRepository
 from fal.toolkit.file.providers.local import LocalFileRepository, save_with_policy
 from fal.toolkit.file.providers.r2 import R2Repository
-from fal.toolkit.file.types import FileData, FileRepository, RepositoryId
+from fal.toolkit.file.types import (
+    FileData,
+    FileRepository,
+    RepositoryId,
+    resolve_content_type,
+)
 from fal.toolkit.utils.download_utils import download_file
 
 FileRepositoryFactory = Callable[[], FileRepository]
@@ -164,7 +172,21 @@ def _try_with_fallback(
     ],
     save_kwargs: dict,
     fallback_save_kwargs: dict,
+    nbytes: int | None = None,
+    content_type: str | None = None,
 ) -> Any:
+    def report(repo, outcome: str, started: float, **error: str) -> None:
+        report_json_line(
+            "file_upload",
+            repository=_repo_label(repo),
+            outcome=outcome,
+            bytes=nbytes,
+            duration_ms=round((time.monotonic() - started) * 1000),
+            content_type=content_type,
+            request_id=_current_request_id(),
+            **error,
+        )
+
     if fallback_repository is None:
         fallback_repository = []
     elif isinstance(fallback_repository, list):
@@ -179,16 +201,22 @@ def _try_with_fallback(
     failures: list[str] = []
     for idx, (repo, kwargs) in enumerate(attempts):
         repo_obj = get_builtin_repository(repo)
+        started = time.monotonic()
         try:
-            return getattr(repo_obj, func)(*args, **kwargs)
+            result = getattr(repo_obj, func)(*args, **kwargs)
         except Exception as exc:
+            error = f"{type(exc).__name__}: {exc}"
+            falls_back = getattr(exc, "falls_back", True)
+            is_last = idx == len(attempts) - 1
+            outcome = "fallback" if falls_back and not is_last else "error"
+            report(repo, outcome, started, error=error)
             # An uncertain upload must not be replayed through another repository.
-            if not getattr(exc, "falls_back", True):
+            if not falls_back:
                 raise
 
-            failure = f"{_repo_label(repo)}: {type(exc).__name__}: {exc}"
+            failure = f"{_repo_label(repo)}: {error}"
             failures.append(failure)
-            if idx < len(attempts) - 1:
+            if not is_last:
                 print(
                     f"Failed to {func} to repository {failure}, "
                     f"falling back to {_repo_label(attempts[idx + 1][0])}"
@@ -204,6 +232,22 @@ def _try_with_fallback(
                 f"Failed to {func} to all {len(failures)} repositories. "
                 + "; ".join(failures)
             ) from exc
+
+        report(repo, "ok", started)
+        return result
+
+
+def _prepare_upload(
+    source: bytes | Path, content_type: str, request: Any
+) -> tuple[bytes | Path, str]:
+    """Let the running app change a file before it is uploaded. Outside an app
+    (a script, a test) there is nothing to call."""
+    current_app = get_current_app()
+    if current_app is None:
+        return source, content_type
+    if request is None:
+        request = current_app.current_request
+    return current_app.prepare_upload(source, content_type, request)
 
 
 def _get_object_lifecycle_preference_from_context() -> dict[str, str] | None:
@@ -302,6 +346,34 @@ class File(BaseModel):
         save_kwargs: Optional[dict] = None,
         fallback_save_kwargs: Optional[dict] = None,
     ) -> File:
+        source, content_type = _prepare_upload(
+            data, resolve_content_type(content_type, file_name), request
+        )
+        return cls._save(
+            source,
+            content_type,
+            file_name=file_name,
+            repository=repository,
+            fallback_repository=fallback_repository,
+            request=request,
+            save_kwargs=save_kwargs,
+            fallback_save_kwargs=fallback_save_kwargs,
+        )
+
+    @classmethod
+    def _save_bytes(
+        cls,
+        data: bytes,
+        content_type: str,
+        file_name: Optional[str],
+        repository: FileRepository | RepositoryId,
+        fallback_repository: Optional[
+            FileRepository | RepositoryId | list[FileRepository | RepositoryId]
+        ],
+        request: Optional[Request],
+        save_kwargs: Optional[dict],
+        fallback_save_kwargs: Optional[dict],
+    ) -> File:
         save_kwargs = save_kwargs or {}
         fallback_save_kwargs = fallback_save_kwargs or {}
 
@@ -345,6 +417,8 @@ class File(BaseModel):
             fallback_repository=fallback_repository,
             save_kwargs=save_kwargs,
             fallback_save_kwargs=fallback_save_kwargs,
+            nbytes=len(data),
+            content_type=fdata.content_type,
         )
 
         return cls(
@@ -399,10 +473,52 @@ class File(BaseModel):
         if not file_path.exists():
             raise FileNotFoundError(f"File {file_path} does not exist")
 
+        source, content_type = _prepare_upload(
+            file_path, content_type or "application/octet-stream", request
+        )
+        return cls._save(
+            source,
+            content_type,
+            file_name=file_path.name,
+            multipart=multipart,
+            repository=repository,
+            fallback_repository=fallback_repository,
+            request=request,
+            save_kwargs=save_kwargs,
+            fallback_save_kwargs=fallback_save_kwargs,
+        )
+
+    @classmethod
+    def _save(
+        cls,
+        source: bytes | Path,
+        content_type: str,
+        file_name: Optional[str],
+        multipart: bool | None = None,
+        **destination: Any,
+    ) -> File:
+        """Upload what ``prepare_upload`` returned: bytes in memory, a path from
+        disk, whichever entry point the caller used."""
+        if isinstance(source, bytes):
+            return cls._save_bytes(source, content_type, file_name, **destination)
+        return cls._save_path(Path(source), content_type, multipart, **destination)
+
+    @classmethod
+    def _save_path(
+        cls,
+        file_path: Path,
+        content_type: str,
+        multipart: bool | None,
+        repository: FileRepository | RepositoryId,
+        fallback_repository: Optional[
+            FileRepository | RepositoryId | list[FileRepository | RepositoryId]
+        ],
+        request: Optional[Request],
+        save_kwargs: Optional[dict],
+        fallback_save_kwargs: Optional[dict],
+    ) -> File:
         save_kwargs = save_kwargs or {}
         fallback_save_kwargs = fallback_save_kwargs or {}
-
-        content_type = content_type or "application/octet-stream"
 
         upload_policy = get_upload_policy(request)
         if upload_policy is not None:
@@ -454,6 +570,7 @@ class File(BaseModel):
         save_kwargs.setdefault("content_type", content_type)
         fallback_save_kwargs.setdefault("content_type", content_type)
 
+        file_size = file_path.stat().st_size
         url, data = _try_with_fallback(
             "save_file",
             [file_path],
@@ -461,6 +578,8 @@ class File(BaseModel):
             fallback_repository=fallback_repository,
             save_kwargs=save_kwargs,
             fallback_save_kwargs=fallback_save_kwargs,
+            nbytes=file_size,
+            content_type=content_type,
         )
 
         return cls(
@@ -468,7 +587,7 @@ class File(BaseModel):
             file_data=data.data if data else None,
             content_type=content_type,
             file_name=file_path.name,
-            file_size=file_path.stat().st_size,
+            file_size=file_size,
         )
 
     @classmethod

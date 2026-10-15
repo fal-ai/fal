@@ -10,6 +10,7 @@ from unittest.mock import patch
 import pytest
 from pydantic import BaseModel
 
+from fal.app import App
 from fal.toolkit.exceptions import FileUploadException, FileUploadFallbackException
 from fal.toolkit.file.file import (
     OBJECT_LIFECYCLE_PREFERENCE_KEY,
@@ -456,7 +457,9 @@ class TestTryWithFallback:
 
         with patch(
             "fal.toolkit.file.file.get_builtin_repository"
-        ) as mock_get_repo, patch("builtins.print") as mock_print:
+        ) as mock_get_repo, patch("builtins.print") as mock_print, patch(
+            "fal.toolkit.file.file.report_json_line"
+        ):
             mock_get_repo.side_effect = [repo1, repo2]
 
             result = _try_with_fallback(
@@ -487,7 +490,9 @@ class TestTryWithFallback:
 
         with patch(
             "fal.toolkit.file.file.get_builtin_repository"
-        ) as mock_get_repo, patch("builtins.print") as mock_print:
+        ) as mock_get_repo, patch("builtins.print") as mock_print, patch(
+            "fal.toolkit.file.file.report_json_line"
+        ):
             mock_get_repo.side_effect = [
                 MockRepository("primary", should_fail=True),
                 fallback,
@@ -537,7 +542,14 @@ class TestGetObjectLifecyclePreferenceFromContext:
             (),
             {"lifecycle_preference": expected_preference},
         )()
-        mock_app = type("MockApp", (), {"current_request": mock_request_context})()
+        mock_app = type(
+            "MockApp",
+            (),
+            {
+                "current_request": mock_request_context,
+                "prepare_upload": App.prepare_upload,
+            },
+        )()
 
         with patch("fal.toolkit.file.file.get_current_app", return_value=mock_app):
             result = _get_object_lifecycle_preference_from_context()
@@ -550,7 +562,14 @@ class TestGetObjectLifecyclePreferenceFromContext:
             (),
             {"lifecycle_preference": None},
         )()
-        mock_app = type("MockApp", (), {"current_request": mock_request_context})()
+        mock_app = type(
+            "MockApp",
+            (),
+            {
+                "current_request": mock_request_context,
+                "prepare_upload": App.prepare_upload,
+            },
+        )()
 
         with patch("fal.toolkit.file.file.get_current_app", return_value=mock_app):
             result = _get_object_lifecycle_preference_from_context()
@@ -568,7 +587,14 @@ class TestContextBasedLifecyclePreference:
             (),
             {"lifecycle_preference": expected_preference},
         )()
-        mock_app = type("MockApp", (), {"current_request": mock_request_context})()
+        mock_app = type(
+            "MockApp",
+            (),
+            {
+                "current_request": mock_request_context,
+                "prepare_upload": App.prepare_upload,
+            },
+        )()
 
         with patch(
             "fal.toolkit.file.file.get_current_app", return_value=mock_app
@@ -605,7 +631,14 @@ class TestContextBasedLifecyclePreference:
             (),
             {"lifecycle_preference": context_preference},
         )()
-        mock_app = type("MockApp", (), {"current_request": mock_request_context})()
+        mock_app = type(
+            "MockApp",
+            (),
+            {
+                "current_request": mock_request_context,
+                "prepare_upload": App.prepare_upload,
+            },
+        )()
 
         with patch(
             "fal.toolkit.file.file.get_current_app", return_value=mock_app

@@ -23,7 +23,7 @@ from starlette.testclient import TestClient
 
 import fal
 import fal.ref
-from fal.app import _RejectUploadPolicyOnWebSocket
+from fal.app import App, _RejectUploadPolicyOnWebSocket
 from fal.ref import set_current_app
 from fal.toolkit.file import _upload_policy as up
 from fal.toolkit.file._upload_policy import (
@@ -211,6 +211,8 @@ class _ContextVarApp:
     A plain attribute would make the async tests below pass without exercising
     any context propagation at all -- which is the thing they exist to prove.
     """
+
+    prepare_upload = App.prepare_upload
 
     def __init__(self, context):
         self._var: ContextVar = ContextVar("_test_request_context", default=None)
