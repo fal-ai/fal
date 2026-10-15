@@ -8,6 +8,7 @@ publish a duplicate. Small files retain bytes for File.as_bytes().
 
 from __future__ import annotations
 
+import contextvars
 import json
 from functools import wraps
 from pathlib import Path
@@ -157,13 +158,21 @@ class PolicyReservation(Reservation):
         self.content_type = content_type
         self.name = _upload_file_name(policy, file_name, content_type)
         self.url, _ = _prepare_upload(policy, file_name, content_type, name=self.name)
+        # The upload reads the request id and x-fal-* headers from the current
+        # request, which is gone by the time a background complete runs.
+        self.context = contextvars.copy_context()
 
     def complete(
         self, content: bytes | Path, *, wait_for_completion: bool = False
     ) -> None:
         # Neither upload path waits for the bucket.
-        save_with_policy(
-            self.policy, self.file_name, content, self.content_type, name=self.name
+        self.context.run(
+            save_with_policy,
+            self.policy,
+            self.file_name,
+            content,
+            self.content_type,
+            name=self.name,
         )
 
 

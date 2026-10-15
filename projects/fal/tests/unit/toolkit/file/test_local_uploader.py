@@ -5,6 +5,7 @@ import json
 import os
 import sys
 from contextlib import contextmanager
+from contextvars import ContextVar
 from types import SimpleNamespace
 from unittest.mock import Mock
 from urllib.parse import quote, unquote
@@ -706,9 +707,15 @@ def _fake_cdn(monkeypatch):
     yield calls
 
 
-@pytest.mark.parametrize("refusal", [httpx.Response(404), httpx.ConnectError])
+@pytest.mark.parametrize(
+    "refusal,body,parts",
+    [
+        (httpx.Response(404), b"hello", [b"hel", b"lo"]),
+        (httpx.ConnectError, b"", [b""]),
+    ],
+)
 def test_reserve_falls_back_to_a_direct_multipart_upload(
-    monkeypatch, local_upload, transport, tmp_path, refusal
+    monkeypatch, local_upload, transport, tmp_path, refusal, body, parts
 ):
     transport(_respond(refusal))
     monkeypatch.setattr(remote.MultipartUploadV3, "MULTIPART_CHUNK_SIZE", 3)
@@ -723,18 +730,27 @@ def test_reserve_falls_back_to_a_direct_multipart_upload(
             )
         ]
         path = tmp_path / "out.txt"
-        path.write_bytes(b"hello")
+        path.write_bytes(body)
         assert pending.complete(path).url == pending.url
     assert sorted(calls[1:]) == [
         ("POST", "https://up/x/complete", calls[-1][2]),
-        ("PUT", "https://up/x/1", b"hel"),
-        ("PUT", "https://up/x/2", b"lo"),
+        *(("PUT", f"https://up/x/{n}", part) for n, part in enumerate(parts, 1)),
     ]
 
 
 def test_reserve_policy_url_matches_the_upload(monkeypatch, policy_upload, tmp_path):
     requests, in_process = policy_upload(_accept_like_the_uploader)
+    # A ContextVar, like App.current_request.
+    current = ContextVar("current_request", default=None)
+    app = type("App", (), {"current_request": property(lambda _: current.get())})()
+    for module in (_local_uploader, upload_policy):
+        monkeypatch.setattr(module, "get_current_app", lambda: app)
+    token = current.set(
+        SimpleNamespace(headers={"x-fal-endpoint": "fal-ai/test"}, request_id="rid")
+    )
     pending = files.File.reserve("text/plain", "cat.txt", request=_policy_request())
+    # The response is out: complete runs without the request.
+    current.reset(token)
     assert pending.url.startswith(POLICY["url"].rstrip("/") + "/outputs/")
     assert requests == []
     path = tmp_path / "cat.txt"
@@ -743,6 +759,8 @@ def test_reserve_policy_url_matches_the_upload(monkeypatch, policy_upload, tmp_p
     (request,) = requests
     # The uploader builds the same URL from the reserved key name.
     assert _accept_like_the_uploader(request).json()["file_url"] == pending.url
+    assert request.headers["x-fal-request-id"] == "rid"
+    assert request.headers["x-fal-endpoint"] == "fal-ai/test"
     in_process.assert_not_called()
 
 

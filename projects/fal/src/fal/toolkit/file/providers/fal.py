@@ -775,7 +775,8 @@ class MultipartUploadV3:
         ) as executor:
             futures = [
                 executor.submit(lambda pn: self.upload_part(pn, read_part(pn)), pn)
-                for pn in range(1, math.ceil(size / self.chunk_size) + 1)
+                # One part even when empty: completing with no parts fails.
+                for pn in range(1, max(1, math.ceil(size / self.chunk_size)) + 1)
             ]
             for future in concurrent.futures.as_completed(futures):
                 future.result()
