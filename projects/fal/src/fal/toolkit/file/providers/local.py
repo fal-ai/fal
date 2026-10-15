@@ -36,6 +36,7 @@ from fal.toolkit.file._upload_policy import (
 from fal.toolkit.file.providers.fal import (
     FalFileRepositoryV3,
     MultipartUploadV3,
+    _current_request,
     _object_lifecycle_headers,
     _request_id,
     _v3_auth_headers,
@@ -166,7 +167,8 @@ class PolicyReservation(Reservation):
         self.policy = policy
         self.file_name = file_name
         self.content_type = content_type
-        self.request = request
+        # Resolved now: complete may run after the request, or under another.
+        self.request = request if request is not None else _current_request()
         self.name = _upload_file_name(policy, file_name, content_type)
         self.url, _ = _prepare_upload(policy, file_name, content_type, name=self.name)
 

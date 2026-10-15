@@ -765,19 +765,28 @@ def test_reserve_names_the_caller_from_the_given_request(
     assert (headers["x-fal-cdn-token"], headers["x-fal-request-id"]) == ("token", "rid")
 
 
-def test_reserve_policy_url_matches_the_upload(policy_upload, tmp_path):
+@pytest.mark.parametrize("given", [True, False])
+def test_reserve_policy_url_matches_the_upload(
+    monkeypatch, policy_upload, tmp_path, given
+):
     requests, in_process = policy_upload(_accept_like_the_uploader)
     request = _policy_request()
     request.scope["headers"] += [
         (b"x-fal-request-id", b"rid"),
         (b"x-fal-endpoint", b"fal-ai/test"),
     ]
-    pending = files.File.reserve("text/plain", "cat.txt", request=request)
+    # Given, or in flight at reserve time; either way gone before complete.
+    app = SimpleNamespace(current_request=None if given else request)
+    for module in (files, upload_policy, remote, _local_uploader):
+        monkeypatch.setattr(module, "get_current_app", lambda: app)
+    pending = files.File.reserve(
+        "text/plain", "cat.txt", request=request if given else None
+    )
+    app.current_request = None
     assert pending.url.startswith(POLICY["url"].rstrip("/") + "/outputs/")
     assert requests == []
     path = tmp_path / "cat.txt"
     path.write_bytes(b"hi")
-    # The response is out and no request is in flight: the given one names it.
     pending.complete(path)
     (request,) = requests
     # The uploader builds the same URL from the reserved key name.
