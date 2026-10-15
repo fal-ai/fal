@@ -1,21 +1,16 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import os
 import pickle
 from base64 import b64encode
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any, Optional
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 import pytest
-from PIL import Image as PILImage
 from pydantic import BaseModel
 
-from fal.app import App
-from fal.toolkit import Image
 from fal.toolkit.exceptions import FileUploadException, FileUploadFallbackException
 from fal.toolkit.file.file import (
     OBJECT_LIFECYCLE_PREFERENCE_KEY,
@@ -41,11 +36,11 @@ def test_legacy_repository_redirects_to_fal_v3(repository_id):
 
 def test_unknown_repository_raises():
     with pytest.raises(ValueError, match="not a valid built-in file repository"):
-        get_builtin_repository("does-not-exist")
+        get_builtin_repository("does-not-exist")  # type: ignore[arg-type]
 
 
-@pytest.mark.parametrize("content", [b"Hello World", bytearray(b"Hello World")])
-def test_binary_content_matches(content):
+def test_binary_content_matches():
+    content = b"Hello World"
     content_base64 = b64encode(content).decode("utf-8")
     file = File.from_bytes(content, repository="in_memory")
     assert file.url.endswith(content_base64)
@@ -578,14 +573,7 @@ class TestContextBasedLifecyclePreference:
             (),
             {"lifecycle_preference": expected_preference},
         )()
-        mock_app = type(
-            "MockApp",
-            (),
-            {
-                "current_request": mock_request_context,
-                "prepare_upload": App.prepare_upload,
-            },
-        )()
+        mock_app = type("MockApp", (), {"current_request": mock_request_context})()
 
         with patch(
             "fal.toolkit.file.file.get_current_app", return_value=mock_app
@@ -622,14 +610,7 @@ class TestContextBasedLifecyclePreference:
             (),
             {"lifecycle_preference": context_preference},
         )()
-        mock_app = type(
-            "MockApp",
-            (),
-            {
-                "current_request": mock_request_context,
-                "prepare_upload": App.prepare_upload,
-            },
-        )()
+        mock_app = type("MockApp", (), {"current_request": mock_request_context})()
 
         with patch(
             "fal.toolkit.file.file.get_current_app", return_value=mock_app
@@ -649,102 +630,17 @@ class TestContextBasedLifecyclePreference:
             assert save_kwargs.get("object_lifecycle_preference") == request_preference
 
 
-class TestPrepareUpload:
-    """The running app's prepare_upload sees every upload before it is sent."""
+class TestUploadLogLine:
+    """One file_upload JSON line per repository tried."""
 
-    @pytest.fixture
-    def hook(self, monkeypatch) -> Mock:
-        hook = Mock(side_effect=lambda *args: App.prepare_upload(None, *args))
-        app = SimpleNamespace(
-            current_request=SimpleNamespace(
-                request_id="req-1", lifecycle_preference=None, upload_policy=None
-            ),
-            prepare_upload=hook,
-        )
-        for module in ("file", "_upload_policy"):
-            monkeypatch.setattr(
-                f"fal.toolkit.file.{module}.get_current_app", lambda: app
-            )
-        return hook
-
-    @pytest.mark.parametrize(
-        "upload, content_type",
-        [
-            (
-                lambda repo, path: File.from_bytes(
-                    b"raw", "text/plain", repository=repo
-                ),
-                "text/plain",
-            ),
-            (
-                lambda repo, path: asyncio.run(
-                    File.from_bytes_async(b"raw", repository=repo)
-                ),
-                "application/octet-stream",
-            ),
-            (
-                lambda repo, path: Image.from_pil(
-                    PILImage.new("RGB", (1, 1)), "png", repository=repo
-                ),
-                "image/png",
-            ),
-            (
-                lambda repo, path: File.from_path(path, "text/plain", repository=repo),
-                "text/plain",
-            ),
-        ],
-        ids=["from_bytes", "from_bytes_async", "Image.from_pil", "from_path"],
-    )
-    def test_repository_receives_what_the_hook_returns(
-        self, hook, tmp_path, upload, content_type
-    ):
-        hook.side_effect = lambda source, ct, request: (b"hooked", ct)
-        path = tmp_path / "out.txt"
-        path.write_bytes(b"on disk")
-        repo = MockRepository("repo")
-
-        file = upload(repo, path)
-
-        assert hook.call_args.args[1] == content_type
-        [(func, data, _)] = repo.calls
-        assert (func, data.data, file.file_size) == ("save", b"hooked", 6)
-
-    def test_a_returned_path_is_uploaded_from_disk(self, hook, tmp_path):
-        path = tmp_path / "out.mp4"
-        path.write_bytes(b"video")
-        hook.side_effect = lambda source, ct, request: (path, ct)
-        repo = MockRepository("repo")
-        request = SimpleNamespace(headers={})
-
-        file = File.from_bytes(b"raw", "video/mp4", repository=repo, request=request)
-
-        assert hook.call_args.args == (b"raw", "video/mp4", request)
-        assert repo.calls[0][:2] == ("save_file", path)
-        assert (file.file_name, file.file_size) == ("out.mp4", 5)
-
-    def test_the_hook_runs_before_the_upload_policy(self, hook, monkeypatch):
-        hook.side_effect = lambda source, ct, request: (b"hooked", ct)
-        sent = []
-        monkeypatch.setattr("fal.toolkit.file.file.get_upload_policy", Mock())
+    @pytest.fixture(autouse=True)
+    def _request_id(self, monkeypatch):
         monkeypatch.setattr(
-            "fal.toolkit.file.file.save_with_policy",
-            lambda policy, name, data, ct: sent.append(data) or "https://bucket/x",
+            "fal.toolkit.file.file._current_request_id", lambda: "req-1"
         )
 
-        File.from_bytes(b"raw", "text/plain")
-
-        assert sent == [b"hooked"]
-
-    def test_each_attempt_logs_one_line(self, hook, capsys):
-        primary = MockRepository("primary", should_fail=True)
-        fallback = MockRepository("fallback")
-
-        File.from_bytes(
-            b"raw", "text/plain", repository=primary, fallback_repository=fallback
-        )
-
-        # The default hook uploads the input unchanged.
-        assert fallback.calls[0][1].data == b"raw"
+    @staticmethod
+    def lines(capsys) -> list[dict]:
         lines = [
             json.loads(line)["file_upload"]
             for line in capsys.readouterr().out.splitlines()
@@ -752,18 +648,39 @@ class TestPrepareUpload:
         ]
         for line in lines:
             assert line.pop("duration_ms") >= 0
-        common = {"bytes": 3, "content_type": "text/plain", "request_id": "req-1"}
-        assert lines == [
+        return lines
+
+    @pytest.mark.parametrize(
+        "from_path", [False, True], ids=["from_bytes", "from_path"]
+    )
+    def test_a_fallback_logs_both_attempts(self, tmp_path, capsys, from_path):
+        primary = MockRepository("primary", should_fail=True)
+        fallback = MockRepository("fallback")
+        path = tmp_path / "out.txt"
+        path.write_bytes(b"raw")
+        kwargs = {"repository": primary, "fallback_repository": fallback}
+
+        if from_path:
+            File.from_path(path, "text/plain", **kwargs)
+        else:
+            File.from_bytes(b"raw", "text/plain", **kwargs)
+
+        common = {
+            "repository": "MockRepository",
+            "bytes": 3,
+            "content_type": "text/plain",
+            "request_id": "req-1",
+        }
+        assert self.lines(capsys) == [
             {
-                "repository": "MockRepository",
+                **common,
                 "outcome": "fallback",
                 "error": "Exception: Mock failure for primary",
-                **common,
             },
-            {"repository": "MockRepository", "outcome": "ok", **common},
+            {**common, "outcome": "ok"},
         ]
 
-    def test_the_local_uploader_logs_as_local(self, hook, capsys, monkeypatch):
+    def test_the_local_uploader_logs_as_local(self, capsys, monkeypatch):
         monkeypatch.setenv("FAL_USE_LOCAL_UPLOADER", "1")
         monkeypatch.setattr(
             "fal.toolkit.file.file.LocalFileRepository.save",
@@ -772,4 +689,5 @@ class TestPrepareUpload:
 
         File.from_bytes(b"raw", fallback_repository=[])
 
-        assert '"repository": "local"' in capsys.readouterr().out
+        [line] = self.lines(capsys)
+        assert (line["repository"], line["outcome"]) == ("local", "ok")

@@ -11,7 +11,6 @@ import threading
 import time
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, Callable, ClassVar, Optional
 
 import fastapi
@@ -971,23 +970,6 @@ class App(BaseServable):
         if self._current_request_context is None:
             return None
         return self._current_request_context.get()
-
-    def prepare_upload(
-        self,
-        source: bytes | Path,
-        content_type: str,
-        request: Any,
-    ) -> tuple[bytes | Path, str]:
-        """Change a file right before the toolkit uploads it.
-
-        ``File.from_bytes`` and ``File.from_path`` (and so ``Image``, ``Video``
-        and ``Audio``) call this before choosing where the file goes, so every
-        destination receives what it returns. ``source`` is the bytes or the path
-        about to be uploaded; return either kind, a path keeps a large file on
-        disk. ``request`` is the ``request=`` passed to the upload, else the
-        current request context, else ``None``. The default returns its input.
-        """
-        return source, content_type
 
     def health(self):
         return {"version": self.version}

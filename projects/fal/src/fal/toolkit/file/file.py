@@ -45,12 +45,7 @@ from fal.toolkit.file.providers.fal import (
 from fal.toolkit.file.providers.gcp import GoogleStorageRepository
 from fal.toolkit.file.providers.local import LocalFileRepository, save_with_policy
 from fal.toolkit.file.providers.r2 import R2Repository
-from fal.toolkit.file.types import (
-    FileData,
-    FileRepository,
-    RepositoryId,
-    resolve_content_type,
-)
+from fal.toolkit.file.types import FileData, FileRepository, RepositoryId
 from fal.toolkit.utils.download_utils import download_file
 
 FileRepositoryFactory = Callable[[], FileRepository]
@@ -242,19 +237,6 @@ def _try_with_fallback(
         return result
 
 
-def _app_prepare_upload(
-    source: bytes | Path, content_type: str, request: Any
-) -> tuple[bytes | Path, str]:
-    """Let the running app change a file before it is uploaded. Outside an app
-    (a script, a test) there is nothing to call."""
-    current_app = get_current_app()
-    if current_app is None:
-        return source, content_type
-    if request is None:
-        request = current_app.current_request
-    return current_app.prepare_upload(source, content_type, request)
-
-
 def _get_object_lifecycle_preference_from_context() -> dict[str, str] | None:
     current_app = get_current_app()
     if current_app is None or current_app.current_request is None:
@@ -350,34 +332,6 @@ class File(BaseModel):
         request: Optional[Request] = None,
         save_kwargs: Optional[dict] = None,
         fallback_save_kwargs: Optional[dict] = None,
-    ) -> File:
-        source, content_type = _app_prepare_upload(
-            data, resolve_content_type(content_type, file_name), request
-        )
-        return cls._save(
-            source,
-            content_type,
-            file_name=file_name,
-            repository=repository,
-            fallback_repository=fallback_repository,
-            request=request,
-            save_kwargs=save_kwargs,
-            fallback_save_kwargs=fallback_save_kwargs,
-        )
-
-    @classmethod
-    def _save_bytes(
-        cls,
-        data: bytes,
-        content_type: str,
-        file_name: Optional[str],
-        repository: FileRepository | RepositoryId,
-        fallback_repository: Optional[
-            FileRepository | RepositoryId | list[FileRepository | RepositoryId]
-        ],
-        request: Optional[Request],
-        save_kwargs: Optional[dict],
-        fallback_save_kwargs: Optional[dict],
     ) -> File:
         save_kwargs = save_kwargs or {}
         fallback_save_kwargs = fallback_save_kwargs or {}
@@ -478,57 +432,15 @@ class File(BaseModel):
         if not file_path.exists():
             raise FileNotFoundError(f"File {file_path} does not exist")
 
-        source, content_type = _app_prepare_upload(
-            file_path, resolve_content_type(content_type, None), request
-        )
-        return cls._save(
-            source,
-            content_type,
-            file_name=file_path.name,
-            multipart=multipart,
-            repository=repository,
-            fallback_repository=fallback_repository,
-            request=request,
-            save_kwargs=save_kwargs,
-            fallback_save_kwargs=fallback_save_kwargs,
-        )
-
-    @classmethod
-    def _save(
-        cls,
-        source: bytes | Path,
-        content_type: str,
-        file_name: Optional[str],
-        multipart: bool | None = None,
-        **destination: Any,
-    ) -> File:
-        """Upload what ``prepare_upload`` returned: bytes in memory, a path from
-        disk, whichever entry point the caller used."""
-        if isinstance(source, Path):
-            return cls._save_path(source, content_type, multipart, **destination)
-        return cls._save_bytes(source, content_type, file_name, **destination)
-
-    @classmethod
-    def _save_path(
-        cls,
-        file_path: Path,
-        content_type: str,
-        multipart: bool | None,
-        repository: FileRepository | RepositoryId,
-        fallback_repository: Optional[
-            FileRepository | RepositoryId | list[FileRepository | RepositoryId]
-        ],
-        request: Optional[Request],
-        save_kwargs: Optional[dict],
-        fallback_save_kwargs: Optional[dict],
-    ) -> File:
         save_kwargs = save_kwargs or {}
         fallback_save_kwargs = fallback_save_kwargs or {}
-        file_size = file_path.stat().st_size
+
+        content_type = content_type or "application/octet-stream"
 
         upload_policy = get_upload_policy(request)
         if upload_policy is not None:
             _require_no_repository_conflict(repository)
+            file_size = file_path.stat().st_size
             # The upload-policy path is always a single S3 POST (<=5 GB), never a
             # multipart upload; this flag only picks how the payload is held for
             # it. Same threshold as the repository path, so .as_bytes() stays
@@ -575,6 +487,7 @@ class File(BaseModel):
         save_kwargs.setdefault("content_type", content_type)
         fallback_save_kwargs.setdefault("content_type", content_type)
 
+        file_size = file_path.stat().st_size
         url, data = _try_with_fallback(
             "save_file",
             [file_path],
