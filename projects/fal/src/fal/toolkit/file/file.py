@@ -524,11 +524,11 @@ class File(BaseModel):
     ) -> File:
         save_kwargs = save_kwargs or {}
         fallback_save_kwargs = fallback_save_kwargs or {}
+        file_size = file_path.stat().st_size
 
         upload_policy = get_upload_policy(request)
         if upload_policy is not None:
             _require_no_repository_conflict(repository)
-            file_size = file_path.stat().st_size
             # The upload-policy path is always a single S3 POST (<=5 GB), never a
             # multipart upload; this flag only picks how the payload is held for
             # it. Same threshold as the repository path, so .as_bytes() stays
@@ -575,7 +575,6 @@ class File(BaseModel):
         save_kwargs.setdefault("content_type", content_type)
         fallback_save_kwargs.setdefault("content_type", content_type)
 
-        file_size = file_path.stat().st_size
         url, data = _try_with_fallback(
             "save_file",
             [file_path],
