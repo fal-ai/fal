@@ -131,6 +131,46 @@ def test_from_path_uploads_to_the_policy_destination(
     assert not repository_spy
 
 
+@pytest.mark.parametrize("from_path", [False, True])
+def test_waited_policy_upload_returns_after_post(
+    tmp_path, accepting_s3, repository_spy, from_path
+):
+    request = FakeRequest({UPLOAD_POLICY_KEY: POLICY})
+    kwargs = {"request": request, "save_kwargs": {"wait_for_completion": True}}
+    if from_path:
+        source = tmp_path / "out.txt"
+        source.write_bytes(b"payload")
+        file = File.from_path(source, content_type="text/plain", **kwargs)
+    else:
+        file = File.from_bytes(b"payload", content_type="text/plain", **kwargs)
+
+    assert file.url.startswith("https://bucket.s3.us-west-1.amazonaws.com/uploads/")
+    assert len(accepting_s3) == 1
+    assert not repository_spy
+
+
+@pytest.mark.parametrize("from_path", [False, True])
+def test_waited_policy_upload_raises_post_failure(
+    monkeypatch, tmp_path, repository_spy, from_path
+):
+    monkeypatch.setattr(up, "_MAX_ATTEMPTS", 1)
+
+    def reject(url, **kwargs):
+        return httpx.Response(403, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(up, "_new_client", lambda: _StubClient(reject))
+    request = FakeRequest({UPLOAD_POLICY_KEY: POLICY})
+    kwargs = {"request": request, "save_kwargs": {"wait_for_completion": True}}
+    with pytest.raises(up.UploadPolicyError):
+        if from_path:
+            source = tmp_path / "out.txt"
+            source.write_bytes(b"payload")
+            File.from_path(source, content_type="text/plain", **kwargs)
+        else:
+            File.from_bytes(b"payload", content_type="text/plain", **kwargs)
+    assert not repository_spy
+
+
 def test_a_rejected_upload_never_falls_back_to_the_fal_cdn(monkeypatch, repository_spy):
     """The headline guarantee: a caller who asked for their own bucket must
     never silently get fal-owned storage instead.

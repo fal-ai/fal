@@ -177,6 +177,7 @@ def save_with_policy(
     *,
     name: str | None = None,
     request: Any = None,
+    wait_for_completion: bool = False,
 ) -> str:
     """Upload to the caller's bucket and return the URL the object will have.
 
@@ -185,14 +186,29 @@ def save_with_policy(
     no runner time is spent on the caller's storage.
     """
     name = name or _upload_file_name(policy, file_name, content_type)
-    if url := _uploader_with_policy(policy, name, content, content_type, request):
+    if url := _uploader_with_policy(
+        policy, name, content, content_type, request, wait_for_completion
+    ):
         return url
+    wait_kwargs = {"wait_for_completion": True} if wait_for_completion else {}
     if isinstance(content, bytes):
         return upload_bytes_with_policy(
-            policy, file_name, content, content_type, name=name, request=request
+            policy,
+            file_name,
+            content,
+            content_type,
+            name=name,
+            request=request,
+            **wait_kwargs,
         )
     return upload_path_with_policy(
-        policy, content, file_name, content_type, name=name, request=request
+        policy,
+        content,
+        file_name,
+        content_type,
+        name=name,
+        request=request,
+        **wait_kwargs,
     )
 
 
@@ -202,12 +218,15 @@ def _uploader_with_policy(
     content: bytes | Path,
     content_type: str,
     request: Any = None,
+    wait_for_completion: bool = False,
 ) -> str | None:
     """The URL from the node-local uploader, or None when it did not take the work."""
     if not bool_envvar("FAL_USE_LOCAL_UPLOADER"):
         return None
     try:
-        return _upload_with_policy(policy, name, content, content_type, request)
+        return _upload_with_policy(
+            policy, name, content, content_type, request, wait_for_completion
+        )
     except LocalUploadInvalid as exc:
         raise UploadPolicyError(
             f"Upload via {UPLOAD_POLICY_KEY} was refused: {exc}"
@@ -223,6 +242,7 @@ def _upload_with_policy(
     content: bytes | Path,
     content_type: str,
     request: Any = None,
+    wait_for_completion: bool = False,
 ) -> str:
     _validate_size(
         len(content) if isinstance(content, bytes) else content.stat().st_size
@@ -238,4 +258,10 @@ def _upload_with_policy(
     }
     if request_id := _request_id(request):
         headers["X-Fal-Request-ID"] = request_id
-    return upload(name, content, headers, request=request)
+    return upload(
+        name,
+        content,
+        headers,
+        request=request,
+        wait_for_completion=wait_for_completion,
+    )

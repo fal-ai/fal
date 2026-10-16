@@ -314,8 +314,8 @@ class File(BaseModel):
         save_kwargs: Optional[dict] = None,
         fallback_save_kwargs: Optional[dict] = None,
     ) -> File:
-        save_kwargs = save_kwargs or {}
-        fallback_save_kwargs = fallback_save_kwargs or {}
+        save_kwargs = dict(save_kwargs or {})
+        fallback_save_kwargs = dict(fallback_save_kwargs or {})
 
         fdata = FileData(data, content_type, file_name)
 
@@ -326,7 +326,11 @@ class File(BaseModel):
         if upload_policy is not None:
             _require_no_repository_conflict(repository)
             url = save_with_policy(
-                upload_policy, fdata.file_name, data, fdata.content_type
+                upload_policy,
+                fdata.file_name,
+                data,
+                fdata.content_type,
+                wait_for_completion=save_kwargs.get("wait_for_completion", False),
             )
             return cls(
                 url=url,
@@ -406,8 +410,8 @@ class File(BaseModel):
         if not file_path.exists():
             raise FileNotFoundError(f"File {file_path} does not exist")
 
-        save_kwargs = save_kwargs or {}
-        fallback_save_kwargs = fallback_save_kwargs or {}
+        save_kwargs = dict(save_kwargs or {})
+        fallback_save_kwargs = dict(fallback_save_kwargs or {})
 
         content_type = content_type or "application/octet-stream"
 
@@ -432,6 +436,7 @@ class File(BaseModel):
                 file_path.name,
                 file_path if file_data is None else file_data,
                 content_type,
+                wait_for_completion=save_kwargs.get("wait_for_completion", False),
             )
             return cls(
                 url=url,

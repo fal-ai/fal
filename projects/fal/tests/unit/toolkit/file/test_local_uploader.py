@@ -574,6 +574,27 @@ def test_wait_returns_after_cdn_completion(
     ] * 2
 
 
+def test_waited_policy_upload_waits_for_bucket_completion(policy_upload, transport):
+    remaining = [PENDING, COMPLETED]
+
+    def respond(request):
+        if request.method == "POST":
+            return _accept_like_the_uploader(request)
+        return remaining.pop(0)
+
+    requests, in_process = policy_upload(respond)
+    result = files.File.from_bytes(
+        b"hi",
+        "text/plain",
+        "out.txt",
+        request=_policy_request(),
+        save_kwargs={"wait_for_completion": True},
+    )
+    assert result.url.startswith(POLICY["url"].rstrip("/"))
+    assert [r.method for r in requests] == ["POST", "GET", "GET"]
+    in_process.assert_not_called()
+
+
 @pytest.mark.parametrize(
     "status",
     [

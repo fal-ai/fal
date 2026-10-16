@@ -921,6 +921,7 @@ def upload_bytes_with_policy(
     *,
     name: str | None = None,
     request: Any = None,
+    wait_for_completion: bool = False,
 ) -> str:
     """Queue ``data`` for upload and return the URL it will appear at.
 
@@ -937,7 +938,10 @@ def upload_bytes_with_policy(
             files={"file": (file_name, data, content_type)},
         )
 
-    _submit(_post, _request_id(request), nbytes=len(data))
+    if wait_for_completion:
+        _attempt_upload(_post, _request_id(request))
+    else:
+        _submit(_post, _request_id(request), nbytes=len(data))
     return access_url
 
 
@@ -949,6 +953,7 @@ def upload_path_with_policy(
     *,
     name: str | None = None,
     request: Any = None,
+    wait_for_completion: bool = False,
 ) -> str:
     """As :func:`upload_bytes_with_policy`, for a file on disk.
 
@@ -966,6 +971,19 @@ def upload_path_with_policy(
     _validate_size(file_path.stat().st_size)
     access_url, fields = _prepare_upload(policy, file_name, content_type, name=name)
     request_id = _request_id(request)
+
+    if wait_for_completion:
+
+        def _post_waited(client: httpx.Client) -> httpx.Response:
+            with file_path.open("rb") as handle:
+                return client.post(
+                    policy.url,
+                    data=fields,
+                    files={"file": (file_name, handle, content_type)},
+                )
+
+        _attempt_upload(_post_waited, request_id)
+        return access_url
 
     # Stage on the source's own volume, not the default temp dir: the payload can
     # be large (up to 5 GB) and belongs next to where it was written rather than
