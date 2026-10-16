@@ -42,6 +42,7 @@ _UPLOADER_INPUTS = {
     "x-fal-file-name",
     "x-fal-object-lifecycle",
     "x-fal-object-lifecycle-preference",
+    "x-fal-provenance",
     "x-fal-request-id",
 }
 
@@ -105,7 +106,7 @@ def upload_stream(
     CDN has it when waiting for completion.
     """
     with _new_client() as http:
-        session_id, _ = _open_session(http, file_name, headers)
+        session_id, _, _ = _open_session(http, file_name, headers)
         upload_id, file_url = _send(http, session_id, chunks)
         if wait_for_completion:
             _wait_for_completion(http, upload_id)
@@ -116,11 +117,14 @@ def reserve(
     file_name: str, headers: dict[str, str], request: Any = None
 ) -> Reservation:
     with _new_client() as http:
-        session_id, url = _open_session(http, file_name, headers, request)
+        session_id, url, cdn_signing_requested = _open_session(
+            http, file_name, headers, request
+        )
     return Reservation(
         url,
         partial(_complete_session, session_id),
         partial(_delete_session, session_id),
+        cdn_signing_requested,
     )
 
 
@@ -145,11 +149,13 @@ def _with_request_headers(
     if request is None:
         request = getattr(get_current_app(), "current_request", None)
     context = request.headers if request else {}
+    explicit_names = {name.lower() for name in headers}
     forwarded = {
         name: value
         for name, value in context.items()
         if name.lower().startswith("x-fal-")
         and name.lower() not in _UPLOADER_INPUTS
+        and name.lower() not in explicit_names
         and value.isascii()
     }
     return {**forwarded, **headers}
@@ -178,13 +184,14 @@ def _submit(
 
 def _open_session(
     http: httpx.Client, file_name: str, headers: dict[str, str], request: Any = None
-) -> tuple[str, str]:
+) -> tuple[str, str, bool]:
     headers = {
         **_with_request_headers(headers, request),
         "X-Fal-File-Name": _header_file_name(file_name),
     }
     response = _request(http, "POST", "/v1/upload-sessions", 201, headers=headers)
-    return _receipt(response, "receiving")
+    session_id, url = _receipt(response, "receiving")
+    return session_id, url, response.json().get("cdn_signing_requested") is True
 
 
 def _send(

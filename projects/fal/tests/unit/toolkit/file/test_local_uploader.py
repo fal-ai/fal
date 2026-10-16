@@ -774,6 +774,62 @@ def test_reserve_names_the_caller_from_the_given_request(
     assert (headers["x-fal-cdn-token"], headers["x-fal-request-id"]) == ("token", "rid")
 
 
+@pytest.mark.parametrize("via_uploader", [True, False])
+@pytest.mark.parametrize("acknowledged", [True, False])
+def test_reserve_reports_cdn_signing_for_selected_destination(
+    monkeypatch, local_upload, transport, via_uploader, acknowledged
+):
+    def session(request):
+        response = _session(request)
+        if request.url.path == "/v1/upload-sessions":
+            body = response.json()
+            body["cdn_signing_requested"] = acknowledged
+            return httpx.Response(201, json=body)
+        return response
+
+    requests = transport(session if via_uploader else _respond(httpx.Response(404)))
+    calls = _fake_cdn(monkeypatch)
+    request = _caller_request(**{"x-fal-cdn-token": "token", "x-fal-request-id": "rid"})
+    pending = files.File.reserve(
+        "text/plain",
+        "out.txt",
+        request=request,
+        extra_headers={"x-fal-provenance": "true"},
+    )
+
+    assert pending._cdn_signing_requested is (acknowledged if via_uploader else False)
+    initiated = requests[0] if via_uploader else calls[0]
+    headers = (
+        {k.lower(): v for k, v in initiated.header_items()}
+        if not via_uploader
+        else initiated.headers
+    )
+    if via_uploader:
+        assert headers["x-fal-provenance"] == "true"
+    else:
+        assert "x-fal-provenance" not in headers
+    assert headers["x-fal-request-id"] == "rid"
+
+
+def test_ambient_provenance_does_not_sign_an_unselected_output(
+    local_upload, transport, caller
+):
+    requests = transport(_session)
+    caller({"x-fal-provenance": "true", "x-fal-cdn-token": "token"}, "rid")
+    pending = files.File.reserve("text/plain", "out.txt")
+    assert pending._cdn_signing_requested is False
+    assert "x-fal-provenance" not in requests[0].headers
+
+
+def test_reserve_explicit_headers_override_forwarded_context(
+    local_upload, transport, caller
+):
+    requests = transport(_session)
+    caller({"x-fal-endpoint": "incoming"}, "rid")
+    files.File.reserve(extra_headers={"X-Fal-Endpoint": "explicit"})
+    assert requests[0].headers.get_list("x-fal-endpoint") == ["explicit"]
+
+
 @pytest.mark.parametrize("given", [True, False])
 def test_reserve_policy_url_matches_the_upload(
     monkeypatch, policy_upload, tmp_path, given

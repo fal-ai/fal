@@ -41,6 +41,7 @@ class Reservation:
     url: str
     complete: Callable[[bytes | Path], object]
     abort: Callable[[], None] = field(default=lambda: None)
+    cdn_signing_requested: bool = False
 
 
 @dataclass
@@ -51,6 +52,7 @@ class FileRepository:
         content_type: str,
         object_lifecycle_preference: Optional[dict[str, str]] = None,
         request: Any = None,
+        extra_headers: dict[str, str] | None = None,
     ) -> Reservation:
         raise NotImplementedError(
             f"{type(self).__name__} cannot hand out a URL before the upload"
