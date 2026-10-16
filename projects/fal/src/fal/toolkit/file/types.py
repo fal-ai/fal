@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from mimetypes import guess_extension, guess_type
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Any, Callable, Literal, Optional
 from uuid import uuid4
 
 
@@ -34,8 +34,30 @@ RepositoryId = Literal[
 ]
 
 
+@dataclass(frozen=True)
+class Reservation:
+    """A URL handed out before its bytes exist, and how to send or drop them."""
+
+    url: str
+    complete: Callable[[bytes | Path], object]
+    abort: Callable[[], None] = field(default=lambda: None)
+    cdn_signing_requested: bool = False
+
+
 @dataclass
 class FileRepository:
+    def reserve(
+        self,
+        file_name: str,
+        content_type: str,
+        object_lifecycle_preference: Optional[dict[str, str]] = None,
+        request: Any = None,
+        extra_headers: dict[str, str] | None = None,
+    ) -> Reservation:
+        raise NotImplementedError(
+            f"{type(self).__name__} cannot hand out a URL before the upload"
+        )
+
     def save(
         self,
         data: FileData,

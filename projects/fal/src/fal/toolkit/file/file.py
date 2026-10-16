@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import shutil
-import traceback
+from dataclasses import dataclass, field
 from functools import wraps
 from pathlib import Path
 from tempfile import NamedTemporaryFile, mkdtemp
@@ -23,13 +23,14 @@ else:
 from pydantic import BaseModel, Field
 
 from fal.compat import run_in_thread
+from fal.flags import bool_envvar
 from fal.ref import get_current_app
+from fal.toolkit.exceptions import FileUploadFallbackException
 from fal.toolkit.file._upload_policy import (
     UPLOAD_POLICY_KEY,
     UploadPolicyInputError,
+    _current_request,
     get_upload_policy,
-    upload_bytes_with_policy,
-    upload_path_with_policy,
 )
 from fal.toolkit.file.providers.fal import (
     # Re-exported for backwards compatibility; both resolve to FalFileRepositoryV3.
@@ -41,15 +42,25 @@ from fal.toolkit.file.providers.fal import (
     MultipartUploadV3,
 )
 from fal.toolkit.file.providers.gcp import GoogleStorageRepository
+from fal.toolkit.file.providers.local import (
+    LocalFileRepository,
+    reserve_with_policy,
+    save_with_policy,
+)
 from fal.toolkit.file.providers.r2 import R2Repository
-from fal.toolkit.file.types import FileData, FileRepository, RepositoryId
+from fal.toolkit.file.types import FileData, FileRepository, RepositoryId, Reservation
 from fal.toolkit.utils.download_utils import download_file
 
 FileRepositoryFactory = Callable[[], FileRepository]
 
 BUILT_IN_REPOSITORIES: dict[RepositoryId, FileRepositoryFactory] = {
     "fal": lambda: FalFileRepository(),
-    "fal_v3": lambda: FalFileRepositoryV3(),
+    # Read on the runner at upload time, never when serializing the app.
+    "fal_v3": lambda: (
+        LocalFileRepository()
+        if bool_envvar("FAL_USE_LOCAL_UPLOADER")
+        else FalFileRepositoryV3()
+    ),
     "in_memory": lambda: InMemoryRepository(),
     "gcp_storage": lambda: GoogleStorageRepository(),
     "r2": lambda: R2Repository(),
@@ -90,7 +101,8 @@ _DEFAULT_REPOSITORY_IDS = frozenset({DEFAULT_REPOSITORY, "fal_v2", "cdn"})
 # the one an app's own import produced are different objects and isinstance would
 # reject a genuinely default repository. FalFileRepositoryV2 and
 # FalCDNFileRepository are aliases of the same class, so one name covers all three.
-_DEFAULT_REPOSITORY_TYPES = frozenset({"FalFileRepositoryV3"})
+# LocalFileRepository is what FAL_USE_LOCAL_UPLOADER substitutes for "fal_v3".
+_DEFAULT_REPOSITORY_TYPES = frozenset({"FalFileRepositoryV3", "LocalFileRepository"})
 
 
 def _is_default_repository(repository: FileRepository | RepositoryId) -> bool:
@@ -170,19 +182,34 @@ def _try_with_fallback(
         (repository, save_kwargs),
         *((fallback, fallback_save_kwargs) for fallback in fallback_repository),
     ]
+    failures: list[str] = []
     for idx, (repo, kwargs) in enumerate(attempts):
         repo_obj = get_builtin_repository(repo)
         try:
             return getattr(repo_obj, func)(*args, **kwargs)
         except Exception as exc:
-            if idx >= len(attempts) - 1:
+            # An uncertain upload must not be replayed through another repository.
+            if not getattr(exc, "falls_back", True):
                 raise
 
-            traceback.print_exc()
-            print(
-                f"Failed to {func} to repository {_repo_label(repo)}: {exc}, "
-                f"falling back to {_repo_label(attempts[idx + 1][0])}"
-            )
+            failure = f"{_repo_label(repo)}: {type(exc).__name__}: {exc}"
+            failures.append(failure)
+            if idx < len(attempts) - 1:
+                print(
+                    f"Failed to {func} to repository {failure}, "
+                    f"falling back to {_repo_label(attempts[idx + 1][0])}"
+                )
+                continue
+
+            if len(attempts) == 1:
+                raise
+
+            # The last error alone misleads: a denied fallback would hide the
+            # failure that triggered it.
+            raise FileUploadFallbackException(
+                f"Failed to {func} to all {len(failures)} repositories. "
+                + "; ".join(failures)
+            ) from exc
 
 
 def _get_object_lifecycle_preference_from_context() -> dict[str, str] | None:
@@ -190,6 +217,12 @@ def _get_object_lifecycle_preference_from_context() -> dict[str, str] | None:
     if current_app is None or current_app.current_request is None:
         return None
     return current_app.current_request.lifecycle_preference
+
+
+def _lifecycle_preference(request: Optional[Request]) -> dict[str, str] | None:
+    if request:
+        return request_lifecycle_preference(request)
+    return _get_object_lifecycle_preference_from_context()
 
 
 class File(BaseModel):
@@ -292,7 +325,7 @@ class File(BaseModel):
         upload_policy = get_upload_policy(request)
         if upload_policy is not None:
             _require_no_repository_conflict(repository)
-            url = upload_bytes_with_policy(
+            url = save_with_policy(
                 upload_policy, fdata.file_name, data, fdata.content_type
             )
             return cls(
@@ -303,12 +336,7 @@ class File(BaseModel):
                 file_data=data,
             )
 
-        if request:
-            object_lifecycle_preference = request_lifecycle_preference(request)
-        else:
-            object_lifecycle_preference = (
-                _get_object_lifecycle_preference_from_context()
-            )
+        object_lifecycle_preference = _lifecycle_preference(request)
 
         save_kwargs.setdefault(
             "object_lifecycle_preference", object_lifecycle_preference
@@ -396,19 +424,15 @@ class File(BaseModel):
                 if multipart is not None
                 else file_size > MultipartUploadV3.MULTIPART_THRESHOLD
             )
-            if stage_to_disk:
-                # Stage and stream in the background, off the request thread.
-                url = upload_path_with_policy(
-                    upload_policy, file_path, file_path.name, content_type
-                )
-                file_data = None
-            else:
-                # Reusing these bytes for file_data avoids a second full read
-                # and the staging copy for the common small-output case.
-                file_data = file_path.read_bytes()
-                url = upload_bytes_with_policy(
-                    upload_policy, file_path.name, file_data, content_type
-                )
+            # Reusing small files' bytes for file_data avoids a second full read
+            # and the staging copy for the common small-output case.
+            file_data = None if stage_to_disk else file_path.read_bytes()
+            url = save_with_policy(
+                upload_policy,
+                file_path.name,
+                file_path if file_data is None else file_data,
+                content_type,
+            )
             return cls(
                 url=url,
                 file_data=file_data,
@@ -417,12 +441,7 @@ class File(BaseModel):
                 file_size=file_size,
             )
 
-        if request:
-            object_lifecycle_preference = request_lifecycle_preference(request)
-        else:
-            object_lifecycle_preference = (
-                _get_object_lifecycle_preference_from_context()
-            )
+        object_lifecycle_preference = _lifecycle_preference(request)
 
         save_kwargs.setdefault(
             "object_lifecycle_preference", object_lifecycle_preference
@@ -480,6 +499,40 @@ class File(BaseModel):
             fallback_save_kwargs=fallback_save_kwargs,
         )
 
+    @classmethod
+    def reserve(
+        cls,
+        content_type: Optional[str] = None,
+        file_name: Optional[str] = None,
+        request: Optional[Request] = None,
+        repository: FileRepository | RepositoryId = DEFAULT_REPOSITORY,
+        extra_headers: dict[str, str] | None = None,
+    ) -> PendingFile:
+        """Get the file's URL now; send the bytes later with
+        ``pending.complete(data)``, or give the URL up with ``pending.abort()``.
+
+        The request context is read here, not at ``complete``. If ``complete``
+        fails, the URL stays dead: nothing falls back once a URL is out.
+        """
+        fdata = FileData(b"", content_type, file_name)
+        upload_policy = get_upload_policy(request)
+        # The caller, fixed now: complete may run after the request, or under another.
+        caller = request if request is not None else _current_request()
+        if upload_policy is not None:
+            _require_no_repository_conflict(repository)
+            reservation = reserve_with_policy(
+                upload_policy, fdata.file_name, fdata.content_type, caller
+            )
+        else:
+            reservation = get_builtin_repository(repository).reserve(
+                fdata.file_name,
+                fdata.content_type,
+                _lifecycle_preference(request),
+                caller,
+                extra_headers=extra_headers,
+            )
+        return PendingFile(fdata.content_type, fdata.file_name, reservation)
+
     def as_bytes(self) -> bytes:
         if self.file_data is None:
             raise ValueError("File has not been downloaded")
@@ -510,6 +563,40 @@ class File(BaseModel):
         overwrite: bool = False,
     ) -> Path:
         return await run_in_thread(self.save, path, overwrite)
+
+
+@dataclass
+class PendingFile:
+    """See File.reserve."""
+
+    content_type: str
+    file_name: str
+    _reservation: Reservation = field(repr=False)
+
+    @property
+    def url(self) -> str:
+        return self._reservation.url
+
+    @property
+    def _cdn_signing_requested(self) -> bool:
+        return self._reservation.cdn_signing_requested
+
+    def complete(self, content: bytes | str | Path) -> File:
+        if not isinstance(content, bytes):
+            content = Path(content)
+        self._reservation.complete(content)
+        return File(
+            url=self.url,
+            content_type=self.content_type,
+            file_name=self.file_name,
+            file_size=(
+                len(content) if isinstance(content, bytes) else content.stat().st_size
+            ),
+            file_data=content if isinstance(content, bytes) else None,
+        )
+
+    def abort(self) -> None:
+        self._reservation.abort()
 
 
 class CompressedFile(File):

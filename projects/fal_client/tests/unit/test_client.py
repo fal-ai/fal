@@ -2181,7 +2181,7 @@ async def test_async_client_ws_connect_uses_headers_without_jwt(mocker):
 
 
 def test_sync_client_run_with_start_timeout():
-    """Test that start_timeout adds X-Fal-Request-Timeout header in run()."""
+    """Test that start_timeout adds X-Fal-Request-Start-Timeout header in run()."""
     with patch("fal_client.client._maybe_retry_request") as mock_request:
         mock_response = Mock()
         mock_response.json.return_value = {"result": "success"}
@@ -2192,7 +2192,7 @@ def test_sync_client_run_with_start_timeout():
 
         call_kwargs = mock_request.call_args[1]
         assert "headers" in call_kwargs
-        assert call_kwargs["headers"]["X-Fal-Request-Timeout"] == "30.0"
+        assert call_kwargs["headers"]["X-Fal-Request-Start-Timeout"] == "30.0"
 
 
 def test_sync_client_run_with_start_timeout_float():
@@ -2206,11 +2206,11 @@ def test_sync_client_run_with_start_timeout_float():
         client.run("test-app", {"input": "data"}, start_timeout=45.5)
 
         call_kwargs = mock_request.call_args[1]
-        assert call_kwargs["headers"]["X-Fal-Request-Timeout"] == "45.5"
+        assert call_kwargs["headers"]["X-Fal-Request-Start-Timeout"] == "45.5"
 
 
 def test_sync_client_submit_with_start_timeout():
-    """Test that start_timeout adds X-Fal-Request-Timeout header in submit()."""
+    """Test that start_timeout adds X-Fal-Request-Start-Timeout header in submit()."""
     with patch("fal_client.client._maybe_retry_request") as mock_request:
         mock_response = Mock()
         mock_response.json.return_value = {
@@ -2226,7 +2226,7 @@ def test_sync_client_submit_with_start_timeout():
 
         call_kwargs = mock_request.call_args[1]
         assert "headers" in call_kwargs
-        assert call_kwargs["headers"]["X-Fal-Request-Timeout"] == "60.0"
+        assert call_kwargs["headers"]["X-Fal-Request-Start-Timeout"] == "60.0"
 
 
 def test_sync_client_subscribe_with_start_timeout():
@@ -2254,7 +2254,7 @@ def test_sync_client_subscribe_with_start_timeout():
         # Check the first call (submit) has the header
         first_call_kwargs = mock_request.call_args_list[0][1]
         assert "headers" in first_call_kwargs
-        assert first_call_kwargs["headers"]["X-Fal-Request-Timeout"] == "90.0"
+        assert first_call_kwargs["headers"]["X-Fal-Request-Start-Timeout"] == "90.0"
 
 
 def test_sync_client_subscribe_with_interval(monkeypatch):
@@ -2303,7 +2303,7 @@ def test_sync_client_subscribe_with_interval(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_async_client_run_with_start_timeout():
-    """Test that start_timeout adds X-Fal-Request-Timeout header in async run()."""
+    """Test that start_timeout adds X-Fal-Request-Start-Timeout header in async run()."""
     with patch(
         "fal_client.client._async_maybe_retry_request", new_callable=AsyncMock
     ) as mock_request:
@@ -2316,12 +2316,12 @@ async def test_async_client_run_with_start_timeout():
 
         call_kwargs = mock_request.call_args[1]
         assert "headers" in call_kwargs
-        assert call_kwargs["headers"]["X-Fal-Request-Timeout"] == "30.0"
+        assert call_kwargs["headers"]["X-Fal-Request-Start-Timeout"] == "30.0"
 
 
 @pytest.mark.asyncio
 async def test_async_client_submit_with_start_timeout():
-    """Test that start_timeout adds X-Fal-Request-Timeout header in async submit()."""
+    """Test that start_timeout adds X-Fal-Request-Start-Timeout header in async submit()."""
     with patch(
         "fal_client.client._async_maybe_retry_request", new_callable=AsyncMock
     ) as mock_request:
@@ -2339,7 +2339,7 @@ async def test_async_client_submit_with_start_timeout():
 
         call_kwargs = mock_request.call_args[1]
         assert "headers" in call_kwargs
-        assert call_kwargs["headers"]["X-Fal-Request-Timeout"] == "60.0"
+        assert call_kwargs["headers"]["X-Fal-Request-Start-Timeout"] == "60.0"
 
 
 @pytest.mark.asyncio
@@ -2370,7 +2370,7 @@ async def test_async_client_subscribe_with_start_timeout():
         # Check the first call (submit) has the header
         first_call_kwargs = mock_request.call_args_list[0][1]
         assert "headers" in first_call_kwargs
-        assert first_call_kwargs["headers"]["X-Fal-Request-Timeout"] == "90.0"
+        assert first_call_kwargs["headers"]["X-Fal-Request-Start-Timeout"] == "90.0"
 
 
 @pytest.mark.asyncio
@@ -2431,7 +2431,7 @@ def test_sync_client_run_without_start_timeout_no_header():
         client.run("test-app", {"input": "data"})
 
         call_kwargs = mock_request.call_args[1]
-        assert "X-Fal-Request-Timeout" not in call_kwargs.get("headers", {})
+        assert "X-Fal-Request-Start-Timeout" not in call_kwargs.get("headers", {})
 
 
 def test_sync_client_run_with_start_timeout_and_hint():
@@ -2445,7 +2445,7 @@ def test_sync_client_run_with_start_timeout_and_hint():
         client.run("test-app", {"input": "data"}, start_timeout=30, hint="lora:a")
 
         call_kwargs = mock_request.call_args[1]
-        assert call_kwargs["headers"]["X-Fal-Request-Timeout"] == "30.0"
+        assert call_kwargs["headers"]["X-Fal-Request-Start-Timeout"] == "30.0"
         assert call_kwargs["headers"]["X-Fal-Runner-Hint"] == "lora:a"
 
 

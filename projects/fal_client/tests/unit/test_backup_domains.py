@@ -350,7 +350,7 @@ async def test_public_connect_timeouts_and_start_timeout(
         3 if operation == "subscribe" else 1
     )
     if operation not in ("stream", "status"):
-        assert requests[0].headers["X-Fal-Request-Timeout"] == "30.0"
+        assert requests[0].headers["X-Fal-Request-Start-Timeout"] == "30.0"
 
 
 @pytest.mark.asyncio

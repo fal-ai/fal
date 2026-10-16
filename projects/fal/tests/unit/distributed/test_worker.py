@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import multiprocessing
 import time
 from types import SimpleNamespace
@@ -47,8 +48,11 @@ def test_runner_initialization():
 def test_worker_shutdown_is_safe():
     """Test that shutdown doesn't crash even if called multiple times."""
     worker = SimpleWorker(rank=0, world_size=1)
+    worker.teardown = MagicMock()
     worker.shutdown()
-    worker.shutdown()  # Should not crash
+    worker.shutdown()
+    worker.teardown.assert_called_once_with()
+    assert not worker.running
 
 
 def test_runner_not_alive_before_start():
@@ -99,8 +103,31 @@ def test_worker_submit_when_not_running():
     async def dummy():
         return {}
 
+    coro = dummy()
     with pytest.raises(RuntimeError, match="Event loop is not running"):
-        worker.submit(dummy())
+        worker.submit(coro)
+    assert inspect.getcoroutinestate(coro) == inspect.CORO_CLOSED
+
+
+def test_worker_closes_coroutine_when_scheduling_fails(monkeypatch):
+    worker = SimpleWorker(rank=0, world_size=1)
+
+    async def dummy():
+        return {}
+
+    coro = dummy()
+    try:
+        with monkeypatch.context() as patch:
+            patch.setattr(
+                asyncio,
+                "run_coroutine_threadsafe",
+                MagicMock(side_effect=RuntimeError("Event loop is closed")),
+            )
+            with pytest.raises(RuntimeError, match="Event loop is closed"):
+                worker.submit(coro)
+        assert inspect.getcoroutinestate(coro) == inspect.CORO_CLOSED
+    finally:
+        worker.shutdown()
 
 
 def test_add_streaming_result():

@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Any, Dict, Generator, Union
 
 import pydantic
-from pydantic.utils import update_not_none
 
 from fal.toolkit.image import read_image_from_url
 from fal.toolkit.utils.download_utils import download_file
@@ -48,6 +47,7 @@ class DataUri(DownloadFileMixin, str):
                 "strip_whitespace": True,
             }
 
+        @classmethod
         def __get_pydantic_json_schema__(cls, core_schema, handler) -> Dict[str, Any]:
             json_schema = handler(core_schema)
             json_schema.update(format="data-uri")
@@ -77,7 +77,7 @@ class DataUri(DownloadFileMixin, str):
 
         @classmethod
         def __modify_schema__(cls, field_schema: Dict[str, Any]) -> None:
-            update_not_none(field_schema, format="data-uri")
+            field_schema.update(format="data-uri")
 
 
 class HttpsUrl(DownloadFileMixin, str):
@@ -92,6 +92,7 @@ class HttpsUrl(DownloadFileMixin, str):
                 "strip_whitespace": True,
             }
 
+        @classmethod
         def __get_pydantic_json_schema__(cls, core_schema, handler) -> Dict[str, Any]:
             json_schema = handler(core_schema)
             json_schema.update(format="https-url")
@@ -125,7 +126,7 @@ class HttpsUrl(DownloadFileMixin, str):
 
         @classmethod
         def __modify_schema__(cls, field_schema: Dict[str, Any]) -> None:
-            update_not_none(field_schema, format="https-url")
+            field_schema.update(format="https-url")
 
 
 class ImageHttpsUrl(DownloadImageMixin, HttpsUrl):

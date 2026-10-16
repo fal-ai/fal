@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fal import apps  # noqa: F401
+from fal._billing import BillingComponents, BillingDeclaration
 from fal.api import FalServerlessHost, LocalHost, cached, function
 from fal.api import function as isolated  # noqa: F401
 from fal.app import App, endpoint, realtime, wrap_app  # noqa: F401
@@ -24,6 +25,8 @@ __all__ = [
     "realtime",
     # "wrap_app",
     "HealthCheck",
+    "BillingComponents",
+    "BillingDeclaration",
     "FalServerlessKeyCredentials",
     "sync_dir",
     "__version__",

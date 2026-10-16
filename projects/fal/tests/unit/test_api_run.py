@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+import fal
 from fal import App, endpoint
 from fal.api import (
     FalServerlessError,
@@ -696,3 +697,43 @@ def test_run_local_exposed_port_override_does_not_mutate_options(monkeypatch):
 
     assert called_ports == [3000, 8080]
     assert iso.options.gateway == {"serve": True}
+
+
+def test_on_changes():
+    def fastapi_in(op: Options):
+        return any("fastapi" in req for req in op.environment["requirements"])
+
+    @fal.function(
+        requirements=["pyjokes"],
+        serve=True,
+        keep_alive=10,
+        machine_type="M",
+        max_concurrency=8,
+    )
+    def served(name: str):
+        return f"Hello {name}"
+
+    op = served.options
+    assert fastapi_in(op), "fastapi not in served environment"
+    assert op.gateway["serve"], "serve not in served gateway"
+    assert op.host["max_concurrency"] == 8, "max_concurrency not in served gateway"
+    assert op.host["keep_alive"] == 10, "keep_alive not in served host"
+    assert op.host["machine_type"] == "M", "machine_type not in served host"
+
+    unserved = served.on(serve=False)
+    # should only change serve value
+    op = unserved.options
+    assert fastapi_in(op), "fastapi MUST stay after removing serve"
+    assert not op.gateway["serve"], "serve STILL set in unserved gateway"
+    assert op.host["max_concurrency"] == 8, "max_concurrency not in unserved gateway"
+    assert op.host["keep_alive"] == 10, "keep_alive not in unserved host"
+    assert op.host["machine_type"] == "M", "machine_type not in unserved host"
+
+    local = served.on(host=fal.local)
+    # should remove all host values
+    op = local.options
+    assert fastapi_in(op), "fastapi not in local environment"
+    assert op.gateway["serve"], "serve not in local gateway"
+    assert "max_concurrency" not in op.host, "max_concurrency set in local gateway"
+    assert "keep_alive" not in op.host, "keep_alive set in local host"
+    assert "machine_type" not in op.host, "machine_type set in local host"

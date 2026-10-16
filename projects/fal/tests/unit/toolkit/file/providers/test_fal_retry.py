@@ -1,12 +1,18 @@
 from __future__ import annotations
 
+from functools import partial
+from io import BytesIO
+from types import SimpleNamespace
 from unittest import mock
 from urllib.error import HTTPError, URLError
 from urllib.request import Request
 
 import pytest
 
+from fal.toolkit.exceptions import FileUploadException
+from fal.toolkit.file.providers import fal as providers
 from fal.toolkit.file.providers.fal import _maybe_retry_request
+from fal.toolkit.file.types import FileData
 
 
 class MockResponse:
@@ -141,3 +147,155 @@ def test_default_timeout():
             assert response is not None
 
         mock_urlopen.assert_called_once_with(request, timeout=10)
+
+
+@pytest.fixture
+def upload_auth(monkeypatch):
+    monkeypatch.setattr(
+        providers,
+        "_require_auth_credentials",
+        lambda: SimpleNamespace(header_value="test-key"),
+    )
+    monkeypatch.setattr(
+        providers.fal_v3_token_manager,
+        "get_token",
+        lambda: SimpleNamespace(
+            token_type="Bearer",
+            token="test-token",
+            base_upload_url="https://example.com",
+        ),
+    )
+
+
+@pytest.mark.parametrize(
+    ("repository_name", "storage_type", "multipart"),
+    [
+        ("FalFileRepository", "gcs", False),
+        ("FalFileRepositoryV3", "fal-cdn-v3", False),
+        ("InternalFalFileRepositoryV3", "fal-cdn-v3", False),
+        ("MultipartUploadGCS", "gcs", True),
+        ("MultipartUploadV3", "fal-cdn-v3", True),
+        ("InternalMultipartUploadV3", "fal-cdn-v3", True),
+    ],
+)
+def test_initiation_errors_include_server_response(
+    upload_auth, repository_name, storage_type, multipart
+):
+    repository_type = getattr(providers, repository_name)
+    if multipart:
+        upload = repository_type("image.png", content_type="image/png").create
+    else:
+        upload = partial(
+            repository_type().save,
+            FileData(b"image", "image/png", "image.png"),
+            multipart=False,
+        )
+
+    error = HTTPError(
+        "https://example.com/upload?signature=test-signature",
+        400,
+        "Bad Request",
+        {},
+        BytesIO(b'{"detail":"Invalid storage type"}'),
+    )
+    with mock.patch(URLOPEN, side_effect=error) as mock_urlopen:
+        with pytest.raises(FileUploadException) as exc_info:
+            upload()
+
+    assert str(exc_info.value) == (
+        "Error initiating upload. Status 400: Bad Request. "
+        f"Storage type: {storage_type}. "
+        'Server response: {"detail":"Invalid storage type"}'
+    )
+    assert exc_info.value.__cause__ is error
+    assert "test-key" not in str(exc_info.value)
+    assert "test-token" not in str(exc_info.value)
+    assert "test-signature" not in str(exc_info.value)
+    assert mock_urlopen.call_count == 1
+
+
+@pytest.mark.parametrize(
+    ("body", "response_text"),
+    [
+        (b"Invalid storage type", "Invalid storage type"),
+        (b'{"detail":', '{"detail":'),
+        (b"Invalid \xff format", "Invalid \ufffd format"),
+        (b"", None),
+        (b" \n\t ", None),
+        (None, None),
+    ],
+)
+def test_initiation_error_body_formats(upload_auth, body, response_text):
+    error = HTTPError(
+        "https://example.com/upload",
+        400,
+        "Bad Request",
+        {},
+        BytesIO(body) if body is not None else None,
+    )
+    with mock.patch(URLOPEN, side_effect=error):
+        with pytest.raises(FileUploadException) as exc_info:
+            providers.FalFileRepositoryV3().save(FileData(b"image"), multipart=False)
+
+    message = (
+        "Error initiating upload. Status 400: Bad Request. Storage type: fal-cdn-v3"
+    )
+    if response_text is not None:
+        message += f". Server response: {response_text}"
+    assert str(exc_info.value) == message
+    assert exc_info.value.__cause__ is error
+
+
+def test_initiation_error_body_is_bounded(upload_auth):
+    body = BytesIO(b"x" * (providers.MAX_ERROR_RESPONSE_BYTES + 100))
+    error = HTTPError("https://example.com/upload", 400, "Bad Request", {}, body)
+
+    with mock.patch(URLOPEN, side_effect=error):
+        with pytest.raises(FileUploadException) as exc_info:
+            providers.FalFileRepositoryV3().save(FileData(b"image"), multipart=False)
+
+    assert str(exc_info.value).endswith(
+        f"Server response: {'x' * providers.MAX_ERROR_RESPONSE_BYTES} [truncated]"
+    )
+    assert body.tell() == providers.MAX_ERROR_RESPONSE_BYTES + 1
+
+
+def test_initiation_error_body_read_failure_preserves_upload_error(upload_auth):
+    error = HTTPError("https://example.com/upload", 400, "Bad Request", {}, None)
+    with mock.patch(URLOPEN, side_effect=error):
+        with mock.patch.object(error, "read", side_effect=OSError("body unavailable")):
+            with pytest.raises(FileUploadException) as exc_info:
+                providers.FalFileRepositoryV3().save(
+                    FileData(b"image"), multipart=False
+                )
+
+    assert str(exc_info.value) == (
+        "Error initiating upload. Status 400: Bad Request. Storage type: fal-cdn-v3"
+    )
+    assert exc_info.value.__cause__ is error
+
+
+@pytest.mark.parametrize(("status_code", "attempts"), [(400, 1), (422, 1), (503, 5)])
+def test_initiation_diagnostics_preserve_retry_policy(
+    upload_auth, status_code, attempts
+):
+    errors = [
+        HTTPError(
+            "https://example.com/upload",
+            status_code,
+            "Upload rejected",
+            {},
+            BytesIO(f"attempt {attempt}".encode()),
+        )
+        for attempt in range(1, attempts + 1)
+    ]
+    with mock.patch(URLOPEN, side_effect=errors) as mock_urlopen:
+        with mock.patch(SLEEP):
+            with pytest.raises(FileUploadException) as exc_info:
+                providers.FalFileRepositoryV3().save(
+                    FileData(b"image"), multipart=False
+                )
+
+    assert mock_urlopen.call_count == attempts
+    assert str(exc_info.value).endswith(f"Server response: attempt {attempts}")
+    assert exc_info.value.__cause__ is errors[-1]

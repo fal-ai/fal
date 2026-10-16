@@ -18,6 +18,7 @@ from typing import (
     TypeVar,
     get_args,
 )
+from urllib.error import HTTPError
 
 import grpc
 import isolate_proto
@@ -27,6 +28,7 @@ from fal import flags
 from fal._serialization import patch_pickle
 from fal.auth import UserAccess, current_user_info, key_credentials
 from fal.console import console
+from fal.exceptions import FalServerlessException
 from fal.logging import get_logger
 from fal.logging.trace import TraceContextInterceptor
 
@@ -306,6 +308,15 @@ def get_agent_credentials(original_credentials: Credentials) -> Credentials:
         return original_credentials
 
 
+def _is_permission_denied(error: BaseException | None) -> bool:
+    if not isinstance(error, HTTPError) or error.code != 403:
+        return False
+    try:
+        return b"Insufficient permissions" in error.read()
+    except Exception:
+        return False
+
+
 def get_credentials(
     team: str | None = None,
     key: str | None = None,
@@ -331,16 +342,23 @@ def get_credentials(
         logger.debug("Using key credentials")
         credentials = FalServerlessKeyCredentials(key_creds[0], key_creds[1])
         if _team:
-            user_info = current_user_info(credentials.to_headers())
-            full_name = user_info["full_name"]
-            nickname = user_info["nickname"]
-            user_id = user_info["user_id"]
+            try:
+                user_info = current_user_info(credentials.to_headers())
+            except FalServerlessException as exc:
+                # The key may lack account:settings:read; it still works.
+                if not _is_permission_denied(exc.__cause__):
+                    raise
+                console.print(f"Ignoring explicit team {_team} because key is used.")
+            else:
+                full_name = user_info["full_name"]
+                nickname = user_info["nickname"]
+                user_id = user_info["user_id"]
 
-            if _team != nickname:
-                console.print(
-                    f"Ignoring explicit team {_team} because key is used. "
-                    f"The key belongs to {full_name}: {nickname} - {user_id}."
-                )
+                if _team != nickname:
+                    console.print(
+                        f"Ignoring explicit team {_team} because key is used. "
+                        f"The key belongs to {full_name}: {nickname} - {user_id}."
+                    )
         return credentials
 
     return AuthenticatedCredentials(team=_team)
@@ -492,7 +510,8 @@ class BuildEnvironmentResult:
 class UserKeyInfo:
     key_id: str
     created_at: datetime
-    scope: KeyScope
+    # None when the key's permissions have no v1 scope equivalent.
+    scope: KeyScope | None
     alias: str
 
 
@@ -513,7 +532,7 @@ class KeyScope(enum.Enum):
     @staticmethod
     def from_proto(
         proto: isolate_proto.CreateUserKeyRequest.Scope.ValueType | None,
-    ) -> KeyScope:
+    ) -> KeyScope | None:
         if proto is None:
             return KeyScope.API
 
@@ -522,7 +541,29 @@ class KeyScope(enum.Enum):
         elif proto is isolate_proto.CreateUserKeyRequest.Scope.API:
             return KeyScope.API
         else:
-            raise ValueError(f"Unknown KeyScope: {proto}")
+            # A key minted from a preset with no v1 scope equivalent. Listing
+            # must survive it rather than fail for every key in the account.
+            return None
+
+
+class KeyPreset(enum.Enum):
+    """A permission preset to mint a key with."""
+
+    FULL = "FULL"
+    API = "API"
+    DEPLOY = "DEPLOY"
+    READONLY = "READONLY"
+    BILLING = "BILLING"
+    COMPUTE = "COMPUTE"
+    SERVERLESS = "SERVERLESS"
+    AGENT = "AGENT"
+
+    @staticmethod
+    def from_scope(scope: KeyScope) -> KeyPreset:
+        if scope is KeyScope.ADMIN:
+            return KeyPreset.FULL
+        else:
+            return KeyPreset.API
 
 
 class DeploymentStrategy(enum.Enum):
@@ -864,14 +905,40 @@ class FalServerlessConnection:
         self._stub = isolate_proto.IsolateControllerStub(channel)
         return self._stub
 
-    def create_user_key(self, scope: KeyScope, alias: str | None) -> tuple[str, str]:
-        scope_proto = (
-            isolate_proto.CreateUserKeyRequest.Scope.ADMIN
-            if scope is KeyScope.ADMIN
-            else isolate_proto.CreateUserKeyRequest.Scope.API
-        )
+    def create_user_key(
+        self,
+        preset: KeyPreset | None,
+        alias: str | None,
+        permissions: list[str] | None = None,
+    ) -> tuple[str, str]:
+        if (preset is None) == (permissions is None):
+            raise ValueError("Pass exactly one of preset or permissions.")
 
-        request = isolate_proto.CreateUserKeyRequest(scope=scope_proto, alias=alias)
+        if preset is not None and not isinstance(preset, KeyPreset):
+            raise TypeError(
+                f"Expected a KeyPreset, got {type(preset).__name__}. "
+                "Map a KeyScope with KeyPreset.from_scope()."
+            )
+
+        # A bare str is iterable and would split into one permission per letter.
+        if permissions is not None and (
+            isinstance(permissions, str) or not permissions
+        ):
+            raise ValueError("permissions must be a non-empty list of names.")
+
+        # policy, policy_preset and the deprecated scope are mutually exclusive
+        # on the wire, so set one and leave scope unset. Presets other than
+        # FULL and API have no scope equivalent and are only expressible this way.
+        if permissions is not None:
+            request = isolate_proto.CreateUserKeyRequest(
+                policy=isolate_proto.KeyPolicy(permissions=permissions), alias=alias
+            )
+        else:
+            assert preset is not None
+            request = isolate_proto.CreateUserKeyRequest(
+                policy_preset=preset.value, alias=alias
+            )
+
         response = self.stub.CreateUserKey(request)
         return response.key_id, response.key_secret
 
