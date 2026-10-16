@@ -42,6 +42,7 @@ _UPLOADER_INPUTS = {
     "x-fal-file-name",
     "x-fal-object-lifecycle",
     "x-fal-object-lifecycle-preference",
+    "x-fal-provenance",
     "x-fal-request-id",
 }
 
@@ -113,10 +114,7 @@ def upload_stream(
 
 
 def reserve(
-    file_name: str,
-    headers: dict[str, str],
-    request: Any = None,
-    wait_for_completion: bool = False,
+    file_name: str, headers: dict[str, str], request: Any = None
 ) -> Reservation:
     with _new_client() as http:
         session_id, url, cdn_signing_requested = _open_session(
@@ -124,20 +122,16 @@ def reserve(
         )
     return Reservation(
         url,
-        partial(_complete_session, session_id, wait_for_completion=wait_for_completion),
+        partial(_complete_session, session_id),
         partial(_delete_session, session_id),
         cdn_signing_requested,
     )
 
 
-def _complete_session(
-    session_id: str, content: bytes | Path, *, wait_for_completion: bool = False
-) -> None:
+def _complete_session(session_id: str, content: bytes | Path) -> None:
     body = [content] if isinstance(content, bytes) else _chunks(content)
     with _new_client() as http:
-        upload_id, _ = _send(http, session_id, body)
-        if wait_for_completion:
-            _wait_for_completion(http, upload_id)
+        _send(http, session_id, body)
 
 
 def _delete_session(session_id: str) -> None:

@@ -667,20 +667,6 @@ def test_reserve_hands_out_the_url_before_the_body(
     assert "x-fal-request-id" not in requests[1].headers
 
 
-def test_reserved_upload_can_wait_for_completion(local_upload, transport):
-    remaining = [PENDING, COMPLETED]
-
-    def respond(request):
-        if request.method == "GET":
-            return remaining.pop(0)
-        return _session(request)
-
-    requests = transport(respond)
-    pending = files.File.reserve("text/plain", "out.txt", wait_for_completion=True)
-    pending.complete(b"hi")
-    assert [r.method for r in requests] == ["POST", "PUT", "POST", "GET", "GET"]
-
-
 def test_reserve_abort_and_failed_complete_delete_the_session(local_upload, transport):
     requests = transport(_session)
     files.File.reserve("text/plain").abort()
@@ -816,7 +802,7 @@ def test_reserve_reports_cdn_signing_for_selected_destination(
         else initiated.headers
     )
     if via_uploader:
-        assert headers["x-cdn-signing-request"] == "true"
+        assert headers["x-fal-provenance"] == "true"
     else:
         assert "x-fal-provenance" not in headers
     assert headers["x-fal-request-id"] == "rid"
@@ -825,10 +811,11 @@ def test_reserve_reports_cdn_signing_for_selected_destination(
 def test_ambient_provenance_does_not_sign_an_unselected_output(
     local_upload, transport, caller
 ):
-    transport(_session)
+    requests = transport(_session)
     caller({"x-fal-provenance": "true", "x-fal-cdn-token": "token"}, "rid")
     pending = files.File.reserve("text/plain", "out.txt")
     assert pending.cdn_signing_requested is False
+    assert "x-fal-provenance" not in requests[0].headers
 
 
 @pytest.mark.parametrize("given", [True, False])

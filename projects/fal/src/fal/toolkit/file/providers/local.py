@@ -130,12 +130,11 @@ class LocalFileRepository(FileRepository):
         object_lifecycle_preference: dict[str, str] | None = None,
         request: Any = None,
         request_cdn_signing: bool = False,
-        wait_for_completion: bool = False,
     ) -> Reservation:
         headers = _headers(content_type, object_lifecycle_preference, request)
         if request_cdn_signing:
-            headers["X-CDN-Signing-Request"] = "true"
-        return reserve(file_name, headers, request, wait_for_completion)
+            headers["X-Fal-Provenance"] = "true"
+        return reserve(file_name, headers, request)
 
     def save_stream(
         self,

@@ -1046,7 +1046,6 @@ class FalFileRepositoryV3(FileRepository):
         object_lifecycle_preference: dict[str, str] | None = None,
         request: Any = None,
         request_cdn_signing: bool = False,
-        wait_for_completion: bool = False,
     ) -> Reservation:
         # Multipart at every size: the URL goes out before the size is known.
         multipart = MultipartUploadV3(

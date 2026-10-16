@@ -507,7 +507,6 @@ class File(BaseModel):
         request: Optional[Request] = None,
         repository: FileRepository | RepositoryId = DEFAULT_REPOSITORY,
         request_cdn_signing: bool = False,
-        wait_for_completion: bool = False,
     ) -> PendingFile:
         """Get the file's URL now; send the bytes later with
         ``pending.complete(data)``, or give the URL up with ``pending.abort()``.
@@ -516,8 +515,6 @@ class File(BaseModel):
         fails, the URL stays dead: nothing falls back once a URL is out.
         CDN signing is acknowledged only for a direct CDN reservation made by
         the local uploader with the caller's CDN token.
-        ``wait_for_completion`` applies to fal storage; customer buckets are
-        never waited for.
         """
         fdata = FileData(b"", content_type, file_name)
         upload_policy = get_upload_policy(request)
@@ -529,22 +526,12 @@ class File(BaseModel):
                 upload_policy, fdata.file_name, fdata.content_type, caller
             )
         else:
-            # Only the built-in destinations take these; a custom repository
-            # keeps the original reserve signature.
-            options = (
-                {
-                    "request_cdn_signing": request_cdn_signing,
-                    "wait_for_completion": wait_for_completion,
-                }
-                if _is_default_repository(repository)
-                else {}
-            )
             reservation = get_builtin_repository(repository).reserve(
                 fdata.file_name,
                 fdata.content_type,
                 _lifecycle_preference(request),
                 caller,
-                **options,
+                request_cdn_signing=request_cdn_signing,
             )
         return PendingFile(fdata.content_type, fdata.file_name, reservation)
 
