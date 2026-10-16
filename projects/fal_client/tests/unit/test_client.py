@@ -18,7 +18,7 @@ from fal_client.client import (
     AsyncRequestHandle,
     CDN_URL,
     Completed,
-    DEFAULT_QUEUE_POLL_INTERVAL,
+    PollBackoff,
     FalClientHTTPError,
     FalClientTimeoutError,
     InProgress,
@@ -1518,7 +1518,8 @@ def test_sync_handle_retries(monkeypatch):
     def _iter_events(
         self,
         with_logs: bool = False,
-        interval: float = DEFAULT_QUEUE_POLL_INTERVAL,
+        interval: float | None = None,
+        backoff: PollBackoff | None = None,
     ):
         return iter([Completed(logs=[], metrics={})])
 
@@ -1604,7 +1605,8 @@ async def test_async_handle_retries(monkeypatch):
     async def _iter_events(
         self,
         with_logs: bool = False,
-        interval: float = DEFAULT_QUEUE_POLL_INTERVAL,
+        interval: float | None = None,
+        backoff: PollBackoff | None = None,
     ):
         yield Completed(logs=[], metrics={})
 
@@ -1690,7 +1692,8 @@ def test_sync_get_does_not_retry_on_500_503(monkeypatch, status_code):
     def _iter_events(
         self,
         with_logs: bool = False,
-        interval: float = DEFAULT_QUEUE_POLL_INTERVAL,
+        interval: float | None = None,
+        backoff: PollBackoff | None = None,
     ):
         return iter([Completed(logs=[], metrics={})])
 
@@ -1730,7 +1733,8 @@ async def test_async_get_does_not_retry_on_500_503(monkeypatch, status_code):
     async def _iter_events(
         self,
         with_logs: bool = False,
-        interval: float = DEFAULT_QUEUE_POLL_INTERVAL,
+        interval: float | None = None,
+        backoff: PollBackoff | None = None,
     ):
         yield Completed(logs=[], metrics={})
 
@@ -1766,7 +1770,8 @@ def test_sync_handle_retries_ingress(monkeypatch):
     def _iter_events(
         self,
         with_logs: bool = False,
-        interval: float = DEFAULT_QUEUE_POLL_INTERVAL,
+        interval: float | None = None,
+        backoff: PollBackoff | None = None,
     ):
         return iter([Completed(logs=[], metrics={})])
 
@@ -1858,7 +1863,8 @@ async def test_async_handle_retries_ingress(monkeypatch):
     async def _iter_events(
         self,
         with_logs: bool = False,
-        interval: float = DEFAULT_QUEUE_POLL_INTERVAL,
+        interval: float | None = None,
+        backoff: PollBackoff | None = None,
     ):
         yield Completed(logs=[], metrics={})
 
@@ -2265,7 +2271,8 @@ def test_sync_client_subscribe_with_interval(monkeypatch):
         self,
         *,
         with_logs: bool = False,
-        interval: float = DEFAULT_QUEUE_POLL_INTERVAL,
+        interval: float | None = None,
+        backoff: PollBackoff | None = None,
     ):
         iter_event_calls.append((with_logs, interval))
         return iter([Completed(logs=[], metrics={})])
@@ -2382,7 +2389,8 @@ async def test_async_client_subscribe_with_interval(monkeypatch):
         self,
         *,
         with_logs: bool = False,
-        interval: float = DEFAULT_QUEUE_POLL_INTERVAL,
+        interval: float | None = None,
+        backoff: PollBackoff | None = None,
     ):
         iter_event_calls.append((with_logs, interval))
         yield Completed(logs=[], metrics={})
