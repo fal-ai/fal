@@ -47,6 +47,7 @@ from fal_client.auth import (
     fetch_auth_credentials,
     fetch_auth_credentials_async,
 )
+from fal_client import _validation
 from fal_client._version import __version__
 from fal_client._headers import (
     Priority,
@@ -622,6 +623,27 @@ class FalClientHTTPError(FalClientError):
 
     def __str__(self) -> str:
         return f"{self.message}"
+
+
+@dataclass
+class MissingRequiredArguments(FalClientError):
+    """Raised by ``validate_arguments`` when a required argument is absent.
+
+    Only absent keys are reported. A present-but-wrong value is not detected
+    here: the published schemas are pydantic-generated and pydantic coerces
+    values its own schema rejects, so a type check would refuse arguments the
+    application would have accepted.
+    """
+
+    application: str
+    missing: list[str]
+
+    def __str__(self) -> str:
+        names = ", ".join(self.missing)
+        return (
+            f"{self.application} requires {names}; "
+            f"{'they were' if len(self.missing) > 1 else 'it was'} not provided"
+        )
 
 
 @dataclass
@@ -1876,6 +1898,19 @@ class AsyncClient:
             client=client,
         )
 
+    async def check_arguments(self, application: str, arguments: AnyJSON) -> list[str]:
+        """Async counterpart of :meth:`SyncClient.check_arguments`."""
+        required = await _validation.fetch_required_arguments_async(application)
+        if required is None:
+            return []
+        return _validation.missing_required(arguments, required)
+
+    async def validate_arguments(self, application: str, arguments: AnyJSON) -> None:
+        """Async counterpart of :meth:`SyncClient.validate_arguments`."""
+        missing = await self.check_arguments(application, arguments)
+        if missing:
+            raise MissingRequiredArguments(application, missing)
+
     async def subscribe(
         self,
         application: str,
@@ -2423,6 +2458,31 @@ class SyncClient:
             cancel_url=data["cancel_url"],
             client=self._client,
         )
+
+    def check_arguments(self, application: str, arguments: AnyJSON) -> list[str]:
+        """Required arguments that ``arguments`` does not provide.
+
+        Reads the endpoint's published schema -- no credentials, and no runner
+        is started. Returns an empty list both when nothing is missing and
+        when no schema could be read, so a lookup failure never looks like a
+        problem with the arguments; use ``fal_client.fetch_required_arguments``
+        directly to tell those two apart.
+        """
+        required = _validation.fetch_required_arguments(application)
+        if required is None:
+            return []
+        return _validation.missing_required(arguments, required)
+
+    def validate_arguments(self, application: str, arguments: AnyJSON) -> None:
+        """Raise :class:`MissingRequiredArguments` if a required argument is absent.
+
+        Intended for a pre-flight check -- in CI, or before a batch -- since
+        the application itself would otherwise only reject the call after a
+        runner has started, which on a cold endpoint can take a minute.
+        """
+        missing = self.check_arguments(application, arguments)
+        if missing:
+            raise MissingRequiredArguments(application, missing)
 
     def subscribe(
         self,
