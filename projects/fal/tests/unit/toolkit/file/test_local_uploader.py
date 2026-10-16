@@ -277,7 +277,6 @@ def test_upload_policy_refusals_upload_in_process(policy_upload, response, attem
         "text/plain",
         name=unquote(requests[0].headers["x-fal-file-name"]),
         request=None,
-        wait_for_completion=False,
     )
 
 
@@ -573,45 +572,6 @@ def test_wait_returns_after_cdn_completion(
     assert [(r.method, str(r.url)) for r in requests[1:]] == [
         ("GET", "http://localhost/v1/uploads/accepted-id?wait=60")
     ] * 2
-
-
-def test_waited_policy_upload_waits_for_bucket_completion(policy_upload, transport):
-    remaining = [PENDING, COMPLETED]
-
-    def respond(request):
-        if request.method == "POST":
-            return _accept_like_the_uploader(request)
-        return remaining.pop(0)
-
-    requests, in_process = policy_upload(respond)
-    result = files.File.from_bytes(
-        b"hi",
-        "text/plain",
-        "out.txt",
-        request=_policy_request(),
-        save_kwargs={"wait_for_completion": True},
-    )
-    assert result.url.startswith(POLICY["url"].rstrip("/"))
-    assert [r.method for r in requests] == ["POST", "GET", "GET"]
-    in_process.assert_not_called()
-
-
-def test_waited_policy_upload_reports_bucket_failure(policy_upload, transport):
-    def respond(request):
-        if request.method == "POST":
-            return _accept_like_the_uploader(request)
-        return httpx.Response(
-            200, json={"state": "failed", "failure": {"rejected": 403}}
-        )
-
-    _, in_process = policy_upload(respond)
-    with pytest.raises(upload_policy.UploadPolicyError):
-        files.File.from_bytes(
-            b"hi",
-            request=_policy_request(),
-            save_kwargs={"wait_for_completion": True},
-        )
-    in_process.assert_not_called()
 
 
 @pytest.mark.parametrize(

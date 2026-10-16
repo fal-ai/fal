@@ -314,8 +314,8 @@ class File(BaseModel):
         save_kwargs: Optional[dict] = None,
         fallback_save_kwargs: Optional[dict] = None,
     ) -> File:
-        save_kwargs = dict(save_kwargs or {})
-        fallback_save_kwargs = dict(fallback_save_kwargs or {})
+        save_kwargs = save_kwargs or {}
+        fallback_save_kwargs = fallback_save_kwargs or {}
 
         fdata = FileData(data, content_type, file_name)
 
@@ -326,11 +326,7 @@ class File(BaseModel):
         if upload_policy is not None:
             _require_no_repository_conflict(repository)
             url = save_with_policy(
-                upload_policy,
-                fdata.file_name,
-                data,
-                fdata.content_type,
-                wait_for_completion=save_kwargs.get("wait_for_completion", False),
+                upload_policy, fdata.file_name, data, fdata.content_type
             )
             return cls(
                 url=url,
@@ -410,8 +406,8 @@ class File(BaseModel):
         if not file_path.exists():
             raise FileNotFoundError(f"File {file_path} does not exist")
 
-        save_kwargs = dict(save_kwargs or {})
-        fallback_save_kwargs = dict(fallback_save_kwargs or {})
+        save_kwargs = save_kwargs or {}
+        fallback_save_kwargs = fallback_save_kwargs or {}
 
         content_type = content_type or "application/octet-stream"
 
@@ -436,7 +432,6 @@ class File(BaseModel):
                 file_path.name,
                 file_path if file_data is None else file_data,
                 content_type,
-                wait_for_completion=save_kwargs.get("wait_for_completion", False),
             )
             return cls(
                 url=url,
@@ -521,6 +516,8 @@ class File(BaseModel):
         fails, the URL stays dead: nothing falls back once a URL is out.
         CDN signing is acknowledged only for a direct CDN reservation made by
         the local uploader with the caller's CDN token.
+        ``wait_for_completion`` applies to fal storage; customer buckets are
+        never waited for.
         """
         fdata = FileData(b"", content_type, file_name)
         upload_policy = get_upload_policy(request)
@@ -529,11 +526,7 @@ class File(BaseModel):
         if upload_policy is not None:
             _require_no_repository_conflict(repository)
             reservation = reserve_with_policy(
-                upload_policy,
-                fdata.file_name,
-                fdata.content_type,
-                caller,
-                wait_for_completion=wait_for_completion,
+                upload_policy, fdata.file_name, fdata.content_type, caller
             )
         else:
             # Only the built-in destinations take these; a custom repository

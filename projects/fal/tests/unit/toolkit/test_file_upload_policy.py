@@ -131,58 +131,15 @@ def test_from_path_uploads_to_the_policy_destination(
     assert not repository_spy
 
 
-@pytest.mark.parametrize("from_path", [False, True])
-def test_waited_policy_upload_returns_after_post(
-    tmp_path, accepting_s3, repository_spy, from_path
+def test_reserved_policy_upload_never_requests_cdn_signing(
+    accepting_s3, repository_spy
 ):
-    request = FakeRequest({UPLOAD_POLICY_KEY: POLICY})
-    kwargs = {"request": request, "save_kwargs": {"wait_for_completion": True}}
-    if from_path:
-        source = tmp_path / "out.txt"
-        source.write_bytes(b"payload")
-        file = File.from_path(source, content_type="text/plain", **kwargs)
-    else:
-        file = File.from_bytes(b"payload", content_type="text/plain", **kwargs)
-
-    assert file.url.startswith("https://bucket.s3.us-west-1.amazonaws.com/uploads/")
-    assert len(accepting_s3) == 1
-    assert not repository_spy
-
-
-@pytest.mark.parametrize("from_path", [False, True])
-def test_waited_policy_upload_raises_post_failure(
-    monkeypatch, tmp_path, repository_spy, from_path
-):
-    monkeypatch.setattr(up, "_MAX_ATTEMPTS", 1)
-
-    def reject(url, **kwargs):
-        return httpx.Response(403, request=httpx.Request("POST", url))
-
-    monkeypatch.setattr(up, "_new_client", lambda: _StubClient(reject))
-    request = FakeRequest({UPLOAD_POLICY_KEY: POLICY})
-    kwargs = {"request": request, "save_kwargs": {"wait_for_completion": True}}
-    with pytest.raises(up.UploadPolicyError):
-        if from_path:
-            source = tmp_path / "out.txt"
-            source.write_bytes(b"payload")
-            File.from_path(source, content_type="text/plain", **kwargs)
-        else:
-            File.from_bytes(b"payload", content_type="text/plain", **kwargs)
-    assert not repository_spy
-
-
-def test_reserved_policy_upload_can_wait(accepting_s3, repository_spy):
     request = FakeRequest({UPLOAD_POLICY_KEY: POLICY})
     pending = File.reserve(
-        "text/plain",
-        "out.txt",
-        request=request,
-        wait_for_completion=True,
-        request_cdn_signing=True,
+        "text/plain", "out.txt", request=request, request_cdn_signing=True
     )
     assert pending.cdn_signing_requested is False
     assert pending.complete(b"payload").url == pending.url
-    assert len(accepting_s3) == 1
     assert not repository_spy
 
 

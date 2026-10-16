@@ -16,7 +16,6 @@ from urllib.parse import quote
 
 from fal.flags import bool_envvar
 from fal.toolkit.file._local_uploader import (
-    LocalUploadError,
     LocalUploadInvalid,
     LocalUploadRefused,
     reserve,
@@ -157,13 +156,10 @@ class LocalFileRepository(FileRepository):
 
 
 def reserve_with_policy(
-    policy: UploadPolicy,
-    file_name: str,
-    content_type: str,
-    request: Any,
-    wait_for_completion: bool = False,
+    policy: UploadPolicy, file_name: str, content_type: str, request: Any
 ) -> Reservation:
-    """The URL from the policy's key now; complete may wait for the bucket."""
+    """The URL from the policy's key now; complete runs save_with_policy, which
+    does not wait for the bucket."""
     name = _upload_file_name(policy, file_name, content_type)
     url, _ = _prepare_upload(policy, file_name, content_type, name=name)
     complete = partial(
@@ -173,7 +169,6 @@ def reserve_with_policy(
         content_type=content_type,
         name=name,
         request=request,
-        wait_for_completion=wait_for_completion,
     )
     return Reservation(url, complete)
 
@@ -186,32 +181,22 @@ def save_with_policy(
     *,
     name: str | None = None,
     request: Any = None,
-    wait_for_completion: bool = False,
 ) -> str:
-    """Upload to the caller's bucket, waiting only when requested."""
+    """Upload to the caller's bucket and return the URL the object will have.
+
+    Opted-in runners hand the upload to the node-local uploader. Any other
+    runner, or a refusal, uploads in-process. Neither waits for the bucket, so
+    no runner time is spent on the caller's storage.
+    """
     name = name or _upload_file_name(policy, file_name, content_type)
-    if url := _uploader_with_policy(
-        policy, name, content, content_type, request, wait_for_completion
-    ):
+    if url := _uploader_with_policy(policy, name, content, content_type, request):
         return url
     if isinstance(content, bytes):
         return upload_bytes_with_policy(
-            policy,
-            file_name,
-            content,
-            content_type,
-            name=name,
-            request=request,
-            wait_for_completion=wait_for_completion,
+            policy, file_name, content, content_type, name=name, request=request
         )
     return upload_path_with_policy(
-        policy,
-        content,
-        file_name,
-        content_type,
-        name=name,
-        request=request,
-        wait_for_completion=wait_for_completion,
+        policy, content, file_name, content_type, name=name, request=request
     )
 
 
@@ -221,15 +206,12 @@ def _uploader_with_policy(
     content: bytes | Path,
     content_type: str,
     request: Any = None,
-    wait_for_completion: bool = False,
 ) -> str | None:
     """The URL from the node-local uploader, or None when it did not take the work."""
     if not bool_envvar("FAL_USE_LOCAL_UPLOADER"):
         return None
     try:
-        return _upload_with_policy(
-            policy, name, content, content_type, request, wait_for_completion
-        )
+        return _upload_with_policy(policy, name, content, content_type, request)
     except LocalUploadInvalid as exc:
         raise UploadPolicyError(
             f"Upload via {UPLOAD_POLICY_KEY} was refused: {exc}"
@@ -237,12 +219,6 @@ def _uploader_with_policy(
     except LocalUploadRefused as exc:
         print(f"{exc} Uploading in-process.")
         return None
-    except LocalUploadError as exc:
-        if wait_for_completion:
-            raise UploadPolicyError(
-                f"Upload via {UPLOAD_POLICY_KEY} failed: {exc}"
-            ) from exc
-        raise
 
 
 def _upload_with_policy(
@@ -251,7 +227,6 @@ def _upload_with_policy(
     content: bytes | Path,
     content_type: str,
     request: Any = None,
-    wait_for_completion: bool = False,
 ) -> str:
     _validate_size(
         len(content) if isinstance(content, bytes) else content.stat().st_size
@@ -267,10 +242,4 @@ def _upload_with_policy(
     }
     if request_id := _request_id(request):
         headers["X-Fal-Request-ID"] = request_id
-    return upload(
-        name,
-        content,
-        headers,
-        request=request,
-        wait_for_completion=wait_for_completion,
-    )
+    return upload(name, content, headers, request=request)
