@@ -511,6 +511,8 @@ class File(BaseModel):
         file_name: Optional[str] = None,
         request: Optional[Request] = None,
         repository: FileRepository | RepositoryId = DEFAULT_REPOSITORY,
+        request_cdn_signing: bool = False,
+        wait_for_completion: bool = False,
     ) -> PendingFile:
         """Get the file's URL now; send the bytes later with
         ``pending.complete(data)``, or give the URL up with ``pending.abort()``.
@@ -525,14 +527,26 @@ class File(BaseModel):
         if upload_policy is not None:
             _require_no_repository_conflict(repository)
             reservation = reserve_with_policy(
-                upload_policy, fdata.file_name, fdata.content_type, caller
+                upload_policy,
+                fdata.file_name,
+                fdata.content_type,
+                caller,
+                wait_for_completion=wait_for_completion,
             )
         else:
-            reservation = get_builtin_repository(repository).reserve(
+            repo = get_builtin_repository(repository)
+            kwargs = {}
+            if _is_default_repository(repository):
+                if request_cdn_signing:
+                    kwargs["request_cdn_signing"] = True
+                if wait_for_completion:
+                    kwargs["wait_for_completion"] = True
+            reservation = repo.reserve(
                 fdata.file_name,
                 fdata.content_type,
                 _lifecycle_preference(request),
                 caller,
+                **kwargs,
             )
         return PendingFile(fdata.content_type, fdata.file_name, reservation)
 
@@ -579,6 +593,11 @@ class PendingFile:
     @property
     def url(self) -> str:
         return self._reservation.url
+
+    @property
+    def cdn_signing_requested(self) -> bool:
+        """Whether this destination was asked to sign at upload creation."""
+        return self._reservation.cdn_signing_requested
 
     def complete(self, content: bytes | str | Path) -> File:
         if not isinstance(content, bytes):

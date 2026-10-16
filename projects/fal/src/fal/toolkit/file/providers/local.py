@@ -129,9 +129,13 @@ class LocalFileRepository(FileRepository):
         content_type: str,
         object_lifecycle_preference: dict[str, str] | None = None,
         request: Any = None,
+        request_cdn_signing: bool = False,
+        wait_for_completion: bool = False,
     ) -> Reservation:
         headers = _headers(content_type, object_lifecycle_preference, request)
-        return reserve(file_name, headers, request)
+        if request_cdn_signing:
+            headers["X-Fal-Provenance"] = "true"
+        return reserve(file_name, headers, request, wait_for_completion)
 
     def save_stream(
         self,
@@ -152,7 +156,11 @@ class LocalFileRepository(FileRepository):
 
 
 def reserve_with_policy(
-    policy: UploadPolicy, file_name: str, content_type: str, request: Any
+    policy: UploadPolicy,
+    file_name: str,
+    content_type: str,
+    request: Any,
+    wait_for_completion: bool = False,
 ) -> Reservation:
     """The URL from the policy's key now; complete runs save_with_policy, which
     does not wait for the bucket."""
@@ -165,6 +173,7 @@ def reserve_with_policy(
         content_type=content_type,
         name=name,
         request=request,
+        wait_for_completion=wait_for_completion,
     )
     return Reservation(url, complete)
 
@@ -179,18 +188,12 @@ def save_with_policy(
     request: Any = None,
     wait_for_completion: bool = False,
 ) -> str:
-    """Upload to the caller's bucket and return the URL the object will have.
-
-    Opted-in runners hand the upload to the node-local uploader. Any other
-    runner, or a refusal, uploads in-process. Neither waits for the bucket, so
-    no runner time is spent on the caller's storage.
-    """
+    """Upload to the caller's bucket, waiting only when requested."""
     name = name or _upload_file_name(policy, file_name, content_type)
     if url := _uploader_with_policy(
         policy, name, content, content_type, request, wait_for_completion
     ):
         return url
-    wait_kwargs = {"wait_for_completion": True} if wait_for_completion else {}
     if isinstance(content, bytes):
         return upload_bytes_with_policy(
             policy,
@@ -199,7 +202,7 @@ def save_with_policy(
             content_type,
             name=name,
             request=request,
-            **wait_kwargs,
+            wait_for_completion=wait_for_completion,
         )
     return upload_path_with_policy(
         policy,
@@ -208,7 +211,7 @@ def save_with_policy(
         content_type,
         name=name,
         request=request,
-        **wait_kwargs,
+        wait_for_completion=wait_for_completion,
     )
 
 

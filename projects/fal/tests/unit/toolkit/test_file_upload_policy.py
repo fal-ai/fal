@@ -171,6 +171,21 @@ def test_waited_policy_upload_raises_post_failure(
     assert not repository_spy
 
 
+def test_reserved_policy_upload_can_wait(accepting_s3, repository_spy):
+    request = FakeRequest({UPLOAD_POLICY_KEY: POLICY})
+    pending = File.reserve(
+        "text/plain",
+        "out.txt",
+        request=request,
+        wait_for_completion=True,
+        request_cdn_signing=True,
+    )
+    assert pending.cdn_signing_requested is False
+    assert pending.complete(b"payload").url == pending.url
+    assert len(accepting_s3) == 1
+    assert not repository_spy
+
+
 def test_a_rejected_upload_never_falls_back_to_the_fal_cdn(monkeypatch, repository_spy):
     """The headline guarantee: a caller who asked for their own bucket must
     never silently get fal-owned storage instead.

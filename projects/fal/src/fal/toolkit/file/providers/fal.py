@@ -667,6 +667,7 @@ class MultipartUploadV3:
 
         self._access_url: str | None = None
         self._upload_url: str | None = None
+        self.cdn_signing_requested = False
 
         self._parts: list[dict] = []
 
@@ -686,7 +687,11 @@ class MultipartUploadV3:
     def auth_headers(self) -> dict[str, str]:
         return _v3_auth_headers(self.request)
 
-    def create(self, object_lifecycle_preference: dict[str, str] | None = None) -> None:
+    def create(
+        self,
+        object_lifecycle_preference: dict[str, str] | None = None,
+        request_cdn_signing: bool = False,
+    ) -> None:
         url = f"https://{REST_HOST}/storage/upload/initiate-multipart?storage_type=fal-cdn-v3"
 
         try:
@@ -696,6 +701,8 @@ class MultipartUploadV3:
                 "Accept": "application/json",
             }
             _object_lifecycle_headers(headers, object_lifecycle_preference)
+            if request_cdn_signing:
+                headers["X-Fal-Provenance"] = "true"
             req = Request(
                 url,
                 method="POST",
@@ -712,6 +719,7 @@ class MultipartUploadV3:
                 result = json.load(response)
                 self._access_url = result["file_url"]
                 self._upload_url = result["upload_url"]
+                self.cdn_signing_requested = result.get("cdn_signing_requested") is True
 
         except HTTPError as exc:
             raise _initiate_upload_error(exc, "fal-cdn-v3") from exc
@@ -1045,13 +1053,22 @@ class FalFileRepositoryV3(FileRepository):
         content_type: str,
         object_lifecycle_preference: dict[str, str] | None = None,
         request: Any = None,
+        request_cdn_signing: bool = False,
+        wait_for_completion: bool = False,
     ) -> Reservation:
         # Multipart at every size: the URL goes out before the size is known.
         multipart = MultipartUploadV3(
             file_name, content_type=content_type, request=request
         )
-        multipart.create(object_lifecycle_preference=object_lifecycle_preference)
-        return Reservation(multipart.access_url, multipart.upload)
+        multipart.create(
+            object_lifecycle_preference=object_lifecycle_preference,
+            request_cdn_signing=request_cdn_signing,
+        )
+        return Reservation(
+            multipart.access_url,
+            multipart.upload,
+            cdn_signing_requested=multipart.cdn_signing_requested,
+        )
 
     def save(
         self,

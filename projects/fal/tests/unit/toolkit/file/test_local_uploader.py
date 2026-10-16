@@ -277,6 +277,7 @@ def test_upload_policy_refusals_upload_in_process(policy_upload, response, attem
         "text/plain",
         name=unquote(requests[0].headers["x-fal-file-name"]),
         request=None,
+        wait_for_completion=False,
     )
 
 
@@ -688,6 +689,20 @@ def test_reserve_hands_out_the_url_before_the_body(
     assert "x-fal-request-id" not in requests[1].headers
 
 
+def test_reserved_upload_can_wait_for_completion(local_upload, transport):
+    remaining = [PENDING, COMPLETED]
+
+    def respond(request):
+        if request.method == "GET":
+            return remaining.pop(0)
+        return _session(request)
+
+    requests = transport(respond)
+    pending = files.File.reserve("text/plain", "out.txt", wait_for_completion=True)
+    pending.complete(b"hi")
+    assert [r.method for r in requests] == ["POST", "PUT", "POST", "GET", "GET"]
+
+
 def test_reserve_abort_and_failed_complete_delete_the_session(local_upload, transport):
     requests = transport(_session)
     files.File.reserve("text/plain").abort()
@@ -700,7 +715,7 @@ def test_reserve_abort_and_failed_complete_delete_the_session(local_upload, tran
     assert [r.method for r in requests] == ["POST", "DELETE"]
 
 
-def _fake_cdn(monkeypatch, complete_statuses=()):
+def _fake_cdn(monkeypatch, complete_statuses=(), cdn_signing_requested=False):
     """Answer the REST multipart API and record each request; each /complete
     answers the next of `complete_statuses` with an error, then succeeds."""
     calls = []
@@ -711,7 +726,11 @@ def _fake_cdn(monkeypatch, complete_statuses=()):
         calls.append(request)
         if failures and request.full_url.endswith("/complete"):
             raise HTTPError(request.full_url, failures.pop(0), "", {}, None)
-        body = {"file_url": "https://v3.fal.media/out", "upload_url": "https://up/x"}
+        body = {
+            "file_url": "https://v3.fal.media/out",
+            "upload_url": "https://up/x",
+            "cdn_signing_requested": cdn_signing_requested,
+        }
         response = io.BytesIO(json.dumps(body).encode())
         response.headers = {"ETag": "etag"}
         yield response
@@ -793,6 +812,47 @@ def test_reserve_names_the_caller_from_the_given_request(
         (initiated,) = calls
         headers = {k.lower(): v for k, v in initiated.header_items()}
     assert (headers["x-fal-cdn-token"], headers["x-fal-request-id"]) == ("token", "rid")
+
+
+@pytest.mark.parametrize("via_uploader", [True, False])
+@pytest.mark.parametrize("acknowledged", [True, False])
+def test_reserve_reports_cdn_signing_for_selected_destination(
+    monkeypatch, local_upload, transport, via_uploader, acknowledged
+):
+    def session(request):
+        response = _session(request)
+        if request.url.path == "/v1/upload-sessions":
+            body = response.json()
+            body["cdn_signing_requested"] = acknowledged
+            return httpx.Response(201, json=body)
+        return response
+
+    requests = transport(session if via_uploader else _respond(httpx.Response(404)))
+    calls = _fake_cdn(monkeypatch, cdn_signing_requested=acknowledged)
+    request = _caller_request(**{"x-fal-cdn-token": "token", "x-fal-request-id": "rid"})
+    pending = files.File.reserve(
+        "text/plain", "out.txt", request=request, request_cdn_signing=True
+    )
+
+    assert pending.cdn_signing_requested is acknowledged
+    initiated = requests[0] if via_uploader else calls[0]
+    headers = (
+        {k.lower(): v for k, v in initiated.header_items()}
+        if not via_uploader
+        else initiated.headers
+    )
+    assert headers["x-fal-provenance"] == "true"
+    assert headers["x-fal-request-id"] == "rid"
+
+
+def test_ambient_provenance_does_not_sign_an_unselected_output(
+    local_upload, transport, caller
+):
+    requests = transport(_session)
+    caller({"x-fal-provenance": "true", "x-fal-cdn-token": "token"}, "rid")
+    pending = files.File.reserve("text/plain", "out.txt")
+    assert pending.cdn_signing_requested is False
+    assert "x-fal-provenance" not in requests[0].headers
 
 
 @pytest.mark.parametrize("given", [True, False])

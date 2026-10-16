@@ -42,6 +42,7 @@ _UPLOADER_INPUTS = {
     "x-fal-file-name",
     "x-fal-object-lifecycle",
     "x-fal-object-lifecycle-preference",
+    "x-fal-provenance",
     "x-fal-request-id",
 }
 
@@ -88,7 +89,7 @@ def upload(
         "Content-Length": str(size),
     }
     with _new_client() as http:
-        upload_id, file_url = _accept(http, content, headers)
+        upload_id, file_url, _ = _accept(http, content, headers)
         if wait_for_completion:
             _wait_for_completion(http, upload_id)
     return file_url
@@ -105,29 +106,39 @@ def upload_stream(
     CDN has it when waiting for completion.
     """
     with _new_client() as http:
-        session_id, _ = _open_session(http, file_name, headers)
-        upload_id, file_url = _send(http, session_id, chunks)
+        session_id, _, _ = _open_session(http, file_name, headers)
+        upload_id, file_url, _ = _send(http, session_id, chunks)
         if wait_for_completion:
             _wait_for_completion(http, upload_id)
     return file_url
 
 
 def reserve(
-    file_name: str, headers: dict[str, str], request: Any = None
+    file_name: str,
+    headers: dict[str, str],
+    request: Any = None,
+    wait_for_completion: bool = False,
 ) -> Reservation:
     with _new_client() as http:
-        session_id, url = _open_session(http, file_name, headers, request)
+        session_id, url, cdn_signing_requested = _open_session(
+            http, file_name, headers, request
+        )
     return Reservation(
         url,
-        partial(_complete_session, session_id),
+        partial(_complete_session, session_id, wait_for_completion=wait_for_completion),
         partial(_delete_session, session_id),
+        cdn_signing_requested,
     )
 
 
-def _complete_session(session_id: str, content: bytes | Path) -> None:
+def _complete_session(
+    session_id: str, content: bytes | Path, *, wait_for_completion: bool = False
+) -> None:
     body = [content] if isinstance(content, bytes) else _chunks(content)
     with _new_client() as http:
-        _send(http, session_id, body)
+        upload_id, _, _ = _send(http, session_id, body)
+        if wait_for_completion:
+            _wait_for_completion(http, upload_id)
 
 
 def _delete_session(session_id: str) -> None:
@@ -157,7 +168,7 @@ def _with_request_headers(
 
 def _accept(
     http: httpx.Client, content: bytes | Path, headers: dict[str, str]
-) -> tuple[str, str]:
+) -> tuple[str, str, bool]:
     for delay in _REJECTION_DELAYS:
         try:
             return _submit(http, content, headers)
@@ -168,7 +179,7 @@ def _accept(
 
 def _submit(
     http: httpx.Client, content: bytes | Path, headers: dict[str, str]
-) -> tuple[str, str]:
+) -> tuple[str, str, bool]:
     body: bytes | Iterator[bytes] = (
         content if isinstance(content, bytes) else _chunks(content)
     )
@@ -178,7 +189,7 @@ def _submit(
 
 def _open_session(
     http: httpx.Client, file_name: str, headers: dict[str, str], request: Any = None
-) -> tuple[str, str]:
+) -> tuple[str, str, bool]:
     headers = {
         **_with_request_headers(headers, request),
         "X-Fal-File-Name": _header_file_name(file_name),
@@ -189,7 +200,7 @@ def _open_session(
 
 def _send(
     http: httpx.Client, session_id: str, chunks: Iterable[bytes]
-) -> tuple[str, str]:
+) -> tuple[str, str, bool]:
     """Accept only on an explicit finish carrying the final byte count; any
     failure, including a raising producer, aborts the session.
     """
@@ -263,11 +274,15 @@ def _request(
     return response
 
 
-def _receipt(response: httpx.Response, state: str) -> tuple[str, str]:
+def _receipt(response: httpx.Response, state: str) -> tuple[str, str, bool]:
     try:
         result = response.json()
         if result["state"] == state:
-            return result["upload_id"], result["file_url"]
+            return (
+                result["upload_id"],
+                result["file_url"],
+                result.get("cdn_signing_requested") is True,
+            )
     except (ValueError, KeyError, TypeError):
         pass
     raise LocalUploadError("Local uploader returned an invalid response.")
