@@ -236,7 +236,9 @@ assert all(p['in'] == 'header' for p in operation.get('parameters', []))
         assert result.returncode == 0, result.stderr
 
 
-@pytest.mark.parametrize("name", ["untyped", "echo", "video", "filter", "motion"])
+@pytest.mark.parametrize(
+    "name", ["untyped", "echo", "video", "filter", "motion", "multi_endpoint"]
+)
 def test_complete_wma_app_survives_by_value_shipping(tmp_path, name):
     from pathlib import Path
 
@@ -272,6 +274,8 @@ with open(sys.argv[1], 'rb') as stream:
     fn = cloudpickle.load(stream)
 assert callable(fn)
 assert '/start-session' in fn._routes
+if sys.argv[3] == 'MultiEndpointApp':
+    assert '/game/start-session' in fn._routes
 """
     for code in (dump, restore):
         result = subprocess.run(
@@ -281,7 +285,7 @@ assert '/start-session' in fn._routes
                 code,
                 str(payload),
                 str(example),
-                name.title() + "App",
+                name.title().replace("_", "") + "App",
             ],
             capture_output=True,
             text=True,
