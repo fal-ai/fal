@@ -52,7 +52,7 @@ class FileRepository:
         content_type: str,
         object_lifecycle_preference: Optional[dict[str, str]] = None,
         request: Any = None,
-        request_cdn_signing: bool = False,
+        headers: dict[str, str] | None = None,
     ) -> Reservation:
         raise NotImplementedError(
             f"{type(self).__name__} cannot hand out a URL before the upload"

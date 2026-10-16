@@ -506,15 +506,13 @@ class File(BaseModel):
         file_name: Optional[str] = None,
         request: Optional[Request] = None,
         repository: FileRepository | RepositoryId = DEFAULT_REPOSITORY,
-        request_cdn_signing: bool = False,
+        headers: dict[str, str] | None = None,
     ) -> PendingFile:
         """Get the file's URL now; send the bytes later with
         ``pending.complete(data)``, or give the URL up with ``pending.abort()``.
 
         The request context is read here, not at ``complete``. If ``complete``
         fails, the URL stays dead: nothing falls back once a URL is out.
-        CDN signing is acknowledged only for a direct CDN reservation made by
-        the local uploader with the caller's CDN token.
         """
         fdata = FileData(b"", content_type, file_name)
         upload_policy = get_upload_policy(request)
@@ -531,7 +529,7 @@ class File(BaseModel):
                 fdata.content_type,
                 _lifecycle_preference(request),
                 caller,
-                request_cdn_signing=request_cdn_signing,
+                headers=headers,
             )
         return PendingFile(fdata.content_type, fdata.file_name, reservation)
 
@@ -580,8 +578,7 @@ class PendingFile:
         return self._reservation.url
 
     @property
-    def cdn_signing_requested(self) -> bool:
-        """Whether the CDN reservation received a signing request."""
+    def _cdn_signing_requested(self) -> bool:
         return self._reservation.cdn_signing_requested
 
     def complete(self, content: bytes | str | Path) -> File:

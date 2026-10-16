@@ -791,10 +791,10 @@ def test_reserve_reports_cdn_signing_for_selected_destination(
     calls = _fake_cdn(monkeypatch)
     request = _caller_request(**{"x-fal-cdn-token": "token", "x-fal-request-id": "rid"})
     pending = files.File.reserve(
-        "text/plain", "out.txt", request=request, request_cdn_signing=True
+        "text/plain", "out.txt", request=request, headers={"x-fal-provenance": "true"}
     )
 
-    assert pending.cdn_signing_requested is (acknowledged if via_uploader else False)
+    assert pending._cdn_signing_requested is (acknowledged if via_uploader else False)
     initiated = requests[0] if via_uploader else calls[0]
     headers = (
         {k.lower(): v for k, v in initiated.header_items()}
@@ -814,8 +814,17 @@ def test_ambient_provenance_does_not_sign_an_unselected_output(
     requests = transport(_session)
     caller({"x-fal-provenance": "true", "x-fal-cdn-token": "token"}, "rid")
     pending = files.File.reserve("text/plain", "out.txt")
-    assert pending.cdn_signing_requested is False
+    assert pending._cdn_signing_requested is False
     assert "x-fal-provenance" not in requests[0].headers
+
+
+def test_reserve_explicit_headers_override_forwarded_context(
+    local_upload, transport, caller
+):
+    requests = transport(_session)
+    caller({"x-fal-endpoint": "incoming"}, "rid")
+    files.File.reserve(headers={"X-Fal-Endpoint": "explicit"})
+    assert requests[0].headers.get_list("x-fal-endpoint") == ["explicit"]
 
 
 @pytest.mark.parametrize("given", [True, False])

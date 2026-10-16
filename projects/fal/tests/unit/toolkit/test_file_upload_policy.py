@@ -136,9 +136,9 @@ def test_reserved_policy_upload_never_requests_cdn_signing(
 ):
     request = FakeRequest({UPLOAD_POLICY_KEY: POLICY})
     pending = File.reserve(
-        "text/plain", "out.txt", request=request, request_cdn_signing=True
+        "text/plain", "out.txt", request=request, headers={"x-fal-provenance": "true"}
     )
-    assert pending.cdn_signing_requested is False
+    assert pending._cdn_signing_requested is False
     assert pending.complete(b"payload").url == pending.url
     assert not repository_spy
 

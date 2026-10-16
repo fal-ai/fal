@@ -149,11 +149,13 @@ def _with_request_headers(
     if request is None:
         request = getattr(get_current_app(), "current_request", None)
     context = request.headers if request else {}
+    explicit_names = {name.lower() for name in headers}
     forwarded = {
         name: value
         for name, value in context.items()
         if name.lower().startswith("x-fal-")
         and name.lower() not in _UPLOADER_INPUTS
+        and name.lower() not in explicit_names
         and value.isascii()
     }
     return {**forwarded, **headers}
