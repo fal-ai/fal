@@ -42,7 +42,6 @@ _UPLOADER_INPUTS = {
     "x-fal-file-name",
     "x-fal-object-lifecycle",
     "x-fal-object-lifecycle-preference",
-    "x-fal-provenance",
     "x-fal-request-id",
 }
 
@@ -89,7 +88,7 @@ def upload(
         "Content-Length": str(size),
     }
     with _new_client() as http:
-        upload_id, file_url, _ = _accept(http, content, headers)
+        upload_id, file_url = _accept(http, content, headers)
         if wait_for_completion:
             _wait_for_completion(http, upload_id)
     return file_url
@@ -107,7 +106,7 @@ def upload_stream(
     """
     with _new_client() as http:
         session_id, _, _ = _open_session(http, file_name, headers)
-        upload_id, file_url, _ = _send(http, session_id, chunks)
+        upload_id, file_url = _send(http, session_id, chunks)
         if wait_for_completion:
             _wait_for_completion(http, upload_id)
     return file_url
@@ -136,7 +135,7 @@ def _complete_session(
 ) -> None:
     body = [content] if isinstance(content, bytes) else _chunks(content)
     with _new_client() as http:
-        upload_id, _, _ = _send(http, session_id, body)
+        upload_id, _ = _send(http, session_id, body)
         if wait_for_completion:
             _wait_for_completion(http, upload_id)
 
@@ -168,7 +167,7 @@ def _with_request_headers(
 
 def _accept(
     http: httpx.Client, content: bytes | Path, headers: dict[str, str]
-) -> tuple[str, str, bool]:
+) -> tuple[str, str]:
     for delay in _REJECTION_DELAYS:
         try:
             return _submit(http, content, headers)
@@ -179,7 +178,7 @@ def _accept(
 
 def _submit(
     http: httpx.Client, content: bytes | Path, headers: dict[str, str]
-) -> tuple[str, str, bool]:
+) -> tuple[str, str]:
     body: bytes | Iterator[bytes] = (
         content if isinstance(content, bytes) else _chunks(content)
     )
@@ -195,12 +194,13 @@ def _open_session(
         "X-Fal-File-Name": _header_file_name(file_name),
     }
     response = _request(http, "POST", "/v1/upload-sessions", 201, headers=headers)
-    return _receipt(response, "receiving")
+    session_id, url = _receipt(response, "receiving")
+    return session_id, url, response.json().get("cdn_signing_requested") is True
 
 
 def _send(
     http: httpx.Client, session_id: str, chunks: Iterable[bytes]
-) -> tuple[str, str, bool]:
+) -> tuple[str, str]:
     """Accept only on an explicit finish carrying the final byte count; any
     failure, including a raising producer, aborts the session.
     """
@@ -274,15 +274,11 @@ def _request(
     return response
 
 
-def _receipt(response: httpx.Response, state: str) -> tuple[str, str, bool]:
+def _receipt(response: httpx.Response, state: str) -> tuple[str, str]:
     try:
         result = response.json()
         if result["state"] == state:
-            return (
-                result["upload_id"],
-                result["file_url"],
-                result.get("cdn_signing_requested") is True,
-            )
+            return result["upload_id"], result["file_url"]
     except (ValueError, KeyError, TypeError):
         pass
     raise LocalUploadError("Local uploader returned an invalid response.")

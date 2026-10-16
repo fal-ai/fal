@@ -519,6 +519,8 @@ class File(BaseModel):
 
         The request context is read here, not at ``complete``. If ``complete``
         fails, the URL stays dead: nothing falls back once a URL is out.
+        CDN signing is acknowledged only for a direct CDN reservation made by
+        the local uploader with the caller's CDN token.
         """
         fdata = FileData(b"", content_type, file_name)
         upload_policy = get_upload_policy(request)
@@ -596,7 +598,7 @@ class PendingFile:
 
     @property
     def cdn_signing_requested(self) -> bool:
-        """Whether this destination was asked to sign at upload creation."""
+        """Whether the CDN reservation received a signing request."""
         return self._reservation.cdn_signing_requested
 
     def complete(self, content: bytes | str | Path) -> File:

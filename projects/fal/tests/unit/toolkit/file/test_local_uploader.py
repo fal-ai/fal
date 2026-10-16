@@ -733,7 +733,7 @@ def test_reserve_abort_and_failed_complete_delete_the_session(local_upload, tran
     assert [r.method for r in requests] == ["POST", "DELETE"]
 
 
-def _fake_cdn(monkeypatch, complete_statuses=(), cdn_signing_requested=False):
+def _fake_cdn(monkeypatch, complete_statuses=()):
     """Answer the REST multipart API and record each request; each /complete
     answers the next of `complete_statuses` with an error, then succeeds."""
     calls = []
@@ -744,11 +744,7 @@ def _fake_cdn(monkeypatch, complete_statuses=(), cdn_signing_requested=False):
         calls.append(request)
         if failures and request.full_url.endswith("/complete"):
             raise HTTPError(request.full_url, failures.pop(0), "", {}, None)
-        body = {
-            "file_url": "https://v3.fal.media/out",
-            "upload_url": "https://up/x",
-            "cdn_signing_requested": cdn_signing_requested,
-        }
+        body = {"file_url": "https://v3.fal.media/out", "upload_url": "https://up/x"}
         response = io.BytesIO(json.dumps(body).encode())
         response.headers = {"ETag": "etag"}
         yield response
@@ -846,34 +842,33 @@ def test_reserve_reports_cdn_signing_for_selected_destination(
         return response
 
     requests = transport(session if via_uploader else _respond(httpx.Response(404)))
-    calls = _fake_cdn(monkeypatch, cdn_signing_requested=acknowledged)
+    calls = _fake_cdn(monkeypatch)
     request = _caller_request(**{"x-fal-cdn-token": "token", "x-fal-request-id": "rid"})
     pending = files.File.reserve(
         "text/plain", "out.txt", request=request, request_cdn_signing=True
     )
 
-    assert pending.cdn_signing_requested is acknowledged
+    assert pending.cdn_signing_requested is (acknowledged if via_uploader else False)
     initiated = requests[0] if via_uploader else calls[0]
     headers = (
         {k.lower(): v for k, v in initiated.header_items()}
         if not via_uploader
         else initiated.headers
     )
-    assert (
-        headers["x-cdn-signing-request" if via_uploader else "x-fal-provenance"]
-        == "true"
-    )
+    if via_uploader:
+        assert headers["x-cdn-signing-request"] == "true"
+    else:
+        assert "x-fal-provenance" not in headers
     assert headers["x-fal-request-id"] == "rid"
 
 
 def test_ambient_provenance_does_not_sign_an_unselected_output(
     local_upload, transport, caller
 ):
-    requests = transport(_session)
+    transport(_session)
     caller({"x-fal-provenance": "true", "x-fal-cdn-token": "token"}, "rid")
     pending = files.File.reserve("text/plain", "out.txt")
     assert pending.cdn_signing_requested is False
-    assert "x-fal-provenance" not in requests[0].headers
 
 
 @pytest.mark.parametrize("given", [True, False])
