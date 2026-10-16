@@ -536,19 +536,22 @@ class File(BaseModel):
                 wait_for_completion=wait_for_completion,
             )
         else:
-            repo = get_builtin_repository(repository)
-            kwargs = {}
-            if _is_default_repository(repository):
-                if request_cdn_signing:
-                    kwargs["request_cdn_signing"] = True
-                if wait_for_completion:
-                    kwargs["wait_for_completion"] = True
-            reservation = repo.reserve(
+            # Only the built-in destinations take these; a custom repository
+            # keeps the original reserve signature.
+            options = (
+                {
+                    "request_cdn_signing": request_cdn_signing,
+                    "wait_for_completion": wait_for_completion,
+                }
+                if _is_default_repository(repository)
+                else {}
+            )
+            reservation = get_builtin_repository(repository).reserve(
                 fdata.file_name,
                 fdata.content_type,
                 _lifecycle_preference(request),
                 caller,
-                **kwargs,
+                **options,
             )
         return PendingFile(fdata.content_type, fdata.file_name, reservation)
 
