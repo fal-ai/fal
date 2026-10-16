@@ -506,7 +506,7 @@ class File(BaseModel):
         file_name: Optional[str] = None,
         request: Optional[Request] = None,
         repository: FileRepository | RepositoryId = DEFAULT_REPOSITORY,
-        headers: dict[str, str] | None = None,
+        extra_headers: dict[str, str] | None = None,
     ) -> PendingFile:
         """Get the file's URL now; send the bytes later with
         ``pending.complete(data)``, or give the URL up with ``pending.abort()``.
@@ -529,7 +529,7 @@ class File(BaseModel):
                 fdata.content_type,
                 _lifecycle_preference(request),
                 caller,
-                headers=headers,
+                extra_headers=extra_headers,
             )
         return PendingFile(fdata.content_type, fdata.file_name, reservation)
 

@@ -791,7 +791,10 @@ def test_reserve_reports_cdn_signing_for_selected_destination(
     calls = _fake_cdn(monkeypatch)
     request = _caller_request(**{"x-fal-cdn-token": "token", "x-fal-request-id": "rid"})
     pending = files.File.reserve(
-        "text/plain", "out.txt", request=request, headers={"x-fal-provenance": "true"}
+        "text/plain",
+        "out.txt",
+        request=request,
+        extra_headers={"x-fal-provenance": "true"},
     )
 
     assert pending._cdn_signing_requested is (acknowledged if via_uploader else False)
@@ -823,7 +826,7 @@ def test_reserve_explicit_headers_override_forwarded_context(
 ):
     requests = transport(_session)
     caller({"x-fal-endpoint": "incoming"}, "rid")
-    files.File.reserve(headers={"X-Fal-Endpoint": "explicit"})
+    files.File.reserve(extra_headers={"X-Fal-Endpoint": "explicit"})
     assert requests[0].headers.get_list("x-fal-endpoint") == ["explicit"]
 
 
