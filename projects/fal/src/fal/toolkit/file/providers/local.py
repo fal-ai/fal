@@ -16,6 +16,7 @@ from urllib.parse import quote
 
 from fal.flags import bool_envvar
 from fal.toolkit.file._local_uploader import (
+    LocalUploadError,
     LocalUploadInvalid,
     LocalUploadRefused,
     reserve,
@@ -134,7 +135,7 @@ class LocalFileRepository(FileRepository):
     ) -> Reservation:
         headers = _headers(content_type, object_lifecycle_preference, request)
         if request_cdn_signing:
-            headers["X-Fal-Provenance"] = "true"
+            headers["X-CDN-Signing-Request"] = "true"
         return reserve(file_name, headers, request, wait_for_completion)
 
     def save_stream(
@@ -162,8 +163,7 @@ def reserve_with_policy(
     request: Any,
     wait_for_completion: bool = False,
 ) -> Reservation:
-    """The URL from the policy's key now; complete runs save_with_policy, which
-    does not wait for the bucket."""
+    """The URL from the policy's key now; complete may wait for the bucket."""
     name = _upload_file_name(policy, file_name, content_type)
     url, _ = _prepare_upload(policy, file_name, content_type, name=name)
     complete = partial(
@@ -237,6 +237,12 @@ def _uploader_with_policy(
     except LocalUploadRefused as exc:
         print(f"{exc} Uploading in-process.")
         return None
+    except LocalUploadError as exc:
+        if wait_for_completion:
+            raise UploadPolicyError(
+                f"Upload via {UPLOAD_POLICY_KEY} failed: {exc}"
+            ) from exc
+        raise
 
 
 def _upload_with_policy(

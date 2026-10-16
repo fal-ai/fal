@@ -596,6 +596,24 @@ def test_waited_policy_upload_waits_for_bucket_completion(policy_upload, transpo
     in_process.assert_not_called()
 
 
+def test_waited_policy_upload_reports_bucket_failure(policy_upload, transport):
+    def respond(request):
+        if request.method == "POST":
+            return _accept_like_the_uploader(request)
+        return httpx.Response(
+            200, json={"state": "failed", "failure": {"rejected": 403}}
+        )
+
+    _, in_process = policy_upload(respond)
+    with pytest.raises(upload_policy.UploadPolicyError):
+        files.File.from_bytes(
+            b"hi",
+            request=_policy_request(),
+            save_kwargs={"wait_for_completion": True},
+        )
+    in_process.assert_not_called()
+
+
 @pytest.mark.parametrize(
     "status",
     [
@@ -841,7 +859,10 @@ def test_reserve_reports_cdn_signing_for_selected_destination(
         if not via_uploader
         else initiated.headers
     )
-    assert headers["x-fal-provenance"] == "true"
+    assert (
+        headers["x-cdn-signing-request" if via_uploader else "x-fal-provenance"]
+        == "true"
+    )
     assert headers["x-fal-request-id"] == "rid"
 
 
