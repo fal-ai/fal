@@ -1560,6 +1560,26 @@ def test_get_app_data_from_toml_with_num_gpus(
     assert toml_data.options.host["num_gpus"] == 2
 
 
+@pytest.mark.parametrize("timeout", [None, 0, 30])
+@patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+def test_get_app_data_from_toml_with_request_start_timeout(
+    mock_parse_toml, mock_find_toml, timeout
+):
+    from fal.cli._utils import get_app_data_from_toml
+
+    app_config = {"ref": "src/queue_app/inference.py::QueueTimeoutApp"}
+    if timeout is not None:
+        app_config["request_start_timeout"] = timeout
+    mock_parse_toml.return_value = {"apps": {"queue-timeout-app": app_config}}
+
+    toml_data = get_app_data_from_toml("queue-timeout-app")
+
+    host = toml_data.options.host
+    assert ("request_start_timeout" in host) == (timeout is not None)
+    assert host.get("request_start_timeout") == timeout
+
+
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
 @patch("fal.cli._utils.parse_pyproject_toml")
 def test_get_app_data_from_toml_with_machine_type_fallbacks(
@@ -3131,3 +3151,48 @@ def test_deploy_first_deploy_nudge_threads_env(
     rendered = args.console.export_text()
     assert "staging environment" in rendered
     assert "fal run src/my_app/inference.py::MyApp --env staging" in rendered
+
+
+@pytest.mark.parametrize(
+    "timeout, displayed", [(None, "none"), (0, "none"), (30, "30")]
+)
+@pytest.mark.parametrize("reset_scale", [False, True])
+def test_deploy_preview_request_start_timeout(timeout, displayed, reset_scale):
+    prepared = _prepared_deployment(
+        reset_scale=reset_scale, host_options={"request_start_timeout": timeout}
+    )
+    production = _production_alias(request_start_timeout=60)
+
+    summary = _build_deployment_check_summary(
+        prepared, production, source="flag", force_env_build=False
+    )
+
+    row = next(
+        row for row in summary.effective_changes if row.label == "Request Start Timeout"
+    )
+    assert row.production == "60"
+    assert row.after_deploy == displayed
+    assert row.note == (
+        None if reset_scale else "Code value will not apply without --reset-scale"
+    )
+
+
+@pytest.mark.parametrize(
+    "timeout, displayed", [(None, "none"), (0, "none"), (30, "30")]
+)
+def test_first_deploy_preview_request_start_timeout(timeout, displayed):
+    summary = _build_deployment_check_summary(
+        _prepared_deployment(
+            reset_scale=False, host_options={"request_start_timeout": timeout}
+        ),
+        None,
+        source="flag",
+        force_env_build=False,
+    )
+
+    row = next(
+        row
+        for row in summary.effective_scale_values
+        if row.label == "Request Start Timeout"
+    )
+    assert row.after_deploy == displayed
