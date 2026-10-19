@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import os
 import pickle
 import signal
@@ -1498,6 +1499,7 @@ def test_app_classvars_propagate_to_host_kwargs():
         image = ContainerImage.from_dockerfile_str(
             "FROM python:3.10-slim",
             registries={"registry.example": {"username": "u", "password": "pw-9f03"}},
+            secrets={"TOKEN": "pw-9f03"},
         )
         skip_retry_conditions = ["timeout", "connection_error"]
 
@@ -1535,6 +1537,7 @@ def test_app_classvars_propagate_to_host_kwargs():
     ]
     assert fn.options.environment["image"]["registries"]["registry.example"]
     assert b"pw-9f03" not in to_serialized_object(fn.func, "cloudpickle").definition
+    assert copy.copy(VarsApp.image) == copy.deepcopy(VarsApp.image) == VarsApp.image
 
 
 def test_data_mounts_propagate_to_host_kwargs():
