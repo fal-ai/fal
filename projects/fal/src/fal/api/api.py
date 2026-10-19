@@ -66,6 +66,7 @@ from fal.exceptions import (
     GPUException,
 )
 from fal.exceptions.gpu import _is_cuda_oom_exception, _is_generic_gpu_error
+from fal.exceptions.volumes import VolumeInvalidMountPathError, volume_error_from_grpc
 from fal.file_sync import FileSync, FileSyncOptions
 from fal.logging import get_logger
 from fal.logging.isolate import IsolateLogPrinter
@@ -88,6 +89,7 @@ from fal.sdk import (
     get_agent_credentials,
     get_credentials,
 )
+from fal.volumes import normalize_volumes
 
 if TYPE_CHECKING:
     from isolate.backends import BaseEnvironment
@@ -796,6 +798,12 @@ def _handle_grpc_error():
                 return fn(*args, **kwargs)
             except grpc.RpcError as e:
                 msg = e.details() or str(e)
+                # Checked before UNAVAILABLE: VOLUME_CONTROL_PLANE_UNAVAILABLE
+                # also uses that code and must not read as "could not reach host".
+                if msg.startswith("VOLUME_"):
+                    volume_error = volume_error_from_grpc(msg, e.code())
+                    if volume_error is not None:
+                        raise volume_error from None
                 if e.code() == grpc.StatusCode.UNAVAILABLE:
                     raise FalServerlessError(_format_unavailable_error(e))
                 elif msg.endswith("died with <Signals.SIGKILL: 9>.`."):
@@ -927,6 +935,7 @@ class FalServerlessHost(Host):
             "termination_grace_period_seconds",
             "secrets",
             "data_mounts",
+            "volumes",
             "requirements_context_dir",
         }
     )
@@ -1043,6 +1052,20 @@ class FalServerlessHost(Host):
             on_progress=on_progress,
         )
 
+        # Validated here rather than in register/_run so that every path
+        # (App, pyproject, @fal.function) fails before the remote environment
+        # build. Mirrors the server rule that volumes and data_mounts are
+        # mutually exclusive.
+        volumes = prepared_options.host.get("volumes")
+        if volumes is not None:
+            volumes = normalize_volumes(volumes)
+            if volumes and prepared_options.host.get("data_mounts"):
+                raise VolumeInvalidMountPathError(
+                    "Volumes cannot be combined with data_mounts; "
+                    "mount a volume at /data instead"
+                )
+            prepared_options.host["volumes"] = volumes
+
         return prepared_options
 
     def files_sync(self, options: FileSyncOptions) -> list[File]:
@@ -1134,6 +1157,7 @@ class FalServerlessHost(Host):
         )
         secrets = options.host.get("secrets")
         data_mounts = options.host.get("data_mounts")
+        volumes = options.host.get("volumes")
         machine_requirements = MachineRequirements(
             machine_types=machine_type,  # type: ignore
             num_gpus=options.host.get("num_gpus"),
@@ -1208,6 +1232,7 @@ class FalServerlessHost(Host):
             termination_grace_period_seconds=termination_grace_period_seconds,
             secrets=secrets,
             data_mounts=data_mounts,
+            volumes=volumes,
             entrypoint=entrypoint,
             build_environment=build_environment,
             attach_to_deployment=attach_to_deployment,
@@ -1266,6 +1291,7 @@ class FalServerlessHost(Host):
         health_check_config = options.host.get("health_check_config")
         secrets = options.host.get("secrets")
         data_mounts = options.host.get("data_mounts")
+        volumes = options.host.get("volumes")
         machine_requirements = MachineRequirements(
             machine_types=machine_type,  # type: ignore
             num_gpus=options.host.get("num_gpus"),
@@ -1328,6 +1354,7 @@ class FalServerlessHost(Host):
             health_check_config=health_check_config,
             secrets=secrets,
             data_mounts=data_mounts,
+            volumes=volumes,
             entrypoint=entrypoint,
             build_environment=build_environment,
         ):

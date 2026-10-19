@@ -645,3 +645,51 @@ def test_app_info_deserializes_optional_request_start_timeout(message_type, time
     info = from_grpc(message)
 
     assert info.request_start_timeout == timeout
+
+
+def _container_environment(connection):
+    return connection.define_environment(
+        "container",
+        image={"dockerfile_str": "FROM debian:bookworm-slim", "use_isolate": False},
+    )
+
+
+def test_connection_register_sends_volume_mounts():
+    connection = FalServerlessConnection("api.alpha.fal.ai", MagicMock())
+    stub = RecordingStub()
+    connection._stub = stub  # type: ignore[assignment]
+
+    list(
+        connection.register(
+            None,
+            [_container_environment(connection)],
+            application_name="volume-app",
+            deployment_strategy="rolling",
+            volumes={"/models": "my-models", "/cache": "shared"},
+        )
+    )
+
+    assert stub.register_request is not None
+    assert list(stub.register_request.volumes) == [
+        isolate_proto.VolumeMount(volume_name="my-models", mount_path="/models"),
+        isolate_proto.VolumeMount(volume_name="shared", mount_path="/cache"),
+    ]
+
+
+def test_connection_run_sends_volume_mounts():
+    connection = FalServerlessConnection("api.alpha.fal.ai", MagicMock())
+    stub = RecordingStub()
+    connection._stub = stub  # type: ignore[assignment]
+
+    list(
+        connection.run(
+            None,
+            [_container_environment(connection)],
+            volumes={"/models": "my-models"},
+        )
+    )
+
+    assert stub.run_request is not None
+    assert list(stub.run_request.volumes) == [
+        isolate_proto.VolumeMount(volume_name="my-models", mount_path="/models")
+    ]
