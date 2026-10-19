@@ -118,6 +118,11 @@ class ContainerImage:
         with open(path) as fobj:
             return cls.from_dockerfile_str(fobj.read(), **kwargs)
 
+    def __getstate__(self) -> dict:
+        state = self.__dict__.copy()
+        state["registries"] = {}
+        return state
+
     def to_dict(self) -> dict:
         image = {
             "dockerfile_str": self.dockerfile_str,

@@ -15,6 +15,7 @@ from unittest.mock import MagicMock, PropertyMock, patch
 
 import pytest
 from fastapi import WebSocket
+from isolate.server.interface import to_serialized_object
 from pydantic import BaseModel
 
 import fal
@@ -1496,6 +1497,7 @@ def test_app_classvars_propagate_to_host_kwargs():
         kind = "container"
         image = ContainerImage.from_dockerfile_str(
             "FROM python:3.10-slim",
+            registries={"registry.example": {"username": "u", "password": "pw-9f03"}},
         )
         skip_retry_conditions = ["timeout", "connection_error"]
 
@@ -1531,6 +1533,8 @@ def test_app_classvars_propagate_to_host_kwargs():
         "timeout",
         "connection_error",
     ]
+    assert fn.options.environment["image"]["registries"]["registry.example"]
+    assert b"pw-9f03" not in to_serialized_object(fn.func, "cloudpickle").definition
 
 
 def test_data_mounts_propagate_to_host_kwargs():
