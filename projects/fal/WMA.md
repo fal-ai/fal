@@ -159,3 +159,50 @@ Before release, verify a deployed session through the real bridge with the
 intended client: connect, exchange controls/media, disconnect/reconnect, release
 runner resources, and confirm the settled billing amount. Repeat from a clean
 installation of the published SDK version before customer handoff.
+
+## Multiple session endpoints in one app
+
+Declare `realtime_contracts` as a mapping from app-relative POST paths to
+`RealtimeContract` instances. `realtime_contract` remains shorthand for the
+existing `/start-session` contract. Do not declare that path in both places.
+
+```python
+class MyWorld(wma.App):
+    realtime_contract = builders_contract
+    realtime_contracts = {
+        "/game/start-session": game_contract,
+    }
+```
+
+The mapping documents handlers; it does not create them. Implement additional
+handlers with `@fal.endpoint`, and call
+`self.serve_session(request, create_backend=self.create_game_backend, ...)` to
+reuse WMA's session lifecycle with the selected backend factory. Forward the
+HTTP request and caller/request ID headers, as shown in
+`examples/wma_multi_endpoint.py`. Keep session-specific state on `session`, not
+on the shared app instance.
+
+Metadata generation links each OpenAPI path to its own AsyncAPI document and
+binds that document to the endpoint's operation ID. Additional documents are
+stored under `x-fal-contracts`, addressed by JSON Pointer; their local `$ref`s
+resolve within each standalone document. The primary contract remains at the
+root, preserving single-endpoint consumers. Invalid paths, missing POST
+handlers, and ambiguous operation IDs fail metadata generation.
+
+A browser client supporting route selection connects with:
+
+```typescript
+fal.realtime.open(wma("owner/my-world"), {
+  sessionPath: "/game/start-session",
+  receive: ["video"],
+});
+```
+
+Explicit paths require a client and bridge supporting WMA v2 routing. Omitting
+`sessionPath` keeps the existing default. Choose media options and messages to
+match the selected contract. `/info` and `/game/info` remain ordinary HTTP
+endpoints; route selection does not automatically call or pair them.
+
+The CPU-only `examples/wma_multi_endpoint.py` demonstrates two distinct message
+contracts on one deployment without model weights. Both routes share app
+resources, but each connection owns a separate WMA session.

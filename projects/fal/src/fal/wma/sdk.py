@@ -9,6 +9,7 @@ import inspect
 import json
 import logging
 import math
+import re
 import threading
 from collections import deque
 from contextlib import suppress
@@ -21,6 +22,7 @@ from typing import (
     Dict,
     List,
     Literal,
+    Mapping,
     Protocol,
     Set,
     Tuple,
@@ -873,50 +875,114 @@ class App(FalApp):
     #: contracts existed.
     realtime_contract: ClassVar[Union[RealtimeContract, None]] = None
 
+    #: Additional session handlers and their independent realtime contracts.
+    #: Each path must name a POST endpoint implemented by this app. The
+    #: singular declaration remains shorthand for /start-session.
+    realtime_contracts: ClassVar[Mapping[str, RealtimeContract]] = {}
+
+    @classmethod
+    def _session_contracts(cls) -> Dict[str, RealtimeContract]:
+        contracts = dict(cls.realtime_contracts)
+        if cls.realtime_contract is not None:
+            if START_SESSION_PATH in contracts:
+                raise ValueError(
+                    "declare /start-session in either realtime_contract or "
+                    "realtime_contracts, not both"
+                )
+            contracts[START_SESSION_PATH] = cls.realtime_contract
+        for path, contract in contracts.items():
+            if (
+                not isinstance(path, str)
+                or not path.startswith("/")
+                or len(path) > 1024
+                or (
+                    path != "/"
+                    and any(
+                        part in ("", ".", "..")
+                        or re.fullmatch(r"[A-Za-z0-9_.-]+", part) is None
+                        for part in path[1:].split("/")
+                    )
+                )
+            ):
+                raise ValueError(f"invalid WMA session path: {path!r}")
+            if not isinstance(contract, RealtimeContract):
+                raise TypeError(f"{path} must declare a RealtimeContract")
+        return dict(
+            sorted(
+                contracts.items(),
+                key=lambda item: (item[0] != START_SESSION_PATH, item[0]),
+            )
+        )
+
+    @classmethod
+    def _contract_urls(cls) -> Dict[str, str]:
+        return {
+            path: (
+                "./asyncapi.json"
+                if index == 0
+                else "./asyncapi.json#/x-fal-contracts/"
+                + path.replace("~", "~0").replace("/", "~1")
+            )
+            for index, path in enumerate(cls._session_contracts())
+        }
+
     async def create_backend(self, session: Session) -> PeerBackend:
         raise NotImplementedError("WMA App subclasses must implement create_backend()")
 
     def openapi(self) -> Dict[str, Any]:
         spec = super().openapi()
-        contract = type(self).realtime_contract
-        if contract is None:
-            return spec
-        return apply_contract(spec, path=START_SESSION_PATH)
+        for path, url in type(self)._contract_urls().items():
+            type(self)._contract_operation_id(spec, path)
+            apply_contract(spec, path=path, asyncapi_url=url)
+        return spec
 
     def asyncapi(self) -> Dict[str, Any]:
-        """Build the standalone realtime contract paired with ``openapi()``."""
+        """Build independently scoped contracts paired with ``openapi()``."""
 
         return type(self)._render_asyncapi(self.openapi())
 
     @classmethod
-    def _render_asyncapi(cls, openapi_spec: Dict[str, Any]) -> Dict[str, Any]:
-        contract = cls.realtime_contract
-        if contract is None:
-            raise ValueError("this WMA app does not declare a realtime contract")
-
-        session_path = openapi_spec.get("paths", {}).get(START_SESSION_PATH)
-        if session_path is None or "post" not in session_path:
-            raise ValueError(
-                f"{cls.__name__} declares a realtime_contract but does "
-                f"not serve POST {START_SESSION_PATH}; the contract documents "
-                "the session that endpoint negotiates, so it must exist"
-            )
-        operation_id = session_path["post"]["operationId"]
-        return render_asyncapi(
-            contract,
-            title=f"{_schema_prefix(cls.__name__)} realtime client API",
-            schema_prefix=_schema_prefix(cls.__name__),
-            channel_address=DATA_CHANNEL_LABEL,
-            openapi_operation_id=operation_id,
+    def _contract_operation_id(cls, spec: Dict[str, Any], path: str) -> str:
+        operation_id = (
+            spec.get("paths", {}).get(path, {}).get("post", {}).get("operationId")
         )
+        if not isinstance(operation_id, str) or not operation_id:
+            raise ValueError(
+                f"{cls.__name__} declares a realtime contract but does not serve "
+                f"POST {path} with an operationId"
+            )
+        return operation_id
+
+    @classmethod
+    def _render_asyncapi(cls, openapi_spec: Dict[str, Any]) -> Dict[str, Any]:
+        contracts = cls._session_contracts()
+        if not contracts:
+            raise ValueError("this WMA app does not declare a realtime contract")
+        documents: Dict[str, Dict[str, Any]] = {}
+        operation_ids: Set[str] = set()
+        for path, contract in contracts.items():
+            operation_id = cls._contract_operation_id(openapi_spec, path)
+            if operation_id in operation_ids:
+                raise ValueError("WMA session routes must have distinct operationIds")
+            operation_ids.add(operation_id)
+            documents[path] = render_asyncapi(
+                contract,
+                title=f"{_schema_prefix(cls.__name__)} realtime client API",
+                schema_prefix=_schema_prefix(cls.__name__),
+                channel_address=DATA_CHANNEL_LABEL,
+                openapi_operation_id=operation_id,
+            )
+        primary = documents.pop(next(iter(documents)))
+        if documents:
+            primary["x-fal-contracts"] = documents
+        return primary
 
     @classmethod
     def build_metadata(cls) -> Dict[str, Any]:
-        """Publish both documents through the deployment metadata channel."""
+        """Publish linked documents through the deployment metadata channel."""
 
         metadata = super().build_metadata()
-        if cls.realtime_contract is not None:
-            # Rendered from the OpenAPI document already built for metadata.
+        if cls._session_contracts():
             metadata["asyncapi"] = cls._render_asyncapi(metadata["openapi"])
         return metadata
 
@@ -928,6 +994,28 @@ class App(FalApp):
         x_fal_request_id: Union[str, None] = Header(None),
         http_request: Request = None,
     ) -> StreamingResponse:
+        return await self.serve_session(
+            request,
+            create_backend=self.create_backend,
+            x_fal_caller_user_id=x_fal_caller_user_id,
+            x_fal_request_id=x_fal_request_id,
+            http_request=http_request,
+        )
+
+    async def serve_session(
+        self,
+        request: StartSessionRequest,
+        *,
+        create_backend: Callable[[Session], Awaitable[PeerBackend]],
+        x_fal_caller_user_id: Union[str, None] = None,
+        x_fal_request_id: Union[str, None] = None,
+        http_request: Union[Request, None] = None,
+    ) -> StreamingResponse:
+        """Run negotiation, streaming, billing and cleanup with a backend factory.
+
+        Additional session endpoints can reuse this lifecycle while providing
+        their own backend. Forward the HTTP request and caller/request headers.
+        """
         session = Session(
             request,
             http_request=http_request,
@@ -937,7 +1025,7 @@ class App(FalApp):
             minimum_billable_units=self.minimum_billable_units,
         )
         try:
-            backend = await self.create_backend(session)
+            backend = await create_backend(session)
             session.bind_backend(backend)
             answer = await backend.negotiate(request)
             # Validate the complete answer before returning HTTP 200 or
