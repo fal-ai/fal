@@ -9,7 +9,9 @@ from fal.sdk import (
     ApplicationHealthCheckConfig,
     FalServerlessConnection,
     FalServerlessKeyCredentials,
+    MachineRequirements,
     RetryConfig,
+    from_grpc,
     get_credentials,
     isolate_proto,
     validate_retry_config_dict,
@@ -581,3 +583,65 @@ def test_register_rejects_empty_retry_config():
                 retry_config=RetryConfig(),
             )
         )
+
+
+@pytest.mark.parametrize("operation", ["register", "run"])
+@pytest.mark.parametrize("timeout", [None, 0, 30])
+def test_connection_serializes_request_start_timeout(operation, timeout):
+    connection = FalServerlessConnection("api.alpha.fal.ai", MagicMock())
+    stub = RecordingStub()
+    connection._stub = stub
+    environment = connection.define_environment("virtualenv")
+    requirements = MachineRequirements(["GPU-H100"], request_start_timeout=timeout)
+    kwargs = {"deployment_strategy": "rolling"} if operation == "register" else {}
+
+    list(
+        getattr(connection, operation)(
+            lambda: None,
+            [environment],
+            machine_requirements=requirements,
+            **kwargs,
+        )
+    )
+
+    request = getattr(stub, f"{operation}_request")
+    request = type(request).FromString(request.SerializeToString())
+    assert request.machine_requirements.HasField("request_start_timeout") == (
+        timeout is not None
+    )
+    if timeout is not None:
+        assert request.machine_requirements.request_start_timeout == timeout
+
+
+@pytest.mark.parametrize("timeout", [None, 0, 30])
+def test_connection_update_serializes_request_start_timeout(timeout):
+    connection = FalServerlessConnection("api.alpha.fal.ai", MagicMock())
+    stub = MagicMock()
+    stub.UpdateApplication.return_value = isolate_proto.UpdateApplicationResult(
+        alias_info=isolate_proto.AliasInfo(
+            auth_mode=isolate_proto.ApplicationAuthMode.PRIVATE
+        )
+    )
+    connection._stub = stub
+
+    connection.update_application("queue-timeout-app", request_start_timeout=timeout)
+
+    request = stub.UpdateApplication.call_args.args[0]
+    request = type(request).FromString(request.SerializeToString())
+    assert request.HasField("request_start_timeout") == (timeout is not None)
+    if timeout is not None:
+        assert request.request_start_timeout == timeout
+
+
+@pytest.mark.parametrize(
+    "message_type", [isolate_proto.ApplicationInfo, isolate_proto.AliasInfo]
+)
+@pytest.mark.parametrize("timeout", [None, 30])
+def test_app_info_deserializes_optional_request_start_timeout(message_type, timeout):
+    message = message_type(request_start_timeout=timeout)
+    if message_type is isolate_proto.AliasInfo:
+        message.auth_mode = isolate_proto.ApplicationAuthMode.PRIVATE
+
+    info = from_grpc(message)
+
+    assert info.request_start_timeout == timeout
