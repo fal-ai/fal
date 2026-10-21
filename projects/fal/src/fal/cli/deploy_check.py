@@ -27,6 +27,7 @@ INHERITED_SCALE_FIELDS = (
     "concurrency_buffer_perc",
     "scaling_delay",
     "request_timeout",
+    "request_start_timeout",
     "valid_regions",
 )
 ALL_SCALE_FIELDS = (
@@ -39,10 +40,11 @@ ALL_SCALE_FIELDS = (
     "scaling_delay",
     "max_multiplexing",
     "request_timeout",
+    "request_start_timeout",
     "startup_timeout",
     "valid_regions",
 )
-SERVER_DEFAULT_SCALE_VALUES = {
+SERVER_DEFAULT_SCALE_VALUES: dict[str, Any] = {
     "keep_alive": 10,
     "max_concurrency": 2,
     "min_concurrency": 0,
@@ -51,6 +53,7 @@ SERVER_DEFAULT_SCALE_VALUES = {
     "scaling_delay": 0,
     "max_multiplexing": 1,
     "request_timeout": 3600,
+    "request_start_timeout": None,
     "startup_timeout": 600,
     "valid_regions": [],
     "machine_types": ["XS"],
@@ -65,6 +68,7 @@ SCALE_FIELD_LABELS = {
     "scaling_delay": "Scaling Delay",
     "max_multiplexing": "Max Multiplexing",
     "request_timeout": "Request Timeout",
+    "request_start_timeout": "Request Start Timeout",
     "startup_timeout": "Startup Timeout",
     "valid_regions": "Regions",
 }
@@ -486,6 +490,8 @@ def _desired_scale_config(prepared: PreparedDeployment) -> dict[str, Any]:
     for field in ALL_SCALE_FIELDS:
         host_option_key = host_option_keys.get(field, field)
         value = host_options.get(host_option_key, SERVER_DEFAULT_SCALE_VALUES[field])
+        if field == "request_start_timeout" and value == 0:
+            value = None
         normalizer = normalizers.get(field)
         desired_config[field] = normalizer(value) if normalizer else value
 
@@ -503,6 +509,7 @@ def _production_scale_config(production_alias: AliasInfo) -> dict[str, Any]:
         "scaling_delay": production_alias.scaling_delay,
         "max_multiplexing": production_alias.max_multiplexing,
         "request_timeout": production_alias.request_timeout,
+        "request_start_timeout": production_alias.request_start_timeout,
         "startup_timeout": production_alias.startup_timeout,
         "valid_regions": list(production_alias.valid_regions),
     }
