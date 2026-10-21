@@ -2307,8 +2307,8 @@ class BaseServable:
                     headers=headers,
                 )
             else:
-                # If it's not a generic 404, just return the original message.
-                return JSONResponse({"detail": exc.detail}, 404)
+                # The app raised its own 404: keep its message and its headers.
+                return JSONResponse({"detail": exc.detail}, 404, headers=exc.headers)
 
         @_app.exception_handler(AppException)
         async def app_exception_handler(request: Request, exc: AppException):
