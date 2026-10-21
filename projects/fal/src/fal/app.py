@@ -622,6 +622,10 @@ class App(BaseServable):
         app_files_context_dir: Base directory for resolving app_files paths.
             Defaults to the directory containing the app file.
         request_timeout: Maximum seconds for a single request. None for default.
+        request_start_timeout: Default maximum seconds waiting for a runner on
+            requests made by the app owner. Per-request timeout headers override
+            this value. Use 0 to clear the default. Redeploy with --reset-scale
+            to apply changes to an existing app.
         startup_timeout: Maximum seconds for app startup/setup. None for default.
         metrics_port: Internal metrics server port for platform scrapes.
             When omitted, served/exposed deployments default to 9090.
@@ -668,6 +672,7 @@ class App(BaseServable):
     app_files_ignore: ClassVar[list[str]] = DEFAULT_APP_FILES_IGNORE
     app_files_context_dir: ClassVar[Optional[str]] = None
     request_timeout: ClassVar[Optional[int]] = None
+    request_start_timeout: ClassVar[Optional[int]] = None
     startup_timeout: ClassVar[Optional[int]] = None
     metrics_port: ClassVar[Optional[int]] = None
     min_concurrency: ClassVar[Optional[int]] = None
@@ -710,6 +715,9 @@ class App(BaseServable):
 
         if cls.request_timeout is not None:
             cls.host_kwargs["request_timeout"] = cls.request_timeout
+
+        if cls.request_start_timeout is not None:
+            cls.host_kwargs["request_start_timeout"] = cls.request_start_timeout
 
         if cls.startup_timeout is not None:
             cls.host_kwargs["startup_timeout"] = cls.startup_timeout

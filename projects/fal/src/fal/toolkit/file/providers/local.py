@@ -129,9 +129,11 @@ class LocalFileRepository(FileRepository):
         content_type: str,
         object_lifecycle_preference: dict[str, str] | None = None,
         request: Any = None,
+        extra_headers: dict[str, str] | None = None,
     ) -> Reservation:
-        headers = _headers(content_type, object_lifecycle_preference, request)
-        return reserve(file_name, headers, request)
+        upload_headers = _headers(content_type, object_lifecycle_preference, request)
+        upload_headers.update(extra_headers or {})
+        return reserve(file_name, upload_headers, request)
 
     def save_stream(
         self,

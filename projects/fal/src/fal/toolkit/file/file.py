@@ -506,6 +506,7 @@ class File(BaseModel):
         file_name: Optional[str] = None,
         request: Optional[Request] = None,
         repository: FileRepository | RepositoryId = DEFAULT_REPOSITORY,
+        extra_headers: dict[str, str] | None = None,
     ) -> PendingFile:
         """Get the file's URL now; send the bytes later with
         ``pending.complete(data)``, or give the URL up with ``pending.abort()``.
@@ -528,6 +529,7 @@ class File(BaseModel):
                 fdata.content_type,
                 _lifecycle_preference(request),
                 caller,
+                extra_headers=extra_headers,
             )
         return PendingFile(fdata.content_type, fdata.file_name, reservation)
 
@@ -574,6 +576,10 @@ class PendingFile:
     @property
     def url(self) -> str:
         return self._reservation.url
+
+    @property
+    def _cdn_signing_requested(self) -> bool:
+        return self._reservation.cdn_signing_requested
 
     def complete(self, content: bytes | str | Path) -> File:
         if not isinstance(content, bytes):

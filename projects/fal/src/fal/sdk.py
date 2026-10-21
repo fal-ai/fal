@@ -407,6 +407,7 @@ class ApplicationInfo:
     valid_regions: list[str]
     created_at: datetime
     environment_name: str | None = None
+    request_start_timeout: int | None = None
 
 
 @dataclass
@@ -427,6 +428,7 @@ class AliasInfo:
     startup_timeout: int
     valid_regions: list[str]
     environment_name: str | None = None
+    request_start_timeout: int | None = None
 
 
 class RunnerState(Enum):
@@ -621,6 +623,11 @@ def _from_grpc_application_info(
         scaling_delay=message.scaling_delay_seconds,
         machine_types=list(message.machine_types),
         request_timeout=message.request_timeout,
+        request_start_timeout=(
+            message.request_start_timeout
+            if message.HasField("request_start_timeout")
+            else None
+        ),
         startup_timeout=message.startup_timeout,
         valid_regions=list(message.valid_regions),
         created_at=isolate_proto.datetime_from_timestamp(message.created_at),
@@ -653,6 +660,11 @@ def _from_grpc_alias_info(message: isolate_proto.AliasInfo) -> AliasInfo:
         scaling_delay=message.scaling_delay_seconds,
         machine_types=list(message.machine_types),
         request_timeout=message.request_timeout,
+        request_start_timeout=(
+            message.request_start_timeout
+            if message.HasField("request_start_timeout")
+            else None
+        ),
         startup_timeout=message.startup_timeout,
         valid_regions=list(message.valid_regions),
         environment_name=message.environment_name,
@@ -770,6 +782,7 @@ class MachineRequirements:
     startup_timeout: int | None = None
     valid_regions: list[str] | None = None
     metrics_port: int | None = None
+    request_start_timeout: int | None = None
 
     def __post_init__(self):
         if isinstance(self.machine_types, str):
@@ -1065,6 +1078,7 @@ class FalServerlessConnection:
                 scaling_delay_seconds=machine_requirements.scaling_delay,
                 max_multiplexing=machine_requirements.max_multiplexing,
                 request_timeout=machine_requirements.request_timeout,
+                request_start_timeout=machine_requirements.request_start_timeout,
                 startup_timeout=machine_requirements.startup_timeout,
                 valid_regions=machine_requirements.valid_regions,
             )
@@ -1174,6 +1188,7 @@ class FalServerlessConnection:
         valid_regions: list[str] | None = None,
         machine_types: list[str] | None = None,
         *,
+        request_start_timeout: int | None = None,
         environment_name: str | None = None,
     ) -> AliasInfo:
         full_application_name = construct_alias(application_name, environment_name)
@@ -1188,6 +1203,7 @@ class FalServerlessConnection:
             concurrency_buffer_perc=concurrency_buffer_perc,
             scaling_delay_seconds=scaling_delay,
             request_timeout=request_timeout,
+            request_start_timeout=request_start_timeout,
             startup_timeout=startup_timeout,
             valid_regions=valid_regions,
             machine_types=machine_types,
@@ -1293,6 +1309,7 @@ class FalServerlessConnection:
                 concurrency_buffer_perc=machine_requirements.concurrency_buffer_perc,
                 scaling_delay_seconds=machine_requirements.scaling_delay,
                 request_timeout=machine_requirements.request_timeout,
+                request_start_timeout=machine_requirements.request_start_timeout,
                 startup_timeout=machine_requirements.startup_timeout,
                 valid_regions=machine_requirements.valid_regions,
             )

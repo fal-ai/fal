@@ -1,9 +1,9 @@
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from fal.api.client import SyncServerlessClient
-from fal.sdk import FalServerlessKeyCredentials
+from fal.sdk import FalServerlessConnection, FalServerlessKeyCredentials, isolate_proto
 
 
 def test_sync_client_prints_when_team_set_with_explicit_api_key():
@@ -61,3 +61,29 @@ def test_sync_client_passes_key_and_profile_to_get_credentials():
     mock_get.assert_called_once_with(
         team="team-a", key="key-id:key-secret", profile="my-profile"
     )
+
+
+@pytest.mark.parametrize("timeout", [None, 0, 30])
+def test_client_apps_scale_forwards_request_start_timeout_to_grpc(timeout):
+    client = SyncServerlessClient(api_key="key-id:key-secret")
+    connection = FalServerlessConnection("api.alpha.fal.ai", MagicMock())
+    stub = MagicMock()
+    stub.UpdateApplication.return_value = isolate_proto.UpdateApplicationResult(
+        alias_info=isolate_proto.AliasInfo(
+            alias="queue-timeout-app",
+            auth_mode=isolate_proto.ApplicationAuthMode.PRIVATE,
+            request_start_timeout=30 if timeout == 30 else None,
+        )
+    )
+    connection._stub = stub
+    with patch("fal.api.apps.FalServerlessClient") as mock_client:
+        mock_client.return_value.connect.return_value.__enter__.return_value = (
+            connection
+        )
+        result = client.apps.scale("queue-timeout-app", request_start_timeout=timeout)
+
+    request = stub.UpdateApplication.call_args.args[0]
+    assert request.HasField("request_start_timeout") == (timeout is not None)
+    if timeout is not None:
+        assert request.request_start_timeout == timeout
+    assert result.request_start_timeout == (30 if timeout == 30 else None)

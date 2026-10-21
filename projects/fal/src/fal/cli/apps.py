@@ -36,6 +36,7 @@ def _apps_table(apps: list[AliasInfo]):
     table.add_column("Max Multiplexing")
     table.add_column("Keep Alive")
     table.add_column("Request Timeout")
+    table.add_column("Request Start Timeout")
     table.add_column("Startup Timeout")
     table.add_column("Machine Type")
     table.add_column("Runners")
@@ -63,6 +64,7 @@ def _apps_table(apps: list[AliasInfo]):
             str(app.max_multiplexing),
             str(app.keep_alive),
             str(app.request_timeout),
+            str(app.request_start_timeout),
             str(app.startup_timeout),
             " ".join(app.machine_types),
             str(app.active_runners),
@@ -139,6 +141,7 @@ def _app_rev_table(revs: list[ApplicationInfo]):
     table.add_column("Max Multiplexing")
     table.add_column("Keep Alive")
     table.add_column("Request Timeout")
+    table.add_column("Request Start Timeout")
     table.add_column("Startup Timeout")
     table.add_column("Machine Type")
     table.add_column("Runners")
@@ -154,6 +157,7 @@ def _app_rev_table(revs: list[ApplicationInfo]):
             str(rev.max_multiplexing),
             str(rev.keep_alive),
             str(rev.request_timeout),
+            str(rev.request_start_timeout),
             str(rev.startup_timeout),
             " ".join(rev.machine_types),
             str(rev.active_runners),
@@ -201,6 +205,7 @@ def _scale(args):
         and args.concurrency_buffer_perc is None
         and args.scaling_delay is None
         and args.request_timeout is None
+        and args.request_start_timeout is None
         and args.startup_timeout is None
         and args.machine_types is None
         and args.regions is None
@@ -218,6 +223,7 @@ def _scale(args):
         concurrency_buffer_perc=args.concurrency_buffer_perc,
         scaling_delay=args.scaling_delay,
         request_timeout=args.request_timeout,
+        request_start_timeout=args.request_start_timeout,
         startup_timeout=args.startup_timeout,
         machine_types=args.machine_types,
         regions=args.regions,
@@ -292,6 +298,12 @@ def _add_scale_parser(subparsers, parents):
         type=int,
         help="Request timeout (seconds). If a request takes longer, it is aborted and "
         "the runner gracefully stopped as it could be in a bad state.",
+    )
+    parser.add_argument(
+        "--request-start-timeout",
+        type=int,
+        help="Default queue-wait timeout for owner requests (seconds). "
+        "Per-request timeout headers override it. Use 0 to clear it.",
     )
     parser.add_argument(
         "--startup-timeout",

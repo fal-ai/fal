@@ -1,3 +1,4 @@
+import copy
 import json
 import os
 import re
@@ -117,6 +118,23 @@ class ContainerImage:
     def from_dockerfile(cls, path: str, **kwargs) -> "ContainerImage":
         with open(path) as fobj:
             return cls.from_dockerfile_str(fobj.read(), **kwargs)
+
+    def __getstate__(self) -> dict:
+        state = self.__dict__.copy()
+        state["registries"] = {}
+        state["secrets"] = {}
+        return state
+
+    def __copy__(self) -> "ContainerImage":
+        copied = object.__new__(type(self))
+        copied.__dict__.update(self.__dict__)
+        return copied
+
+    def __deepcopy__(self, memo: dict) -> "ContainerImage":
+        copied = object.__new__(type(self))
+        memo[id(self)] = copied
+        copied.__dict__.update(copy.deepcopy(self.__dict__, memo))
+        return copied
 
     def to_dict(self) -> dict:
         image = {

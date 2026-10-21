@@ -131,6 +131,7 @@ def get_app_data_from_toml(
     concurrency_buffer_perc = app_data.pop("concurrency_buffer_perc", None)
     scaling_delay = app_data.pop("scaling_delay", None)
     request_timeout = app_data.pop("request_timeout", None)
+    request_start_timeout = app_data.pop("request_start_timeout", None)
     startup_timeout = app_data.pop("startup_timeout", None)
     keep_alive = app_data.pop("keep_alive", None)
     private_logs = app_data.pop("private_logs", None)
@@ -215,6 +216,8 @@ def get_app_data_from_toml(
         options.host["scaling_delay"] = scaling_delay
     if request_timeout is not None:
         options.host["request_timeout"] = request_timeout
+    if request_start_timeout is not None:
+        options.host["request_start_timeout"] = request_start_timeout
     if startup_timeout is not None:
         options.host["startup_timeout"] = startup_timeout
     if keep_alive is not None:
