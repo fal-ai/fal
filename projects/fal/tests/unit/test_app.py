@@ -522,11 +522,15 @@ def test_run_omits_force_when_build_environment_false():
 LOCAL_PATH_REQUIREMENT_CASES = [
     (
         ["."],
-        ["simple @ https://cdn/simple-0.1.0.tar.gz"],
+        ["simple @ https://cdn/simple-0.1.0.tar.gz", "certifi>=2026.10.19"],
     ),
     (
         [["."], ["other-pkg"]],
-        [["simple @ https://cdn/simple-0.1.0.tar.gz"], ["other-pkg"]],
+        [
+            ["simple @ https://cdn/simple-0.1.0.tar.gz"],
+            ["other-pkg"],
+            ["certifi>=2026.10.19"],
+        ],
     ),
 ]
 
@@ -730,7 +734,8 @@ def test_prepare_options_materializes_from_requirements_context_dir(tmp_path):
             prepared_options = host.prepare_options(options)
 
     assert prepared_options.environment["requirements"] == [
-        "simple @ https://cdn/simple-0.1.0.tar.gz"
+        "simple @ https://cdn/simple-0.1.0.tar.gz",
+        "certifi>=2026.10.19",
     ]
     build.assert_called_once_with(project_dir.resolve())
 
@@ -760,7 +765,8 @@ def test_function_materializes_from_requirements_context_dir(tmp_path):
             prepared_options = fn.host.prepare_options(fn.options, func=fn.raw_func)
 
     assert prepared_options.environment["requirements"] == [
-        "simple @ https://cdn/simple-0.1.0.tar.gz"
+        "simple @ https://cdn/simple-0.1.0.tar.gz",
+        "certifi>=2026.10.19",
     ]
     assert "requirements_context_dir" not in prepared_options.host
     build.assert_called_once_with(project_dir.resolve())
@@ -794,7 +800,8 @@ def test_prepare_options_supports_local_project_root_alias(tmp_path):
             prepared_options = host.prepare_options(options)
 
     assert prepared_options.environment["requirements"] == [
-        "simple @ https://cdn/simple-0.1.0.tar.gz"
+        "simple @ https://cdn/simple-0.1.0.tar.gz",
+        "certifi>=2026.10.19",
     ]
     assert host.requirements_context_dir == str(tmp_path)
     build.assert_called_once_with(tmp_path.resolve())
@@ -827,7 +834,8 @@ def test_prepare_options_defaults_requirements_context_dir_to_cwd(
             prepared_options = host.prepare_options(options)
 
     assert prepared_options.environment["requirements"] == [
-        "simple @ https://cdn/simple-0.1.0.tar.gz"
+        "simple @ https://cdn/simple-0.1.0.tar.gz",
+        "certifi>=2026.10.19",
     ]
     build.assert_called_once_with(tmp_path.resolve())
 
@@ -860,7 +868,8 @@ def test_prepare_options_defaults_requirements_context_dir_to_local_file_dir(tmp
             prepared_options = host.prepare_options(options)
 
     assert prepared_options.environment["requirements"] == [
-        "simple @ https://cdn/simple-0.1.0.tar.gz"
+        "simple @ https://cdn/simple-0.1.0.tar.gz",
+        "certifi>=2026.10.19",
     ]
     build.assert_called_once_with(app_dir.resolve())
 
@@ -900,7 +909,8 @@ def test_prepare_options_resolves_relative_requirements_context_dir_from_local_f
             prepared_options = host.prepare_options(options)
 
     assert prepared_options.environment["requirements"] == [
-        "simple @ https://cdn/simple-0.1.0.tar.gz"
+        "simple @ https://cdn/simple-0.1.0.tar.gz",
+        "certifi>=2026.10.19",
     ]
     build.assert_called_once_with(project_dir.resolve())
 
@@ -945,7 +955,10 @@ def test_build_environment_keeps_local_requirements_for_future_rebuilds(tmp_path
         host.build_environment(options)
 
     _, call_kwargs = connection.define_environment.call_args
-    assert call_kwargs["requirements"] == ["simple @ https://cdn/simple-0.1.0.tar.gz"]
+    assert call_kwargs["requirements"] == [
+        "simple @ https://cdn/simple-0.1.0.tar.gz",
+        "certifi>=2026.10.19",
+    ]
     assert options.environment["requirements"] == ["."]
     build_sdist.assert_called_once_with(tmp_path.resolve())
     upload_sdist.assert_called_once_with(fake_sdist)

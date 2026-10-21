@@ -10,6 +10,7 @@ import warnings
 from collections import defaultdict
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import asynccontextmanager, suppress
+from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from difflib import get_close_matches
 from functools import wraps
@@ -54,6 +55,7 @@ from typing_extensions import Concatenate, ParamSpec
 
 import fal.flags as flags
 from fal._serialization import include_module, include_modules_from, patch_pickle
+from fal._tls import CERTIFI_REQUIREMENT
 from fal.api._sdist import ProgressCallback, has_local_path, materialize_local_paths
 from fal.app_files import get_app_files_relative_path, include_app_files_path
 from fal.console import console
@@ -125,6 +127,7 @@ SERVE_REQUIREMENTS = [
     # runner. Floor covers the Client(follow_redirects=) API it uses (httpx
     # 0.20); left uncapped so a customer's own newer httpx pin still wins.
     "httpx>=0.20",
+    CERTIFI_REQUIREMENT,
 ]
 
 
@@ -443,12 +446,21 @@ class Host(Generic[ArgsT, ReturnT]):
         func: Callable[..., Any] | None = None,
         on_progress: ProgressCallback | None = None,
     ) -> Options:
-        return replace(
+        prepared_options = replace(
             options,
             host=options.host.copy(),
             environment=options.environment.copy(),
             gateway=options.gateway.copy(),
         )
+        # Plain functions ship toolkit code without installing fal's dependencies.
+        kind = prepared_options.environment.setdefault("kind", "virtualenv")
+        requirement_key = "pip" if kind == "conda" else "requirements"
+        if requirement_key in prepared_options.environment:
+            prepared_options.environment[requirement_key] = deepcopy(
+                prepared_options.environment[requirement_key]
+            )
+        prepared_options.add_requirements([CERTIFI_REQUIREMENT])
+        return prepared_options
 
 
 def cached(func: Callable[ArgsT, ReturnT]) -> Callable[ArgsT, ReturnT]:
@@ -681,6 +693,7 @@ class LocalHost(Host):
             serialization_method="cloudpickle",
             log_hook=IsolateLogPrinter(debug=flags.DEBUG).print,
         )
+        options = self.prepare_options(options, func=func)
         environment = isolate.prepare_environment(
             **options.environment,
             context=settings,
@@ -1505,14 +1518,18 @@ class Options:
     def add_requirements(self, requirements: list[str]):
         kind = self.environment["kind"]
         if kind in ["virtualenv", "container"]:
-            pip_requirements = self.environment.setdefault("requirements", [])
+            requirement_key = "requirements"
         elif kind == "conda":
-            pip_requirements = self.environment.setdefault("pip", [])
+            requirement_key = "pip"
         else:
             raise FalServerlessError(
                 "Only {conda, virtualenv, container} "
                 "are supported as environment options."
             )
+
+        pip_requirements = self.environment.get(requirement_key)
+        if pip_requirements is None:
+            pip_requirements = self.environment[requirement_key] = []
 
         parsed = Requirements.from_raw(pip_requirements)
         existing = {req for layer in parsed.layers for req in layer}

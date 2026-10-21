@@ -3,6 +3,8 @@ import os
 import tempfile
 from typing import Any, Dict, Optional
 
+from fal._tls import create_ssl_context
+
 try:
     from ._fal_version import version as __version__  # type: ignore[import]
     from ._fal_version import version_tuple  # type: ignore[import]
@@ -52,7 +54,9 @@ def _get_pypi_cache() -> Optional[Dict[str, Any]]:
 def _fetch_pypi_data() -> Dict[str, Any]:
     from urllib.request import urlopen
 
-    response = urlopen(_PYPI_URL, timeout=_URLOPEN_TIMEOUT)
+    response = urlopen(
+        _PYPI_URL, timeout=_URLOPEN_TIMEOUT, context=create_ssl_context()
+    )
     if response.status != 200:
         raise Exception(f"Failed to fetch {_PYPI_URL}")
 

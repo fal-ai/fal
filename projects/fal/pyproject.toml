@@ -33,7 +33,7 @@ dependencies = [
     "opentelemetry-sdk>=1.15.0,<2",
     "grpc-interceptor>=0.15.0,<1",
     "colorama>=0.4.6,<1",
-    "certifi>=2024.2.2",
+    "certifi>=2026.10.19",
     "portalocker>=2.7.0,<3",
     "rich>=13.3.2,<15",
     "rich_argparse",
@@ -104,6 +104,8 @@ dev = [
 exclude-newer = "7 days"
 
 [tool.uv.exclude-newer-package]
+# Allow the eMudhra CA fix published on October 20, 2026.
+certifi = "2026-10-21T00:00:00Z"
 # Keep newest versions available for first-party packages.
 isolate = "2100-01-01T00:00:00Z"
 isolate-proto = "2100-01-01T00:00:00Z"
