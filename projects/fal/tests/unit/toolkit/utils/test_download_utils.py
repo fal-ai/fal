@@ -1,12 +1,18 @@
+import json
 import os
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
 
 import fal.toolkit.utils.download_utils as download_utils
 from fal.toolkit import clone_repository, download_file, download_model_weights
-from fal.toolkit.utils.download_utils import _filename_from_response, _hash_url
+from fal.toolkit.utils.download_utils import (
+    DownloadError,
+    _filename_from_response,
+    _hash_url,
+)
 from fal.toolkit.utils.ssrf import SafeResponse
 
 # data: URLs exercise the whole cache and force logic without any network.
@@ -67,10 +73,142 @@ def test_download_model_weights_caches_per_url_unless_forced(persistent_dirs):
 
     path = download_model_weights(SAMPLE_URL)
     assert path == expected / _hash_url(SAMPLE_URL)
+    assert json.loads((expected / ".fal-weights.json").read_text()) == {
+        "url_sha256": _hash_url(SAMPLE_URL),
+        "filename": path.name,
+    }
     path.write_bytes(b"stale")
 
     assert download_model_weights(SAMPLE_URL).read_bytes() == b"stale"
     assert download_model_weights(SAMPLE_URL, force=True).read_bytes() == b"hello"
+
+
+def test_download_model_weights_refreshes_unrecorded_same_size_file(persistent_dirs):
+    weights_dir = persistent_dirs / "model_weights" / _hash_url(SAMPLE_URL)
+    weights_dir.mkdir(parents=True)
+    legacy_path = weights_dir / _hash_url(SAMPLE_URL)
+    legacy_path.write_bytes(b"stale")
+    (weights_dir / "config.json").write_text("foreign file")
+
+    path = download_model_weights(SAMPLE_URL)
+
+    assert path == legacy_path
+    assert path.read_bytes() == b"hello"
+    assert (weights_dir / "config.json").read_text() == "foreign file"
+    assert download_model_weights(SAMPLE_URL) == path
+
+
+def test_download_model_weights_uses_only_recorded_artifact(persistent_dirs):
+    path = download_model_weights(SAMPLE_URL)
+    weights_dir = path.parent
+    (weights_dir / "config.json").write_text("foreign file")
+
+    assert download_model_weights(SAMPLE_URL) == path
+
+
+def test_download_model_weights_rejects_mismatched_record(persistent_dirs):
+    path = download_model_weights(SAMPLE_URL)
+    path.write_bytes(b"stale")
+    record_path = path.parent / ".fal-weights.json"
+    record = json.loads(record_path.read_text())
+    record["url_sha256"] = _hash_url(SAMPLE_URL + "?different-signature")
+    record_path.write_text(json.dumps(record))
+
+    assert download_model_weights(SAMPLE_URL).read_bytes() == b"hello"
+    assert json.loads(record_path.read_text())["url_sha256"] == _hash_url(SAMPLE_URL)
+
+
+@pytest.mark.parametrize("filename", ["../foreign", ".fal-weights.json"])
+def test_download_model_weights_rejects_unsafe_recorded_file(persistent_dirs, filename):
+    weights_dir = persistent_dirs / "model_weights" / _hash_url(SAMPLE_URL)
+    weights_dir.mkdir(parents=True)
+    (weights_dir / "config.json").write_text("foreign file")
+    (weights_dir / ".fal-weights.json").write_text(
+        json.dumps({"url_sha256": _hash_url(SAMPLE_URL), "filename": filename})
+    )
+
+    path = download_model_weights(SAMPLE_URL)
+
+    assert path.read_bytes() == b"hello"
+    assert (
+        json.loads((weights_dir / ".fal-weights.json").read_text())["filename"]
+        == path.name
+    )
+
+
+def test_download_model_weights_does_not_store_signed_url(persistent_dirs):
+    url = "data:text/plain,hello?signature=private-token"
+
+    path = download_model_weights(url)
+    record = (path.parent / ".fal-weights.json").read_text()
+
+    assert json.loads(record)["url_sha256"] == _hash_url(url)
+    assert "private-token" not in record
+    assert path.parent != persistent_dirs / "model_weights" / _hash_url(SAMPLE_URL)
+
+
+def test_download_model_weights_does_not_publish_failed_download(
+    persistent_dirs, monkeypatch
+):
+    def failed_download(*args, **kwargs):
+        raise DownloadError("download failed")
+
+    monkeypatch.setattr(download_utils, "download_file", failed_download)
+
+    with pytest.raises(DownloadError, match="download failed"):
+        download_model_weights(SAMPLE_URL)
+
+    weights_dir = persistent_dirs / "model_weights" / _hash_url(SAMPLE_URL)
+    assert not (weights_dir / ".fal-weights.json").exists()
+
+
+def test_download_model_weights_failed_refresh_preserves_valid_cache(
+    persistent_dirs, monkeypatch
+):
+    path = download_model_weights(SAMPLE_URL)
+    record_path = path.parent / ".fal-weights.json"
+    original_record = record_path.read_text()
+
+    def failed_download(*args, **kwargs):
+        raise DownloadError("download failed")
+
+    monkeypatch.setattr(download_utils, "download_file", failed_download)
+
+    with pytest.raises(DownloadError, match="download failed"):
+        download_model_weights(SAMPLE_URL, force=True)
+
+    assert download_model_weights(SAMPLE_URL) == path
+    assert path.read_bytes() == b"hello"
+    assert record_path.read_text() == original_record
+
+
+def test_download_model_weights_concurrent_cache_misses(persistent_dirs):
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        paths = list(executor.map(download_model_weights, [SAMPLE_URL] * 4))
+
+    assert len(set(paths)) == 1
+    assert paths[0].read_bytes() == b"hello"
+    assert json.loads((paths[0].parent / ".fal-weights.json").read_text()) == {
+        "url_sha256": _hash_url(SAMPLE_URL),
+        "filename": paths[0].name,
+    }
+
+
+def test_download_model_weights_rejects_reserved_download_name(
+    persistent_dirs, monkeypatch
+):
+    def reserved_download(url, target_dir, *, force, request_headers):
+        path = Path(target_dir) / ".fal-weights.json"
+        path.write_bytes(b"hello")
+        return path
+
+    monkeypatch.setattr(download_utils, "download_file", reserved_download)
+
+    with pytest.raises(DownloadError, match="Invalid model weights filename"):
+        download_model_weights(SAMPLE_URL)
+
+    weights_dir = persistent_dirs / "model_weights" / _hash_url(SAMPLE_URL)
+    assert not (weights_dir / ".fal-weights.json").exists()
 
 
 def _git(cwd: Path, *args: str) -> str:
