@@ -106,6 +106,26 @@ def test_download_model_weights_uses_only_recorded_artifact(persistent_dirs):
     assert download_model_weights(SAMPLE_URL) == path
 
 
+def test_download_model_weights_reads_registry_cache_record(
+    persistent_dirs, monkeypatch
+):
+    weights_dir = persistent_dirs / "model_weights" / _hash_url(SAMPLE_URL)
+    weights_dir.mkdir(parents=True)
+    artifact = weights_dir / "registry-artifact.safetensors"
+    artifact.write_bytes(b"registry weights")
+    (weights_dir / "config.json").write_bytes(b"foreign config")
+    (weights_dir / ".fal-weights.json").write_text(
+        json.dumps({"url_sha256": _hash_url(SAMPLE_URL), "filename": artifact.name})
+    )
+
+    def unexpected_download(*args, **kwargs):
+        pytest.fail("registry-recorded artifact must be a cache hit")
+
+    monkeypatch.setattr(download_utils, "download_file", unexpected_download)
+
+    assert download_model_weights(SAMPLE_URL) == artifact
+
+
 def test_download_model_weights_rejects_mismatched_record(persistent_dirs):
     path = download_model_weights(SAMPLE_URL)
     path.write_bytes(b"stale")
