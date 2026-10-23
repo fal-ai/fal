@@ -8,6 +8,7 @@ from fal.app import App, endpoint, realtime, wrap_app  # noqa: F401
 from fal.container import ContainerImage
 from fal.sdk import FalServerlessKeyCredentials, HealthCheck
 from fal.sync import sync_dir
+from fal.volumes import Volume, create_volume
 
 from ._version import __version__, version_tuple  # noqa: F401
 
@@ -32,4 +33,6 @@ __all__ = [
     "__version__",
     "version_tuple",
     "ContainerImage",
+    "Volume",
+    "create_volume",
 ]

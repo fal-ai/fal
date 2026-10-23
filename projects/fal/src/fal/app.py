@@ -54,6 +54,7 @@ from fal.toolkit.file._upload_policy import (
 )
 from fal.toolkit.file._upload_policy import drain as drain_upload_policies
 from fal.toolkit.file.providers.fal import _LIFECYCLE_PREFERENCE
+from fal.volumes import Volume, normalize_volumes
 
 REALTIME_APP_REQUIREMENTS = ["websockets", "msgpack"]
 # Injected into the runner env of fal.wma.App subclasses so a WMA app need not
@@ -649,6 +650,11 @@ class App(BaseServable):
             Use `["/data"]` for full access, or specific subdirectories like
             `["/data/.cache"]`. When omitted (None), the server applies a default
             based on the user model.
+        volumes: Named volumes to mount, keyed by mount path. Each volume must
+            already exist (`fal volumes create <name>`); `fal.Volume` is only a
+            reference. A mount path is a single top-level directory. Cannot
+            be combined with `data_mounts`; mount a volume at `/data` instead.
+            Example: `{"/models": fal.Volume("my-models")}`
     """
 
     requirements: ClassVar[list[str] | list[list[str]]] = []  # type: ignore[assignment]
@@ -689,6 +695,7 @@ class App(BaseServable):
     termination_grace_period_seconds: ClassVar[Optional[int]] = None
     secrets: ClassVar[Optional[list[str]]] = None
     data_mounts: ClassVar[Optional[list[str]]] = None
+    volumes: ClassVar[Optional[dict[str, Volume | str]]] = None
 
     isolate_channel: async_grpc.Channel | None = None
 
@@ -785,6 +792,9 @@ class App(BaseServable):
 
         if cls.data_mounts is not None:
             cls.host_kwargs["data_mounts"] = cls.data_mounts
+
+        if cls.volumes is not None:
+            cls.host_kwargs["volumes"] = normalize_volumes(cls.volumes)
 
         cls.host_kwargs["health_check_config"] = cls.get_health_check_config()
 
