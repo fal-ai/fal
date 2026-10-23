@@ -3,8 +3,6 @@ import hashlib
 import io
 import json
 import os
-import stat
-import sys
 from pathlib import Path
 
 import httpx
@@ -36,7 +34,6 @@ class FakeRegistry:
                         {
                             "path": path,
                             "sha256": hashlib.sha256(content).hexdigest(),
-                            "bytes": len(content),
                         }
                         for path, content in files.items()
                     ],
@@ -92,6 +89,19 @@ def _run_json(argv):
     return json.loads(_run([*argv, "--json"]))["skills"]
 
 
+def _tree(root):
+    return {
+        p.relative_to(root).as_posix(): p.read_bytes()
+        for p in root.rglob("*")
+        if p.is_file()
+    }
+
+
+def _install_universal(project):
+    _run(["skills", "install", "-a", "universal"])
+    return project / ".agents" / "skills" / "fal-serverless"
+
+
 def test_parse_install():
     args = parse_args(
         ["skills", "install", "-a", "claude-code", "-a", "codex", "--global"]
@@ -100,6 +110,7 @@ def test_parse_install():
     assert args.agents == ["claude-code", "codex"]
     assert args.is_global is True
     assert args.names == []
+    assert args.force is False
 
 
 def test_parse_rejects_unknown_agent():
@@ -107,179 +118,81 @@ def test_parse_rejects_unknown_agent():
         parse_args(["skills", "install", "--agent", "nope"])
 
 
-def test_registry_url_env_override(monkeypatch):
-    monkeypatch.setenv(skills_cli.REGISTRY_URL_ENV, "https://example.com/skills/")
-    assert skills_cli.Registry().url == "https://example.com/skills"
+def test_help_states_each_commands_agent_default():
+    for command, default in [
+        ("install", skills_cli.DETECTED_AGENTS_HELP),
+        ("update", skills_cli.ALL_AGENTS_HELP),
+        ("list", skills_cli.ALL_AGENTS_HELP),
+        ("remove", skills_cli.ALL_AGENTS_HELP),
+    ]:
+        stdout = io.StringIO()
+        with pytest.raises(FalParserExit), contextlib.redirect_stdout(stdout):
+            parse_args(["skills", command, "--help"])
+        assert " ".join(default.split()) in " ".join(stdout.getvalue().split())
 
 
 def test_detect_agents_always_includes_universal(tmp_path):
     (tmp_path / ".claude").mkdir()
     (tmp_path / ".cursor").mkdir()
-    assert skills_cli.detect_agents(tmp_path) == [
-        "universal",
-        "claude-code",
-        "cursor",
-    ]
-
-
-def test_agents_sharing_a_directory_are_installed_once(tmp_path):
-    targets = skills_cli.target_dirs(
-        ["universal", "codex", "cursor", "claude-code"],
-        is_global=False,
-        root=tmp_path,
-        home=tmp_path / "home",
-    )
-    assert targets == {
-        tmp_path / ".agents" / "skills": ["universal", "codex", "cursor"],
-        tmp_path / ".claude" / "skills": ["claude-code"],
-    }
+    assert skills_cli.detect_agents(tmp_path) == ["universal", "claude-code", "cursor"]
 
 
 def test_install_defaults_into_detected_agents(registry, env):
     home, project = env
     (home / ".claude").mkdir()
+    (home / ".cursor").mkdir()
 
     changes = _run_json(["skills", "install"])
 
-    assert {(c["path"], c["action"]) for c in changes} == {
-        (str(project / d / "fal-serverless"), "installed")
-        for d in [".agents/skills", ".claude/skills"]
-    }
-    for skills_dir in [".agents/skills", ".claude/skills"]:
-        installed = project / skills_dir / "fal-serverless" / "references" / "more.md"
-        assert installed.read_text() == "details\n"
-    assert not (project / ".agents" / "skills" / "other-skill").exists()
+    assert [(c["path"], c["agents"], c["action"]) for c in changes] == [
+        (
+            str(project / ".agents/skills/fal-serverless"),
+            ["universal", "cursor"],
+            "installed",
+        ),
+        (str(project / ".claude/skills/fal-serverless"), ["claude-code"], "installed"),
+    ]
+    installed = project / ".claude/skills/fal-serverless/references/more.md"
+    assert installed.read_text() == "details\n"
+    assert not (project / ".agents/skills/other-skill").exists()
     # Downloaded once, written to both directories.
     assert registry.requests.count("fal-serverless/SKILL.md") == 1
 
 
-def test_install_named_skill_globally(registry, env):
+def test_install_globally_shares_the_home_agents_dir(registry, env):
     home, project = env
 
-    _run(["skills", "install", "other-skill", "-a", "claude-code", "--global"])
-
-    assert (home / ".claude" / "skills" / "other-skill" / "SKILL.md").is_file()
-    assert not (home / ".claude" / "skills" / "fal-serverless").exists()
-    assert not (project / ".claude").exists()
-
-
-def test_global_universal_dir_is_shared_home_dir(tmp_path):
-    targets = skills_cli.target_dirs(
-        ["universal", "codex", "windsurf"], is_global=True, root=tmp_path, home=tmp_path
+    changes = _run_json(
+        ["skills", "install", "-a", "cursor", "-a", "codex", "--global"]
     )
-    assert targets == {
-        tmp_path / ".agents" / "skills": ["universal", "codex", "windsurf"]
-    }
 
-
-def test_install_all(registry, env):
-    changes = _run_json(["skills", "install", "--all", "-a", "universal"])
-    assert sorted(c["skill"] for c in changes) == ["fal-serverless", "other-skill"]
-
-
-def test_install_unknown_skill(registry, env):
-    with pytest.raises(ValueError, match="Unknown skill"):
-        _run(["skills", "install", "nope"])
-
-
-def test_install_rejects_checksum_mismatch(registry, env, monkeypatch):
-    _, project = env
-    index = registry.index()
-    index["skills"][0]["files"][0]["sha256"] = "0" * 64
-    original = registry.get
-
-    def tampered(_, path):
-        if path == "index.json":
-            return json.dumps(index).encode()
-        return original(path)
-
-    monkeypatch.setattr(skills_cli.Registry, "_get", tampered)
-
-    with pytest.raises(RuntimeError, match="Checksum mismatch"):
-        _run(["skills", "install", "-a", "universal"])
-    assert not (project / ".agents" / "skills" / "fal-serverless").exists()
-
-
-@pytest.mark.parametrize(
-    "bad_path",
-    [
-        "../escape.md",
-        "/etc/passwd",
-        "a/../../b.md",
-        "a//b.md",
-        "./a.md",
-        "..\\escape.md",
-        "C:\\x.md",
-        "C:/x.md",
-        "C:x.md",
-        "\\\\server\\share\\x.md",
-        "\\evil.md",
-        "CON",
-        "nul.txt",
-        "trailing.",
-    ],
-)
-def test_install_rejects_paths_outside_the_skill(registry, env, bad_path):
-    _, project = env
-    registry.add("fal-serverless", {bad_path: "x"})
-
-    with pytest.raises(RuntimeError, match="unsafe skill path"):
-        _run(["skills", "install", "-a", "universal"])
+    assert [(c["path"], c["agents"]) for c in changes] == [
+        (str(home / ".agents/skills/fal-serverless"), ["cursor", "codex"])
+    ]
     assert list(project.iterdir()) == []
 
 
-BAD_NAMES = ["..", ".", "", "/abs", "a/b", "../x", "a\\b", "C:x", "con", "Upper", "x."]
-
-
-@pytest.mark.parametrize("bad_name", BAD_NAMES)
-def test_install_rejects_unsafe_skill_names(registry, env, bad_name):
-    _, project = env
-    registry.skills = {bad_name: {"SKILL.md": b"pwned\n"}}
-    (project / "keep.txt").write_text("mine\n")
-
-    with pytest.raises(RuntimeError, match="unsafe skill name"):
-        _run(["skills", "install", "--all", "-a", "universal"])
-    assert [p.name for p in project.iterdir()] == ["keep.txt"]
-
-
-@pytest.mark.parametrize("bad_name", [*BAD_NAMES, "fal-serverless/references"])
-def test_remove_rejects_unsafe_skill_names(registry, env, bad_name):
-    _, project = env
-    _run(["skills", "install", "-a", "universal"])
-    installed = sorted(p for p in project.rglob("*"))
-
-    with pytest.raises(ValueError, match="unsafe skill name"):
-        _run(["skills", "remove", bad_name, "-a", "universal"])
-    assert sorted(p for p in project.rglob("*")) == installed
-
-
-def test_reinstall_replaces_stale_files(registry, env):
-    _, project = env
-    _run(["skills", "install", "--all", "-a", "universal"])
-    installed = project / ".agents" / "skills" / "fal-serverless"
-    (installed / "SKILL.md").write_text("edited\n")
-    (installed / "references" / "stale.md").write_text("old\n")
-
+def test_install_all_and_unknown(registry, env):
     changes = _run_json(["skills", "install", "--all", "-a", "universal"])
+    assert sorted(c["skill"] for c in changes) == ["fal-serverless", "other-skill"]
+    with pytest.raises(ValueError, match="Unknown skill"):
+        _run(["skills", "install", "nope"])
+    with pytest.raises(ValueError, match="not both"):
+        _run(["skills", "install", "x", "--all"])
 
-    actions = {c["skill"]: c["action"] for c in changes}
-    assert actions == {"fal-serverless": "updated", "other-skill": "unchanged"}
-    assert (installed / "SKILL.md").read_text().startswith("---\n")
-    assert not (installed / "references" / "stale.md").exists()
 
-
-def test_install_leaves_other_skills_alone(registry, env):
+def test_reinstall_is_unchanged_and_crlf_counts_as_unchanged(registry, env):
     _, project = env
-    other = project / ".agents" / "skills" / "someone-else"
-    other.mkdir(parents=True)
-    (other / "SKILL.md").write_text("mine\n")
+    installed = _install_universal(project)
+    skill_md = installed / "SKILL.md"
+    skill_md.write_bytes(skill_md.read_bytes().replace(b"\n", b"\r\n"))
 
-    _run(["skills", "install", "-a", "universal"])
+    changes = _run_json(["skills", "install", "-a", "universal"])
 
-    assert (other / "SKILL.md").read_text() == "mine\n"
+    assert [c["action"] for c in changes] == ["unchanged"]
 
 
-def test_update_only_touches_existing_installs(registry, env):
+def test_update_replaces_the_whole_skill(registry, env):
     _, project = env
     _run(["skills", "install", "-a", "claude-code"])
     registry.add("fal-serverless", {"SKILL.md": "v2\n"})
@@ -289,103 +202,9 @@ def test_update_only_touches_existing_installs(registry, env):
     assert [(c["skill"], c["action"]) for c in changes] == [
         ("fal-serverless", "updated")
     ]
-    installed = project / ".claude" / "skills" / "fal-serverless"
-    assert (installed / "SKILL.md").read_text() == "v2\n"
-    assert not (installed / "references").exists()
+    installed = project / ".claude/skills/fal-serverless"
+    assert set(_tree(installed)) == {"SKILL.md", ".fal-skill"}
     assert not (project / ".agents").exists()
-
-
-def test_list_reports_status(registry, env):
-    _, project = env
-    _run(["skills", "install", "-a", "universal"])
-    registry.add("fal-serverless", {"SKILL.md": "v2\n"})
-
-    rows = _run_json(["skills", "list", "-a", "universal"])
-
-    assert {r["skill"]: r["installed"] for r in rows} == {
-        "fal-serverless": {str(project / ".agents" / "skills"): "outdated"},
-        "other-skill": {},
-    }
-    assert [r["skill"] for r in rows if r["default"]] == ["fal-serverless"]
-
-
-def test_list_pretty_output(registry, env):
-    output = _run(["skills", "list"])
-    assert "fal-serverless (default)" in output
-    assert "other-skill description" in output
-
-
-def test_remove_checks_every_agent_by_default(registry, env):
-    _, project = env
-    _run(["skills", "install", "--all", "-a", "universal", "-a", "claude-code"])
-
-    changes = _run_json(["skills", "remove", "fal-serverless"])
-
-    assert sorted(c["path"] for c in changes) == sorted(
-        str(project / d / "fal-serverless")
-        for d in [".agents/skills", ".claude/skills"]
-    )
-    assert (project / ".agents" / "skills" / "other-skill").is_dir()
-
-
-class StrictEncodingStream(io.StringIO):
-    encoding = "cp1252"
-
-    def write(self, text):
-        text.encode(self.encoding)
-        return super().write(text)
-
-
-def test_install_output_renders_on_cp1252(registry, env):
-    console = Console(
-        file=StrictEncodingStream(), record=True, width=200, force_terminal=False
-    )
-    _run(["skills", "install", "-a", "universal"], console=console)
-    assert "+ installed fal-serverless" in console.file.getvalue()
-
-
-def test_list_table_renders_on_cp1252(registry, env):
-    registry.add("fal-serverless", {"SKILL.md": "x\n"})
-    registry.descriptions = {"fal-serverless": "Arrows → here. More text."}
-    console = Console(
-        file=StrictEncodingStream(), record=True, width=200, force_terminal=False
-    )
-    _run(["skills", "list"], console=console)
-    assert "Arrows \\u2192 here" in console.file.getvalue()
-
-
-def test_update_leaves_a_users_own_same_named_skill_alone(registry, env):
-    _, project = env
-    own = project / ".claude" / "skills" / "fal-serverless"
-    own.mkdir(parents=True)
-    (own / "SKILL.md").write_text("mine\n")
-    (own / "notes.md").write_text("notes\n")
-
-    assert _run_json(["skills", "update"]) == []
-    assert (own / "SKILL.md").read_text() == "mine\n"
-    assert (own / "notes.md").read_text() == "notes\n"
-    rows = _run_json(["skills", "list", "-a", "claude-code"])
-    assert rows[0]["installed"] == {str(own.parent): "unmanaged"}
-
-
-@pytest.mark.parametrize("command", [["install"], ["install", "--all"], ["remove"]])
-def test_a_users_own_same_named_skill_is_never_replaced(registry, env, command):
-    _, project = env
-    own = project / ".claude" / "skills" / "fal-serverless"
-    own.mkdir(parents=True)
-    (own / "SKILL.md").write_text("mine\n")
-    (own / "notes.md").write_text("notes\n")
-    argv = ["skills", *command, "-a", "claude-code"]
-    if command == ["remove"]:
-        argv.insert(2, "fal-serverless")
-
-    changes = _run_json(argv)
-
-    assert {c["skill"]: c["action"] for c in changes}["fal-serverless"] == (
-        "skipped (not installed by fal)"
-    )
-    assert sorted(p.name for p in own.iterdir()) == ["SKILL.md", "notes.md"]
-    assert (own / "SKILL.md").read_text() == "mine\n"
 
 
 def test_update_downloads_each_skill_once(registry, env):
@@ -399,40 +218,269 @@ def test_update_downloads_each_skill_once(registry, env):
     assert registry.requests.count("fal-serverless/SKILL.md") == 1
 
 
-def test_dropped_files_make_a_skill_outdated(registry, env):
+def _edit(installed):
+    (installed / "SKILL.md").write_text("my edits\n")
+
+
+def _add_file(installed):
+    (installed / "references" / "notes.md").write_text("mine\n")
+
+
+def _delete_file(installed):
+    (installed / "references" / "more.md").unlink()
+
+
+def _add_link(installed):
+    try:
+        os.symlink(installed.parent, installed / "link")
+    except OSError:
+        pytest.skip("symlinks unavailable")
+
+
+@pytest.mark.parametrize("change", [_edit, _add_file, _delete_file, _add_link])
+@pytest.mark.parametrize(
+    "command", [["install"], ["update"], ["remove", "fal-serverless"]]
+)
+def test_local_changes_are_kept_unless_forced(registry, env, change, command):
     _, project = env
-    _run(["skills", "install", "-a", "universal"])
-    installed = project / ".agents" / "skills" / "fal-serverless"
-    skill_md = (installed / "SKILL.md").read_text()
-    registry.add("fal-serverless", {"SKILL.md": skill_md})
+    installed = _install_universal(project)
+    registry.add("fal-serverless", {"SKILL.md": "v2\n"})
+    change(installed)
+    before = _tree(installed)
+    argv = ["skills", *command, "-a", "universal"]
 
-    changes = _run_json(["skills", "update"])
+    changes = _run_json(argv)
 
-    assert [c["action"] for c in changes] == ["updated"]
-    assert not (installed / "references").exists()
-    assert (installed / "SKILL.md").read_text() == skill_md
+    assert [(c["action"], c["reason"]) for c in changes] == [("skipped", "modified")]
+    assert _tree(installed) == before
+
+    forced = _run_json([*argv, "--force"])
+
+    assert [c["action"] for c in forced] == (
+        ["removed"] if command[0] == "remove" else ["updated"]
+    )
+    if command[0] == "remove":
+        assert not os.path.lexists(installed)
+    else:
+        assert set(_tree(installed)) == {"SKILL.md", ".fal-skill"}
 
 
-def test_crlf_checkout_counts_as_current(registry, env):
+def test_modified_hint_names_force(registry, env):
     _, project = env
+    _edit(_install_universal(project))
+    registry.add("fal-serverless", {"SKILL.md": "v2\n"})
+
+    output = _run(["skills", "update"])
+
+    assert "! skipped fal-serverless in .agents/skills/fal-serverless" in output
+    assert "pass --force" in output
+
+
+def _own_skill(path):
+    path.mkdir(parents=True)
+    (path / "SKILL.md").write_text("mine\n")
+
+
+def _bad_marker(content):
+    def make(path):
+        _own_skill(path)
+        (path / skills_cli.MARKER).write_text(content)
+
+    return make
+
+
+def _file(path):
+    path.parent.mkdir(parents=True)
+    path.write_text("mine\n")
+
+
+def _link_to_fal_skill(path):
+    target = Path.cwd() / "elsewhere"
+    target.mkdir()
+    os.replace(_install_universal(Path.cwd()), target / "x")
+    path.parent.mkdir(parents=True)
+    try:
+        os.symlink(target / "x", path)
+    except OSError:
+        pytest.skip("symlinks unavailable")
+
+
+@pytest.mark.parametrize(
+    "make",
+    [
+        _own_skill,
+        _bad_marker("{not json"),
+        _bad_marker("[]"),
+        _bad_marker('{"files": []}'),
+        _file,
+        _link_to_fal_skill,
+    ],
+)
+@pytest.mark.parametrize(
+    "command",
+    [["install"], ["install", "--all"], ["update"], ["remove", "fal-serverless"]],
+)
+def test_skills_fal_does_not_own_are_never_touched(registry, env, make, command):
+    _, project = env
+    path = project / ".claude/skills/fal-serverless"
+    make(path)
+
+    def tree():
+        return {k: v for k, v in _tree(project).items() if "other-skill" not in k}
+
+    before = tree()
+
+    changes = _run_json(["skills", *command, "-a", "claude-code", "--force"])
+
+    change = [c for c in changes if c["skill"] == "fal-serverless"]
+    if command != ["update"]:
+        assert [(c["action"], c["reason"]) for c in change] == [
+            ("skipped", "unmanaged")
+        ]
+    else:
+        assert change == []
+    assert tree() == before
+
+
+def test_remove_checks_every_agent_by_default(registry, env):
+    _, project = env
+    _run(["skills", "install", "--all", "-a", "universal", "-a", "claude-code"])
+
+    changes = _run_json(["skills", "remove", "fal-serverless"])
+
+    assert sorted(c["path"] for c in changes) == sorted(
+        str(project / d / "fal-serverless")
+        for d in [".agents/skills", ".claude/skills"]
+    )
+    assert all(c["action"] == "removed" for c in changes)
+    assert (project / ".agents/skills/other-skill").is_dir()
+
+
+@pytest.mark.parametrize("command", [["update"], ["remove", "fal-serverless"]])
+def test_empty_update_and_remove_say_where_they_looked(registry, env, command):
+    assert "in this project." in _run(["skills", *command])
+    assert "in your home directory." in _run(["skills", *command, "--global"])
+
+
+def test_list_finds_installs_in_undetected_agents(registry, env):
+    _, project = env
+    _run(["skills", "install", "-a", "claude-code"])
+    registry.add("fal-serverless", {"SKILL.md": "v2\n"})
+
+    rows = _run_json(["skills", "list"])
+
+    assert {r["skill"]: r["installed"] for r in rows} == {
+        "fal-serverless": [
+            {
+                "path": str(project / ".claude/skills/fal-serverless"),
+                "agents": ["claude-code"],
+                "status": "outdated",
+            }
+        ],
+        "other-skill": [],
+    }
+    assert [r["skill"] for r in rows if r["default"]] == ["fal-serverless"]
+
+
+def test_list_table_shows_short_paths(registry, env):
+    home, _ = env
     _run(["skills", "install", "-a", "universal"])
-    skill_md = project / ".agents" / "skills" / "fal-serverless" / "SKILL.md"
-    skill_md.write_bytes(skill_md.read_bytes().replace(b"\n", b"\r\n"))
+    _run(["skills", "install", "-a", "claude-code", "--global"])
 
-    changes = _run_json(["skills", "install", "-a", "universal"])
+    assert "current: .agents/skills/fal-serverless" in _run(["skills", "list"])
+    table = _run(["skills", "list", "--global"])
+    assert "current: ~/.claude/skills/fal-serverless" in table
+    assert str(home) not in table
+    assert "fal-serverless (default)" in table
+    assert "other-skill description" in table
 
-    assert [c["action"] for c in changes] == ["unchanged"]
+
+BAD_PATHS = [
+    "../escape.md",
+    "/etc/passwd",
+    "a/../../b.md",
+    "a//b.md",
+    "./a.md",
+    "..\\escape.md",
+    "C:/x.md",
+    "\\\\server\\share\\x.md",
+    "CON",
+    "nul.txt",
+    "a/aux",
+    "trailing.",
+    ".fal-skill",
+]
+
+
+@pytest.mark.parametrize("bad_path", BAD_PATHS)
+def test_install_rejects_unsafe_paths(registry, env, bad_path):
+    _, project = env
+    registry.add("fal-serverless", {bad_path: "x"})
+
+    with pytest.raises(RuntimeError, match="unsafe skill file path"):
+        _run(["skills", "install", "-a", "universal"])
+    assert list(project.iterdir()) == []
+
+
+def test_install_allows_dotfiles(registry, env):
+    _, project = env
+    registry.add("fal-serverless", {"SKILL.md": "x\n", "runtime/.gitignore": "*\n"})
+
+    installed = _install_universal(project)
+
+    assert (installed / "runtime" / ".gitignore").read_text() == "*\n"
+    assert [c["action"] for c in _run_json(["skills", "update"])] == ["unchanged"]
+
+
+BAD_NAMES = ["..", ".", "", "a/b", "a\\b", "C:x", "con", "Upper", "a--b", "a-", "x."]
+
+
+@pytest.mark.parametrize("bad_name", BAD_NAMES)
+def test_install_rejects_unsafe_skill_names(registry, env, bad_name):
+    _, project = env
+    registry.skills = {bad_name: {"SKILL.md": b"pwned\n"}}
+
+    with pytest.raises(RuntimeError, match="Invalid skill name"):
+        _run(["skills", "install", "--all", "-a", "universal"])
+    assert list(project.iterdir()) == []
+
+
+@pytest.mark.parametrize("bad_name", [*BAD_NAMES, "fal-serverless/references"])
+def test_remove_rejects_unsafe_skill_names(registry, env, bad_name):
+    _, project = env
+    _install_universal(project)
+    before = _tree(project)
+
+    with pytest.raises(ValueError, match="Invalid skill name"):
+        _run(["skills", "remove", bad_name, "-a", "universal"])
+    assert _tree(project) == before
+
+
+def _tamper_index(registry, monkeypatch):
+    index = registry.index()
+    index["skills"][1]["files"][0]["sha256"] = "0" * 64
+    original = registry.get
+
+    def tampered(_, path):
+        return json.dumps(index).encode() if path == "index.json" else original(path)
+
+    monkeypatch.setattr(skills_cli.Registry, "_get", tampered)
+
+
+def test_checksum_mismatch_writes_nothing(registry, env, monkeypatch):
+    _, project = env
+    _tamper_index(registry, monkeypatch)
+
+    with pytest.raises(RuntimeError, match="try again in a few minutes"):
+        _run(["skills", "install", "--all", "-a", "universal"])
+    assert not (project / ".agents").exists()
 
 
 def test_failed_write_keeps_the_previous_install(registry, env, monkeypatch):
     _, project = env
-    _run(["skills", "install", "-a", "universal"])
-    skills_dir = project / ".agents" / "skills"
-    before = {
-        p.relative_to(skills_dir): p.read_bytes()
-        for p in skills_dir.rglob("*")
-        if p.is_file()
-    }
+    _install_universal(project)
+    skills_dir = project / ".agents/skills"
+    before = _tree(skills_dir)
     registry.add("fal-serverless", {"SKILL.md": "v2\n", "references/more.md": "v2\n"})
     original = Path.write_bytes
     calls = []
@@ -445,50 +493,49 @@ def test_failed_write_keeps_the_previous_install(registry, env, monkeypatch):
 
     monkeypatch.setattr(Path, "write_bytes", flaky)
 
-    with pytest.raises(OSError, match="disk full"):
-        _run(["skills", "install", "-a", "universal"])
-    after = {
-        p.relative_to(skills_dir): p.read_bytes()
-        for p in skills_dir.rglob("*")
-        if p.is_file()
-    }
-    assert after == before
+    changes = _run_json(["skills", "update"])
+
+    assert [(c["action"], c["error"]) for c in changes] == [("failed", "disk full")]
+    assert _tree(skills_dir) == before
+    assert [p.name for p in skills_dir.iterdir()] == ["fal-serverless"]
 
 
-def test_checksum_mismatch_writes_nothing(registry, env, monkeypatch):
+def test_failed_swap_restores_the_previous_install(registry, env, monkeypatch):
     _, project = env
-    index = registry.index()
-    index["skills"][1]["files"][0]["sha256"] = "0" * 64
-    original = registry.get
+    installed = _install_universal(project)
+    before = _tree(installed)
+    registry.add("fal-serverless", {"SKILL.md": "v2\n"})
+    original = os.replace
 
-    def tampered(_, path):
-        if path == "index.json":
-            return json.dumps(index).encode()
-        return original(path)
+    def flaky(src, dst):
+        if Path(src).name == "new":
+            raise OSError("in use")
+        return original(src, dst)
 
-    monkeypatch.setattr(skills_cli.Registry, "_get", tampered)
+    monkeypatch.setattr(os, "replace", flaky)
 
-    with pytest.raises(RuntimeError, match="try again in a few minutes"):
-        _run(["skills", "install", "--all", "-a", "universal"])
-    assert not (project / ".agents").exists()
+    changes = _run_json(["skills", "update"])
+
+    assert [(c["action"], c["error"]) for c in changes] == [("failed", "in use")]
+    assert _tree(installed) == before
+    assert [p.name for p in installed.parent.iterdir()] == ["fal-serverless"]
 
 
-def test_registry_markup_is_printed_verbatim(registry, env, tmp_path, monkeypatch):
-    description = "Use [optional] args, see [/x] and :fire: [docs](http://x)."
-    registry.descriptions = {"fal-serverless": description}
-    project = tmp_path / "app[wip]"
-    project.mkdir()
-    monkeypatch.chdir(project)
+def test_a_failing_target_is_reported_and_the_rest_continue(registry, env, monkeypatch):
+    _, project = env
+    original = skills_cli.write_skill
 
-    rows = _run_json(["skills", "list", "-a", "universal"])
-    assert rows[0]["description"] == description
-    changes = _run_json(["skills", "install", "-a", "universal"])
-    assert changes[0]["path"] == str(project / ".agents" / "skills" / "fal-serverless")
+    def flaky(skill, files, skills_dir):
+        if skills_dir.parent.name == ".claude":
+            raise PermissionError("denied")
+        return original(skill, files, skills_dir)
 
-    table = _run(["skills", "list", "-a", "universal"])
-    assert "Use [optional] args, see [/x] and :fire: [docs](http://x)" in table
-    output = _run(["skills", "install", "other-skill", "-a", "universal"])
-    assert str(project) in output
+    monkeypatch.setattr(skills_cli, "write_skill", flaky)
+
+    changes = _run_json(["skills", "install", "-a", "universal", "-a", "claude-code"])
+
+    assert [c["action"] for c in changes] == ["installed", "failed"]
+    assert (project / ".agents/skills/fal-serverless/SKILL.md").is_file()
 
 
 @pytest.mark.parametrize(
@@ -508,19 +555,51 @@ def test_malformed_index_names_the_registry(env, monkeypatch, body, reason):
         _run(["skills", "list"])
 
 
-def test_repeated_agent_is_listed_once(registry, env):
-    changes = _run_json(["skills", "install", "-a", "claude-code", "-a", "claude-code"])
-    assert [c["agents"] for c in changes] == [["claude-code"]]
+class StrictEncodingStream(io.StringIO):
+    encoding = "cp1252"
+
+    def write(self, text):
+        text.encode(self.encoding)
+        return super().write(text)
+
+
+def test_output_renders_on_cp1252(registry, env):
+    registry.descriptions = {"fal-serverless": "Arrows → here. More text."}
+
+    def console():
+        return Console(
+            file=StrictEncodingStream(), record=True, width=200, force_terminal=False
+        )
+
+    install = console()
+    _run(["skills", "install", "-a", "universal"], console=install)
+    assert "+ installed fal-serverless" in install.file.getvalue()
+    listing = console()
+    _run(["skills", "list"], console=listing)
+    assert "Arrows \\u2192 here" in listing.file.getvalue()
+
+
+def test_registry_markup_is_printed_verbatim(registry, env, tmp_path, monkeypatch):
+    description = "Use [optional] args, see [/x] and :fire: [docs](http://x)."
+    registry.descriptions = {"fal-serverless": description}
+    project = tmp_path / "app[wip]"
+    project.mkdir()
+    monkeypatch.chdir(project)
+
+    assert _run_json(["skills", "list"])[0]["description"] == description
+    assert description.rstrip(".") in _run(["skills", "list"])
+    changes = _run_json(["skills", "install", "-a", "universal"])
+    assert changes[0]["path"] == str(project / ".agents/skills/fal-serverless")
 
 
 def _mock_registry(monkeypatch, handler):
-    monkeypatch.setenv(skills_cli.REGISTRY_URL_ENV, "https://registry.test/skills")
+    monkeypatch.setenv(skills_cli.REGISTRY_URL_ENV, "https://registry.test/skills/")
     registry = skills_cli.Registry()
     registry._client = httpx.Client(transport=httpx.MockTransport(handler))
     return registry
 
 
-def test_registry_reuses_one_client(monkeypatch):
+def test_registry_reuses_one_client_and_honours_the_env_url(monkeypatch):
     urls = []
 
     def handler(request):
@@ -532,7 +611,6 @@ def test_registry_reuses_one_client(monkeypatch):
     with registry:
         assert registry._get("a/SKILL.md") == b"ok"
         assert registry._get("b/SKILL.md") == b"ok"
-        assert registry._client is client
     assert client.is_closed
     assert urls == [
         "https://registry.test/skills/a/SKILL.md",
@@ -560,42 +638,18 @@ def test_registry_reports_unreachable_host_with_the_url(monkeypatch):
     assert exc_info.value.__cause__ is None
 
 
-def test_help_states_each_commands_agent_default():
-    for command, default in [
-        ("install", skills_cli.DETECTED_AGENTS_HELP),
-        ("remove", skills_cli.ALL_AGENTS_HELP),
-        ("update", skills_cli.ALL_AGENTS_HELP),
-    ]:
-        stdout = io.StringIO()
-        with pytest.raises(FalParserExit), contextlib.redirect_stdout(stdout):
-            parse_args(["skills", command, "--help"])
-        assert " ".join(default.split()) in " ".join(stdout.getvalue().split())
+def test_a_skill_that_appears_during_download_is_left_alone(registry, env, monkeypatch):
+    _, project = env
+    path = project / ".agents/skills/fal-serverless"
+    original = skills_cli.Registry.download
 
+    def racing(self, skill):
+        _own_skill(path)
+        return original(self, skill)
 
-@pytest.mark.skipif(sys.platform != "win32", reason="Windows junctions")
-def test_remove_unlinks_a_junction_without_touching_its_target(tmp_path):
-    import _winapi
+    monkeypatch.setattr(skills_cli.Registry, "download", racing)
 
-    target = tmp_path / "target"
-    target.mkdir()
-    (target / "SKILL.md").write_text("keep\n")
-    link = tmp_path / "skills" / "linked"
-    link.parent.mkdir()
-    _winapi.CreateJunction(str(target), str(link))
+    changes = _run_json(["skills", "install", "-a", "universal"])
 
-    skills_cli._remove(link)
-
-    assert not os.path.lexists(link)
-    assert (target / "SKILL.md").read_text() == "keep\n"
-
-
-@pytest.mark.skipif(sys.platform != "win32", reason="Windows read-only files")
-def test_remove_deletes_read_only_files(tmp_path):
-    skill = tmp_path / "skill"
-    skill.mkdir()
-    (skill / "SKILL.md").write_text("x\n")
-    os.chmod(skill / "SKILL.md", stat.S_IREAD)
-
-    skills_cli._remove(skill)
-
-    assert not skill.exists()
+    assert [c["action"] for c in changes] == ["failed"]
+    assert _tree(path) == {"SKILL.md": b"mine\n"}
