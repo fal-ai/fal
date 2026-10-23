@@ -4,6 +4,7 @@ import asyncio
 import inspect
 import math
 import os
+import re
 import sys
 import threading
 import warnings
@@ -1509,6 +1510,26 @@ _SERVE_PORT = 8080
 _METRICS_PORT = 9090
 
 
+_REQUIREMENT_NAME_RE = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9._-]*)")
+
+
+def _declares_requirement(
+    requirements: list[str] | list[list[str]], package: str
+) -> bool:
+    """True when the app explicitly names ``package`` in its requirements."""
+    flat: list[str] = []
+    for entry in requirements:
+        if isinstance(entry, list):
+            flat.extend(entry)
+        else:
+            flat.append(entry)
+    for line in flat:
+        match = _REQUIREMENT_NAME_RE.match(line)
+        if match and match.group(1).replace("_", "-").lower() == package:
+            return True
+    return False
+
+
 @dataclass
 class Options:
     host: BasicConfig = field(default_factory=dict)
@@ -1533,6 +1554,28 @@ class Options:
 
         parsed = Requirements.from_raw(pip_requirements)
         existing = {req for layer in parsed.layers for req in layer}
+
+        if CERTIFI_REQUIREMENT in requirements:
+            declared_requirements = list(existing)
+            if kind == "conda":
+                if "env_dict" in self.environment:
+                    dependencies = self.environment["env_dict"].get("dependencies", [])
+                elif "env_yml_str" in self.environment:
+                    dependencies = yaml.safe_load(self.environment["env_yml_str"]).get(
+                        "dependencies", []
+                    )
+                else:
+                    dependencies = self.environment.get("packages", [])
+                for dependency in dependencies:
+                    if isinstance(dependency, str):
+                        declared_requirements.append(dependency.rsplit("::", 1)[-1])
+                    elif isinstance(dependency, dict):
+                        declared_requirements.extend(dependency.get("pip", []))
+            if _declares_requirement(declared_requirements, "certifi"):
+                # Explicit declarations opt out of our default CA freshness floor.
+                requirements = [
+                    req for req in requirements if req != CERTIFI_REQUIREMENT
+                ]
 
         # Already has these.
         if existing.issuperset(set(requirements)):
