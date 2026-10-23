@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import enum
+import os
 from contextlib import ExitStack
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
+from pathlib import Path
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -20,6 +22,7 @@ from typing import (
 )
 from urllib.error import HTTPError
 
+import certifi
 import grpc
 import isolate_proto
 from isolate.server.interface import from_grpc, to_serialized_object, to_struct
@@ -188,7 +191,12 @@ class LocalCredentials(ServerCredentials):
 
 class RemoteCredentials(ServerCredentials):
     def to_grpc(self) -> grpc.ChannelCredentials:
-        return grpc.ssl_channel_credentials()
+        root_file = (
+            os.environ.get("GRPC_DEFAULT_SSL_ROOTS_FILE_PATH") or certifi.where()
+        )
+        return grpc.ssl_channel_credentials(
+            root_certificates=Path(root_file).read_bytes()
+        )
 
 
 @dataclass(repr=False)

@@ -30,6 +30,7 @@ from fal.api import (
 from fal.api import (
     function as fal_function,
 )
+from fal.api.api import _declares_requirement
 from fal.auth import key_credentials
 from fal.compat import run_in_thread
 from fal.container import ContainerImage
@@ -157,26 +158,6 @@ def _is_wma_app(cls: type) -> bool:
     """
     wma_sdk = sys.modules.get("fal.wma.sdk")
     return wma_sdk is not None and issubclass(cls, wma_sdk.App)
-
-
-_REQUIREMENT_NAME_RE = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9._-]*)")
-
-
-def _declares_requirement(
-    requirements: list[str] | list[list[str]], package: str
-) -> bool:
-    """True when the app explicitly names ``package`` in its requirements."""
-    flat: list[str] = []
-    for entry in requirements:
-        if isinstance(entry, list):
-            flat.extend(entry)
-        else:
-            flat.append(entry)
-    for line in flat:
-        match = _REQUIREMENT_NAME_RE.match(line)
-        if match and match.group(1).replace("_", "-").lower() == package:
-            return True
-    return False
 
 
 def wrap_app(cls: type[App], **kwargs) -> IsolatedFunction:

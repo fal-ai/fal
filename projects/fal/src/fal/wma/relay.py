@@ -37,6 +37,8 @@ via ``make_error`` and keeps the session going.
 import asyncio
 from typing import Any, AsyncIterator, Awaitable, Callable, Sequence, Tuple, Type, Union
 
+from fal._tls import create_ssl_context
+
 
 class ControlRejected(Exception):
     """A client control update was rejected by the app's ``control_payload`` hook.
@@ -147,6 +149,11 @@ class WebSocketSignalingRelay:
 
         return await websockets.connect(
             self.upstream_url,
+            ssl=(
+                create_ssl_context()
+                if self.upstream_url.lower().startswith("wss://")
+                else None
+            ),
             ping_interval=self.ping_interval,
             ping_timeout=self.ping_timeout,
             close_timeout=self.close_timeout,

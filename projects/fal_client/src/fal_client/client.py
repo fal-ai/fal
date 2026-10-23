@@ -1099,8 +1099,12 @@ def _connect_sync_ws(
 ) -> Iterator["Connection"]:
     from websockets.sync import client
 
+    # websockets 12 requires ssl_context; newer versions retain it as an alias.
     with client.connect(
         url,
+        ssl_context=(
+            httpx.create_ssl_context() if url.lower().startswith("wss://") else None
+        ),
         additional_headers=headers,
         open_timeout=REALTIME_OPEN_TIMEOUT,
         max_size=None,
@@ -1116,6 +1120,7 @@ async def _connect_async_ws(
 
     async with websockets.connect(
         url,
+        ssl=httpx.create_ssl_context() if url.lower().startswith("wss://") else None,
         additional_headers=headers,
         open_timeout=REALTIME_OPEN_TIMEOUT,
         max_size=None,

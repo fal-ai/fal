@@ -134,7 +134,7 @@ def test_custom_timeout_forwarded():
         with _maybe_retry_request(request, timeout=300) as response:
             assert response is not None
 
-        mock_urlopen.assert_called_once_with(request, timeout=300)
+        mock_urlopen.assert_called_once_with(request, timeout=300, context=mock.ANY)
 
 
 def test_default_timeout():
@@ -146,7 +146,7 @@ def test_default_timeout():
         with _maybe_retry_request(request) as response:
             assert response is not None
 
-        mock_urlopen.assert_called_once_with(request, timeout=10)
+        mock_urlopen.assert_called_once_with(request, timeout=10, context=mock.ANY)
 
 
 @pytest.fixture
