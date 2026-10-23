@@ -774,6 +774,50 @@ def test_reserve_names_the_caller_from_the_given_request(
     assert (headers["x-fal-cdn-token"], headers["x-fal-request-id"]) == ("token", "rid")
 
 
+@pytest.mark.parametrize(
+    "header_name", ["x-fal-request-id", "X-Fal-Request-ID", "X-FAL-REQUEST-ID"]
+)
+def test_reserve_merges_signing_headers_case_insensitively(
+    local_upload, transport, header_name
+):
+    requests = transport(_session)
+    request = _caller_request(**{"x-fal-request-id": "caller-id"})
+
+    pending = files.File.reserve(
+        "image/png",
+        "out.png",
+        request=request,
+        extra_headers={header_name: "signing-id", "x-fal-provenance": "true"},
+    )
+
+    (opened,) = requests
+    assert opened.headers.get_list("x-fal-request-id") == ["signing-id"]
+    assert opened.headers.get_list("x-fal-provenance") == ["true"]
+    assert pending.url == ACCEPTED["file_url"]
+
+
+@pytest.mark.parametrize(
+    "header_name", ["x-fal-file-name", "X-Fal-File-Name", "X-FAL-FILE-NAME"]
+)
+@pytest.mark.parametrize("via_repository", [True, False])
+def test_session_file_name_overrides_explicit_headers(
+    local_upload, transport, header_name, via_repository
+):
+    requests = transport(_session)
+    file_name = " caf\u00e9.txt "
+    headers = {header_name: "override.txt"}
+
+    if via_repository:
+        local.LocalFileRepository().reserve(
+            file_name, "text/plain", extra_headers=headers
+        )
+    else:
+        _local_uploader.reserve(file_name, headers)
+
+    (opened,) = requests
+    assert opened.headers.get_list("x-fal-file-name") == ["caf?.txt"]
+
+
 @pytest.mark.parametrize("via_uploader", [True, False])
 @pytest.mark.parametrize("acknowledged", [True, False])
 def test_reserve_reports_cdn_signing_for_selected_destination(

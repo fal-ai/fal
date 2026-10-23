@@ -186,9 +186,10 @@ def _open_session(
     http: httpx.Client, file_name: str, headers: dict[str, str], request: Any = None
 ) -> tuple[str, str, bool]:
     headers = {
-        **_with_request_headers(headers, request),
-        "X-Fal-File-Name": _header_file_name(file_name),
+        name.lower(): value
+        for name, value in _with_request_headers(headers, request).items()
     }
+    headers["x-fal-file-name"] = _header_file_name(file_name)
     response = _request(http, "POST", "/v1/upload-sessions", 201, headers=headers)
     session_id, url = _receipt(response, "receiving")
     return session_id, url, response.json().get("cdn_signing_requested") is True
