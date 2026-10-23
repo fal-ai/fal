@@ -392,6 +392,80 @@ def test_caller_metadata_and_effective_settings(local_upload, caller, settings):
         assert "x-fal-object-lifecycle-preference" not in headers
 
 
+def test_safe_error_detail_is_printed_when_falling_back(
+    monkeypatch, capsys, local_upload, transport
+):
+    transport(
+        _respond(
+            httpx.Response(
+                400, json={"detail": "Invalid or missing x-fal-file-name header"}
+            )
+        )
+    )
+    direct = Mock(return_value="https://direct/file")
+    monkeypatch.setattr(remote.FalFileRepositoryV3, "save", direct)
+
+    result = files.File.from_bytes(b"hi")
+
+    assert result.url == "https://direct/file"
+    direct.assert_called_once()
+    output = capsys.readouterr().out
+    assert "POST /v1/uploads: Invalid or missing x-fal-file-name header" in output
+    assert "Uploading directly to CDN." in output
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"detail": "Authorization: Bearer secret-token"},
+        {"detail": "https://cdn.example/file?token=secret-token"},
+        {"detail": "Invalid or missing x-fal-file-name header\\nsecret-token"},
+        {"detail": {"token": "secret-token"}},
+        ["secret-token"],
+    ],
+)
+def test_untrusted_uploader_error_details_are_not_exposed(body):
+    with httpx.Client(
+        transport=httpx.MockTransport(lambda request: httpx.Response(400, json=body)),
+        base_url="http://localhost",
+    ) as client:
+        with pytest.raises(LocalUploadRefused) as caught:
+            _local_uploader._request(client, "POST", "/v1/uploads", 202)
+
+    assert "POST /v1/uploads" in str(caught.value)
+    assert "secret-token" not in str(caught.value)
+    assert "cdn.example" not in str(caught.value)
+
+
+@pytest.mark.parametrize(
+    "status,error_type",
+    [
+        (400, LocalUploadRefused),
+        (413, _local_uploader.LocalUploadInvalid),
+        (422, _local_uploader.LocalUploadInvalid),
+        (429, _local_uploader.LocalUploadRejected),
+        (503, LocalUploadError),
+    ],
+)
+def test_detailed_errors_preserve_classification_and_hide_session_ids(status, error_type):
+    with httpx.Client(
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(status, json={"detail": "Reservation rejected"})
+        ),
+        base_url="http://localhost",
+    ) as client:
+        with pytest.raises(error_type) as caught:
+            _local_uploader._request(
+                client, "POST", "/v1/upload-sessions/secret-session/finish", 202
+            )
+
+    assert type(caught.value) is error_type
+    assert "POST /v1/upload-sessions/{id}/finish: Reservation rejected" in str(
+        caught.value
+    )
+    assert "secret-session" not in str(caught.value)
+
+
 def _respond(response):
     def respond(request):
         if isinstance(response, type):

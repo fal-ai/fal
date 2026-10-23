@@ -10,6 +10,7 @@ sets, and every request names the runner's app in x-fal-application.
 from __future__ import annotations
 
 import os
+import re
 import time
 from contextlib import suppress
 from functools import partial
@@ -34,6 +35,29 @@ _CHUNK_SIZE = 64 * 1024
 _REJECTION_DELAYS = (0.1, 0.2)
 # How long each status request holds while the upload is pending.
 _WAIT_SECONDS = 60
+# Only static uploader API errors may enter logs, never arbitrary upstream text.
+_SAFE_ERROR_DETAIL = re.compile(
+    r"(?:Invalid or missing (?:authorization|content-length|content-type"
+    r"|x-fal-(?:cdn-token|file-name|request-id|object-lifecycle"
+    r"|object-lifecycle-preference|provenance)|x-app-fal-upload-policy) header"
+    r"|Authorization is required"
+    r"|Content-Length is required"
+    r"|Upload body does not match Content-Length or could not be read"
+    r"|Upload body reception timed out"
+    r"|Upload exceeds the per-file limit"
+    r"|Upload queue is full"
+    r"|Uploader is draining"
+    r"|Upload storage is temporarily unavailable"
+    r"|Local upload storage failed"
+    r"|Reservation rejected"
+    r"|Upload does not exist or is no longer retained"
+    r"|Upload is not eligible for this operation"
+    r"|Upload session does not exist or has ended"
+    r"|Upload session is not ready for this operation"
+    r"|Upload policy expired"
+    r"|Upload deadline exceeded"
+    r"|Upstream upload operation (?:failed|timed out))"
+)
 # Uploader inputs come only from the upload itself, never from the request: a
 # policy upload must stay credential-free, and an explicit lifecycle choice wins.
 _UPLOADER_INPUTS = {
@@ -260,14 +284,31 @@ def _request(
         ) from None
 
     status = response.status_code
-    if status == 429:
-        raise LocalUploadRejected("Local uploader returned HTTP 429.")
-    if status in (413, 422):
-        raise LocalUploadInvalid(f"Local uploader returned HTTP {status}.")
     if status != expected_status:
-        message = f"Local uploader returned HTTP {status}."
+        message = _http_error_message(response, method, path)
+        if status == 429:
+            raise LocalUploadRejected(message)
+        if status in (413, 422):
+            raise LocalUploadInvalid(message)
         raise (LocalUploadRefused if status < 500 else LocalUploadError)(message)
     return response
+
+
+def _http_error_message(response: httpx.Response, method: str, path: str) -> str:
+    operation = re.sub(
+        r"(/v1/(?:uploads|upload-sessions)/)[^/]+", r"\1{id}", path
+    )
+    message = (
+        f"Local uploader returned HTTP {response.status_code}. {method} {operation}"
+    )
+    try:
+        body = response.json()
+    except ValueError:
+        return message
+    detail = body.get("detail") if isinstance(body, dict) else None
+    if isinstance(detail, str) and _SAFE_ERROR_DETAIL.fullmatch(detail):
+        message += f": {detail}"
+    return message
 
 
 def _receipt(response: httpx.Response, state: str) -> tuple[str, str]:
@@ -297,9 +338,7 @@ def _wait_for_completion(http: httpx.Client, upload_id: str) -> None:
                 f"Lost the local uploader while waiting ({type(exc).__name__})."
             ) from None
         if response.status_code != 200:
-            raise LocalUploadError(
-                f"Local upload state is unknown (HTTP {response.status_code})."
-            )
+            raise LocalUploadError(_http_error_message(response, "GET", path))
         try:
             status = response.json()
             state = status["state"]
