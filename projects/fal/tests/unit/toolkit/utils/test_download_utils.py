@@ -1,8 +1,11 @@
 import json
+import multiprocessing as mp
 import os
 import subprocess
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from threading import Barrier, Lock
 
 import pytest
 
@@ -202,16 +205,85 @@ def test_download_model_weights_failed_refresh_preserves_valid_cache(
     assert record_path.read_text() == original_record
 
 
-def test_download_model_weights_concurrent_cache_misses(persistent_dirs):
-    with ThreadPoolExecutor(max_workers=4) as executor:
-        paths = list(executor.map(download_model_weights, [SAMPLE_URL] * 4))
+def test_download_model_weights_concurrent_cache_misses(persistent_dirs, monkeypatch):
+    original_download = download_utils.download_file
+    start = Barrier(4)
+    count_lock = Lock()
+    download_count = 0
 
+    def counted_download(*args, **kwargs):
+        nonlocal download_count
+        with count_lock:
+            download_count += 1
+        time.sleep(0.1)
+        return original_download(*args, **kwargs)
+
+    def download_after_barrier(_):
+        start.wait()
+        return download_model_weights(SAMPLE_URL)
+
+    monkeypatch.setattr(download_utils, "download_file", counted_download)
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        paths = list(executor.map(download_after_barrier, range(4)))
+
+    assert download_count == 1
     assert len(set(paths)) == 1
     assert paths[0].read_bytes() == b"hello"
     assert json.loads((paths[0].parent / ".fal-weights.json").read_text()) == {
         "url_sha256": _hash_url(SAMPLE_URL),
         "filename": paths[0].name,
     }
+
+
+def _download_model_weights_in_process(cache_dir, marker_dir, ready, start):
+    import fal.toolkit.utils.download_utils as utils
+
+    utils.FAL_MODEL_WEIGHTS_DIR = Path(cache_dir)
+    original_download = utils.download_file
+
+    def counted_download(*args, **kwargs):
+        (Path(marker_dir) / str(os.getpid())).touch()
+        time.sleep(0.1)
+        return original_download(*args, **kwargs)
+
+    utils.download_file = counted_download
+    ready.put(True)
+    if not start.wait(30):
+        raise TimeoutError("Concurrent download start was not signaled")
+    assert utils.download_model_weights(SAMPLE_URL).read_bytes() == b"hello"
+
+
+def test_download_model_weights_concurrent_processes_download_once(persistent_dirs):
+    cache_dir = persistent_dirs / "model_weights"
+    marker_dir = persistent_dirs / "download-markers"
+    marker_dir.mkdir()
+    context = mp.get_context("spawn")
+    ready = context.Queue()
+    start = context.Event()
+    processes = [
+        context.Process(
+            target=_download_model_weights_in_process,
+            args=(str(cache_dir), str(marker_dir), ready, start),
+        )
+        for _ in range(4)
+    ]
+    try:
+        for process in processes:
+            process.start()
+        for _ in processes:
+            assert ready.get(timeout=30)
+        start.set()
+        for process in processes:
+            process.join(timeout=30)
+            assert process.exitcode == 0
+    finally:
+        start.set()
+        for process in processes:
+            if process.is_alive():
+                process.terminate()
+            process.join(timeout=5)
+
+    assert len(list(marker_dir.iterdir())) == 1
 
 
 def test_download_model_weights_rejects_reserved_download_name(

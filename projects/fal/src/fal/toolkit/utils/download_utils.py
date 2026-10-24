@@ -15,6 +15,8 @@ from tempfile import TemporaryDirectory, mkstemp
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
+import portalocker
+
 from fal.toolkit.utils.ssrf import (
     SafeResponse,
     SSRFError,
@@ -360,34 +362,45 @@ def download_model_weights(
     # record produced after downloading this exact URL can select an artifact.
     weights_dir = Path(FAL_MODEL_WEIGHTS_DIR / _hash_url(url))
 
-    if weights_dir.is_symlink():
-        raise DownloadError("Model weights cache directory cannot be a symlink")
-
     if not force:
+        if weights_dir.is_symlink():
+            raise DownloadError("Model weights cache directory cannot be a symlink")
         weights_path = _cached_model_weights(weights_dir, url)
         if weights_path is not None:
             _mark_used_dir(weights_dir)
             return weights_path
 
-    # Stage outside the URL's cache directory. A legacy or planted file with the
-    # same name and length must not trigger download_file's size-only shortcut.
     weights_dir.parent.mkdir(parents=True, exist_ok=True)
-    with TemporaryDirectory(
-        dir=weights_dir.parent, prefix=".fal-weights-download-"
-    ) as staged_dir:
-        staged_path = download_file(
-            url,
-            target_dir=staged_dir,
-            force=True,
-            request_headers=request_headers,
-        )
-        if staged_path.name in {"", ".", "..", _WEIGHTS_RECORD}:
-            raise DownloadError("Invalid model weights filename")
+    # Keep the lock file beside the cache directory so legacy readers cannot
+    # mistake it for weights. It must persist for every runner to lock one inode.
+    lock_path = weights_dir.parent / f".fal-weights-{weights_dir.name}.lock"
+    with portalocker.Lock(lock_path, mode="a", flags=portalocker.LockFlags.EXCLUSIVE):
+        if weights_dir.is_symlink():
+            raise DownloadError("Model weights cache directory cannot be a symlink")
+        if not force:
+            weights_path = _cached_model_weights(weights_dir, url)
+            if weights_path is not None:
+                _mark_used_dir(weights_dir)
+                return weights_path
 
-        weights_dir.mkdir(parents=True, exist_ok=True)
-        path = weights_dir / staged_path.name
-        os.replace(staged_path, path)
-        _record_model_weights(path, url)
+        # Stage outside the URL's cache directory. A legacy or planted file with the
+        # same name and length must not trigger download_file's size-only shortcut.
+        with TemporaryDirectory(
+            dir=weights_dir.parent, prefix=".fal-weights-download-"
+        ) as staged_dir:
+            staged_path = download_file(
+                url,
+                target_dir=staged_dir,
+                force=True,
+                request_headers=request_headers,
+            )
+            if staged_path.name in {"", ".", "..", _WEIGHTS_RECORD}:
+                raise DownloadError("Invalid model weights filename")
+
+            weights_dir.mkdir(parents=True, exist_ok=True)
+            path = weights_dir / staged_path.name
+            os.replace(staged_path, path)
+            _record_model_weights(path, url)
 
     _mark_used_dir(weights_dir)
 
