@@ -161,7 +161,8 @@ def _deployed_app_urls(route: str, url: str) -> tuple[str | None, str | None]:
     and the route is appended to it, so the URL is printed as the backend built
     it. The root route only adds a trailing slash, which is dropped.
     """
-    overview_url, marker, _ = url.partition("/testing/playground")
+    path = url.partition("?")[0]
+    overview_url, marker, _ = path.rpartition("/testing/playground")
     overview = overview_url if marker else None
     if route.rsplit("/", 1)[-1] in _UTILITY_ENDPOINT_SUFFIXES:
         return overview, None

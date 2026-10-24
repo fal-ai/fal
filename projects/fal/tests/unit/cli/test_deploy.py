@@ -657,15 +657,16 @@ def mock_args(
     return args
 
 
-@pytest.mark.parametrize("app_alias", ["image-app", "health"])
+@pytest.mark.parametrize(
+    "app_path", ["team-owner/image-app", "team-owner/health", "testing/playground-app"]
+)
 def test_deploy_output_links_testable_routes_to_the_owning_app_playground(
-    monkeypatch, app_alias
+    monkeypatch, app_path
 ):
     monkeypatch.setattr("fal.flags.URL_OUTPUT", "playground")
     origin = "https://shark.fal.dev"
     app_playground = (
-        f"{origin}/dashboard/apps/team-owner/{app_alias}/testing/playground"
-        f"?endpoint=team-owner/{app_alias}"
+        f"{origin}/dashboard/apps/{app_path}/testing/playground?endpoint={app_path}"
     )
     result = SimpleNamespace(
         revision="rev",
@@ -699,7 +700,7 @@ def test_deploy_output_links_testable_routes_to_the_owning_app_playground(
     assert rendered_urls == [
         app_playground,
         f"{app_playground}/v2/generate",
-        f"{origin}/dashboard/apps/team-owner/{app_alias}",
+        f"{origin}/dashboard/apps/{app_path}",
     ]
 
 
