@@ -159,3 +159,91 @@ Before release, verify a deployed session through the real bridge with the
 intended client: connect, exchange controls/media, disconnect/reconnect, release
 runner resources, and confirm the settled billing amount. Repeat from a clean
 installation of the published SDK version before customer handoff.
+
+## Optional session recording
+
+Install `fal[wma]` to include the media dependencies. Add a `RecordingConfig`
+to your existing `fal.wma.App` and wrap one outgoing video track:
+
+```python
+import fal.wma as wma
+
+
+class MyWorld(wma.App):
+    recording = wma.RecordingConfig(
+        segment_seconds=30,
+        finalization_timeout=45,
+    )
+
+    async def create_backend(self, session):
+        async def on_connect(pc):
+            track = self.create_video_track(session)  # Your app's video source.
+            pc.addTrack(session.record_video(track, fps=16))
+
+        return wma.AiortcPeer(session, on_connect=on_connect)
+```
+
+This excerpt omits application-specific track creation and ICE configuration;
+`examples/wma_video.py` is a complete CPU example with both. Set `fps` to your
+track's frame rate. Omit `recording` or set it to `None` to leave recording off.
+
+The wrapper returns the original frames to WebRTC and snapshots their pixels
+into a bounded queue. A CPU thread encodes seekable H.264 MP4 segments, and
+completed segments upload while the session is live. These are separate video
+files, not pieces of a single video. Recording is video-only and supports one
+selected track per session. Pixel copying, encoding, disk writes and uploads
+use runner resources; measure live latency on your intended machine type.
+
+Uploads use the toolkit's `File` API with the originating request context,
+including caller CDN credentials, upload policy and storage retention settings.
+Recording does not need a request-output replacement API key. Uploads do not
+fall back to another storage repository after an error.
+
+When the peer closes, normal session cleanup and billing-unit settlement run
+first. The HTTP/SSE request stays open while the recorder finishes its last
+segment and outstanding uploads, bounded by `finalization_timeout`. Keepalive
+comments continue during this wait. The final `result` event becomes the stored
+request output through the gateway's last-event-as-body headers:
+
+```json
+{
+  "session_id": "...",
+  "request_id": "...",
+  "recording_status": "complete",
+  "publication_transport": "final_sse",
+  "video": [
+    {
+      "url": "https://.../recording-00001.mp4",
+      "content_type": "video/mp4",
+      "file_name": "recording-00001.mp4",
+      "file_size": 123456,
+      "segment_index": 1
+    }
+  ]
+}
+```
+
+The `video` array is ordered by segment index, even when uploads finish out of
+order. `recording_status` is `complete`, `partial`, `empty`, or `failed` in the
+final result. `partial` retains successfully uploaded segments when another
+segment fails or a limit is reached. An `error` field contains a stable error
+code without exception details. During the live stream, a `recording` event
+with status `uploading` indicates that final output is pending.
+
+### Limits and failure behavior
+
+`RecordingConfig` defaults to two active recorders per app instance, eight
+queued frame snapshots, 12 MiB per snapshot, two pending uploads, a 64 MiB
+segment rotation threshold, 1 GiB total encoded media, and 240 segments.
+`max_active_recordings` includes finalization; size thresholds are checked at
+frame/segment boundaries and are not hard filesystem quotas. Tune these limits
+alongside `max_multiplexing`. Capacity exhaustion or recording failure preserves
+the live session and reports a recording error rather than failing inference.
+
+The finalization tail retains a Serverless request slot and can incur compute
+cost, although session billing units have already been settled. This is not a
+durable background worker: HTTP disconnection or runner termination can prevent
+final output publication. If a blocking toolkit upload outlasts finalization,
+its temporary file and recorder admission slot remain held until that worker
+finishes; the HTTP response does not wait indefinitely for that worker.
+Uploaded segments are not automatically deleted when publication fails.
