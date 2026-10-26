@@ -665,9 +665,7 @@ def test_deploy_output_links_testable_routes_to_the_owning_app_playground(
 ):
     monkeypatch.setattr("fal.flags.URL_OUTPUT", "playground")
     origin = "https://shark.fal.dev"
-    app_playground = (
-        f"{origin}/dashboard/apps/{app_path}/testing/playground?endpoint={app_path}"
-    )
+    app_playground = f"{origin}/dashboard/apps/{app_path}/testing/playground?endpoint="
     result = SimpleNamespace(
         revision="rev",
         app_name="image-app",
@@ -698,7 +696,7 @@ def test_deploy_output_links_testable_routes_to_the_owning_app_playground(
         if line.strip().startswith("https://")
     ]
     assert rendered_urls == [
-        app_playground,
+        f"{app_playground}/",
         f"{app_playground}/v2/generate",
         f"{origin}/dashboard/apps/{app_path}",
     ]
@@ -713,7 +711,7 @@ def test_deploy_output_keeps_utility_only_apps_discoverable(monkeypatch):
         urls={
             "playground": {
                 "/health": "https://fal.ai/dashboard/apps/team-owner/image-app"
-                "/testing/playground?endpoint=team-owner/image-app/health",
+                "/testing/playground?endpoint=/health",
             },
         },
     )

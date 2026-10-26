@@ -157,16 +157,15 @@ _UTILITY_ENDPOINT_SUFFIXES = {"cancel", "health", "object_info"}
 def _deployed_app_urls(route: str, url: str) -> tuple[str | None, str | None]:
     """Return the app overview and, for non-utility routes, the Playground URL.
 
-    The backend sends `<app overview>/testing/playground?endpoint=<owner/app>`
-    and the route is appended to it, so the URL is printed as the backend built
-    it. The root route only adds a trailing slash, which is dropped.
+    The backend sends `<app overview>/testing/playground?endpoint=` with the
+    route appended, so the Playground URL is printed unchanged.
     """
     path = url.partition("?")[0]
     overview_url, marker, _ = path.rpartition("/testing/playground")
     overview = overview_url if marker else None
     if route.rsplit("/", 1)[-1] in _UTILITY_ENDPOINT_SUFFIXES:
         return overview, None
-    return overview, url.rstrip("/")
+    return overview, url
 
 
 def _render_deploy_result(
