@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import os
 import pickle
 import signal
@@ -15,6 +16,7 @@ from unittest.mock import MagicMock, PropertyMock, patch
 
 import pytest
 from fastapi import WebSocket
+from isolate.server.interface import to_serialized_object
 from pydantic import BaseModel
 
 import fal
@@ -142,6 +144,7 @@ def test_machine_requirements_preserves_positional_field_order():
         "startup_timeout",
         "valid_regions",
         "metrics_port",
+        "request_start_timeout",
     ]
 
     requirements = MachineRequirements(
@@ -165,9 +168,13 @@ def test_machine_requirements_preserves_positional_field_order():
     )
     assert requirements.scheduler == "scheduler"
     assert requirements.metrics_port == 9090
+    assert requirements.request_start_timeout is None
 
 
-def test_run_forwards_regions_to_machine_requirements():
+@pytest.mark.parametrize("timeout", [None, 0, 30])
+def test_run_forwards_regions_and_request_start_timeout_to_machine_requirements(
+    timeout,
+):
     from fal.api.api import FalServerlessHost, Options, ResultHandler
     from fal.sdk import HostedRunState
 
@@ -175,6 +182,7 @@ def test_run_forwards_regions_to_machine_requirements():
     options = Options()
     options.host["regions"] = ["us-east"]
     options.host["metrics_port"] = 3001
+    options.host["request_start_timeout"] = timeout
 
     connection = MagicMock()
     connection.define_environment.return_value = object()
@@ -200,6 +208,7 @@ def test_run_forwards_regions_to_machine_requirements():
     machine_requirements = call_kwargs["machine_requirements"]
     assert machine_requirements.valid_regions == ["us-east"]
     assert machine_requirements.metrics_port == 3001
+    assert machine_requirements.request_start_timeout == timeout
 
 
 def test_register_defaults_metrics_port_for_served_app():
@@ -1112,6 +1121,27 @@ def test_wrap_app_allows_resolver_with_container_kind():
     assert fn.options.environment.get("resolver") == "uv"
 
 
+def test_function_compile_bytecode_propagates_to_environment():
+    @fal.function(resolver="uv", compile_bytecode=True)
+    def compiled_function():
+        pass
+
+    assert compiled_function.options.environment["compile_bytecode"] is True
+
+
+def test_app_compile_bytecode_propagates_to_environment():
+    from fal.app import wrap_app
+
+    class CompiledApp(App, compile_bytecode=True):
+        @endpoint("/")
+        def hello(self) -> str:
+            return "Hello, world!"
+
+    fn = wrap_app(CompiledApp)
+
+    assert fn.options.environment["compile_bytecode"] is True
+
+
 def test_function_force_env_build_propagates_for_container_apps():
     image = ContainerImage.from_dockerfile_str("FROM python:3.11-slim")
 
@@ -1475,6 +1505,8 @@ def test_app_classvars_propagate_to_host_kwargs():
         kind = "container"
         image = ContainerImage.from_dockerfile_str(
             "FROM python:3.10-slim",
+            registries={"registry.example": {"username": "u", "password": "pw-9f03"}},
+            secrets={"TOKEN": "pw-9f03"},
         )
         skip_retry_conditions = ["timeout", "connection_error"]
 
@@ -1510,6 +1542,9 @@ def test_app_classvars_propagate_to_host_kwargs():
         "timeout",
         "connection_error",
     ]
+    assert fn.options.environment["image"]["registries"]["registry.example"]
+    assert b"pw-9f03" not in to_serialized_object(fn.func, "cloudpickle").definition
+    assert copy.copy(VarsApp.image) == copy.deepcopy(VarsApp.image) == VarsApp.image
 
 
 def test_data_mounts_propagate_to_host_kwargs():
@@ -2787,3 +2822,61 @@ def test_retry_config_classvar_propagates_to_host_kwargs():
 
     fn = wrap_app(RetryDictApp)
     assert fn.options.host.get("retry_config") == {"timeout": {"retries": 2}}
+
+
+@pytest.mark.parametrize("timeout", [None, 0, 30])
+def test_app_request_start_timeout_reaches_register_machine_requirements(timeout):
+    from fal.api.api import FalServerlessHost
+    from fal.app import wrap_app
+    from fal.sdk import RegisterApplicationResult, RegisterApplicationResultType
+
+    class QueueTimeoutApp(App):
+        request_start_timeout = timeout
+
+        @endpoint("/")
+        def hello(self) -> str:
+            return "Hello, world!"
+
+    fn = wrap_app(QueueTimeoutApp)
+    assert fn.options.host.get("request_start_timeout") == timeout
+    assert ("request_start_timeout" in fn.options.host) == (timeout is not None)
+
+    connection = MagicMock()
+    connection.register.return_value = iter(
+        [RegisterApplicationResult(result=RegisterApplicationResultType("app-id"))]
+    )
+    with patch.object(
+        FalServerlessHost, "_connection", new_callable=PropertyMock
+    ) as mock_connection:
+        mock_connection.return_value = connection
+        FalServerlessHost().register(
+            fn.func,
+            fn.options,
+            application_name="queue-timeout-app",
+            deployment_strategy="rolling",
+        )
+
+    requirements = connection.register.call_args.kwargs["machine_requirements"]
+    assert requirements.request_start_timeout == timeout
+
+
+def test_app_request_start_timeout_inheritance_and_clear():
+    from fal.app import wrap_app
+
+    class ParentApp(App):
+        request_start_timeout = 30
+
+        @endpoint("/")
+        def hello(self) -> str:
+            return "Hello, world!"
+
+    class ChildApp(ParentApp):
+        pass
+
+    class ClearedApp(ChildApp):
+        request_start_timeout = 0
+
+    assert wrap_app(ChildApp).options.host["request_start_timeout"] == 30
+    assert wrap_app(ClearedApp).options.host["request_start_timeout"] == 0
+    assert ParentApp.host_kwargs["request_start_timeout"] == 30
+    assert "request_start_timeout" not in App.host_kwargs

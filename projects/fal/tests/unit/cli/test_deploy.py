@@ -9,7 +9,7 @@ from rich.console import Console
 from fal.api import Options
 from fal.api.api import IsolatedFunction
 from fal.cli._utils import AppData
-from fal.cli.deploy import _deploy
+from fal.cli.deploy import _deploy, _render_deploy_result
 from fal.cli.deploy_check import (
     _build_deployment_check_summary,
     _diff_table,
@@ -536,6 +536,15 @@ def disable_admin_deploy_check_lookup():
 
 
 @pytest.fixture
+def cli_working_directory(tmp_path, monkeypatch):
+    (tmp_path / "pyproject.toml").write_text("[tool.fal]\n")
+    directory = tmp_path / "nested"
+    directory.mkdir()
+    monkeypatch.chdir(directory)
+    return directory
+
+
+@pytest.fixture
 def mock_parse_pyproject_toml():
     return {
         "apps": {
@@ -646,6 +655,88 @@ def mock_args(
     args.annotation = annotation
 
     return args
+
+
+@pytest.mark.parametrize("app_alias", ["image-app", "image-app--staging", "health"])
+def test_deploy_output_links_testable_routes_to_the_owning_app_playground(
+    monkeypatch, app_alias
+):
+    monkeypatch.setattr("fal.flags.URL_OUTPUT", "playground")
+    origin = "https://shark.fal.dev"
+    app_model_path = f"{origin}/models/team-owner/{app_alias}"
+    result = SimpleNamespace(
+        revision="rev",
+        app_name="image-app",
+        auth_mode="private",
+        urls={
+            "playground": {
+                "/": f"{app_model_path}/",
+                "/v2/generate": f"{app_model_path}/v2/generate",
+                "/stream": f"{app_model_path}/stream",
+                "/ws": f"{app_model_path}/ws",
+                "/realtime": f"{app_model_path}/realtime",
+                "/sse": f"{app_model_path}/sse",
+                "/health": f"{app_model_path}/health",
+                "/v2/generate/cancel": f"{app_model_path}/v2/generate/cancel",
+                "/stream/cancel": f"{app_model_path}/stream/cancel",
+                "/object_info": f"{app_model_path}/object_info",
+            },
+            "sync": {},
+            "async": {},
+        },
+        log_url=f"{origin}/logs/rev",
+    )
+    args = mock_args(app_ref=("app.py", "App"))
+    args.console = Console(
+        record=True, width=240, force_terminal=False, color_system=None
+    )
+
+    _render_deploy_result(args, result)
+
+    rendered_urls = [
+        line.strip()
+        for line in args.console.export_text().splitlines()
+        if line.strip().startswith("https://")
+    ]
+    app_playground = (
+        f"{origin}/dashboard/apps/team-owner/{app_alias}/testing/playground"
+    )
+    assert rendered_urls == [
+        f"{app_playground}?endpoint=team-owner%2F{app_alias}",
+        f"{app_playground}?endpoint=team-owner%2F{app_alias}%2Fv2%2Fgenerate",
+        f"{app_playground}?endpoint=team-owner%2F{app_alias}%2Fstream",
+        f"{app_playground}?endpoint=team-owner%2F{app_alias}%2Fws",
+        f"{app_playground}?endpoint=team-owner%2F{app_alias}%2Frealtime",
+        f"{app_playground}?endpoint=team-owner%2F{app_alias}%2Fsse",
+        f"{origin}/dashboard/apps/team-owner/{app_alias}",
+    ]
+
+
+def test_deploy_output_keeps_utility_only_apps_discoverable(monkeypatch):
+    monkeypatch.setattr("fal.flags.URL_OUTPUT", "playground")
+    result = SimpleNamespace(
+        revision="rev",
+        app_name="image-app",
+        auth_mode="private",
+        urls={
+            "playground": {
+                "/health": "https://fal.ai/models/team-owner/image-app/health",
+            },
+        },
+    )
+    args = mock_args(app_ref=("app.py", "App"))
+    args.console = Console(
+        record=True, width=240, force_terminal=False, color_system=None
+    )
+
+    _render_deploy_result(args, result)
+
+    rendered_urls = [
+        line.strip()
+        for line in args.console.export_text().splitlines()
+        if line.strip().startswith("https://")
+    ]
+    assert rendered_urls == ["https://fal.ai/dashboard/apps/team-owner/image-app"]
 
 
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
@@ -1080,6 +1171,7 @@ def test_deploy_with_cli_auth(
     mock_parse_toml,
     mock_find_toml,
     mock_parse_pyproject_toml,
+    cli_working_directory,
 ):
     mock_parse_toml.return_value = mock_parse_pyproject_toml
 
@@ -1087,7 +1179,7 @@ def test_deploy_with_cli_auth(
 
     _deploy(args)
 
-    project_root, _ = find_project_root(None)
+    project_root = cli_working_directory
 
     mock_prepare_ref.assert_called_once_with(
         mock_prepare_ref.call_args[0][0],
@@ -1115,6 +1207,7 @@ def test_deploy_with_cli_app_name(
     mock_parse_toml,
     mock_find_toml,
     mock_parse_pyproject_toml,
+    cli_working_directory,
 ):
     mock_parse_toml.return_value = mock_parse_pyproject_toml
 
@@ -1125,7 +1218,7 @@ def test_deploy_with_cli_app_name(
 
     _deploy(args)
 
-    project_root, _ = find_project_root(None)
+    project_root = cli_working_directory
 
     mock_prepare_ref.assert_called_once_with(
         mock_prepare_ref.call_args[0][0],
@@ -1153,6 +1246,7 @@ def test_deploy_with_cli_deployment_strategy(
     mock_parse_toml,
     mock_find_toml,
     mock_parse_pyproject_toml,
+    cli_working_directory,
 ):
     mock_parse_toml.return_value = mock_parse_pyproject_toml
 
@@ -1160,7 +1254,7 @@ def test_deploy_with_cli_deployment_strategy(
 
     _deploy(args)
 
-    project_root, _ = find_project_root(None)
+    project_root = cli_working_directory
 
     mock_prepare_ref.assert_called_once_with(
         mock_prepare_ref.call_args[0][0],
@@ -1188,6 +1282,7 @@ def test_deploy_with_cli_reset_scale(
     mock_parse_toml,
     mock_find_toml,
     mock_parse_pyproject_toml,
+    cli_working_directory,
 ):
     mock_parse_toml.return_value = mock_parse_pyproject_toml
 
@@ -1195,7 +1290,7 @@ def test_deploy_with_cli_reset_scale(
 
     _deploy(args)
 
-    project_root, _ = find_project_root(None)
+    project_root = cli_working_directory
 
     mock_prepare_ref.assert_called_once_with(
         mock_prepare_ref.call_args[0][0],
@@ -1223,6 +1318,7 @@ def test_deploy_with_cli_scale(
     mock_parse_toml,
     mock_find_toml,
     mock_parse_pyproject_toml,
+    cli_working_directory,
 ):
     mock_parse_toml.return_value = mock_parse_pyproject_toml
 
@@ -1230,7 +1326,7 @@ def test_deploy_with_cli_scale(
 
     _deploy(args)
 
-    project_root, _ = find_project_root(None)
+    project_root = cli_working_directory
 
     mock_prepare_ref.assert_called_once_with(
         mock_prepare_ref.call_args[0][0],
@@ -1258,6 +1354,7 @@ def test_deploy_with_cli_no_cache(
     mock_parse_toml,
     mock_find_toml,
     mock_parse_pyproject_toml,
+    cli_working_directory,
 ):
     mock_parse_toml.return_value = mock_parse_pyproject_toml
 
@@ -1265,7 +1362,7 @@ def test_deploy_with_cli_no_cache(
 
     _deploy(args)
 
-    project_root, _ = find_project_root(None)
+    project_root = cli_working_directory
 
     mock_prepare_ref.assert_called_once_with(
         mock_prepare_ref.call_args[0][0],
@@ -1461,6 +1558,26 @@ def test_get_app_data_from_toml_with_num_gpus(
     toml_data = get_app_data_from_toml("override-app")
 
     assert toml_data.options.host["num_gpus"] == 2
+
+
+@pytest.mark.parametrize("timeout", [None, 0, 30])
+@patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
+@patch("fal.cli._utils.parse_pyproject_toml")
+def test_get_app_data_from_toml_with_request_start_timeout(
+    mock_parse_toml, mock_find_toml, timeout
+):
+    from fal.cli._utils import get_app_data_from_toml
+
+    app_config = {"ref": "src/queue_app/inference.py::QueueTimeoutApp"}
+    if timeout is not None:
+        app_config["request_start_timeout"] = timeout
+    mock_parse_toml.return_value = {"apps": {"queue-timeout-app": app_config}}
+
+    toml_data = get_app_data_from_toml("queue-timeout-app")
+
+    host = toml_data.options.host
+    assert ("request_start_timeout" in host) == (timeout is not None)
+    assert host.get("request_start_timeout") == timeout
 
 
 @patch("fal.cli._utils.find_pyproject_toml", return_value="pyproject.toml")
@@ -3034,3 +3151,48 @@ def test_deploy_first_deploy_nudge_threads_env(
     rendered = args.console.export_text()
     assert "staging environment" in rendered
     assert "fal run src/my_app/inference.py::MyApp --env staging" in rendered
+
+
+@pytest.mark.parametrize(
+    "timeout, displayed", [(None, "none"), (0, "none"), (30, "30")]
+)
+@pytest.mark.parametrize("reset_scale", [False, True])
+def test_deploy_preview_request_start_timeout(timeout, displayed, reset_scale):
+    prepared = _prepared_deployment(
+        reset_scale=reset_scale, host_options={"request_start_timeout": timeout}
+    )
+    production = _production_alias(request_start_timeout=60)
+
+    summary = _build_deployment_check_summary(
+        prepared, production, source="flag", force_env_build=False
+    )
+
+    row = next(
+        row for row in summary.effective_changes if row.label == "Request Start Timeout"
+    )
+    assert row.production == "60"
+    assert row.after_deploy == displayed
+    assert row.note == (
+        None if reset_scale else "Code value will not apply without --reset-scale"
+    )
+
+
+@pytest.mark.parametrize(
+    "timeout, displayed", [(None, "none"), (0, "none"), (30, "30")]
+)
+def test_first_deploy_preview_request_start_timeout(timeout, displayed):
+    summary = _build_deployment_check_summary(
+        _prepared_deployment(
+            reset_scale=False, host_options={"request_start_timeout": timeout}
+        ),
+        None,
+        source="flag",
+        force_env_build=False,
+    )
+
+    row = next(
+        row
+        for row in summary.effective_scale_values
+        if row.label == "Request Start Timeout"
+    )
+    assert row.after_deploy == displayed

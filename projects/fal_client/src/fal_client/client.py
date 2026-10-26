@@ -24,6 +24,7 @@ from typing import (
     Awaitable,
     Dict,
     Iterator,
+    Mapping,
     TYPE_CHECKING,
     Optional,
     Literal,
@@ -52,6 +53,7 @@ from fal_client._headers import (
     add_priority_header,
     add_timeout_header,
     add_hint_header,
+    add_tags_header,
     add_fal_app_context_headers,
     handle_response_headers,
     REQUEST_TIMEOUT_TYPE_HEADER,
@@ -84,6 +86,15 @@ RUN_URL_FORMAT = f"https://{FAL_RUN_HOST}/"
 QUEUE_URL_FORMAT = f"https://{FAL_QUEUE_RUN_HOST}/"
 REALTIME_URL_FORMAT = f"wss://{FAL_RUN_HOST}/"
 REST_URL = "https://rest.fal.ai"
+
+_BACKUP_DOMAINS = {
+    "fal.run": "falrun.com",
+    "queue.fal.run": "queue.falrun.com",
+}
+# Ceiling on the connect timeout for HTTP requests to a mapped domain (run,
+# submit, status, result, cancel and stream alike). A shorter caller timeout
+# still wins; a longer one cannot delay falling back to the backup domain.
+_BACKUP_DOMAIN_CONNECT_TIMEOUT = 5.0
 
 CDN_URL = "https://v3.fal.media"
 DEFAULT_UPLOAD_REPOSITORY: UploadRepositoryId = "fal_v3"
@@ -360,9 +371,9 @@ class MultipartUpload:
             futures = []
             for part_number in range(1, parts + 1):
                 start = (part_number - 1) * multipart.chunk_size
-                data = data[start : start + multipart.chunk_size]
+                chunk = data[start : start + multipart.chunk_size]
                 futures.append(
-                    executor.submit(multipart.upload_part, part_number, data)
+                    executor.submit(multipart.upload_part, part_number, chunk)
                 )
             for future in concurrent.futures.as_completed(futures):
                 future.result()
@@ -988,6 +999,100 @@ class AsyncRealtimeConnection:
         await self.close()
 
 
+def _fallback_url(url: httpx.URL) -> httpx.URL | None:
+    host = _BACKUP_DOMAINS.get(url.host)
+    if host is None:
+        return None
+    return url.copy_with(host=host)
+
+
+def _limit_connect_timeout(request: httpx.Request) -> None:
+    if (
+        request.url.host not in _BACKUP_DOMAINS
+        and request.url.host not in _BACKUP_DOMAINS.values()
+    ):
+        return
+
+    # Per-request timeout=None must not disable detecting an unreachable domain.
+    timeouts = request.extensions.get("timeout", {})
+    connect = timeouts.get("connect")
+    request.extensions["timeout"] = {
+        **timeouts,
+        "connect": min(connect, _BACKUP_DOMAIN_CONNECT_TIMEOUT)
+        if connect is not None
+        else _BACKUP_DOMAIN_CONNECT_TIMEOUT,
+    }
+
+
+def _backup_request(request: httpx.Request) -> httpx.Request:
+    url = _fallback_url(request.url)
+    if url is None:
+        raise
+    headers = request.headers.copy()
+    headers["Host"] = url.netloc.decode("ascii")
+    return httpx.Request(
+        request.method,
+        url,
+        headers=headers,
+        stream=request.stream,
+        extensions=request.extensions.copy(),
+    )
+
+
+def _log_backup(primary_url: httpx.URL, backup_host: str, exc: Exception) -> None:
+    request_path = primary_url.raw_path.partition(b"?")[0].decode("ascii")
+    logger.warning(
+        "Connection to %s%s failed (%s); trying backup domain %s",
+        primary_url.host,
+        request_path,
+        type(exc).__name__,
+        backup_host,
+    )
+
+
+class BackupDomainTransport(httpx.BaseTransport):
+    def __init__(self, *, transport: httpx.BaseTransport | None = None) -> None:
+        # Let HTTPX route each domain through its environment proxy configuration.
+        # Redirects stay with the outer client so fallback only replays one hop.
+        self._client = httpx.Client(transport=transport, follow_redirects=False)
+
+    def handle_request(self, request: httpx.Request) -> httpx.Response:
+        _limit_connect_timeout(request)
+        try:
+            return self._client.send(request, stream=True)
+        except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+            backup = _backup_request(request)
+            _log_backup(request.url, backup.url.host, exc)
+            try:
+                return self._client.send(backup, stream=True)
+            except (httpx.ConnectError, httpx.ConnectTimeout):
+                # Preserve the primary error's retry policy; retain backup in context.
+                raise exc
+
+    def close(self) -> None:
+        self._client.close()
+
+
+class AsyncBackupDomainTransport(httpx.AsyncBaseTransport):
+    def __init__(self, *, transport: httpx.AsyncBaseTransport | None = None) -> None:
+        self._client = httpx.AsyncClient(transport=transport, follow_redirects=False)
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        _limit_connect_timeout(request)
+        try:
+            return await self._client.send(request, stream=True)
+        except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+            backup = _backup_request(request)
+            _log_backup(request.url, backup.url.host, exc)
+            try:
+                return await self._client.send(backup, stream=True)
+            except (httpx.ConnectError, httpx.ConnectTimeout):
+                raise exc
+
+    async def aclose(self) -> None:
+        await self._client.aclose()
+
+
 @contextmanager
 def _connect_sync_ws(
     url: str, headers: dict[str, str] | None = None
@@ -1040,11 +1145,49 @@ MAX_DELAY = 30
 RETRY_CODES = [408, 409, 429]
 INGRESS_ERROR_CODES = [502, 503, 504]
 
-# Explicit timeout for queue polling requests (status checks and result fetching).
-# httpx's default timeout (120s) operates at the HTTP protocol layer and can fail
-# to fire when the hang is at the raw SSL socket level (ssl.read()).  Using an
+# Explicit timeout for queue polling requests (status, result and cancel).
+# The client's default timeout (120s) operates at the HTTP protocol layer and can
+# fail to fire when the hang is at the raw SSL socket level (ssl.read()).  Using an
 # httpx.Timeout object with a shorter connect timeout ensures we detect stalls.
+# The backup transport caps connect further on the mapped domains; server-supplied
+# hosts keep the 30s below.
 QUEUE_POLL_TIMEOUT = httpx.Timeout(120.0, connect=30.0)
+
+
+@dataclass(frozen=True)
+class PollBackoff:
+    """Exponential backoff between queue status checks. All times are in seconds.
+
+    The delay starts at ``initial`` and grows by ``multiplier`` after each
+    unfinished check, capped at ``maximum``. Each delay is varied by
+    ``+/- jitter`` and capped again.
+    Requires ``0 < initial <= maximum < inf``, ``multiplier >= 1`` and ``0 <= jitter <= 1``.
+    """
+
+    initial: float = 0.25
+    multiplier: float = 1.05
+    maximum: float = 10.0
+    jitter: float = 0.2
+
+    def __post_init__(self) -> None:
+        if not 0 < self.initial <= self.maximum < math.inf:
+            raise ValueError("PollBackoff requires 0 < initial <= maximum < inf")
+        if not self.multiplier >= 1:
+            raise ValueError("PollBackoff requires multiplier >= 1")
+        if not 0 <= self.jitter <= 1:
+            raise ValueError("PollBackoff requires 0 <= jitter <= 1")
+
+    def delays(self) -> Iterator[float]:
+        base = self.initial
+        while True:
+            factor = random.uniform(1 - self.jitter, 1 + self.jitter)
+            yield min(self.maximum, base * factor)
+            base = min(self.maximum, base * self.multiplier)
+
+
+DEFAULT_POLL_BACKOFF = PollBackoff()
+# Deprecated: polling no longer uses a fixed interval. Kept at its historical
+# value so existing imports keep working.
 DEFAULT_QUEUE_POLL_INTERVAL = 0.1
 
 
@@ -1465,23 +1608,44 @@ class SyncRequestHandle(_BaseRequestHandle):
         return self._parse_status(response.json())
 
     def iter_events(
-        self, *, with_logs: bool = False, interval: float = DEFAULT_QUEUE_POLL_INTERVAL
+        self,
+        *,
+        with_logs: bool = False,
+        interval: float | None = None,
+        backoff: PollBackoff | None = None,
     ) -> Iterator[Status]:
-        """Continuously poll for the status of the request and yield it at each interval till
-        the request is completed. If `with_logs` is True, logs will be included in the response.
+        """Poll until completed, including logs if `with_logs` is True.
+
+        `interval` fixes the delay in seconds between checks. Otherwise the delay
+        follows `backoff`, which defaults to `PollBackoff()` and resets when
+        the status changes.
         """
 
+        polling_backoff = backoff or DEFAULT_POLL_BACKOFF
+        delays = polling_backoff.delays()
+        previous_status_type: type[Status] | None = None
         while True:
             status = self.status(with_logs=with_logs)
             yield status
             if isinstance(status, Completed):
                 break
 
-            time.sleep(interval)
+            # Don't let a long queue wait slow completion detection once running.
+            # Completed exits above without another sleep.
+            if interval is None and type(status) is not previous_status_type:
+                delays = polling_backoff.delays()
+            previous_status_type = type(status)
+            delay = interval if interval is not None else next(delays)
+            time.sleep(delay)
 
-    def get(self, *, interval: float = DEFAULT_QUEUE_POLL_INTERVAL) -> AnyJSON:
-        """Wait till the request is completed and return the result of the inference call."""
-        for _ in self.iter_events(with_logs=False, interval=interval):
+    def get(
+        self,
+        *,
+        interval: float | None = None,
+        backoff: PollBackoff | None = None,
+    ) -> AnyJSON:
+        """Wait for the result. See `iter_events` for `interval` and `backoff`."""
+        for _ in self.iter_events(with_logs=False, interval=interval, backoff=backoff):
             continue
 
         response = _maybe_retry_request(
@@ -1542,23 +1706,46 @@ class AsyncRequestHandle(_BaseRequestHandle):
         return self._parse_status(response.json())
 
     async def iter_events(
-        self, *, with_logs: bool = False, interval: float = DEFAULT_QUEUE_POLL_INTERVAL
+        self,
+        *,
+        with_logs: bool = False,
+        interval: float | None = None,
+        backoff: PollBackoff | None = None,
     ) -> AsyncIterator[Status]:
-        """Continuously poll for the status of the request and yield it at each interval till
-        the request is completed. If `with_logs` is True, logs will be included in the response.
+        """Poll until completed, including logs if `with_logs` is True.
+
+        `interval` fixes the delay in seconds between checks. Otherwise the delay
+        follows `backoff`, which defaults to `PollBackoff()` and resets when
+        the status changes.
         """
 
+        polling_backoff = backoff or DEFAULT_POLL_BACKOFF
+        delays = polling_backoff.delays()
+        previous_status_type: type[Status] | None = None
         while True:
             status = await self.status(with_logs=with_logs)
             yield status
             if isinstance(status, Completed):
                 break
 
-            await asyncio.sleep(interval)
+            # Don't let a long queue wait slow completion detection once running.
+            # Completed exits above without another sleep.
+            if interval is None and type(status) is not previous_status_type:
+                delays = polling_backoff.delays()
+            previous_status_type = type(status)
+            delay = interval if interval is not None else next(delays)
+            await asyncio.sleep(delay)
 
-    async def get(self, *, interval: float = DEFAULT_QUEUE_POLL_INTERVAL) -> AnyJSON:
-        """Wait till the request is completed and return the result."""
-        async for _ in self.iter_events(with_logs=False, interval=interval):
+    async def get(
+        self,
+        *,
+        interval: float | None = None,
+        backoff: PollBackoff | None = None,
+    ) -> AnyJSON:
+        """Wait for the result. See `iter_events` for `interval` and `backoff`."""
+        async for _ in self.iter_events(
+            with_logs=False, interval=interval, backoff=backoff
+        ):
             continue
 
         response = await _async_maybe_retry_request(
@@ -1598,6 +1785,7 @@ class AsyncClient:
     async def _client(self) -> httpx.AsyncClient:
         auth = await self._auth
         return httpx.AsyncClient(
+            transport=AsyncBackupDomainTransport(),
             headers={
                 "Authorization": auth.header_value,
                 "User-Agent": USER_AGENT,
@@ -1641,20 +1829,26 @@ class AsyncClient:
         application: str,
         arguments: AnyJSON,
         *,
+        method: str = "POST",
         path: str = "",
         timeout: Optional[Union[int, float]] = None,
         start_timeout: Optional[Union[int, float]] = None,
         hint: str | None = None,
+        tags: Optional[Mapping[str, str]] = None,
         headers: dict[str, str] = {},
     ) -> AnyJSON:
         """Run an application with the given arguments (which will be JSON serialized). The path parameter can be used to
         specify a subpath when applicable. This method will return the result of the inference call directly.
 
         Args:
-            timeout: Client-side HTTP timeout in seconds. Controls how long the HTTP
-                client waits for a response. Defaults to the client's default_timeout.
+            method: HTTP method to use for the inference request.
+            timeout: Client-side HTTP timeout in seconds. Defaults to no client-side
+                read timeout; long generations are unbounded. Connections to mapped
+                primary and backup domains are still capped at 5 seconds.
             start_timeout: Server-side request timeout in seconds. Limits total time spent
                 waiting before processing starts. Does not apply once the application begins processing.
+            tags: Tags to attach to the request, as a key to value mapping. Sent
+                as one packed X-Fal-Tags header; invalid or over-limit tags raise.
         """
 
         client = await self._client
@@ -1671,13 +1865,16 @@ class AsyncClient:
         if start_timeout is not None:
             add_timeout_header(start_timeout, _headers)
 
+        if tags is not None:
+            add_tags_header(tags, _headers)
+
         add_fal_app_context_headers(_headers)
 
         response = await _async_maybe_retry_request(
             client,
-            "POST",
+            method,
             url,
-            json=arguments,
+            json=arguments if method.upper() != "GET" else None,
             timeout=timeout,
             headers=_headers,
         )
@@ -1695,6 +1892,7 @@ class AsyncClient:
         hint: str | None = None,
         webhook_url: str | None = None,
         priority: Optional[Priority] = None,
+        tags: Optional[Mapping[str, str]] = None,
         headers: dict[str, str] = {},
         start_timeout: Optional[Union[int, float]] = None,
     ) -> AsyncRequestHandle:
@@ -1702,10 +1900,15 @@ class AsyncClient:
         specify a subpath when applicable. This method will return a handle to the request that can be used to check the status
         and retrieve the result of the inference call when it is done.
 
+        The submission POST uses the client's default_timeout (120 seconds by
+        default), unlike run(), whose default read timeout is unbounded.
+
         Args:
             start_timeout: Server-side request timeout in seconds. Limits total time spent
                 waiting before processing starts (includes queue wait, retries, and
                 routing). Does not apply once the application begins processing.
+            tags: Tags to attach to the request, as a key to value mapping. Sent
+                as one packed X-Fal-Tags header; invalid or over-limit tags raise.
         """
 
         client = await self._client
@@ -1727,6 +1930,9 @@ class AsyncClient:
 
         if start_timeout is not None:
             add_timeout_header(start_timeout, _headers)
+
+        if tags is not None:
+            add_tags_header(tags, _headers)
 
         add_fal_app_context_headers(_headers)
 
@@ -1758,10 +1964,12 @@ class AsyncClient:
         path: str = "",
         hint: str | None = None,
         with_logs: bool = False,
-        interval: float = DEFAULT_QUEUE_POLL_INTERVAL,
+        interval: float | None = None,
+        backoff: PollBackoff | None = None,
         on_enqueue: Optional[Callable[[str], None | Awaitable[None]]] = None,
         on_queue_update: Optional[Callable[[Status], None | Awaitable[None]]] = None,
         priority: Optional[Priority] = None,
+        tags: Optional[Mapping[str, str]] = None,
         headers: dict[str, str] = {},
         start_timeout: Optional[Union[int, float]] = None,
         client_timeout: Optional[Union[int, float]] = None,
@@ -1769,7 +1977,10 @@ class AsyncClient:
         """Subscribe to an application and wait for the result.
 
         Args:
-            interval: Polling interval in seconds while waiting for request updates.
+            interval: Fixed delay in seconds between status checks. If omitted,
+                the delay follows `backoff`.
+            backoff: Exponential backoff between status checks. Defaults to
+                `PollBackoff()`. Ignored when `interval` is set.
             start_timeout: Server-side request timeout in seconds. Limits total time spent
                 waiting before processing starts (includes queue wait, retries, and
                 routing). Does not apply once the application begins processing.
@@ -1797,6 +2008,7 @@ class AsyncClient:
                 path=path,
                 hint=hint,
                 priority=priority,
+                tags=tags,
                 headers=headers,
                 start_timeout=start_timeout,
             )
@@ -1809,13 +2021,13 @@ class AsyncClient:
 
             if on_queue_update is not None:
                 async for event in handle.iter_events(
-                    with_logs=with_logs, interval=interval
+                    with_logs=with_logs, interval=interval, backoff=backoff
                 ):
                     result = on_queue_update(event)
                     if inspect.isawaitable(result):
                         await result
 
-            return await handle.get(interval=interval)
+            return await handle.get(interval=interval, backoff=backoff)
 
         if client_timeout is None:
             return await _do_subscribe()
@@ -1860,6 +2072,7 @@ class AsyncClient:
         *,
         path: str = "/stream",
         timeout: float | None = None,
+        tags: Optional[Mapping[str, str]] = None,
         headers: dict[str, str] = {},
     ) -> AsyncIterator[dict[str, Any]]:
         """Stream the output of an application with the given arguments (which will be JSON serialized). This is only supported
@@ -1875,6 +2088,10 @@ class AsyncClient:
             url += "/" + path.lstrip("/")
 
         _headers: dict[str, str] = {**headers}
+
+        if tags is not None:
+            add_tags_header(tags, _headers)
+
         add_fal_app_context_headers(_headers)
 
         async with aconnect_sse(
@@ -2122,6 +2339,7 @@ class SyncClient:
     def _client(self) -> httpx.Client:
         auth = self._auth
         return httpx.Client(
+            transport=BackupDomainTransport(),
             headers={
                 "Authorization": auth.header_value,
                 "User-Agent": USER_AGENT,
@@ -2171,19 +2389,25 @@ class SyncClient:
         application: str,
         arguments: AnyJSON,
         *,
+        method: str = "POST",
         path: str = "",
         timeout: Optional[Union[int, float]] = None,
         start_timeout: Optional[Union[int, float]] = None,
         hint: str | None = None,
+        tags: Optional[Mapping[str, str]] = None,
         headers: dict[str, str] = {},
     ) -> AnyJSON:
         """Run an application with the given arguments (which will be JSON serialized).
 
         Args:
-            timeout: Client-side HTTP timeout in seconds. Controls how long the HTTP
-                client waits for a response. Defaults to the client's default_timeout.
+            method: HTTP method to use for the inference request.
+            timeout: Client-side HTTP timeout in seconds. Defaults to no client-side
+                read timeout; long generations are unbounded. Connections to mapped
+                primary and backup domains are still capped at 5 seconds.
             start_timeout: Server-side request timeout in seconds. Limits total time spent
                 waiting before processing starts. Does not apply once the application begins processing.
+            tags: Tags to attach to the request, as a key to value mapping. Sent
+                as one packed X-Fal-Tags header; invalid or over-limit tags raise.
         """
 
         url = RUN_URL_FORMAT + application
@@ -2197,13 +2421,16 @@ class SyncClient:
         if start_timeout is not None:
             add_timeout_header(start_timeout, _headers)
 
+        if tags is not None:
+            add_tags_header(tags, _headers)
+
         add_fal_app_context_headers(_headers)
 
         response = _maybe_retry_request(
             self._client,
-            "POST",
+            method,
             url,
-            json=arguments,
+            json=arguments if method.upper() != "GET" else None,
             timeout=timeout,
             headers=_headers,
         )
@@ -2221,15 +2448,21 @@ class SyncClient:
         hint: str | None = None,
         webhook_url: str | None = None,
         priority: Optional[Priority] = None,
+        tags: Optional[Mapping[str, str]] = None,
         headers: dict[str, str] = {},
         start_timeout: Optional[Union[int, float]] = None,
     ) -> SyncRequestHandle:
         """Submit an application with the given arguments (which will be JSON serialized).
 
+        The submission POST uses the client's default_timeout (120 seconds by
+        default), unlike run(), whose default read timeout is unbounded.
+
         Args:
             start_timeout: Server-side request timeout in seconds. Limits total time spent
                 waiting before processing starts (includes queue wait, retries, and
                 routing). Does not apply once the application begins processing.
+            tags: Tags to attach to the request, as a key to value mapping. Sent
+                as one packed X-Fal-Tags header; invalid or over-limit tags raise.
         """
 
         url = QUEUE_URL_FORMAT + application
@@ -2249,6 +2482,9 @@ class SyncClient:
 
         if start_timeout is not None:
             add_timeout_header(start_timeout, _headers)
+
+        if tags is not None:
+            add_tags_header(tags, _headers)
 
         add_fal_app_context_headers(_headers)
 
@@ -2280,10 +2516,12 @@ class SyncClient:
         path: str = "",
         hint: str | None = None,
         with_logs: bool = False,
-        interval: float = DEFAULT_QUEUE_POLL_INTERVAL,
+        interval: float | None = None,
+        backoff: PollBackoff | None = None,
         on_enqueue: Optional[Callable[[str], None]] = None,
         on_queue_update: Optional[Callable[[Status], None]] = None,
         priority: Optional[Priority] = None,
+        tags: Optional[Mapping[str, str]] = None,
         headers: dict[str, str] = {},
         start_timeout: Optional[Union[int, float]] = None,
         client_timeout: Optional[Union[int, float]] = None,
@@ -2291,7 +2529,10 @@ class SyncClient:
         """Subscribe to an application and wait for the result.
 
         Args:
-            interval: Polling interval in seconds while waiting for request updates.
+            interval: Fixed delay in seconds between status checks. If omitted,
+                the delay follows `backoff`.
+            backoff: Exponential backoff between status checks. Defaults to
+                `PollBackoff()`. Ignored when `interval` is set.
             start_timeout: Server-side request timeout in seconds. Limits total time spent
                 waiting before processing starts (includes queue wait, retries, and
                 routing). Does not apply once the application begins processing.
@@ -2319,6 +2560,7 @@ class SyncClient:
                 path=path,
                 hint=hint,
                 priority=priority,
+                tags=tags,
                 headers=headers,
                 start_timeout=start_timeout,
             )
@@ -2328,10 +2570,12 @@ class SyncClient:
                 on_enqueue(handle.request_id)
 
             if on_queue_update is not None:
-                for event in handle.iter_events(with_logs=with_logs, interval=interval):
+                for event in handle.iter_events(
+                    with_logs=with_logs, interval=interval, backoff=backoff
+                ):
                     on_queue_update(event)
 
-            return handle.get(interval=interval)
+            return handle.get(interval=interval, backoff=backoff)
 
         if client_timeout is None:
             return _do_subscribe()
@@ -2375,6 +2619,7 @@ class SyncClient:
         *,
         path: str = "/stream",
         timeout: float | None = None,
+        tags: Optional[Mapping[str, str]] = None,
         headers: dict[str, str] = {},
     ) -> Iterator[dict[str, Any]]:
         """Stream the output of an application with the given arguments (which will be JSON serialized). This is only supported
@@ -2389,6 +2634,10 @@ class SyncClient:
             url += "/" + path.lstrip("/")
 
         _headers: dict[str, str] = {**headers}
+
+        if tags is not None:
+            add_tags_header(tags, _headers)
+
         add_fal_app_context_headers(_headers)
 
         with connect_sse(

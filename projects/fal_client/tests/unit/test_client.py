@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 import time
 import json
 from contextlib import asynccontextmanager, contextmanager
@@ -17,10 +18,11 @@ from fal_client.client import (
     AsyncRequestHandle,
     CDN_URL,
     Completed,
-    DEFAULT_QUEUE_POLL_INTERVAL,
+    PollBackoff,
     FalClientHTTPError,
     FalClientTimeoutError,
     InProgress,
+    MultipartUpload,
     Queued,
     RealtimeConnection,
     RealtimeError,
@@ -191,6 +193,33 @@ def test_sync_client_run_with_headers():
         assert call_kwargs["headers"]["X-Trace-Id"] == "123"
 
 
+@pytest.mark.parametrize("method", ["GET", "get"])
+def test_sync_client_run_with_method(method):
+    with patch("fal_client.client._maybe_retry_request") as mock_request:
+        mock_response = Mock()
+        mock_response.json.return_value = {"status": "ok"}
+        mock_request.return_value = mock_response
+
+        client = SyncClient(key="test-key")
+        result = client.run("test-app", {}, path="/health", method=method)
+
+        assert result == {"status": "ok"}
+        assert mock_request.call_args.args[1] == method
+        assert mock_request.call_args.kwargs["json"] is None
+
+
+def test_sync_client_run_defaults_to_post():
+    with patch("fal_client.client._maybe_retry_request") as mock_request:
+        mock_response = Mock()
+        mock_response.json.return_value = {"result": "success"}
+        mock_request.return_value = mock_response
+
+        SyncClient(key="test-key").run("test-app", {"input": "data"})
+
+        assert mock_request.call_args.args[1] == "POST"
+        assert mock_request.call_args.kwargs["json"] == {"input": "data"}
+
+
 def test_sync_client_run_with_headers_and_hint():
     """Test that custom headers are merged with hint header"""
     with patch("fal_client.client._maybe_retry_request") as mock_request:
@@ -213,6 +242,81 @@ def test_sync_client_run_with_headers_and_hint():
         assert "headers" in call_kwargs
         assert call_kwargs["headers"]["X-Fal-Runner-Hint"] == "lora:a"
         assert call_kwargs["headers"]["X-Custom-Header"] == "test-value"
+
+
+def test_sync_client_run_with_tags():
+    """Test that tags are packed into the X-Fal-Tags header in run()"""
+    with patch("fal_client.client._maybe_retry_request") as mock_request:
+        mock_response = Mock()
+        mock_response.json.return_value = {"result": "success"}
+        mock_request.return_value = mock_response
+
+        client = SyncClient(key="test-key")
+
+        client.run(
+            "test-app",
+            {"input": "data"},
+            tags={"team": "design", "env": "prod"},
+            headers={"X-Custom": "value"},
+        )
+
+        call_kwargs = mock_request.call_args[1]
+        assert call_kwargs["headers"]["X-Fal-Tags"] == "team=design,env=prod"
+        assert call_kwargs["headers"]["X-Custom"] == "value"
+
+
+def test_sync_client_run_with_invalid_tags_raises():
+    """Test that invalid tags are rejected before the request is made"""
+    with patch("fal_client.client._maybe_retry_request") as mock_request:
+        client = SyncClient(key="test-key")
+
+        with pytest.raises(ValueError, match="Tag key"):
+            client.run("test-app", {"input": "data"}, tags={"bad key": "value"})
+
+        mock_request.assert_not_called()
+
+
+def test_sync_client_stream_with_tags():
+    """Test that tags are packed into the X-Fal-Tags header in stream()"""
+    with patch("fal_client.client.connect_sse") as mock_connect_sse:
+        events = Mock()
+        events.response.headers = {}
+        events.iter_sse.return_value = iter([])
+        mock_connect_sse.return_value.__enter__ = Mock(return_value=events)
+        mock_connect_sse.return_value.__exit__ = Mock(return_value=False)
+
+        client = SyncClient(key="test-key")
+        assert list(client.stream("test-app", {}, tags={"env": "prod"})) == []
+
+        call_kwargs = mock_connect_sse.call_args[1]
+        assert call_kwargs["headers"]["X-Fal-Tags"] == "env=prod"
+
+
+def test_sync_client_subscribe_with_tags():
+    """Test that tags reach the submit request in subscribe()"""
+    with patch("fal_client.client._maybe_retry_request") as mock_request:
+        submit_response = Mock()
+        submit_response.json.return_value = {
+            "request_id": "req-123",
+            "response_url": "http://response",
+            "status_url": "http://status",
+            "cancel_url": "http://cancel",
+        }
+
+        status_response = Mock()
+        status_response.json.return_value = {"status": "COMPLETED", "logs": []}
+
+        result_response = Mock()
+        result_response.json.return_value = {"result": "done"}
+
+        mock_request.side_effect = [submit_response, status_response, result_response]
+
+        client = SyncClient(key="test-key")
+        result = client.subscribe("test-app", {"input": "data"}, tags={"env": "prod"})
+
+        assert result == {"result": "done"}
+        first_call_kwargs = mock_request.call_args_list[0][1]
+        assert first_call_kwargs["headers"]["X-Fal-Tags"] == "env=prod"
 
 
 def test_sync_client_submit_with_headers():
@@ -749,6 +853,39 @@ async def test_async_client_run_with_headers():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("method", ["GET", "get"])
+async def test_async_client_run_with_method(method):
+    with patch(
+        "fal_client.client._async_maybe_retry_request", new_callable=AsyncMock
+    ) as mock_request:
+        mock_response = Mock()
+        mock_response.json.return_value = {"status": "ok"}
+        mock_request.return_value = mock_response
+
+        client = AsyncClient(key="test-key")
+        result = await client.run("test-app", {}, path="/health", method=method)
+
+        assert result == {"status": "ok"}
+        assert mock_request.call_args.args[1] == method
+        assert mock_request.call_args.kwargs["json"] is None
+
+
+@pytest.mark.asyncio
+async def test_async_client_run_defaults_to_post():
+    with patch(
+        "fal_client.client._async_maybe_retry_request", new_callable=AsyncMock
+    ) as mock_request:
+        mock_response = Mock()
+        mock_response.json.return_value = {"result": "success"}
+        mock_request.return_value = mock_response
+
+        await AsyncClient(key="test-key").run("test-app", {"input": "data"})
+
+        assert mock_request.call_args.args[1] == "POST"
+        assert mock_request.call_args.kwargs["json"] == {"input": "data"}
+
+
+@pytest.mark.asyncio
 async def test_async_client_resolves_auth_when_no_key():
     auth = Mock(header_value="Key resolved-auth", scheme="Key", token="resolved-auth")
 
@@ -1038,6 +1175,45 @@ async def test_async_multipart_save_file_uses_aiofiles(tmp_path):
     mock_complete.assert_awaited_once_with()
 
 
+def test_multipart_save_uploads_every_part_in_full():
+    payload = bytes(range(256)) * 4
+    chunk_size = 100
+    uploaded = {}
+    lock = threading.Lock()
+
+    def upload_part(self, part_number: int, data: bytes) -> None:
+        with lock:
+            uploaded[part_number] = data
+
+    with patch.object(MultipartUpload, "create"), patch.object(
+        MultipartUpload,
+        "upload_part",
+        new=upload_part,
+    ), patch.object(
+        MultipartUpload,
+        "complete",
+        return_value="https://file",
+    ):
+        url = MultipartUpload.save(
+            client=Mock(),
+            token_manager=Mock(),
+            file_name="upload.bin",
+            data=payload,
+            chunk_size=chunk_size,
+            max_concurrency=4,
+        )
+
+    assert url == "https://file"
+
+    expected = [
+        payload[start : start + chunk_size]
+        for start in range(0, len(payload), chunk_size)
+    ]
+    assert sorted(uploaded) == list(range(1, len(expected) + 1))
+    assert [uploaded[n] for n in sorted(uploaded)] == expected
+    assert b"".join(uploaded[n] for n in sorted(uploaded)) == payload
+
+
 @pytest.mark.asyncio
 async def test_async_multipart_save_respects_max_concurrency():
     active_uploads = 0
@@ -1221,6 +1397,33 @@ async def test_async_upload_respects_repository_order():
 
 
 @pytest.mark.asyncio
+async def test_async_client_submit_with_tags():
+    """Test that tags are packed into the X-Fal-Tags header in submit()"""
+    with patch(
+        "fal_client.client._async_maybe_retry_request", new_callable=AsyncMock
+    ) as mock_request:
+        mock_response = Mock()
+        mock_response.json.return_value = {
+            "request_id": "req-123",
+            "response_url": "http://response",
+            "status_url": "http://status",
+            "cancel_url": "http://cancel",
+        }
+        mock_request.return_value = mock_response
+
+        client = AsyncClient(key="test-key")
+
+        await client.submit(
+            "test-app",
+            {"input": "data"},
+            tags={"team": "design"},
+        )
+
+        call_kwargs = mock_request.call_args[1]
+        assert call_kwargs["headers"]["X-Fal-Tags"] == "team=design"
+
+
+@pytest.mark.asyncio
 async def test_async_client_submit_with_headers():
     """Test that custom headers are passed through in async submit()"""
     with patch(
@@ -1315,7 +1518,8 @@ def test_sync_handle_retries(monkeypatch):
     def _iter_events(
         self,
         with_logs: bool = False,
-        interval: float = DEFAULT_QUEUE_POLL_INTERVAL,
+        interval: float | None = None,
+        backoff: PollBackoff | None = None,
     ):
         return iter([Completed(logs=[], metrics={})])
 
@@ -1401,7 +1605,8 @@ async def test_async_handle_retries(monkeypatch):
     async def _iter_events(
         self,
         with_logs: bool = False,
-        interval: float = DEFAULT_QUEUE_POLL_INTERVAL,
+        interval: float | None = None,
+        backoff: PollBackoff | None = None,
     ):
         yield Completed(logs=[], metrics={})
 
@@ -1487,7 +1692,8 @@ def test_sync_get_does_not_retry_on_500_503(monkeypatch, status_code):
     def _iter_events(
         self,
         with_logs: bool = False,
-        interval: float = DEFAULT_QUEUE_POLL_INTERVAL,
+        interval: float | None = None,
+        backoff: PollBackoff | None = None,
     ):
         return iter([Completed(logs=[], metrics={})])
 
@@ -1527,7 +1733,8 @@ async def test_async_get_does_not_retry_on_500_503(monkeypatch, status_code):
     async def _iter_events(
         self,
         with_logs: bool = False,
-        interval: float = DEFAULT_QUEUE_POLL_INTERVAL,
+        interval: float | None = None,
+        backoff: PollBackoff | None = None,
     ):
         yield Completed(logs=[], metrics={})
 
@@ -1563,7 +1770,8 @@ def test_sync_handle_retries_ingress(monkeypatch):
     def _iter_events(
         self,
         with_logs: bool = False,
-        interval: float = DEFAULT_QUEUE_POLL_INTERVAL,
+        interval: float | None = None,
+        backoff: PollBackoff | None = None,
     ):
         return iter([Completed(logs=[], metrics={})])
 
@@ -1655,7 +1863,8 @@ async def test_async_handle_retries_ingress(monkeypatch):
     async def _iter_events(
         self,
         with_logs: bool = False,
-        interval: float = DEFAULT_QUEUE_POLL_INTERVAL,
+        interval: float | None = None,
+        backoff: PollBackoff | None = None,
     ):
         yield Completed(logs=[], metrics={})
 
@@ -1978,7 +2187,7 @@ async def test_async_client_ws_connect_uses_headers_without_jwt(mocker):
 
 
 def test_sync_client_run_with_start_timeout():
-    """Test that start_timeout adds X-Fal-Request-Timeout header in run()."""
+    """Test that start_timeout adds X-Fal-Request-Start-Timeout header in run()."""
     with patch("fal_client.client._maybe_retry_request") as mock_request:
         mock_response = Mock()
         mock_response.json.return_value = {"result": "success"}
@@ -1989,7 +2198,7 @@ def test_sync_client_run_with_start_timeout():
 
         call_kwargs = mock_request.call_args[1]
         assert "headers" in call_kwargs
-        assert call_kwargs["headers"]["X-Fal-Request-Timeout"] == "30.0"
+        assert call_kwargs["headers"]["X-Fal-Request-Start-Timeout"] == "30.0"
 
 
 def test_sync_client_run_with_start_timeout_float():
@@ -2003,11 +2212,11 @@ def test_sync_client_run_with_start_timeout_float():
         client.run("test-app", {"input": "data"}, start_timeout=45.5)
 
         call_kwargs = mock_request.call_args[1]
-        assert call_kwargs["headers"]["X-Fal-Request-Timeout"] == "45.5"
+        assert call_kwargs["headers"]["X-Fal-Request-Start-Timeout"] == "45.5"
 
 
 def test_sync_client_submit_with_start_timeout():
-    """Test that start_timeout adds X-Fal-Request-Timeout header in submit()."""
+    """Test that start_timeout adds X-Fal-Request-Start-Timeout header in submit()."""
     with patch("fal_client.client._maybe_retry_request") as mock_request:
         mock_response = Mock()
         mock_response.json.return_value = {
@@ -2023,7 +2232,7 @@ def test_sync_client_submit_with_start_timeout():
 
         call_kwargs = mock_request.call_args[1]
         assert "headers" in call_kwargs
-        assert call_kwargs["headers"]["X-Fal-Request-Timeout"] == "60.0"
+        assert call_kwargs["headers"]["X-Fal-Request-Start-Timeout"] == "60.0"
 
 
 def test_sync_client_subscribe_with_start_timeout():
@@ -2051,7 +2260,7 @@ def test_sync_client_subscribe_with_start_timeout():
         # Check the first call (submit) has the header
         first_call_kwargs = mock_request.call_args_list[0][1]
         assert "headers" in first_call_kwargs
-        assert first_call_kwargs["headers"]["X-Fal-Request-Timeout"] == "90.0"
+        assert first_call_kwargs["headers"]["X-Fal-Request-Start-Timeout"] == "90.0"
 
 
 def test_sync_client_subscribe_with_interval(monkeypatch):
@@ -2062,7 +2271,8 @@ def test_sync_client_subscribe_with_interval(monkeypatch):
         self,
         *,
         with_logs: bool = False,
-        interval: float = DEFAULT_QUEUE_POLL_INTERVAL,
+        interval: float | None = None,
+        backoff: PollBackoff | None = None,
     ):
         iter_event_calls.append((with_logs, interval))
         return iter([Completed(logs=[], metrics={})])
@@ -2100,7 +2310,7 @@ def test_sync_client_subscribe_with_interval(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_async_client_run_with_start_timeout():
-    """Test that start_timeout adds X-Fal-Request-Timeout header in async run()."""
+    """Test that start_timeout adds X-Fal-Request-Start-Timeout header in async run()."""
     with patch(
         "fal_client.client._async_maybe_retry_request", new_callable=AsyncMock
     ) as mock_request:
@@ -2113,12 +2323,12 @@ async def test_async_client_run_with_start_timeout():
 
         call_kwargs = mock_request.call_args[1]
         assert "headers" in call_kwargs
-        assert call_kwargs["headers"]["X-Fal-Request-Timeout"] == "30.0"
+        assert call_kwargs["headers"]["X-Fal-Request-Start-Timeout"] == "30.0"
 
 
 @pytest.mark.asyncio
 async def test_async_client_submit_with_start_timeout():
-    """Test that start_timeout adds X-Fal-Request-Timeout header in async submit()."""
+    """Test that start_timeout adds X-Fal-Request-Start-Timeout header in async submit()."""
     with patch(
         "fal_client.client._async_maybe_retry_request", new_callable=AsyncMock
     ) as mock_request:
@@ -2136,7 +2346,7 @@ async def test_async_client_submit_with_start_timeout():
 
         call_kwargs = mock_request.call_args[1]
         assert "headers" in call_kwargs
-        assert call_kwargs["headers"]["X-Fal-Request-Timeout"] == "60.0"
+        assert call_kwargs["headers"]["X-Fal-Request-Start-Timeout"] == "60.0"
 
 
 @pytest.mark.asyncio
@@ -2167,7 +2377,7 @@ async def test_async_client_subscribe_with_start_timeout():
         # Check the first call (submit) has the header
         first_call_kwargs = mock_request.call_args_list[0][1]
         assert "headers" in first_call_kwargs
-        assert first_call_kwargs["headers"]["X-Fal-Request-Timeout"] == "90.0"
+        assert first_call_kwargs["headers"]["X-Fal-Request-Start-Timeout"] == "90.0"
 
 
 @pytest.mark.asyncio
@@ -2179,7 +2389,8 @@ async def test_async_client_subscribe_with_interval(monkeypatch):
         self,
         *,
         with_logs: bool = False,
-        interval: float = DEFAULT_QUEUE_POLL_INTERVAL,
+        interval: float | None = None,
+        backoff: PollBackoff | None = None,
     ):
         iter_event_calls.append((with_logs, interval))
         yield Completed(logs=[], metrics={})
@@ -2228,7 +2439,7 @@ def test_sync_client_run_without_start_timeout_no_header():
         client.run("test-app", {"input": "data"})
 
         call_kwargs = mock_request.call_args[1]
-        assert "X-Fal-Request-Timeout" not in call_kwargs.get("headers", {})
+        assert "X-Fal-Request-Start-Timeout" not in call_kwargs.get("headers", {})
 
 
 def test_sync_client_run_with_start_timeout_and_hint():
@@ -2242,7 +2453,7 @@ def test_sync_client_run_with_start_timeout_and_hint():
         client.run("test-app", {"input": "data"}, start_timeout=30, hint="lora:a")
 
         call_kwargs = mock_request.call_args[1]
-        assert call_kwargs["headers"]["X-Fal-Request-Timeout"] == "30.0"
+        assert call_kwargs["headers"]["X-Fal-Request-Start-Timeout"] == "30.0"
         assert call_kwargs["headers"]["X-Fal-Runner-Hint"] == "lora:a"
 
 

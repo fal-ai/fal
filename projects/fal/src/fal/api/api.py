@@ -309,7 +309,7 @@ class Host(Generic[ArgsT, ReturnT]):
     _SUPPORTED_KEYS: ClassVar[frozenset[str]] = frozenset()
     _GATEWAY_KEYS: ClassVar[frozenset[str]] = frozenset({"serve", "exposed_port"})
     _VIRTUALENV_KEYS: ClassVar[frozenset[str]] = frozenset(
-        {"python_version", "requirements", "resolver", "force"}
+        {"python_version", "requirements", "resolver", "compile_bytecode", "force"}
     )
     _CONTAINER_KEYS: ClassVar[frozenset[str]] = frozenset(
         {"image", "python_version", "requirements", "resolver", "force"}
@@ -911,6 +911,7 @@ class FalServerlessHost(Host):
             "setup_function",
             "metadata",
             "request_timeout",
+            "request_start_timeout",
             "startup_timeout",
             "metrics_port",
             "private_logs",
@@ -1122,6 +1123,7 @@ class FalServerlessHost(Host):
         exposed_port = options.get_exposed_port()
         metrics_port = options.get_metrics_port()
         request_timeout = options.host.get("request_timeout")
+        request_start_timeout = options.host.get("request_start_timeout")
         startup_timeout = options.host.get("startup_timeout")
         regions = options.host.get("regions")
         health_check_config = options.host.get("health_check_config")
@@ -1148,6 +1150,7 @@ class FalServerlessHost(Host):
             concurrency_buffer_perc=concurrency_buffer_perc,
             scaling_delay=scaling_delay,
             request_timeout=request_timeout,
+            request_start_timeout=request_start_timeout,
             startup_timeout=startup_timeout,
             valid_regions=regions,
         )
@@ -1257,6 +1260,7 @@ class FalServerlessHost(Host):
                 setup_function, runtime_config=runtime_config
             )
         request_timeout = options.host.get("request_timeout")
+        request_start_timeout = options.host.get("request_start_timeout")
         startup_timeout = options.host.get("startup_timeout")
         regions = options.host.get("regions")
         health_check_config = options.host.get("health_check_config")
@@ -1278,6 +1282,7 @@ class FalServerlessHost(Host):
             concurrency_buffer_perc=concurrency_buffer_perc,
             scaling_delay=scaling_delay,
             request_timeout=request_timeout,
+            request_start_timeout=request_start_timeout,
             startup_timeout=startup_timeout,
             valid_regions=regions,
         )
@@ -1558,6 +1563,7 @@ def function(
     *,
     python_version: str | None = None,
     requirements: list[str] | list[list[str]] | None = None,
+    compile_bytecode: bool = False,
     # Common options
     host: LocalHost,
     serve: Literal[False] = False,
@@ -1576,6 +1582,7 @@ def function(
     *,
     python_version: str | None = None,
     requirements: list[str] | list[list[str]] | None = None,
+    compile_bytecode: bool = False,
     # Common options
     host: LocalHost,
     serve: Literal[True],
@@ -1595,6 +1602,7 @@ def function(
     *,
     python_version: str | None = None,
     requirements: list[str] | list[list[str]] | None = None,
+    compile_bytecode: bool = False,
     # Common options
     host: FalServerlessHost | None = None,
     serve: Literal[False] = False,
@@ -1614,6 +1622,7 @@ def function(
     concurrency_buffer_perc: int = FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER_PERC,
     scaling_delay: int | None = None,
     request_timeout: int | None = None,
+    request_start_timeout: int | None = None,
     startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
     requirements_context_dir: str | None = None,
@@ -1631,6 +1640,7 @@ def function(
     *,
     python_version: str | None = None,
     requirements: list[str] | list[list[str]] | None = None,
+    compile_bytecode: bool = False,
     # Common options
     host: FalServerlessHost | None = None,
     serve: Literal[True],
@@ -1650,6 +1660,7 @@ def function(
     concurrency_buffer_perc: int = FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER_PERC,
     scaling_delay: int | None = None,
     request_timeout: int | None = None,
+    request_start_timeout: int | None = None,
     startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
     requirements_context_dir: str | None = None,
@@ -1738,6 +1749,7 @@ def function(
     concurrency_buffer_perc: int = FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER_PERC,
     scaling_delay: int | None = None,
     request_timeout: int | None = None,
+    request_start_timeout: int | None = None,
     startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
     requirements_context_dir: str | None = None,
@@ -1779,6 +1791,7 @@ def function(
     concurrency_buffer_perc: int = FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER_PERC,
     scaling_delay: int | None = None,
     request_timeout: int | None = None,
+    request_start_timeout: int | None = None,
     startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
     requirements_context_dir: str | None = None,
@@ -1814,6 +1827,7 @@ def function(
     concurrency_buffer_perc: int = FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER_PERC,
     scaling_delay: int | None = None,
     request_timeout: int | None = None,
+    request_start_timeout: int | None = None,
     startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
     requirements_context_dir: str | None = None,
@@ -1849,6 +1863,7 @@ def function(
     concurrency_buffer_perc: int = FAL_SERVERLESS_DEFAULT_CONCURRENCY_BUFFER_PERC,
     scaling_delay: int | None = None,
     request_timeout: int | None = None,
+    request_start_timeout: int | None = None,
     startup_timeout: int | None = None,
     setup_function: Callable[..., None] | None = None,
     requirements_context_dir: str | None = None,

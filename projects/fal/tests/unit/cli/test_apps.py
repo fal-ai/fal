@@ -244,3 +244,24 @@ def test_apps_gpus_app_not_found(mock_client_cls):
 
     with pytest.raises(RuntimeError, match="not found in metrics"):
         args.func(args)
+
+
+@pytest.mark.parametrize("timeout", [0, 30])
+@patch("fal.cli.apps._apps_table")
+@patch("fal.cli.apps.SyncServerlessClient")
+def test_scale_request_start_timeout(mock_client, mock_table, timeout):
+    args = parse_args(
+        ["apps", "scale", "myapp", "--request-start-timeout", str(timeout)]
+    )
+    args.console = MagicMock()
+
+    _scale(args)
+
+    assert args.request_start_timeout == timeout
+    kwargs = mock_client.return_value.apps.scale.call_args.kwargs
+    assert kwargs["request_start_timeout"] == timeout
+
+
+def test_scale_omits_request_start_timeout_by_default():
+    args = parse_args(["apps", "scale", "myapp", "--keep-alive", "30"])
+    assert args.request_start_timeout is None

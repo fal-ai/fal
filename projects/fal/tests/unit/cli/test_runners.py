@@ -1,10 +1,19 @@
+import io
 import json
+import os
+import struct
 from unittest.mock import MagicMock, patch
 
+import isolate_proto
 import pytest
 
 from fal.cli.main import parse_args
-from fal.cli.runners import _gpus
+from fal.cli.parser import FalParserExit
+from fal.cli.runners import _exec, _get_tty_size, _gpus, _shell_session
+
+if os.name != "nt":
+    import fcntl
+    import termios
 
 _GPUS_PAYLOAD = {
     "gpus": {"H100": 394, "B200": 353, "H200": 334},
@@ -12,9 +21,253 @@ _GPUS_PAYLOAD = {
 }
 
 
+@pytest.mark.skipif(os.name == "nt", reason="Pseudo-terminals are Unix-only")
+def test_get_tty_size():
+    master_fd, slave_fd = os.openpty()
+    try:
+        fcntl.ioctl(slave_fd, termios.TIOCSWINSZ, struct.pack("HHHH", 40, 120, 0, 0))
+        assert _get_tty_size(slave_fd) == (40, 120)
+    finally:
+        os.close(master_fd)
+        os.close(slave_fd)
+
+
+def test_get_tty_size_fallback():
+    assert _get_tty_size(-1) == (24, 80)
+
+
 def test_gpus_parser_registered():
     args = parse_args(["runners", "gpus"])
     assert args.func == _gpus
+
+
+@pytest.mark.parametrize(
+    ("argv", "interactive"),
+    [
+        pytest.param(
+            ["runners", "exec", "runner-id", "-it", "--", "python"],
+            True,
+            id="flag_after_id",
+        ),
+        pytest.param(
+            ["runners", "exec", "-it", "runner-id", "--", "python"],
+            True,
+            id="flag_before_id",
+        ),
+        pytest.param(
+            ["runners", "exec", "runner-id", "--", "python"],
+            False,
+            id="no_flag",
+        ),
+    ],
+)
+def test_exec_parses_fal_flags_on_either_side_of_runner_id(argv, interactive):
+    args = parse_args(argv)
+    assert args.func == _exec
+    assert args.id == "runner-id"
+    assert args.interactive is interactive
+    assert args.command[-1] == "python"
+
+
+def test_exec_keeps_command_flags_out_of_fal_parsing():
+    args = parse_args(["runners", "exec", "runner-id", "--", "tail", "-f", "/x"])
+    assert args.interactive is False
+    assert args.command[-3:] == ["tail", "-f", "/x"]
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["runners", "exec", "runner-id"],
+        ["runners", "exec", "runner-id", "--"],
+        ["runners", "exec", "runner-id", "--bogus", "--", "env"],
+    ],
+    ids=["no_command", "separator_only", "unknown_flag_before_separator"],
+)
+def test_exec_rejects_missing_command_and_unknown_flags(argv, capsys):
+    with pytest.raises(FalParserExit) as exc:
+        parse_args(argv)
+    assert exc.value.status == 2
+    assert "fal runners exec: error:" in capsys.readouterr().err
+
+
+def _exec_with_command(mock_client_cls, command):
+    import isolate_proto
+
+    sent = []
+
+    def shell_runner(inputs):
+        sent.extend(inputs)
+        return [isolate_proto.ShellRunnerOutput(exit_code=0)]
+
+    stub = mock_client_cls.return_value._create_host.return_value._connection.stub
+    stub.ShellRunner.side_effect = shell_runner
+
+    args = parse_args(["runners", "exec", "runner-id", "--", "python"])
+    args.command = command
+    args.console = MagicMock()
+    return args.func(args), sent, args.console
+
+
+@pytest.mark.parametrize(
+    "command",
+    [["python"], ["--", "python"]],
+    ids=["bare", "with_separator"],
+)
+@patch("fal.cli.runners.SyncServerlessClient")
+def test_exec_strips_leading_separator_before_sending(mock_client_cls, command):
+    exit_code, sent, _ = _exec_with_command(mock_client_cls, command)
+
+    assert exit_code == 0
+    assert list(sent[0].command) == ["python"]
+
+
+@patch("fal.cli.runners.SyncServerlessClient")
+def test_exec_rejects_separator_only_command(mock_client_cls):
+    exit_code, sent, console = _exec_with_command(mock_client_cls, ["--"])
+
+    assert exit_code == 1
+    assert sent == []
+    assert "No command specified" in console.print.call_args[0][0]
+
+
+@patch("fal.cli.runners.SyncServerlessClient")
+def test_shell_session_separates_output_streams(mock_client_cls):
+    stub = mock_client_cls.return_value._create_host.return_value._connection.stub
+    stub.ShellRunner.return_value = [
+        isolate_proto.ShellRunnerOutput(data=b"out"),
+        isolate_proto.ShellRunnerOutput(data=b"err", stream=2),
+        isolate_proto.ShellRunnerOutput(exit_code=0),
+    ]
+    stdout = io.BytesIO()
+    stderr = io.BytesIO()
+    args = parse_args(["runners", "exec", "runner-id", "--", "true"])
+
+    exit_code = _shell_session(
+        args,
+        command=["true"],
+        interactive=False,
+        remote_tty=False,
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+    assert exit_code == 0
+    assert stdout.getvalue() == b"out"
+    assert stderr.getvalue() == b"err"
+
+
+@patch("fal.cli.runners.SyncServerlessClient")
+def test_exec_without_terminal_requests_no_tty_and_closes_stdin(mock_client_cls):
+    with patch("fal.cli.runners.sys.stdin") as stdin:
+        stdin.isatty.return_value = False
+        exit_code, sent, _ = _exec_with_command(mock_client_cls, ["python"])
+
+    assert exit_code == 0
+    assert sent[0].HasField("tty") and sent[0].tty is False
+    assert [msg.close for msg in sent] == [False, True]
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Interactive shell is Unix-only")
+@patch("fal.cli.runners.SyncServerlessClient")
+def test_exec_interactive_with_piped_stdin_streams_raw_bytes(mock_client_cls):
+    sent = []
+
+    def shell_runner(inputs):
+        sent.extend(inputs)
+        return [isolate_proto.ShellRunnerOutput(exit_code=0)]
+
+    stub = mock_client_cls.return_value._create_host.return_value._connection.stub
+    stub.ShellRunner.side_effect = shell_runner
+
+    read_fd, write_fd = os.pipe()
+    os.write(write_fd, b"SSH-2.0-client\r\n")
+    os.close(write_fd)
+    args = parse_args(["runners", "exec", "-it", "runner-id", "--", "sshd", "-i"])
+    args.console = MagicMock()
+    try:
+        with patch("fal.cli.runners.sys.stdin") as stdin:
+            stdin.isatty.return_value = False
+            stdin.fileno.return_value = read_fd
+            assert args.func(args) == 0
+    finally:
+        os.close(read_fd)
+
+    assert sent[0].tty is False
+    assert not sent[0].HasField("tty_size")
+    assert list(sent[0].command) == ["sshd", "-i"]
+    assert [msg.data for msg in sent[1:-1]] == [b"SSH-2.0-client\r\n"]
+    assert sent[-1].close is True
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Pseudo-terminals are Unix-only")
+@patch("fal.cli.runners.SyncServerlessClient")
+def test_exec_interactive_on_terminal_requests_tty_and_sends_size(mock_client_cls):
+    sent = []
+
+    def shell_runner(inputs):
+        for msg in inputs:
+            sent.append(msg)
+            if msg.HasField("tty_size"):
+                break
+        return [isolate_proto.ShellRunnerOutput(exit_code=0)]
+
+    stub = mock_client_cls.return_value._create_host.return_value._connection.stub
+    stub.ShellRunner.side_effect = shell_runner
+
+    master_fd, slave_fd = os.openpty()
+    args = parse_args(["runners", "exec", "-it", "runner-id", "--", "bash"])
+    args.console = MagicMock()
+    try:
+        with patch("fal.cli.runners.sys.stdin") as stdin:
+            stdin.isatty.return_value = True
+            stdin.fileno.return_value = slave_fd
+            assert args.func(args) == 0
+    finally:
+        os.close(master_fd)
+        os.close(slave_fd)
+
+    # The local `import tty` inside the session must not leak into the message.
+    assert sent[0].tty is True
+    assert sent[1].HasField("tty_size")
+
+
+@pytest.mark.parametrize("platform_name", ["posix", "nt"])
+@patch("fal.cli.runners.SyncServerlessClient")
+def test_shell_with_piped_stdin(mock_client_cls, platform_name):
+    sent = []
+
+    def shell_runner(inputs):
+        sent.extend(inputs)
+        return [isolate_proto.ShellRunnerOutput(exit_code=0)]
+
+    stub = mock_client_cls.return_value._create_host.return_value._connection.stub
+    stub.ShellRunner.side_effect = shell_runner
+
+    read_fd, write_fd = os.pipe()
+    os.close(write_fd)
+    args = parse_args(["runners", "shell", "runner-id"])
+    args.console = MagicMock()
+    try:
+        with patch("fal.cli.runners.sys.stdin") as stdin:
+            stdin.isatty.return_value = False
+            stdin.fileno.return_value = read_fd
+            with patch("fal.cli.runners.os.name", platform_name):
+                exit_code = args.func(args)
+    finally:
+        os.close(read_fd)
+
+    if platform_name == "nt":
+        assert exit_code == 1
+        args.console.print.assert_called_once_with(
+            "[red]Error:[/] Interactive runner shell is not supported on Windows."
+        )
+        stub.ShellRunner.assert_not_called()
+        assert sent == []
+    else:
+        assert exit_code == 0
+        assert sent[0].tty is True
+        assert all(not msg.close for msg in sent)
 
 
 def _mock_client(payload):

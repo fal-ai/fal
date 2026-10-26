@@ -20,10 +20,10 @@ dynamic = ["version"]
 description = "fal is an easy-to-use Serverless Python Framework"
 authors = [{ name = "Features & Labels <support@fal.ai>"}]
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 dependencies = [
-    "isolate[build]>=0.26.9,<0.27.0",
-    "isolate-proto>=0.34.2,<1",
+    "isolate[build]>=0.26.12,<0.27.0",
+    "isolate-proto>=0.34.5,<1",
     "grpcio>=1.64.0,<2",
     "dill==0.3.7",
     "cloudpickle>=3.0.0,<3.2",
@@ -37,13 +37,7 @@ dependencies = [
     "portalocker>=2.7.0,<3",
     "rich>=13.3.2,<15",
     "rich_argparse",
-    # argcomplete 3.7.1 annotates `str | bytes` in a class body while still
-    # declaring requires-python >=3.8, so importing it raises TypeError on 3.8/3.9
-    # -- and `fal.cli.parser` imports it at module scope, which takes the whole CLI
-    # down. Drop the upper bound once a fixed release is out (or 3.7.1 is yanked).
-    # See https://github.com/kislyuk/argcomplete/issues/559
-    "argcomplete>=3.1.0,<4; python_version >= '3.10'",
-    "argcomplete>=3.1.0,!=3.7.1,<4; python_version < '3.10'",
+    "argcomplete>=3.1.0,<4",
     "packaging>=21.3",
     # 1.0.0-1.0.3 each ship a crash bug, all fixed by 1.0.4 (#100, #102, #103):
     # https://github.com/cpburnz/python-pathspec/blob/master/CHANGES.rst
@@ -63,11 +57,10 @@ dependencies = [
     "dateparser>=1.2.0,<2",
     "types-dateparser>=1.2.0,<2",
     "tuspy==1.1.0",
-    # For 3.9 and earlier, importlib-metadata's newer versions are included in the standard library.
-    'importlib-metadata>=4.4; python_version < "3.10"',
     "msgpack>=1.0.7,<2",
     "websockets>=12.0",
-    "pillow>=10.2.0,<13",
+    "pillow>=13.0,<14; python_version >= '3.11'",
+    "pillow>=10.2.0,<13; python_version < '3.11'",
     "pyjwt[crypto]>=2.8.0,<3",
     "uvicorn>=0.29.0,<1",
     "cookiecutter",
@@ -81,6 +74,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+wma = [
+    "aiortc>=1.9,<2",
+    "pydantic>=2,<3",
+    "numpy",
+]
 docs = [
     "sphinx<8.2.0",
     "sphinx-rtd-theme",
@@ -96,6 +94,9 @@ test = [
     "numpy",
     "pyzmq",
     "fal_client",
+    # fal.wma real-negotiation tests (host-candidates only, no network);
+    # the suite importorskips it where absent.
+    "aiortc>=1.9,<2",
 ]
 dev = [
     "fal[docs,test]",
@@ -113,6 +114,11 @@ isolate-proto = "2100-01-01T00:00:00Z"
 [project.scripts]
 fal = "fal.cli:main"
 
+[project.urls]
+Homepage = "https://fal.ai"
+Documentation = "https://fal.ai/docs"
+Source = "https://github.com/fal-ai/fal"
+
 [tool.ruff]
 target-version = "py38"
 
@@ -128,6 +134,6 @@ keep-runtime-typing = true
 [tool.pytest.ini_options]
 addopts = "-ra --durations=50"
 asyncio_mode = "auto"
-faulthandler_timeout = 50
+faulthandler_timeout = 170
 testpaths = "tests"
 timeout = 60

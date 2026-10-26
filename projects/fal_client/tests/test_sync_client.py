@@ -75,9 +75,9 @@ def test_fal_client(client: fal_client.SyncClient):
 def test_fal_client_streaming(client: fal_client.SyncClient):
     events = []
     for event in client.stream(
-        "fal-ai/any-llm",
+        "openrouter/router",
         arguments={
-            "model": "google/gemini-flash-1.5",
+            "model": "~google/gemini-flash-latest",
             "prompt": "Tell me a joke",
         },
     ):

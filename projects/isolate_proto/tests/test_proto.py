@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import isolate_proto
+import pytest
+from google.protobuf import descriptor_pb2, descriptor_pool, message_factory
 
 
 def test_proto():
@@ -142,6 +144,63 @@ def test_callable_entrypoint_fields():
     assert register_request_last_write_wins.entrypoint == "pkg.mod:App.run"
 
 
+def test_volume_fields_are_protobuf_compatible_with_old_readers():
+    file_descriptor = descriptor_pb2.FileDescriptorProto(
+        name="legacy_volume_compat.proto",
+        package="legacy_volume_compat",
+        syntax="proto3",
+    )
+    for message_name, known_field_name, known_field_number in (
+        ("HostedRun", "environment_name", 6),
+        ("RegisterApplicationRequest", "application_name", 5),
+    ):
+        message = file_descriptor.message_type.add(name=message_name)
+        message.field.add(
+            name=known_field_name,
+            number=known_field_number,
+            label=descriptor_pb2.FieldDescriptorProto.LABEL_OPTIONAL,
+            type=descriptor_pb2.FieldDescriptorProto.TYPE_STRING,
+        )
+
+    pool = descriptor_pool.DescriptorPool()
+    pool.Add(file_descriptor)
+    legacy_run_type = message_factory.GetMessageClass(
+        pool.FindMessageTypeByName("legacy_volume_compat.HostedRun")
+    )
+    legacy_registration_type = message_factory.GetMessageClass(
+        pool.FindMessageTypeByName(
+            "legacy_volume_compat.RegisterApplicationRequest"
+        )
+    )
+
+    run = isolate_proto.HostedRun(
+        environment_name="main",
+        volumes=[isolate_proto.VolumeMount(volume_name="data", mount_path="/data")],
+    )
+    registration = isolate_proto.RegisterApplicationRequest(
+        application_name="legacy",
+        volumes=[isolate_proto.VolumeMount(volume_name="data", mount_path="/data")],
+    )
+
+    legacy_run = legacy_run_type.FromString(run.SerializeToString())
+    legacy_registration = legacy_registration_type.FromString(
+        registration.SerializeToString()
+    )
+
+    assert legacy_run.environment_name == "main"
+    assert legacy_registration.application_name == "legacy"
+
+    current_run = isolate_proto.HostedRun.FromString(
+        legacy_run_type(environment_name="main").SerializeToString()
+    )
+    current_registration = isolate_proto.RegisterApplicationRequest.FromString(
+        legacy_registration_type(application_name="legacy").SerializeToString()
+    )
+
+    assert list(current_run.volumes) == []
+    assert list(current_registration.volumes) == []
+
+
 def test_build_environment_field_presence():
     hosted_run = isolate_proto.HostedRun(entrypoint="pkg.mod:func")
     assert hosted_run.HasField("build_environment") is False
@@ -233,6 +292,28 @@ def test_build_environment_result_construction():
     assert result_with_status.env_id == "abc123"
 
 
+def test_shell_runner_tty_presence_survives_serialization():
+    legacy_request = isolate_proto.ShellRunnerInput(runner_id="runner-id")
+    assert legacy_request.HasField("tty") is False
+
+    request = isolate_proto.ShellRunnerInput(runner_id="runner-id", tty=False)
+    restored = isolate_proto.ShellRunnerInput.FromString(request.SerializeToString())
+
+    assert restored.HasField("tty") is True
+    assert restored.tty is False
+
+
+def test_shell_runner_output_stream_presence_survives_serialization():
+    legacy_output = isolate_proto.ShellRunnerOutput(data=b"output")
+    assert legacy_output.HasField("stream") is False
+
+    output = isolate_proto.ShellRunnerOutput(data=b"error", stream=2)
+    restored = isolate_proto.ShellRunnerOutput.FromString(output.SerializeToString())
+
+    assert restored.HasField("stream") is True
+    assert restored.stream == 2
+
+
 def test_register_application_private_logs_presence():
     request_without_private_logs = isolate_proto.RegisterApplicationRequest()
     assert request_without_private_logs.HasField("private_logs") is False
@@ -248,3 +329,117 @@ def test_register_application_private_logs_presence():
     )
     assert request_with_private_logs_true.HasField("private_logs") is True
     assert request_with_private_logs_true.private_logs is True
+
+
+def test_create_user_key_v2_policy_fields():
+    request = isolate_proto.CreateUserKeyRequest(alias="ci")
+    assert request.HasField("scope") is False
+    assert request.HasField("policy_preset") is False
+    assert request.HasField("policy") is False
+
+    admin_request = isolate_proto.CreateUserKeyRequest(
+        scope=isolate_proto.CreateUserKeyRequest.ADMIN
+    )
+    round_tripped = isolate_proto.CreateUserKeyRequest.FromString(
+        admin_request.SerializeToString()
+    )
+    assert round_tripped.HasField("scope") is True
+    assert round_tripped.scope == isolate_proto.CreateUserKeyRequest.ADMIN
+
+    preset_request = isolate_proto.CreateUserKeyRequest(policy_preset="FULL")
+    assert preset_request.HasField("policy_preset") is True
+    assert preset_request.policy_preset == "FULL"
+
+    policy_request = isolate_proto.CreateUserKeyRequest(
+        policy=isolate_proto.KeyPolicy(permissions=["serverless:apps:run"])
+    )
+    assert policy_request.HasField("policy") is True
+    assert list(policy_request.policy.permissions) == ["serverless:apps:run"]
+
+
+@pytest.mark.parametrize(
+    "message_type",
+    [
+        isolate_proto.MachineRequirements,
+        isolate_proto.UpdateApplicationRequest,
+        isolate_proto.ApplicationInfo,
+        isolate_proto.AliasInfo,
+    ],
+)
+def test_request_start_timeout_presence_and_wire_round_trip(message_type):
+    message = message_type(request_start_timeout=None)
+    assert message.HasField("request_start_timeout") is False
+    unset = message_type.FromString(message.SerializeToString())
+    assert unset.HasField("request_start_timeout") is False
+
+    message.request_start_timeout = 30
+    message.request_timeout = 600
+    restored = message_type.FromString(message.SerializeToString())
+    assert restored.HasField("request_start_timeout") is True
+    assert restored.request_start_timeout == 30
+    assert restored.request_timeout == 600
+
+    restored.ClearField("request_start_timeout")
+    cleared = message_type.FromString(restored.SerializeToString())
+    assert cleared.HasField("request_start_timeout") is False
+    assert cleared.request_timeout == 600
+
+
+@pytest.mark.parametrize(
+    "message_type",
+    [isolate_proto.MachineRequirements, isolate_proto.UpdateApplicationRequest],
+)
+def test_request_start_timeout_explicit_clear_is_distinct_from_omission(message_type):
+    request = message_type(request_start_timeout=0)
+    restored = message_type.FromString(request.SerializeToString())
+    assert restored.HasField("request_start_timeout") is True
+    assert restored.request_start_timeout == 0
+    assert message_type().HasField("request_start_timeout") is False
+
+
+@pytest.mark.parametrize(
+    "message_name,field_number,processing_timeout_number",
+    [
+        ("MachineRequirements", 20, 13),
+        ("UpdateApplicationRequest", 14, 8),
+        ("ApplicationInfo", 17, 9),
+        ("AliasInfo", 18, 10),
+    ],
+)
+def test_request_start_timeout_is_wire_compatible_with_old_readers(
+    message_name, field_number, processing_timeout_number
+):
+    message_type = getattr(isolate_proto, message_name)
+    assert (
+        message_type.DESCRIPTOR.fields_by_name["request_start_timeout"].number
+        == field_number
+    )
+    file_descriptor = descriptor_pb2.FileDescriptorProto(
+        name="legacy_timeout_compat.proto",
+        package="legacy_timeout_compat",
+        syntax="proto3",
+    )
+    legacy_descriptor = file_descriptor.message_type.add(name=message_name)
+    legacy_descriptor.field.add(
+        name="request_timeout",
+        number=processing_timeout_number,
+        label=descriptor_pb2.FieldDescriptorProto.LABEL_OPTIONAL,
+        type=descriptor_pb2.FieldDescriptorProto.TYPE_INT32,
+    )
+    pool = descriptor_pool.DescriptorPool()
+    pool.Add(file_descriptor)
+    legacy_type = message_factory.GetMessageClass(
+        pool.FindMessageTypeByName(f"legacy_timeout_compat.{message_name}")
+    )
+
+    current = message_type(request_timeout=600, request_start_timeout=30)
+    legacy = legacy_type.FromString(current.SerializeToString())
+    assert legacy.request_timeout == 600
+    forwarded = message_type.FromString(legacy.SerializeToString())
+    assert forwarded.request_start_timeout == 30
+
+    old_request = message_type.FromString(
+        legacy_type(request_timeout=600).SerializeToString()
+    )
+    assert old_request.request_timeout == 600
+    assert old_request.HasField("request_start_timeout") is False

@@ -24,6 +24,7 @@ _GRPC_HOST_ENV = os.getenv("FAL_GRPC_HOST")
 _REST_HOST_ENV = os.getenv("FAL_REST_HOST")
 _RUN_HOST_ENV = os.getenv("FAL_RUN_HOST")
 _QUEUE_RUN_HOST_ENV = os.getenv("FAL_QUEUE_RUN_HOST")
+_WS_RUN_HOST_ENV = os.getenv("FAL_WS_RUN_HOST")
 
 # Legacy: FAL_HOST takes precedence over config.host (unless FAL_GRPC_HOST is set)
 GRPC_HOST = _GRPC_HOST_ENV or os.getenv("FAL_HOST") or config_host or "api.alpha.fal.ai"
@@ -46,6 +47,8 @@ FAL_RUN_HOST = _RUN_HOST_ENV or (
 )
 
 FAL_QUEUE_RUN_HOST = _QUEUE_RUN_HOST_ENV or f"queue.{FAL_RUN_HOST}"
+
+FAL_WS_RUN_HOST = _WS_RUN_HOST_ENV or f"ws.{FAL_RUN_HOST}"
 
 DONT_OPEN_LINKS = bool_envvar("FAL_DONT_OPEN_LINKS")
 

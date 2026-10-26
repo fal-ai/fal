@@ -22,7 +22,8 @@ from fal.exceptions.auth import UnauthenticatedException
 from fal.flags import REST_HOST
 from fal.ref import get_current_app
 from fal.toolkit.exceptions import FileUploadException
-from fal.toolkit.file.types import FileData, FileRepository
+from fal.toolkit.file._upload_policy import _request_id
+from fal.toolkit.file.types import FileData, FileRepository, Reservation
 from fal.toolkit.utils.retry import retry
 
 _FAL_CDN_V3 = "https://v3.fal.media"
@@ -42,6 +43,29 @@ MAX_ATTEMPTS = 5
 BASE_DELAY = 0.1
 MAX_DELAY = 30
 RETRY_CODES = [408, 409, 429, 500, 502, 503, 504]
+MAX_ERROR_RESPONSE_BYTES = 4096
+
+
+def _initiate_upload_error(exc: HTTPError, storage_type: str) -> FileUploadException:
+    message = (
+        f"Error initiating upload. Status {exc.status}: {exc.reason}. "
+        f"Storage type: {storage_type}"
+    )
+    try:
+        body = exc.read(MAX_ERROR_RESPONSE_BYTES + 1)
+        response_text = body[:MAX_ERROR_RESPONSE_BYTES].decode(
+            "utf-8", errors="replace"
+        )
+    except Exception:
+        # Reading diagnostics must not replace the original upload failure.
+        return FileUploadException(message)
+
+    if response_text.strip():
+        message += f". Server response: {response_text.strip()}"
+        if len(body) > MAX_ERROR_RESPONSE_BYTES:
+            message += " [truncated]"
+
+    return FileUploadException(message)
 
 
 def _should_retry(exc: Exception) -> bool:
@@ -95,15 +119,26 @@ def _object_lifecycle_headers(
         )
 
 
-def _caller_cdn_header(
-    headers: dict[str, str],
-):
-    current_app = get_current_app()
-    if current_app and current_app.current_request:
-        if cdn_token := current_app.current_request.headers.get("x-fal-cdn-token"):
-            headers["X-Fal-CDN-Token"] = cdn_token
-        if request_id := current_app.current_request.request_id:
-            headers["X-Fal-Request-ID"] = request_id
+def _caller_cdn_header(headers: dict[str, str], request: Any = None) -> None:
+    """Name the caller on an upload, from the given request or the one in flight."""
+    if request is None:
+        current_app = get_current_app()
+        request = current_app.current_request if current_app else None
+    if request is None:
+        return
+    if cdn_token := request.headers.get("x-fal-cdn-token"):
+        headers["X-Fal-CDN-Token"] = cdn_token
+    if request_id := _request_id(request):
+        headers["X-Fal-Request-ID"] = request_id
+
+
+def _v3_auth_headers(request: Any = None) -> dict[str, str]:
+    headers = {
+        "Authorization": _require_auth_credentials().header_value,
+        "User-Agent": USER_AGENT,
+    }
+    _caller_cdn_header(headers, request)
+    return headers
 
 
 @dataclass(repr=False)
@@ -226,6 +261,16 @@ fal_v2_token_manager = FalV2TokenManager()
 fal_v3_token_manager = FalV3TokenManager()
 
 
+def _token_auth_headers() -> dict[str, str]:
+    token = fal_v3_token_manager.get_token()
+    headers = {
+        "Authorization": f"{token.token_type} {token.token}",
+        "User-Agent": USER_AGENT,
+    }
+    _caller_cdn_header(headers)
+    return headers
+
+
 VariableType = TypeVar("VariableType")
 
 
@@ -298,9 +343,7 @@ class FalFileRepositoryBase(FileRepository):
 
             upload_url = result["upload_url"]
         except HTTPError as e:
-            raise FileUploadException(
-                f"Error initiating upload. Status {e.status}: {e.reason}"
-            )
+            raise _initiate_upload_error(e, storage_type) from e
 
         try:
             req = Request(
@@ -388,9 +431,7 @@ class MultipartUploadGCS:
                 self._upload_url = result["upload_url"]
 
         except HTTPError as exc:
-            raise FileUploadException(
-                f"Error initiating upload. Status {exc.status}: {exc.reason}"
-            )
+            raise _initiate_upload_error(exc, "gcs") from exc
 
     def upload_part(self, part_number: int, data: bytes) -> None:
         initiate_upload_url = self.upload_url + f"/{part_number}"
@@ -565,14 +606,7 @@ class FalFileRepository(FalFileRepositoryBase):
 
     @property
     def auth_headers(self) -> dict[str, str]:
-        token = fal_v3_token_manager.get_token()
-        headers = {
-            "Authorization": f"{token.token_type} {token.token}",
-            "User-Agent": USER_AGENT,
-        }
-        _caller_cdn_header(headers)
-
-        return headers
+        return _token_auth_headers()
 
     def save_file(
         self,
@@ -623,11 +657,13 @@ class MultipartUploadV3:
         chunk_size: int | None = None,
         content_type: str | None = None,
         max_concurrency: int | None = None,
+        request: Any = None,
     ) -> None:
         self.file_name = file_name
         self.chunk_size = chunk_size or self.MULTIPART_CHUNK_SIZE
         self.content_type = content_type or "application/octet-stream"
         self.max_concurrency = max_concurrency or self.MULTIPART_MAX_CONCURRENCY
+        self.request = request
 
         self._access_url: str | None = None
         self._upload_url: str | None = None
@@ -648,13 +684,7 @@ class MultipartUploadV3:
 
     @property
     def auth_headers(self) -> dict[str, str]:
-        headers = {
-            "Authorization": _require_auth_credentials().header_value,
-            "User-Agent": USER_AGENT,
-        }
-        _caller_cdn_header(headers)
-
-        return headers
+        return _v3_auth_headers(self.request)
 
     def create(self, object_lifecycle_preference: dict[str, str] | None = None) -> None:
         url = f"https://{REST_HOST}/storage/upload/initiate-multipart?storage_type=fal-cdn-v3"
@@ -684,9 +714,7 @@ class MultipartUploadV3:
                 self._upload_url = result["upload_url"]
 
         except HTTPError as exc:
-            raise FileUploadException(
-                f"Error initiating upload. Status {exc.status}: {exc.reason}"
-            )
+            raise _initiate_upload_error(exc, "fal-cdn-v3") from exc
 
     def upload_part(self, part_number: int, data: bytes) -> None:
         parsed = urlparse(self.upload_url)
@@ -740,6 +768,33 @@ class MultipartUploadV3:
 
         return self.access_url
 
+    def upload(self, content: bytes | Path) -> str:
+        import concurrent.futures  # noqa: PLC0415
+
+        def read_part(part_number: int) -> bytes:
+            start = (part_number - 1) * self.chunk_size
+            if isinstance(content, bytes):
+                return content[start : start + self.chunk_size]
+            with open(content, "rb") as f:
+                f.seek(start)
+                return f.read(self.chunk_size)
+
+        size = len(content) if isinstance(content, bytes) else content.stat().st_size
+        # Only this attempt's parts: a retried upload must not send stale ones.
+        self._parts = []
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=self.max_concurrency
+        ) as executor:
+            futures = [
+                executor.submit(lambda pn: self.upload_part(pn, read_part(pn)), pn)
+                # One part even when empty: completing with no parts fails.
+                for pn in range(1, max(1, math.ceil(size / self.chunk_size)) + 1)
+            ]
+            for future in concurrent.futures.as_completed(futures):
+                future.result()
+
+        return self.complete()
+
     @classmethod
     def save(
         cls,
@@ -748,8 +803,6 @@ class MultipartUploadV3:
         max_concurrency: int | None = None,
         object_lifecycle_preference: dict[str, str] | None = None,
     ):
-        import concurrent.futures  # noqa: PLC0415
-
         multipart = cls(
             file.file_name,
             chunk_size=chunk_size,
@@ -757,23 +810,7 @@ class MultipartUploadV3:
             max_concurrency=max_concurrency,
         )
         multipart.create(object_lifecycle_preference=object_lifecycle_preference)
-
-        parts = math.ceil(len(file.data) / multipart.chunk_size)
-        with concurrent.futures.ThreadPoolExecutor(
-            max_workers=multipart.max_concurrency
-        ) as executor:
-            futures = []
-            for part_number in range(1, parts + 1):
-                start = (part_number - 1) * multipart.chunk_size
-                data = file.data[start : start + multipart.chunk_size]
-                futures.append(
-                    executor.submit(multipart.upload_part, part_number, data)
-                )
-
-            for future in concurrent.futures.as_completed(futures):
-                future.result()
-
-        return multipart.complete()
+        return multipart.upload(file.data)
 
     @classmethod
     def save_file(
@@ -784,39 +821,14 @@ class MultipartUploadV3:
         max_concurrency: int | None = None,
         object_lifecycle_preference: dict[str, str] | None = None,
     ) -> str:
-        import concurrent.futures  # noqa: PLC0415
-
-        file_name = os.path.basename(file_path)
-        size = os.path.getsize(file_path)
-
         multipart = cls(
-            file_name,
+            os.path.basename(file_path),
             chunk_size=chunk_size,
             content_type=content_type,
             max_concurrency=max_concurrency,
         )
         multipart.create(object_lifecycle_preference=object_lifecycle_preference)
-
-        parts = math.ceil(size / multipart.chunk_size)
-        with concurrent.futures.ThreadPoolExecutor(
-            max_workers=multipart.max_concurrency
-        ) as executor:
-            futures = []
-            for part_number in range(1, parts + 1):
-
-                def _upload_part(pn: int) -> None:
-                    with open(file_path, "rb") as f:
-                        start = (pn - 1) * multipart.chunk_size
-                        f.seek(start)
-                        data = f.read(multipart.chunk_size)
-                        multipart.upload_part(pn, data)
-
-                futures.append(executor.submit(_upload_part, part_number))
-
-            for future in concurrent.futures.as_completed(futures):
-                future.result()
-
-        return multipart.complete()
+        return multipart.upload(Path(file_path))
 
 
 class InternalMultipartUploadV3:
@@ -854,14 +866,7 @@ class InternalMultipartUploadV3:
 
     @property
     def auth_headers(self) -> dict[str, str]:
-        token = fal_v3_token_manager.get_token()
-        headers = {
-            "Authorization": f"{token.token_type} {token.token}",
-            "User-Agent": USER_AGENT,
-        }
-        _caller_cdn_header(headers)
-
-        return headers
+        return _token_auth_headers()
 
     def create(self, object_lifecycle_preference: dict[str, str] | None = None) -> None:
         token = fal_v3_token_manager.get_token()
@@ -884,9 +889,7 @@ class InternalMultipartUploadV3:
                 self._upload_id = result["uploadId"]
 
         except HTTPError as exc:
-            raise FileUploadException(
-                f"Error initiating upload. Status {exc.status}: {exc.reason}"
-            )
+            raise _initiate_upload_error(exc, "fal-cdn-v3") from exc
 
     def upload_part(self, part_number: int, data: bytes) -> None:
         url = f"{self.access_url}/multipart/{self.upload_id}/{part_number}"
@@ -1034,13 +1037,22 @@ class InMemoryRepository(FileRepository):
 class FalFileRepositoryV3(FileRepository):
     @property
     def auth_headers(self) -> dict[str, str]:
-        headers = {
-            "Authorization": _require_auth_credentials().header_value,
-            "User-Agent": USER_AGENT,
-        }
-        _caller_cdn_header(headers)
+        return _v3_auth_headers()
 
-        return headers
+    def reserve(
+        self,
+        file_name: str,
+        content_type: str,
+        object_lifecycle_preference: dict[str, str] | None = None,
+        request: Any = None,
+        extra_headers: dict[str, str] | None = None,
+    ) -> Reservation:
+        # Multipart at every size: the URL goes out before the size is known.
+        multipart = MultipartUploadV3(
+            file_name, content_type=content_type, request=request
+        )
+        multipart.create(object_lifecycle_preference=object_lifecycle_preference)
+        return Reservation(multipart.access_url, multipart.upload)
 
     def save(
         self,
@@ -1050,7 +1062,9 @@ class FalFileRepositoryV3(FileRepository):
         multipart_chunk_size: int | None = None,
         multipart_max_concurrency: int | None = None,
         object_lifecycle_preference: dict[str, str] | None = None,
+        wait_for_completion: bool = False,
     ) -> str:
+        # Always returns after the CDN has the file, so wait_for_completion holds.
         if multipart is None:
             threshold = multipart_threshold or MultipartUploadV3.MULTIPART_THRESHOLD
             multipart = len(file.data) > threshold
@@ -1089,9 +1103,7 @@ class FalFileRepositoryV3(FileRepository):
                 file_url = result["file_url"]
                 upload_url = result["upload_url"]
         except HTTPError as e:
-            raise FileUploadException(
-                f"Error initiating upload. Status {e.status}: {e.reason}"
-            )
+            raise _initiate_upload_error(e, "fal-cdn-v3") from e
 
         request = Request(
             upload_url,
@@ -1118,6 +1130,7 @@ class FalFileRepositoryV3(FileRepository):
         multipart_chunk_size: int | None = None,
         multipart_max_concurrency: int | None = None,
         object_lifecycle_preference: dict[str, str] | None = None,
+        wait_for_completion: bool = False,
     ) -> tuple[str, FileData | None]:
         if multipart is None:
             threshold = multipart_threshold or MultipartUploadV3.MULTIPART_THRESHOLD
@@ -1194,23 +1207,14 @@ class InternalFalFileRepositoryV3(FileRepository):
             with _maybe_retry_request(request) as response:
                 result = json.load(response)
         except HTTPError as e:
-            raise FileUploadException(
-                f"Error initiating upload. Status {e.status}: {e.reason}"
-            )
+            raise _initiate_upload_error(e, "fal-cdn-v3") from e
 
         access_url = result["access_url"]
         return access_url
 
     @property
     def auth_headers(self) -> dict[str, str]:
-        token = fal_v3_token_manager.get_token()
-        headers = {
-            "Authorization": f"{token.token_type} {token.token}",
-            "User-Agent": USER_AGENT,
-        }
-        _caller_cdn_header(headers)
-
-        return headers
+        return _token_auth_headers()
 
     def save_file(
         self,

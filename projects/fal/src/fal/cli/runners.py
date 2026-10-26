@@ -4,7 +4,6 @@ import argparse
 import json
 import os
 import signal
-import struct
 import sys
 from collections import deque
 from dataclasses import dataclass
@@ -19,6 +18,7 @@ if TYPE_CHECKING:
 
 import grpc
 import httpx
+import isolate_proto
 from httpx_sse import connect_sse
 from rich.console import Console
 from structlog.typing import EventDict
@@ -123,41 +123,57 @@ def runners_requests_table(runners: list[RunnerInfo]):
     return table
 
 
-def _get_tty_size():
+def _get_tty_size(fd: int):
     """Get current terminal dimensions."""
-    import fcntl
-    import termios
-
     try:
-        h, w = struct.unpack("HH", fcntl.ioctl(0, termios.TIOCGWINSZ, b"\0" * 4))[:2]
-        return h, w
-    except (OSError, ValueError):
+        size = os.get_terminal_size(fd)
+        return size.lines, size.columns
+    except OSError:
         return 24, 80  # Fallback to standard size
 
 
 def _shell(args):
-    """Execute a command (or interactive shell) on a runner."""
-    import isolate_proto
+    """Open an interactive shell on a runner."""
+    # Always a PTY: the login shell expects one even when local stdin is piped.
+    return _shell_session(args, command=None, interactive=True, remote_tty=True)
+
+
+def _exec(args):
+    """Execute a command on a runner."""
+    command = args.command
+    # argparse may leave the -- separator as the first token (Python < 3.12).
+    if command[0] == "--":
+        command = command[1:]
+
+    if not command:
+        args.console.print("[red]Error:[/] No command specified.")
+        return 1
+
+    # A PTY mangles bytes (echo, CR/NL translation, signal characters), so only
+    # ask for one when a real terminal is attached.
+    remote_tty = args.interactive and sys.stdin.isatty()
+    return _shell_session(
+        args, command=command, interactive=args.interactive, remote_tty=remote_tty
+    )
+
+
+def _shell_session(args, command, interactive, *, remote_tty, stdout=None, stderr=None):
+    """Stream a shell session on a runner; command=None opens a login shell.
+
+    `remote_tty` controls whether the remote command runs under a pseudo-terminal.
+    Without one, remote stdin is closed once local input ends so pipe-reading
+    commands see EOF. Remote output goes to `stdout` and `stderr` (default: this
+    process's corresponding streams). Servers predating stream identification
+    produce output with no stream set, which is treated as stdout.
+    """
+    if stdout is None:
+        stdout = sys.stdout.buffer
+    if stderr is None:
+        stderr = sys.stderr.buffer
 
     client = SyncServerlessClient(host=args.host, team=args.team)
     stub = client._create_host()._connection.stub
     runner_id = args.id
-
-    is_exec = hasattr(args, "command")
-
-    if is_exec:
-        command = args.command
-        if command and command[0] == "--":
-            command = command[1:]
-
-        if not command:
-            args.console.print("[red]Error:[/] No command specified.")
-            return 1
-
-        interactive = args.interactive
-    else:
-        command = None
-        interactive = True
 
     if interactive and os.name == "nt":
         args.console.print(
@@ -205,15 +221,19 @@ def _shell(args):
     def stream_inputs():
         """Generate input stream for gRPC."""
         # Send initial message with runner_id
-        yield isolate_proto.ShellRunnerInput(runner_id=runner_id, command=command)
+        yield isolate_proto.ShellRunnerInput(
+            runner_id=runner_id, command=command, tty=remote_tty
+        )
 
         if not interactive:
+            if not remote_tty:
+                yield isolate_proto.ShellRunnerInput(close=True)
             return
 
         # Send terminal size
         if is_tty:
             msg = isolate_proto.ShellRunnerInput()
-            h, w = _get_tty_size()
+            h, w = _get_tty_size(fd)
             msg.tty_size.height = h
             msg.tty_size.width = w
             yield msg
@@ -229,11 +249,13 @@ def _shell(args):
                 yield isolate_proto.ShellRunnerInput(data=data)
             elif msg_type == "resize":
                 msg = isolate_proto.ShellRunnerInput()
-                h, w = _get_tty_size()
+                h, w = _get_tty_size(fd)
                 msg.tty_size.height = h
                 msg.tty_size.width = w
                 yield msg
             elif msg_type == "eof":
+                if not remote_tty:
+                    yield isolate_proto.ShellRunnerInput(close=True)
                 return
 
     exit_code = 1
@@ -248,8 +270,13 @@ def _shell(args):
                 exit_code = output.exit_code
                 break
             if output.data:
-                sys.stdout.buffer.write(output.data)
-                sys.stdout.buffer.flush()
+                stream = (
+                    stderr
+                    if output.HasField("stream") and output.stream == 2
+                    else stdout
+                )
+                stream.write(output.data)
+                stream.flush()
             if output.close:
                 break
         exit_code = exit_code or 0
@@ -855,14 +882,19 @@ def _add_exec_parser(subparsers, parents):
         "-it",
         "--interactive",
         action="store_true",
-        help="Allocate a TTY and attach stdin (interactive mode).",
+        help=(
+            "Attach stdin. A TTY is allocated only when stdin is a terminal; "
+            "with piped stdin the command gets a raw byte stream."
+        ),
     )
+    # PARSER keeps fal's own flags parseable between the runner id and the
+    # command; REMAINDER would swallow them into the command.
     parser.add_argument(
         "command",
-        nargs=argparse.REMAINDER,
-        help="Command to execute (after --).",
+        nargs=argparse.PARSER,
+        help="Command to execute. Prefix with -- if it starts with a dash.",
     )
-    parser.set_defaults(func=_shell)
+    parser.set_defaults(func=_exec)
 
 
 def add_parser(main_subparsers, parents):

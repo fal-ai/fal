@@ -1,12 +1,17 @@
+from io import BytesIO
 from unittest.mock import MagicMock, patch
+from urllib.error import HTTPError
 
 import pytest
 
+from fal.exceptions import FalServerlessException
 from fal.sdk import (
     ApplicationHealthCheckConfig,
     FalServerlessConnection,
     FalServerlessKeyCredentials,
+    MachineRequirements,
     RetryConfig,
+    from_grpc,
     get_credentials,
     isolate_proto,
     validate_retry_config_dict,
@@ -80,6 +85,47 @@ def test_get_credentials_raises_when_key_owner_lookup_fails():
     with patch("fal.sdk.key_credentials", return_value=("key-id", "key-secret")):
         with patch("fal.sdk.current_user_info", side_effect=RuntimeError("boom")):
             with pytest.raises(RuntimeError, match="boom"):
+                get_credentials(team="my-team")
+
+
+def _user_info_http_error(code: int, body: bytes) -> FalServerlessException:
+    exc = FalServerlessException("Failed to fetch user info")
+    exc.__cause__ = HTTPError(
+        "https://rest.alpha.fal.ai/users/current", code, "", {}, BytesIO(body)
+    )
+    return exc
+
+
+def test_get_credentials_prints_generic_notice_when_key_cannot_read_owner():
+    denied = _user_info_http_error(
+        403,
+        b'{"detail": "Insufficient permissions: required \'account:settings:read\'"}',
+    )
+    with patch("fal.sdk.key_credentials", return_value=("key-id", "key-secret")):
+        with patch("fal.sdk.current_user_info", side_effect=denied):
+            with patch("fal.sdk.console.print") as mock_console_print:
+                credentials = get_credentials(team="my-team")
+
+    mock_console_print.assert_called_once_with(
+        "Ignoring explicit team my-team because key is used."
+    )
+    assert isinstance(credentials, FalServerlessKeyCredentials)
+
+
+@pytest.mark.parametrize(
+    "code, body",
+    [
+        (401, b'{"detail": "Invalid key"}'),
+        (403, b'{"detail": "User is locked. Reason: unknown"}'),
+    ],
+)
+def test_get_credentials_raises_when_owner_lookup_fails_otherwise(code, body):
+    with patch("fal.sdk.key_credentials", return_value=("key-id", "key-secret")):
+        with patch(
+            "fal.sdk.current_user_info",
+            side_effect=_user_info_http_error(code, body),
+        ):
+            with pytest.raises(FalServerlessException):
                 get_credentials(team="my-team")
 
 
@@ -537,3 +583,65 @@ def test_register_rejects_empty_retry_config():
                 retry_config=RetryConfig(),
             )
         )
+
+
+@pytest.mark.parametrize("operation", ["register", "run"])
+@pytest.mark.parametrize("timeout", [None, 0, 30])
+def test_connection_serializes_request_start_timeout(operation, timeout):
+    connection = FalServerlessConnection("api.alpha.fal.ai", MagicMock())
+    stub = RecordingStub()
+    connection._stub = stub
+    environment = connection.define_environment("virtualenv")
+    requirements = MachineRequirements(["GPU-H100"], request_start_timeout=timeout)
+    kwargs = {"deployment_strategy": "rolling"} if operation == "register" else {}
+
+    list(
+        getattr(connection, operation)(
+            lambda: None,
+            [environment],
+            machine_requirements=requirements,
+            **kwargs,
+        )
+    )
+
+    request = getattr(stub, f"{operation}_request")
+    request = type(request).FromString(request.SerializeToString())
+    assert request.machine_requirements.HasField("request_start_timeout") == (
+        timeout is not None
+    )
+    if timeout is not None:
+        assert request.machine_requirements.request_start_timeout == timeout
+
+
+@pytest.mark.parametrize("timeout", [None, 0, 30])
+def test_connection_update_serializes_request_start_timeout(timeout):
+    connection = FalServerlessConnection("api.alpha.fal.ai", MagicMock())
+    stub = MagicMock()
+    stub.UpdateApplication.return_value = isolate_proto.UpdateApplicationResult(
+        alias_info=isolate_proto.AliasInfo(
+            auth_mode=isolate_proto.ApplicationAuthMode.PRIVATE
+        )
+    )
+    connection._stub = stub
+
+    connection.update_application("queue-timeout-app", request_start_timeout=timeout)
+
+    request = stub.UpdateApplication.call_args.args[0]
+    request = type(request).FromString(request.SerializeToString())
+    assert request.HasField("request_start_timeout") == (timeout is not None)
+    if timeout is not None:
+        assert request.request_start_timeout == timeout
+
+
+@pytest.mark.parametrize(
+    "message_type", [isolate_proto.ApplicationInfo, isolate_proto.AliasInfo]
+)
+@pytest.mark.parametrize("timeout", [None, 30])
+def test_app_info_deserializes_optional_request_start_timeout(message_type, timeout):
+    message = message_type(request_start_timeout=timeout)
+    if message_type is isolate_proto.AliasInfo:
+        message.auth_mode = isolate_proto.ApplicationAuthMode.PRIVATE
+
+    info = from_grpc(message)
+
+    assert info.request_start_timeout == timeout

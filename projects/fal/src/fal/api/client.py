@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, List, Optional
 
@@ -8,6 +9,7 @@ from fal.sdk import (
     AliasInfo,
     Credentials,
     EnvironmentInfo,
+    KeyPreset,
     KeyScope,
     RunnerInfo,
     ServerlessSecret,
@@ -105,6 +107,7 @@ class AppsNamespace:
         concurrency_buffer_perc: int | None = None,
         scaling_delay: int | None = None,
         request_timeout: int | None = None,
+        request_start_timeout: int | None = None,
         startup_timeout: int | None = None,
         machine_types: List[str] | None = None,
         regions: List[str] | None = None,
@@ -121,6 +124,8 @@ class AppsNamespace:
             max_concurrency: Maximum concurrent runners.
             min_concurrency: Minimum concurrent runners.
             request_timeout: Request timeout in seconds.
+            request_start_timeout: Default queue-wait timeout in seconds for owner
+                requests. Per-request headers override it. Use 0 to clear it.
             startup_timeout: Startup timeout in seconds.
             machine_types: List of allowed machine types (e.g., ["GPU-H100"]).
             regions: List of allowed regions (e.g., ["us-east"]).
@@ -145,6 +150,7 @@ class AppsNamespace:
             concurrency_buffer_perc=concurrency_buffer_perc,
             scaling_delay=scaling_delay,
             request_timeout=request_timeout,
+            request_start_timeout=request_start_timeout,
             startup_timeout=startup_timeout,
             machine_types=machine_types,
             regions=regions,
@@ -247,25 +253,51 @@ class KeysNamespace:
 
         client = SyncServerlessClient()
         keys = client.keys.list()
-        key_id, key_secret = client.keys.create(scope="admin")
+        key_id, key_secret = client.keys.create(preset=KeyPreset.FULL)
     """
 
     def __init__(self, client: SyncServerlessClient):
         self.client = client
 
     def create(
-        self, *, scope: KeyScope, description: str | None = None
+        self,
+        *,
+        preset: KeyPreset | None = None,
+        permissions: List[str] | None = None,
+        scope: KeyScope | None = None,
+        description: str | None = None,
     ) -> tuple[str, str]:
         """Create a new API key.
 
         Args:
-            scope: Key scope (e.g., "admin").
+            preset: Permission preset to mint the key with.
+            permissions: Explicit permission list, for a key no preset covers.
+            scope: Deprecated, use preset. Mapped to its equivalent preset.
             description: Optional description for the key.
 
         Returns:
             Tuple of (key_id, key_secret).
         """
-        return keys_api.create_key(self.client, scope=scope, description=description)
+        if sum(x is not None for x in (preset, permissions, scope)) > 1:
+            raise ValueError("Pass exactly one of preset, permissions or scope.")
+
+        if scope is not None:
+            warnings.warn(
+                "keys.create(scope=...) is deprecated, use keys.create(preset=...).",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            preset = KeyPreset.from_scope(scope)
+
+        if preset is None and permissions is None:
+            raise ValueError("A preset or a permission list is required.")
+
+        return keys_api.create_key(
+            self.client,
+            preset=preset,
+            permissions=permissions,
+            description=description,
+        )
 
     def list(self) -> List[UserKeyInfo]:
         """List all API keys."""
