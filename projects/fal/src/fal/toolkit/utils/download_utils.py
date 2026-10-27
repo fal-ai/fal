@@ -8,14 +8,12 @@ import shutil
 import subprocess
 import sys
 import time
-from contextlib import suppress
+from contextlib import contextmanager, suppress
 from email.message import Message
 from pathlib import Path, PurePath
 from tempfile import TemporaryDirectory, mkstemp
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
-
-import portalocker
 
 from fal.toolkit.utils.ssrf import (
     SafeResponse,
@@ -40,6 +38,24 @@ TEMP_HEADERS = {
 
 class DownloadError(Exception):
     pass
+
+
+@contextmanager
+def _model_weights_lock(path: Path):
+    if os.name == "nt":
+        import portalocker  # noqa: PLC0415
+
+        with portalocker.Lock(path, mode="a", flags=portalocker.LockFlags.EXCLUSIVE):
+            yield
+    else:
+        import fcntl  # noqa: PLC0415
+
+        with path.open("a") as lock_file:
+            fcntl.flock(lock_file, fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(lock_file, fcntl.LOCK_UN)
 
 
 def _hash_url(url: str) -> str:
@@ -374,7 +390,7 @@ def download_model_weights(
     # Keep the lock file beside the cache directory so legacy readers cannot
     # mistake it for weights. It must persist for every runner to lock one inode.
     lock_path = weights_dir.parent / f".fal-weights-{weights_dir.name}.lock"
-    with portalocker.Lock(lock_path, mode="a", flags=portalocker.LockFlags.EXCLUSIVE):
+    with _model_weights_lock(lock_path):
         if weights_dir.is_symlink():
             raise DownloadError("Model weights cache directory cannot be a symlink")
         if not force:
