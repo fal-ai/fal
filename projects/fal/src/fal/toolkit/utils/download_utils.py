@@ -374,8 +374,7 @@ def download_model_weights(
     Returns:
         A Path object representing the full path to the downloaded model weights.
     """
-    # A URL-specific directory can contain files written by other callers. Only a
-    # record produced after downloading this exact URL can select an artifact.
+    # Only a record for this exact URL can select an artifact from a shared directory.
     weights_dir = Path(FAL_MODEL_WEIGHTS_DIR / _hash_url(url))
 
     if not force:
@@ -387,8 +386,7 @@ def download_model_weights(
             return weights_path
 
     weights_dir.parent.mkdir(parents=True, exist_ok=True)
-    # Keep the lock file beside the cache directory so legacy readers cannot
-    # mistake it for weights. It must persist for every runner to lock one inode.
+    # Keep a persistent lock outside the cache directory so old readers ignore it.
     lock_path = weights_dir.parent / f".fal-weights-{weights_dir.name}.lock"
     with _model_weights_lock(lock_path):
         if weights_dir.is_symlink():
@@ -399,8 +397,7 @@ def download_model_weights(
                 _mark_used_dir(weights_dir)
                 return weights_path
 
-        # Stage outside the URL's cache directory. A legacy or planted file with the
-        # same name and length must not trigger download_file's size-only shortcut.
+        # Stage elsewhere to avoid the size-only shortcut for planted files.
         with TemporaryDirectory(
             dir=weights_dir.parent, prefix=".fal-weights-download-"
         ) as staged_dir:
