@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import errno
 import hashlib
+import json
 import os
 import shutil
 import subprocess
 import sys
 import time
-from contextlib import suppress
+from contextlib import contextmanager, suppress
 from email.message import Message
 from pathlib import Path, PurePath
 from tempfile import TemporaryDirectory, mkstemp
@@ -37,6 +38,24 @@ TEMP_HEADERS = {
 
 class DownloadError(Exception):
     pass
+
+
+@contextmanager
+def _model_weights_lock(path: Path):
+    if os.name == "nt":
+        import portalocker  # noqa: PLC0415
+
+        with portalocker.Lock(path, mode="a", flags=portalocker.LockFlags.EXCLUSIVE):
+            yield
+    else:
+        import fcntl  # noqa: PLC0415
+
+        with path.open("a") as lock_file:
+            fcntl.flock(lock_file, fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(lock_file, fcntl.LOCK_UN)
 
 
 def _hash_url(url: str) -> str:
@@ -298,6 +317,41 @@ def _mark_used_dir(dir: Path):
         used_file.touch()
 
 
+_WEIGHTS_RECORD = ".fal-weights.json"
+
+
+def _cached_model_weights(weights_dir: Path, url: str) -> Path | None:
+    """Return only the artifact explicitly recorded for this exact URL."""
+    try:
+        record = json.loads((weights_dir / _WEIGHTS_RECORD).read_text())
+        filename = record["filename"]
+        if (
+            record["url_sha256"] == _hash_url(url)
+            and isinstance(filename, str)
+            and filename not in {"", ".", "..", _WEIGHTS_RECORD}
+            and Path(filename).name == filename
+        ):
+            path = weights_dir / filename
+            if path.is_file() and not path.is_symlink():
+                return path
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    return None
+
+
+def _record_model_weights(weights_path: Path, url: str) -> None:
+    """Publish cache metadata after the downloaded artifact is in place."""
+    record = {"url_sha256": _hash_url(url), "filename": weights_path.name}
+    fd, staged_name = mkstemp(dir=weights_path.parent, prefix=".fal-weights-")
+    staged_path = Path(staged_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as staged:
+            json.dump(record, staged)
+        os.replace(staged_path, weights_path.parent / _WEIGHTS_RECORD)
+    finally:
+        staged_path.unlink(missing_ok=True)
+
+
 def download_model_weights(
     url: str,
     force: bool = False,
@@ -306,53 +360,60 @@ def download_model_weights(
     """Downloads model weights from the specified URL and saves them to a
     predefined directory.
 
-    This function is specifically designed for downloading model weights and stores
-    them in a predefined directory.
-
-    It calls the `download_file` function with the provided
-    URL and the target directory set to a pre-defined location for model weights.
-    The downloaded model weights are saved in this directory, and the function returns
-    the full path to the downloaded weights file.
+    A cache hit requires a metadata record binding the exact URL to the downloaded
+    filename. Legacy directories without a record are downloaded again. A fresh
+    download is staged separately, then its artifact and record are published.
 
     Args:
         url: The URL from which the model weights will be downloaded.
-        force: If `True`, the model weights are downloaded even if they already exist
-            locally and their content length matches the expected content length from
-            the remote file. Defaults to `False`.
+        force: If `True`, download the weights even when a valid cache record exists.
+            Defaults to `False`.
         request_headers: A dictionary containing additional headers to be included in
             the HTTP request. Defaults to `None`.
 
     Returns:
         A Path object representing the full path to the downloaded model weights.
     """
-    # This is not a protected path, so the user may change stuff internally
+    # Only a record for this exact URL can select an artifact from a shared directory.
     weights_dir = Path(FAL_MODEL_WEIGHTS_DIR / _hash_url(url))
 
-    if weights_dir.exists() and not force:
-        try:
-            # TODO: sometimes the directory can hold multiple files
-            # Example:
-            # .fal/model_weights/00155dc2d9579360d577d1a87d31b52c21135c14a5f44fcbab36fbb8352f3e0d  # noqa: E501
-            # We need to either not allow multiple files in the directory or
-            # find the one that is the most recently used.
-            weights_path = next(
-                # Ignore .fal dotfiles since they are metadata files
-                f
-                for f in weights_dir.glob("*")
-                if not f.name.startswith(".fal")
-            )
+    if not force:
+        if weights_dir.is_symlink():
+            raise DownloadError("Model weights cache directory cannot be a symlink")
+        weights_path = _cached_model_weights(weights_dir, url)
+        if weights_path is not None:
             _mark_used_dir(weights_dir)
             return weights_path
-        # The model weights directory is empty, so we need to download the weights
-        except StopIteration:
-            pass
 
-    path = download_file(
-        url,
-        target_dir=weights_dir,
-        force=force,
-        request_headers=request_headers,
-    )
+    weights_dir.parent.mkdir(parents=True, exist_ok=True)
+    # Keep a persistent lock outside the cache directory so old readers ignore it.
+    lock_path = weights_dir.parent / f".fal-weights-{weights_dir.name}.lock"
+    with _model_weights_lock(lock_path):
+        if weights_dir.is_symlink():
+            raise DownloadError("Model weights cache directory cannot be a symlink")
+        if not force:
+            weights_path = _cached_model_weights(weights_dir, url)
+            if weights_path is not None:
+                _mark_used_dir(weights_dir)
+                return weights_path
+
+        # Stage elsewhere to avoid the size-only shortcut for planted files.
+        with TemporaryDirectory(
+            dir=weights_dir.parent, prefix=".fal-weights-download-"
+        ) as staged_dir:
+            staged_path = download_file(
+                url,
+                target_dir=staged_dir,
+                force=True,
+                request_headers=request_headers,
+            )
+            if staged_path.name in {"", ".", "..", _WEIGHTS_RECORD}:
+                raise DownloadError("Invalid model weights filename")
+
+            weights_dir.mkdir(parents=True, exist_ok=True)
+            path = weights_dir / staged_path.name
+            os.replace(staged_path, path)
+            _record_model_weights(path, url)
 
     _mark_used_dir(weights_dir)
 

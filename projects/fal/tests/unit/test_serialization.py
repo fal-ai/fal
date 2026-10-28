@@ -93,7 +93,14 @@ for name in [n for n in list(sys.modules) if n.split(".")[0] in blocked]:
 sys.meta_path.insert(0, Blocker())
 
 with open(sys.argv[2], "rb") as handle:
-    pickle.loads(handle.read())
+    restored = pickle.loads(handle.read())
+if len(sys.argv) > 3:
+    from pathlib import Path
+
+    restored.__globals__["FAL_MODEL_WEIGHTS_DIR"] = Path(sys.argv[3])
+    path = restored("data:text/plain,hello")
+    assert path.read_bytes() == b"hello"
+    assert restored("data:text/plain,hello") == path
 print("LOADED")
 """
 
@@ -108,6 +115,7 @@ _SERVE_ONLY_MODULES = [
     "fastapi",
     "httpx",
     "packaging",
+    "portalocker",
     "starlette",
     "starlette_exporter",
     "structlog",
@@ -133,10 +141,14 @@ from fal._serialization import patch_pickle
 
 patch_pickle()
 
-from fal.toolkit import File, Image
+from fal.toolkit import File, Image, download_model_weights
 
 with open(sys.argv[2], "wb") as handle:
-    handle.write(cloudpickle.dumps({"File": File, "Image": Image}[sys.argv[1]]))
+    handle.write(cloudpickle.dumps({
+        "File": File,
+        "Image": Image,
+        "download_model_weights": download_model_weights,
+    }[sys.argv[1]]))
 """
 
 
@@ -152,7 +164,9 @@ def _dump_in_a_clean_process(exported: str, tmp_path) -> bytes:
     return target.read_bytes()
 
 
-def _load_with_blocked_imports(payload: bytes, blocked: list[str], tmp_path):
+def _load_with_blocked_imports(
+    payload: bytes, blocked: list[str], tmp_path, weights_dir=None
+):
     target = tmp_path / "payload.pkl"
     target.write_bytes(payload)
     return subprocess.run(
@@ -162,6 +176,7 @@ def _load_with_blocked_imports(payload: bytes, blocked: list[str], tmp_path):
             _LOAD_WITH_BLOCKED_IMPORT,
             ",".join(blocked),
             str(target),
+            *([str(weights_dir)] if weights_dir is not None else []),
         ],
         capture_output=True,
         text=True,
@@ -186,6 +201,20 @@ def test_toolkit_deserializes_without_serve_only_dependencies(exported, tmp_path
     payload = _dump_in_a_clean_process(exported, tmp_path)
 
     result = _load_with_blocked_imports(payload, _SERVE_ONLY_MODULES, tmp_path)
+
+    assert result.returncode == 0, result.stderr
+    assert "LOADED" in result.stdout
+
+
+def test_download_model_weights_runs_without_portalocker_on_linux(tmp_path):
+    payload = _dump_in_a_clean_process("download_model_weights", tmp_path)
+
+    result = _load_with_blocked_imports(
+        payload,
+        _SERVE_ONLY_MODULES,
+        tmp_path,
+        weights_dir=tmp_path / "model_weights" if sys.platform != "win32" else None,
+    )
 
     assert result.returncode == 0, result.stderr
     assert "LOADED" in result.stdout
