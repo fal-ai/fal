@@ -2,6 +2,7 @@ import io
 import json
 import os
 import struct
+from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
 import isolate_proto
@@ -10,6 +11,7 @@ import pytest
 from fal.cli.main import parse_args
 from fal.cli.parser import FalParserExit
 from fal.cli.runners import _exec, _get_tty_size, _gpus, _shell_session
+from fal.sdk import RunnerInfo, RunnerState
 
 if os.name != "nt":
     import fcntl
@@ -344,3 +346,49 @@ def test_interactive_shell_errors_on_windows(_mock_client_cls):
     args.console.print.assert_called_once_with(
         "[red]Error:[/] Interactive runner shell is not supported on Windows."
     )
+
+
+def _runner(runner_id: str, state: RunnerState) -> RunnerInfo:
+    return RunnerInfo(
+        runner_id=runner_id,
+        in_flight_requests=0,
+        expiration_countdown=None,
+        uptime=timedelta(seconds=5),
+        external_metadata={},
+        revision="rev",
+        alias="my-app",
+        state=state,
+        machine_type="GPU-H100",
+    )
+
+
+_MIXED_RUNNERS = [
+    _runner("r-idle", RunnerState.IDLE),
+    _runner("r-pull", RunnerState.DOCKER_PULL),
+    _runner("r-setup", RunnerState.SETUP),
+]
+
+
+@patch("fal.cli.runners.SyncServerlessClient")
+def test_list_filters_docker_pull(mock_client_cls):
+    mock_client_cls.return_value.runners.list.return_value = _MIXED_RUNNERS
+
+    args = parse_args(["runners", "list", "--state", "docker_pull", "--json"])
+    args.console = MagicMock()
+    args.func(args)
+
+    result = json.loads(args.console.print.call_args[0][0])
+    assert [r["runner_id"] for r in result["runners"]] == ["r-pull"]
+
+
+@patch("fal.cli.runners.SyncServerlessClient")
+def test_list_counts_pulling_runners_apart_from_active(mock_client_cls):
+    mock_client_cls.return_value.runners.list.return_value = _MIXED_RUNNERS
+
+    args = parse_args(["runners", "list"])
+    args.console = MagicMock()
+    args.func(args)
+
+    printed = [str(call.args[0]) for call in args.console.print.call_args_list]
+    assert "Runners: 1" in printed
+    assert "Runners Pulling Image: 1" in printed

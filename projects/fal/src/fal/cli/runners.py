@@ -377,6 +377,9 @@ def _list(args):
     pending_runners = [
         runner for runner in runners if runner.state == RunnerState.PENDING
     ]
+    pulling_runners = [
+        runner for runner in runners if runner.state == RunnerState.DOCKER_PULL
+    ]
     setup_runners = [runner for runner in runners if runner.state == RunnerState.SETUP]
     failing_runners = [
         runner for runner in runners if runner.state == RunnerState.CRASH_BACKOFF
@@ -392,11 +395,13 @@ def _list(args):
             + str(
                 len(runners)
                 - len(pending_runners)
+                - len(pulling_runners)
                 - len(setup_runners)
                 - len(terminated_runners)
             )
         )
         args.console.print(f"Runners Pending: {len(pending_runners)}")
+        args.console.print(f"Runners Pulling Image: {len(pulling_runners)}")
         args.console.print(f"Runners Setting Up: {len(setup_runners)}")
         if len(failing_runners) > 0:
             args.console.print(
@@ -482,6 +487,7 @@ def _add_list_parser(subparsers, parents):
             "idle",
             "running",
             "pending",
+            "docker_pull",
             "setup",
             "crash_backoff",
             "terminated",
