@@ -1590,8 +1590,6 @@ def test_data_mounts_propagate_through_wrap_app():
 
 
 def test_data_mounts_register_sends_to_connection():
-    from unittest.mock import PropertyMock
-
     from fal.api.api import FalServerlessHost, Options
 
     host = FalServerlessHost()
@@ -2880,3 +2878,109 @@ def test_app_request_start_timeout_inheritance_and_clear():
     assert wrap_app(ClearedApp).options.host["request_start_timeout"] == 0
     assert ParentApp.host_kwargs["request_start_timeout"] == 30
     assert "request_start_timeout" not in App.host_kwargs
+
+
+def test_volumes_propagate_to_host_kwargs_normalized():
+    from fal.volumes import Volume
+
+    class VolumesApp(App):
+        volumes = {"/models": Volume("My-Models"), "/cache": "shared-cache"}
+
+    assert VolumesApp.host_kwargs["volumes"] == {
+        "/models": "my-models",
+        "/cache": "shared-cache",
+    }
+
+
+@pytest.mark.parametrize(
+    ("volumes", "expected"),
+    [
+        ({"/models/sub": "ok"}, "VolumeInvalidMountPathError"),
+        ({"models": "ok"}, "VolumeInvalidMountPathError"),
+        ({"/..": "ok"}, "VolumeInvalidMountPathError"),
+        ({"/models": "-bad"}, "VolumeInvalidNameError"),
+        ({"/models": "x" * 33}, "VolumeInvalidNameError"),
+    ],
+)
+def test_volumes_rejected_locally(volumes, expected):
+    import fal.exceptions
+
+    with pytest.raises(getattr(fal.exceptions, expected)):
+        type("BadVolumesApp", (App,), {"volumes": volumes})
+
+
+def test_volumes_run_sends_to_connection():
+    from fal.api.api import FalServerlessHost, Options, ResultHandler
+    from fal.sdk import HostedRunState
+
+    host = FalServerlessHost()
+    options = Options()
+    options.host["volumes"] = {"/models": "my-models"}
+
+    connection = MagicMock()
+    connection.define_environment.return_value = object()
+    partial_result = MagicMock()
+    partial_result.status.state = HostedRunState.SUCCESS
+    partial_result.result = "ok"
+    connection.run.return_value = iter([partial_result])
+
+    with patch.object(
+        FalServerlessHost, "_connection", new_callable=PropertyMock
+    ) as mock_connection:
+        mock_connection.return_value = connection
+        host._run(
+            lambda: "ok",
+            options,
+            args=(),
+            kwargs={},
+            result_handler=ResultHandler(),
+        )
+
+    _, call_kwargs = connection.run.call_args
+    assert call_kwargs["volumes"] == {"/models": "my-models"}
+
+
+def test_volumes_with_data_mounts_rejected_before_build():
+    from fal.api.api import FalServerlessHost, Options
+    from fal.exceptions import VolumeInvalidMountPathError
+
+    host = FalServerlessHost()
+    options = Options()
+    options.host["volumes"] = {"/models": "my-models"}
+    options.host["data_mounts"] = ["/data"]
+
+    connection = MagicMock()
+    with patch.object(
+        FalServerlessHost, "_connection", new_callable=PropertyMock
+    ) as mock_connection:
+        mock_connection.return_value = connection
+        with pytest.raises(VolumeInvalidMountPathError, match="data_mounts"):
+            host.build_environment(options)
+
+    connection.build_environment.assert_not_called()
+
+
+def test_function_volumes_normalized_at_host_boundary():
+    from fal.api.api import FalServerlessHost, Options
+    from fal.volumes import Volume
+
+    host = FalServerlessHost()
+    options = Options()
+    options.host["volumes"] = {"/models": Volume("My-Models"), "/cache": "Shared"}
+
+    connection = MagicMock()
+    connection.define_environment.return_value = object()
+    connection.register.return_value = iter([])
+
+    with patch.object(
+        FalServerlessHost, "_connection", new_callable=PropertyMock
+    ) as mock_connection:
+        mock_connection.return_value = connection
+        host.register(
+            func=lambda: "ok",
+            options=options,
+            deployment_strategy="recreate",
+        )
+
+    _, call_kwargs = connection.register.call_args
+    assert call_kwargs["volumes"] == {"/models": "my-models", "/cache": "shared"}

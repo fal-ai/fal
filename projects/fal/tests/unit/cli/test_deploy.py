@@ -587,6 +587,7 @@ def mock_parse_pyproject_toml():
                 "termination_grace_period_seconds": 30,
                 "secrets": ["OPENAI_API_KEY", "HF_TOKEN"],
                 "data_mounts": ["/data", "/data/.cache"],
+                "volumes": {"/models": "My-Models"},
                 "health_check": {
                     "path": "/health",
                     "method": "get",
@@ -1665,6 +1666,7 @@ def test_get_app_data_from_toml_with_advanced_runtime_options(
         "termination_grace_period_seconds": 30,
         "secrets": ["OPENAI_API_KEY", "HF_TOKEN"],
         "data_mounts": ["/data", "/data/.cache"],
+        "volumes": {"/models": "my-models"},
         "health_check_config": ApplicationHealthCheckConfig(
             path="/health",
             start_period_seconds=30,
@@ -1827,6 +1829,10 @@ def test_get_app_data_from_toml_rejects_app_files_context_dir_without_app_files(
         ("_scheduler_options", "nomad", "_scheduler_options must be a table"),
         ("secrets", "OPENAI_API_KEY", "secrets must be a list of strings."),
         ("data_mounts", ["/data", 1], "data_mounts must be a list of strings."),
+        ("volumes", ["/models"], "volumes must be a table of mount path"),
+        ("volumes", {"/models": 1}, "must be a fal.Volume or a volume name"),
+        ("volumes", {"/models/sub": "x"}, "Invalid volume mount path"),
+        ("volumes", {"/models": "bad name"}, "Invalid volume name"),
         (
             "skip_retry_conditions",
             ["client_error"],
