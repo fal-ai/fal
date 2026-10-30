@@ -50,6 +50,9 @@ MAX_TAGS_TOTAL_BYTES = 1024
 # System-only tag namespace, rejected in caller input.
 RESERVED_TAG_KEY_PREFIX = "fal."
 
+# Reserved tag value meaning "all values"; rejected in caller input.
+WILDCARD_TAG_VALUE = "*"
+
 _TAG_KEY_PATTERN = re.compile(r"^[a-z0-9._-]+$")
 
 
@@ -96,6 +99,13 @@ def add_priority_header(priority: Priority, headers: dict[str, str]) -> None:
 def _is_valid_tag_value(value: str) -> bool:
     # Printable ASCII (incl. space), excluding control chars and the "," separator.
     return all(char.isascii() and char.isprintable() and char != "," for char in value)
+
+
+def _is_reserved_tag_value(value: str) -> bool:
+    # "*", or wrapped in parentheses like "(untagged)" and "(other)".
+    return value == WILDCARD_TAG_VALUE or (
+        len(value) >= 2 and value.startswith("(") and value.endswith(")")
+    )
 
 
 def add_tags_header(tags: Mapping[str, str], headers: dict[str, str]) -> None:
@@ -152,6 +162,11 @@ def add_tags_header(tags: Mapping[str, str], headers: dict[str, str]) -> None:
             raise ValueError(
                 f"Tag keys starting with '{RESERVED_TAG_KEY_PREFIX}' are reserved, "
                 f"got '{raw_key}'"
+            )
+        if _is_reserved_tag_value(value):
+            raise ValueError(
+                f"Tag values '{WILDCARD_TAG_VALUE}' and wrapped in parentheses are "
+                f"reserved, got '{raw_value}' for key '{raw_key}'"
             )
 
         # Both the pair count and this byte budget (key and value) are measured
