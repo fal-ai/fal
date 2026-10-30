@@ -259,6 +259,23 @@ class TestAddTagsHeader:
         with pytest.raises(ValueError, match="are reserved"):
             add_tags_header({"fal.endpoint": "x"}, headers)
 
+    @pytest.mark.parametrize("value", ["*", " * ", "()", "(untagged)", "(other)"])
+    def test_raises_for_reserved_value(self, value: str) -> None:
+        """The wildcard marker and parenthesized values are reserved."""
+        headers: dict[str, str] = {}
+
+        with pytest.raises(ValueError, match="are reserved.*for key 'env'"):
+            add_tags_header({"env": value}, headers)
+
+    @pytest.mark.parametrize("value", ["(", ")", "a*", "**", "(a", "a)", "a(b)"])
+    def test_accepts_non_reserved_value(self, value: str) -> None:
+        """Only an exact '*' or a fully parenthesized value is reserved."""
+        headers: dict[str, str] = {}
+
+        add_tags_header({"env": value}, headers)
+
+        assert headers[TAGS_HEADER] == f"env={value}"
+
     def test_raises_for_non_string_pair(self) -> None:
         """Non-string keys or values are rejected."""
         headers: dict[str, str] = {}
