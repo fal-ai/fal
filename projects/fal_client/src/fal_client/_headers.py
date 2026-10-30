@@ -50,7 +50,7 @@ MAX_TAGS_TOTAL_BYTES = 1024
 # System-only tag namespace, rejected in caller input.
 RESERVED_TAG_KEY_PREFIX = "fal."
 
-# Value marking a wildcard (all values) tag activation, rejected in caller input.
+# Reserved tag value meaning "all values"; rejected in caller input.
 WILDCARD_TAG_VALUE = "*"
 
 _TAG_KEY_PATTERN = re.compile(r"^[a-z0-9._-]+$")
@@ -102,8 +102,7 @@ def _is_valid_tag_value(value: str) -> bool:
 
 
 def _is_reserved_tag_value(value: str) -> bool:
-    # The wildcard marker, or wrapped in parentheses like the "(untagged)" and
-    # "(other)" reporting fills.
+    # "*", or wrapped in parentheses like "(untagged)" and "(other)".
     return value == WILDCARD_TAG_VALUE or (
         len(value) >= 2 and value.startswith("(") and value.endswith(")")
     )
